@@ -776,8 +776,8 @@ cc_library(
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
-        ":gpu_compiler",
         ":infeed_manager",
+        ":nvptx_compiler",
         ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -799,7 +799,7 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_compiler",
+    name = "nvptx_compiler",
     srcs = ["nvptx_compiler.cc"],
     hdrs = ["nvptx_compiler.h"],
     deps = [
