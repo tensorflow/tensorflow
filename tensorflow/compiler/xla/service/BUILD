@@ -810,8 +810,8 @@ cc_library(
     name = "gpu_plugin",
     deps = [
         ":service",
-        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
     ],
