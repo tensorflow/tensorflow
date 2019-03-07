@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include <gtest/gtest.h>
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -145,7 +146,8 @@ inline void DispatchDepthwiseConv(
       break;
     case DepthwiseConvImplementation::kUseCModel3x3DotProduct: {
       DotProduct3x3KernelType kernel_type =
-          optimized_ops::depthwise_conv::CategorizeDotProductKernel(params);
+          optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+              input_shape, filter_shape, params);
 
       ASSERT_TRUE(
           kernel_type == DotProduct3x3KernelType::kPlain ||
@@ -154,7 +156,19 @@ inline void DispatchDepthwiseConv(
               DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
           kernel_type ==
               DotProduct3x3KernelType::kWithDepthMultiplicationStride2)
-          << "Kernel type = " << static_cast<int>(kernel_type);
+          << "Kernel type = " << static_cast<int>(kernel_type)
+          << " depth_multiplier = " << params.depth_multiplier
+          << " pad_width = " << params.padding_values.width
+          << " pad_height = " << params.padding_values.height
+          << " stride_width = " << params.stride_width
+          << " stride_height = " << params.stride_height
+          << " input_width = " << input_shape.Dims(2)
+          << " input_height = " << input_shape.Dims(1)
+          << " output_width = " << output_shape.Dims(2)
+          << " output_height = " << output_shape.Dims(1)
+          << " depth = " << input_shape.Dims(3)
+          << " buffer need = " << input_shape.Dims(3) * input_shape.Dims(2) * 6
+          << " input_offset = " << params.input_offset;
 
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseCModel3x3DotProduct>(
@@ -172,11 +186,39 @@ inline void DispatchDepthwiseConv(
     default:
       break;
   }
+
   EXPECT_EQ(test_param.forced_invocation, DepthwiseConvImplementation::kNone)
-      << "TODO(b/118426582) requested kernel was not invoked / available yet";
-  optimized_ops::DepthwiseConv(params, input_shape, input_data, filter_shape,
-                               filter_data, bias_shape, bias_data, output_shape,
-                               output_data);
+      << "TODO(b/118426582) requested kernel was not invoked / available yet: "
+      << " forced_invocation = "
+      << static_cast<int>(test_param.forced_invocation)
+      << " depth_multiplier = " << params.depth_multiplier
+      << " pad_width = " << params.padding_values.width
+      << " pad_height = " << params.padding_values.height
+      << " stride_width = " << params.stride_width
+      << " stride_height = " << params.stride_height
+      << " input_width = " << input_shape.Dims(2)
+      << " input_height = " << input_shape.Dims(1)
+      << " output_width = " << output_shape.Dims(2)
+      << " output_height = " << output_shape.Dims(1)
+      << " depth = " << input_shape.Dims(3)
+      << " buffer need = " << input_shape.Dims(3) * input_shape.Dims(2) * 6
+      << " input_offset = " << params.input_offset;
+  switch (test_param.output_rounding) {
+    case DepthwiseConvOutputRounding::kAwayFromZero:
+      optimized_ops::DepthwiseConvWithRounding<
+          DepthwiseConvOutputRounding::kAwayFromZero>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data);
+      return;
+    case DepthwiseConvOutputRounding::kUpward:
+      optimized_ops::DepthwiseConvWithRounding<
+          DepthwiseConvOutputRounding::kUpward>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data);
+      return;
+    default:
+      break;
+  }
 }
 
 // Runs the DepthwiseConv and compares against the reference implementation.
@@ -259,13 +301,17 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   const float mean_abs_diff =
       static_cast<float>(sum_abs_diff) / output_buffer_size;
 
-  constexpr int diff_mean_tolerance = 1;
-  constexpr int diff_median_tolerance = 0;
+  int diff_mean_tolerance = 1;
+  int diff_median_tolerance = 0;
   // The tolerance that we apply to means is tight, but we allow for a rounding
   // difference in one pixel, and loosen by another 1% for float comparison.
-  const float mean_tolerance =
-      std::max(1e-5f, 1.01f * 2.f / output_buffer_size *
-                          std::sqrt(1.f * depth_multiplier));
+  float mean_tolerance = std::max(2e-5f, 1.01f * 3.f / output_buffer_size *
+                                             std::sqrt(1.f * depth_multiplier));
+  if (test_param.loose_tolerance) {
+    mean_tolerance = 500.f;
+    diff_mean_tolerance = 256;
+    diff_median_tolerance = 175;
+  }
 
   // Normally we should require bit-for-bit exact results. Unfortunately a bug
   // in the Intel arm_neon_sse.h translation header that we use for x86 tests
@@ -278,6 +324,22 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   EXPECT_LE(std::abs(median_diff), diff_median_tolerance);
   EXPECT_LE(std::abs(min_diff), diff_mean_tolerance);
   EXPECT_LE(std::abs(max_diff), diff_mean_tolerance);
+  EXPECT_TRUE(std::abs(mean_diff) < mean_tolerance &&
+              mean_abs_diff < mean_tolerance &&
+              std::abs(median_diff) <= diff_median_tolerance &&
+              std::abs(min_diff) <= diff_mean_tolerance &&
+              std::abs(max_diff) <= diff_mean_tolerance)
+      << "pad_width = " << op_params.padding_values.width
+      << " pad_height = " << op_params.padding_values.height
+      << " input_width = " << input_shape.Dims(2)
+      << " input_height = " << input_shape.Dims(1)
+      << " output_width = " << output_shape.Dims(2)
+      << " output_height = " << output_shape.Dims(1)
+      << " depth = " << input_shape.Dims(3)
+      << " output_offset = " << op_params.output_offset
+      << " output_multiplier = " << op_params.output_multiplier
+      << " output_shift = " << op_params.output_shift;
+
   if (saturated_min > 2 * saturated_max) {
     return -1;
   }
@@ -572,13 +634,15 @@ TEST(TestDepthwiseConv, TestGenericKernel) {
   }
 }
 
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 TEST(TestDepthwiseConv, TestKernel3x3Filter) {
   const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kNone,
+    TestOneDepthwiseConv3x3Filter(DepthwiseConvImplementation::kUseNeon3x3,
                                   DepthwiseConvOutputRounding::kAwayFromZero);
   }
 }
+#endif
 
 // While 3x3 coverage tests are primarily targeted at specialized kernels, we
 // also run it against the generic kernel.
@@ -631,13 +695,13 @@ INSTANTIATE_TEST_SUITE_P(
     GenericKernel, DepthwiseConvTest,
     testing::Combine(
         Values(DepthwiseConvImplementation::
-                   kUseGenericKernel),                 // forced_invocation
-        Values(100),                                   // tests_to_run
-        Bool(),                                        // test_stride
-        Bool(),                                        // test_pad
-        Bool(),                                        // test_depth_multiplier
-        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
-        Values(false)                                  // loose_tolerance
+                   kUseGenericKernel),  // forced_invocation
+        Values(100),                    // tests_to_run
+        Bool(),                         // test_stride
+        Bool(),                         // test_pad
+        Bool(),                         // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kAwayFromZero),  // output_rounding
+        Values(false)                                        // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 
