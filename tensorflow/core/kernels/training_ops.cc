@@ -19,11 +19,11 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/framework/bounds_check.h"
-#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/training_ops.h"
 #include "tensorflow/core/kernels/variable_ops.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
@@ -301,7 +301,7 @@ struct ApplyKerasMomentum<CPUDevice, T> {
 
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
-  void operator()(const Device& d, typename TTypes<T>::Flat var,
+  void operator()(OpKernelContext* ctx, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
                   typename TTypes<T>::ConstScalar beta1_power,
                   typename TTypes<T>::ConstScalar beta2_power,
@@ -310,6 +310,12 @@ struct ApplyAdamNonCuda {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
+    const int length = var.size();
+
+    T* var_ptr = var.data();
+    T* m_ptr = m.data();
+    T* v_ptr = v.data();
+    const T* g_ptr = grad.data();
     const T alpha = lr() * Eigen::numext::sqrt(T(1) - beta2_power()) /
                     (T(1) - beta1_power());
     // beta1 == μ
@@ -317,14 +323,50 @@ struct ApplyAdamNonCuda {
     // v     == n
     // var   == θ
 
-    m.device(d) += (grad - m) * (T(1) - beta1());
-    v.device(d) += (grad.square() - v) * (T(1) - beta2());
-    if (use_nesterov) {
-      var.device(d) -= ((grad * (T(1) - beta1()) + beta1() * m) * alpha) /
-                       (v.sqrt() + epsilon());
-    } else {
-      var.device(d) -= (m * alpha) / (v.sqrt() + epsilon());
-    }
+    auto shard = [this, var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2,
+                  epsilon, use_nesterov](int begin, int end) {
+      T m;
+      T v;
+      T g;
+
+      if (use_nesterov) {
+        for (int i = begin; i < end; ++i) {
+          m = *(m_ptr + i);
+          v = *(v_ptr + i);
+          g = *(g_ptr + i);
+
+          m += (g - m) * (T(1) - beta1());
+          v += (g * g - v) * (T(1) - beta2());
+          *(var_ptr + i) -= ((g * (T(1) - beta1()) + beta1() * m) * alpha) /
+                            (Eigen::numext::sqrt(v) + epsilon());
+          *(m_ptr + i) = m;
+          *(v_ptr + i) = v;
+        }
+      } else {
+        for (int i = begin; i < end; ++i) {
+          m = *(m_ptr + i);
+          v = *(v_ptr + i);
+          g = *(g_ptr + i);
+
+          m += (g - m) * (T(1) - beta1());
+          v += (g * g - v) * (T(1) - beta2());
+          *(var_ptr + i) -= (m * alpha) / (Eigen::numext::sqrt(v) + epsilon());
+          *(m_ptr + i) = m;
+          *(v_ptr + i) = v;
+        }
+      }
+    };
+
+    // TODO: lack of memory access and sqrt
+    int cost = Eigen::TensorOpCost::AddCost<int>() * 6 +
+               Eigen::TensorOpCost::AddCost<T>() * 4 +
+               // Consider Sub as Add
+               Eigen::TensorOpCost::AddCost<T>() * 5 +
+               Eigen::TensorOpCost::MulCost<T>() * 6 +
+               Eigen::TensorOpCost::DivCost<T>();
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+    Shard(worker_threads.num_threads, worker_threads.workers, length, cost,
+          shard);
   }
 };
 
@@ -1250,22 +1292,19 @@ class ApplyProximalAdagradOp : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 accum.shape().DebugString()));
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
+                         lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1.shape()) &&
+                         l1.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2.shape()) &&
+                         l2.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -1497,22 +1536,19 @@ class SparseApplyProximalAdagradOp : public OpKernel {
                 errors::InvalidArgument("var must be at least 1 dimensional"));
 
     const Tensor& lr = ctx->input(2);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
+                         lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(3);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1.shape()) &&
+                         l1.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(4);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2.shape()) &&
+                         l2.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
@@ -1989,30 +2025,26 @@ class ApplyFtrlOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Tensor& lr = ctx->input(4);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
+                         lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
     const Tensor& l1 = ctx->input(5);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1.shape()) &&
+                         l1.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(6);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2.shape()) &&
+                         l2.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
     const int lr_power_index = has_l2_shrinkage ? 8 : 7;
     const Tensor& lr_power = ctx->input(lr_power_index);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr_power.shape()) &&
-                    lr_power.scalar<T>()() <= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()) &&
+                         lr_power.scalar<T>()() <= static_cast<T>(0),
                 errors::InvalidArgument("lr_power is not a"
                                         " non-positive scalar: ",
                                         lr_power.shape().DebugString()));
@@ -2021,9 +2053,8 @@ class ApplyFtrlOp : public OpKernel {
     if (has_l2_shrinkage) {
       const Tensor& l2_shrinkage = ctx->input(7);
       OP_REQUIRES(
-          ctx,
-          TensorShapeUtils::IsScalar(l2_shrinkage.shape()) &&
-              l2_shrinkage.scalar<T>()() >= static_cast<T>(0),
+          ctx, TensorShapeUtils::IsScalar(l2_shrinkage.shape()) &&
+                   l2_shrinkage.scalar<T>()() >= static_cast<T>(0),
           errors::InvalidArgument("l2 shrinkage regularization strength "
                                   "is not a non-negative scalar: ",
                                   l2_shrinkage.shape().DebugString()));
@@ -2141,31 +2172,27 @@ class SparseApplyFtrlOp : public OpKernel {
                 errors::InvalidArgument("indices must be one-dimensional"));
 
     const Tensor& lr = ctx->input(5);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr.shape()) &&
-                    lr.scalar<T>()() > static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr.shape()) &&
+                         lr.scalar<T>()() > static_cast<T>(0),
                 errors::InvalidArgument("lr is not a positive scalar: ",
                                         lr.shape().DebugString()));
 
     const Tensor& l1 = ctx->input(6);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l1.shape()) &&
-                    l1.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l1.shape()) &&
+                         l1.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l1 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l1.shape().DebugString()));
     const Tensor& l2 = ctx->input(7);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(l2.shape()) &&
-                    l2.scalar<T>()() >= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(l2.shape()) &&
+                         l2.scalar<T>()() >= static_cast<T>(0),
                 errors::InvalidArgument("l2 regularization strength is not a "
                                         "non-negative scalar: ",
                                         l2.shape().DebugString()));
     const int lr_power_index = has_l2_shrinkage ? 9 : 8;
     const Tensor& lr_power = ctx->input(lr_power_index);
-    OP_REQUIRES(ctx,
-                TensorShapeUtils::IsScalar(lr_power.shape()) &&
-                    lr_power.scalar<T>()() <= static_cast<T>(0),
+    OP_REQUIRES(ctx, TensorShapeUtils::IsScalar(lr_power.shape()) &&
+                         lr_power.scalar<T>()() <= static_cast<T>(0),
                 errors::InvalidArgument("lr_power is not a "
                                         "non-positive scalar: ",
                                         lr_power.shape().DebugString()));
@@ -2190,9 +2217,8 @@ class SparseApplyFtrlOp : public OpKernel {
     if (has_l2_shrinkage) {
       l2_shrinkage = &ctx->input(8);
       OP_REQUIRES(
-          ctx,
-          TensorShapeUtils::IsScalar(l2_shrinkage->shape()) &&
-              l2_shrinkage->scalar<T>()() >= static_cast<T>(0),
+          ctx, TensorShapeUtils::IsScalar(l2_shrinkage->shape()) &&
+                   l2_shrinkage->scalar<T>()() >= static_cast<T>(0),
           errors::InvalidArgument("l2 shrinkage regularization strength "
                                   "is not a non-negative scalar: ",
                                   l2_shrinkage->shape().DebugString()));
@@ -2234,9 +2260,10 @@ class SparseApplyFtrlOp : public OpKernel {
     linear += grad_maybe_with_shrinkage -                                      \
               (new_accum.sqrt() - accum.sqrt()) / lr_scalar * var;             \
   } else {                                                                     \
-    linear += grad_maybe_with_shrinkage - (new_accum.pow(-lr_power_scalar) -   \
-                                           accum.pow(-lr_power_scalar)) /      \
-                                              lr_scalar * var;                 \
+    linear +=                                                                  \
+        grad_maybe_with_shrinkage -                                            \
+        (new_accum.pow(-lr_power_scalar) - accum.pow(-lr_power_scalar)) /      \
+            lr_scalar * var;                                                   \
   }                                                                            \
   auto l1_reg_adjust = linear.cwiseMin(l1_scalar).cwiseMax(-l1_scalar);        \
   auto x = l1_reg_adjust - linear;                                             \
@@ -2874,12 +2901,10 @@ class ApplyAdamOp : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
 
-    const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyAdam<Device, T>()(
-        device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-        beta1_power.scalar<T>(), beta2_power.scalar<T>(), lr.scalar<T>(),
-        beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
-        grad.flat<T>(), use_nesterov_);
+        ctx, var.flat<T>(), m.flat<T>(), v.flat<T>(), beta1_power.scalar<T>(),
+        beta2_power.scalar<T>(), lr.scalar<T>(), beta1.scalar<T>(),
+        beta2.scalar<T>(), epsilon.scalar<T>(), grad.flat<T>(), use_nesterov_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -3038,7 +3063,7 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
   template <>                                                 \
   void ApplyAdam<GPUDevice, T>::operator()(                   \
-      const GPUDevice& d, typename TTypes<T>::Flat var,       \
+      OpKernelContext* ctx, typename TTypes<T>::Flat var,     \
       typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
       typename TTypes<T>::ConstScalar beta1_power,            \
       typename TTypes<T>::ConstScalar beta2_power,            \

@@ -124,7 +124,7 @@ struct ApplyKerasMomentum<GPUDevice, T> {
 
 template <typename T>
 struct ApplyAdam<GPUDevice, T> {
-  void operator()(const GPUDevice& d, typename TTypes<T>::Flat var,
+  void operator()(OpKernelContext* ctx, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
                   typename TTypes<T>::ConstScalar beta1_power,
                   typename TTypes<T>::ConstScalar beta2_power,
@@ -133,16 +133,19 @@ struct ApplyAdam<GPUDevice, T> {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
+    const GPUDevice& d = ctx->template eigen_device<GPUDevice>();
     Eigen::array<typename TTypes<T>::Tensor::Index, 1> bcast;
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
     m.device(d) =
-        m + (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-                (grad - m);
+        m +
+        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+            (grad - m);
     v.device(d) =
-        v + (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
-                (grad.square() - v);
+        v +
+        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
+            (grad.square() - v);
 
     if (use_nesterov) {
       var.device(d) -=
@@ -182,11 +185,13 @@ struct ApplyAdamWithAmsgrad<GPUDevice, T> {
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
     m.device(d) =
-        m + (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-                (grad - m);
+        m +
+        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+            (grad - m);
     v.device(d) =
-        v + (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
-                (grad.square() - v);
+        v +
+        (beta2.constant(one) - beta2).reshape(single).broadcast(bcast) *
+            (grad.square() - v);
     vhat.device(d) = vhat.cwiseMax(v);
 
     var.device(d) -= (lr * (beta2_power.constant(one) - beta2_power).sqrt() /
@@ -213,13 +218,15 @@ struct ApplyAdaMax<GPUDevice, T> {
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
     m.device(d) =
-        m + (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
-                (grad - m);
+        m +
+        (beta1.constant(one) - beta1).reshape(single).broadcast(bcast) *
+            (grad - m);
     v.device(d) =
         (beta2.reshape(single).broadcast(bcast) * v).cwiseMax(grad.abs());
-    var.device(d) -=
-        lr / (beta1_power.constant(one) -
-                 beta1_power).reshape(single).broadcast(bcast) *
+    var.device(d) -= lr /
+                     (beta1_power.constant(one) - beta1_power)
+                         .reshape(single)
+                         .broadcast(bcast) *
                      (m / (v + epsilon));
   }
 };
@@ -237,9 +244,9 @@ struct ApplyRMSProp<GPUDevice, T> {
     bcast[0] = grad.dimension(0);
     Eigen::Sizes<1> single;
     const auto one = static_cast<T>(1.0);
-    ms.device(d) =
-        ms + (rho.constant(one) - rho).reshape(single).broadcast(bcast) *
-                 (grad.square() - ms);
+    ms.device(d) = ms +
+                   (rho.constant(one) - rho).reshape(single).broadcast(bcast) *
+                       (grad.square() - ms);
     mom.device(d) =
         mom * momentum.reshape(single).broadcast(bcast) +
         lr.reshape(single).broadcast(bcast) * grad /
