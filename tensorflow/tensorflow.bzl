@@ -905,9 +905,9 @@ def tf_gpu_cc_test(
         }),
         suffix = "_gpu",
         tags = tags + tf_gpu_tests_tags(),
-        deps = deps + if_cuda([
+        deps = deps + if_cuda_is_configured([
             clean_dep("//tensorflow/core:gpu_runtime"),
-        ]) + if_rocm([
+        ]) + if_rocm_is_configured([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
     )
@@ -2033,6 +2033,7 @@ def cuda_py_test(
         kernels = [],
         tags = [],
         flaky = 0,
+        xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
     gpu_py_test(
@@ -2047,6 +2048,7 @@ def cuda_py_test(
         kernels = kernels,
         tags = tags,
         flaky = flaky,
+        xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
         xla_enabled = xla_enabled,
         grpc_enabled = grpc_enabled,
     )
@@ -2167,6 +2169,7 @@ def cuda_py_tests(
         shard_count = 1,
         tags = [],
         prefix = "",
+        xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
     gpu_py_tests(
@@ -2179,6 +2182,7 @@ def cuda_py_tests(
         shard_count = shard_count,
         tags = tags,
         prefix = prefix,
+        xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
         xla_enabled = xla_enabled,
         grpc_enabled = grpc_enabled,
     )
