@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
+#include "tensorflow/core/kernels/tensor_forest/tensor_forest.pb.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
@@ -272,7 +273,7 @@ class TensorForestGrowTreeOp : public OpKernel {
 
     for (int32 i = 0; i < batch_size; i++) {
       auto node = finished(i);
-      auto slot = fertile_stats_resource->get_slot(node);
+      auto& slot = fertile_stats_resource->get_slot(node);
       std::unique_ptr<tensor_forest::SplitCandidate> best_candidate(
           new tensor_forest::SplitCandidate);
       bool found =

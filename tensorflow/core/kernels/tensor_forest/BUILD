@@ -8,21 +8,20 @@ package(
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
-
 load(
-     "//tensorflow/core:platform/default/build_config.bzl",
-     "tf_proto_library",
- )
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library",
+)
 
 tf_proto_library(
-     name = "tensor_forest_proto",
-     srcs = ["tensor_forest.proto"],
-     cc_api_version = 2,
-     protodeps = [
-         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto",
- 	],
-     visibility = ["//visibility:public"],
- )
+    name = "tensor_forest_proto",
+    srcs = ["tensor_forest.proto"],
+    cc_api_version = 2,
+    protodeps = [
+        "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 cc_library(
     name = "resources",
@@ -70,7 +69,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels/boosted_trees:boosted_trees_proto_cc",
         "//tensorflow/core/kernels/tensor_forest:tensor_forest_proto_cc",
     ],
- )
+)
 
 tf_kernel_library(
     name = "tensor_forest_ops",

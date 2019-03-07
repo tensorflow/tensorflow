@@ -35,6 +35,7 @@ namespace tensor_forest {
 class FertileSlot;
 class FertileStats;
 class SplitCandidate;
+class SplitStats;
 }  // namespace tensor_forest
 
 // Keep a tree ensemble in memory for efficient evaluation and mutation.
@@ -63,7 +64,7 @@ class TensorForestTreeResource : public ResourceBase {
   const int32 TraverseTree(const int32 example_id,
                            const TTypes<float>::ConstMatrix* dense_data) const;
 
-  void SplitNode(const int32 node, tensor_forest::FertileSlot& slot,
+  void SplitNode(const int32 node, const tensor_forest::FertileSlot& slot,
                  tensor_forest::SplitCandidate* best,
                  std::vector<int32>* new_children);
 
@@ -77,9 +78,10 @@ class TensorForestTreeResource : public ResourceBase {
 
 class TensorForestFertileStatsResource : public ResourceBase {
  public:
+  const float incoming_weight = 1.0;
   TensorForestFertileStatsResource();
 
-  string DebugString() override { return "TensorForestFertilStats"; }
+  string DebugString() const override { return "TensorForestFertilStats"; }
 
   mutex* get_mutex() { return &mu_; }
 
@@ -103,8 +105,8 @@ class TensorForestFertileStatsResource : public ResourceBase {
                        const TTypes<float>::ConstMatrix* dense_feature,
                        const TTypes<float>::ConstMatrix* labels);
 
-  const bool BestSplitFromSlot(const tensor_forest::FertileSlot& slot,
-                               tensor_forest::SplitCandidate* best) const;
+  bool BestSplitFromSlot(const tensor_forest::FertileSlot& slot,
+                         tensor_forest::SplitCandidate* best);
 
   const bool AddSplitToSlot(const int32 node_id, const int32 feature_id,
                             const float threshold, const int32 example_id,
@@ -112,7 +114,15 @@ class TensorForestFertileStatsResource : public ResourceBase {
                             const TTypes<float>::ConstMatrix* dense_feature,
                             const TTypes<float>::ConstMatrix* labels);
 
-  const tensor_forest::FertileSlot& get_slot(const int32 node_id) const;
+  float getGini(const tensor_forest::SplitStats& split_stats);
+
+  const tensor_forest::FertileSlot& get_slot(int32 node_id);
+
+  void Allocate(const int32 node_id);
+
+  void Clear(const int32 node_id);
+
+  void ResetSplitStats(const int32 node_id);
 
  protected:
   // Mutex for using random number generator.

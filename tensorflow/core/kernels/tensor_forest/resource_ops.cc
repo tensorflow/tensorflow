@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/boosted_trees/boosted_trees.pb.h"
 #include "tensorflow/core/kernels/tensor_forest/resources.h"
+#include "tensorflow/core/kernels/tensor_forest/tensor_forest.pb.h"
 
 namespace tensorflow {
 
@@ -114,6 +115,8 @@ class TensorForestTreeSizeOp : public OpKernel {
   }
 };
 
+// Op for resource around statistics of the leaves for all the leaves in a tree
+// that can still be splitted.
 class TensorForestCreateFertileStatsVariableOp : public OpKernel {
  public:
   explicit TensorForestCreateFertileStatsVariableOp(
@@ -141,7 +144,7 @@ class TensorForestCreateFertileStatsVariableOp : public OpKernel {
   }
 };
 
-// Op for serializing a model.
+// Op for serializing fertile leaf stats.
 class TensorForestFertileStatsSerializeOp : public OpKernel {
  public:
   explicit TensorForestFertileStatsSerializeOp(OpKernelConstruction* context)

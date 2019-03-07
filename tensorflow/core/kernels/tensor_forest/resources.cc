@@ -72,7 +72,7 @@ void TensorForestTreeResource::Reset() {
 }
 
 void TensorForestTreeResource::SplitNode(const int32 node,
-                                         tensor_forest::FertileSlot& slot,
+                                         const tensor_forest::FertileSlot& slot,
                                          tensor_forest::SplitCandidate* best,
                                          std::vector<int32>* new_children) {
   using boosted_trees::Leaf;
@@ -84,7 +84,7 @@ void TensorForestTreeResource::SplitNode(const int32 node,
   auto* new_left = decision_tree_->add_nodes();
   new_left->mutable_leaf()->mutable_vector()->Swap(
       best->mutable_left_leaf_stats()->mutable_counts_or_sums());
-  new_children->push_back(decision_tree_->nodes_size());
+  new_children->push_back(decision_tree_->nodes_size() - 1);
   // add right leaf
   auto* new_right = decision_tree_->add_nodes();
   for (int i = 0; i <= slot.leaf_stats().counts_or_sums().value_size(); i++) {
@@ -92,7 +92,7 @@ void TensorForestTreeResource::SplitNode(const int32 node,
         slot.leaf_stats().counts_or_sums().value(i) -
         best->left_leaf_stats().counts_or_sums().value(i));
   }
-  new_children->push_back(decision_tree_->nodes_size());
+  new_children->push_back(decision_tree_->nodes_size() - 1);
 };
 
 TensorForestFertileStatsResource::TensorForestFertileStatsResource()
@@ -128,6 +128,8 @@ const bool TensorForestFertileStatsResource::IsSlotInitialized(
   }
 };
 
+// check whether the slot is finished, by comparing the weights have seen with
+// hyper paramter split_nodes_after_samples.
 const bool TensorForestFertileStatsResource::IsSlotFinished(
     const int32 node_id, const int32 split_nodes_after_samples,
     const int32 splits_to_consider) const {
@@ -191,19 +193,20 @@ void TensorForestFertileStatsResource::UpdateSlotStats(
   }
 };
 
-const bool TensorForestFertileStatsResource::BestSplitFromSlot(
+float TensorForestFertileStatsResource::getGini(
+    const tensor_forest::SplitStats& split_stats) {
+  return 1 - split_stats.sum_of_square().value(0) /
+                 (split_stats.sum().value(0) * split_stats.sum().value(0));
+};
+
+bool TensorForestFertileStatsResource::BestSplitFromSlot(
     const tensor_forest::FertileSlot& slot,
-    tensor_forest::SplitCandidate* best) const {
+    tensor_forest::SplitCandidate* best) {
+  // we are looking to minimize the gini.
   float min_score = FLT_MAX;
   for (auto candidate : slot.candidates()) {
-    float left_gini =
-        1 - candidate.left_split_stats().sum_of_square().value(0) /
-                (candidate.left_split_stats().sum().value(0) *
-                 candidate.left_split_stats().sum().value(0));
-    float right_gini =
-        1 - candidate.right_split_stats().sum_of_square().value(0) /
-                (candidate.right_split_stats().sum().value(0) *
-                 candidate.right_split_stats().sum().value(0));
+    float left_gini = getGini(candidate.left_split_stats());
+    float right_gini = getGini(candidate.right_split_stats());
 
     if (candidate.left_leaf_stats().weight_sum() > 0 &&
         slot.leaf_stats().weight_sum() -
@@ -228,7 +231,6 @@ const bool TensorForestFertileStatsResource::AddSplitToSlot(
   auto split = candidate->mutable_split();
   split->set_threshold(threshold);
   split->set_feature_id(feature_id);
-  float incoming_weight = 1.0;
   for (int i = 0; i < num_targets; i++) {
     auto label = (*labels)(example_id, i);
 
@@ -243,10 +245,29 @@ const bool TensorForestFertileStatsResource::AddSplitToSlot(
     mutable_left_split_stats->mutable_sum_of_square()->set_value(
         0, incoming_weight * incoming_weight);
   }
-};
+}
+
+void TensorForestFertileStatsResource::Allocate(const int32 node_id) {
+  auto& node_to_slot = *fertile_stats_->mutable_node_to_slot();
+  tensor_forest::FertileSlot slot;
+  node_to_slot[node_id] = slot;
+}
+
+void TensorForestFertileStatsResource::Clear(const int32 node_id) {
+  auto& node_to_slot = *fertile_stats_->mutable_node_to_slot();
+  node_to_slot.erase(node_id);
+}
+
+void TensorForestFertileStatsResource::ResetSplitStats(const int32 node_id) {
+  auto& node_to_slot = *fertile_stats_->mutable_node_to_slot();
+  for (auto candidate : node_to_slot[node_id].candidates()) {
+    candidate.release_left_split_stats();
+    candidate.release_right_split_stats();
+  }
+}
 
 const tensor_forest::FertileSlot& TensorForestFertileStatsResource::get_slot(
-    const int32 node_id) const {
+    int32 node_id) {
   return fertile_stats_->node_to_slot().at(node_id);
 }
 
