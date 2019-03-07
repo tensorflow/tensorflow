@@ -2848,8 +2848,15 @@ TEST_F(HloEvaluatorTest, DoesCompareBF16) {
        {bfloat16(0.25), bfloat16(-0.375), bfloat16(-0.127)}});
   auto expected =
       LiteralUtil::CreateR2<bool>({{false, true, true}, {false, true, true}});
-  TestBinaryOp(HloOpcode::kGe, std::move(expected), std::move(lhs),
-               std::move(rhs));
+
+  HloComputation::Builder b(TestName());
+  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs)));
+  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(rhs)));
+  b.AddInstruction(HloInstruction::CreateCompare(expected.shape(), c1, c2,
+                                                 ComparisonDirection::kGe));
+  m_->AddEntryComputation(b.Build());
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, Evaluate()));
 }
 
 TEST_P(HloEvaluatorBf16Test, Bf16Reduction) {
