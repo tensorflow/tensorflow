@@ -445,6 +445,21 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "memory_cleanup_test",
+    size = "medium",
+    srcs = ["memory_cleanup_test.py"],
+    additional_deps = [
+        ":test_base",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/ops:multi_device_iterator_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+cuda_py_test(
     name = "optional_test",
     size = "small",
     srcs = ["optional_test.py"],

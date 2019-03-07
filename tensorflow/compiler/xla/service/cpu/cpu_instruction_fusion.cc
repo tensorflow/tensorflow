@@ -42,9 +42,10 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kTranspose;
 }
 
-bool IsMatrixVectorDot(const HloInstruction* hlo) {
+bool IsNonComplexMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
-  return hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
+  return !ShapeUtil::ElementIsComplex(hlo_shape) &&
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
          (hlo_shape.dimensions(0) == 1 || hlo_shape.dimensions(1) == 1);
 }
 
@@ -55,7 +56,8 @@ bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
 
 bool CanBeOutputFused(const HloInstruction* producer,
                       const HloInstruction* consumer) {
-  return consumer->opcode() == HloOpcode::kAdd && IsMatrixVectorDot(producer) &&
+  return consumer->opcode() == HloOpcode::kAdd &&
+         IsNonComplexMatrixVectorDot(producer) &&
          HasExactlyOneUse(*producer) == 1;
 }
 

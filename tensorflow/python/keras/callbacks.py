@@ -32,6 +32,7 @@ import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import profiler
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.data_utils import Sequence
@@ -848,6 +849,9 @@ class ModelCheckpoint(Callback):
         self.monitor_op = np.less
         self.best = np.Inf
 
+    # Only the chief worker writes model checkpoints.
+    self._chief_worker_only = True
+
   def set_model(self, model):
     self.model = model
     # Use name matching rather than `isinstance` to avoid circular dependencies.
@@ -1098,20 +1102,21 @@ class LearningRateScheduler(Callback):
 @keras_export('keras.callbacks.TensorBoard', v1=[])
 class TensorBoard(Callback):
   # pylint: disable=line-too-long
-  """TensorBoard basic visualizations.
-
-  This callback writes a log for TensorBoard, which allows
-  you to visualize dynamic graphs of your training and test
-  metrics, as well as activation histograms for the different
-  layers in your model.
+  """Enable visualizations for TensorBoard.
 
   TensorBoard is a visualization tool provided with TensorFlow.
+
+  This callback logs events for TensorBoard, including:
+  * Metrics summary plots
+  * Training graph visualization
+  * Activation histograms
+  * Sampled profiling
 
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
 
   ```sh
-  tensorboard --logdir=/full_path_to_your_logs
+  tensorboard --logdir=path_to_your_logs
   ```
 
   You can find more information about TensorBoard
@@ -1134,6 +1139,9 @@ class TensorBoard(Callback):
         callback will write the metrics and losses to TensorBoard every 1000
         samples. Note that writing too frequently to TensorBoard can slow down
         your training.
+      profile_batch: Profile the batch to sample compute characteristics. By
+        default, it will profile the second batch. Set profile_batch=0 to
+        disable profiling.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1147,6 +1155,7 @@ class TensorBoard(Callback):
                write_graph=True,
                write_images=False,
                update_freq='epoch',
+               profile_batch=2,
                **kwargs):
     super(TensorBoard, self).__init__()
     self._validate_kwargs(kwargs)
@@ -1169,6 +1178,9 @@ class TensorBoard(Callback):
     self._writers = []  # file writers to be closed
     self._train_writer = None  # set in `_initialize_writers`
     self._validation_writer = None  # set in `_initialize_writers`
+    self._profile_batch = profile_batch
+    # One profiler session is running if it is True.
+    self._is_profiling = False
 
     # TensorBoard should only write summaries on the chief when in a
     # Multi-Worker setting.
@@ -1182,10 +1194,14 @@ class TensorBoard(Callback):
     if kwargs.get('embeddings_freq', False):
       logging.warning('Embeddings will be ignored in TensorFlow 2.0 '
                       'for the `TensorBoard` Callback.')
+    if kwargs.get('batch_size', False):
+      logging.warning('`batch_size` is no longer needed in the '
+                      '`TensorBoard` Callback and will be ignored '
+                      'in TensorFlow 2.0.')
 
     unrecognized_kwargs = set(kwargs.keys()) - {
         'write_grads', 'embeddings_freq', 'embeddings_layer_names',
-        'embeddings_metadata', 'embeddings_data'
+        'embeddings_metadata', 'embeddings_data', 'batch_size'
     }
 
     # Only allow kwargs that were supported in V1.
@@ -1235,8 +1251,16 @@ class TensorBoard(Callback):
     self._validation_writer = create_writer('validation')
     self._writers.append(self._validation_writer)
 
+  def on_train_begin(self, logs=None):
+    if self._profile_batch == 1:
+      profiler.start()
+      self._is_profiling = True
+
   def on_batch_end(self, batch, logs=None):
-    """Writes scalar summaries for metrics on every training batch."""
+    """Writes scalar summaries for metrics on every training batch.
+
+    Performs profiling if current batch is in profiler_batches.
+    """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}
     self._samples_seen += logs.get('size', 1)
@@ -1245,6 +1269,13 @@ class TensorBoard(Callback):
       self._log_metrics(logs, prefix='batch_', step=self._total_batches_seen)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
+    if self._is_profiling:
+      profiler.save(self.log_dir, profiler.stop())
+      self._is_profiling = False
+    elif (not self._is_profiling and
+          self._total_batches_seen == self._profile_batch - 1):
+      profiler.start()
+      self._is_profiling = True
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
@@ -1256,6 +1287,9 @@ class TensorBoard(Callback):
 
   def on_train_end(self, logs=None):
     self._close_writers()
+    if self._is_profiling:
+      profiler.save(self.log_dir, profiler.stop())
+      self._is_profiling = False
 
   def _log_metrics(self, logs, prefix, step):
     """Writes metrics out as custom scalar summaries.

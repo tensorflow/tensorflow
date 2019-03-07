@@ -49,7 +49,7 @@ partially supported by TensorFlow Lite, and one would like to avoid those
 limitations.
 
 The following example shows how to use `target_ops` in the
-[`TFLiteConverter`](./convert/python_api) Python API.
+[`TFLiteConverter`](./convert/python_api.md) Python API.
 
 ```
 import tensorflow as tf
@@ -150,8 +150,8 @@ TensorFlow Lite XCode project with support for select TensorFlow ops has been
 added to
 `tensorflow/lite/examples/ios/camera/tflite_camera_example_with_select_tf_ops.xcodeproj`.
 
-To use this feature in a your own project, either clone the example project or
-set the project settings for a new or existing project to the following:
+To use this feature in your own project, either clone the example project or set
+the project settings for a new or existing project to the following:
 
 *   In Build Phases -> Link Binary With Libraries, add the static libraries
     under `tensorflow/contrib/makefile/gen/lib/` directory:

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
 #include <cmath>
+#include <type_traits>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -328,10 +329,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <
       typename NativeT,
       typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
-  Status HandleLog1p(HloInstruction* expm1) {
+  Status HandleLog1p(HloInstruction* log1p) {
     TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[expm1],
-        ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
+        parent_->evaluated_[log1p],
+        ElementWiseUnaryOp(log1p, [](ElementwiseT elem_operand) {
           return std::log1p(elem_operand);
         }));
     return Status::OK();
@@ -663,6 +664,23 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleSqrt(HloInstruction* sqrt) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sqrt],
+                        ElementWiseUnaryOp(sqrt, [](ElementwiseT elem_operand) {
+                          return std::sqrt(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleRsqrt(HloInstruction* rsqrt) override {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[rsqrt],
+        ElementWiseUnaryOp(rsqrt, [](ElementwiseT elem_operand) {
+          return static_cast<ElementwiseT>(1) / std::sqrt(elem_operand);
+        }));
+    return Status::OK();
+  }
+
   template <typename NativeT, typename std::enable_if<std::is_floating_point<
                                   NativeT>::value>::type* = nullptr>
   Status HandleRemainder(HloInstruction* remainder) {
@@ -893,9 +911,29 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleShiftRightLogical<ElementwiseT>(shrl);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  // Special case for integral type due to MSVC's std::isnan being unable to
+  // handle integral type.
+  template <typename NativeT,
+            typename std::enable_if<!is_complex_t<NativeT>::value &&
+                                    std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  Status HandleClamp(HloInstruction* clamp) {
+    std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
+        clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
+          return static_cast<ElementwiseT>(
+              std::min(high, std::max(value, low)));
+        };
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[clamp],
+        ElementwiseTernaryOp(clamp,
+                             std::move(ConvertTernaryFunction(clamp_op))));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<!is_complex_t<NativeT>::value &&
+                                    !std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {

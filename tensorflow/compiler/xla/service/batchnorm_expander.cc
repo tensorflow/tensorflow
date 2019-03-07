@@ -95,15 +95,8 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* exponent = add_instruction(HloInstruction::CreateBroadcast(
-        operand->shape(),
-        add_instruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-            add_instruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<float>(-0.5f))))),
-        {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kPower,
-                                        operand, exponent);
+    return HloInstruction::CreateUnary(operand->shape(), HloOpcode::kRsqrt,
+                                       operand);
   }
 
   std::unique_ptr<HloInstruction> Mean(

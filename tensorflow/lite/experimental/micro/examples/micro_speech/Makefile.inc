@@ -2,6 +2,9 @@
 INCLUDES += \
  -I$(MAKEFILE_DIR)/downloads/kissfft
 
+GENERATED_PROJECT_INCLUDES += \
+-I./third_party/kissfft
+
 PROJECT_INCLUDES += \
 third_party/kissfft
 
@@ -14,6 +17,12 @@ $(MAKEFILE_DIR)/downloads/kissfft/COPYING \
 $(MAKEFILE_DIR)/downloads/kissfft/kiss_fft.h \
 $(MAKEFILE_DIR)/downloads/kissfft/_kiss_fft_guts.h \
 $(MAKEFILE_DIR)/downloads/kissfft/tools/kiss_fftr.h
+
+THIRD_PARTY_CC_HDRS += \
+third_party/kissfft/COPYING \
+third_party/kissfft/kiss_fft.h \
+third_party/kissfft/_kiss_fft_guts.h \
+third_party/kissfft/tools/kiss_fftr.h
 
 MICRO_SPEECH_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
@@ -37,8 +46,8 @@ tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/yes_pow
 SIMPLE_FEATURES_GENERATOR_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.h \
-tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/no_30ms_sample_data.h \
-tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/yes_30ms_sample_data.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/no_power_spectrum_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/yes_power_spectrum_data.h
 

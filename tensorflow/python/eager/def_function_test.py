@@ -299,6 +299,13 @@ class DefFunctionTest(test.TestCase):
       fail(constant_op.constant(1))  # InvalidArgument: "ick"
     fail(constant_op.constant(0))  # OK
 
+  def testUnderscoreName(self):
+
+    @def_function.function
+    def f(_):
+      return _ + _
+
+    self.assertAllEqual(2.0, f(constant_op.constant(1.0)))
 
   def test_serialization_signature_cache(self):
 

@@ -51,13 +51,6 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-struct Square {
-  __host__ __device__ T operator()(const T& a) const {
-    return a * Eigen::numext::conj(a);
-  }
-};
-
-template <typename T>
 struct Sqrt {
   __host__ __device__ T operator()(const T& a) const {
     return Eigen::numext::sqrt(a);
@@ -125,6 +118,13 @@ struct Prod<std::complex<double>> {
   }
 };
 #endif
+
+template <typename T>
+struct Square {
+  __host__ __device__ T operator()(const T& a) const {
+    return Prod<T>()(a, Eigen::numext::conj(a));
+  }
+};
 
 template <typename T, typename outT = T>
 struct DividesBy {

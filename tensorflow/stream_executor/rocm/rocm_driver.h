@@ -18,7 +18,9 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_DRIVER_H_
 
+#define TENSORFLOW_ROCM_USE_DYNAMIC_LINKING
 #include "tensorflow/stream_executor/gpu/gpu_driver.h"
+
 
 namespace stream_executor {
 namespace gpu {

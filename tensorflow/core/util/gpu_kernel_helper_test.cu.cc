@@ -17,8 +17,10 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include <numeric>
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/cuda_launch_config.h"
 
 #define CUDA_EXPECT_SUCCESS                                 \
   {                                                         \
@@ -271,7 +273,8 @@ TEST(CudaDeviceFunctionsTest, ShuffleGetSrcLane) {
   unsigned* failure_count;
   ASSERT_EQ(cudaMallocManaged(&failure_count, sizeof(unsigned)), cudaSuccess);
   *failure_count = 0;
-  CudaShuffleGetSrcLaneTest<<<1, 32>>>(failure_count);
+  TF_EXPECT_OK(CudaLaunchKernel(CudaShuffleGetSrcLaneTest, 1, 32, 0, nullptr,
+                                failure_count));
   ASSERT_EQ(cudaDeviceSynchronize(), cudaSuccess);
   ASSERT_EQ(*failure_count, 0);
   cudaFree(failure_count);

@@ -949,6 +949,10 @@ class HloInstruction {
   // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
+  // Same as ReplaceUseWith(), but new_producer can have a different shape.
+  Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
   // Replaces the specified operand with new_operand. The old and new operands
   // must have compatible shapes ignoring floating-point precision.
   //

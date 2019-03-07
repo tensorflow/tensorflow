@@ -98,8 +98,9 @@ class ThreadPoolHandleOp : public OpKernel {
                                   EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                                     *ret = new ThreadPoolResource(
                                         ctx->env(), {}, display_name_,
-                                        num_threads_, max_intra_op_parallelism_,
-                                        false /* low_latency_hint */);
+                                        num_threads_,
+                                        /*low_latency_hint=*/false,
+                                        max_intra_op_parallelism_);
                                     return Status::OK();
                                   }));
       initialized_ = true;

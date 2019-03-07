@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
 bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
@@ -178,7 +178,8 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* context) {
           << tls->current_device_ordinal << " to " << context->device_ordinal();
 
   // Set the device and update thread local.
-  CHECK_EQ(hipSuccess, hipSetDevice(context->device_ordinal()));
+  CHECK_EQ(hipSuccess,
+           hipSetDevice(context->device_ordinal()));
   tls->current_device_ordinal = context->device_ordinal();
 }
 

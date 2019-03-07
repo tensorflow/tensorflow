@@ -468,6 +468,54 @@ class Dimension(object):
     """
     return self // other
 
+  def __rdiv__(self, other):
+    """Use `__floordiv__` via `x // y` instead.
+
+    This function exists only to have a better error message. Instead of:
+    `TypeError: unsupported operand type(s) for /: 'int' and 'Dimension'`,
+    this function will explicitly call for usage of `//` instead.
+
+    Args:
+      other: Another `Dimension`.
+
+    Raises:
+      TypeError.
+    """
+    raise TypeError("unsupported operand type(s) for /: '{}' and 'Dimension', "
+                    "please use // instead".format(type(other).__name__))
+
+  def __truediv__(self, other):
+    """Use `__floordiv__` via `x // y` instead.
+
+    This function exists only to have a better error message. Instead of:
+    `TypeError: unsupported operand type(s) for /: 'Dimension' and 'int'`,
+    this function will explicitly call for usage of `//` instead.
+
+    Args:
+      other: Another `Dimension`.
+
+    Raises:
+      TypeError.
+    """
+    raise TypeError("unsupported operand type(s) for /: 'Dimension' and '{}', "
+                    "please use // instead".format(type(other).__name__))
+
+  def __rtruediv__(self, other):
+    """Use `__floordiv__` via `x // y` instead.
+
+    This function exists only to have a better error message. Instead of:
+    `TypeError: unsupported operand type(s) for /: 'int' and 'Dimension'`,
+    this function will explicitly call for usage of `//` instead.
+
+    Args:
+      other: Another `Dimension`.
+
+    Raises:
+      TypeError.
+    """
+    raise TypeError("unsupported operand type(s) for /: '{}' and 'Dimension', "
+                    "please use // instead".format(type(other).__name__))
+
   def __mod__(self, other):
     """Returns `self` modulo `other`.
 

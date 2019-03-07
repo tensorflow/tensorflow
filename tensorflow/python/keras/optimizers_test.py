@@ -53,9 +53,7 @@ class KerasOptimizersTest(test.TestCase):
     y_train = keras.utils.to_categorical(y_train)
     model = _get_model(x_train.shape[1], 20, y_train.shape[1])
     model.compile(
-        loss='categorical_crossentropy',
-        optimizer=optimizer,
-        metrics=['accuracy'])
+        loss='categorical_crossentropy', optimizer=optimizer, metrics=['acc'])
     np.testing.assert_equal(
         keras.backend.get_value(model.optimizer.iterations), 0)
     history = model.fit(x_train, y_train, epochs=2, batch_size=16, verbose=0)

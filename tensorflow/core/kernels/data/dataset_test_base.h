@@ -47,6 +47,19 @@ class DatasetOpsTestBase : public ::testing::Test {
 
   ~DatasetOpsTestBase() {}
 
+  // The method validates whether the two tensors have the same shape, dtype,
+  // and value.
+  static Status ExpectEqual(const Tensor& a, const Tensor& b);
+
+  // Creates a tensor with the specified dtype, shape, and value.
+  template <typename T>
+  static Tensor CreateTensor(TensorShape input_shape,
+                             const gtl::ArraySlice<T>& input_data) {
+    Tensor tensor(DataTypeToEnum<T>::value, input_shape);
+    test::FillValues<T>(&tensor, input_data);
+    return tensor;
+  }
+
   // Creates a new op kernel based on the node definition.
   Status CreateOpKernel(const NodeDef& node_def,
                         std::unique_ptr<OpKernel>* op_kernel);

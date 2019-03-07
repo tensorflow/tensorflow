@@ -13,6 +13,7 @@ py_library(
     deps = [
         ":feature_column",
         ":feature_column_v2",
+        ":sequence_feature_column",
         "//tensorflow/python:util",
     ],
 )
@@ -162,5 +163,61 @@ tf_py_test(
         "no_cuda_on_cpu_tap",
         "no_pip",
         "no_windows",
+    ],
+)
+
+py_library(
+    name = "sequence_feature_column",
+    srcs = ["sequence_feature_column.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":feature_column_v2",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:check_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:variable_scope",
+    ],
+)
+
+tf_py_test(
+    name = "sequence_feature_column_test",
+    srcs = ["sequence_feature_column_test.py"],
+    additional_deps = [
+        ":feature_column_v2",
+        ":feature_column_v2_test",
+        ":sequence_feature_column",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python:training",
+    ],
+    tags = ["no_pip"],
+)
+
+py_test(
+    name = "sequence_feature_column_integration_test",
+    srcs = ["sequence_feature_column_integration_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":feature_column_v2",
+        ":sequence_feature_column",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:parsing_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:layers",
     ],
 )

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/core/profiler/rpc/client/capture_profile.h"
 #include "tensorflow/core/profiler/rpc/profiler_server.h"
 
 using tensorflow::string;
@@ -75,4 +76,18 @@ void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
 
 void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   ctx->context.SetShouldStoreGraphs(false);
+}
+
+bool TFE_ProfilerClientStartTracing(char* service_addr, char* logdir,
+                                    char* worker_list, bool include_dataset_ops,
+                                    int duration_ms, int num_tracing_attempts) {
+  tensorflow::Status s =
+      tensorflow::profiler::client::ValidateHostPortPair(service_addr);
+  if (!s.ok()) {
+    return false;
+  }
+  s = tensorflow::profiler::client::StartTracing(
+      service_addr, logdir, worker_list, include_dataset_ops, duration_ms,
+      num_tracing_attempts);
+  return s.ok();
 }

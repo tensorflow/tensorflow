@@ -91,16 +91,11 @@ struct GatherTree<GPUDevice, T> {
     beams.device(d) = beams.constant(end_token);
 
     GpuLaunchConfig config = GetGpuLaunchConfig(batch_size * beam_width, d);
-    // clang-format off
-    GatherTreeOpKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            batch_size, max_time, beam_width,
-            step_ids.data(),
-            parent_ids.data(),
-            max_sequence_length.data(),
-            end_token,
-            beams.data());
-    // clang-format on
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL(
+        GatherTreeOpKernel<T>, config.block_count, config.thread_per_block, 0,
+        d.stream(), batch_size, max_time, beam_width, step_ids.data(),
+        parent_ids.data(), max_sequence_length.data(), end_token,
+        beams.data()));
   }
 };
 

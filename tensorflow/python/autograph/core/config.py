@@ -29,14 +29,32 @@ PYTHON_LITERALS = {
 }
 
 
-def internal_module_name(name):
-  full_name = utils.__name__
-  name_start = full_name.find(name)
-  name_end = name_start + len(name) + 1
-  return full_name[:name_end]
+def _internal_name(name):
+  """This function correctly resolves internal and external names."""
+  reference_name = utils.__name__
+
+  reference_root = 'tensorflow.'
+  # If the TF module is foo.tensorflow, then all other modules
+  # are then assumed to be prefixed by 'foo'.
+
+  if reference_name.startswith(reference_root):
+    return name
+
+  reference_begin = reference_name.find('.' + reference_root)
+  assert reference_begin > 0
+
+  root_prefix = reference_name[:reference_begin]
+  return root_prefix + '.' + name
 
 
-DEFAULT_UNCOMPILED_MODULES = set(((internal_module_name('tensorflow'),),))
+DEFAULT_UNCOMPILED_MODULES = set((
+    ('tensorflow',),
+    (_internal_name('tensorflow'),),
+    # TODO(mdan): Remove once the conversion process is optimized.
+    ('tensorflow_probability',),
+    (_internal_name('tensorflow_probability'),),
+))
+
 
 COMPILED_IMPORT_STATEMENTS = (
     'from __future__ import print_function',

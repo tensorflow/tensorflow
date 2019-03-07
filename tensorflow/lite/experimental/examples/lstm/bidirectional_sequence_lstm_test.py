@@ -20,7 +20,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell
+from tensorflow.lite.experimental.examples.lstm.rnn import bidirectional_dynamic_rnn
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util
@@ -56,19 +56,21 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   def buildLstmLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
-        TFLiteLSTMCell(
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
-        TFLiteLSTMCell(self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
-        TFLiteLSTMCell(
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
             num_proj=8,
             forget_bias=0,
             name="rnn3"),
-        TFLiteLSTMCell(self.num_units, forget_bias=0, name="rnn4")
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, forget_bias=0, name="rnn4")
     ])
 
-  def buildModel(self, fw_lstm_layer, bw_lstm_layer):
+  def buildModel(self, fw_lstm_layer, bw_lstm_layer, is_dynamic_rnn):
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
         tf.random_normal([self.num_units * 2, self.n_classes]))
@@ -78,14 +80,28 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     x = tf.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
-    lstm_input = tf.unstack(x, self.time_steps, 1)
-    outputs, _, _ = tf.nn.static_bidirectional_rnn(
-        fw_lstm_layer, bw_lstm_layer, lstm_input, dtype="float32")
+    if is_dynamic_rnn:
+      lstm_inputs = tf.transpose(x, [1, 0, 2])
+      outputs, _ = bidirectional_dynamic_rnn(
+          fw_lstm_layer,
+          bw_lstm_layer,
+          lstm_inputs,
+          dtype="float32",
+          time_major=True)
+      fw_outputs, bw_outputs = outputs
+      output = tf.concat([fw_outputs, bw_outputs], 2)
+      output = tf.unstack(output, axis=0)
+      output = output[-1]
+    else:
+      lstm_input = tf.unstack(x, self.time_steps, 1)
+      outputs, _, _ = tf.nn.static_bidirectional_rnn(
+          fw_lstm_layer, bw_lstm_layer, lstm_input, dtype="float32")
+      output = outputs[-1]
 
-    # Compute logits by multiplying outputs[-1] of shape [batch_size,num_units]
-    # by the softmax layer's out_weight of shape [num_units,n_classes]
+    # Compute logits by multiplying output of shape [batch_size,num_units*2]
+    # by the softmax layer's out_weight of shape [num_units*2,n_classes]
     # plus out_bias
-    prediction = tf.matmul(outputs[-1], out_weights) + out_bias
+    prediction = tf.matmul(output, out_weights) + out_bias
     output_class = tf.nn.softmax(prediction, name="OUTPUT_CLASS")
 
     return x, prediction, output_class
@@ -111,13 +127,15 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
                                  self.n_input))
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
 
-  def saveAndRestoreModel(self, fw_lstm_layer, bw_lstm_layer, sess, saver):
+  def saveAndRestoreModel(self, fw_lstm_layer, bw_lstm_layer, sess, saver,
+                          is_dynamic_rnn):
     model_dir = tempfile.mkdtemp()
     saver.save(sess, model_dir)
 
     # Reset the graph.
     tf.reset_default_graph()
-    x, prediction, output_class = self.buildModel(fw_lstm_layer, bw_lstm_layer)
+    x, prediction, output_class = self.buildModel(fw_lstm_layer, bw_lstm_layer,
+                                                  is_dynamic_rnn)
 
     new_sess = tf.Session(config=CONFIG)
     saver = tf.train.Saver()
@@ -173,12 +191,34 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     sess = tf.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(self.buildLstmLayer(),
-                                                  self.buildLstmLayer())
+                                                  self.buildLstmLayer(), False)
     self.trainModel(x, prediction, output_class, sess)
 
     saver = tf.train.Saver()
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
-        self.buildLstmLayer(), self.buildLstmLayer(), sess, saver)
+        self.buildLstmLayer(), self.buildLstmLayer(), sess, saver, False)
+
+    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+        x, output_class, new_sess)
+
+    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+  @test_util.enable_control_flow_v2
+  def testDynamicRnnMultiRnnCell(self):
+    sess = tf.Session(config=CONFIG)
+
+    x, prediction, output_class = self.buildModel(self.buildLstmLayer(),
+                                                  self.buildLstmLayer(), True)
+    self.trainModel(x, prediction, output_class, sess)
+
+    saver = tf.train.Saver()
+    x, prediction, output_class, new_sess = self.saveAndRestoreModel(
+        self.buildLstmLayer(),
+        self.buildLstmLayer(),
+        sess,
+        saver,
+        is_dynamic_rnn=True)
 
     test_inputs, expected_output, frozen_graph = self.getInferenceResult(
         x, output_class, new_sess)

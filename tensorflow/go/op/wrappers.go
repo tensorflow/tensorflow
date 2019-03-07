@@ -7527,6 +7527,49 @@ func MatrixBandPart(scope *Scope, input tf.Output, num_lower tf.Output, num_uppe
 	return op.Output(0)
 }
 
+// Gets the next output from the given iterator as an Optional variant.
+func IteratorGetNextAsOptional(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (optional tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "IteratorGetNextAsOptional",
+		Input: []tf.Input{
+			iterator,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the value stored in an Optional variant or raises an error if none exists.
+func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "OptionalGetValue",
+		Input: []tf.Input{
+			optional,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("OptionalGetValue", err)
+		return
+	}
+	return components
+}
+
 // Outputs a tensor containing the reduction across all input tensors.
 //
 // Outputs a tensor containing the reduction across all input tensors passed to ops
@@ -30286,6 +30329,24 @@ func Save(scope *Scope, filename tf.Output, tensor_names tf.Output, data []tf.Ou
 	return scope.AddOperation(opspec)
 }
 
+// Returns x * y element-wise. Returns zero if y is zero, even if x if infinite or NaN.
+//
+// *NOTE*: `Mul` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func MulNoNan(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MulNoNan",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Returns x / y element-wise for integer types.
 //
 // Truncation designates that negative numbers will round fractional quantities
@@ -31574,13 +31635,14 @@ func ArgMin(scope *Scope, input tf.Output, dimension tf.Output, optional ...ArgM
 	return op.Output(0)
 }
 
-// Convert the quantized 'input' tensor into a lower-precision 'output', using the
+// Converts the quantized `input` tensor into a lower-precision `output`.
 //
-// output range specified with 'requested_output_min' and 'requested_output_max'.
+// Converts the quantized `input` tensor into a lower-precision `output`, using the
+// output range specified with `requested_output_min` and `requested_output_max`.
 //
-// [input_min, input_max] are scalar floats that specify the range for the float
-// interpretation of the 'input' data. For example, if input_min is -1.0f and
-// input_max is 1.0f, and we are dealing with quint16 quantized data, then a 0
+// `[input_min, input_max]` are scalar floats that specify the range for the float
+// interpretation of the `input` data. For example, if `input_min` is -1.0f and
+// `input_max` is 1.0f, and we are dealing with `quint16` quantized data, then a 0
 // value in the 16-bit data should be interpreted as -1.0f, and a 65535 means 1.0f.
 //
 // Arguments:
@@ -33107,11 +33169,35 @@ func QuantizedAdd(scope *Scope, x tf.Output, y tf.Output, min_x tf.Output, max_x
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
-// Given a quantized tensor described by (input, input_min, input_max), outputs a
+// Scatters tensor at indices in an input list.
 //
-// range that covers the actual values present in that tensor.  This op is
-// typically used to produce the requested_output_min and requested_output_max for
-// Requantize.
+// Each member of the TensorList corresponds to one row of the input tensor,
+// specified by the given index (see `tf.gather`).
+//
+// input_handle: The list to scatter into.
+// tensor: The input tensor.
+// indices: The indices used to index into the list.
+// output_handle: The TensorList.
+func TensorListScatterIntoExistingList(scope *Scope, input_handle tf.Output, tensor tf.Output, indices tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorListScatterIntoExistingList",
+		Input: []tf.Input{
+			input_handle, tensor, indices,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes a range that covers the actual values present in a quantized tensor.
+//
+// Given a quantized tensor described by `(input, input_min, input_max)`, outputs a
+// range that covers the actual values present in that tensor. This op is typically
+// used to produce the `requested_output_min` and `requested_output_max` for
+// `Requantize`.
 //
 // Arguments:
 //
@@ -38678,49 +38764,6 @@ func OptionalHasValue(scope *Scope, optional tf.Output) (has_value tf.Output) {
 		Input: []tf.Input{
 			optional,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns the value stored in an Optional variant or raises an error if none exists.
-func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "OptionalGetValue",
-		Input: []tf.Input{
-			optional,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
-		scope.UpdateErr("OptionalGetValue", err)
-		return
-	}
-	return components
-}
-
-// Gets the next output from the given iterator as an Optional variant.
-func IteratorGetNextAsOptional(scope *Scope, iterator tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (optional tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "IteratorGetNextAsOptional",
-		Input: []tf.Input{
-			iterator,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

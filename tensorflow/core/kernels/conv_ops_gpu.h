@@ -46,12 +46,12 @@ class ConvParameters {
       : batch_(batch),
         in_depths_(in_depths),
         out_depths_(out_depths),
-        in_(in),
+        in_(CheckSpatialArraySize(in)),
         data_format_(data_format),
-        filter_(filter),
-        dilation_(dilation),
-        stride_(stride),
-        padding_(padding),
+        filter_(CheckSpatialArraySize(filter)),
+        dilation_(CheckSpatialArraySize(dilation)),
+        stride_(CheckSpatialArraySize(stride)),
+        padding_(CheckSpatialArraySize(padding)),
         dtype_(dtype),
         device_id_(device_id) {
     hash_code_ = batch;
@@ -123,6 +123,11 @@ class ConvParameters {
 
  private:
   friend struct ConvParametersPeer;  // For testing purposes.
+
+  static const SpatialArray& CheckSpatialArraySize(const SpatialArray& array) {
+    CHECK_LE(array.size(), 3);  // Catch corruptions related to b/124313574.
+    return array;
+  }
 
   template <typename T>
   bool ShouldIncludeWinogradNonfusedAlgoPreDnn7() const {

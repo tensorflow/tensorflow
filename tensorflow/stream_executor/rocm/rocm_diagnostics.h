@@ -22,7 +22,7 @@ namespace stream_executor {
 namespace rocm {
 
 // e.g. DriverVersion{346, 3, 4}
-using DriverVersion = std::tuple<int, int, int>;
+using DriverVersion = gpu::DriverVersion;
 
 // Converts a parsed driver version to string form.
 string DriverVersionToString(DriverVersion version);
@@ -31,7 +31,7 @@ string DriverVersionToString(DriverVersion version);
 string DriverVersionStatusToString(port::StatusOr<DriverVersion> version);
 
 // Converts a string of a form like "331.79" to a DriverVersion{331, 79}.
-port::StatusOr<DriverVersion> StringToDriverVersion(const string &value);
+port::StatusOr<DriverVersion> StringToDriverVersion(const string& value);
 
 using Diagnostician = gpu::Diagnostician;
 

@@ -275,9 +275,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         keras.layers.Dense(NUM_CLASSES, activation='softmax')
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='rmsprop',
-                  metrics=['accuracy'])
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
@@ -301,9 +300,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
     model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
     model.compile(
-        loss='categorical_crossentropy',
-        optimizer='rmsprop',
-        metrics=['accuracy'])
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -451,9 +448,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
-          loss='categorical_crossentropy',
-          optimizer='rmsprop',
-          metrics=['accuracy'])
+          loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
       cases = [
           ('max', 'val_acc'),
@@ -511,7 +506,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=1, num_classes=1, input_dim=1)
       model.compile(
-          optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
+          optimizer='sgd', loss='binary_crossentropy', metrics=['acc'])
 
       stopper = keras.callbacks.EarlyStopping(monitor='acc',
                                               baseline=baseline)
@@ -1097,8 +1092,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
   def test_TensorBoard_weight_histograms(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, histogram_freq=1)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
 
     with _mock_summary_api() as summary_file:
       model.fit(
@@ -1127,9 +1121,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
   def test_TensorBoard_weight_images(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
     tb_cbk = keras.callbacks.TensorBoard(
-        temp_dir, histogram_freq=1, write_images=True)
+        self.logdir, histogram_freq=1, write_images=True)
 
     with _mock_summary_api() as summary_file:
       model.fit(

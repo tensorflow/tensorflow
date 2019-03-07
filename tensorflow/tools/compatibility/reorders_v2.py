@@ -58,6 +58,7 @@ reorders = {
     'tf.math.reduce_prod': ['input_tensor', 'axis', 'keepdims', 'name', 'reduction_indices', 'keep_dims'],
     'tf.math.reduce_sum': ['input_tensor', 'axis', 'keepdims', 'name', 'reduction_indices', 'keep_dims'],
     'tf.multinomial': ['logits', 'num_samples', 'seed', 'name', 'output_dtype'],
+    'tf.nn.avg_pool': ['value', 'ksize', 'strides', 'padding', 'data_format', 'name', 'input'],
     'tf.nn.conv1d': ['value', 'filters', 'stride', 'padding', 'use_cudnn_on_gpu', 'data_format', 'name', 'input', 'dilations'],
     'tf.nn.conv2d': ['input', 'filter', 'strides', 'padding', 'use_cudnn_on_gpu', 'data_format', 'dilations', 'name', 'filters'],
     'tf.nn.conv2d_backprop_input': ['input_sizes', 'filter', 'out_backprop', 'strides', 'padding', 'use_cudnn_on_gpu', 'data_format', 'dilations', 'name', 'filters'],

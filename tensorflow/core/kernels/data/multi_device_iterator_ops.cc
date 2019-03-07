@@ -415,14 +415,10 @@ class MultiDeviceIteratorHandleOp : public OpKernel {
           resource = new MultiDeviceIterator(
               output_types_, output_shapes_, devices_, std::move(flib_def),
               std::move(pflr), lib, std::move(function_handle_cache));
+          // NOTE: `mgr->Create()` transfers the one reference on `resource` to
+          // `mgr`.
           OP_REQUIRES_OK(context, mgr->Create<MultiDeviceIterator>(
                                       container_name, unique_name, resource));
-          Status s = VerifyResource(resource);
-          if (TF_PREDICT_FALSE(!s.ok())) {
-            resource->Unref();
-            context->SetStatus(s);
-            return;
-          }
         } else {
           unique_name = cinfo_.name();
           container_name = cinfo_.container();

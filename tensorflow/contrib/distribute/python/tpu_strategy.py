@@ -545,7 +545,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
                 with ops.device(device):
                   return array_ops.identity(value_list[0].initial_value)
               kwargs["initial_value"] = initial_value_fn
-          with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.TPUMirroredVariable)
           value_list.append(v)

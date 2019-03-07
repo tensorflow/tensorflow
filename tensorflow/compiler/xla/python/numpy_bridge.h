@@ -136,6 +136,18 @@ PyObject* PyNumberToPyInt(PyObject* o);
 
 }  // namespace numpy
 
+// Miscellaneous swig helpers that don't have a better home.
+
+bool GetIntAttr(PyObject* o, const char* field, int64* result);
+
+// Returns "ok"; true if there is no error, false if there was an error.
+bool HandleStringAttribute(PyObject* o, const char* attr_name,
+                           std::function<void(string s)> f);
+
+bool HandleRepeatedInt64Attribute(
+    PyObject* o, const char* attr_name,
+    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* field);
+
 }  // namespace swig
 
 }  // namespace xla

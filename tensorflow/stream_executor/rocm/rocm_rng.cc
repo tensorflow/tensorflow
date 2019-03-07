@@ -13,20 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "rocm/include/hiprand/hiprand.h"
 #include "tensorflow/stream_executor/rocm/rocm_rng.h"
-
+#include "rocm/include/hiprand/hiprand.h"
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/lib/env.h"
+#include "tensorflow/stream_executor/lib/initialize.h"
+#include "tensorflow/stream_executor/lib/status.h"
+#if !(defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING))
+  #include "tensorflow/stream_executor/platform/dso_loader.h"
+#endif 
+#include "tensorflow/stream_executor/platform/logging.h"
+#include "tensorflow/stream_executor/rng.h"
 #include "tensorflow/stream_executor/rocm/rocm_activation.h"
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 #include "tensorflow/stream_executor/rocm/rocm_helpers.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/stream_executor/rocm/rocm_stream.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/rng.h"
 
 // Formats hiprandStatus_t to output prettified values into a log stream.
 std::ostream &operator<<(std::ostream &in, const hiprandStatus_t &status) {
@@ -61,6 +63,8 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kGpuRandPlugin);
 
 namespace wrap {
 
+#if defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
+
 #define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                        \
   struct WrapperShim__##__name {                                    \
     template <typename... Args>                                     \
@@ -69,6 +73,38 @@ namespace wrap {
       return ::__name(args...);                                     \
     }                                                               \
   } __name;
+
+#else
+
+#define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                              \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetRocrandDsoHandle();          \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in rocrand DSO; dlerror: " << s.error_message(); \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    hiprandStatus operator()(GpuExecutor* parent, Args... args) {         \
+      gpu::ScopedActivateExecutorContext sac{parent};                     \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+
+#endif
 
 STREAM_EXECUTOR_HIPRAND_WRAP(hiprandCreateGenerator);
 STREAM_EXECUTOR_HIPRAND_WRAP(hiprandDestroyGenerator);
@@ -248,8 +284,10 @@ bool GpuRng::SetSeed(Stream* stream, const uint8* seed, uint64 seed_bytes) {
 }  // namespace gpu
 
 void initialize_rocrand() {
-  if (!PluginRegistry::Instance()->HasFactory(
-          rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin)) {
+  auto rocRandAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
+      rocm::kROCmPlatformId, PluginKind::kRng, gpu::kGpuRandPlugin);
+
+  if (!rocRandAlreadyRegistered) {
     port::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::RngFactory>(
             rocm::kROCmPlatformId, gpu::kGpuRandPlugin, "rocRAND",

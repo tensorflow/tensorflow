@@ -213,15 +213,16 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
                      kwargs["name"])
   elif synchronization == variable_scope.VariableSynchronization.ON_READ:
     # Variables that are to be synced on read are replica local.
-    is_replica_local = True
+    is_sync_on_read = True
     kwargs["trainable"] = False
   elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
         synchronization == variable_scope.VariableSynchronization.AUTO):
     # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
-    is_replica_local = False
+    is_sync_on_read = False
   else:
-    raise ValueError("Invalid variable synchronization mode: " +
-                     synchronization + " for variable: " + kwargs["name"])
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
 
   # Get aggregation value
   aggregation = kwargs.pop("aggregation",
@@ -232,8 +233,9 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
       variable_scope.VariableAggregation.MEAN,
       variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
   ):
-    raise ValueError("Invalid variable aggregation mode: " + aggregation +
-                     " for variable: " + kwargs["name"])
+    raise ValueError(
+        "Invalid variable aggregation mode: %s for variable: %s" %
+        (aggregation, kwargs["name"]))
 
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
@@ -245,8 +247,8 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
     devices = device_map.logical_to_actual_devices(logical_device)
     value_list = real_mirrored_creator(devices, *args, **kwargs)
 
-    if is_replica_local:
-      result = values.ReplicaLocalVariable(
+    if is_sync_on_read:
+      result = values.SyncOnReadVariable(
           strategy, device_map, value_list, aggregation,
           logical_device=logical_device)
     else:
@@ -531,7 +533,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
                   init_value = value_list[0].initial_value
                   return array_ops.identity(init_value)
             kwargs["initial_value"] = initial_value_fn
-          with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
             with tape.stop_recording():
@@ -717,7 +719,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.ReplicaLocalVariable):
+    if isinstance(replica_local_var, values.SyncOnReadVariable):
       return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
     assert isinstance(replica_local_var, values.Mirrored)
     return array_ops.identity(replica_local_var.get())
@@ -851,7 +853,7 @@ class _MirroredReplicaThread(threading.Thread):
           _enter_graph(self._init_graph, self._init_in_eager), \
           _enter_graph(self.graph, self.in_eager,
                        self._variable_creator_stack), \
-          context.context().device_policy(self.context_device_policy), \
+          context.device_policy(self.context_device_policy), \
           MirroredReplicaContext(self.distribution, constant_op.constant(
               self.replica_id, dtypes.int32)), \
           ops.device(self.device_map.logical_to_actual_devices(0)[

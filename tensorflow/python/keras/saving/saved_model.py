@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
@@ -43,38 +44,32 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.experimental.export')
-def export(
-    model, saved_model_path, custom_objects=None, as_text=None,
-    input_signature=None, serving_only=False):
-  """Saves a `tf.keras.Model` into Tensorflow SavedModel format.
+@keras_export('keras.experimental.export_saved_model')
+def export_saved_model(model,
+                       saved_model_path,
+                       custom_objects=None,
+                       as_text=False,
+                       input_signature=None,
+                       serving_only=False):
+  """Exports a `tf.keras.Model` as a Tensorflow SavedModel.
 
-  `save_model` generates new files/folders under the `saved_model_path` folder:
-  1) a checkpoint containing the model weights.
-  2) a saved_model.pb file containing the model's MetaGraphs. The prediction
-     graph is always exported. The evaluation and training graphs are exported
-     if the following conditions are met:
-     - Evaluation: model loss is defined.
-     - Training: model is compiled with an optimizer defined under `tf.train`.
-       This is because `tf.keras.optimizers.Optimizer` instances cannot be
-       saved to checkpoints.
-  3) Model's json configuration, if model.get_config() has been implemented.
-     This file can be used to reload the model using
-     tf.keras.models.model_from_json(). Note that if any custom objects were
-     used, they should be passed to the `custom_object` argument when loading
-     the model.
+  Note that at this time, subclassed models can only be saved using
+  `serving_only=True`.
 
-  Model limitations:
-  - Sequential and functional models can always be saved.
-  - Subclassed models can only be saved when `serving_only=True`. This is due to
-    the current implementation copying the model in order to export the training
-    and evaluation graphs. Because the topology of subclassed models cannot be
-    determined, the subclassed models cannot be cloned. Subclassed models will
-    be entirely exportable in the future.
+  The exported `SavedModel` is a standalone serialization of Tensorflow objects,
+  and is supported by TF language APIs and the Tensorflow Serving system.
+  To load the model, use the function
+  `tf.keras.experimental.load_from_saved_model`.
 
-  Note that each mode is exported in separate graphs, so different modes do not
-  share variables. To use the train graph with evaluation or prediction graphs,
-  create a new checkpoint if variable values have been updated.
+  The `SavedModel` contains:
+
+  1. a checkpoint containing the model weights.
+  2. a `SavedModel` proto containing the Tensorflow backend graph. Separate
+     graphs are saved for prediction (serving), train, and evaluation. If
+     the model has not been compiled, then only the graph computing predictions
+     will be exported.
+  3. the model's json config. If the model is subclassed, this will only be
+     included if the model's `get_config()` method is overwritten.
 
   Example:
 
@@ -87,61 +82,47 @@ def export(
   model.summary()
 
   # Save the tf.keras model in the SavedModel format.
-  saved_to_path = tf.keras.experimental.export(
-        model, '/tmp/my_simple_tf_keras_saved_model')
+  path = '/tmp/simple_keras_model'
+  tf.keras.experimental.export_saved_model(model, path)
 
   # Load the saved keras model back.
-  model_prime = tf.keras.experimental.load_from_saved_model(saved_to_path)
-  model_prime.summary()
+  new_model = tf.keras.experimental.load_from_saved_model(path)
+  new_model.summary()
   ```
 
   Args:
     model: A `tf.keras.Model` to be saved. If the model is subclassed, the flag
       `serving_only` must be set to True.
     saved_model_path: a string specifying the path to the SavedModel directory.
-      The SavedModel will be saved to a timestamped folder created within this
-      directory.
     custom_objects: Optional dictionary mapping string names to custom classes
       or functions (e.g. custom loss functions).
-    as_text: whether to write the `SavedModel` proto in text format. Currently
-      unavailable in serving-only mode.
+    as_text: bool, `False` by default. Whether to write the `SavedModel` proto
+      in text format. Currently unavailable in serving-only mode.
     input_signature: A possibly nested sequence of `tf.TensorSpec` objects, used
-      to specify the expected model inputs. `input_signature`'s nested structure
-      should match the expected nested structure of the inputs to the model. If
-      this is not set, this function will attempt to infer the input shapes and
-      dtypes from the model. Note that if the model is subclassed, the tensor
-      inputs to the call function should be nested in the first argument (this
-      is a general requirement for using subclassed models with Keras functions
-      .fit(), .predict(), etc.).
-    serving_only: Export only the outputs produced from calling the model in
-      predict mode. The losses, optimizer, and other training configurations are
-      not saved. If the SavedModel will only be used for serving (rather than
-      retraining), or if the model is subclassed, this can be set to True.
-
-  Returns:
-    String path to the SavedModel folder, a subdirectory of `saved_model_path`.
+      to specify the expected model inputs. See `tf.function` for more details.
+    serving_only: bool, `False` by default. When this is true, only the
+      prediction graph is saved.
 
   Raises:
     NotImplementedError: If the model is a subclassed model, and serving_only is
       False.
     ValueError: If the input signature cannot be inferred from the model.
+    AssertionError: If the SavedModel directory already exists and isn't empty.
   """
-  export_dir = model_utils.get_timestamped_export_dir(saved_model_path)
-
   if serving_only:
     save_lib.save(
-        model, export_dir,
+        model,
+        saved_model_path,
         signatures=saving_utils.trace_model_call(model, input_signature))
   else:
-    _save_v1_format(model, export_dir, custom_objects, as_text, input_signature)
+    _save_v1_format(model, saved_model_path, custom_objects, as_text,
+                    input_signature)
 
   try:
-    _export_model_json(model, export_dir)
+    _export_model_json(model, saved_model_path)
   except NotImplementedError:
     logging.warning('Skipped saving model JSON, subclassed model does not have '
                     'get_config() defined.')
-
-  return export_dir
 
 
 def _export_model_json(model, saved_model_path):
@@ -202,8 +183,8 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
   has_saved_vars = False
   if model.optimizer:
-    # TODO(kathywu): Verify this works with v2 optimizer.
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
+    if isinstance(model.optimizer, (optimizers.TFOptimizer,
+                                    optimizer_v2.OptimizerV2)):
       _export_mode(mode_keys.ModeKeys.TRAIN, has_saved_vars, **export_args)
       has_saved_vars = True
       _export_mode(mode_keys.ModeKeys.TEST, has_saved_vars, **export_args)
@@ -288,9 +269,8 @@ def _export_mode(
       clone._make_predict_function()
     g.get_collection_ref(ops.GraphKeys.UPDATE_OPS).extend(clone.state_updates)
 
-    clone_var_list = _get_var_list(clone)
-
     with session.Session().as_default():
+      clone_var_list = _get_var_list(clone)
       if has_saved_vars:
         # Confirm all variables in the clone have an entry in the checkpoint.
         status = clone.load_weights(checkpoint_path)
@@ -311,13 +291,13 @@ def _export_mode(
         clone.save_weights(checkpoint_path, save_format='tf', overwrite=True)
         builder._has_saved_variables = True
 
-    # Add graph to the SavedModel builder.
-    builder.add_meta_graph(
-        model_utils.EXPORT_TAG_MAP[mode],
-        signature_def_map=_create_signature_def_map(clone, mode),
-        saver=saver_lib.Saver(clone_var_list),
-        init_op=variables.local_variables_initializer(),
-        train_op=train_op)
+      # Add graph to the SavedModel builder.
+      builder.add_meta_graph(
+          model_utils.EXPORT_TAG_MAP[mode],
+          signature_def_map=_create_signature_def_map(clone, mode),
+          saver=saver_lib.Saver(clone_var_list),
+          init_op=variables.local_variables_initializer(),
+          train_op=train_op)
     return None
 
 
@@ -369,7 +349,7 @@ def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph): 
 
 @keras_export('keras.experimental.load_from_saved_model')
 def load_from_saved_model(saved_model_path, custom_objects=None):
-  """Loads a keras.Model from a SavedModel created by keras export().
+  """Loads a keras Model from a SavedModel created by `export_saved_model()`.
 
   This function reinstantiates model state by:
   1) loading model topology from json (this will eventually come
@@ -387,12 +367,12 @@ def load_from_saved_model(saved_model_path, custom_objects=None):
   model.summary()
 
   # Save the tf.keras model in the SavedModel format.
-  saved_to_path = tf.keras.experimental.export(
-        model, '/tmp/my_simple_tf_keras_saved_model')
+  path = '/tmp/simple_keras_model'
+  tf.keras.experimental.export_saved_model(model, path)
 
   # Load the saved keras model back.
-  model_prime = tf.keras.experimental.load_from_saved_model(saved_to_path)
-  model_prime.summary()
+  new_model = tf.keras.experimental.load_from_saved_model(path)
+  new_model.summary()
   ```
 
   Args:

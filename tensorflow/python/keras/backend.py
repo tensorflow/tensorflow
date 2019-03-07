@@ -784,6 +784,14 @@ def constant(value, dtype=None, shape=None, name=None):
   """
   if dtype is None:
     dtype = floatx()
+
+  # If the outer context is eager but we are executing under the keras
+  # FuncGraph, we create EagerTensors and use them as constants.
+  if (ops.executing_eagerly_outside_functions() and
+      getattr(get_graph(), 'name', '') == 'keras_graph'):
+    with ops.init_scope():
+      return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
+
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 

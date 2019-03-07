@@ -75,6 +75,18 @@ TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
 // this context.
 TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
 
+// Send a grpc request to profiler server (service_addr) to perform on-demand
+// profiling and save the result into logdir which can be visualized by
+// TensorBoard. worker_list is the list of worker TPUs separated by ','. Set
+// include_dataset_opts to false to profile longer traces. It will block the
+// caller thread until receives tracing result.
+// This API is designed for TensorBoard, for end user, please use
+// tensorflow/contrib/tpu/profiler/capture_tpu_profile instead following
+// https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace.
+TF_CAPI_EXPORT extern bool TFE_ProfilerClientStartTracing(
+    char* service_addr, char* logdir, char* worker_list,
+    bool include_dataset_ops, int duration_ms, int num_tracing_attempts);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

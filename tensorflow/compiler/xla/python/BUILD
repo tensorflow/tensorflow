@@ -59,10 +59,6 @@ cc_library(
     srcs = ["local_computation_builder.cc"],
     hdrs = ["local_computation_builder.h"],
     deps = [
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:client_session",
-        "//tensorflow/cc:ops",
-        "//tensorflow/cc:scope",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -82,9 +78,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
-        "//tensorflow/compiler/xrt:xrt_proto",
-        "//tensorflow/compiler/xrt/cc:xrt_ops",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
@@ -92,11 +85,39 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xrt",
+    srcs = ["xrt.cc"],
+    hdrs = ["xrt.h"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xla/service:platform_util",
+        "//tensorflow/compiler/xrt:xrt_proto",
+        "//tensorflow/compiler/xrt/cc:xrt_ops",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
 tf_py_wrap_cc(
     name = "pywrap_xla",
-    srcs = ["xla.i"],
+    srcs = [
+        "xla.i",
+    ],
     swig_includes = [
         "local_computation_builder.i",
+        "xla_data.i",
         "//tensorflow/python:platform/base.i",
     ],
     version_script = select({
@@ -112,4 +133,28 @@ tf_py_wrap_cc(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:cpu_plugin",
     ] + xla_python_default_plugins(),
+)
+
+tf_py_wrap_cc(
+    name = "pywrap_xrt",
+    srcs = [
+        "xrt.i",
+    ],
+    swig_includes = [
+        "xla_data.i",
+        "//tensorflow/python:platform/base.i",
+    ],
+    version_script = select({
+        "//tensorflow:darwin": "pywrap_xla_exported_symbols.lds",
+        "//tensorflow:windows": None,
+        "//conditions:default": "pywrap_xla_version_script.lds",
+    }),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":numpy_bridge",
+        ":xrt",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+    ],
 )

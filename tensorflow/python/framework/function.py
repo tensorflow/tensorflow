@@ -129,13 +129,15 @@ class Defun(object):
   def __call__(self, func):
     # Various sanity checks on the callable func.
     if not callable(func):
-      raise ValueError("func %s must be callable" % func)
+      raise ValueError("function %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
-      raise ValueError("Functions with argument defaults or keywords "
-                       "arguments are not supported.")
+      raise ValueError(
+          "function with argument defaults or keywords arguments are not"
+          " supported. {} has defaults {} and keywords {}.".format(
+              func, argspec.defaults, argspec.keywords))
 
     # Computes how many arguments 'func' has.
     min_args = len(argspec.args)

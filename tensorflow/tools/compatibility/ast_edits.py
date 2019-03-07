@@ -555,7 +555,7 @@ class ASTCodeUpgrader(object):
             process_errors)
 
   def process_tree(self, root_directory, output_root_directory,
-                   copy_other_files, in_place):
+                   copy_other_files):
     """Processes upgrades on an entire tree of python files in place.
 
     Note that only Python files. If you have custom code in other languages,
@@ -565,7 +565,6 @@ class ASTCodeUpgrader(object):
       root_directory: Directory to walk and process.
       output_root_directory: Directory to use as base.
       copy_other_files: Copy files that are not touched by this converter.
-      in_place: Allow the conversion of an entire directory in place.
 
     Returns:
       A tuple of files processed, the report string for all files, and a dict
@@ -573,12 +572,7 @@ class ASTCodeUpgrader(object):
     """
 
     if output_root_directory == root_directory:
-      if in_place:
-        return self.process_tree_inplace(root_directory)
-      else:
-        print("In order to copy a directory in place the `--inplace` input "
-              "arg must be set to `True`.")
-        sys.exit(1)
+      return self.process_tree_inplace(root_directory)
 
     # make sure output directory doesn't exist
     if output_root_directory and os.path.exists(output_root_directory):

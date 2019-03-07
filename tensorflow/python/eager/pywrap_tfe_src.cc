@@ -1048,8 +1048,18 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   void MarkAsResult(PyObject* gradient) const final { Py_INCREF(gradient); }
 
   PyObject* Zeros(const PyTapeTensor& tensor) const final {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_shape = tensor.GetShape();
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_dtype = tensor.GetDType();
+    if (PyErr_Occurred()) {
+      Py_DECREF(py_shape);
+      return nullptr;
+    }
     PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
     PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
     Py_DECREF(arg_list);
@@ -1059,6 +1069,9 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   PyObject* Ones(const PyTapeTensor& tensor) const final {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_shape = tensor.GetShape();
     PyObject* py_dtype = tensor.GetDType();
     PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
@@ -2123,6 +2136,9 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         PyBackwardFunction* function =
             new PyBackwardFunction([op_name, attrs, num_inputs, op_inputs,
                                     op_outputs](PyObject* output_grads) {
+              if (PyErr_Occurred()) {
+                return static_cast<PyObject*>(nullptr);
+              }
               tensorflow::Safe_PyObjectPtr callback_args(
                   Py_BuildValue("OOOOOO", op_name, attrs, num_inputs, op_inputs,
                                 op_outputs, output_grads));
@@ -2897,7 +2913,9 @@ struct EncodeResult {
   }
 };
 
-tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
+tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg,
+                                       bool include_tensor_ranks_only,
+                                       EncodeResult* result) {
   if (EagerTensor_CheckExact(arg)) {
     TFE_TensorHandle* t = EagerTensor_Handle(arg);
     tensorflow::TensorShape tensor_shape;
@@ -2906,10 +2924,13 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
     absl::StrAppend(&result->str, kDType, t->handle->dtype);
 
     absl::StrAppend(&result->str, kShape);
-    for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
-      absl::StrAppend(&result->str, dim_size, kShapeDelim);
+    if (include_tensor_ranks_only) {
+      absl::StrAppend(&result->str, tensor_shape.dim_sizes().size());
+    } else {
+      for (tensorflow::int64 dim_size : tensor_shape.dim_sizes()) {
+        absl::StrAppend(&result->str, dim_size, kShapeDelim);
+      }
     }
-
     return tensorflow::Status::OK();
   }
 
@@ -2933,6 +2954,7 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
       static_cast<tensorflow::DataType>(MakeInt(dtype_enum.get()));
 
   absl::StrAppend(&result->str, kDType, dtype);
+
   static char _shape_tuple[] = "_shape_tuple";
   tensorflow::Safe_PyObjectPtr shape_tuple(
       PyObject_CallMethod(arg, _shape_tuple, nullptr));
@@ -2953,23 +2975,30 @@ tensorflow::Status TFE_Py_EncodeTensor(PyObject* arg, EncodeResult* result) {
       shape_tuple.get(), "shape_tuple didn't return a sequence"));
 
   int len = PySequence_Fast_GET_SIZE(shape_seq.get());
-  for (int i = 0; i < len; ++i) {
-    PyObject* item = PySequence_Fast_GET_ITEM(shape_seq.get(), i);
-    if (item == Py_None) {
-      absl::StrAppend(&result->str, kNone);
-    } else {
-      absl::StrAppend(&result->str, MakeInt(item));
+
+  if (include_tensor_ranks_only) {
+    absl::StrAppend(&result->str, len);
+  } else {
+    for (int i = 0; i < len; ++i) {
+      PyObject* item = PySequence_Fast_GET_ITEM(shape_seq.get(), i);
+      if (item == Py_None) {
+        absl::StrAppend(&result->str, kNone);
+      } else {
+        absl::StrAppend(&result->str, MakeInt(item));
+      }
     }
   }
-
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result);
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
+                                          bool include_tensor_ranks_only,
+                                          EncodeResult* result);
 
 // This function doesn't set the type of sequence before
 tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
                                          const char* end_type,
+                                         bool include_tensor_ranks_only,
                                          EncodeResult* result) {
   tensorflow::Safe_PyObjectPtr arg_seq(
       PySequence_Fast(arg, "unable to create seq from list/tuple"));
@@ -2981,7 +3010,8 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
     if (item == Py_None) {
       absl::StrAppend(&result->str, kNone);
     } else {
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(item, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelper(item, include_tensor_ranks_only, result));
     }
   }
   absl::StrAppend(&result->str, end_type);
@@ -2989,10 +3019,13 @@ tensorflow::Status TFE_Py_EncodeSequence(PyObject* arg, const char* type,
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
+tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg,
+                                          bool include_tensor_ranks_only,
+                                          EncodeResult* result) {
   if (tensorflow::swig::IsTensor(arg)) {
     absl::StrAppend(&result->str, kTensor);
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(arg, result));
+    TF_RETURN_IF_ERROR(
+        TFE_Py_EncodeTensor(arg, include_tensor_ranks_only, result));
   } else if (tensorflow::swig::IsIndexedSlices(arg)) {
     absl::StrAppend(&result->str, kIndexedSlices);
     tensorflow::Safe_PyObjectPtr values(PyObject_GetAttrString(arg, "values"));
@@ -3001,7 +3034,8 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
       return tensorflow::errors::InvalidArgument(
           "IndexedSlices does not have a values attr");
     }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(values.get(), result));
+    TF_RETURN_IF_ERROR(
+        TFE_Py_EncodeTensor(values.get(), include_tensor_ranks_only, result));
 
     tensorflow::Safe_PyObjectPtr indices(
         PyObject_GetAttrString(arg, "indices"));
@@ -3010,7 +3044,8 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
       return tensorflow::errors::InvalidArgument(
           "IndexedSlices does not have a indices attr");
     }
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(indices.get(), result));
+    TF_RETURN_IF_ERROR(
+        TFE_Py_EncodeTensor(indices.get(), include_tensor_ranks_only, result));
 
     tensorflow::Safe_PyObjectPtr dense_shape(
         PyObject_GetAttrString(arg, "dense_shape"));
@@ -3020,12 +3055,15 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
           "IndexedSlices does not have a dense_shape attr");
     }
     if (dense_shape.get() != Py_None) {
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(dense_shape.get(), result));
+      TF_RETURN_IF_ERROR(TFE_Py_EncodeTensor(
+          dense_shape.get(), include_tensor_ranks_only, result));
     }
   } else if (PyList_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kList, kListEnd, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
+        arg, kList, kListEnd, include_tensor_ranks_only, result));
   } else if (PyTuple_Check(arg)) {
-    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(arg, kTuple, kTupleEnd, result));
+    TF_RETURN_IF_ERROR(TFE_Py_EncodeSequence(
+        arg, kTuple, kTupleEnd, include_tensor_ranks_only, result));
   } else if (PyDict_Check(arg)) {
     tensorflow::Safe_PyObjectPtr keys(PyDict_Keys(arg));
     if (PyList_Sort(keys.get()) == -1) {
@@ -3037,9 +3075,11 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
 
     for (int i = 0; i < len; i++) {
       PyObject* key = PyList_GetItem(keys.get(), i);
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(key, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelper(key, include_tensor_ranks_only, result));
       PyObject* value = PyDict_GetItem(arg, key);
-      TF_RETURN_IF_ERROR(TFE_Py_EncodeArgHelper(value, result));
+      TF_RETURN_IF_ERROR(
+          TFE_Py_EncodeArgHelper(value, include_tensor_ranks_only, result));
     }
   } else {
     PyObject* object = PyWeakref_NewRef(arg, nullptr);
@@ -3066,10 +3106,15 @@ tensorflow::Status TFE_Py_EncodeArgHelper(PyObject* arg, EncodeResult* result) {
 // on known shapes to produce slimmer graphs, and correctness, as some
 // high-level APIs require shapes to be fully-known.
 //
+// `include_tensor_ranks_only` allows caching on arguments excluding shape info,
+// so that a slow path using relaxed shape can rely on a cache key that excludes
+// shapes.
+//
 // TODO(nareshmodi): Add support for sparse tensors.
-PyObject* TFE_Py_EncodeArg(PyObject* arg) {
+PyObject* TFE_Py_EncodeArg(PyObject* arg, bool include_tensor_ranks_only) {
   EncodeResult result;
-  const auto status = TFE_Py_EncodeArgHelper(arg, &result);
+  const auto status =
+      TFE_Py_EncodeArgHelper(arg, include_tensor_ranks_only, &result);
   if (MaybeRaiseExceptionFromStatus(status, nullptr)) {
     return nullptr;
   }

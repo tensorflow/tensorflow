@@ -111,7 +111,7 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
 
   @property
   def trt_incompatible_op(self):
-    return math_ops.sin
+    return math_ops.erf
 
   @property
   def precision_modes(self):

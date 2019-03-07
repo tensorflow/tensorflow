@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// ROCM-specific support for BLAS functionality -- this wraps the rocBLAS library
-// capabilities, and is only included into ROCM implementation code -- it will
-// not introduce rocm headers into other code.
+// ROCM-specific support for BLAS functionality -- this wraps the rocBLAS
+// library capabilities, and is only included into ROCM implementation code --
+// it will not introduce rocm headers into other code.
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
 #define TENSORFLOW_STREAM_EXECUTOR_ROCM_ROCM_BLAS_H_
@@ -75,8 +75,8 @@ class ROCMBlas : public blas::BlasSupport {
   // stream:             Stream to enqueue the BLAS operation onto.
   // pointer_mode_host:  Indicate if the pointer to a scalar value is from host
   //                     (true) or device (false).
-  // err_on_failure:     Whether to print an error if the rocBLAS function fails.
-  // args:               Arguments of rocBLAS function.
+  // err_on_failure:     Whether to print an error if the rocBLAS function
+  // fails. args:               Arguments of rocBLAS function.
   template <typename FuncT, typename... Args>
   bool DoBlasInternalImpl(FuncT rocblas_func, Stream *stream,
                           bool pointer_mode_host, bool err_on_failure,
@@ -85,8 +85,8 @@ class ROCMBlas : public blas::BlasSupport {
   // Convenience functions that call DoBlasInternalImpl with different values
   // for err_on_failure.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternal(FuncT rocblas_func, Stream *stream, bool pointer_mode_host,
-                      Args... args) {
+  bool DoBlasInternal(FuncT rocblas_func, Stream* stream,
+                      bool pointer_mode_host, Args... args) {
     return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
                               /*err_on_failure=*/true, args...);
   }

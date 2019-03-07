@@ -22,6 +22,7 @@ import six
 
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -808,6 +809,8 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """
   if isinstance(tensor, ops.EagerTensor):
     return tensor.numpy()
+  if not pywrap_tensorflow.IsTensor(tensor):
+    return tensor
   ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
@@ -941,7 +944,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   equivalent to calling
   `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.RaggedTensor, tf.Variable))`
   and also checks if all the component variables of a MirroredVariable or a
-  ReplicaLocalVariable are tensors.
+  SyncOnReadVariable are tensors.
 
   Args:
     x: A python object to check.

@@ -38,6 +38,17 @@ class LayerSerializationTest(test.TestCase):
                      keras.initializers.Ones)
     self.assertEqual(new_layer.units, 3)
 
+  def test_serialize_deserialize_batchnorm(self):
+    layer = keras.layers.BatchNormalization(
+        momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    self.assertEqual(config['class_name'], 'BatchNormalization')
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.momentum, 0.9)
+    self.assertEqual(new_layer.beta_initializer.__class__,
+                     keras.initializers.Zeros)
+    self.assertEqual(new_layer.gamma_regularizer.__class__,
+                     keras.regularizers.L1L2)
 
 if __name__ == '__main__':
   test.main()

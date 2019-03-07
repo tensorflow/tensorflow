@@ -129,10 +129,12 @@ struct DeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
     const int64 num_matrices = output.size();
     const int64 n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
-    DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/false>
-        <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-            config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
-            output.data());
+    GPU_LAUNCH_KERNEL(
+        DeterminantFromPivotedLUKernel<Scalar,
+                                       /*compute_log_abs_det=*/false>,
+        config.block_count, config.thread_per_block, 0, device.stream(),
+        config.virtual_thread_count, n, lu_factor.data(), pivots, nullptr,
+        output.data());
   }
 };
 
@@ -150,10 +152,11 @@ struct LogDeterminantFromPivotedLUFunctor<GPUDevice, Scalar> {
     const int64 num_matrices = sign.size();
     const int64 n = lu_factor.dimension(2);
     GpuLaunchConfig config = GetGpuLaunchConfig(num_matrices, device);
-    DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>
-        <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-            config.virtual_thread_count, n, lu_factor.data(), pivots,
-            sign.data(), log_abs_det.data());
+    GPU_LAUNCH_KERNEL(
+        DeterminantFromPivotedLUKernel<Scalar, /*compute_log_abs_det=*/true>,
+        config.block_count, config.thread_per_block, 0, device.stream(),
+        config.virtual_thread_count, n, lu_factor.data(), pivots, sign.data(),
+        log_abs_det.data());
   }
 };
 

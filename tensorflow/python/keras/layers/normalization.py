@@ -329,7 +329,7 @@ class BatchNormalizationV2(Layer):
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(
+        self._gamma_const = K.constant(
             1.0, dtype=param_dtype, shape=param_shape)
 
     if self.center:
@@ -344,7 +344,7 @@ class BatchNormalizationV2(Layer):
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(
+        self._beta_const = K.constant(
             0.0, dtype=param_dtype, shape=param_shape)
 
     try:

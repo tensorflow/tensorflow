@@ -63,60 +63,109 @@ namespace internal {
 void SetTensorProtoShape(std::vector<size_t> shape,
                          TensorShapeProto* shape_proto);
 
-// Defines value type dependent methods to manipulate `TensorProto`.
-// Class specializations have to define following methods:
-//   static DataType GetDataType()
-//   static void AddValue(Type value, TensorProto* proto)
-//   template <typename IterType>
-//   static void AddValues(IterType begin, IterType end, TensorProto* proto)
-
 template <typename Type>
-class TensorProtoHelper : public std::false_type {};
+class TensorProtoFieldHelper : public std::false_type {};
 
-#define DEFINE_PROTO_HELPER(TYPE, TF_TYPE, FIELDTYPE)                         \
+#define DEFINE_PROTO_FIELD_HELPER(TYPE, FIELDNAME)                            \
   template <>                                                                 \
-  class TensorProtoHelper<TYPE> : public std::true_type {                     \
+  class TensorProtoFieldHelper<TYPE> : public std::true_type {                \
    public:                                                                    \
-    static DataType GetDataType() { return DataType::TF_TYPE; }               \
-    static void AddValue(const TYPE& value, TensorProto* proto) {             \
-      proto->mutable_##FIELDTYPE##_val()->Add(value);                         \
+    typedef decltype(                                                         \
+        std::declval<TensorProto>().FIELDNAME##_val(0)) FieldType;            \
+    typedef decltype(                                                         \
+        std::declval<TensorProto>().FIELDNAME##_val()) RepeatedFieldType;     \
+    typedef decltype(std::declval<TensorProto>().mutable_##FIELDNAME##_val()) \
+        MutableRepeatedFieldType;                                             \
+    static MutableRepeatedFieldType GetMutableField(TensorProto* proto) {     \
+      return proto->mutable_##FIELDNAME##_val();                              \
     }                                                                         \
-    template <typename IterType>                                              \
-    static void AddValues(IterType begin, IterType end, TensorProto* proto) { \
-      using SrcType = typename std::iterator_traits<IterType>::value_type;    \
-      size_t n = std::distance(begin, end);                                   \
-      FIELDTYPE* dst_ptr = AppendUninitialized(n, proto);                     \
-      if (std::is_same<SrcType, FIELDTYPE>::value) {                          \
-        std::copy(begin, end, dst_ptr);                                       \
-      } else {                                                                \
-        std::transform(begin, end, dst_ptr, [](SrcType x) -> FIELDTYPE {      \
-          return static_cast<FIELDTYPE>(x);                                   \
-        });                                                                   \
-      }                                                                       \
-    }                                                                         \
-                                                                              \
-   private:                                                                   \
-    static FIELDTYPE* AppendUninitialized(size_t n, TensorProto* proto) {     \
-      auto* field = proto->mutable_##FIELDTYPE##_val();                       \
-      field->Reserve(field->size() + n);                                      \
-      return reinterpret_cast<FIELDTYPE*>(field->AddNAlreadyReserved(n));     \
+    static RepeatedFieldType& GetField(const TensorProto& proto) {            \
+      return proto.FIELDNAME##_val();                                         \
     }                                                                         \
   }
 
-DEFINE_PROTO_HELPER(float, DT_FLOAT, float);
-DEFINE_PROTO_HELPER(double, DT_DOUBLE, double);
-DEFINE_PROTO_HELPER(int8, DT_INT8, int);
-DEFINE_PROTO_HELPER(uint8, DT_UINT8, int);
-DEFINE_PROTO_HELPER(int16, DT_INT16, int);
-DEFINE_PROTO_HELPER(uint16, DT_UINT16, int);
-DEFINE_PROTO_HELPER(int32, DT_INT32, int);
-DEFINE_PROTO_HELPER(uint32, DT_UINT32, uint32);
-DEFINE_PROTO_HELPER(int64, DT_INT64, int64);
-DEFINE_PROTO_HELPER(uint64, DT_UINT64, uint64);
-DEFINE_PROTO_HELPER(bool, DT_BOOL, bool);
+DEFINE_PROTO_FIELD_HELPER(float, float);
+DEFINE_PROTO_FIELD_HELPER(double, double);
+DEFINE_PROTO_FIELD_HELPER(int8, int);
+DEFINE_PROTO_FIELD_HELPER(uint8, int);
+DEFINE_PROTO_FIELD_HELPER(int16, int);
+DEFINE_PROTO_FIELD_HELPER(uint16, int);
+DEFINE_PROTO_FIELD_HELPER(int32, int);
+DEFINE_PROTO_FIELD_HELPER(uint32, uint32);
+DEFINE_PROTO_FIELD_HELPER(int64, int64);
+DEFINE_PROTO_FIELD_HELPER(uint64, uint64);
+DEFINE_PROTO_FIELD_HELPER(bool, bool);
+DEFINE_PROTO_FIELD_HELPER(qint8, int);
+DEFINE_PROTO_FIELD_HELPER(quint8, int);
+DEFINE_PROTO_FIELD_HELPER(qint16, int);
+DEFINE_PROTO_FIELD_HELPER(quint16, int);
+DEFINE_PROTO_FIELD_HELPER(qint32, int);
+// TODO(rmlarsen): Add support for complex and half float types.
+// DEFINE_PROTO_FIELD_HELPER(Eigen::hals, half);
+// DEFINE_PROTO_FIELD_HELPER(qint32, half);
 
 #undef DEFINE_PROTO_HELPER
 
+template <typename T>
+class TensorProtoHelper : public std::true_type {
+ public:
+  using FieldHelper = TensorProtoFieldHelper<T>;
+  using FieldType = typename TensorProtoFieldHelper<T>::FieldType;
+
+  static DataType GetDataType() { return DataTypeToEnum<T>::value; }
+
+  static size_t NumValues(const TensorProto& proto) {
+    return FieldHelper::GetField(proto).size();
+  }
+
+  static void AddValue(const T& value, TensorProto* proto) {
+    FieldHelper::GetMutableField(proto)->Add(static_cast<FieldType>(value));
+  }
+
+  static T GetValue(size_t index, const TensorProto& proto) {
+    return static_cast<T>(FieldHelper::GetField(proto).Get(index));
+  }
+
+  template <typename IterType>
+  static void AddValues(IterType begin, IterType end, TensorProto* proto) {
+    using SrcType = typename std::iterator_traits<IterType>::value_type;
+    size_t n = std::distance(begin, end);
+    FieldType* dst_ptr = AppendUninitialized(n, proto);
+    if (std::is_same<SrcType, FieldType>::value) {
+      std::copy(begin, end, dst_ptr);
+    } else {
+      std::transform(begin, end, dst_ptr, [](const SrcType& x) -> FieldType {
+        return static_cast<FieldType>(x);
+      });
+    }
+  }
+
+  template <typename IterType>
+  static void CopyValues(IterType dst, const TensorProto& proto) {
+    using DstType = typename std::iterator_traits<IterType>::value_type;
+    auto begin = FieldHelper::GetField(proto).begin();
+    auto end = FieldHelper::GetField(proto).end();
+    if (std::is_same<DstType, FieldType>::value) {
+      std::copy(begin, end, dst);
+    } else {
+      std::transform(begin, end, dst, [](const FieldType& x) -> DstType {
+        return static_cast<DstType>(x);
+      });
+    }
+  }
+
+  static void Truncate(size_t new_size, TensorProto* proto) {
+    FieldHelper::GetMutableField(proto)->Truncate(new_size);
+  }
+
+  static FieldType* AppendUninitialized(size_t n, TensorProto* proto) {
+    auto* field = FieldHelper::GetMutableField(proto);
+    field->Reserve(field->size() + n);
+    return reinterpret_cast<FieldType*>(field->AddNAlreadyReserved(n));
+  }
+};
+
+// Specialization for string.
 template <>
 class TensorProtoHelper<string> : public std::true_type {
  public:
@@ -129,6 +178,11 @@ class TensorProtoHelper<string> : public std::true_type {
     for (IterType it = begin; it != end; ++it) {
       AddValue(*it, proto);
     }
+  }
+  template <typename IterType>
+  static void CopyToTensorContent(IterType begin, IterType end,
+                                  TensorProto* proto) {
+    AddValues(begin, end, proto);
   }
 };
 
@@ -143,11 +197,50 @@ typename std::enable_if<internal::TensorProtoHelper<Type>::value,
 CreateTensorProto(const std::vector<Type>& values,
                   const std::vector<size_t>& shape) {
   TensorProto tensor;
+  TensorShapeProto tensor_shape_proto;
+  internal::SetTensorProtoShape(shape, &tensor_shape_proto);
+  if (TensorShape(tensor_shape_proto).num_elements() != values.size()) {
+    LOG(ERROR) << "Shape and number of values (" << values.size()
+               << ") are incompatible.";
+    return tensor;
+  }
   using TypeHelper = internal::TensorProtoHelper<Type>;
   tensor.set_dtype(TypeHelper::GetDataType());
-  internal::SetTensorProtoShape(shape, tensor.mutable_tensor_shape());
+  tensor.mutable_tensor_shape()->Swap(&tensor_shape_proto);
   TypeHelper::AddValues(values.begin(), values.end(), &tensor);
   return tensor;
+}
+
+// Converts values in tensor to run-length encoded compressed form.
+//
+// The elements of a tensor can be stored in a TensorProto in one of the
+// following two forms:
+// 1. As a raw byte string in the field `tensor_content` containing the
+//    serialized in-memory representation of the tensor.
+// 2. As values of a repeated field depending on the datatype, e.g. that
+//    values of a DT_FLOAT tensor would be stored in the repeated field
+//    `float_val`.
+// Storage scheme 2 may use a simple form of run-length encoding to compress
+// data: If the values contains a tail of identical values, the repeated field
+// will be truncated such that the number of values in the repeated field is
+// less than the number of elements implied by the field`tensor_shape`. The
+// original tensor can be recovered by repeating the final value in the repeated
+// field.
+//
+// The TensorProto will be compressed if a) the tensor contains at least
+// min_num_elements elements and b) the compressed tensor proto is would be at
+// most the size of the original tensor proto divided by min_compression_ratio.
+//
+// Returns true if the tensor was compressed.
+bool CompressTensorProtoInPlace(int64 min_num_elements,
+                                float min_compression_ratio,
+                                TensorProto* tensor);
+
+inline bool CompressTensorProtoInPlace(TensorProto* tensor) {
+  static const int64 kDefaultMinNumElements = 64;
+  static const float kDefaultMinCompressionRatio = 2.0f;
+  return CompressTensorProtoInPlace(kDefaultMinNumElements,
+                                    kDefaultMinCompressionRatio, tensor);
 }
 
 }  // namespace tensor

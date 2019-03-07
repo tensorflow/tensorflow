@@ -28,14 +28,16 @@ template <typename T>
 class UnpackOpModel : public SingleOpModel {
  public:
   UnpackOpModel(const TensorData& input, int axis) {
-    CHECK_LE(axis, input.shape.size());
+    if (axis < 0) {
+      axis += input.shape.size();
+    }
     const int num_outputs = input.shape[axis];
     input_ = AddInput(input);
     for (int i = 0; i < num_outputs; ++i) {
       outputs_.push_back(AddOutput(input.type));
     }
     SetBuiltinOp(BuiltinOperator_UNPACK, BuiltinOptions_UnpackOptions,
-                 CreatePackOptions(builder_, num_outputs, axis).Union());
+                 CreateUnpackOptions(builder_, num_outputs, axis).Union());
     BuildInterpreter({GetShape(input_)});
   }
 
@@ -102,6 +104,44 @@ TEST(UnpackOpTest, FloatThreeOutputsAxisOne) {
   EXPECT_EQ(output_datas.size(), 2);
   EXPECT_THAT(output_datas[0], ElementsAre(1, 3, 5));
   EXPECT_THAT(output_datas[1], ElementsAre(2, 4, 6));
+}
+
+TEST(UnpackOpTest, FloatThreeOutputsNegativeAxisOne) {
+  UnpackOpModel<float> model({TensorType_FLOAT32, {3, 2}}, -1);
+  model.SetInput({1, 2, 3, 4, 5, 6});
+  model.Invoke();
+
+  // Check outputs shapes.
+  const std::vector<std::vector<int>>& output_shapes = model.GetOutputShapes();
+  EXPECT_EQ(output_shapes.size(), 2);
+  EXPECT_THAT(output_shapes[0], ElementsAre(3));
+  EXPECT_THAT(output_shapes[1], ElementsAre(3));
+
+  // Check outputs values.
+  const std::vector<std::vector<float>>& output_datas = model.GetOutputDatas();
+  EXPECT_EQ(output_datas.size(), 2);
+  EXPECT_THAT(output_datas[0], ElementsAre(1, 3, 5));
+  EXPECT_THAT(output_datas[1], ElementsAre(2, 4, 6));
+}
+
+TEST(UnpackOpTest, FloatThreeOutputsNegativeAxisTwo) {
+  UnpackOpModel<float> model({TensorType_FLOAT32, {3, 2}}, -2);
+  model.SetInput({1, 2, 3, 4, 5, 6});
+  model.Invoke();
+
+  // Check outputs shapes.
+  const std::vector<std::vector<int>>& output_shapes = model.GetOutputShapes();
+  EXPECT_EQ(output_shapes.size(), 3);
+  EXPECT_THAT(output_shapes[0], ElementsAre(2));
+  EXPECT_THAT(output_shapes[1], ElementsAre(2));
+  EXPECT_THAT(output_shapes[2], ElementsAre(2));
+
+  // Check outputs values.
+  const std::vector<std::vector<float>>& output_datas = model.GetOutputDatas();
+  EXPECT_EQ(output_datas.size(), 3);
+  EXPECT_THAT(output_datas[0], ElementsAre(1, 2));
+  EXPECT_THAT(output_datas[1], ElementsAre(3, 4));
+  EXPECT_THAT(output_datas[2], ElementsAre(5, 6));
 }
 
 TEST(UnpackOpTest, FloatOneOutput) {

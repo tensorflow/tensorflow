@@ -46,6 +46,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
@@ -430,6 +431,7 @@ def node_to_graph(node, context):
             dependencies that this node has.
   """
   # TODO(mdan): Insert list_comprehensions somewhere.
+  unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
   # Past this point, line numbers are no longer accurate so we ignore the
