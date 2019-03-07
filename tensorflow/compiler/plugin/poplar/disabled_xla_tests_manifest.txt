@@ -311,6 +311,8 @@ DotOperationTextTest.GpuIntegerDotCodegen POPLAR // GPU codegen
 
 FmaxSimpleTest.FmaxEdgeCases POPLAR // Tests NaN behaviour on CPU model
 FmaxSimpleTest.FminEdgeCases POPLAR
+ComparatorsTest.CompareLtF32 POPLAR
+ComparatorsTest.CompareGtF32 POPLAR
 
 CaseOpTest POPLAR // Case form of the conditional op
 
@@ -320,3 +322,6 @@ MatrixTest.GetMatrixDiagonal_S64 POPLAR // Don't support int64 reduction.
 SortingTest.TopKFullSortWithDuplicates POPLAR // T7292 Requires stable sort.
 
 MathExhaustiveTest POPLAR // Precision errors
+
+SVDTest POPLAR // Crashing in while loop
+SelfAdjointEigTest POPLAR
