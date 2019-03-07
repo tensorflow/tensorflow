@@ -212,31 +212,7 @@ constant propagation or other, unrelated, optimization passes.
 
 ## Adding optimization pass
 
-Optimization passes that do not fit/difficult to specify in the above structure
-can be specified as general iterations across modules/functions. They have
-general structure like:
-
-```c++
-namespace {
-struct TestPass : public FunctionPass {
-  TestPass() : FunctionPass(&TestPass::passID) {}
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
-};
-} // end anonymous namespace
-
-char TestPass::passID = 0;
-
-PassResult TestPass::runOnFunction(Function *f) {
-  f->walk([](OperationInst *op) {
-    ....
-  });
-  return success();
-}
-
-static PassRegistration<TestPass> pass("flag-name-to-invoke-pass-via-mlir-opt",
-                                       "Pass description here");
-```
-
-TODO: Create an example here.
+Optimization passes that do not fit/are difficult to specify in the above
+structure can be specified as general iterations across modules/functions. See
+[Writing a Pass](WritingAPass.md) for a general overview and introduction to
+optimization passes in MLIR.
