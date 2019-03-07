@@ -26,6 +26,7 @@ static SmallVector<IndexHandle, 8> getMemRefSizes(Value *memRef) {
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
 
   auto maps = memRefType.getAffineMaps();
+  (void)maps;
   assert((maps.empty() || (maps.size() == 1 && maps[0].isIdentity())) &&
          "Layout maps not supported");
   SmallVector<IndexHandle, 8> res;
