@@ -372,8 +372,6 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   // of the weights is. Once NVIDIA fixes this bug, we should remove the data
   // type setting logic below and test should still pass.
   trt_tensor->setType(trt_dtype);
-  // Add to cache.
-  weights_to_const_layers_[weights.GetValues()] = trt_tensor;
   return trt_tensor;
 }
 
