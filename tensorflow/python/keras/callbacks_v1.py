@@ -158,6 +158,10 @@ class TensorBoard(callbacks.Callback):
     # One profiler session is running if it is True.
     self._is_profiling = False
 
+    # TensorBoard should only write summaries on the chief when in a
+    # Multi-Worker setting.
+    self._chief_worker_only = True
+
   def _init_writer(self, model):
     """Sets file writer."""
     if context.executing_eagerly():
