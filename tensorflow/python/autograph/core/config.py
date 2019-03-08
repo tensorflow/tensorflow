@@ -37,11 +37,7 @@ def _internal_name(name):
   # If the TF module is foo.tensorflow, then all other modules
   # are then assumed to be prefixed by 'foo'.
 
-  # TODO(mihaimaruseac): Fix this hack once estimator move is finished
-  core_reference_root = 'tensorflow_core.'
-
-  if reference_name.startswith(reference_root) or \
-      reference_name.startswith(core_reference_root):
+  if reference_name.startswith(reference_root):
     return name
 
   reference_begin = reference_name.find('.' + reference_root)
