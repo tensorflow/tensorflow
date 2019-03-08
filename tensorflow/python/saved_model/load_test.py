@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import os
 import tempfile
 
@@ -1076,6 +1077,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(3).numpy())
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
+
+  def test_partial(self, cycles):
+    # TODO(vbardiovsky): Figure out the story for FunctionSpec vs partial vs
+    # input_signature.
+    self.skipTest("Partial does not work for serialization.")
+
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(), [0.0])
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(), [0.0])
 
   def test_convert_to_input_signature(self, cycles):
 
