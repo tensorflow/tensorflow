@@ -1521,6 +1521,10 @@ tf_module {
     argspec: "args=[\'input\', \'shape\', \'layout\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "InfeedEnqueuePrelinearizedBuffer"
+    argspec: "args=[\'input\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "InfeedEnqueueTuple"
     argspec: "args=[\'inputs\', \'shapes\', \'layouts\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
   }
@@ -2331,6 +2335,14 @@ tf_module {
   member_method {
     name: "PrefetchDataset"
     argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "Prelinearize"
+    argspec: "args=[\'input\', \'shape\', \'layout\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "PrelinearizeTuple"
+    argspec: "args=[\'inputs\', \'shapes\', \'layouts\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "PreventGradient"
