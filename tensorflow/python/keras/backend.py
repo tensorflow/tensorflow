@@ -2956,7 +2956,10 @@ class GraphExecutionFunction(object):
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
     self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
-    with ops.control_dependencies(self.outputs):
+    # TODO(b/127668432): Consider using autograph to generate these
+    # dependencies in call.
+    # Index 0 = total loss or model output for `predict`.
+    with ops.control_dependencies([self.outputs[0]]):
       updates_ops = []
       for update in updates:
         if isinstance(update, tuple):
