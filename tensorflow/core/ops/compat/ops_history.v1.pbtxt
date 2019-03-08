@@ -30183,6 +30183,20 @@ op {
   is_stateful: true
 }
 op {
+  name: "InfeedEnqueuePrelinearizedBuffer"
+  input_arg {
+    name: "input"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "device_ordinal"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}
+op {
   name: "InfeedEnqueueTuple"
   input_arg {
     name: "inputs"
@@ -44480,6 +44494,66 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+}
+op {
+  name: "Prelinearize"
+  input_arg {
+    name: "input"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "shape"
+    type: "shape"
+    default_value {
+      shape {
+      }
+    }
+  }
+  attr {
+    name: "layout"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+}
+op {
+  name: "PrelinearizeTuple"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "dtypes"
+  }
+  output_arg {
+    name: "output"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "dtypes"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "shapes"
+    type: "list(shape)"
+  }
+  attr {
+    name: "layouts"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
   }
 }
 op {
