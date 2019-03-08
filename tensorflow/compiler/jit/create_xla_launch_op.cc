@@ -154,11 +154,14 @@ Status CreateXlaLaunchOp(FunctionLibraryRuntime* flr, const NodeDef& node_def,
                          std::unique_ptr<OpKernel>* kernel) {
   TF_RETURN_IF_ERROR(CompilationRequested(*flr, node_def));
 
-  VLOG(3) << "Creating XlaLaunchOp for " << node_def.DebugString();
+  VLOG(3) << "Attemping to create XlaLaunchOp for " << node_def.DebugString();
 
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
   if (!IsCompilable(flr, node_def)) {
+    VLOG(1) << "Not creating XlaLaunchOp because function invoked by the "
+               "following node is not compilable: "
+            << node_def.DebugString();
     // node_def is calling a function that XLA can't compile.
     return errors::InvalidArgument("Not compilable: ",
                                    node_def.ShortDebugString());
