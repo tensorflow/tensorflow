@@ -236,6 +236,10 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
         // the end of the BFloat16Propagation pass.
         continue;
       }
+      if (use.instruction->HasSideEffectNoRecurse()) {
+        // Keep side-effecting instruction's operands unchanged.
+        return false;
+      }
       // Any visited user that can accept BF16 has already been updated if
       // necessary, e.g., the output has been changed to BF16 if it propagates
       // precision, or a called computation's parameters have been changed to
@@ -272,8 +276,8 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
       if (bfloat16_support_->EffectiveOperandPrecisionIsOutputPrecision(
               *use.instruction, use.operand_number)) {
         if (use.instruction->opcode() == HloOpcode::kTuple ||
-            (use.instruction->opcode() == HloOpcode::kCrossReplicaSum &&
-             ShapeUtil::IsTuple(use.instruction->shape()))) {
+            (use.instruction->opcode() == HloOpcode::kAllReduce &&
+             use.instruction->shape().IsTuple())) {
           ShapeIndex use_output_index{use.operand_number};
           for (int64 i : use.operand_index) {
             use_output_index.push_back(i);
@@ -329,22 +333,6 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
     return;
   }
 
-  // Do not change precision for instructions related to entry and exit of a
-  // computation, and control flow, because this pass might break the interfaces
-  // or assumptions for them.
-  if (hlo->opcode() == HloOpcode::kInfeed ||       //
-      hlo->opcode() == HloOpcode::kOutfeed ||      //
-      hlo->opcode() == HloOpcode::kSend ||         //
-      hlo->opcode() == HloOpcode::kSendDone ||     //
-      hlo->opcode() == HloOpcode::kRecv ||         //
-      hlo->opcode() == HloOpcode::kRecvDone ||     //
-      hlo->opcode() == HloOpcode::kCustomCall ||   //
-      hlo->opcode() == HloOpcode::kCall ||         //
-      hlo->opcode() == HloOpcode::kConditional ||  //
-      (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
-    return;
-  }
-
   // Prevent root instructions from having their output modified by recording
   // all F32 output values as needing to stay as F32.
   CHECK(hlo->parent() != nullptr);
@@ -363,6 +351,17 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
         }
       });
     }
+    return;
+  }
+
+  // Do not change precision for instructions related to entry and exit of a
+  // computation, side-effecting instructions, and control flow, because this
+  // pass might break the interfaces or assumptions for them.
+  if (hlo->opcode() == HloOpcode::kCustomCall ||   //
+      hlo->opcode() == HloOpcode::kCall ||         //
+      hlo->opcode() == HloOpcode::kConditional ||  //
+      hlo->HasSideEffectNoRecurse() ||             //
+      (hlo->opcode() == HloOpcode::kParameter && skip_parameters)) {
     return;
   }
 

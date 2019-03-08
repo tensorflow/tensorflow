@@ -25,8 +25,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("data.experimental.Counter")
-def Counter(start=0, step=1, dtype=dtypes.int64):
+@tf_export("data.experimental.Counter", v1=[])
+def CounterV2(start=0, step=1, dtype=dtypes.int64):
   """Creates a `Dataset` that counts from `start` in steps of size `step`.
 
   For example:
@@ -53,3 +53,13 @@ def Counter(start=0, step=1, dtype=dtypes.int64):
     step = ops.convert_to_tensor(step, dtype=dtype, name="step")
     return dataset_ops.Dataset.from_tensors(0).repeat(None).apply(
         scan_ops.scan(start, lambda state, _: (state + step, state)))
+
+
+@tf_export(v1=["data.experimental.Counter"])
+def CounterV1(start=0, step=1, dtype=dtypes.int64):
+  return dataset_ops.DatasetV1Adapter(CounterV2(start, step, dtype))
+CounterV1.__doc__ = CounterV2.__doc__
+
+# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
+# this alias in place.
+Counter = CounterV1  # pylint: disable=invalid-name

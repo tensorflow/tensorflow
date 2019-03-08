@@ -7,6 +7,7 @@ package_group(
     includes = ["//tensorflow/compiler/jit:friends"],
     packages = [
         "//tensorflow/...",
+        "//tensorflow_models/...",
         "//third_party/py/tensor2tensor/...",
     ],
 )
@@ -22,6 +23,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":xla",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
@@ -57,7 +59,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/compiler/jit:xla_ops_py",
-        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/compiler/jit/ops:xla_ops_grad",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
@@ -69,12 +71,16 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "xla_test",
     srcs = ["xla_test.py"],
     additional_deps = [
         ":xla",
-        "@six_archive//:six",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/tpu:tpu_estimator",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
@@ -84,6 +90,11 @@ tf_py_test(
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
 )

@@ -30,7 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 
 
 def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
@@ -56,12 +56,7 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
     # pylint: disable=protected-access
-    if ops._USE_C_SHAPES:
-      handle._handle_data = resource_variable_ops.get_resource_handle_data(h)
-    else:
-      if h._handle_data is None:
-        ops.set_shape_and_handle_data_for_outputs(h.op)
-      handle._handle_data = h._handle_data
+    handle._handle_data = resource_variable_ops.get_resource_handle_data(h)
     # pylint: enable=protected-access
   # Clean up op->graph->op reference cycles.
   ops.dismantle_graph(graph)
@@ -134,8 +129,8 @@ class SharedVariable(resource_variable_ops.ResourceVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 

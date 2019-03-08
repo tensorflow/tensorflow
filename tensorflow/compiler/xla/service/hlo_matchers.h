@@ -54,6 +54,21 @@ class HloParameterMatcher : public HloMatcher {
   int64 parameter_number_;
 };
 
+// Custom matcher for comparisons, which accepts a comparison direction.
+class HloComparisonMatcher : public HloMatcher {
+ public:
+  explicit HloComparisonMatcher(
+      ComparisonDirection direction,
+      std::vector<::testing::Matcher<const HloInstruction*>> operands)
+      : HloMatcher(HloOpcode::kCompare, operands), direction_(direction) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+
+ private:
+  ComparisonDirection direction_;
+};
+
 // Custom matcher for get-tuple-element instructions, which accepts a tuple
 // index to match.
 class HloGetTupleElementMatcher : public HloMatcher {
@@ -165,44 +180,42 @@ namespace opcode_matchers {
   }
 HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
+HLO_MATCHER(AllToAll);
 HLO_MATCHER(Bitcast);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);
+HLO_MATCHER(Compare);
 HLO_MATCHER(Concatenate);
 HLO_MATCHER(Conditional);
 HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
-HLO_MATCHER(CrossReplicaSum);
+HLO_MATCHER(AllReduce);
+HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Divide);
+HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
-HLO_MATCHER(Eq);
 HLO_MATCHER(Exp);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
-HLO_MATCHER(Ge);
 HLO_MATCHER(AfterAll);
-HLO_MATCHER(Gt);
 HLO_MATCHER(Iota);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
-HLO_MATCHER(Le);
 HLO_MATCHER(Log);
 HLO_MATCHER(And);
 HLO_MATCHER(Not);
 HLO_MATCHER(Or);
 HLO_MATCHER(Xor);
-HLO_MATCHER(Lt);
 HLO_MATCHER(Map);
 HLO_MATCHER(Maximum);
 HLO_MATCHER(Minimum);
 HLO_MATCHER(Multiply);
-HLO_MATCHER(Ne);
 HLO_MATCHER(Negate);
 HLO_MATCHER(Outfeed);
 HLO_MATCHER(Pad);
@@ -216,6 +229,7 @@ HLO_MATCHER(Remainder);
 HLO_MATCHER(Reshape);
 HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
+HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
 HLO_MATCHER(Send);
@@ -250,6 +264,38 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter(
 inline ::testing::Matcher<const ::xla::HloInstruction*> Parameter() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloMatcher(HloOpcode::kParameter, {}));
+}
+
+// Comparison matchers below do not require any additional arguments.
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Eq(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kEq, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Ne(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kNe, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Ge(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kGe, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Gt(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kGt, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Le(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kLe, {operands...}));
+}
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> Lt(M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloComparisonMatcher(
+      ComparisonDirection::kLt, {operands...}));
 }
 
 // GetTupleElement(operand, N) matches a GTE instruction which gets the N'th
@@ -308,8 +354,8 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
     absl::string_view shape) {
-  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
-      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShapeMatcher(ParseShape(shape).ValueOrDie()));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
     const class Shape& shape) {
@@ -319,7 +365,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
     absl::string_view shape) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
-      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+      ParseShape(shape).ValueOrDie()));
 }
 
 // Verifies the value of the HloSharing against the provided sharding object.
@@ -381,7 +427,6 @@ std::vector<const HloInstruction*> Pointers(const Container& container) {
 // Tell GMock to print HloInstruction* by value, so error messages are nice.
 // Has to be in the same namespace as 'HloInstruction'.
 void PrintTo(const HloInstruction* inst, ::std::ostream* os);
-void PrintTo(HloInstruction* inst, ::std::ostream* os);
 
 }  // namespace xla
 

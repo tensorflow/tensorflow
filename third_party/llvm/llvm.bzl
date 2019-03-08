@@ -250,6 +250,7 @@ linux_cmake_vars = {
 # CMake variables specific to the Darwin (Mac OS X) platform.
 darwin_cmake_vars = {
     "HAVE_MALLOC_MALLOC_H": 1,
+    "HAVE_MALLOC_ZONE_STATISTICS": 1,
 }
 
 # CMake variables specific to the Windows platform.
@@ -290,7 +291,7 @@ win32_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 llvm_all_cmake_vars = select({
-    "@org_tensorflow//tensorflow:darwin": cmake_var_string(
+    "@org_tensorflow//tensorflow:macos": cmake_var_string(
         _dict_add(
             cmake_vars,
             llvm_target_cmake_vars("X86", "x86_64-apple-darwin"),

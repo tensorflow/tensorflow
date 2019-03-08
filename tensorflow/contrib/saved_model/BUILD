@@ -82,35 +82,8 @@ py_library(
     name = "keras_saved_model",
     srcs = ["python/saved_model/keras_saved_model.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:lib",
-        "//tensorflow/python:metrics",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:saver",
-        "//tensorflow/python:util",
-        "//tensorflow/python/estimator:estimator_py",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/saved_model",
-    ],
-)
-
-py_test(
-    name = "keras_saved_model_test",
-    size = "medium",
-    srcs = ["python/saved_model/keras_saved_model_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
-        ":keras_saved_model",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:training",
-        "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
 )

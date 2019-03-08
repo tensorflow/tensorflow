@@ -46,8 +46,12 @@ bool IsBlacklisted(const NodeDef& node) {
       IsNoOp(node);
 }
 
-// Check if Tensor is integer and small size.
-bool IsTensorIntegerAndSmall(const OpInfo::TensorProperties& prop) {
+// Check if Tensor is either a string or is integer and small size
+bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
+  if (prop.dtype() == DataType::DT_STRING) {
+    return true;
+  }
+
   // Check type to be int32 or int64.
   if (prop.dtype() != DataType::DT_INT32 &&
       prop.dtype() != DataType::DT_INT64) {
@@ -107,13 +111,13 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
                  << node.DebugString();
     return Status::OK();
   }
-  if (!IsTensorIntegerAndSmall(output_properties[port_id])) {
+  if (!IsTensorSmall(output_properties[port_id])) {
     return Status::OK();
   }
 
   // These nodes may be optimized away downstream (even if pinned to Host), we
   // should (recusively) check their source.
-  if (IsIdentity(node)) {
+  if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
     for (const auto& fanin : graph.GetFanins(node, false)) {
       bool fanin_candidate = false;
       TF_RETURN_IF_ERROR(IsNodeOutputPortHostFriendly(
@@ -250,7 +254,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
         /*assume_valid_feeds=*/false));
   }
   for (const auto& prop : properties->GetOutputProperties(node.name())) {
-    if (!IsTensorIntegerAndSmall(prop)) {
+    if (!IsTensorSmall(prop)) {
       return Status::OK();
     }
   }
@@ -259,6 +263,8 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   return Status::OK();
 }
 
+// Tries to find a Host device from `devices`. Returns empty string if no
+// matching Host device is found.
 string TryFindHostDevice(const gtl::FlatSet<string>& devices,
                          bool has_device_cpu, const string& device) {
   // Force this node onto the CPU.
@@ -280,8 +286,8 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
     }
   }
 
-  // We couldn't find an appropriate Host device, return original device.
-  return device;
+  // We couldn't find an appropriate Host device, return no device.
+  return "";
 }
 
 bool IsTPUGraphDef(const GraphDef& def) {
@@ -325,6 +331,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   std::vector<std::pair<NodeDef*, string>> const_nodes;
 
   for (auto& node : *optimized_graph->mutable_node()) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     bool is_candidate = false;
     TF_RETURN_IF_ERROR(
         internal::IsNodeHostCandidate(graph, &properties, node, &is_candidate));
@@ -332,16 +339,20 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       continue;
     }
 
-    if (IsConstant(node)) {
-      const_nodes.emplace_back(&node, node.device());
+    string device =
+        internal::TryFindHostDevice(devices, has_device_cpu, node.device());
+    if (!device.empty()) {
+      // Keep track of all Const nodes that we swapped.
+      if (IsConstant(node)) {
+        const_nodes.emplace_back(&node, node.device());
+      }
+      *node.mutable_device() = std::move(device);
     }
-    // Try and swap the device to Host.
-    node.set_device(
-        internal::TryFindHostDevice(devices, has_device_cpu, node.device()));
   }
 
   // Traverse all `const_nodes`, and map them back to GPU greedily.
   for (auto& it : const_nodes) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     NodeDef* node = it.first;
     const string& device = it.second;
 

@@ -43,7 +43,6 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla.proto";
-import "tensorflow/compiler/xla/xla_data.proto";
 
 package xla;
 
@@ -128,11 +127,14 @@ service XlaService {
       returns (CreateChannelHandleResponse) {
   }
 
-  // Invokes the provided computation with the provided global data passed as
-  // immutable arguments. The request contains the whole computation graph.
+  // Compiles the provided computation into executable. Returns the handle of
+  // the executable.
+  rpc Compile(CompileRequest) returns (CompileResponse) {}
+
+  // Invokes the provided executable with the provided global data passed as
+  // immutable arguments. The request contains the handle to the executable.
   // Returns global data output and execution timing.
-  rpc ExecuteGraph(ExecuteGraphRequest) returns (ExecuteResponse) {
-  }
+  rpc Execute(ExecuteRequest) returns (ExecuteResponse) {}
 
   // Invokes the provided list of computations in parallel with the provided
   // global data for each computation. Returns a list of global data output and

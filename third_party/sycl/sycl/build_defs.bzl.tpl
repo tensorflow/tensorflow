@@ -11,7 +11,7 @@ def if_sycl(if_true, if_false = []):
     return select({
         "@local_config_sycl//sycl:using_sycl_ccpp": if_true,
         "@local_config_sycl//sycl:using_sycl_trisycl": if_true[0:1],
-        "//conditions:default": if_false
+        "//conditions:default": if_false,
     })
 
 def if_ccpp(if_true, if_false = []):
@@ -24,5 +24,5 @@ def if_ccpp(if_true, if_false = []):
     return select({
         "@local_config_sycl//sycl:using_sycl_ccpp": if_true,
         "@local_config_sycl//sycl:using_sycl_trisycl": if_false,
-        "//conditions:default": if_false
+        "//conditions:default": if_false,
     })

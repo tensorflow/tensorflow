@@ -20,6 +20,7 @@
 #include <unordered_set>
 #include <vector>
 #include "tensorflow/contrib/boosted_trees/lib/utils/optional_value.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace tensorflow {
 namespace boosted_trees {
@@ -124,7 +125,9 @@ struct Example {
   // Sparse integer features indexed by feature column.
   // Note that all integer features are assumed to be categorical, i.e. will
   // never be compared by order. Also these features can be multivalent.
-  std::vector<std::unordered_set<int64>> sparse_int_features;
+  // By default we allocate a InlinedVector of length 1 though since that is
+  // the most common case.
+  std::vector<gtl::InlinedVector<int64, 1>> sparse_int_features;
 };
 
 }  // namespace utils

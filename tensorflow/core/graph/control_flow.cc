@@ -59,7 +59,7 @@ Status ValidateControlFlowInfo(const Graph* graph,
           "Invalid loop structure: Mismatched parent frames for \"",
           cf.frame_name, "\": \"", parent->name, "\" vs \"", frame.parent->name,
           "\". The node giving this error: ", FormatNodeForError(*node),
-          "This is an internal bug, please file a bug report with "
+          ". This is an internal bug, please file a bug report with "
           "instructions on how to reproduce the error.");
     }
     if (IsLoopCond(node)) {

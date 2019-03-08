@@ -87,11 +87,11 @@ struct AdjustContrast {
 };
 
 // Functor used by AdjustContrastOpv2 to do the computations.
-template <typename Device>
+template <typename Device, typename T>
 struct AdjustContrastv2 {
-  void operator()(const Device& d, typename TTypes<float, 4>::ConstTensor input,
+  void operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<float>::ConstScalar contrast_factor,
-                  typename TTypes<float, 4>::Tensor output) {
+                  typename TTypes<T, 4>::Tensor output) {
     const int batch = input.dimension(0);
     const int height = input.dimension(1);
     const int width = input.dimension(2);
@@ -138,15 +138,19 @@ struct AdjustContrastv2 {
 #endif
     Eigen::Sizes<1, 1, 1, 1> scalar;
     float num_reduced_coeffs = height * width;
-    output.device(d) =
-        (input.shuffle(reduced_dims_first).sum(reduction_axis).eval() /
-         num_reduced_coeffs)
-            .reshape(reshape_dims)
-            .broadcast(broadcast_dims);
+    output.device(d) = (input.template cast<float>()
+                            .shuffle(reduced_dims_first)
+                            .sum(reduction_axis)
+                            .eval() /
+                        num_reduced_coeffs)
+                           .template cast<T>()
+                           .reshape(reshape_dims)
+                           .broadcast(broadcast_dims);
     auto contrast_factor_tensor =
         contrast_factor.reshape(scalar).broadcast(scalar_broadcast);
-    auto adjusted = (input - output) * contrast_factor_tensor;
-    output.device(d) += adjusted;
+    auto adjusted =
+        (input - output).template cast<float>() * contrast_factor_tensor;
+    output.device(d) += adjusted.template cast<T>();
   }
 };
 

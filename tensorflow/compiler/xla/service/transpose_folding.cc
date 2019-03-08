@@ -45,7 +45,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
     auto& operand = *dot.operand(i);
     if (operand.IsRank2Transpose()) {
       operand_set.push_back(i);
-    } else if (ShapeUtil::Rank(operand.shape()) != 2) {
+    } else if (operand.shape().rank() != 2) {
       return {};
     }
   }
@@ -130,8 +130,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
 
   HloInstruction* new_lhs;
   const int64 kLhsIdx = 0;
-  if (std::find(operand_indices.begin(), operand_indices.end(), kLhsIdx) !=
-      operand_indices.end()) {
+  if (absl::c_linear_search(operand_indices, kLhsIdx)) {
     HloInstruction& transpose = *convolution.mutable_operand(kLhsIdx);
     const auto& transpose_dimensions = transpose.dimensions();
     HloInstruction& transpose_operand = *transpose.mutable_operand(0);
@@ -154,8 +153,7 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
 
   HloInstruction* new_rhs;
   const int64 kRhsIdx = 1;
-  if (std::find(operand_indices.begin(), operand_indices.end(), kRhsIdx) !=
-      operand_indices.end()) {
+  if (absl::c_linear_search(operand_indices, kRhsIdx)) {
     HloInstruction& transpose = *convolution.mutable_operand(kRhsIdx);
     const auto& transpose_dimensions = transpose.dimensions();
     HloInstruction& transpose_operand = *transpose.mutable_operand(0);
@@ -178,7 +176,8 @@ bool FoldTransposeIntoConvolution(InstructionOperandsPair pair) {
 
   auto new_conv = HloInstruction::CreateConvolve(
       convolution.shape(), new_lhs, new_rhs, convolution.feature_group_count(),
-      convolution.window(), new_dnums, convolution.precision_config());
+      convolution.batch_group_count(), convolution.window(), new_dnums,
+      convolution.precision_config());
   TF_CHECK_OK(convolution.parent()->ReplaceWithNewInstruction(
       &convolution, std::move(new_conv)));
 

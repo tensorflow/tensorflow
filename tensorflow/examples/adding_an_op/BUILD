@@ -10,6 +10,7 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_tests_tags")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+load("//tensorflow:tensorflow.bzl", "tf_exec_compatible_with")
 
 exports_files(["LICENSE"])
 
@@ -68,6 +69,7 @@ py_test(
     size = "small",
     srcs = ["zero_out_1_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notap"],
     deps = [
         ":zero_out_op_1",
         "//tensorflow:tensorflow_py",
@@ -79,6 +81,7 @@ py_test(
     size = "small",
     srcs = ["zero_out_2_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notap"],
     deps = [
         ":zero_out_grad_2",
         ":zero_out_op_2",
@@ -91,6 +94,7 @@ py_test(
     size = "small",
     srcs = ["zero_out_3_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notap"],
     deps = [
         ":zero_out_op_3",
         "//tensorflow:tensorflow_py",
@@ -115,8 +119,9 @@ py_test(
     name = "cuda_op_test",
     size = "small",
     srcs = ["cuda_op_test.py"],
+    exec_compatible_with = tf_exec_compatible_with({"tags": tf_cuda_tests_tags()}),
     srcs_version = "PY2AND3",
-    tags = tf_cuda_tests_tags(),
+    tags = tf_cuda_tests_tags() + ["notap"],
     deps = [
         ":cuda_op",
         "//tensorflow:tensorflow_py",

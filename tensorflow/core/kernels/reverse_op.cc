@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/reverse_op.h"
 #include <memory>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -373,8 +373,7 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
-// TODO decide whether we want to enable the bool kernel.
-// TF_CALL_bool(REGISTER_GPU_KERNELS);
+TF_CALL_bool(REGISTER_GPU_KERNELS);
 TF_CALL_half(REGISTER_GPU_KERNELS);
 TF_CALL_float(REGISTER_GPU_KERNELS);
 TF_CALL_double(REGISTER_GPU_KERNELS);

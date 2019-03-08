@@ -29,8 +29,8 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import spectral_ops
 from tensorflow.python.ops.distributions import util
+from tensorflow.python.ops.signal import fft_ops
 
 __all__ = [
     "auto_correlation",
@@ -157,11 +157,11 @@ def auto_correlation(
                                        dtype.real_dtype.as_numpy_dtype(0.))
 
     # Autocorrelation is IFFT of power-spectral density (up to some scaling).
-    fft_x_rotated_pad = spectral_ops.fft(x_rotated_pad)
+    fft_x_rotated_pad = fft_ops.fft(x_rotated_pad)
     spectral_density = fft_x_rotated_pad * math_ops.conj(fft_x_rotated_pad)
     # shifted_product is R[m] from above detailed explanation.
     # It is the inner product sum_n X[n] * Conj(X[n - m]).
-    shifted_product = spectral_ops.ifft(spectral_density)
+    shifted_product = fft_ops.ifft(spectral_density)
 
     # Cast back to real-valued if x was real to begin with.
     shifted_product = math_ops.cast(shifted_product, dtype)
@@ -300,7 +300,7 @@ def percentile(x,
       raise ValueError("Argument 'interpolation' must be in %s.  Found %s" %
                        (allowed_interpolations, interpolation))
 
-  with ops.name_scope(name, [x, q]):
+  with ops.name_scope(name, values=[x, q]):
     x = ops.convert_to_tensor(x, name="x")
     # Double is needed here and below, else we get the wrong index if the array
     # is huge along axis.

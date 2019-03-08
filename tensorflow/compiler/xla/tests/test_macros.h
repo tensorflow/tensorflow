@@ -79,30 +79,28 @@ string PrependDisabledIfIndicated(const string& test_case_name,
 // heuristic to decide whether the test case should be disabled, and we
 // determine whether the test case should be disabled by resolving the (test
 // case name, test name) in a manifest file.
-#define XLA_GTEST_TEST_(test_case_name, test_name, parent_class, parent_id)   \
-  class GTEST_TEST_CLASS_NAME_(test_case_name, test_name)                     \
-      : public parent_class {                                                 \
-   public:                                                                    \
-    GTEST_TEST_CLASS_NAME_(test_case_name, test_name)() {}                    \
-                                                                              \
-   private:                                                                   \
-    virtual void TestBody();                                                  \
-    static ::testing::TestInfo* const test_info_ GTEST_ATTRIBUTE_UNUSED_;     \
-    GTEST_DISALLOW_COPY_AND_ASSIGN_(GTEST_TEST_CLASS_NAME_(test_case_name,    \
-                                                           test_name));       \
-  };                                                                          \
-                                                                              \
-  ::testing::TestInfo* const GTEST_TEST_CLASS_NAME_(test_case_name,           \
-                                                    test_name)::test_info_ =  \
-      ::testing::internal::MakeAndRegisterTestInfo(                           \
-          #test_case_name,                                                    \
-          ::xla::PrependDisabledIfIndicated(#test_case_name, #test_name)      \
-              .c_str(),                                                       \
-          nullptr, nullptr,                                                   \
-          ::testing::internal::CodeLocation(__FILE__, __LINE__), (parent_id), \
-          parent_class::SetUpTestCase, parent_class::TearDownTestCase,        \
-          new ::testing::internal::TestFactoryImpl<GTEST_TEST_CLASS_NAME_(    \
-              test_case_name, test_name)>);                                   \
+#define XLA_GTEST_TEST_(test_case_name, test_name, parent_class)             \
+  class GTEST_TEST_CLASS_NAME_(test_case_name, test_name)                    \
+      : public parent_class {                                                \
+   public:                                                                   \
+    GTEST_TEST_CLASS_NAME_(test_case_name, test_name)() {}                   \
+                                                                             \
+   private:                                                                  \
+    virtual void TestBody();                                                 \
+    static ::testing::TestInfo* const test_info_ GTEST_ATTRIBUTE_UNUSED_;    \
+    GTEST_DISALLOW_COPY_AND_ASSIGN_(GTEST_TEST_CLASS_NAME_(test_case_name,   \
+                                                           test_name));      \
+  };                                                                         \
+                                                                             \
+  ::testing::TestInfo* const GTEST_TEST_CLASS_NAME_(test_case_name,          \
+                                                    test_name)::test_info_ = \
+      ::testing::RegisterTest(                                               \
+          #test_case_name,                                                   \
+          ::xla::PrependDisabledIfIndicated(#test_case_name, #test_name)     \
+              .c_str(),                                                      \
+          nullptr, nullptr, __FILE__, __LINE__, []() -> parent_class* {      \
+            return new GTEST_TEST_CLASS_NAME_(test_case_name, test_name)();  \
+          });                                                                \
   void GTEST_TEST_CLASS_NAME_(test_case_name, test_name)::TestBody()
 
 // This is identical to the TEST_F macro from "gtest", but it potentially
@@ -111,9 +109,8 @@ string PrependDisabledIfIndicated(const string& test_case_name,
 // Per usual, you can see what tests are available via --gunit_list_tests and
 // choose to run tests that have been disabled via the manifest via
 // --gunit_also_run_disabled_tests.
-#define XLA_TEST_F(test_fixture, test_name)              \
-  XLA_GTEST_TEST_(test_fixture, test_name, test_fixture, \
-                  ::testing::internal::GetTypeId<test_fixture>())
+#define XLA_TEST_F(test_fixture, test_name) \
+  XLA_GTEST_TEST_(test_fixture, test_name, test_fixture)
 
 // Likewise, this is identical to the TEST_P macro from "gtest", but
 // potentially disables the test based on the DISABLED_MANIFEST file.

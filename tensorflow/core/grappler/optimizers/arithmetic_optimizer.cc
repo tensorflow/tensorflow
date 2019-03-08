@@ -22,6 +22,8 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -31,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
@@ -38,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -46,7 +50,9 @@ limitations under the License.
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
+#include "tensorflow/core/util/strided_slice_op.h"
 
+using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -66,7 +72,8 @@ bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
     return false;
   }
 
-  if (node.attr().at("dtype").type() != DataTypeToEnum<T>::value) {
+  if (node.attr().count("dtype") == 0 || node.attr().count("value") == 0 ||
+      node.attr().at("dtype").type() != DataTypeToEnum<T>::value) {
     return false;
   }
 
@@ -122,39 +129,6 @@ bool MaybeAddControlInput(const string& new_input, NodeDef* node,
 
 void SetDataTypeToAttr(DataType dtype, const string& attr_name, NodeDef* node) {
   (*node->mutable_attr())[attr_name].set_type(dtype);
-}
-
-string SourceDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Bitcast") {
-    return "T";
-  } else if (node.op() == "Cast") {
-    return "SrcT";
-  } else {
-    LOG(FATAL) << "SourceDataTypeAttrName not implemented for op " << node.op();
-  }
-}
-
-string DestinationDataTypeAttrName(const NodeDef& node) {
-  if (node.op() == "Bitcast") {
-    return "type";
-  } else if (node.op() == "Cast") {
-    return "DstT";
-  } else {
-    LOG(FATAL) << "DestinationDataTypeAttrName not implemented for op "
-               << node.op();
-  }
-}
-
-DataType GetSourceDataType(const NodeDef& node) {
-  return GetDataTypeFromAttr(node, SourceDataTypeAttrName(node));
-}
-
-DataType GetDestinationDataType(const NodeDef& node) {
-  return GetDataTypeFromAttr(node, DestinationDataTypeAttrName(node));
-}
-
-void SetSourceDataType(DataType dtype, NodeDef* node) {
-  SetDataTypeToAttr(dtype, SourceDataTypeAttrName(*node), node);
 }
 
 NodeDef* GetTailOfValuePreservingChain(
@@ -266,18 +240,17 @@ class ArithmeticOptimizerStage : public GraphOptimizerStage<string> {
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool IsDrivenByControlDependency(const NodeDef& node) const {
-    return std::any_of(node.input().begin(), node.input().end(),
-                       IsControlInput);
+    return std::any_of(
+        node.input().begin(), node.input().end(),
+        [](const string& input) { return IsControlInput(input); });
   }
 
   // TODO(ezhulenev): move to GraphOptimizerStage?
   bool DrivesControlDependency(const NodeDef& node) const {
-    int position;
     for (const NodeDef* output : ctx().node_map->GetOutputs(node.name())) {
       for (int i = 0; i < output->input_size(); ++i) {
-        auto input = output->input(i);
-        StringPiece name = ParseNodeNameAsStringPiece(input, &position);
-        if (name == node.name() && /*control input*/ position < 0) {
+        const TensorId tensor = ParseTensorName(output->input(i));
+        if (tensor.node() == node.name() && tensor.index() < 0) {
           return true;
         }
       }
@@ -632,7 +605,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     CHECK(!inputs.empty()) << "Inputs must be non-empty";
 
     // Do not create redundant AddN nodes
-    if (inputs.size() == 1) {
+    if (inputs.size() == 1 || root_node.attr().count("T") == 0) {
       return inputs[0];
     }
 
@@ -1268,7 +1241,12 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     // Bypass Bitcast whose source type and destination type are equal.
-    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+    AttrSlice attrs(*node);
+    DataType input_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "T", &input_type));
+    DataType output_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "type", &output_type));
+    if (input_type == output_type) {
       *simplified_node_name = node->input(0);
       return Status::OK();
     }
@@ -1279,9 +1257,12 @@ class RemoveRedundantBitcastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &operand));
 
     if (IsBitcast(*operand)) {
+      AttrSlice operand_attrs(*operand);
+      DataType operand_input_type;
+      TF_RETURN_IF_ERROR(GetNodeAttr(operand_attrs, "T", &operand_input_type));
       // Bitcast(Bitcast(x, type1), type2) => Bitcast(x, type2)
       bitcast->set_input(0, operand->input(0));
-      SetSourceDataType(GetSourceDataType(*operand), bitcast);
+      SetDataTypeToAttr(operand_input_type, "T", bitcast);
       ctx().node_map->UpdateInput(bitcast->name(), bitcast->input(0),
                                   operand->input(0));
       AddToOptimizationQueue(bitcast);
@@ -1306,7 +1287,12 @@ class RemoveRedundantCastStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(EnsureNodeIsSupported(node));
 
     // Bypass Cast whose source type and destination type are equal.
-    if (GetSourceDataType(*node) == GetDestinationDataType(*node)) {
+    AttrSlice attrs(*node);
+    DataType input_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "SrcT", &input_type));
+    DataType output_type;
+    TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "DstT", &output_type));
+    if (input_type == output_type) {
       *simplified_node_name = node->input(0);
     }
     return Status::OK();
@@ -1441,10 +1427,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
 
   bool IsSupported(const NodeDef* node) const override {
     if (IsInPreserveSet(*node)) return false;
-    if (IsConcat(*node)) {
+    if (IsConcat(*node) && node->attr().count("N") != 0) {
       const int n = node->attr().at("N").i();
       return n > 1;
-    } else if (IsSplit(*node) || IsSplitV(*node)) {
+    } else if ((IsSplit(*node) || IsSplitV(*node)) &&
+               node->attr().count("num_split") != 0) {
       const int num_split = node->attr().at("num_split").i();
       if (NumNonControlOutputs(*node, *ctx().node_map) > num_split) {
         // TODO(rmlarsen): Remove this constraint when we have optimizations
@@ -1547,6 +1534,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status InitializeChains(const NodeDef& node, ChainLinkSet* tails) const {
     if (node_is_concat_) {
       // Handle concat nodes by looking backwards in the graph.
+      TF_RETURN_IF_ERROR(CheckAttrExists(node, "N"));
       const int n = node.attr().at("N").i();
       const int start = node.op() == "Concat" ? 1 : 0;
       const int end = start + n;
@@ -1567,11 +1555,9 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
       const auto& outputs = ctx().node_map->GetOutputs(node.name());
       for (NodeDef* output : outputs) {
         if (IsControlInput(output->input(0))) continue;
-        int port;
-        const StringPiece node_name =
-            ParseNodeNameAsStringPiece(output->input(0), &port);
-        if (node_name == node.name()) {
-          tails->insert(ChainLink(output, port));
+        TensorId tensor_id = ParseTensorName(output->input(0));
+        if (tensor_id.node() == node.name()) {
+          tails->insert(ChainLink(output, tensor_id.index()));
         } else {
           // This output node has a non-control input other than the split node,
           // abort.
@@ -1618,14 +1604,12 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         new_tails->insert(ChainLink(new_tail, link.port_origin));
       } else {
         for (NodeDef* new_tail : ctx().node_map->GetOutputs(tail->name())) {
-          int port;
-          const StringPiece node_name =
-              ParseNodeNameAsStringPiece(new_tail->input(0), &port);
-          if (node_name != tail->name()) {
+          const TensorId tensor = ParseTensorName(new_tail->input(0));
+          if (tensor.node() != tail->name()) {
             return Status::OK();
           }
           // Skip control outputs.
-          if (port >= 0) {
+          if (tensor.index() >= 0) {
             // Remember original port.
             new_tails->insert(ChainLink(new_tail, link.port_origin));
           }
@@ -1779,12 +1763,70 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &y));
     // Optimize only if divisor is a Sqrt whose output is not being consumed
     // elsewhere.
-    if (IsSqrt(*y) && (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
+    if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
+        (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
       // a / sqrt(b) = a * rsqrt(b)
       node->set_op("Mul");
       y->set_op("Rsqrt");
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
+ public:
+  explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FuseSquaredDiffStage", ctx, ctx_ext) {}
+  ~FuseSquaredDiffStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsSquare(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &b));
+    // Optimize only if base is a Sub whose output is not being consumed
+    // elsewhere.
+    if (IsSub(*b) && !IsInPreserveSet(*b) &&
+        (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      node->set_op("Identity");
+      b->set_op("SquaredDifference");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(b);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Log(Softmax(x)) => LogSoftmax(x)
+class LogSoftmaxStage : public ArithmeticOptimizerStage {
+ public:
+  explicit LogSoftmaxStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("LogSoftmaxStage", ctx, ctx_ext) {}
+  ~LogSoftmaxStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override { return IsLog(*node); }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* x;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    // Optimize only if arg is a Softmax whose output is not being consumed
+    // elsewhere.
+    if (IsSoftmax(*x) && !IsInPreserveSet(*x) &&
+        (NumNonControlOutputs(*x, *ctx().node_map) == 1)) {
+      // Log(Softmax(x)) => LogSoftmax(Identity(x))
+      node->set_op("LogSoftmax");
+      x->set_op("Identity");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
     }
     return Status::OK();
   }
@@ -1849,87 +1891,136 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
   }
 };
 
-// Reorder Cast and Transpose if beneficial.
+// Reorder casting and value-preserving ops if beneficial.
 //
-// A common pattern after the layout optimizer is casting an uint8 NHWC
-// image to float before transposing it to NCHW. It is beneficial to reorder
-// the cast and the transpose to make the transpose process smaller amount
-// of data. This optimization converts
-//   Transpose(Cast(image, dst_type), perm)
+// Original motivation: A common pattern after the layout optimizer is
+// casting an uint8 NHWC image to float before transposing it to NCHW. It
+// is beneficial to reorder the cast and the transpose to make the transpose
+// process smaller amount of data. More generally, this optimization converts
+//   Op(Cast(tensor, dst_type))
 // to
-//   Cast(Transpose(image, perm), dst_type)
-// when sizeof(image.type) < sizeof(dst_type).
+//   Cast(Op(tensor), dst_type)
+// when sizeof(tensor.type) < sizeof(dst_type), and Op is any value-preserving
+// Op, i.e. an op that only reorders the elements in its first input. Similarly,
+// this optimization converts
+//   Cast(Op(tensor), dst_type)
+// to
+//   Op(Cast(tensor, dst_type))
+// when sizeof(tensor.type) > sizeof(dst_type)
 //
-// TODO(jingyue): This optimization can be generalized to a cast followed by
-// a chain of ops that merely reorder elements (e.g. Reshape and
-// DepthToSpace).
-class ReorderCastAndTranspose : public ArithmeticOptimizerStage {
+class ReorderCastLikeAndValuePreserving : public ArithmeticOptimizerStage {
  public:
-  explicit ReorderCastAndTranspose(const GraphOptimizerContext& ctx,
-                                   const ArithmeticOptimizerContext& ctx_ext)
-      : ArithmeticOptimizerStage("ReorderCastAndTranspose", ctx, ctx_ext) {}
-  ~ReorderCastAndTranspose() override = default;
+  explicit ReorderCastLikeAndValuePreserving(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("ReorderCastLikeAndValuePreserving", ctx,
+                                 ctx_ext) {}
+  ~ReorderCastLikeAndValuePreserving() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsTranspose(*node) && NodeIsOnCpuOrGpu(node);
+    return (IsValuePreserving(*node) || IsCastLike(*node)) &&
+           !IsCheckNumerics(*node) && NodeIsOnCpuOrGpu(node) &&
+           !IsControlFlow(*node) && !IsInPreserveSet(*node);
   }
 
-  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
-    const NodeDef* transpose = node;
-
-    // Verify that input to Transpose is the Cast op.
-    NodeDef* cast;
-    TF_RETURN_IF_ERROR(GetInputNode(transpose->input(0), &cast));
-    if (!IsCast(*cast)) return Status::OK();
-
-    // Input to the Cast-Transpose chain.
-    NodeDef* input;
-    TF_RETURN_IF_ERROR(GetInputNode(cast->input(0), &input));
-
-    const DataType src_type = GetSourceDataType(*cast);
-    const DataType dst_type = GetDestinationDataType(*cast);
-
-    const string src_type_name = DataTypeString(src_type);
-    const string dst_type_name = DataTypeString(dst_type);
-
-    // Check if nodes were not already optimized.
-    const string optimized_cast_name =
-        OptimizedNodeName(ParseNodeScopeAndName(cast->name()), dst_type_name);
-    const string optimized_transpose_name = OptimizedNodeName(
-        ParseNodeScopeAndName(transpose->name()), src_type_name);
-
-    bool is_already_optimized =
-        ctx().node_map->NodeExists(optimized_transpose_name) ||
-        ctx().node_map->NodeExists(optimized_cast_name);
-
-    if (IsNumberType(src_type) && IsNumberType(dst_type) &&
-        DataTypeSize(src_type) < DataTypeSize(dst_type) &&
-        !is_already_optimized) {
-      NodeDef* new_transpose = AddCopyNode(optimized_transpose_name, transpose);
-      (*new_transpose->mutable_attr())["T"].set_type(src_type);
-      new_transpose->set_input(0, cast->input(0));
-
-      ctx().node_map->AddOutput(input->name(), new_transpose->name());
-      ctx().node_map->AddOutput(NodeName(new_transpose->input(1)),
-                                new_transpose->name());
-
-      NodeDef* new_cast = AddCopyNode(optimized_cast_name, cast);
-      new_cast->set_input(0, new_transpose->name());
-      ctx().node_map->AddOutput(new_transpose->name(), new_cast->name());
-
-      AddToOptimizationQueue(new_transpose);
-      ForwardControlDependencies(new_transpose, {cast, node});
-
-      *simplified_node_name = new_cast->name();
+  Status TrySimplify(NodeDef* consumer, string* simplified_node_name) override {
+    NodeDef* producer;
+    TF_RETURN_IF_ERROR(GetInputNode(consumer->input(0), &producer));
+    const bool producer_is_cast = IsCastLike(*producer);
+    const bool can_optimize =
+        !IsCheckNumerics(*producer) &&
+        ((producer_is_cast && IsValuePreserving(*consumer)) ||
+         (IsValuePreserving(*producer) && IsCastLike(*consumer)));
+    if (!can_optimize || IsControlFlow(*producer) ||
+        producer->device() != consumer->device()) {
+      return Status::OK();
     }
+
+    const NodeDef* cast_like_node = producer_is_cast ? producer : consumer;
+    const OpDef* cast_like_op_def = nullptr;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(cast_like_node->op(),
+                                                         &cast_like_op_def));
+    DataType cast_src_type;
+    TF_RETURN_IF_ERROR(InputTypeForNode(*cast_like_node, *cast_like_op_def, 0,
+                                        &cast_src_type));
+    DataType cast_dst_type;
+    TF_RETURN_IF_ERROR(OutputTypeForNode(*cast_like_node, *cast_like_op_def, 0,
+                                         &cast_dst_type));
+    if (!IsFixedSizeType(cast_src_type) || !IsFixedSizeType(cast_dst_type)) {
+      return Status::OK();
+    } else if (producer_is_cast &&
+               DataTypeSize(cast_dst_type) <= DataTypeSize(cast_src_type)) {
+      return Status::OK();
+    } else if (!producer_is_cast &&
+               DataTypeSize(cast_dst_type) >= DataTypeSize(cast_src_type)) {
+      return Status::OK();
+    }
+
+    // Check that nodes were not already optimized.
+    const string optimized_producer_name = OptimizedNodeName(
+        ParseNodeScopeAndName(producer->name()), DataTypeString(cast_dst_type));
+    const string optimized_consumer_name = OptimizedNodeName(
+        ParseNodeScopeAndName(consumer->name()), DataTypeString(cast_src_type));
+    const bool is_already_optimized =
+        ctx().node_map->NodeExists(optimized_consumer_name) ||
+        ctx().node_map->NodeExists(optimized_producer_name);
+    if (is_already_optimized) {
+      return Status::OK();
+    }
+
+    // Add copies of consumer and producer in reverse order.
+    NodeDef* input;
+    TF_RETURN_IF_ERROR(GetInputNode(producer->input(0), &input));
+    // Create new producer node.
+    NodeDef* new_producer = AddCopyNode(optimized_consumer_name, consumer);
+    new_producer->set_input(0, producer->input(0));
+    ctx().node_map->AddOutput(input->name(), new_producer->name());
+
+    // Create new consumer node.
+    NodeDef* new_consumer = AddCopyNode(optimized_producer_name, producer);
+    new_consumer->set_input(0, new_producer->name());
+
+    NodeDef* new_value_preserving =
+        producer_is_cast ? new_producer : new_consumer;
+    const DataType new_input_type =
+        producer_is_cast ? cast_src_type : cast_dst_type;
+    // Update the input type of the value-preserving node. The input and
+    // output types of the cast-like nodes remain the same.
+    TF_RETURN_IF_ERROR(SetInputType(new_input_type, new_value_preserving));
+    // Make sure there is a kernel registered for the value preserving op
+    // with the new input type.
+    TF_RETURN_IF_ERROR(IsKernelRegisteredForNode(*new_value_preserving));
+    ctx().node_map->AddOutput(new_producer->name(), new_consumer->name());
+
+    AddToOptimizationQueue(new_producer);
+    *simplified_node_name = new_consumer->name();
 
     return Status::OK();
   }
 
  private:
+  // Sets the type of the first input to dtype.
+  Status SetInputType(DataType dtype, NodeDef* node) {
+    const OpDef* op_def = nullptr;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
+    const OpDef::ArgDef& input_arg = op_def->input_arg(0);
+    const string& type_attr_name = input_arg.type_attr();
+    if (type_attr_name.empty()) {
+      if (input_arg.type() == DT_INVALID || input_arg.type() != dtype) {
+        return errors::InvalidArgument("Could not set input type of ",
+                                       node->op(), " op to ",
+                                       DataTypeString(dtype));
+      } else {
+        // Op has fixed input type that already matches dtype.
+        return Status::OK();
+      }
+    }
+    SetDataTypeToAttr(dtype, type_attr_name, node);
+    return Status::OK();
+  }
   // This optimization can be dangerous on devices other than CPU and
   // GPU. The transpose might not be implemented for image.type, or
-  // might be slower with image.type than with dst_type.
+  // might be slower with image.type than with cast_dst_type.
   bool NodeIsOnCpuOrGpu(const NodeDef* node) const {
     using str_util::StrContains;
 
@@ -1940,7 +2031,10 @@ class ReorderCastAndTranspose : public ArithmeticOptimizerStage {
            (StrContains(device, DEVICE_CPU) || StrContains(device, DEVICE_GPU));
   }
 
-  bool IsNumberType(DataType dtype) { return kNumberTypes.Contains(dtype); }
+  bool IsFixedSizeType(DataType dtype) {
+    return dtype != DT_STRING && dtype != DT_VARIANT && dtype != DT_RESOURCE &&
+           !kQuantizedTypes.Contains(dtype);
+  }
 };
 
 // Fold a multiply of a scalar into the following convolution. This folding
@@ -2020,6 +2114,8 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     // Check that 'scale * weight' can be const folded.
     TF_RETURN_IF_TRUE(!IsConstant(*scale));
+    TF_RETURN_IF_ERROR(CheckAttrsExist(*scale, {"dtype", "value"}));
+    TF_RETURN_IF_ERROR(CheckAttrExists(*weights, "dtype"));
     TF_RETURN_IF_TRUE(scale->attr().at("dtype").type() !=
                       weights->attr().at("dtype").type());
 
@@ -2275,7 +2371,9 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
   ~SimplifyAggregation() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAggregate(*node) && NumNonControlInputs(*node) > 0;
+    return IsAggregate(*node) && NumNonControlInputs(*node) > 0 &&
+           GetDataTypeFromAttr(*node, "T") !=
+               DT_VARIANT;  // TODO(b/119787146): Enable for variants.
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -2371,11 +2469,10 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
     const auto& pow_props =
         ctx().graph_properties->GetInputProperties(node->name())[1];
-    for (int i = 0; i < pow_props.shape().dim_size(); ++i) {
-      if (pow_props.shape().dim(i).size() < 0) {
-        // skip if p is is not fully defined.
-        return Status::OK();
-      }
+    PartialTensorShape shape(pow_props.shape());
+    if (!shape.IsFullyDefined()) {
+      // skip if p is not fully defined.
+      return Status::OK();
     }
     if (TensorShape::IsValid(pow_props.shape()) && pow_props.has_value()) {
       Tensor pow(pow_props.dtype(), pow_props.shape());
@@ -2423,11 +2520,10 @@ class ConvertPowStage : public ArithmeticOptimizerStage {
         AddToOptimizationQueue(y);
       } else if (curr == complex128(0, 0) &&
                  ShapesSymbolicallyEqual(value_props.shape(), output_shape)) {
-        for (int i = 0; i < value_props.shape().dim_size(); ++i) {
-          if (value_props.shape().dim(i).size() < 0) {
-            // skip if b is is not fully defined.
-            return Status::OK();
-          }
+        PartialTensorShape shape(value_props.shape());
+        if (!shape.IsFullyDefined()) {
+          // skip if b is not fully defined.
+          return Status::OK();
         }
         if (TensorShape::IsValid(value_props.shape()) &&
             value_props.has_value()) {
@@ -2683,21 +2779,28 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMax(*node) || IsMin(*node);
+    return IsAnyMax(*node) || IsAnyMin(*node) || IsAnyMaxPool(*node) ||
+           IsArgMax(*node) || IsArgMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
                      string* simplified_node_name) override {
+    if (IsInPreserveSet(*reduction_node)) {
+      return Status::OK();
+    }
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
     // Optimize only if:
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
+    // 3. is monotonic increasing if reduction_node is a pooling operation
+    //    since we don't have MinPool operations.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
-        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -2711,9 +2814,15 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        const string opposite = FlipMinMax(*reduction_node);
         reduction_node->set_op(opposite);
       }
+
+      if (IsArgMax(*reduction_node) || IsArgMin(*reduction_node)) {
+        // ArgMax(Sqrt(x)) = ArgMax(x)
+        inner_function->set_op("Identity");
+      }
+
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);
@@ -2732,6 +2841,16 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
+    }
+  }
+
+ private:
+  string FlipMinMax(const NodeDef& node) {
+    const string& op = node.op();
+    if (IsAnyMax(node) || IsArgMax(node)) {
+      return str_util::StringReplace(op, "Max", "Min", false);
+    } else {
+      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };
@@ -2794,6 +2913,7 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
   }
 
   Status TrySimplify(NodeDef* root, string* simplified_node_name) override {
+    TF_RETURN_IF_ERROR(CheckAttrExists(*root, "T"));
     DataType dtype = root->attr().at("T").type();
 
     // Keep a trace of all supported input nodes that can be fused together.
@@ -2902,6 +3022,284 @@ class UnaryOpsComposition : public ArithmeticOptimizerStage {
   std::unordered_set<string> fused_nodes_;
 };
 
+// Replace operations of the form:
+//    x = stack((a_0, a_1, ..., a_{n-1}), axis=k)[:,...,i,...]
+// with
+//    a_i
+// when the strided slice index `i` is applied in the k'th axis.
+//
+// Similarly, replace operations of the form:
+//    x = stack((a_0, a_1, ..., a_{n-1}), axis=k)[:,...,i:i+1,...]
+// with
+//    expand_dims(a_i, axis=k)
+//
+// TODO(ebrevdo): Extend to also replace operations of the form
+//    concat((a_0, a_1, ..., ), axis=k)[:, ..., s_i:s_{i+1}, ...]
+// with
+//    a_i,
+// when
+//    s_i = cumsum(shape(a)[k] for a in (a_0, ...,))[i]
+// and slicing is in the k'th axis.
+class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
+ public:
+  explicit RemoveStackStridedSliceSameAxis(
+      const GraphOptimizerContext& ctx,
+      const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("RemoveStackStridedSliceSameAxis", ctx,
+                                 ctx_ext) {}
+  ~RemoveStackStridedSliceSameAxis() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsStridedSlice(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    // *node is a StridedSlice NodeDef.
+    NodeDef* pack;
+
+    // Get the input and see if it's a Pack op.
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &pack));
+    if (!IsPack(*pack)) return Status::OK();
+
+    bool return_early;
+    PartialTensorShape pack_output_shape;
+    int pack_axis;
+    TF_RETURN_IF_ERROR(
+        CheckInputs(node, pack, &pack_output_shape, &pack_axis, &return_early));
+    if (return_early) return Status::OK();
+
+    int slice_start_value;
+    bool found;
+    TF_RETURN_IF_ERROR(GetSliceAxis(node, pack, pack_output_shape, pack_axis,
+                                    &slice_start_value, &found));
+    if (!found) return Status::OK();
+
+    return RewriteGraph(node, pack, slice_start_value, pack_axis,
+                        simplified_node_name);
+  }
+
+ protected:
+  bool IsReallyConstant(const NodeDef& node) const {
+    if (!IsConstant(node)) {
+      return false;
+    }
+    // If the node is fed it's not constant anymore.
+    return ctx().feed_nodes->find(node.name()) == ctx().feed_nodes->end();
+  }
+
+  bool GetConstantAsInt64(const NodeDef& node, DataType dtype,
+                          std::vector<int64>* values) {
+    if (dtype == DT_INT32) {
+      std::vector<int32> values_int32;
+      if (!ValuesFromConstNode(node, &values_int32)) {
+        return false;
+      }
+      std::copy(values_int32.begin(), values_int32.end(),
+                std::inserter(*values, values->begin()));
+      return true;
+    } else {
+      return ValuesFromConstNode(node, values);
+    }
+  }
+
+  Status CheckInputs(const NodeDef* node, const NodeDef* pack,
+                     PartialTensorShape* pack_output_shape, int* pack_axis,
+                     bool* return_early) {
+    *return_early = true;
+    TF_RETURN_IF_ERROR(CheckAttrExists(*pack, "axis"));
+
+    *pack_axis = pack->attr().at("axis").i();
+    auto slice_properties =
+        ctx().graph_properties->GetInputProperties(node->name());
+    if (slice_properties.empty() ||
+        slice_properties[0].shape().unknown_rank()) {
+      return Status::OK();
+    }
+    *pack_output_shape = slice_properties[0].shape();
+    const int pack_input_rank = pack_output_shape->dims() - 1;
+    if (*pack_axis < 0) {
+      // The ndims of any input into Pack op is its output ndims - 1.
+      *pack_axis += pack_input_rank;
+    }
+    if (*pack_axis < 0 || *pack_axis >= pack_input_rank) {
+      return errors::InvalidArgument(
+          "Pack node (", pack->name(),
+          ") axis attribute is out of bounds: ", pack->attr().at("axis").i());
+    }
+    *return_early = false;
+    return Status::OK();
+  }
+
+  Status GetSliceAxis(const NodeDef* node, const NodeDef* pack,
+                      const PartialTensorShape& pack_output_shape,
+                      int pack_axis, int* slice_start_value, bool* found) {
+    *found = false;
+    TF_RETURN_IF_ERROR(
+        CheckAttrsExist(*node, {"begin_mask", "end_mask", "ellipsis_mask",
+                                "new_axis_mask", "shrink_axis_mask"}));
+
+    const int begin_mask = node->attr().at("begin_mask").i();
+    const int end_mask = node->attr().at("end_mask").i();
+    const int ellipsis_mask = node->attr().at("ellipsis_mask").i();
+    const int new_axis_mask = node->attr().at("new_axis_mask").i();
+    const int shrink_axis_mask = node->attr().at("shrink_axis_mask").i();
+
+    // Check that the StridedSlice is one of these at pack_axis:
+    //   [..., i, ...]
+    //   [..., i:i+1, ...]
+    //   [..., :1, ...]
+    //   [..., -1:, ...]
+    ///  [..., s_{pack_axis}-1:, ...]
+    NodeDef* slice_begin;
+    NodeDef* slice_end;
+    NodeDef* slice_strides;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(1), &slice_begin));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(2), &slice_end));
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(3), &slice_strides));
+
+    for (const auto* n : {slice_begin, slice_end, slice_strides}) {
+      if (!IsReallyConstant(*n)) return Status::OK();
+    }
+
+    Tensor slice_begin_t;
+    Tensor slice_end_t;
+    Tensor slice_strides_t;
+
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_begin, "value"));
+    if (!slice_begin_t.FromProto(slice_begin->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_end, "value"));
+    if (!slice_end_t.FromProto(slice_end->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(CheckAttrExists(*slice_strides, "value"));
+    if (!slice_strides_t.FromProto(
+            slice_strides->attr().at("value").tensor())) {
+      return Status::OK();
+    }
+    TensorShape processing_shape;
+    TensorShape final_shape;
+    bool is_identity;
+    bool is_simple_slice;
+    bool slice_dim0;
+    gtl::InlinedVector<int64, 4> slice_begin_vec;
+    gtl::InlinedVector<int64, 4> slice_end_vec;
+    gtl::InlinedVector<int64, 4> slice_strides_vec;
+    TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
+        &slice_begin_t, &slice_end_t, slice_strides_t, pack_output_shape,
+        begin_mask, end_mask, ellipsis_mask, new_axis_mask, shrink_axis_mask,
+        &processing_shape, &final_shape, &is_identity, &is_simple_slice,
+        &slice_dim0, &slice_begin_vec, &slice_end_vec, &slice_strides_vec));
+
+    if (!is_simple_slice) return Status::OK();
+
+    int begin_index = -1;
+    int64 begin_value = 0;
+    for (int i = 0; i < slice_begin_vec.size(); ++i) {
+      const int64 v = slice_begin_vec[i];
+      if (v != 0) {
+        if (begin_index != -1) {
+          // At least two start values that are nonzero.
+          return Status::OK();
+        }
+        begin_index = i;
+        begin_value = v;
+      }
+    }
+
+    int end_index = -1;
+    int64 end_value = 0;
+    for (int i = 0; i < slice_end_vec.size(); ++i) {
+      const int64 v = slice_end_vec[i];
+      if (v != pack_output_shape.dim_size(i)) {
+        if (end_index != -1) {
+          // At least two end values that are nonzero.
+          return Status::OK();
+        }
+        end_index = i;
+        end_value = v;
+      }
+    }
+
+    if (begin_index == -1 && end_index == -1) return Status::OK();
+    if (begin_index != -1 && end_index != -1 && begin_index != end_index) {
+      // Somehow received different axes for begin/end slicing
+      return Status::OK();
+    }
+    const int slice_axis = (begin_index == -1) ? end_index : begin_index;
+    if (slice_axis != pack_axis) {
+      // Not slicing on the same axis as the Pack op.
+      return Status::OK();
+    }
+    *slice_start_value = (begin_index == -1) ? 0 : begin_value;
+    const int64 slice_end_value =
+        (end_index == -1) ? pack_output_shape.dim_size(slice_axis) : end_value;
+    if (slice_end_value != *slice_start_value + 1) {
+      // Not slicing a single value out.
+      return Status::OK();
+    }
+
+    if (*slice_start_value < 0 || *slice_start_value >= pack->input_size()) {
+      return errors::InvalidArgument(
+          "Node ", node->name(), " requested invalid slice index ",
+          *slice_start_value, " on axis ", slice_axis,
+          " from tensor of shape: ", pack_output_shape.DebugString());
+    }
+
+    *found = true;  // slice_start_value is valid.
+    return Status::OK();
+  }
+
+  Status RewriteGraph(const NodeDef* node, const NodeDef* pack,
+                      int slice_start_value, int pack_axis,
+                      string* simplified_node_name) {
+    OpInfo::TensorProperties input_slice_properties;
+    NodeDef* input_slice;
+    TF_RETURN_IF_ERROR(
+        GetInputNode(pack->input(slice_start_value), &input_slice));
+    TF_RETURN_IF_ERROR(GetTensorProperties(pack->input(slice_start_value),
+                                           &input_slice_properties));
+    PartialTensorShape input_slice_shape(input_slice_properties.shape());
+
+    OpInfo::TensorProperties output_properties;
+    TF_RETURN_IF_ERROR(GetTensorProperties(
+        strings::StrCat(node->name(), ":", 0), &output_properties));
+    PartialTensorShape output_shape(output_properties.shape());
+    NodeDef* output =
+        AddEmptyNode(OptimizedNodeName(ParseNodeScopeAndName(node->name())));
+    if (input_slice_shape.IsCompatibleWith(output_shape)) {
+      output->set_op("Identity");
+      output->set_device(node->device());
+      SetDataTypeToAttr(output_properties.dtype(), "T", output);
+      output->add_input(input_slice->name());
+    } else {
+      NodeDef* axis = AddEmptyNode(
+          OptimizedNodeName(ParseNodeScopeAndName(node->name()), "Axis"));
+      axis->set_op("Const");
+      axis->set_device(node->device());
+      auto axis_attr = axis->mutable_attr();
+      SetDataTypeToAttr(DT_INT32, "dtype", axis);
+      auto* axis_t = (*axis_attr)["value"].mutable_tensor();
+      axis_t->set_dtype(DT_INT32);
+      axis_t->add_int_val(pack_axis);
+      AddToOptimizationQueue(axis);
+      output->set_op("ExpandDims");
+      output->set_device(node->device());
+      SetDataTypeToAttr(output_properties.dtype(), "T", output);
+      output->add_input(input_slice->name());
+      output->add_input(axis->name());
+    }
+
+    // Copy dependencies over.
+    ForwardControlDependencies(output, {node, pack});
+    AddToOptimizationQueue(output);
+    *simplified_node_name = output->name();
+
+    return Status::OK();
+  }
+};
+
 }  // namespace
 
 class UniqueNodes {
@@ -2919,26 +3317,31 @@ class UniqueNodes {
   }
 
  private:
-  uint64 ComputeSignature(const NodeDef& node) const;
+  uint64 ComputeSignature(const NodeDef& node);
   bool SameNode(const NodeDef& node1, const NodeDef& node2) const;
 
-  std::unordered_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<uint64, std::vector<NodeDef*>> rep_;
+  absl::flat_hash_map<const NodeDef*, uint64> memoized_signatures_;
 };
 
-uint64 UniqueNodes::ComputeSignature(const NodeDef& node) const {
+uint64 UniqueNodes::ComputeSignature(const NodeDef& node) {
+  auto it = memoized_signatures_.find(&node);
+  if (it != memoized_signatures_.end()) return it->second;
+
   uint64 h = Hash64(node.op());
   h = Hash64Combine(Hash64(node.device()), h);
 
   for (const auto& input : node.input()) {
-    int pos;
-    const StringPiece node_name = ParseNodeNameAsStringPiece(input, &pos);
-    h = Hash64CombineUnordered(Hash64(node_name.data(), node_name.size()), h);
-    h = Hash64CombineUnordered(std::hash<int>()(pos), h);
+    const TensorId input_tensor = ParseTensorName(input);
+    h = Hash64CombineUnordered(
+        Hash64(input_tensor.node().data(), input_tensor.node().size()), h);
+    h = Hash64CombineUnordered(std::hash<int>()(input_tensor.index()), h);
   }
   for (const auto& attr : node.attr()) {
     h = Hash64CombineUnordered(Hash64(attr.first), h);
     h = Hash64CombineUnordered(FastAttrValueHash(attr.second), h);
   }
+  memoized_signatures_.emplace(&node, h);
   return h;
 }
 
@@ -2959,31 +3362,29 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   // Compare inputs.
   if (IsCommutative(node1)) {
     std::vector<string> inputs1(node1.input().begin(), node1.input().end());
-    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs1.begin(), inputs1.end());
+    std::vector<string> inputs2(node2.input().begin(), node2.input().end());
     std::sort(inputs2.begin(), inputs2.end());
     return inputs1 == inputs2;
   } else {
-    std::vector<string> regular_inputs1;
-    std::vector<string> regular_inputs2;
-    std::vector<string> ctrl_inputs1;
-    std::vector<string> ctrl_inputs2;
-    for (int index = 0; index < node1.input_size(); ++index) {
+    // The order or ordinary inputs matters.
+    int index = 0;
+    for (; index < node1.input_size(); ++index) {
       if (IsControlInput(node1.input(index))) {
-        ctrl_inputs1.push_back(node1.input(index));
-        ctrl_inputs2.push_back(node2.input(index));
-      } else {
-        regular_inputs1.push_back(node1.input(index));
-        regular_inputs2.push_back(node2.input(index));
+        break;
+      } else if (node1.input(index) != node2.input(index)) {
+        return false;
       }
     }
-    if (regular_inputs1 != regular_inputs2) {
-      return false;
-    }
-    std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
-    std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
-    if (ctrl_inputs1 != ctrl_inputs2) {
-      return false;
+    // The order of control inputs does not matter.
+    if (index < node1.input_size()) {
+      std::vector<string> ctrl_inputs1(node1.input().begin() + index,
+                                       node1.input().end());
+      std::sort(ctrl_inputs1.begin(), ctrl_inputs1.end());
+      std::vector<string> ctrl_inputs2(node2.input().begin() + index,
+                                       node2.input().end());
+      std::sort(ctrl_inputs2.begin(), ctrl_inputs2.end());
+      return ctrl_inputs1 != ctrl_inputs2;
     }
   }
 
@@ -3000,25 +3401,6 @@ bool UniqueNodes::SameNode(const NodeDef& node1, const NodeDef& node2) const {
   return true;
 }
 
-namespace {
-
-bool FeedsInPlaceOp(const SimpleGraphView& graph_view, const NodeDef& node) {
-  const std::unordered_set<string> op_types_to_traverse = {
-      node.op(),    "Identity", "IdentityN", "Reshape",
-      "ExpandDims", "Enter",    "Switch",    "Merge"};
-  int node_idx = graph_view.index(node.name());
-  std::set<int> node_fanout;
-  graph_view.DepthFirstSearch(op_types_to_traverse, node_idx, &node_fanout);
-  for (int fanout : node_fanout) {
-    if (ModifiesInputsInPlace(graph_view.graph()->node(fanout))) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
-
 bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
@@ -3029,31 +3411,48 @@ bool ArithmeticOptimizer::CanDedup(const NodeDef& node) const {
   if (node.device().find("SPU") != string::npos) {
     return false;
   }
-  // Workaround for Assert mistakenly being labeled as stateful.
-  if (IsAssert(node)) {
+  // Workaround for Assert and Print mistakenly being labeled as stateful.
+  if (IsAssert(node) || IsPrint(node)) {
     return true;
   }
   return IsFreeOfSideEffect(node);
 }
 
 void ArithmeticOptimizer::DedupComputations() {
-  bool stop = true;
-  SimpleGraphView graph_view;
-  if (!graph_view.Initialize(*optimized_graph_).ok()) {
-    LOG(WARNING) << "Failed to build SimpleGraphView.";
+  GraphTopologyView graph_view;
+  if (!graph_view.InitializeFromGraph(*optimized_graph_).ok()) {
+    LOG(WARNING) << "Failed to initialize GraphTopologyView.";
     return;
   }
-  std::set<int> duplicates;
+
+  const absl::flat_hash_set<string> ops_to_traverse = {
+      "Identity", "IdentityN", "Reshape", "ExpandDims",
+      "Enter",    "Switch",    "Merge"};
+
   // Populate feed_inplace_op;
-  std::unordered_set<NodeDef*> feeds_inplace_op;
-  for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    if (FeedsInPlaceOp(graph_view, optimized_graph_->node(i))) {
-      feeds_inplace_op.insert(optimized_graph_->mutable_node(i));
+  absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
+
+  for (const NodeDef& root : optimized_graph_->node()) {
+    if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
+
+    if (ModifiesInputsInPlace(root)) {
+      const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
+        return node->op() == root.op() || ops_to_traverse.count(node->op()) > 0;
+      };
+
+      DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
+                   DfsPredicates::Advance(is_continue_traversal),
+                   DfsCallbacks::PreOrder([&](const NodeDef* node) {
+                     feeds_inplace_op.insert(node);
+                   }));
     }
   }
+
+  bool stop = true;
+  std::set<int> duplicates;
+  UniqueNodes nodes;
   do {
     stop = true;
-    UniqueNodes nodes;
     for (int i = 0; i < optimized_graph_->node_size(); ++i) {
       if (duplicates.find(i) != duplicates.end()) {
         continue;
@@ -3076,7 +3475,8 @@ void ArithmeticOptimizer::DedupComputations() {
       }
       VLOG(3) << "Remove duplicated node: node=" << node->name()
               << " representative=" << rep->name();
-      const std::set<NodeDef*>& fanouts = node_map_->GetOutputs(node->name());
+      const std::set<NodeDef*>& tmp = node_map_->GetOutputs(node->name());
+      std::vector<NodeDef*> fanouts(tmp.begin(), tmp.end());
       for (NodeDef* fanout : fanouts) {
         for (int i = 0; i < fanout->input_size(); ++i) {
           string* fanout_input = fanout->mutable_input(i);
@@ -3132,7 +3532,7 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
 
   const GraphOptimizerContext ctx(&nodes_to_preserve_, optimized_graph_,
                                   graph_properties_.get(), node_map_.get(),
-                                  opt_level_);
+                                  &feed_nodes_, opt_level_);
   const ArithmeticOptimizerContext ctx_ext(&nodes_to_simplify);
 
   // Stop pipeline after first stage returning non-empty simplified tensor name.
@@ -3167,8 +3567,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<ReplaceMulWithSquare>(ctx, ctx_ext);
   if (options_.remove_logical_not)
     pipeline.AddStage<RemoveLogicalNotStage>(ctx, ctx_ext);
-  if (options_.reorder_cast_and_transpose)
-    pipeline.AddStage<ReorderCastAndTranspose>(ctx, ctx_ext);
+  if (options_.reorder_cast_like_and_value_preserving)
+    pipeline.AddStage<ReorderCastLikeAndValuePreserving>(ctx, ctx_ext);
   if (options_.simplify_aggregation)
     pipeline.AddStage<SimplifyAggregation>(ctx, ctx_ext);
   if (options_.hoist_cwise_unary_chains)
@@ -3180,17 +3580,24 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.convert_log_softmax)
+    pipeline.AddStage<LogSoftmaxStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
   if (options_.convert_expm1)
     pipeline.AddStage<ConvertExpm1Stage>(ctx, ctx_ext);
   if (options_.unary_ops_composition)
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
+  if (options_.remove_stack_strided_slice_same_axis)
+    pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.fuse_squared_diff)
+    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");
 
   while (!nodes_to_simplify.Empty()) {
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
     NodeDef* node = nodes_to_simplify.PopBack();
 
     string simplified_tensor = "";
@@ -3244,18 +3651,22 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   // Set up helper data structures.
   nodes_to_preserve_ = item.NodesToPreserve();
   fetch_nodes_known_ = !item.fetch.empty();
-  *optimized_graph = item.graph;
-  GrapplerItem optimized_item(item, optimized_graph);
+  GrapplerItem optimized_item(item);
   optimized_graph_ = &optimized_item.graph;
   node_map_.reset(new NodeMap(optimized_graph_));
 
+  for (const auto& feed : item.feed) {
+    feed_nodes_.insert(NodeName(feed.first));
+  }
+
   // Disable restricted graph rewrites.
   options_.unary_ops_composition &=
-      item.allowed_optimizations.non_differentiable_rewrites;
+      item.optimization_options().allow_non_differentiable_rewrites;
 
   if (options_.dedup_computations) {
     DedupComputations();
   }
+  GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
   // Perform topological sort on the graph in order to help AddOpsRewrite to
   // optimize larger subgraphs starting from the roots with more inputs.

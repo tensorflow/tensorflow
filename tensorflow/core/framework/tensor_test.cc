@@ -830,6 +830,45 @@ TEST(Tensor_Scalar, Basics) {
   }
 }
 
+TEST(Tensor_HostScalar, Basics) {
+  {
+    Tensor t(true);
+    EXPECT_EQ(DT_BOOL, t.dtype());
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<bool>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    EXPECT_TRUE(Tt());
+    Tt() = false;
+    EXPECT_FALSE(Tt());
+  }
+  {
+    Tensor t(123.45f);
+    EXPECT_EQ(DT_FLOAT, t.dtype());
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<float>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    EXPECT_FLOAT_EQ(123.45f, Tt());
+    Tt() = 42.0f;
+    EXPECT_FLOAT_EQ(42.0f, Tt());
+  }
+  {
+    // NOTE(mrry): Use long enough strings so that the contents are dynamically
+    // allocated, and the absence of a call to the string destructor would
+    // cause a memory leak.
+    Tensor t("fooooooooooooooooooooooooooooooooooooo");
+    EXPECT_EQ(DT_STRING, t.dtype());
+    EXPECT_EQ(1, t.NumElements());
+    auto Tt = t.scalar<string>();
+    EXPECT_EQ(1, Tt.size());
+    EXPECT_EQ(0, Tt.rank());
+    EXPECT_EQ("fooooooooooooooooooooooooooooooooooooo", Tt());
+    Tt() = "baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaar";
+    EXPECT_EQ("baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaar", Tt());
+  }
+}
+
 TEST(Tensor_Float, Reshape_And_Slice_Assignment) {
   // A test to experiment with a way to assign to a subset of a tensor
   Tensor t(DT_FLOAT, TensorShape({10, 4, 3, 2}));
@@ -1331,7 +1370,7 @@ TEST(SummarizeValue, STRING) {
   EXPECT_EQ("one two three four five", x.SummarizeValue(16));
   x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
                        {"one", "two", "three", "four", "five"});
-  EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
+  EXPECT_EQ("[[one two three four five]][[one...]]...", x.SummarizeValue(6));
 }
 
 TEST(SummarizeValue, INT32_PRINT_V2) {
@@ -1384,11 +1423,16 @@ TEST(SummarizeValue, BOOL_PRINT_V2) {
 TEST(SummarizeValue, STRING_PRINT_V2) {
   Tensor x = MkTensor<string>(DT_STRING, TensorShape({5}),
                               {"one", "two", "three", "four", "five"});
-  EXPECT_EQ("[one two three four five]", x.SummarizeValue(16, true));
-  EXPECT_EQ("[one two three four five]", x.SummarizeValue(-1, true));
-  x = MkTensor<string>(DT_STRING, TensorShape({5, 1, 5}),
+  EXPECT_EQ("[\"one\" \"two\" \"three\" \"four\" \"five\"]",
+            x.SummarizeValue(16, true));
+  EXPECT_EQ("[\"one\" \"two\" \"three\" \"four\" \"five\"]",
+            x.SummarizeValue(-1, true));
+  EXPECT_EQ("[\"one\" \"two\" ... \"four\" \"five\"]",
+            x.SummarizeValue(2, true));
+  x = MkTensor<string>(DT_STRING, TensorShape({2, 2}),
                        {"one", "two", "three", "four", "five"});
-  EXPECT_EQ("[one two three four five one...]", x.SummarizeValue(6, true));
+  EXPECT_EQ("[[\"one\" \"two\"]\n [\"three\" \"four\"]]",
+            x.SummarizeValue(16, true));
 }
 
 void BM_CreateAndDestroy(int iters) {
@@ -1451,6 +1495,27 @@ void BM_CreateAndMoveCtrWithBuf(int iters) {
   }
 }
 BENCHMARK(BM_CreateAndMoveCtrWithBuf);
+
+// Benchmark creating and destroy a host-scalar tensor, using the allocator
+// interface.
+void BM_CreateAndDestroyHostScalarNonOptimized(int iters) {
+  TensorShape shape({});
+  Allocator* allocator = cpu_allocator();
+  while (--iters) {
+    Tensor a(allocator, DT_FLOAT, shape);
+    a.scalar<float>()() = 37.0;
+  }
+}
+BENCHMARK(BM_CreateAndDestroyHostScalarNonOptimized);
+
+// Benchmark creating and destroy a host-scalar tensor, using the specialized
+// constructor.
+void BM_CreateAndDestroyHostScalarOptimized(int iters) {
+  while (--iters) {
+    Tensor a(37.0);
+  }
+}
+BENCHMARK(BM_CreateAndDestroyHostScalarOptimized);
 
 }  // namespace
 }  // namespace tensorflow

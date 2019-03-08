@@ -44,6 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+@test_util.run_v1_only("b/120545219")
 class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   """Test the debugging of distributed sessions."""
 
@@ -59,8 +60,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     cluster_spec = "worker|localhost:%d" % worker_port
     tf_logging.info("cluster_spec: %s", cluster_spec)
 
-    server_bin = test.test_src_dir_path(
-        "tools/dist_test/server/grpc_tensorflow_server")
+    server_bin = test.test_src_dir_path("python/debug/grpc_tensorflow_server")
 
     cls.server_target = "grpc://localhost:%d" % worker_port
 

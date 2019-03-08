@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -35,11 +36,22 @@ class XlaResource {
     kTensorArray,
     kStack,
   };
+  static absl::string_view KindToString(Kind kind);
+
+  // Creates a new Stack resource.
+  static std::unique_ptr<XlaResource> CreateStack(string name, DataType type,
+                                                  int64 max_size);
+
+  // Creates a new TensorArray resource.
+  static std::unique_ptr<XlaResource> CreateTensorArray(
+      string name, DataType type, TensorShape shape, xla::XlaOp initial_value,
+      int64 max_array_size);
 
   XlaResource(Kind kind, int arg_num, string name, DataType type,
               TensorShape shape, const xla::XlaOp& initial_value,
-              int64 tensor_array_size,
-              const std::set<string>& tensor_array_gradients);
+              int64 max_array_size,
+              const std::set<string>& tensor_array_gradients,
+              bool tensor_array_multiple_writes_aggregate);
 
   XlaResource(const XlaResource&) = delete;
   XlaResource(XlaResource&&) = delete;
@@ -74,6 +86,12 @@ class XlaResource {
   // variables have new values that need to be written back.
   const xla::XlaOp& initial_value() const { return initial_value_; }
 
+  // An xla shape that indicates how this resource variable is represented on
+  // device.
+  const absl::optional<xla::Shape>& representation_shape() const {
+    return representation_shape_;
+  }
+
   // A variable is initialized if it has a value.
   bool initialized() const { return value_.valid(); }
 
@@ -87,6 +105,11 @@ class XlaResource {
 
   // Sets the current value of the resource to an all-zero value.
   Status SetZeroValue(xla::XlaBuilder* builder);
+
+  // Sets the representational shape of the resource on device.
+  void SetRepresentationShape(const xla::Shape& shape) {
+    representation_shape_ = absl::make_optional(shape);
+  }
 
   // Looks up the gradient for `source`, or creates it if it does not already
   // exist. The call target must be an initialized TensorArray resource. A
@@ -113,13 +136,19 @@ class XlaResource {
                      const xla::XlaOp& pack, xla::XlaBuilder* builder);
 
   // TensorArray and Stack specific fields
+  // TODO(phawkins): refactor this code to use subclasses, rather than putting
+  // kind-specific fields in XlaResource.
 
-  // 'tensor_array_size' stores the expected size of the TensorArray or Stack.
+  // 'max_array_size' stores the expected size of the TensorArray or Stack.
   // We need to store this since sometimes TensorArrays must be initialized
   // lazily since we do not know the element shape at construction time.
   // Used by both TensorArrays and Stacks.
-  int64 tensor_array_size() const { return tensor_array_size_; }
-  void set_tensor_array_size(int64 size) { tensor_array_size_ = size; }
+  int64 max_array_size() const { return max_array_size_; }
+  void set_max_array_size(int64 size) { max_array_size_ = size; }
+
+  bool tensor_array_multiple_writes_aggregate() const {
+    return tensor_array_multiple_writes_aggregate_;
+  }
 
   // 'tensor_array_gradient' is a map from TensorArrayGradV3 'source' attributes
   // to an XlaResource containing the gradient TensorArrays. We store a pointer
@@ -142,7 +171,12 @@ class XlaResource {
   xla::XlaOp value_;
   xla::XlaOp initial_value_;
 
-  int64 tensor_array_size_ = -1;
+  // An xla shape that indicates how this resource variable is represented on
+  // device.
+  absl::optional<xla::Shape> representation_shape_;
+
+  int64 max_array_size_ = -1;
+  bool tensor_array_multiple_writes_aggregate_ = false;
 
   std::map<string, std::unique_ptr<XlaResource>> tensor_array_gradients_;
 };

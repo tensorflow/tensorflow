@@ -356,6 +356,14 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   TF_CHECK_OK(file_to_write->Close());
   TF_CHECK_OK(env->FileExists(filename));
 
+  // Open the file in append mode, check that Tell() reports the appropriate
+  // offset.
+  std::unique_ptr<WritableFile> file_to_append;
+  TF_CHECK_OK(env->NewAppendableFile(filename, &file_to_append));
+  int64 pos;
+  TF_CHECK_OK(file_to_append->Tell(&pos));
+  ASSERT_EQ(4, pos);
+
   // Read from the temporary file and check content.
   std::unique_ptr<RandomAccessFile> file_to_read;
   TF_CHECK_OK(env->NewRandomAccessFile(filename, &file_to_read));
@@ -382,6 +390,22 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(str_util::StartsWith(filename, prefix));
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
+}
+
+TEST_F(DefaultEnvTest, GetThreadInformation) {
+  Env* env = Env::Default();
+  // TODO(fishx): Turn on this test for Apple.
+#if !defined(__APPLE__)
+  EXPECT_NE(env->GetCurrentThreadId(), 0);
+#endif
+  string thread_name;
+  bool res = env->GetCurrentThreadName(&thread_name);
+#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+  EXPECT_FALSE(res);
+#elif !defined(__APPLE__)
+  EXPECT_TRUE(res);
+  EXPECT_GT(thread_name.size(), 0);
+#endif
 }
 
 }  // namespace tensorflow

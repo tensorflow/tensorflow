@@ -20,9 +20,9 @@ py_library(
     name = "utils",
     srcs = [
         "__init__.py",
+        "ag_logging.py",
         "context_managers.py",
         "misc.py",
-        "multiple_dispatch.py",
         "py_func.py",
         "tensor_list.py",
         "tensors.py",
@@ -34,7 +34,9 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/data/ops:dataset_ops",
         "@six_archive//:six",
@@ -54,16 +56,6 @@ py_test(
 py_test(
     name = "misc_test",
     srcs = ["misc_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":utils",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "multiple_dispatch_test",
-    srcs = ["multiple_dispatch_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":utils",

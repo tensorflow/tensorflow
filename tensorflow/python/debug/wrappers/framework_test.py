@@ -141,6 +141,7 @@ class TestDebugWrapperSessionBadAction(framework.BaseDebugWrapperSession):
     return framework.OnRunEndResponse()
 
 
+@test_util.run_deprecated_v1
 class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def _no_rewrite_session_config(self):
@@ -339,7 +340,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     with wrapper.as_default():
       foo = constant_op.constant(42, name="foo")
-      self.assertEqual(42, foo.eval())
+      self.assertEqual(42, self.evaluate(foo))
       self.assertEqual(foo, self._observer["run_fetches"])
 
   def testWrapperShouldSupportSessionClose(self):

@@ -24,10 +24,10 @@ limitations under the License.
 #include <numeric>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -36,6 +36,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA
 
@@ -328,14 +329,6 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
 };
 
 #if GOOGLE_CUDA
-
-template <typename T, typename IntType>
-struct SplitVOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, bool fixed, const T* input,
-           int total_cols, int total_rows,
-           const CudaDeviceArrayStruct<IntType>& output_scan,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
-};
 
 // Partial specialization for GPU
 template <typename T, typename Tlen>

@@ -25,6 +25,7 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -54,13 +55,6 @@ class IrArray {
   // multidimensional index, which LLVM DCE can delete.
   class Index {
    public:
-    // Constructs an index of rank "size". Each dimension of the index is
-    // initialized to "value".
-    explicit Index(size_t size, llvm::Value* value)
-        : multidim_(size, value), index_type_(value->getType()) {
-      CHECK_NE(index_type_, nullptr);
-    }
-
     // Constructs an index of rank "size". Each dimension of the index is
     // initialized to nullptr.
     explicit Index(llvm::Type* index_ty, size_t size = 0)
@@ -95,18 +89,19 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
-    // Constructs an index from the given multi-dimensional index and the shape
-    // that it indexes into.
-    //
-    // Precondition: "shape" has a layout.
-    Index(absl::Span<llvm::Value* const> multidim, const Shape& shape,
-          llvm::IRBuilder<>* b);
-
     // Constructs an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
     // only a linear index.
     Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
           const Shape& shape);
+
+    // Returns an index that adds `addend` to the given `dim` of the object.
+    Index AddOffsetToDim(llvm::Value* addend, int64 dim,
+                         llvm::IRBuilder<>* b) const {
+      IrArray::Index index = *this;
+      index[dim] = b->CreateAdd(index[dim], addend);
+      return index;
+    }
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
     llvm::Value* linear() const { return linear_; }
@@ -121,6 +116,11 @@ class IrArray {
       CHECK_LE(index, size());
       mutable_multidim().insert(mutable_multidim().begin() + index, value);
     }
+    void InsertAt(int64 index, int64 count, llvm::Value* value) {
+      CHECK_LE(index, size());
+      mutable_multidim().insert(mutable_multidim().begin() + index, count,
+                                value);
+    }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
@@ -131,13 +131,12 @@ class IrArray {
     const_iterator begin() const { return multidim().begin(); }
     const_iterator end() const { return multidim().end(); }
 
-    llvm::Value* back() const { return multidim().back(); }
-
     bool LinearValidOnShape(const Shape& a) const;
 
     // Given that "this" is the target index of a reshape from `operand_shape`
     // to `shape`, returns the source index.
-    Index SourceIndexOfReshape(const Shape& shape, const Shape& operand_shape,
+    Index SourceIndexOfReshape(const Shape& output_shape,
+                               const Shape& input_shape,
                                llvm::IRBuilder<>* builder) const;
 
     // Returns the index into the source operand from which a slice operation
@@ -180,6 +179,8 @@ class IrArray {
       return llvm::ConstantInt::get(index_type_, c);
     }
 
+    void ClearLinearIndex() { linear_ = nullptr; }
+
    private:
     // Changing the multi-dimensional index invalidates the linear index.
     std::vector<llvm::Value*>& mutable_multidim() {
@@ -211,11 +212,11 @@ class IrArray {
   };
 
   // Default constructor. Constructs an IrArray in a null status.
-  IrArray() : base_ptr_(nullptr), shape_(nullptr) {}
+  IrArray() : base_ptr_(nullptr) {}
 
   // Construct an IrArray with the given base pointer and shape. base_ptr is a
   // pointer type pointing to the first element(lowest address) of the array.
-  IrArray(llvm::Value* base_ptr, const Shape& shape);
+  IrArray(llvm::Value* base_ptr, Shape shape);
 
   // Default implementations of copying and moving.
   IrArray(IrArray&& other) = default;
@@ -226,10 +227,7 @@ class IrArray {
   llvm::Value* GetBasePointer() const { return base_ptr_; }
   llvm::Type* GetElementLlvmType() const { return element_type_; }
 
-  const Shape& GetShape() const {
-    CHECK(shape_ != nullptr);
-    return *shape_;
-  }
+  const Shape& GetShape() const { return shape_; }
 
   // Emit a sequence of instructions to compute the address of the element in
   // the given array at the given index. Returns the address of the element as
@@ -303,11 +301,6 @@ class IrArray {
 
   const std::map<int, llvm::MDNode*>& metadata() const { return metadata_; }
 
-  // Bumps the "which_dimension" value within the provided index by the provided
-  // addend.
-  static Index BumpIndex(const Index& index, int64 which_dimension,
-                         int64 addend, llvm::IRBuilder<>* b);
-
  private:
   // Add the specified LLVM IR metadata to loads/stores associated with this
   // IrArray.
@@ -322,7 +315,7 @@ class IrArray {
   llvm::Type* element_type_;
 
   // Shape of the XLA array.
-  const Shape* shape_;
+  Shape shape_;
 
   // The list of key/value pairs used when attaching metadata to emitted
   // loads/stores for this array.  They keys are the metadata kinds and the

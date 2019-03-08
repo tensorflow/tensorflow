@@ -33,19 +33,19 @@ from tensorflow.python.platform import test
 class ScopeTest(test.TestCase):
 
   def assertMissing(self, qn, scope):
-    self.assertNotIn(qn, scope.used)
+    self.assertNotIn(qn, scope.read)
     self.assertNotIn(qn, scope.modified)
 
   def assertReadOnly(self, qn, scope):
-    self.assertIn(qn, scope.used)
+    self.assertIn(qn, scope.read)
     self.assertNotIn(qn, scope.modified)
 
   def assertWriteOnly(self, qn, scope):
-    self.assertNotIn(qn, scope.used)
+    self.assertNotIn(qn, scope.read)
     self.assertIn(qn, scope.modified)
 
   def assertReadWrite(self, qn, scope):
-    self.assertIn(qn, scope.used)
+    self.assertIn(qn, scope.read)
     self.assertIn(qn, scope.modified)
 
   def test_basic(self):
@@ -121,7 +121,8 @@ class ActivityAnalyzerTest(test.TestCase):
         arg_types=None,
         owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     return node, entity_info
 
   def assertSymbolSetsAre(self, expected, actual, name):
@@ -137,7 +138,7 @@ class ActivityAnalyzerTest(test.TestCase):
 
   def assertScopeIs(self, scope, used, modified):
     """Assert the scope contains specific used, modified & created variables."""
-    self.assertSymbolSetsAre(used, scope.used, 'read')
+    self.assertSymbolSetsAre(used, scope.read, 'read')
     self.assertSymbolSetsAre(modified, scope.modified, 'modified')
 
   def test_print_statement(self):
@@ -459,6 +460,17 @@ class ActivityAnalyzerTest(test.TestCase):
     fn_node = node.body[0]
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('b', 'd'), ('a',))
+    self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
+
+  def test_lambda_nested(self):
+
+    def test_fn(a, b, c, d, e):  # pylint: disable=unused-argument
+      a = lambda a, b: d(lambda b: a + b + c)  # pylint: disable=undefined-variable
+
+    node, _ = self._parse_and_analyze(test_fn)
+    fn_node = node.body[0]
+    body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
+    self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
 
 

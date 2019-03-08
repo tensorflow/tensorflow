@@ -13,13 +13,14 @@
 # limitations under the License.
 # ==============================================================================
 set(tf_op_lib_names
-    "audio_ops"
     "array_ops"
+    "audio_ops"
     "batch_ops"
     "bitwise_ops"
     "boosted_trees_ops"
     "candidate_sampling_ops"
     "checkpoint_ops"
+    "collective_ops"
     "control_flow_ops"
     "ctc_ops"
     "cudnn_rnn_ops"
@@ -27,13 +28,14 @@ set(tf_op_lib_names
     "dataset_ops"
     "decode_proto_ops"
     "encode_proto_ops"
+    "function_ops"
     "functional_ops"
     "image_ops"
     "io_ops"
     "linalg_ops"
     "list_ops"
-    "lookup_ops"
     "logging_ops"
+    "lookup_ops"
     "manip_ops"
     "math_ops"
     "nn_ops"
@@ -43,10 +45,11 @@ set(tf_op_lib_names
     "remote_fused_graph_ops"
     "resource_variable_ops"
     "rpc_ops"
+    "scoped_allocator_ops"
     "script_ops"
     "sdca_ops"
-    "set_ops"
     "sendrecv_ops"
+    "set_ops"
     "sparse_ops"
     "spectral_ops"
     "state_ops"
@@ -54,6 +57,7 @@ set(tf_op_lib_names
     "string_ops"
     "summary_ops"
     "training_ops"
+    "word2vec_ops"
 )
 
 foreach(tf_op_lib_name ${tf_op_lib_names})
@@ -89,7 +93,6 @@ GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_prediction "${tensorflow_source_dir}/t
 GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_quantiles "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/quantile_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(boosted_trees_stats_accumulator "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/ops/stats_accumulator_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(coder "${tensorflow_source_dir}/tensorflow/contrib/coder/ops/coder_ops.cc")
-GENERATE_CONTRIB_OP_LIBRARY(data_dataset "${tensorflow_source_dir}/tensorflow/contrib/data/ops/dataset_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_clustering "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/clustering_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(factorization_factorization "${tensorflow_source_dir}/tensorflow/contrib/factorization/ops/factorization_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(framework_variable "${tensorflow_source_dir}/tensorflow/contrib/framework/ops/variable_ops.cc")
@@ -99,7 +102,6 @@ GENERATE_CONTRIB_OP_LIBRARY(image_distort_image "${tensorflow_source_dir}/tensor
 GENERATE_CONTRIB_OP_LIBRARY(image_sirds "${tensorflow_source_dir}/tensorflow/contrib/image/ops/single_image_random_dot_stereograms_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(layers_sparse_feature_cross "${tensorflow_source_dir}/tensorflow/contrib/layers/ops/sparse_feature_cross_op.cc")
 GENERATE_CONTRIB_OP_LIBRARY(memory_stats "${tensorflow_source_dir}/tensorflow/contrib/memory_stats/ops/memory_stats_ops.cc")
-GENERATE_CONTRIB_OP_LIBRARY(nccl "${tensorflow_source_dir}/tensorflow/contrib/nccl/ops/nccl_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(periodic_resample "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/ops/array_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(nearest_neighbor "${tensorflow_source_dir}/tensorflow/contrib/nearest_neighbor/ops/nearest_neighbor_ops.cc")
 GENERATE_CONTRIB_OP_LIBRARY(resampler "${tensorflow_source_dir}/tensorflow/contrib/resampler/ops/resampler_ops.cc")

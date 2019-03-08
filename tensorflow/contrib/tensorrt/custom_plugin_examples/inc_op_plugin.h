@@ -19,7 +19,7 @@ limitations under the License.
 #include <cassert>
 #include <cstring>
 
-#include "tensorflow/contrib/tensorrt/plugin/trt_plugin.h"
+#include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT

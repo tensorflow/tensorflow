@@ -28,6 +28,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import weakref
+
 import gast
 
 from tensorflow.python.autograph.pyct import anno
@@ -137,12 +139,12 @@ class Analyzer(cfg.GraphVisitor):
         for s in node_scope.modified:
           def_ = self._definition_factory()
           if s in node_scope.params:
-            def_.param_of = node_scope.params[s]
+            def_.param_of = weakref.ref(node_scope.params[s])
           node_symbols[s] = def_
         self.gen_map[node] = _NodeState(node_symbols)
 
       gen = self.gen_map[node]
-      kill = node_scope.modified
+      kill = node_scope.modified | node_scope.deleted
       defs_out = gen | (defs_in - kill)
 
     else:
@@ -215,11 +217,15 @@ class TreeAnnotator(transformer.Base):
 
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
+
+  def visit_ExceptHandler(self, node):
+    # TODO(b/123995141) Add Exception Handlers to the CFG
+    return node
 
   def visit_Name(self, node):
     if self.current_analyzer is None:
@@ -230,7 +236,8 @@ class TreeAnnotator(transformer.Base):
     analyzer = self.current_analyzer
     cfg_node = self.current_cfg_node
 
-    assert cfg_node is not None, 'name node outside of any statement?'
+    assert cfg_node is not None, ('name node, %s, outside of any statement?'
+                                  % node.id)
 
     qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Load):

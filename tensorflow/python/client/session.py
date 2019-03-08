@@ -736,10 +736,11 @@ class BaseSession(SessionInterface):
     if self._session is not None:
       try:
         tf_session.TF_DeleteSession(self._session)
-      except AttributeError:
-        # At shutdown, `c_api_util` or `tf_session` may have been garbage
-        # collected, causing the above method calls to fail. In this case,
-        # silently leak since the program is about to terminate anyway.
+      except (AttributeError, TypeError):
+        # At shutdown, `c_api_util`, `tf_session`, or
+        # `tf_session.TF_DeleteSession` may have been garbage collected, causing
+        # the above method calls to fail. In this case, silently leak since the
+        # program is about to terminate anyway.
         pass
       self._session = None
 
@@ -828,7 +829,7 @@ class BaseSession(SessionInterface):
     nested list, tuple, namedtuple, dict, or OrderedDict containing graph
     elements at its leaves.  A graph element can be one of the following types:
 
-    * An `tf.Operation`.
+    * A `tf.Operation`.
       The corresponding fetched value will be `None`.
     * A `tf.Tensor`.
       The corresponding fetched value will be a numpy ndarray containing the
@@ -1097,7 +1098,7 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
                             'Acceptable feed values include Python scalars, '
-                            'strings, lists, numpy ndarrays, or TensorHandles.'
+                            'strings, lists, numpy ndarrays, or TensorHandles. '
                             'For reference, the tensor object was ' +
                             str(feed_val) + ' which was passed to the '
                             'feed with key ' + str(feed) + '.')
@@ -1283,7 +1284,7 @@ class BaseSession(SessionInterface):
   # Old format: [[Node: <node_name> = ...]]
   # New format: [[{{node <node_name>}} = ...]]
   _NODEDEF_NAME_RE = re.compile(
-      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=')
+      r'\[\[(Node: )?(\{\{node )?([^\} ]*)(\}\})?\s*=*')
 
   def _do_run(self, handle, target_list, fetch_list, feed_dict, options,
               run_metadata):
@@ -1471,7 +1472,7 @@ class BaseSession(SessionInterface):
     return BaseSession._Callable(self, callable_options)
 
 
-@tf_export('Session')
+@tf_export(v1=['Session'])
 class Session(BaseSession):
   """A class for running TensorFlow operations.
 
@@ -1531,7 +1532,7 @@ class Session(BaseSession):
 
     If no `graph` argument is specified when constructing the session,
     the default graph will be launched in the session. If you are
-    using more than one graph (created with `tf.Graph()` in the same
+    using more than one graph (created with `tf.Graph()`) in the same
     process, you will have to use different sessions for each graph,
     but each graph can be used in multiple sessions. In this case, it
     is often clearer to pass the graph to be launched explicitly to
@@ -1589,7 +1590,21 @@ class Session(BaseSession):
     self._default_session_context_manager = None
     self._default_graph_context_manager = None
 
-    self.close()
+    # If we are closing due to an exception, set a time limit on our Close() to
+    # avoid blocking forever.
+    # TODO(b/120204635) remove this when deadlock is fixed.
+    if exec_type:
+      close_thread = threading.Thread(
+          name='SessionCloseThread', target=self.close)
+      close_thread.daemon = True
+      close_thread.start()
+      close_thread.join(30.0)
+      if close_thread.is_alive():
+        logging.error(
+            'Session failed to close after 30 seconds. Continuing after this '
+            'point may leave your program in an undefined state.')
+    else:
+      self.close()
 
   @staticmethod
   def reset(target, containers=None, config=None):
@@ -1626,7 +1641,7 @@ class Session(BaseSession):
     tf_session.TF_Reset(target, containers, config)
 
 
-@tf_export('InteractiveSession')
+@tf_export(v1=['InteractiveSession'])
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 
@@ -1674,7 +1689,7 @@ class InteractiveSession(BaseSession):
 
     If no `graph` argument is specified when constructing the session,
     the default graph will be launched in the session. If you are
-    using more than one graph (created with `tf.Graph()` in the same
+    using more than one graph (created with `tf.Graph()`) in the same
     process, you will have to use different sessions for each graph,
     but each graph can be used in multiple sessions. In this case, it
     is often clearer to pass the graph to be launched explicitly to

@@ -34,7 +34,7 @@ def sparse_multiclass_hinge_loss(
     scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS):
-  """Adds Ops for computing the multiclass hinge loss.
+  r"""Adds Ops for computing the multiclass hinge loss.
 
   The implementation is based on the following paper:
   On the Algorithmic Implementation of Multiclass Kernel-based Vector Machines

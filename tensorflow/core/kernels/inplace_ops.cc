@@ -500,6 +500,9 @@ typedef Eigen::GpuDevice GPUDevice;
       Name("DeepCopy").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),      \
       CopyOp<GPUDevice>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<bool>("T"),
+    InplaceOp<GPUDevice, functor::I_UPDATE>);
 REGISTER(float);
 REGISTER(double);
 REGISTER(Eigen::half);
@@ -540,6 +543,7 @@ REGISTER_EMPTY(float, GPU);
 REGISTER_EMPTY(double, GPU);
 REGISTER_EMPTY(Eigen::half, GPU);
 REGISTER_EMPTY(int64, GPU);
+REGISTER_EMPTY(int32, GPU);
 
 #endif  // GOOGLE_CUDA
 

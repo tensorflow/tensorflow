@@ -72,7 +72,6 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
-        "//tensorflow/python:spectral_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
@@ -80,6 +79,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
+        "//tensorflow/python/ops/signal",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -822,7 +822,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "affine_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/kernel_tests/bijectors/affine_test.py"],
     additional_deps = [
         ":bijectors_py",
@@ -837,7 +837,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    shard_count = 5,
+    shard_count = 10,
     tags = ["noasan"],  # times out b/63678675
 )
 

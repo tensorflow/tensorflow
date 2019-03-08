@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace xla {
@@ -106,6 +108,80 @@ TEST(ScopedShapedBufferTest, TestMoveAssignmentOperator) {
 
   // TestAllocator's destructor checks that all memory was freed.
 }
+
+TEST(ScopedShapedBufferTest, TestTakeSubTree) {
+  TestAllocator allocator;
+
+  Shape s = ShapeUtil::MakeShape(F32, {1});
+  s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(2, s));
+  s = xla::ShapeUtil::MakeTupleShape(std::vector<xla::Shape>(3, s));
+
+  ScopedShapedBuffer sb(s, s, &allocator, /*device_ordinal=*/0);
+  sb.buffers().ForEachMutableElement(
+      [&](const xla::ShapeIndex& index, se::DeviceMemoryBase* buffer) {
+        TF_ASSERT_OK_AND_ASSIGN(
+            OwningDeviceMemory m,
+            allocator.Allocate(/*device_ordinal=*/0, /*size=*/77));
+        *buffer = m.Forget();
+      });
+  ShapeTree<se::DeviceMemoryBase> buffers = sb.buffers();
+
+  // Takes a subtree out of 'sb', and verifies the buffers are as expected.
+  xla::ShapeIndex subtree_index = {1};
+  ScopedShapedBuffer output = sb.TakeSubTree(subtree_index);
+
+  output.buffers().ForEachElement([&](const xla::ShapeIndex& sub_index,
+                                      const se::DeviceMemoryBase& buffer) {
+    xla::ShapeIndex orig_index = subtree_index;
+    for (int i : sub_index) {
+      orig_index.push_back(i);
+    }
+    EXPECT_TRUE(buffers.find(orig_index)->second.IsSameAs(buffer));
+  });
+  sb.buffers().ForEachElement(
+      [&](const xla::ShapeIndex& index, const se::DeviceMemoryBase& buffer) {
+        if (ShapeIndexView(index).StartsWith(subtree_index)) {
+          EXPECT_TRUE(buffer.is_null());
+        } else {
+          EXPECT_TRUE(buffers.find(index)->second.IsSameAs(buffer));
+        }
+      });
+}
+
+// Test TakeSubTree with different depths (depth of ShapeTree) and fan-outs
+// (cardinality of each non-leaf node's children).
+void BM_TakeSubTree(int iters, int depth, int fan_out) {
+  tensorflow::testing::StopTiming();
+  TestAllocator allocator;
+  xla::Shape shape = xla::ShapeUtil::MakeShape(xla::F32, {32, 64, 128});
+  for (int i = 0; i < depth; ++i) {
+    std::vector<xla::Shape> shapes(fan_out, shape);
+    shape = xla::ShapeUtil::MakeTupleShape(shapes);
+  }
+  xla::ScopedShapedBuffer shaped_buffer(shape, shape, /*allocator=*/&allocator,
+                                        /*device_ordinal=*/0);
+  tensorflow::testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    // Extract a buffer from approximately the middle of the first level of the
+    // tree.
+    (void)shaped_buffer.TakeSubTree(/*index=*/{fan_out / 2}).release();
+  }
+  tensorflow::testing::StopTiming();
+}
+
+BENCHMARK(BM_TakeSubTree)
+    ->ArgPair(1, 4)
+    ->ArgPair(1, 8)
+    ->ArgPair(1, 32)
+    ->ArgPair(1, 64)
+    ->ArgPair(1, 128)
+    ->ArgPair(1, 256)
+    ->ArgPair(1, 512)
+    ->ArgPair(2, 4)
+    ->ArgPair(2, 8)
+    ->ArgPair(2, 32)
+    ->ArgPair(2, 64)
+    ->ArgPair(2, 128);
 
 }  // anonymous namespace
 }  // namespace xla

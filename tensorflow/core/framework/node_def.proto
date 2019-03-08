@@ -60,4 +60,18 @@ message NodeDef {
   // attr's type field.
   // TODO(josh11b): Add some examples here showing best practices.
   map<string, AttrValue> attr = 5;
+
+  message ExperimentalDebugInfo {
+    // Opaque string inserted into error messages created by the runtime.
+    //
+    // This is intended to store the list of names of the nodes from the
+    // original graph that this node was derived. For example if this node, say
+    // C, was result of a fusion of 2 nodes A and B, then 'original_node' would
+    // be {A, B}. This information can be used to map errors originating at the
+    // current node to some top level source code.
+    repeated string original_node_names = 1;
+  };
+
+  // This stores debug information associated with the node.
+  ExperimentalDebugInfo experimental_debug_info = 6;
 };

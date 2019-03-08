@@ -27,10 +27,9 @@ Status GrpcStatusToTfStatus(const ::grpc::Status& status) {
       status.error_code() == ::grpc::StatusCode::OUT_OF_RANGE) {
     grpc_code = ::grpc::StatusCode::INTERNAL;
   }
-  return Status(static_cast<::tensorflow::error::Code>(status.error_code()),
+  return Status(static_cast<::tensorflow::error::Code>(grpc_code),
                 strings::StrCat("Error reading from Cloud Bigtable: ",
-                                status.error_message(),
-                                " (Details: ", status.error_details(), ")"));
+                                status.error_message()));
 }
 
 string RegexFromStringSet(const std::vector<string>& strs) {

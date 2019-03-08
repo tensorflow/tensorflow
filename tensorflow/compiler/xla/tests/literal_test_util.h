@@ -93,7 +93,7 @@ class LiteralTestUtil {
   static ::testing::AssertionResult Near(
       const LiteralSlice& expected, const LiteralSlice& actual,
       const ErrorSpec& error_spec,
-      bool detailed_message = false) TF_MUST_USE_RESULT;
+      absl::optional<bool> detailed_message = absl::nullopt) TF_MUST_USE_RESULT;
 
   // Asserts the given literal are within the given error bound of the given
   // expected values. Only supported for floating point values.

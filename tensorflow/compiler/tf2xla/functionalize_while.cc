@@ -24,7 +24,6 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -36,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -293,8 +293,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
                          Graph* graph, Frame* frame,
                          FunctionLibraryDefinition* library) {
   VLOG(2) << "Frame " << frame->name << " before: "
-          << dump_graph::DumpGraphToFile("functionalize_before", *graph,
-                                         library);
+          << DumpGraphToFile("functionalize_before", *graph, library);
 
   // Split loop-varying Enter nodes with multiple successors. If the same
   // Tensor is fed as input to multiple loop arguments, we may end up with a
@@ -490,8 +489,8 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   TF_RETURN_IF_ERROR(FunctionalizeCond(body_graph.get(), library));
 
   VLOG(2) << "Frame " << frame->name << " condition: "
-          << dump_graph::DumpGraphToFile("loop_condition", *cond_graph, library)
-          << " body: " << dump_graph::DumpGraphToFile("loop_body", *body_graph);
+          << DumpGraphToFile("loop_condition", *cond_graph, library)
+          << " body: " << DumpGraphToFile("loop_body", *body_graph);
 
   static std::atomic<int64> sequence_num(0LL);
   int64 id = ++sequence_num;
@@ -523,6 +522,12 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   builder.Attr("T", arg_types);
   builder.Attr("cond", cond_name);
   builder.Attr("body", body_name);
+  string outside_compilation;
+  if (GetNodeAttr(frame->loop_cond->def(), kXlaOutsideCompilationAttrName,
+                  &outside_compilation)
+          .ok()) {
+    builder.Attr(kXlaOutsideCompilationAttrName, outside_compilation);
+  }
   std::vector<NodeDefBuilder::NodeOut> inputs;
   for (int i = 0; i < frame->args.size(); ++i) {
     const Arg& arg = frame->args[i];
@@ -579,8 +584,7 @@ Status FunctionalizeLoop(const FunctionLibraryDefinition* lookup_library,
   frame->parent->nodes.insert(while_node);
 
   VLOG(2) << "Frame " << frame->name << " after: "
-          << dump_graph::DumpGraphToFile("functionalize_after", *graph,
-                                         library);
+          << DumpGraphToFile("functionalize_after", *graph, library);
 
   return Status::OK();
 }

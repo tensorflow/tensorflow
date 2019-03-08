@@ -296,6 +296,19 @@ tf_java_test(
 )
 
 tf_java_test(
+    name = "GeneratedOperationsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/GeneratedOperationsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.GeneratedOperationsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
     name = "GradientsTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/op/core/GradientsTest.java"],
@@ -349,7 +362,8 @@ tf_cc_test(
 filegroup(
     name = "libtensorflow_jni",
     srcs = select({
-        "//tensorflow:darwin": [":libtensorflow_jni.dylib"],
+        "//tensorflow:windows": [":tensorflow_jni.dll"],
+        "//tensorflow:macos": [":libtensorflow_jni.dylib"],
         "//conditions:default": [":libtensorflow_jni.so"],
     }),
     visibility = ["//visibility:public"],
@@ -360,27 +374,27 @@ LINKER_VERSION_SCRIPT = ":config/version_script.lds"
 LINKER_EXPORTED_SYMBOLS = ":config/exported_symbols.lds"
 
 tf_cc_binary(
-    name = "libtensorflow_jni.so",
+    name = "tensorflow_jni",
     # Set linker options to strip out anything except the JNI
     # symbols from the library. This reduces the size of the library
     # considerably (~50% as of January 2017).
     linkopts = select({
         "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
-        "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
-            "$(location {})".format(LINKER_EXPORTED_SYMBOLS),
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
             "-s",
-            "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-            "$(location {})".format(LINKER_VERSION_SCRIPT),
+            "-Wl,--version-script,$(location {})".format(LINKER_VERSION_SCRIPT),
         ],
     }),
     linkshared = 1,
     linkstatic = 1,
+    per_os_targets = True,
     deps = [
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/java/src/main/native",
         LINKER_VERSION_SCRIPT,
         LINKER_EXPORTED_SYMBOLS,
@@ -399,15 +413,4 @@ tf_cc_binary(
     name = "generate_pom",
     srcs = ["generate_pom.cc"],
     deps = ["//tensorflow/c:c_api"],
-)
-
-# System.loadLibrary() on OS X looks for ".dylib" or ".jnilib"
-# and no ".so". If and when https://github.com/bazelbuild/bazel/issues/914
-# is resolved, perhaps this workaround rule can be removed.
-genrule(
-    name = "darwin-compat",
-    srcs = [":libtensorflow_jni.so"],
-    outs = ["libtensorflow_jni.dylib"],
-    cmd = "cp $< $@",
-    output_to_bindir = 1,
 )

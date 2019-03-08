@@ -25,6 +25,7 @@ import sys
 
 import six
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -39,6 +40,14 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+
+# Register printing to the cell output if we are in a Colab or Jupyter Notebook.
+try:
+  get_ipython()  # Exists in an ipython env like Jupyter or Colab
+  pywrap_tensorflow.TFE_Py_EnableInteractivePythonLogging()
+except NameError:
+  pass
+
 
 # The python wrapper for Assert is in control_flow_ops, as the Assert
 # call relies on certain conditionals for its dependencies.  Use
@@ -112,6 +121,11 @@ def _generate_placeholder_string(x, default_placeholder="{}"):
   while placeholder in x:
     placeholder = placeholder + str(rng.randint(0, 9))
   return placeholder
+
+
+def _is_filepath(output_stream):
+  """Returns True if output_stream is a file path."""
+  return isinstance(output_stream, str) and output_stream.startswith("file://")
 
 
 # Temporarily disable pylint g-doc-args error to allow giving more context
@@ -188,9 +202,8 @@ def print_v2(*inputs, **kwargs):
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
     sys.stdout)
 
-  Note: This op is only partially compatible with Jupyter notebooks and colabs.
-    Because it prints to the C++ standard out / standard error, this will go
-    in the notebook kernel's console output, not in the notebook cell output.
+  Note: In Jupyter notebooks and colabs, this operator prints to the notebook
+    cell outputs. It will not write to the notebook kernel's console logs.
 
   Args:
     *inputs: Positional arguments that are the inputs to print. Inputs in the
@@ -198,9 +211,11 @@ def print_v2(*inputs, **kwargs):
       primitives, tensors, data structures such as dicts and lists that
       may contain tensors (with the data structures possibly nested in
       arbitrary ways), and printable python objects.
-    output_stream: The output stream or logging level to print to. Defaults to
-      sys.stderr, but sys.stdout, tf.logging.info, tf.logging.warning, and
-      tf.logging.error are also supported.
+    output_stream: The output stream, logging level, or file to print to.
+      Defaults to sys.stderr, but sys.stdout, tf.logging.info,
+      tf.logging.warning, and tf.logging.error are also supported. To print to
+      a file, pass a string started with "file://" followed by the file path,
+      e.g., "file:///tmp/foo.out".
     summarize: The first and last `summarize` elements within each dimension are
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
@@ -241,18 +256,22 @@ def print_v2(*inputs, **kwargs):
       tf_logging.error: "log(error)",
   }
 
-  output_stream_string = output_stream_to_constant.get(output_stream)
-  if not output_stream_string:
-    raise ValueError(
-        "Unsupported output stream or logging level " +
-        str(output_stream) + ". Supported streams are sys.stdout, "
-                             "sys.stderr, tf.logging.info, "
-                             "tf.logging.warning, tf.logging.error")
+  if _is_filepath(output_stream):
+    output_stream_string = output_stream
+  else:
+    output_stream_string = output_stream_to_constant.get(output_stream)
+    if not output_stream_string:
+      raise ValueError(
+          "Unsupported output stream, logging level, or file." +
+          str(output_stream) + ". Supported streams are sys.stdout, "
+          "sys.stderr, tf.logging.info, "
+          "tf.logging.warning, tf.logging.error. " +
+          "File needs to be in the form of 'file://<filepath>'.")
 
   # If we are only printing a single string scalar, there is no need to format
   if (len(inputs) == 1 and tensor_util.is_tensor(inputs[0])
       and (not isinstance(inputs[0], sparse_tensor.SparseTensor))
-      and inputs[0].shape and (inputs[0].dtype == dtypes.string)):
+      and (inputs[0].shape.ndims == 0)and (inputs[0].dtype == dtypes.string)):
     formatted_string = inputs[0]
   # Otherwise, we construct an appropriate template for the tensors we are
   # printing, and format the template using those tensors.
@@ -612,11 +631,12 @@ def scalar_summary(tags, values, collections=None, name=None):
     _Collect(val, collections, [ops.GraphKeys.SUMMARIES])
   return val
 
-
 ops.NotDifferentiable("HistogramSummary")
 ops.NotDifferentiable("ImageSummary")
 ops.NotDifferentiable("AudioSummary")
 ops.NotDifferentiable("AudioSummaryV2")
 ops.NotDifferentiable("MergeSummary")
 ops.NotDifferentiable("ScalarSummary")
+ops.NotDifferentiable("TensorSummary")
+ops.NotDifferentiable("TensorSummaryV2")
 ops.NotDifferentiable("Timestamp")

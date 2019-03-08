@@ -166,7 +166,6 @@ TEST(OAuthClientTest, GetTokenFromServiceAccountJson) {
                 const_cast<unsigned char*>(
                     reinterpret_cast<const unsigned char*>(signature.data())),
                 signature.size()));
-  EVP_MD_CTX_cleanup(md_ctx);
 
   // Free all the crypto-related resources.
   EVP_PKEY_free(key);

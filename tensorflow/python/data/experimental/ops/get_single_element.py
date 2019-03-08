@@ -18,8 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.util.tf_export import tf_export
 
@@ -60,13 +58,10 @@ def get_single_element(dataset):
     InvalidArgumentError (at runtime): if `dataset` does not contain exactly
       one element.
   """
-  if not isinstance(dataset, dataset_ops.Dataset):
+  if not isinstance(dataset, dataset_ops.DatasetV2):
     raise TypeError("`dataset` must be a `tf.data.Dataset` object.")
 
-  nested_ret = nest.pack_sequence_as(
-      dataset.output_types, gen_dataset_ops.dataset_to_single_element(
-          dataset._as_variant_tensor(),  # pylint: disable=protected-access
-          **dataset_ops.flat_structure(dataset)))
-  return sparse.deserialize_sparse_tensors(
-      nested_ret, dataset.output_types, dataset.output_shapes,
-      dataset.output_classes)
+  # pylint: disable=protected-access
+  return dataset._element_structure._from_compatible_tensor_list(
+      gen_dataset_ops.dataset_to_single_element(
+          dataset._variant_tensor, **dataset_ops.flat_structure(dataset)))
