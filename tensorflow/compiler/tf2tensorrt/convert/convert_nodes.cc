@@ -4028,6 +4028,9 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin score_threshold must be 0-D ",
         node_def.name());
   }
+  // TF op CombinedNonMaxSuppression doesn't have the option of
+  // not normalizing coordinates.
+  bool isNormalized = true;
 
   if (params->validation_only) return Status::OK();
 
@@ -4045,7 +4048,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   float score_thresh =
       *(static_cast<float*>(const_cast<void*>(score_threshold.GetValues())));
   const int background_id = -1;
-  nvinfer1::PluginField fields[7] = {
+  nvinfer1::PluginField fields[8] = {
       nvinfer1::PluginField{"shareLocation", &share_location,
                             nvinfer1::PluginFieldType::kINT32, 1},
       nvinfer1::PluginField{"backgroundLabelId", &background_id,
@@ -4060,8 +4063,10 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
       nvinfer1::PluginField{"iouThreshold", &iou_thresh,
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
+      nvinfer1::PluginField{"isNormalized", &isNormalized,
+                            nvinfer1::PluginFieldType::kINT32, 1},
   };
-  nvinfer1::PluginFieldCollection fc{7, fields};
+  nvinfer1::PluginFieldCollection fc{8, fields};
 
   // Get plugin creator
   auto creator =
