@@ -1145,7 +1145,12 @@ def set_tf_nccl_install_path(environ_cp):
                                            nccl2_path_from_ldconfig)
     if nccl2_path_from_ldconfig:
       nccl2_path_from_ldconfig = nccl2_path_from_ldconfig.group(1)
-      if os.path.exists('%s.%s' % (nccl2_path_from_ldconfig, tf_nccl_version)):
+      if (os.path.exists('%s.%s' % (nccl2_path_from_ldconfig, tf_nccl_version))
+          or (nccl2_path_from_ldconfig.endswith('.so')
+            and os.path.exists(nccl2_path_from_ldconfig))):
+        if (nccl2_path_from_ldconfig.endswith('.so')
+            and os.path.exists(nccl2_path_from_ldconfig)):
+          print('NCCL library is not versioned, using anyway')
         nccl_install_path = os.path.dirname(nccl2_path_from_ldconfig)
         print('NCCL libraries found in ' + nccl2_path_from_ldconfig)
 
@@ -1660,6 +1665,10 @@ def main():
       environ_cp.get('LD_LIBRARY_PATH') != '1'):
     write_action_env_to_bazelrc('LD_LIBRARY_PATH',
                                 environ_cp.get('LD_LIBRARY_PATH'))
+
+  if environ_cp.get('TF_NEED_ROCM') == '1':
+    if is_linux():
+      set_tf_nccl_install_path(environ_cp)
 
   set_action_env_var(environ_cp, 'TF_NEED_CUDA', 'CUDA', False)
   if (environ_cp.get('TF_NEED_CUDA') == '1' and

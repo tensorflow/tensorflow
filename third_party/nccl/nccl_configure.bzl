@@ -18,6 +18,10 @@ load(
     "get_cpu_value",
     "matches_version",
 )
+load(
+    "//third_party/gpus:rocm_configure.bzl",
+    "enable_rocm",
+)
 
 _CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
 _NCCL_HDR_PATH = "NCCL_HDR_PATH"
@@ -118,8 +122,8 @@ def _check_nccl_version(repository_ctx, nccl_install_path, nccl_hdr_path, nccl_v
 
 def _nccl_configure_impl(repository_ctx):
     """Implementation of the nccl_configure repository rule."""
-    if (not enable_cuda(repository_ctx) or
-        get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
+    if ((not enable_cuda(repository_ctx) and not enable_rocm(repository_ctx))
+        or get_cpu_value(repository_ctx) not in ("Linux", "FreeBSD")):
         # Add a dummy build file to make bazel query happy.
         repository_ctx.file("BUILD", _NCCL_DUMMY_BUILD_CONTENT)
         return

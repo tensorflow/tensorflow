@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
 #define TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <unordered_map>
 #include <vector>
@@ -230,6 +230,6 @@ class NcclManager {
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_NCCL_NCCL_MANAGER_H_

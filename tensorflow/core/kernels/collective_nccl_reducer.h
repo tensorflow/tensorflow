@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/collective.h"
 
 namespace tensorflow {
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class NcclReducer : public CollectiveImplementationInterface {
  public:
@@ -43,7 +43,7 @@ class NcclReducer : public CollectiveImplementationInterface {
   const CollectiveParams* col_params_;  // Not owned
 };
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_COLLECTIVE_NCCL_REDUCER_H_

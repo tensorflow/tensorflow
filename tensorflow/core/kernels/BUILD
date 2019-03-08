@@ -358,10 +358,10 @@ cc_library(
 
 tf_kernel_library(
     name = "nccl_kernels",
-    srcs = if_cuda([
+    srcs = if_nccl([
         "nccl_ops.cc",
     ]),
-    deps = if_cuda([
+    deps = if_nccl([
         "@local_config_nccl//:nccl",
         "//tensorflow/core/nccl:nccl_lib",
         "//tensorflow/core:framework",
