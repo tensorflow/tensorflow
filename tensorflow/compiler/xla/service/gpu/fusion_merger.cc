@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -289,8 +290,8 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // TODO(b/119692968): Remove this once the fusion emitter can handle arbitrary
   // fusion nodes.
   if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
-        return IsFusionEmitterInefficient(/*consumer=*/user,
-                                          /*producer=*/fusion);
+        return FusedIrEmitter::IsFusedIrEmitterInefficient(/*consumer=*/user,
+                                                           /*producer=*/fusion);
       })) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Contains one or more users where fusing would cause "

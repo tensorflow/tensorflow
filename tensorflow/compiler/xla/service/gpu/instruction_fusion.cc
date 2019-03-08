@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -267,7 +268,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // have exponential time/memory requirements for emitting certain fusion
   // kernels, in which case we don't want to fuse.
   // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
-  return !IsFusionEmitterInefficient(consumer, producer);
+  return !FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer);
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
