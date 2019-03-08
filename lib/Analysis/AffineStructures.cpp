@@ -709,12 +709,34 @@ void FlatAffineConstraints::convertLoopIVSymbolsToDims() {
   }
 }
 
+void FlatAffineConstraints::addDimOrSymbolId(Value *id) {
+  if (containsId(*id))
+    return;
+  if (isValidSymbol(id)) {
+    addSymbolId(getNumSymbolIds(), id);
+    // Check if the symbol is a constant.
+    if (auto *opInst = id->getDefiningInst()) {
+      if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
+        setIdToConstant(*id, constOp->getValue());
+      }
+    }
+  } else {
+    addDimId(getNumDimIds(), id);
+    if (auto loop = getForInductionVarOwner(id)) {
+      // Outer loop IVs could be used in forOp's bounds.
+      if (failed(this->addAffineForOpDomain(loop)))
+        LLVM_DEBUG(loop->emitWarning(
+            "failed to add domain info to constraint system"));
+    }
+  }
+}
+
 Status
 FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
   unsigned pos;
   // Pre-condition for this method.
   if (!findId(*forOp->getInductionVar(), &pos)) {
-    assert(0 && "Value not found");
+    assert(false && "Value not found");
     return Status::failure();
   }
 
@@ -724,97 +746,16 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
 
   int64_t step = forOp->getStep();
 
-  // Adds a lower or upper bound when the bounds aren't constant.
-  auto addLowerOrUpperBound = [&](bool lower) -> Status {
-    auto boundMap =
-        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
-    auto boundOperands =
-        lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
-    unsigned numBoundOperands =
-        std::distance(boundOperands.begin(), boundOperands.end());
-
-    FlatAffineConstraints localVarCst;
-    std::vector<SmallVector<int64_t, 8>> flatExprs;
-    if (failed(getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst))) {
-      forOp->emitWarning("semi-affine expressions not yet supported");
-      return Status::failure();
-    }
-    // Set values for localVarCst.
-    SmallVector<Value *, 8> values;
-    for (auto operand : boundOperands) {
-      values.push_back(const_cast<Value *>(operand));
-    }
-    localVarCst.setIdValues(0, localVarCst.getNumDimAndSymbolIds(), values);
-
-    for (const auto *operand : boundOperands) {
-      unsigned pos;
-      if (!findId(*operand, &pos)) {
-        if (isValidSymbol(operand)) {
-          addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
-          pos = getNumDimAndSymbolIds() - 1;
-          // Check if the symbol is a constant.
-          if (auto *opInst = operand->getDefiningInst()) {
-            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-              setIdToConstant(*operand, constOp->getValue());
-            }
-          }
-          // If the local var cst has this as a dim, turn it into its symbol.
-          turnDimIntoSymbol(&localVarCst, *operand);
-        } else {
-          addDimId(getNumDimIds(), const_cast<Value *>(operand));
-          pos = getNumDimIds() - 1;
-          if (auto loop = getForInductionVarOwner(operand)) {
-            // Outer loop IVs could be used in forOp's bounds.
-            if (failed(this->addAffineForOpDomain(loop)))
-              return Status::failure();
-          }
-        }
-      }
-    }
-    // Merge and align with localVarCst.
-    if (localVarCst.getNumLocalIds() > 0) {
-      mergeAndAlignIds(/*offset=*/0, this, &localVarCst);
-      append(localVarCst);
-    }
-
-    // Record positions of the operands in the constraint system.
-    SmallVector<unsigned, 8> positions;
-    for (const auto *operand : boundOperands) {
-      unsigned pos;
-      if (!findId(*operand, &pos))
-        assert(0 && "expected to be found");
-      positions.push_back(pos);
-    }
-
-    for (const auto &flatExpr : flatExprs) {
-      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
-      ineq[pos] = lower ? 1 : -1;
-      // Dims and symbols.
-      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
-        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
-      }
-      // Copy over the local id coefficients.
-      unsigned numLocalIds = flatExpr.size() - 1 - numBoundOperands;
-      for (unsigned jj = 0, j = getNumIds() - numLocalIds; jj < numLocalIds;
-           jj++, j++) {
-        ineq[j] = lower ? -flatExpr[numBoundOperands + jj]
-                        : flatExpr[numBoundOperands + jj];
-      }
-      // Constant term.
-      ineq[getNumCols() - 1] =
-          lower ? -flatExpr[flatExpr.size() - 1]
-                // Upper bound in flattenedExpr is an exclusive one.
-                : flatExpr[flatExpr.size() - 1] - step;
-      addInequality(ineq);
-    }
-    return Status::success();
-  };
-
   if (forOp->hasConstantLowerBound()) {
     addConstantLowerBound(pos, forOp->getConstantLowerBound());
   } else {
     // Non-constant lower bound case.
-    if (failed(addLowerOrUpperBound(/*lower=*/true)))
+    OpPointer<AffineForOp> ncForOp =
+        *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
+    SmallVector<Value *, 4> lbOperands(ncForOp->getLowerBoundOperands().begin(),
+                                       ncForOp->getLowerBoundOperands().end());
+    if (failed(addLowerOrUpperBound(pos, forOp->getLowerBoundMap(), lbOperands,
+                                    /*eq=*/false, /*lower=*/true)))
       return Status::failure();
   }
 
@@ -823,7 +764,12 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
     return Status::success();
   }
   // Non-constant upper bound case.
-  return addLowerOrUpperBound(/*lower=*/false);
+  OpPointer<AffineForOp> ncForOp =
+      *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
+  SmallVector<Value *, 4> ubOperands(ncForOp->getUpperBoundOperands().begin(),
+                                     ncForOp->getUpperBoundOperands().end());
+  return addLowerOrUpperBound(pos, forOp->getUpperBoundMap(), ubOperands,
+                              /*eq=*/false, /*lower=*/false);
 }
 
 // Searches for a constraint with a non-zero coefficient at 'colIdx' in
@@ -1669,6 +1615,82 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   }
 }
 
+Status FlatAffineConstraints::addLowerOrUpperBound(unsigned pos,
+                                                   AffineMap boundMap,
+                                                   ArrayRef<Value *> operands,
+                                                   bool eq, bool lower) {
+  assert(pos < getNumDimAndSymbolIds() && "invalid position");
+  // Equality follows the logic of lower bound except that we add an equality
+  // instead of an inequality.
+  assert(!eq || boundMap.getNumResults() == 1 && "single result expected");
+  if (eq)
+    lower = true;
+
+  for (auto *operand : operands)
+    addDimOrSymbolId(operand);
+
+  FlatAffineConstraints localVarCst;
+  std::vector<SmallVector<int64_t, 8>> flatExprs;
+  if (failed(getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst))) {
+    LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
+    return Status::failure();
+  }
+
+  // Merge and align with localVarCst.
+  if (localVarCst.getNumLocalIds() > 0) {
+    // Set values for localVarCst.
+    localVarCst.setIdValues(0, localVarCst.getNumDimAndSymbolIds(), operands);
+    for (const auto *operand : operands) {
+      unsigned pos;
+      if (findId(*operand, &pos)) {
+        if (pos >= getNumDimIds() && pos < getNumDimAndSymbolIds()) {
+          // If the local var cst has this as a dim, turn it into its symbol.
+          turnDimIntoSymbol(&localVarCst, *operand);
+        } else if (pos < getNumDimIds()) {
+          // Or vice versa.
+          turnSymbolIntoDim(&localVarCst, *operand);
+        }
+      }
+    }
+    mergeAndAlignIds(/*offset=*/0, this, &localVarCst);
+    append(localVarCst);
+  }
+
+  // Record positions of the operands in the constraint system. Need to do
+  // this here since the constraint system changes after a bound is added.
+  SmallVector<unsigned, 8> positions;
+  unsigned numOperands = operands.size();
+  for (const auto *operand : operands) {
+    unsigned pos;
+    if (!findId(*operand, &pos))
+      assert(0 && "expected to be found");
+    positions.push_back(pos);
+  }
+
+  for (const auto &flatExpr : flatExprs) {
+    SmallVector<int64_t, 4> ineq(getNumCols(), 0);
+    ineq[pos] = lower ? 1 : -1;
+    // Dims and symbols.
+    for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
+      ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
+    }
+    // Copy over the local id coefficients.
+    unsigned numLocalIds = flatExpr.size() - 1 - numOperands;
+    for (unsigned jj = 0, j = getNumIds() - numLocalIds; jj < numLocalIds;
+         jj++, j++) {
+      ineq[j] =
+          lower ? -flatExpr[numOperands + jj] : flatExpr[numOperands + jj];
+    }
+    // Constant term.
+    ineq[getNumCols() - 1] =
+        lower ? -flatExpr[flatExpr.size() - 1]
+              // Upper bound in flattenedExpr is an exclusive one.
+              : flatExpr[flatExpr.size() - 1] - 1;
+    eq ? addEquality(ineq) : addInequality(ineq);
+  }
+  return Status::success();
+}
+
 // Adds slice lower bounds represented by lower bounds in 'lbMaps' and upper
 // bounds in 'ubMaps' to each value in `values' that appears in the constraint
 // system. Note that both lower/upper bounds share the same operand list
@@ -1685,81 +1707,6 @@ Status FlatAffineConstraints::addSliceBounds(ArrayRef<Value *> values,
   assert(values.size() == lbMaps.size());
   assert(lbMaps.size() == ubMaps.size());
 
-  // Adds a lower or upper bound when the bounds aren't constant. If eq is true,
-  // add a single equality equal to the first bound map result expr.
-  // TODO(andydavis,bondhugula): refactor and reuse from addAffineForOpDomain.
-  auto addLowerOrUpperBound = [&](unsigned pos, AffineMap boundMap, bool eq,
-                                  bool lower = true) -> Status {
-    assert(pos < getNumDimAndSymbolIds() && "invalid position");
-    // Equality follows the logic of lower bound except that we add an equality
-    // instead of an inequality.
-    assert(!eq || boundMap.getNumResults() == 1 && "single result expected");
-    if (eq)
-      lower = true;
-
-    unsigned numOperands = operands.size();
-
-    FlatAffineConstraints localVarCst;
-    std::vector<SmallVector<int64_t, 8>> flatExprs;
-    if (failed(getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst))) {
-      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
-      return Status::failure();
-    }
-
-    // Merge and align with localVarCst.
-    if (localVarCst.getNumLocalIds() > 0) {
-      // Set values for localVarCst.
-      localVarCst.setIdValues(0, localVarCst.getNumDimAndSymbolIds(), operands);
-      for (const auto *operand : operands) {
-        unsigned pos;
-        if (findId(*operand, &pos)) {
-          if (pos >= getNumDimIds() && pos < getNumDimAndSymbolIds()) {
-            // If the local var cst has this as a dim, turn it into its symbol.
-            turnDimIntoSymbol(&localVarCst, *operand);
-          } else if (pos < getNumDimIds()) {
-            // Or vice versa.
-            turnSymbolIntoDim(&localVarCst, *operand);
-          }
-        }
-      }
-      mergeAndAlignIds(/*offset=*/0, this, &localVarCst);
-      append(localVarCst);
-    }
-
-    // Record positions of the operands in the constraint system. Need to do
-    // this here since the constraint system changes after a bound is added.
-    SmallVector<unsigned, 8> positions;
-    for (const auto *operand : operands) {
-      unsigned pos;
-      if (!findId(*operand, &pos))
-        assert(0 && "expected to be found");
-      positions.push_back(pos);
-    }
-
-    for (const auto &flatExpr : flatExprs) {
-      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
-      ineq[pos] = lower ? 1 : -1;
-      // Dims and symbols.
-      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
-        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
-      }
-      // Copy over the local id coefficients.
-      unsigned numLocalIds = flatExpr.size() - 1 - numOperands;
-      for (unsigned jj = 0, j = getNumIds() - numLocalIds; jj < numLocalIds;
-           jj++, j++) {
-        ineq[j] =
-            lower ? -flatExpr[numOperands + jj] : flatExpr[numOperands + jj];
-      }
-      // Constant term.
-      ineq[getNumCols() - 1] =
-          lower ? -flatExpr[flatExpr.size() - 1]
-                // Upper bound in flattenedExpr is an exclusive one.
-                : flatExpr[flatExpr.size() - 1] - 1;
-      eq ? addEquality(ineq) : addInequality(ineq);
-    }
-    return Status::success();
-  };
-
   for (unsigned i = 0, e = lbMaps.size(); i < e; ++i) {
     unsigned pos;
     if (!findId(*values[i], &pos))
@@ -1774,17 +1721,24 @@ Status FlatAffineConstraints::addSliceBounds(ArrayRef<Value *> values,
     if (lbMap && ubMap && lbMap.getNumResults() == 1 &&
         ubMap.getNumResults() == 1 &&
         lbMap.getResult(0) + 1 == ubMap.getResult(0)) {
-      if (failed(addLowerOrUpperBound(pos, lbMap, /*eq=*/true, /*lower=*/true)))
+      if (failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/true,
+                                      /*lower=*/true)))
+        return Status::failure();
+      if (failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/true,
+                                      /*lower=*/true)))
         return Status::failure();
       continue;
     }
 
-    if (lbMap &&
-        failed(addLowerOrUpperBound(pos, lbMap, /*eq=*/false, /*lower=*/true)))
+    if (lbMap && failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/false,
+                                             /*lower=*/true)))
+      return Status::failure();
+    if (lbMap && failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/false,
+                                             /*lower=*/true)))
       return Status::failure();
 
-    if (ubMap &&
-        failed(addLowerOrUpperBound(pos, ubMap, /*eq=*/false, /*lower=*/false)))
+    if (ubMap && failed(addLowerOrUpperBound(pos, ubMap, operands, /*eq=*/false,
+                                             /*lower=*/false)))
       return Status::failure();
   }
   return Status::success();

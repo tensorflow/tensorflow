@@ -378,14 +378,22 @@ public:
 
   /// Adds constraints (lower and upper bounds) for the specified 'for'
   /// instruction's Value using IR information stored in its bound maps. The
-  /// right identifier is first looked up using forOp's Value. Returns
-  /// failure for the yet unimplemented/unsupported cases. Asserts if the Value
-  /// corresponding to the 'for' instruction isn't found in the constraint
-  /// system. Any new identifiers that are found in the bound operands of the
-  /// 'for' instruction are added as trailing identifiers (either dimensional or
+  /// right identifier is first looked up using forOp's Value. Asserts if the
+  /// Value corresponding to the 'for' instruction isn't found in the constraint
+  /// system. Returns failure for the yet unimplemented/unsupported cases.  Any
+  /// new identifiers that are found in the bound operands of the 'for'
+  /// instruction are added as trailing identifiers (either dimensional or
   /// symbolic depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
   Status addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
+
+  /// Adds a lower or an upper bound for the identifier at the specified
+  /// position with constraints being drawn from the specified bound map and
+  /// operands. If `eq` is true, add a single equality equal to the bound map's
+  /// first result expr.
+  Status addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
+                              ArrayRef<Value *> operands, bool eq,
+                              bool lower = true);
 
   /// Computes the lower and upper bounds of the first 'num' dimensional
   /// identifiers as an affine map of the remaining identifiers (dimensional and
@@ -452,6 +460,13 @@ public:
   void addSymbolId(unsigned pos, Value *id = nullptr);
   void addLocalId(unsigned pos);
   void addId(IdKind kind, unsigned pos, Value *id = nullptr);
+
+  /// Add the specified values as a dim or symbol id depending on its nature, if
+  /// it already doesn't exist in the system. The identifier is added to the end
+  /// of the existing dims or symbols. Additional information on the identifier
+  /// is extracted from the IR (if it's a loop IV or a symbol, and added to the
+  /// constraint system).
+  void addDimOrSymbolId(Value *id);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the front [0, vMap->getNumResults())

@@ -254,19 +254,7 @@ Status MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
   if (sliceState != nullptr) {
     // Add dim and symbol slice operands.
     for (const auto &operand : sliceState->lbOperands[0]) {
-      if (!cst.containsId(*operand)) {
-        if (isValidSymbol(operand)) {
-          cst.addSymbolId(cst.getNumSymbolIds(), const_cast<Value *>(operand));
-          // Check if the symbol is a constant.
-          if (auto *opInst = operand->getDefiningInst()) {
-            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-              cst.setIdToConstant(*operand, constOp->getValue());
-            }
-          }
-        } else {
-          cst.addDimId(cst.getNumDimIds(), const_cast<Value *>(operand));
-        }
-      }
+      cst.addDimOrSymbolId(const_cast<Value *>(operand));
     }
     // Add upper/lower bounds from 'sliceState' to 'cst'.
     Status ret = cst.addSliceBounds(sliceState->ivs, sliceState->lbs,
