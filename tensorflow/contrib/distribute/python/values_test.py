@@ -526,21 +526,6 @@ def _make_replica_local(method, strategy=None):
   return v, replica_local
 
 
-class TPUMirroredVariableTest(test.TestCase, parameterized.TestCase):
-
-  def testFetchOnFrozenGraph(self):
-    with context.graph_mode():
-      v = values.TPUMirroredVariable(
-          strategy=None,
-          device_map=values.SingleDeviceMap("/cpu:0"),
-          values=[variables_lib.Variable(42.)],
-          aggregation=None)
-
-      self.evaluate(variables_lib.global_variables_initializer())
-      ops.get_default_graph().finalize()
-      self.assertEqual(42., self.evaluate(v))
-
-
 class SyncOnReadVariablePropertiesTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
