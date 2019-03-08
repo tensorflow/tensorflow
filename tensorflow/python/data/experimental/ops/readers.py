@@ -25,7 +25,6 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import error_ops
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import parsing_ops
 from tensorflow.python.data.experimental.ops import shuffle_ops
@@ -494,9 +493,15 @@ def make_csv_dataset_v2(
     return features
 
   # Read files sequentially (if num_parallel_reads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
+  dataset = dataset.interleave(
+      filename_to_dataset,
+      cycle_length=num_parallel_reads,
+      num_parallel_calls=num_parallel_reads)
+
+  if sloppy:
+    options = dataset_ops.Options()
+    options.experimental_deterministic = False
+    dataset = dataset.with_options(options)
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -826,11 +831,15 @@ def make_batched_features_dataset_v2(file_pattern,
     reader_args = []
 
   # Read files sequentially (if reader_num_threads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          lambda filename: reader(filename, *reader_args),
-          cycle_length=reader_num_threads,
-          sloppy=sloppy_ordering))
+  dataset = dataset.interleave(
+      lambda filename: reader(filename, *reader_args),
+      cycle_length=reader_num_threads,
+      num_parallel_calls=reader_num_threads)
+
+  if sloppy_ordering:
+    options = dataset_ops.Options()
+    options.experimental_deterministic = False
+    dataset = dataset.with_options(options)
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
