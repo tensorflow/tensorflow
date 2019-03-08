@@ -202,10 +202,9 @@ bool FuncVerifier::verify() {
               " must match corresponding argument in function signature",
           fn);
 
-  for (auto &block : fn) {
-    if (verifyBlock(block, /*isTopLevel*/ true))
+  for (auto &block : fn)
+    if (verifyBlock(block, /*isTopLevel=*/true))
       return true;
-  }
 
   // Since everything looks structurally ok to this point, we do a dominance
   // check.  We do this as a second pass since malformed CFG's can cause
@@ -213,10 +212,9 @@ bool FuncVerifier::verify() {
   // resilient to malformed code.
   DominanceInfo theDomInfo(const_cast<Function *>(&fn));
   domInfo = &theDomInfo;
-  for (auto &block : fn) {
+  for (auto &block : fn)
     if (verifyDominance(block))
       return true;
-  }
 
   domInfo = nullptr;
   return false;
@@ -317,17 +315,10 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
 }
 
 bool FuncVerifier::verifyDominance(const Block &block) {
-  for (auto &inst : block) {
-    // Check that all operands on the instruction are ok.
+  // Verify the dominance of each of the held instructions.
+  for (auto &inst : block)
     if (verifyInstDominance(inst))
       return true;
-    if (verifyOperation(inst))
-      return true;
-    for (auto &blockList : inst.getBlockLists())
-      for (auto &block : blockList)
-        if (verifyDominance(block))
-          return true;
-  }
   return false;
 }
 
@@ -345,6 +336,12 @@ bool FuncVerifier::verifyInstDominance(const Instruction &inst) {
       useInst->emitNote("operand defined here");
     return true;
   }
+
+  // Verify the dominance of each of the nested blocks within this instruction.
+  for (auto &blockList : inst.getBlockLists())
+    for (auto &block : blockList)
+      if (verifyDominance(block))
+        return true;
 
   return false;
 }
