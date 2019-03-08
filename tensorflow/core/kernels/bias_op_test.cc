@@ -34,6 +34,7 @@ static Graph* BiasAddGrad(int d0, int d1, int d2, int d3) {
 #define BM_BiasAddGradNHWC(N, W, H, C, DEVICE)                          \
   static void BM_BiasAddGradNHWC##_##N##_##H##_##W##_##C##_##DEVICE(    \
       int iters) {                                                      \
+    testing::UseRealTime();                                             \
     testing::ItemsProcessed(static_cast<int64>(iters) * N * H * W * C); \
     test::Benchmark(#DEVICE, BiasAddGrad(N, H, W, C)).Run(iters);       \
   }                                                                     \
