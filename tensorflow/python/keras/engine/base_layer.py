@@ -465,13 +465,9 @@ class Layer(trackable.Trackable):
       with context.graph_mode():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
-          if isinstance(input_shape, list):
-            inputs = [base_layer_utils.generate_placeholders_from_shape(shape)
-                      for shape in input_shape]
-          else:
-            inputs = base_layer_utils.generate_placeholders_from_shape(
-                input_shape)
-
+          input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
+          inputs = nest.map_structure(
+              base_layer_utils.generate_placeholders_from_shape, input_shape)
           try:
             if self._expects_training_arg:
               outputs = self(inputs, training=False)
@@ -483,10 +479,7 @@ class Layer(trackable.Trackable):
                                       ' Please implement the '
                                       '`compute_output_shape` method on your '
                                       'layer (%s).' % self.__class__.__name__)
-      if isinstance(outputs, list):
-        return [output.shape for output in outputs]
-      else:
-        return outputs.shape
+      return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
