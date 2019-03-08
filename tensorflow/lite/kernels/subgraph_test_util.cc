@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/subgraph_test_util.h"
 
+#include "absl/memory/memory.h"
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -77,12 +78,11 @@ void SubgraphBuilder::BuildAddSubgraph(Subgraph* subgraph) {
   SetupTensor(subgraph, kInput2, kTfLiteInt32);
   SetupTensor(subgraph, kOutput, kTfLiteInt32);
 
-  TfLiteAddParams* params =
-      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  auto params = absl::make_unique<TfLiteAddParams>();
   params->activation = kTfLiteActNone;
   int node_index;
   subgraph->AddNodeWithParameters(
-      {kInput1, kInput2}, {kOutput}, nullptr, 0, params,
+      {kInput1, kInput2}, {kOutput}, nullptr, 0, static_cast<void*>(&params),
       ::tflite::ops::builtin::Register_ADD(), &node_index);
 }
 
@@ -107,12 +107,11 @@ void SubgraphBuilder::BuildMulSubgraph(Subgraph* subgraph) {
   SetupTensor(subgraph, kInput2, kTfLiteInt32);
   SetupTensor(subgraph, kOutput, kTfLiteInt32);
 
-  TfLiteMulParams* params =
-      reinterpret_cast<TfLiteMulParams*>(malloc(sizeof(TfLiteMulParams)));
+  auto params = absl::make_unique<TfLiteMulParams>();
   params->activation = kTfLiteActNone;
   int node_index;
   subgraph->AddNodeWithParameters(
-      {kInput1, kInput2}, {kOutput}, nullptr, 0, params,
+      {kInput1, kInput2}, {kOutput}, nullptr, 0, static_cast<void*>(&params),
       ::tflite::ops::builtin::Register_MUL(), &node_index);
 }
 
@@ -137,11 +136,11 @@ void SubgraphBuilder::BuildPadSubgraph(Subgraph* subgraph) {
   SetupTensor(subgraph, kInput2, kTfLiteInt32);
   SetupTensor(subgraph, kOutput, kTfLiteInt32);
 
-  TfLitePadParams* params =
-      reinterpret_cast<TfLitePadParams*>(malloc(sizeof(TfLitePadParams)));
+  auto params = absl::make_unique<TfLitePadParams>();
+
   int node_index;
   subgraph->AddNodeWithParameters(
-      {kInput1, kInput2}, {kOutput}, nullptr, 0, params,
+      {kInput1, kInput2}, {kOutput}, nullptr, 0, static_cast<void*>(&params),
       ::tflite::ops::builtin::Register_PAD(), &node_index);
 }
 
@@ -245,17 +244,16 @@ void SubgraphBuilder::BuildAccumulateLoopBodySubgraph(Subgraph* subgraph) {
   CreateConstantInt32Tensor(subgraph, kConstStep, {1}, {1});
 
   int node_index;
-  TfLiteAddParams* params =
-      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  auto params = absl::make_unique<TfLiteAddParams>();
   params->activation = kTfLiteActNone;
-  subgraph->AddNodeWithParameters({0, 4}, {2}, nullptr, 0, params,
-                                  ::tflite::ops::builtin::Register_ADD(),
-                                  &node_index);
-  params = reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  subgraph->AddNodeWithParameters(
+      {0, 4}, {2}, nullptr, 0, static_cast<void*>(&params),
+      ::tflite::ops::builtin::Register_ADD(), &node_index);
+  params = absl::make_unique<TfLiteAddParams>();
   params->activation = kTfLiteActNone;
-  subgraph->AddNodeWithParameters({2, 1}, {3}, nullptr, 0, params,
-                                  ::tflite::ops::builtin::Register_ADD(),
-                                  &node_index);
+  subgraph->AddNodeWithParameters(
+      {2, 1}, {3}, nullptr, 0, static_cast<void*>(&params),
+      ::tflite::ops::builtin::Register_ADD(), &node_index);
 }
 
 void SubgraphBuilder::BuildPadLoopBodySubgraph(Subgraph* subgraph,
@@ -295,17 +293,17 @@ void SubgraphBuilder::BuildPadLoopBodySubgraph(Subgraph* subgraph,
                             padding);
 
   int node_index;
-  TfLiteAddParams* add_params =
-      reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+  auto add_params = absl::make_unique<TfLiteAddParams>();
   add_params->activation = kTfLiteActNone;
-  subgraph->AddNodeWithParameters(
-      {kInputCounter, kConstStep}, {kOutputCounter}, nullptr, 0, add_params,
-      ::tflite::ops::builtin::Register_ADD(), &node_index);
-  TfLitePadParams* pad_params =
-      reinterpret_cast<TfLitePadParams*>(malloc(sizeof(TfLiteAddParams)));
-  subgraph->AddNodeWithParameters(
-      {kInputValue, kConstPadding}, {kOutputValue}, nullptr, 0, pad_params,
-      ::tflite::ops::builtin::Register_PAD(), &node_index);
+  subgraph->AddNodeWithParameters({kInputCounter, kConstStep}, {kOutputCounter},
+                                  nullptr, 0, static_cast<void*>(&add_params),
+                                  ::tflite::ops::builtin::Register_ADD(),
+                                  &node_index);
+  auto pad_params = absl::make_unique<TfLiteAddParams>();
+  subgraph->AddNodeWithParameters({kInputValue, kConstPadding}, {kOutputValue},
+                                  nullptr, 0, static_cast<void*>(&pad_params),
+                                  ::tflite::ops::builtin::Register_PAD(),
+                                  &node_index);
 }
 
 void SubgraphBuilder::BuildWhileSubgraph(Subgraph* subgraph) {

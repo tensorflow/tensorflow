@@ -169,7 +169,6 @@ Subgraph::~Subgraph() {
     TfLiteIntArrayFree(node.inputs);
     TfLiteIntArrayFree(node.outputs);
     TfLiteIntArrayFree(node.temporaries);
-    if (node.builtin_data) free(node.builtin_data);
     OpFree(node_and_reg.second, node.user_data);
     node.builtin_data = nullptr;
   }
