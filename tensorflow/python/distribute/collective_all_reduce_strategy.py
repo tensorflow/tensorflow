@@ -165,12 +165,16 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     task_id = cluster_resolver.task_id
     if task_type is None or task_id is None:
       raise ValueError("When `cluster_spec` is given, you must also specify "
-                       "`task_type` and `task_id`.")
+                       "`task_type` and `task_id` in the `cluster_resolver`.")
+    if task_type not in ("chief", "worker"):
+      raise ValueError(
+          "Unrecognized task_type: %r, valid task types are: \"chief\", "
+          "\"worker\"." % task_type)
 
     self._num_workers = multi_worker_util.worker_count(cluster_spec, task_type)
     if not self._num_workers:
-      raise ValueError("No `worker`, `chief` or `evaluator` tasks can be found "
-                       "in `cluster_spec`.")
+      raise ValueError("No `worker` or `chief` tasks can be found in "
+                       "`cluster_spec`.")
 
     self._is_chief = multi_worker_util.is_chief(cluster_spec, task_type,
                                                 task_id)
@@ -406,9 +410,15 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
     # Collective group leader is needed for collective ops to coordinate
     # workers.
-    updated_config.experimental.collective_group_leader = (
-        multi_worker_util.collective_leader(self._cluster_spec, self._task_type,
-                                            self._task_id))
+    if "chief" in self._cluster_spec.jobs:
+      updated_config.experimental.collective_group_leader = (
+          "/job:chief/replica:0/task:0")
+    else:
+      if "worker" not in self._cluster_spec.jobs:
+        raise ValueError(
+            "You must have `chief` or `worker` jobs in the `cluster_spec`.")
+      updated_config.experimental.collective_group_leader = (
+          "/job:worker/replica:0/task:0")
 
     # The device filters prevent communication between workers.
     del updated_config.device_filters[:]

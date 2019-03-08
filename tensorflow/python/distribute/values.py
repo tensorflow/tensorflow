@@ -1089,7 +1089,7 @@ class TPUMirroredVariable(trackable.Trackable):
     # pylint: disable=protected-access
     if distribution_strategy_context.in_cross_replica_context():
       return self.primary._as_graph_element()
-    return self._read_variable_op()
+    return self._get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.

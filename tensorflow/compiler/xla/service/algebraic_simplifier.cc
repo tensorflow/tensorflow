@@ -873,9 +873,9 @@ std::unique_ptr<HloInstruction> TryDivideToShift(HloInstruction* divide,
           computation, a->shape().element_type(), a->shape().dimensions());
 
       auto* dividend_is_negative =
-          computation->AddInstruction(HloInstruction::CreateBinary(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), HloOpcode::kLt, a,
-              zero_like_a));
+          computation->AddInstruction(HloInstruction::CreateCompare(
+              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
+              ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
@@ -2475,9 +2475,9 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(HloInstruction* remainder,
           computation, a->shape().element_type(), a->shape().dimensions());
 
       auto* dividend_is_negative =
-          computation->AddInstruction(HloInstruction::CreateBinary(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), HloOpcode::kLt, a,
-              zero_like_a));
+          computation->AddInstruction(HloInstruction::CreateCompare(
+              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
+              ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));

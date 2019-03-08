@@ -69,6 +69,14 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
 
+// Evaluates whether fusing 'producer' into 'consumer' might cause exponential
+// behavior in the fusion emitter. We currently can have exponential time/memory
+// requirements for emitting certain fusion kernels, in which case we don't want
+// to fuse.
+// TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+bool IsFusionEmitterInefficient(const HloInstruction* consumer,
+                                const HloInstruction* producer);
+
 }  // namespace gpu
 }  // namespace xla
 

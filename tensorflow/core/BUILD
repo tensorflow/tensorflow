@@ -1446,6 +1446,7 @@ cc_library(
     name = "all_kernels_impl",
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
+        "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",
@@ -2177,6 +2178,18 @@ tf_proto_library(
     ],
 )
 
+tf_proto_library(
+    name = "conv_autotuning_proto",
+    srcs = ["protobuf/conv_autotuning.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    protodeps = tf_additional_all_protos(),
+    provide_cc_alias = True,
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
@@ -2477,12 +2490,6 @@ cc_library(
 
 cc_library(
     name = "tflite_portable_logging",
-    srcs = [
-    ] + if_ios([
-        "platform/default/logging.cc",
-        "platform/env_time.cc",
-        "platform/posix/env_time.cc",
-    ]),
     hdrs = [
         "lib/bfloat16/bfloat16.h",
         "platform/default/integral_types.h",
@@ -2491,10 +2498,11 @@ cc_library(
         "platform/macros.h",
         "platform/platform.h",
         "platform/types.h",
-    ] + if_windows(["platform/windows/integral_types.h"]) + if_ios(["platform/env_time.h"]),
+    ],
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
+        ":platform_base",
         "//tensorflow/core/platform/default/build_config:logging",
     ],
 )

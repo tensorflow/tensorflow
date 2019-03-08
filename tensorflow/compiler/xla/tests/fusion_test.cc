@@ -63,7 +63,11 @@ const float test_float_vals[3][test_width][test_height] = {
 class FusionTest : public HloTestBase {
  protected:
   template <typename T, int Arity>
-  void TestElementwise2D(HloOpcode opcode) {
+  void TestElementwise2D(
+      HloOpcode opcode,
+      absl::optional<ComparisonDirection> direction = absl::nullopt) {
+    // Create a variable for comparisons since they require the direction.
+    bool is_compare = std::is_same<T, bool>::value;
     Array2D<float> operand_data[Arity];
     for (int i = 0; i < Arity; ++i) {
       new (&operand_data[i]) Array2D<float>(test_width, test_height);
@@ -76,7 +80,11 @@ class FusionTest : public HloTestBase {
           xs[k] = test_float_vals[k][i][j];
           operand_data[k](i, j) = xs[k];
         }
-        answer_data(i, j) = ComputeElementwiseAnswer<T>(opcode, xs);
+        if (is_compare) {
+          answer_data(i, j) = ComputeElementwiseAnswerCompare(*direction, xs);
+        } else {
+          answer_data(i, j) = ComputeElementwiseAnswerFloat(opcode, xs);
+        }
       }
     }
 
@@ -98,8 +106,13 @@ class FusionTest : public HloTestBase {
         root_hlo = HloInstruction::CreateUnary(answer_shape, opcode, hlos[1]);
         break;
       case 2:
-        root_hlo = HloInstruction::CreateBinary(answer_shape, opcode, hlos[1],
-                                                hlos[2]);
+        if (is_compare) {
+          root_hlo = HloInstruction::CreateCompare(answer_shape, hlos[1],
+                                                   hlos[2], *direction);
+        } else {
+          root_hlo = HloInstruction::CreateBinary(answer_shape, opcode, hlos[1],
+                                                  hlos[2]);
+        }
         break;
       case 3:
         root_hlo = HloInstruction::CreateTernary(answer_shape, opcode, hlos[1],
@@ -124,13 +137,14 @@ class FusionTest : public HloTestBase {
   }
 
  private:
-  template <typename T>
-  T ComputeElementwiseAnswer(HloOpcode opcode, absl::Span<const float> xs);
+  float ComputeElementwiseAnswerFloat(HloOpcode opcode,
+                                      absl::Span<const float> xs);
+  bool ComputeElementwiseAnswerCompare(ComparisonDirection direction,
+                                       absl::Span<const float> xs);
 };
 
-template <>
-float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
-                                                  absl::Span<const float> xs) {
+float FusionTest::ComputeElementwiseAnswerFloat(HloOpcode opcode,
+                                                absl::Span<const float> xs) {
   switch (opcode) {
     case HloOpcode::kAdd:
       return xs[0] + xs[1];
@@ -153,24 +167,21 @@ float FusionTest::ComputeElementwiseAnswer<float>(HloOpcode opcode,
   }
 }
 
-template <>
-bool FusionTest::ComputeElementwiseAnswer<bool>(HloOpcode opcode,
-                                                absl::Span<const float> xs) {
-  switch (opcode) {
-    case HloOpcode::kEq:
+bool FusionTest::ComputeElementwiseAnswerCompare(ComparisonDirection direction,
+                                                 absl::Span<const float> xs) {
+  switch (direction) {
+    case ComparisonDirection::kEq:
       return xs[0] == xs[1];
-    case HloOpcode::kNe:
+    case ComparisonDirection::kNe:
       return xs[0] != xs[1];
-    case HloOpcode::kGt:
+    case ComparisonDirection::kGt:
       return xs[0] > xs[1];
-    case HloOpcode::kLt:
+    case ComparisonDirection::kLt:
       return xs[0] < xs[1];
-    case HloOpcode::kGe:
+    case ComparisonDirection::kGe:
       return xs[0] >= xs[1];
-    case HloOpcode::kLe:
+    case ComparisonDirection::kLe:
       return xs[0] <= xs[1];
-    default:
-      LOG(FATAL) << "No comparatory opcode: " << opcode;
   }
 }
 
@@ -740,24 +751,28 @@ XLA_TEST_F(FusionTest, Maximum2D) {
   TestElementwise2D<float, 2>(HloOpcode::kMaximum);
 }
 
-XLA_TEST_F(FusionTest, Equal2D) { TestElementwise2D<bool, 2>(HloOpcode::kEq); }
+XLA_TEST_F(FusionTest, Equal2D) {
+  TestElementwise2D<bool, 2>(HloOpcode::kCompare, ComparisonDirection::kEq);
+}
 
 XLA_TEST_F(FusionTest, Inequal2D) {
-  TestElementwise2D<bool, 2>(HloOpcode::kNe);
+  TestElementwise2D<bool, 2>(HloOpcode::kCompare, ComparisonDirection::kNe);
 }
 
 XLA_TEST_F(FusionTest, Greater2D) {
-  TestElementwise2D<bool, 2>(HloOpcode::kGt);
+  TestElementwise2D<bool, 2>(HloOpcode::kCompare, ComparisonDirection::kGt);
 }
 
-XLA_TEST_F(FusionTest, Lesser2D) { TestElementwise2D<bool, 2>(HloOpcode::kLt); }
+XLA_TEST_F(FusionTest, Lesser2D) {
+  TestElementwise2D<bool, 2>(HloOpcode::kCompare, ComparisonDirection::kLt);
+}
 
 XLA_TEST_F(FusionTest, GreaterOrEqual2D) {
-  TestElementwise2D<bool, 2>(HloOpcode::kGe);
+  TestElementwise2D<bool, 2>(HloOpcode::kCompare, ComparisonDirection::kGe);
 }
 
 XLA_TEST_F(FusionTest, LesserOrEqual2D) {
-  TestElementwise2D<bool, 2>(HloOpcode::kLe);
+  TestElementwise2D<bool, 2>(HloOpcode::kCompare, ComparisonDirection::kLe);
 }
 
 XLA_TEST_F(FusionTest, Clamp2D) {

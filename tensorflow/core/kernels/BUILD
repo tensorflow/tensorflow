@@ -46,6 +46,7 @@ load(
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -230,6 +231,7 @@ tf_kernel_library(
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
+        "concat_lib_gpu.h",
         "cuda_device_array.h",
         "cuda_device_array_gpu.h",
     ],
@@ -268,7 +270,7 @@ tf_kernel_library(
     deps = [
         ":eigen_helpers",
         ":fill_functor",
-        ":gpu_util_hdrs",
+        ":gpu_utils",
         ":image_resizer_state",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -462,9 +464,29 @@ cc_library(
     hdrs = ["conv_ops_gpu.h"],
 )
 
+# We keep this target only because some contrib/ targets depend on it. The
+# reason why the contrib/ targets can't depend on gpu_utils is that, some
+# of the targets are tf_custom_op_library. tf_custom_op_library forbids the
+# dependency to tensorflow/core:lib, which gpu_utils certainly depends on.
 cc_library(
     name = "gpu_util_hdrs",
     hdrs = ["gpu_utils.h"],
+)
+
+tf_cuda_library(
+    name = "gpu_utils",
+    srcs = if_cuda_is_configured(["gpu_utils.cc"]),
+    hdrs = ["gpu_utils.h"],
+    deps = [
+        ":gpu_util_hdrs",
+        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:conv_autotuning_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:logger",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_cc_test(
@@ -607,6 +629,7 @@ tf_kernel_library(
     gpu_srcs = [
         "split_lib_gpu.cu.cc",
         "split_lib.h",
+        "split_lib_gpu.h",
     ],
     deps = [
         ":cuda_device_array",
@@ -618,9 +641,7 @@ tf_kernel_library(
 
 cc_library(
     name = "split_lib_hdrs",
-    hdrs = [
-        "split_lib.h",
-    ],
+    hdrs = ["split_lib.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
@@ -832,7 +853,6 @@ cc_library(
     deps = [
         ":batch_space_ops",
         ":bcast_ops",
-        ":bitcast_op",
         ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
@@ -884,8 +904,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bitcast_op",
-    prefix = "bitcast_op",
-    deps = ARRAY_DEPS,
+    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
+    deps = ["//tensorflow/c/kernels:bitcast_op"],
 )
 
 tf_kernel_library(
@@ -1253,7 +1273,7 @@ tf_kernel_library(
     visibility = ["//visibility:public"],
     deps = [
         ":bounds_check_lib",
-        ":gpu_util_hdrs",
+        ":gpu_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -3339,7 +3359,7 @@ tf_kernel_library(
     }),
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
-        ":gpu_util_hdrs",
+        ":gpu_utils",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
@@ -3761,6 +3781,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/proto:proto_utils",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -5848,7 +5869,7 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = glob(
+    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
         [
             "*.cc",
             "*.h",
@@ -6794,6 +6815,20 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ] + mkl_deps(),
+)
+
+tf_cc_test(
+    name = "bias_op_test",
+    size = "small",
+    srcs = ["bias_op_test.cc"],
+    deps = [
+        ":bias_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 tf_cc_test_mkl(

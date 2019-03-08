@@ -258,8 +258,16 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
     return false;
   }
-  // This check is potentially expensive.
-  return !FusionWouldBeTooLarge(consumer, consumer->operand(operand_index));
+  auto producer = consumer->operand(operand_index);
+  // The following checks are potentially expensive.
+  if (FusionWouldBeTooLarge(consumer, producer)) {
+    return false;
+  }
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  return !IsFusionEmitterInefficient(consumer, producer);
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,

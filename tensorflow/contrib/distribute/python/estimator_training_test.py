@@ -251,7 +251,7 @@ class DistributeCoordinatorIntegrationTest(
 
   def _get_strategy_object(self, strategy_cls):
     if strategy_cls == mirrored_strategy.CoreMirroredStrategy:
-      return strategy_cls()
+      return strategy_cls(mirrored_strategy.all_local_devices())
     else:
       return strategy_cls(num_gpus_per_worker=context.num_gpus())
 
@@ -269,7 +269,6 @@ class DistributeCoordinatorIntegrationTest(
               mirrored_strategy.MirroredStrategy,
               mirrored_strategy.CoreMirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
-              collective_all_reduce_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
@@ -372,11 +371,9 @@ class DistributeCoordinatorIntegrationTest(
               parameter_server_strategy.ParameterServerStrategy,
           ],
           eval_distribute_cls=[
-              None,
-              mirrored_strategy.MirroredStrategy,
+              None, mirrored_strategy.MirroredStrategy,
               mirrored_strategy.CoreMirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
-              collective_all_reduce_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
   def test_complete_flow_independent_worker_between_graph(
