@@ -664,13 +664,10 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
 
-      # Get pip binary name again
-      PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
-
-      ${PIP_BIN_PATH} show auditwheel
+      pip3 show auditwheel
       set +e
-      ${PIP_BIN_PATH} install auditwheel==1.5.0
-      sudo ${PIP_BIN_PATH} install auditwheel==1.5.0
+      pip3 install auditwheel==1.5.0
+      sudo pip3 install auditwheel==1.5.0
       set -e
       auditwheel --version
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
