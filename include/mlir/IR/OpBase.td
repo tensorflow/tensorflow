@@ -338,7 +338,8 @@ class TypeBasedAttr<BuildableType t, string attrName, string descr> :
 }
 
 // An attribute backed by a string type.
-class StringBasedAttr<string descr> : Attr<CPred<"true">, descr> {
+class StringBasedAttr<Pred condition, string descr> :
+    Attr<condition, descr> {
   let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
   let storageType = [{ StringAttr }];
   let returnType = [{ StringRef }];
@@ -378,7 +379,7 @@ def I32Attr : IntegerAttrBase<I32, "32-bit integer"> {
   let returnType = [{ int }];
   let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
 }
-def StrAttr : StringBasedAttr<"string">;
+def StrAttr : StringBasedAttr<CPred<"true">, "string">;
 
 // Attributes containing functions.
 def FunctionAttr
