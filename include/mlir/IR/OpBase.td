@@ -126,6 +126,18 @@ class BuildableType<code builder> {
   code builderCall = builder;
 }
 
+// Any type from the given list
+class AnyTypeOf<list<Type> allowedTypes, string description> : Type<
+    // Satisfy any of the allowed type's condition
+    AnyOf<!foreach(allowedtype, allowedTypes, allowedtype.predicate)>,
+    !if(!eq(description, ""),
+        // Join all allowed types' descriptions with " or " as the description
+        // if not provided during template specialization
+        !foldl(/*init*/"", /*list*/allowedTypes, prev, cur,
+               prev # " or " # cur.description),
+        // Otherwise use the provided one
+        description)>;
+
 // Integer types.
 class IntegerBase<CPred pred, string descr> : Type<pred, descr>;
 
@@ -165,6 +177,9 @@ class F<int width>
 def F16 : F<16>;
 def F32 : F<32>;
 def F64 : F<64>;
+
+def BF16 : Type<CPred<"{0}.isBF16()">, "bfloat16 type">,
+           BuildableType<"getBF16Type()">;
 
 // A container type is a type that has another type embedded within it.
 class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
