@@ -738,7 +738,7 @@ tf_module {
   }
   member_method {
     name: "CudnnRNNBackpropV3"
-    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'output\', \'output_h\', \'output_c\', \'output_backprop\', \'output_h_backprop\', \'output_c_backprop\', \'reserve_space\', \'host_reserved\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'output\', \'output_h\', \'output_c\', \'output_backprop\', \'output_h_backprop\', \'output_c_backprop\', \'reserve_space\', \'host_reserved\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'time_major\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "CudnnRNNCanonicalToParams"
@@ -758,7 +758,7 @@ tf_module {
   }
   member_method {
     name: "CudnnRNNV3"
-    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'is_training\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'is_training\', \'time_major\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Cumprod"
