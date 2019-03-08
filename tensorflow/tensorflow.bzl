@@ -918,31 +918,8 @@ register_extension_info(
 )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_cc_test(
-        name,
-        srcs = [],
-        deps = [],
-        tags = [],
-        data = [],
-        size = "medium",
-        extra_copts = [],
-        linkstatic = 0,
-        args = [],
-        kernels = [],
-        linkopts = []):
-    tf_gpu_cc_test(
-        name,
-        srcs = srcs,
-        deps = deps,
-        tags = tags,
-        data = data,
-        size = size,
-        extra_copts = extra_copts,
-        linkstatic = linkstatic,
-        linkopts = linkopts,
-        args = args,
-        kernels = kernels,
-    )
+def tf_cuda_cc_test(*args, **kwargs):
+    tf_gpu_cc_test(*args, **kwargs)
 
 register_extension_info(
     extension_name = "tf_cuda_cc_test",
@@ -993,29 +970,8 @@ register_extension_info(
 )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_only_cc_test(
-        name,
-        srcs = [],
-        deps = [],
-        tags = [],
-        data = [],
-        size = "medium",
-        linkstatic = 0,
-        args = [],
-        kernels = [],
-        linkopts = []):
-    tf_gpu_only_cc_test(
-        name,
-        srcs = srcs,
-        deps = deps,
-        tags = tags,
-        data = data,
-        size = size,
-        linkstatic = linkstatic,
-        args = args,
-        kernels = kernels,
-        linkopts = linkopts,
-    )
+def tf_cuda_only_cc_test(*args, **kwargs):
+    tf_gpu_only_cc_test(*args, **kwargs)
 
 register_extension_info(
     extension_name = "tf_cuda_only_cc_test",
@@ -1122,27 +1078,8 @@ def tf_gpu_cc_tests(
         )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_cc_tests(
-        srcs,
-        deps,
-        name = "",
-        tags = [],
-        size = "medium",
-        linkstatic = 0,
-        args = None,
-        kernels = [],
-        linkopts = []):
-    tf_gpu_cc_tests(
-        srcs,
-        deps,
-        name = name,
-        tags = tags,
-        size = size,
-        linkstatic = linkstatic,
-        args = args,
-        kernels = kernels,
-        linkopts = linkopts,
-    )
+def tf_cuda_cc_tests(*args, **kwargs):
+    tf_gpu_cc_tests(*args, **kwargs)
 
 def tf_java_test(
         name,
@@ -1261,13 +1198,8 @@ register_extension_info(
 )
 
 # terminology changes: saving tf_cuda_* definition for compatibility
-def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
-    tf_gpu_library(
-        deps = deps,
-        cuda_deps = cuda_deps,
-        copts = copts,
-        **kwargs
-    )
+def tf_cuda_library(*args, **kwargs):
+    tf_gpu_library(*args, **kwargs)
 
 register_extension_info(
     extension_name = "tf_cuda_library",
@@ -2021,37 +1953,8 @@ register_extension_info(
 )
 
 # terminology changes: saving cuda_* definition for compatibility
-def cuda_py_test(
-        name,
-        srcs,
-        size = "medium",
-        data = [],
-        main = None,
-        args = [],
-        shard_count = 1,
-        additional_deps = [],
-        kernels = [],
-        tags = [],
-        flaky = 0,
-        xla_enable_strict_auto_jit = False,
-        xla_enabled = False,
-        grpc_enabled = False):
-    gpu_py_test(
-        name = name,
-        srcs = srcs,
-        size = size,
-        data = data,
-        main = main,
-        args = args,
-        shard_count = shard_count,
-        additional_deps = additional_deps,
-        kernels = kernels,
-        tags = tags,
-        flaky = flaky,
-        xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
-        xla_enabled = xla_enabled,
-        grpc_enabled = grpc_enabled,
-    )
+def cuda_py_test(*args, **kwargs):
+    gpu_py_test(*args, **kwargs)
 
 register_extension_info(
     extension_name = "cuda_py_test",
@@ -2159,33 +2062,8 @@ def gpu_py_tests(
     )
 
 # terminology changes: saving cuda_* definition for compatibility
-def cuda_py_tests(
-        name,
-        srcs,
-        size = "medium",
-        additional_deps = [],
-        kernels = [],
-        data = [],
-        shard_count = 1,
-        tags = [],
-        prefix = "",
-        xla_enable_strict_auto_jit = False,
-        xla_enabled = False,
-        grpc_enabled = False):
-    gpu_py_tests(
-        name,
-        srcs,
-        size = size,
-        additional_deps = additional_deps,
-        kernels = kernels,
-        data = data,
-        shard_count = shard_count,
-        tags = tags,
-        prefix = prefix,
-        xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
-        xla_enabled = xla_enabled,
-        grpc_enabled = grpc_enabled,
-    )
+def cuda_py_tests(*args, **kwargs):
+    gpu_py_tests(*args, **kwargs)
 
 # Creates a genrule named <name> for running tools/proto_text's generator to
 # make the proto_text functions, for the protos passed in <srcs>.
