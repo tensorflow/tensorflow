@@ -24,7 +24,7 @@ from tensorflow.python.util import nest
 
 
 def extract_model_metrics(model):
-  """Convert metrics from a Keras model to (value, update) ops.
+  """Convert metrics from a Keras model `compile` API to dictionary.
 
   This is used for converting Keras models to Estimators and SavedModels.
 
@@ -32,20 +32,16 @@ def extract_model_metrics(model):
     model: A `tf.keras.Model` object.
 
   Returns:
-    Dictionary mapping metric names to tuples of (value, update) ops. May return
-    `None` if the model does not contain any metrics.
+    Dictionary mapping metric names to metric instances. May return `None` if
+    the model does not contain any metrics.
   """
-  from tensorflow.python.keras import metrics  # pylint: disable=g-import-not-at-top
   if not getattr(model, '_compile_metrics', None):
     return None
 
   # TODO(psv/kathywu): use this implementation in model to estimator flow.
-  eval_metric_ops = {}
-  for metric_name in model.metrics_names[1:]:  # Index 0 is `loss`.
-    m = metrics.Mean()
-    m(model._compile_metrics_tensors[metric_name])
-    eval_metric_ops[metric_name] = m
-  return eval_metric_ops
+  # We are not using model.metrics here because we want to exclude the metrics
+  # added using `add_metric` API.
+  return {m.name: m for m in model._compile_metric_functions}
 
 
 def trace_model_call(model, input_signature=None):

@@ -437,13 +437,13 @@ def norm_v2(tensor,
 
   Args:
     tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
-    ord: Order of the norm. Supported values are 'fro', 'euclidean',
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`,
       `1`, `2`, `np.inf` and any positive real number yielding the corresponding
-      p-norm. Default is 'euclidean' which is equivalent to Frobenius norm if
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
       `tensor` is a matrix and equivalent to 2-norm for vectors.
       Some restrictions apply:
-        a) The Frobenius norm `fro` is not defined for vectors,
-        b) If axis is a 2-tuple (matrix norm), only 'euclidean', 'fro', `1`,
+        a) The Frobenius norm `'fro'` is not defined for vectors,
+        b) If axis is a 2-tuple (matrix norm), only `'euclidean'`, '`fro'`, `1`,
            `2`, `np.inf` are supported.
       See the description of `axis` on how to compute norms for a batch of
       vectors or matrices stored in a tensor.
@@ -619,6 +619,8 @@ def norm(tensor,
         result = math_ops.sqrt(
             math_ops.reduce_sum(
                 tensor * math_ops.conj(tensor), axis, keepdims=True))
+        # TODO(rmlarsen): Replace with the following, once gradients are defined
+        # result = math_ops.reduce_euclidean_norm(tensor, axis, keepdims=True)
     else:
       result = math_ops.abs(tensor)
       if ord == 1:

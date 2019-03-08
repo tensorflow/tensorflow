@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
@@ -397,7 +398,7 @@ def is_tpu_strategy(strategy):
 
 def is_dataset_shape_fully_defined(dataset):
   """Returns whether a dataset contains a final partial batch."""
-  shapes = nest.flatten(dataset.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
   unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
   return not unknown_shapes
 
@@ -453,10 +454,13 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       global_batch_size = batch_size
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
-    if not allow_partial_batch and num_samples % global_batch_size:
-      raise ValueError('The number of samples %s is not divisible by '
-                       'batch size %s.' % (num_samples, global_batch_size))
-    steps = num_samples // global_batch_size
+    if allow_partial_batch:
+      steps = np.ceil(num_samples / global_batch_size).astype(int)
+    else:
+      if num_samples % global_batch_size:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'batch size %s.' % (num_samples, global_batch_size))
+      steps = num_samples // global_batch_size
   else:
     if batch_size is None:
       # We calculate the batch size based on the number of steps specified
@@ -497,7 +501,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
 
 
 def get_batch_dimension(iterator):
-  shapes = nest.flatten(iterator.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(iterator))
   # Take the batch size from the first element, as it should be the same for
   # all.
   dims = shapes[0].dims
@@ -563,6 +567,11 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+  # Expand 1-dimensional inputs.
+  # TODO(b/124535720): Remove once this standarize data logic is shared with
+  # main flow.
+  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
+                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
@@ -586,8 +595,6 @@ def _custom_compile_for_predict(model):
     return
   model._is_compiled = True
   model.total_loss = None
-  model._fit_function = None
-  model._eval_function = None
   model.train_function = None
   model.test_function = None
   model.predict_function = None
@@ -897,3 +904,38 @@ def _generate_cache_key(mode):
 def distributed_scope(strategy, learning_phase):
   with strategy.scope(), K.learning_phase_scope(learning_phase):
     yield
+
+
+def filter_distributed_callbacks(callbacks_list):
+  """Filter Callbacks based on the worker context when running multi-worker.
+
+  Arguments:
+    callbacks_list: A list of `Callback` instances.
+
+  Returns:
+    The list of `Callback` instances that should be run on this worker.
+  """
+
+  if not K.in_multi_worker_mode():
+    raise ValueError(
+        'filter_distributed_callbacks() should only be called when Keras '
+        'is in multi worker mode.')
+
+  worker_context = dc_context.get_current_worker_context()
+  callbacks_list = callbacks_list or []
+  if not [
+      c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
+  ]:
+    # TODO(rchao): Consider providing a ModelCheckpoint here if the user
+    # fails to.
+    logging.warning('ModelCheckpoint callback is not provided. '
+                    'Workers will need to restart training if any fails.')
+  # TODO(rchao): Add similar warning for restoring callback (to be designed).
+
+  if callbacks_list is None or worker_context.is_chief:
+    return callbacks_list
+
+  # Some Callbacks should only run on the chief worker.
+  return [
+      callback for callback in callbacks_list if not callback._chief_worker_only
+  ]  # pylint: disable=protected-access

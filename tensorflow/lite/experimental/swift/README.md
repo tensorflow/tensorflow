@@ -48,29 +48,16 @@ Build the `TensorFlowLiteTests` target:
 bazel test tensorflow/lite/experimental/swift:TensorFlowLiteTests --swiftcopt=-enable-testing
 ```
 
+Note that `--swiftcopt=-enable-testing` is required for optimized builds (`-c opt`).
+
 ### Tulsi
 
-Open the `TensorFlowLite.tulsiproj` using the [TulsiApp](https://github.com/bazelbuild/tulsi) or by
-running the [`generate_xcodeproj.sh`](https://github.com/bazelbuild/tulsi/blob/master/src/tools/generate_xcodeproj.sh)
-script:
+Open the `TensorFlowLite.tulsiproj` using the
+[TulsiApp](https://github.com/bazelbuild/tulsi)
+or by running the
+[`generate_xcodeproj.sh`](https://github.com/bazelbuild/tulsi/blob/master/src/tools/generate_xcodeproj.sh)
+script from the root `tensorflow` directory:
 
 ```shell
-generate_xcodeproj.sh --genconfig tensorflow/lite/swift/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
-```
-
-### CocoaPods
-
-Add the following to your `Podfile`:
-
-```ruby
-use_frameworks!
-pod 'TensorFlowLiteSwift'
-```
-
-Then, run `pod install`.
-
-In your Swift files, import the module:
-
-```swift
-import TensorFlowLite
+generate_xcodeproj.sh --genconfig tensorflow/lite/experimental/swift/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
 ```

@@ -82,6 +82,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleWhile(HloInstruction* hlo) override;
 
+  Status HandleSlice(HloInstruction* hlo) override;
+
  private:
   using OperandDynamicDimensionFn = std::function<Status(
       HloInstruction* operand, ShapeIndex index, int64 dimension,
@@ -142,7 +144,7 @@ Status DynamicDimensionInferenceVisitor::HandleBroadcast(HloInstruction* hlo) {
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size) {
         int64 broadcast_dim = hlo->dimensions(dimension);
-        parent_->SetDynamicSize(hlo, index, broadcast_dim, dynamic_size);
+        parent_->SetDynamicSize(hlo, {}, broadcast_dim, dynamic_size);
         return Status::OK();
       });
 }
@@ -393,6 +395,26 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
 
         parent_->SetDynamicSize(select_and_scatter, {}, dimension,
                                 dynamic_size);
+
+        return Status::OK();
+      });
+}
+
+Status DynamicDimensionInferenceVisitor::HandleSlice(HloInstruction* hlo) {
+  return ForEachOperandDynamicDimension(
+      hlo, [&](HloInstruction* operand, ShapeIndex /*index*/, int64 dimension,
+               int64 /*operand_index*/, HloInstruction* dynamic_size) {
+        if (hlo->slice_starts(dimension) != 0 ||
+            hlo->slice_strides(dimension) != 1 ||
+            hlo->slice_limits(dimension) !=
+                operand->shape().dimensions(dimension)) {
+          return Unimplemented(
+              "Dynamic dimension propagation on Slice where it doesn't slice "
+              "out an entire dimension is not supported %s",
+              hlo->ToString());
+        }
+
+        parent_->SetDynamicSize(hlo, {}, dimension, dynamic_size);
 
         return Status::OK();
       });

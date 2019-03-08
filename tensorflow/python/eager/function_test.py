@@ -66,6 +66,13 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
 
+def total_function_cache(defined):
+  # pylint: disable=protected-access
+  return (set(defined._function_cache.primary)
+          | set(defined._function_cache.arg_relaxed))
+  # pylint: enable=protected-access
+
+
 class MiniModel(keras_training.Model):
   """Minimal model for mnist.
 
@@ -98,6 +105,134 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     sq2 = matmul(sq, t, transpose_a=True)
     self.assertAllEqual(sq.numpy().reshape(-1), [10, 14, 14, 20])
     self.assertAllEqual(sq2.numpy().reshape(-1), [52, 76, 74, 108])
+
+  def testVariable(self):
+    v1 = variables.Variable(1.0)
+    add = def_function.function(lambda x, v: x + v1 + v)
+    v2 = variables.Variable(1.0)
+    x = constant_op.constant(1.0)
+    r = add(x, v2)
+    self.assertEqual(3.0, self.evaluate(r))
+
+  def testExternalControlDependency(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+
+      op = v.assign_add(1.0)
+
+      @function.defun
+      def f():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      self.evaluate(f())
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
+  def testInputShapeFunctionRelaxation(self):
+    unknown_dim = [False]
+
+    @function.defun
+    def func(a):
+      if a._shape_tuple()[0] is None:
+        unknown_dim[0] = True
+      return a + 1
+
+    func(constant_op.constant([]))
+    self.assertFalse(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 1)
+
+    func(constant_op.constant([1.0]))
+    self.assertFalse(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 2)
+
+    func(constant_op.constant([1.0, 2.0]))
+    self.assertTrue(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 2)
+
+  def testNestedInputShapeFunctionRelaxation(self):
+    unknown_dim = [False]
+
+    @function.defun
+    def func(a_, b_=None):
+      del a_  # Only used to check which cache is used.
+      self.assertEqual(b_[0]._shape_tuple(), ())
+      if b_[1]._shape_tuple()[0] is None:
+        unknown_dim[0] = True
+      return b_[0] + 1
+
+    a = 'hi'
+    b0 = constant_op.constant(1.0)
+    func(a, b_=[b0, constant_op.constant([])])
+    self.assertFalse(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 1)
+
+    func(a, b_=[b0, constant_op.constant([1.0])])
+    self.assertFalse(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 2)
+
+    func(a, b_=[b0, constant_op.constant([1.0, 1.0])])
+    self.assertTrue(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 2)
+
+    unknown_dim[0] = False
+
+    # Now do the same except with a new a which is not a tensor; this should
+    # change the cache key.
+    a = 'bye'
+    func(a, b_=[b0, constant_op.constant([])])
+    self.assertFalse(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 3)
+
+    # Since we already marked a cache miss for a function with the same
+    # non-input signatures, here we will immediately start relaxing shapes.
+    func(a, b_=[b0, constant_op.constant([1.0])])
+    self.assertTrue(unknown_dim[0])
+    self.assertLen(total_function_cache(func), 3)
+
+  def testFunctionRelaxationLosesInnerDimWithKerasLayer(self):
+    layer = keras.layers.Dense(1)
+    fn = def_function.function()(layer)
+
+    with self.captureWritesToStream(sys.stderr) as printed:
+      fn(array_ops.ones((3, 2)))
+      self.assertNotIn('ValueError', printed.contents())
+    with self.captureWritesToStream(sys.stderr) as printed:
+      # Use batch size 2 to trigger a second cache miss on the shape.
+      fn(array_ops.ones((2, 2)))
+      self.assertNotIn('ValueError', printed.contents())
+
+    # Shape relaxation passes TensorShape([None, None]), which causes layer
+    # matmul to fail, due to incompatible dims.  What would have been a graph
+    # build time error (layer would complain about the inner dim being 4).
+    with self.captureWritesToStream(sys.stderr) as printed:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
+        fn(array_ops.ones((3, 4)))
+
+  def testNestedShapeFunctionRelaxation(self):
+
+    got_shape = [None]
+
+    # The inner function will go through shape relaxation because the shapes it
+    # receives will be [1], [2], [3], ...
+    @def_function.function
+    def bar(x_shape):
+      got_shape[0] = x_shape._shape_tuple()
+      return x_shape
+
+    # The outer function will not go through shape relaxation because the shapes
+    # it receives will be [1], [[1]], [[[1]]], ...
+    @def_function.function
+    def foo(ones):
+      return bar(array_ops.shape(ones))
+
+    for rank in range(1, 6):
+      x_shape = self.evaluate(foo(array_ops.ones([1] * rank)))
+      self.assertAllEqual(x_shape, [1] * rank)
+      if rank < 3:
+        self.assertEqual(got_shape[0], (rank,))
+      else:
+        self.assertEqual(got_shape[0], (None,))
 
   def testWastedAdd(self):
 
@@ -382,13 +517,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     x = random_ops.random_uniform([2, 2]).numpy()
     defined = function.defun(f)
     defined(x)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     x = random_ops.random_uniform([2, 2]).numpy()
     defined(x)
     # A NumPy array with different values but the same shape and dtype
     # shouldn't trigger another function definition.
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     # Test that the numpy array is properly an argument to the graph function.
     self.assertEqual(1., defined(numpy.ones([])).numpy())
@@ -889,8 +1024,9 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return None
 
     with self.assertRaisesRegexp(
-        errors.InvalidArgumentError, 'Could not colocate node with its '
-        'resource and reference inputs.*'):
+        errors.InvalidArgumentError,
+        'Cannot place the graph because a reference or resource edge connects '
+        'colocation groups with incompatible assigned devices'):
       if not context.executing_eagerly():
         self.evaluate(variables.global_variables_initializer())
       self.evaluate(resource_apply_adam())
@@ -1109,7 +1245,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(multi_device_fn)
     outputs = self.evaluate(defined())
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -1117,7 +1253,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('/cpu:3'):
       outputs = self.evaluate(defined())
     # All function definitions are agnostic to call site devices.
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -1125,7 +1261,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('/cpu:0'):
       outputs = self.evaluate(defined())
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
     self.assertIn(compat.as_bytes('CPU:0'), outputs[0])
     self.assertIn(compat.as_bytes('CPU:1'), outputs[1])
     self.assertIn(compat.as_bytes('CPU:2'), outputs[2])
@@ -1210,10 +1346,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     defined = function.defun(func)
     defined(Foo())
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     defined(Foo())
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorDtypeCollision(self):
 
@@ -1223,11 +1359,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     t = constant_op.constant([[1.0]], dtype=dtypes.complex128)
     defined(t)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorShapeCollision(self):
 
@@ -1237,11 +1373,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     t = constant_op.constant([1.0], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorShapeDtypeCollision(self):
 
@@ -1251,11 +1387,11 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(func)
     t = constant_op.constant([[1.0]], dtype=dtypes.complex64)
     defined(t)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     t = constant_op.constant([1.0], dtype=dtypes.complex128)
     defined(t)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
   def testCacheTensorUnknownShapesCollision(self):
 
@@ -1265,21 +1401,34 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with context.graph_mode(), self.cached_session():
       defined = function.defun(func)
 
-      p = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[])
       defined(p)
-      self.assertLen(defined._function_cache, 1)
+      self.assertLen(total_function_cache(defined), 1)
 
-      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None])
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[1])
       defined(p)
-      self.assertLen(defined._function_cache, 2)
+      self.assertLen(total_function_cache(defined), 2)
 
-      p = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+      p = array_ops.placeholder(dtype=dtypes.float32, shape=[2])
       defined(p)
-      self.assertLen(defined._function_cache, 3)
+      # Gradual shape relaxation is performed; and the common shape between
+      # [1] and [2] is one containing unknown dimensions.
+      self.assertLen(total_function_cache(defined), 2)
 
-      t = constant_op.constant(1.0, dtype=dtypes.float32)
+      # pylint: disable=protected-access
+      self.assertLen(defined._function_cache.arg_relaxed_shapes, 1)
+      relaxed_shapes = (
+          list(defined._function_cache.arg_relaxed_shapes.values())[0])
+      self.assertEqual(len(relaxed_shapes), 1)
+      relaxed_shape = relaxed_shapes[0]
+      # pylint: enable=protected-access
+      self.assertEqual(relaxed_shape.rank, 1)
+      self.assertEqual(tensor_shape.dimension_value(relaxed_shape[0]), None)
+
+      t = constant_op.constant([1.0, 1.0, 1.0], dtype=dtypes.float32)
       defined(t)
-      self.assertLen(defined._function_cache, 4)
+      # Shape (3,) matches the relaxed shape TensorShape([None])
+      self.assertLen(total_function_cache(defined), 2)
 
   def testPythonFunctionWithDefaultArgs(self):
 
@@ -1294,7 +1443,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     def cache_keys():
       """Sanitizes cache keys of non-input metadata."""
-      return tuple(key[0] for key in defined._function_cache)
+      return tuple(key[0] for key in total_function_cache(defined))
 
     # `True` corresponds to the fact that we're executing eagerly
     self.assertIn(('URRRu', (0, 1, 20)), cache_keys())
@@ -1304,19 +1453,19 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
     # This matches the previous call.
     defined(foo=1)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
     defined(1, 2, 3)
-    self.assertLen(defined._function_cache, 3)
+    self.assertLen(total_function_cache(defined), 3)
     self.assertIn(('URRRu', (1, 2, 3)), cache_keys())
 
     # This matches the previous call.
     defined(1, bar=2, baz=3)
-    self.assertLen(defined._function_cache, 3)
+    self.assertLen(total_function_cache(defined), 3)
 
     # This matches the previous call.
     defined(1, baz=3, bar=2)
-    self.assertLen(defined._function_cache, 3)
+    self.assertLen(total_function_cache(defined), 3)
 
   def testFunctoolsPartialUnwrappedCorrectly(self):
 
@@ -1342,12 +1491,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(foo, input_signature=signature)
     a = array_ops.ones([2])
     self.assertAllEqual(a, defined(a))
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(a, defined.get_concrete_function()(a))
     self.assertAllEqual(a, defined.get_concrete_function(a)(a))
     self.assertAllEqual(a, defined.get_concrete_function(
         tensor_spec.TensorSpec((2,), dtype=dtypes.float32))(a))
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     def bar(a):
       self.assertEqual(a._shape_tuple(), (2, None))
@@ -1357,13 +1506,13 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     defined = function.defun(bar, input_signature=signature)
     a = array_ops.ones([2, 1])
     out = defined(a)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(out, a)
 
     # Changing the second dimension shouldn't create a new function.
     b = array_ops.ones([2, 3])
     out = defined(b)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
     self.assertAllEqual(out, b)
 
   def testInputSignatureWithCompatibleInputs(self):
@@ -1404,7 +1553,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     b = array_ops.ones([1])
     expected = expected_foo([a, a], b)
     out = foo([a, a], b)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     nest.assert_same_structure(out, expected)
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], a)
@@ -1416,7 +1565,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     c = array_ops.ones([1])
     expected = expected_foo([a, b], c)
     out = foo([a, b], c)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     nest.assert_same_structure(out, expected)
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], b)
@@ -1427,7 +1576,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     b = b.numpy().tolist()
     c = c.numpy().tolist()
     out = foo([a, b], c)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     nest.assert_same_structure(out, expected)
     self.assertAllEqual(out[0][0], a)
     self.assertAllEqual(out[0][1], b)
@@ -1596,22 +1745,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     integer = constant_op.constant(2, dtypes.int64)
 
     out1, out2 = foo(flt, integer)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt=flt, integer=integer)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(integer=integer, flt=flt)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
     out1, out2 = foo(flt, integer=integer)
-    self.assertLen(foo._function_cache, 1)
+    self.assertLen(total_function_cache(foo), 1)
     self.assertEqual(out1.numpy(), 1.0)
     self.assertEqual(out2.numpy(), 2)
 
@@ -1641,27 +1790,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     a = constant_op.constant(2.0)
     b = constant_op.constant([1.0, 2.0])
     one = defined(a, b)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     two = defined(a=a, b=b)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     three = defined(b=b, a=a)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     four = defined(a, b=b)
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     # The next call corresponds to a new input signature, hence
     # we expect another function to be defined.
     five = defined(b, a)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
     six = defined(a=b, b=a)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
     seven = defined(b=a, a=b)
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
     self.assertAllEqual(one, [1.0, 2.0])
     self.assertAllEqual(two, [1.0, 2.0])
@@ -1721,6 +1870,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Whereas calling the python function directly should create a side-effect.
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
+
+  def testFunctionWithNestedFunctionCallAndSideEffects(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(1.0)
+
+    @def_function.function
+    def add_one(a):
+      a.assign_add(1.0)
+
+    # Grappler will inline calls to `add_one` into the function body, we check
+    # that all side-effects were executed.
+    @def_function.function
+    def side_effecting_function(a, b):
+      add_one(a)
+      add_one(b)
+      return a + b
+
+    result = side_effecting_function(v1, v2)
+    self.assertEqual(result.numpy(), 4.0)
 
   def testFunctionWithExtraAttributes(self):
     @function.defun_with_attributes(attributes={'experimental_1': 'value1',
@@ -1972,14 +2140,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       graph_function('Not a Tensor.')
 
   def testSwapImplementationWithGrapplerPlugin(self):
+    # Set the min_graph_nodes to -1 since the graph in this test is too small,
+    # and will be ignored by grappler if don't set this.
     rewrites = rewriter_config_pb2.RewriterConfig()
-    # function_optimizer has to be turn off, otherwise it will delete the
-    # registered function if it does not get called.
-    # TODO(scottzhu): Move the ImplementationSelector to be called
-    # before function_optimizer in future.
-    rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
-    customer_optimizer = rewrites.custom_optimizers.add()
-    customer_optimizer.name = 'ImplementationSelector'
+    rewrites.implementation_selector = rewriter_config_pb2.RewriterConfig.ON
     rewrites.min_graph_nodes = -1
     graph_options = config_pb2.GraphOptions(
         rewrite_options=rewrites, build_cost_model=1)
@@ -2033,18 +2197,18 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with ops.Graph().as_default():
         x = constant_op.constant(11)
         maybe_add(x, True)
-        self.assertLen(maybe_add._function_cache, 1)
-        self.assertLen(add._function_cache, 1)
+        self.assertLen(total_function_cache(maybe_add), 1)
+        self.assertLen(total_function_cache(add), 1)
 
         maybe_add(x, False)
-        self.assertLen(maybe_add._function_cache, 2)
-        self.assertLen(add._function_cache, 1)
+        self.assertLen(total_function_cache(maybe_add), 2)
+        self.assertLen(total_function_cache(add), 1)
 
       with ops.Graph().as_default():
         x = constant_op.constant(11)
         maybe_add(x, True)
-        self.assertLen(maybe_add._function_cache, 3)
-        self.assertLen(add._function_cache, 2)
+        self.assertLen(total_function_cache(maybe_add), 3)
+        self.assertLen(total_function_cache(add), 2)
 
   def testCacheKeyOverlappingShapes(self):
     @function.defun
@@ -2052,10 +2216,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       return t
 
     defined(array_ops.zeros([12, 1]))
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     defined(array_ops.zeros([1, 21]))
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
   def testCacheKeyNestedLists(self):
     @function.defun
@@ -2066,10 +2230,10 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     b = constant_op.constant(2.)
     c = constant_op.constant(3.)
     defined([[a], b, c])
-    self.assertLen(defined._function_cache, 1)
+    self.assertLen(total_function_cache(defined), 1)
 
     defined([[a, b], c])
-    self.assertLen(defined._function_cache, 2)
+    self.assertLen(total_function_cache(defined), 2)
 
   def testDecoratedMethod(self):
     m = DefunnedMiniModel()
@@ -2371,6 +2535,41 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       x = func()
       self.assertRegexpMatches(x.device, 'GPU')
 
+  @test_util.run_in_graph_and_eager_modes
+  def testShapeCaching(self):
+
+    @function.defun
+    def func(x):
+      return array_ops.shape(x)
+
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec([None, None], dtypes.float32)])
+    def calls_func(x):
+      return func(x)
+
+    self.assertAllEqual([1, 1], self.evaluate(func(array_ops.zeros([1, 1]))))
+    self.assertAllEqual([2, 2], self.evaluate(func(array_ops.zeros([2, 2]))))
+    self.assertAllEqual(
+        [3, 3],
+        self.evaluate(calls_func(array_ops.zeros([3, 3]))))
+
+  def testLimitedRetracing(self):
+    trace_count = [0]
+    @function.defun
+    def func(x):
+      trace_count[0] += 1
+      return x
+
+    for _ in range(50):
+      func(constant_op.constant(3.))
+      func(constant_op.constant(4.))
+      func(constant_op.constant([[1., 2.]]))
+      func(constant_op.constant([[]]))
+      func(constant_op.constant([[3., 4.], [5., 6.]]))
+      func(constant_op.constant([[3., 4.], [5., 6.], [7., 8.]]))
+    # Tracing more than twice per input doesn't make sense.
+    self.assertLess(trace_count[0], 13)
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
@@ -2630,6 +2829,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
     result = func(g1, g2, c1, g3, c2)
     self.assertEqual(result.numpy(), 5.0 * 7.0 * 17.0)
+
 
 if __name__ == '__main__':
   ops.enable_eager_execution(

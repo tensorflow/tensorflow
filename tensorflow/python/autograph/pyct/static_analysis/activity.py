@@ -265,10 +265,10 @@ class ActivityAnalyzer(transformer.Base):
     self._exit_scope()
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
   def visit_Expr(self, node):

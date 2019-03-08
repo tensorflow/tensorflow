@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Upgrader for Python scripts from 1.* TensorFlow to 2.0 TensorFlow."""
+"""Upgrader for Python scripts from 1.x TensorFlow to 2.0 TensorFlow."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,15 +22,33 @@ import argparse
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
+from tensorflow.tools.compatibility import ipynb
+
+
+def process_file(in_filename, out_filename, upgrader):
+  """Process a file of type `.py` or `.ipynb`."""
+
+  if in_filename.endswith(".py"):
+    files_processed, report_text, errors = \
+      upgrader.process_file(in_filename, out_filename)
+  elif in_filename.endswith(".ipynb"):
+    files_processed, report_text, errors = \
+      ipynb.process_file(in_filename, out_filename, upgrader)
+  else:
+    raise NotImplementedError(
+        "Currently converter only supports python or ipynb")
+
+  return files_processed, report_text, errors
 
 
 def main():
   parser = argparse.ArgumentParser(
       formatter_class=argparse.RawDescriptionHelpFormatter,
-      description="""Convert a TensorFlow Python file from 1.* to 2.0
+      description="""Convert a TensorFlow Python file from 1.x to 2.0
 
 Simple usage:
   tf_upgrade_v2.py --infile foo.py --outfile bar.py
+  tf_upgrade_v2.py --infile foo.ipynb --outfile bar.ipynb
   tf_upgrade_v2.py --intree ~/code/old --outtree ~/code/new
 """)
   parser.add_argument(
@@ -62,11 +80,10 @@ Simple usage:
   parser.add_argument(
       "--inplace",
       dest="in_place",
-      help=("If converting a whole tree of files, whether to "
+      help=("If converting a set of files, whether to "
             "allow the conversion to be performed on the "
-            "files in the input tree."),
-      type=bool,
-      default=False)
+            "input files."),
+      action="store_true")
   parser.add_argument(
       "--reportfile",
       dest="report_filename",
@@ -81,21 +98,29 @@ Simple usage:
   report_filename = args.report_filename
   files_processed = 0
   if args.input_file:
-    if not args.output_file:
+    if not args.in_place and not args.output_file:
       raise ValueError(
           "--outfile=<output file> argument is required when converting a "
           "single file.")
-    files_processed, report_text, errors = upgrade.process_file(
-        args.input_file, args.output_file)
+    if args.in_place and args.output_file:
+      raise ValueError(
+          "--outfile argument is invalid when when converting in place")
+    output_file = args.input_file if args.in_place else args.output_file
+    files_processed, report_text, errors = process_file(
+        args.input_file, output_file, upgrade)
     errors = {args.input_file: errors}
     files_processed = 1
   elif args.input_tree:
-    if not args.output_tree:
+    if not args.in_place and not args.output_tree:
       raise ValueError(
           "--outtree=<output directory> argument is required when converting a "
           "file tree.")
+    if args.in_place and args.output_tree:
+      raise ValueError(
+          "--outtree argument is invalid when when converting in place")
+    output_tree = args.input_tree if args.in_place else args.output_tree
     files_processed, report_text, errors = upgrade.process_tree(
-        args.input_tree, args.output_tree, args.copy_other_files, args.in_place)
+        args.input_tree, output_tree, args.copy_other_files)
   else:
     parser.print_help()
   if report_text:

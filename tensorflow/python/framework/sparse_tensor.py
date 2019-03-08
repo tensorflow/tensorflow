@@ -193,18 +193,6 @@ class SparseTensor(_TensorLike, composite_tensor.CompositeTensor):
     """The `Graph` that contains the index, value, and dense_shape tensors."""
     return self._indices.graph
 
-  def consumers(self):
-    """Returns a list of `Operation`s that consume this `SparseTensor`.
-
-    Returns:
-      A list of `Operation`s.
-    """
-    values_consumers = set(self._values.consumers())
-    indices_consumers = set(self._indices.consumers())
-    dense_shape_consumers = set(self._dense_shape.consumers())
-    return list(values_consumers \
-                .union(indices_consumers, dense_shape_consumers))
-
   def __str__(self):
     return "SparseTensor(indices=%s, values=%s, dense_shape=%s)" % (
         self._indices, self._values, self._dense_shape)

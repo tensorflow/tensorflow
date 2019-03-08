@@ -165,7 +165,10 @@ enum class OperatorType : uint8 {
   kBidirectionalSequenceLstm,
   kReverseV2,
   kBidirectionalSequenceRnn,
-  kGatherNd
+  kGatherNd,
+  kWhere,
+  kElu,
+  kReverseSequence
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -687,6 +690,17 @@ struct MulOperator : Operator {
 // TensorFlow equivalent: Relu
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Elu
+//   f(x) -> exp(x) - 1 for x < 0, x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Elu
+struct EluOperator : Operator {
+  EluOperator() : Operator(OperatorType::kElu) {}
 };
 
 // Element-wise Relu operator:
@@ -2018,6 +2032,19 @@ struct MirrorPadOperator : Operator {
   MirrorPadMode mode;
 };
 
+// ReverseSequence operator:
+//
+// Inputs:
+// Inputs[0]: required: the input array.
+// Inputs[1]: required: the lengths of the elements to be reversed.
+//
+// TensorFlow equivalent: tf.reverse_sequence.
+struct ReverseSequenceOperator : Operator {
+  ReverseSequenceOperator() : Operator(OperatorType::kReverseSequence) {}
+  int seq_dim;
+  int batch_dim = 0;
+};
+
 // Unique Operator:
 //
 // Inputs:
@@ -2034,6 +2061,18 @@ struct UnidirectionalSequenceRnnOperator : Operator {
       : Operator(OperatorType::kUnidirectionalSequenceRnn) {}
   bool time_major;
   FusedActivationFunctionType fused_activation_function;
+};
+
+// Where Operator:
+// Return the coordinates of the true values in condition tensor in row-major
+// order.
+//
+// Inputs:
+//  inputs[0]: required: boolean condition tensor
+//
+//  TensorFlow equivalent: Where
+struct WhereOperator : Operator {
+  WhereOperator() : Operator(OperatorType::kWhere) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

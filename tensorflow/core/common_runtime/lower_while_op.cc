@@ -373,7 +373,7 @@ string LowerWhileHelper::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
 }
 
-Status InlineCallInGraph(Node* n, Graph* g,
+Status InlineCallInGraph(const absl::string_view node_type, Node* n, Graph* g,
                          const FunctionLibraryDefinition& lib) {
   const FunctionDef* fdef = lib.Find(n->type_string());
   CHECK(fdef != nullptr);
@@ -386,14 +386,26 @@ Status InlineCallInGraph(Node* n, Graph* g,
                               &fbody));
   // TODO(jpienaar): Improve this interface to make the need to delete it
   // explicit.
-  InlineFunctionBody(g->flib_def(), g, n, fbody, false);
+  InlineFunctionBodyOptions inline_opts;
+  inline_opts.override_device = false;
+
+  Status can_inline_function_call = ValidateInlining(n, fbody, inline_opts);
+
+  if (can_inline_function_call.ok()) {
+    TF_RETURN_IF_ERROR(
+        InlineFunctionBody(g->flib_def(), g, n, fbody, inline_opts));
+  } else {
+    VLOG(4) << "Do not inline '" << node_type
+            << "' function call: " << can_inline_function_call.error_message();
+  }
+
   delete fbody;
   return Status::OK();
 }
 
 Status LowerWhileHelper::InlineCallNodes() {
-  TF_RETURN_IF_ERROR(InlineCallInGraph(cond_call_node_, graph_, flib_));
-  TF_RETURN_IF_ERROR(InlineCallInGraph(body_call_node_, graph_, flib_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph("cond", cond_call_node_, graph_, flib_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph("body", body_call_node_, graph_, flib_));
   return Status::OK();
 }
 

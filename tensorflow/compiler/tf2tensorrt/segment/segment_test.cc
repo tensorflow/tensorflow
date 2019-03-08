@@ -33,13 +33,12 @@ namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 namespace test {
-namespace ops = ::tensorflow::ops;
 
 class SegmentTest : public ::testing::Test {
  protected:
-  std::function<Status(const tensorflow::Node*)> MakeCandidateFn(
+  std::function<Status(const Node*)> MakeCandidateFn(
       const std::set<string>& node_names) {
-    return [node_names](const tensorflow::Node* node) -> Status {
+    return [node_names](const Node* node) -> Status {
       if (node_names.find(node->name()) != node_names.end()) {
         return Status::OK();
       }
@@ -47,22 +46,21 @@ class SegmentTest : public ::testing::Test {
     };
   }
 
-  std::function<bool(const tensorflow::Edge*)> MakeInputEdgeCandidateFn(
+  std::function<bool(const Edge*)> MakeInputEdgeCandidateFn(
       const std::set<string>& node_names) {
-    return [node_names](const tensorflow::Edge* in_edge) -> bool {
+    return [node_names](const Edge* in_edge) -> bool {
       return node_names.find(in_edge->dst()->name()) != node_names.end();
     };
   }
 
-  std::function<bool(const tensorflow::Edge*)> MakeOutputEdgeCandidateFn(
+  std::function<bool(const Edge*)> MakeOutputEdgeCandidateFn(
       const std::set<string>& node_names) {
-    return [node_names](const tensorflow::Edge* out_edge) -> bool {
+    return [node_names](const Edge* out_edge) -> bool {
       return node_names.find(out_edge->src()->name()) != node_names.end();
     };
   }
 
-  void RunTest(const tensorflow::Graph* graph,
-               const std::set<string>& candidates,
+  void RunTest(const Graph* graph, const std::set<string>& candidates,
                const std::set<string>& input_candidates,
                const std::set<string>& output_candidates,
                const std::vector<std::set<string>>& expected_segments) {
@@ -106,7 +104,7 @@ std::set<string> operator-(const std::set<string>& lhs, const string& rhs) {
 
 TEST_F(SegmentTest, Empty) {
   Scope s = Scope::NewRootScope();
-  tensorflow::Graph g(OpRegistry::Global());
+  Graph g(OpRegistry::Global());
   TF_EXPECT_OK(s.ToGraph(&g));
   // Expect no segments/subgraphs.
   RunTest(&g, {}, {}, {}, {});
@@ -129,7 +127,7 @@ TEST_F(SegmentTest, Simple) {
   auto add2 = ops::Add(s.WithOpName("add2"), add0, add1);
   auto add3 = ops::Add(s.WithOpName("add3"), add0, add2);
   auto add4 = ops::Add(s.WithOpName("add4"), add2, add2);
-  tensorflow::Graph g(OpRegistry::Global());
+  Graph g(OpRegistry::Global());
   TF_EXPECT_OK(s.ToGraph(&g));
 
   // All Add operations are candidates, and we expect all of them to be
@@ -176,7 +174,7 @@ TEST_F(SegmentTest, AvoidCycle) {
   auto add2 = ops::Add(s.WithOpName("add2"), add0, add1);
   auto add3 = ops::Add(s.WithOpName("add3"), add0, add2);
   auto add4 = ops::Add(s.WithOpName("add4"), add2, add2);
-  tensorflow::Graph g(OpRegistry::Global());
+  Graph g(OpRegistry::Global());
   TF_EXPECT_OK(s.ToGraph(&g));
 
   // add2 is not a TRT candidate so there should be no segments generated.
@@ -207,7 +205,7 @@ TEST_F(SegmentTest, Multiple) {
   auto add3 = ops::Add(s.WithOpName("add3"), add0, add2);
   auto add4 = ops::Add(s.WithOpName("add4"), add2, add5);
   auto add6 = ops::Add(s.WithOpName("add6"), add5, add8);
-  tensorflow::Graph g(OpRegistry::Global());
+  Graph g(OpRegistry::Global());
   TF_EXPECT_OK(s.ToGraph(&g));
 
   const std::set<string> all_adds = {"add0", "add1", "add2", "add3", "add4",
@@ -254,7 +252,7 @@ TEST_F(SegmentTest, BigIfElse) {
   auto add5 = ops::Add(s.WithOpName("add5"), add4, add4);
   auto add6 = ops::Add(s.WithOpName("add6"), add5, add5);
   auto add7 = ops::Add(s.WithOpName("add7"), add3, add6);
-  tensorflow::Graph g(OpRegistry::Global());
+  Graph g(OpRegistry::Global());
   TF_EXPECT_OK(s.ToGraph(&g));
 
   // Make add2 not a TRT candidate, and we expect 2 segments.

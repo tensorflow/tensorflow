@@ -161,7 +161,10 @@ py_test(
     ],
     shard_count = 10,
     srcs_version = "PY2AND3",
-    tags = ["no_pip_gpu"],  # b/63391119
+    tags = [
+        "no_pip_gpu",  # b/63391119
+        "notap",  # b/124520733
+    ],
     deps = [
         ":estimators",
         ":feature_keys",
@@ -169,7 +172,7 @@ py_test(
         ":input_pipeline",
         ":model",
         ":state_management",
-        "//tensorflow/contrib/timeseries/examples:lstm",
+        "//tensorflow/contrib/timeseries/examples:lstm_main_lib",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",

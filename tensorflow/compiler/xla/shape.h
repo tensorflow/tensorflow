@@ -146,10 +146,10 @@ class Shape {
   //
   // Examples:
   //
-  // - Comparing two shapes ignoring they layout difference:
+  // - Comparing two shapes ignoring their layout difference:
   //   Equal().IgnoreLayout()(shape1, shape2);
   //
-  // - Comparing two shapes ignoring they layout and element type difference:
+  // - Comparing two shapes ignoring their layout and element type difference:
   //   Equal().IgnoreLayout().IgnoreElementType()(shape1, shape2);
   class Equal {
    public:
@@ -159,6 +159,14 @@ class Shape {
 
     Equal& IgnoreLayout() {
       ignore_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreTilesInLayout() {
+      ignore_tiles_in_layout_ = true;
+      return *this;
+    }
+    Equal& IgnoreElementSizeInLayout() {
+      ignore_element_size_in_layout_ = true;
       return *this;
     }
     Equal& IgnoreElementType() {
@@ -174,8 +182,10 @@ class Shape {
       return *this;
     }
 
-   public:
+   private:
     bool ignore_layout_ = false;
+    bool ignore_tiles_in_layout_ = false;
+    bool ignore_element_size_in_layout_ = false;
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;

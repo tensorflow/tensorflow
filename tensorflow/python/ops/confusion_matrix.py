@@ -182,6 +182,7 @@ def confusion_matrix(labels,
           predictions)
 
     if weights is not None:
+      weights = ops.convert_to_tensor(weights, name='weights')
       predictions.get_shape().assert_is_compatible_with(weights.get_shape())
       weights = math_ops.cast(weights, dtype)
 

@@ -26,13 +26,23 @@ limitations under the License.
 namespace xla {
 namespace hlo_graph_dumper {
 
+// Converts a HLO module to a DOT (graphviz) graph. Returns the dot graph as
+// a string.
+struct DotGraphOptions {
+  absl::string_view label;
+  const DebugOptions* debug_options = nullptr;
+  const HloExecutionProfile* profile = nullptr;
+  bool show_backend_config = false;
+};
+string HloComputationToDotGraph(const HloComputation& computation,
+                                const DotGraphOptions& options);
+
 // Abstract interface for classes that render HLO graphs (e.g. DOT graph,
-// tensorflow GraphDef).
+// tensorflow GraphDef) to files or services.
 class GraphRendererInterface {
  public:
   enum GraphKind {
     DOT_GRAPH,
-    TF_GRAPHDEF,
   };
 
   virtual ~GraphRendererInterface() = default;

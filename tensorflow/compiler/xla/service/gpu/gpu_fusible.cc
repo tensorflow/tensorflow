@@ -15,7 +15,14 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
+#include <iterator>
+#include <vector>
+
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
