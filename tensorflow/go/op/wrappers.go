@@ -4738,6 +4738,14 @@ func CudnnRNNBackpropV3Seed2(value int64) CudnnRNNBackpropV3Attr {
 	}
 }
 
+// CudnnRNNBackpropV3TimeMajor sets the optional time_major attribute to value.
+// If not specified, defaults to true
+func CudnnRNNBackpropV3TimeMajor(value bool) CudnnRNNBackpropV3Attr {
+	return func(m optionalAttr) {
+		m["time_major"] = value
+	}
+}
+
 // Backprop step of CudnnRNNV3.
 //
 // Compute the backprop of both data and weights in a RNN. Takes an extra
@@ -4753,9 +4761,12 @@ func CudnnRNNBackpropV3Seed2(value int64) CudnnRNNBackpropV3Attr {
 // dropout: Dropout probability. When set to 0., dropout is disabled.
 // seed: The 1st part of a seed to initialize dropout.
 // seed2: The 2nd part of a seed to initialize dropout.
-// input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
-// input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
-//     num_units].
+// input: If time_major is true, this is a 3-D tensor with the shape of
+//     [seq_length, batch_size, input_size]. If time_major is false, the shape is
+//     [batch_size, seq_length, input_size].
+// input_h: If time_major is true, this is a 3-D tensor with the shape of
+//     [num_layer * dir, batch_size, num_units]. If time_major is false, the shape
+//     is [batch_size, num_layer * dir, num_units].
 // input_c: For LSTM, a 3-D tensor with the shape of
 //     [num_layer * dir, batch, num_units]. For other models, it is ignored.
 // params: A 1-D tensor that contains the weights and biases in an opaque layout.
@@ -4763,8 +4774,9 @@ func CudnnRNNBackpropV3Seed2(value int64) CudnnRNNBackpropV3Attr {
 //     separately. Note that they might not be compatible across different
 //     generations. So it is a good idea to save and restore
 // sequence_lengths: a vector of lengths of each input sequence.
-// output: A 3-D tensor with the shape of [seq_length, batch_size,
-//     dir * num_units].
+// output: If time_major is true, this is a 3-D tensor with the shape of
+//     [seq_length, batch_size, dir * num_units]. If time_major is false, the
+//     shape is [batch_size, seq_length, dir * num_units].
 // output_h: The same shape has input_h.
 // output_c: The same shape as input_c for LSTM. An empty tensor for other models.
 // output_backprop: A 3-D tensor with the same shape as output in the forward pass.
@@ -4772,6 +4784,8 @@ func CudnnRNNBackpropV3Seed2(value int64) CudnnRNNBackpropV3Attr {
 //     pass.
 // output_c_backprop: A 3-D tensor with the same shape as output_c in the forward
 //     pass.
+// time_major: Indicates whether the input/output format is time major or batch
+//     major.
 // reserve_space: The same reserve_space produced in the forward operation.
 // input_backprop: The backprop to input in the forward pass. Has the same shape
 //     as input.
@@ -17091,6 +17105,14 @@ func CudnnRNNV3IsTraining(value bool) CudnnRNNV3Attr {
 	}
 }
 
+// CudnnRNNV3TimeMajor sets the optional time_major attribute to value.
+// If not specified, defaults to true
+func CudnnRNNV3TimeMajor(value bool) CudnnRNNV3Attr {
+	return func(m optionalAttr) {
+		m["time_major"] = value
+	}
+}
+
 // A RNN backed by cuDNN.
 //
 // Computes the RNN from the input and initial states, with respect to the params
@@ -17106,9 +17128,12 @@ func CudnnRNNV3IsTraining(value bool) CudnnRNNV3Attr {
 // dropout: Dropout probability. When set to 0., dropout is disabled.
 // seed: The 1st part of a seed to initialize dropout.
 // seed2: The 2nd part of a seed to initialize dropout.
-// input: A 3-D tensor with the shape of [seq_length, batch_size, input_size].
-// input_h: A 3-D tensor with the shape of [num_layer * dir, batch_size,
-//     num_units].
+// input: If time_major is true, this is a 3-D tensor with the shape of
+//     [seq_length, batch_size, input_size]. If time_major is false, the shape is
+//     [batch_size, seq_length, input_size].
+// input_h: If time_major is true, this is a 3-D tensor with the shape of
+//     [num_layer * dir, batch_size, num_units]. If time_major is false, the shape
+//     is [batch_size, num_layer * dir, num_units].
 // input_c: For LSTM, a 3-D tensor with the shape of
 //     [num_layer * dir, batch, num_units]. For other models, it is ignored.
 // params: A 1-D tensor that contains the weights and biases in an opaque layout.
@@ -17116,12 +17141,15 @@ func CudnnRNNV3IsTraining(value bool) CudnnRNNV3Attr {
 //     separately. Note that they might not be compatible across different
 //     generations. So it is a good idea to save and restore
 // sequence_lengths: a vector of lengths of each input sequence.
-// output: A 3-D tensor with the shape of [seq_length, batch_size,
-//     dir * num_units].
+// output: If time_major is true, this is a 3-D tensor with the shape of
+//     [seq_length, batch_size, dir * num_units]. If time_major is false, the
+//     shape is [batch_size, seq_length, dir * num_units].
 // output_h: The same shape has input_h.
 // output_c: The same shape as input_c for LSTM. An empty tensor for other models.
 // is_training: Indicates whether this operation is used for inferenece or
 //   training.
+// time_major: Indicates whether the input/output format is time major or batch
+//     major.
 // reserve_space: An opaque tensor that can be used in backprop calculation. It
 //   is only produced if is_training is true.
 func CudnnRNNV3(scope *Scope, input tf.Output, input_h tf.Output, input_c tf.Output, params tf.Output, sequence_lengths tf.Output, optional ...CudnnRNNV3Attr) (output tf.Output, output_h tf.Output, output_c tf.Output, reserve_space tf.Output, host_reserved tf.Output) {
