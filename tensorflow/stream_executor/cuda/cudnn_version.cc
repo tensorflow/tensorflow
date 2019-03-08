@@ -16,7 +16,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/cuda/cudnn_version.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 bool IsSourceCompatibleWithCudnnLibrary(CudnnVersion source_version,
                                         CudnnVersion loaded_version) {
@@ -36,5 +36,5 @@ bool IsSourceCompatibleWithCudnnLibrary(CudnnVersion source_version,
            loaded_version.minor_version >= source_version.minor_version));
 }
 
-}  // namespace cuda
+}  // namespace gpu
 }  // namespace stream_executor

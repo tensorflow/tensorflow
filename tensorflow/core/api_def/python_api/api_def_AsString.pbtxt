@@ -2,6 +2,10 @@ op {
   graph_op_name: "AsString"
   endpoint {
     name: "dtypes.as_string"
+    deprecation_version: 2
+  }
+  endpoint {
+    name: "strings.as_string"
   }
   endpoint {
     name: "as_string"

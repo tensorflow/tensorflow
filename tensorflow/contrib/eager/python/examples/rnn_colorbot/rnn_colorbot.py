@@ -207,7 +207,7 @@ class RNNColorbot(tf.keras.Model):
 
 def loss(labels, predictions):
   """Computes mean squared loss."""
-  return tf.reduce_mean(tf.square(predictions - labels))
+  return tf.reduce_mean(tf.squared_difference(predictions, labels))
 
 
 def test(model, eval_data):

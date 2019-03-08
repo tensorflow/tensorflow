@@ -55,11 +55,11 @@ class Analyzer(cfg.GraphVisitor):
     if anno.hasanno(node.ast_node, anno.Static.SCOPE):
       node_scope = anno.getanno(node.ast_node, anno.Static.SCOPE)
 
-      gen = node_scope.used | self.extra_gen.get(node.ast_node, frozenset())
+      gen = node_scope.read | self.extra_gen.get(node.ast_node, frozenset())
       # TODO(mdan): verify whether composites' parents need to be added.
-      # E.g. if x.y is live whether x needs to be added. Theoretically the
+      # E.g. whether x needs to be added if x.y is live. Theoretically the
       # activity analysis should have both so that wouldn't be needed.
-      kill = node_scope.modified
+      kill = node_scope.modified | node_scope.deleted
 
       live_out = set()
       for n in node.next:
@@ -144,10 +144,10 @@ class WholeTreeAnalyzer(transformer.Base):
     self.current_analyzer = parent_analyzer
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
 
@@ -160,6 +160,16 @@ class Annotator(transformer.Base):
     super(Annotator, self).__init__(source_info)
     self.cross_function_analyzer = cross_function_analyzer
     self.current_analyzer = None
+
+  def visit(self, node):
+    node = super(Annotator, self).visit(node)
+    if (self.current_analyzer is not None and
+        isinstance(node, gast.stmt) and
+        node in self.current_analyzer.graph.index):
+      cfg_node = self.current_analyzer.graph.index[node]
+      anno.setanno(node, anno.Static.LIVE_VARS_IN,
+                   frozenset(self.current_analyzer.in_[cfg_node]))
+    return node
 
   def visit_FunctionDef(self, node):
     parent_analyzer = self.current_analyzer
@@ -197,6 +207,21 @@ class Annotator(transformer.Base):
     node = self.generic_visit(node)
     node = self._block_statement_live_out(node)
     return self._block_statement_live_in(node, node.test)
+
+  def visit_With(self, node):
+    node = self.generic_visit(node)
+    return self._block_statement_live_in(node, node.items[0])
+
+  def visit_Expr(self, node):
+    node = self.generic_visit(node)
+    cfg_node = self.current_analyzer.graph.index[node]
+    anno.setanno(node, anno.Static.LIVE_VARS_OUT,
+                 frozenset(self.current_analyzer.out[cfg_node]))
+    return node
+
+  def visit_ExceptHandler(self, node):
+    # TODO(b/123995141) Add Exception Handlers to the CFG
+    return node
 
 
 def resolve(node, source_info, graphs):

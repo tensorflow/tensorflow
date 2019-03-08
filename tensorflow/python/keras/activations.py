@@ -24,10 +24,23 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
+
+# b/123041942
+# In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
+# layers, it gets serialized as 'softmax_v2' instead of 'softmax' as the
+# internal method name is returned in serialization. This results in errors in
+# model exporting and loading as Keras can't find any activation function with
+# the name of `softmax_v2`.
+
+# This dict maps the activation function name from its v2 version to its
+# canonical name.
+_TF_ACTIVATIONS_V2 = {
+    'softmax_v2': 'softmax',
+}
 
 
-@tf_export('keras.activations.softmax')
+@keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
   """Softmax activation function.
 
@@ -53,7 +66,7 @@ def softmax(x, axis=-1):
                      'Received input: %s' % (x,))
 
 
-@tf_export('keras.activations.elu')
+@keras_export('keras.activations.elu')
 def elu(x, alpha=1.0):
   """Exponential linear unit.
 
@@ -72,7 +85,7 @@ def elu(x, alpha=1.0):
   return K.elu(x, alpha)
 
 
-@tf_export('keras.activations.selu')
+@keras_export('keras.activations.selu')
 def selu(x):
   """Scaled Exponential Linear Unit (SELU).
 
@@ -101,7 +114,7 @@ def selu(x):
   return scale * K.elu(x, alpha)
 
 
-@tf_export('keras.activations.softplus')
+@keras_export('keras.activations.softplus')
 def softplus(x):
   """Softplus activation function.
 
@@ -114,7 +127,7 @@ def softplus(x):
   return nn.softplus(x)
 
 
-@tf_export('keras.activations.softsign')
+@keras_export('keras.activations.softsign')
 def softsign(x):
   """Softsign activation function.
 
@@ -127,7 +140,7 @@ def softsign(x):
   return nn.softsign(x)
 
 
-@tf_export('keras.activations.relu')
+@keras_export('keras.activations.relu')
 def relu(x, alpha=0., max_value=None, threshold=0):
   """Rectified Linear Unit.
 
@@ -150,22 +163,22 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
 
-@tf_export('keras.activations.tanh')
+@keras_export('keras.activations.tanh')
 def tanh(x):
   return nn.tanh(x)
 
 
-@tf_export('keras.activations.sigmoid')
+@keras_export('keras.activations.sigmoid')
 def sigmoid(x):
   return nn.sigmoid(x)
 
 
-@tf_export('keras.activations.exponential')
+@keras_export('keras.activations.exponential')
 def exponential(x):
   return math_ops.exp(x)
 
 
-@tf_export('keras.activations.hard_sigmoid')
+@keras_export('keras.activations.hard_sigmoid')
 def hard_sigmoid(x):
   """Hard sigmoid activation function.
 
@@ -183,17 +196,19 @@ def hard_sigmoid(x):
   return K.hard_sigmoid(x)
 
 
-@tf_export('keras.activations.linear')
+@keras_export('keras.activations.linear')
 def linear(x):
   return x
 
 
-@tf_export('keras.activations.serialize')
+@keras_export('keras.activations.serialize')
 def serialize(activation):
+  if activation.__name__ in _TF_ACTIVATIONS_V2:
+    return _TF_ACTIVATIONS_V2[activation.__name__]
   return activation.__name__
 
 
-@tf_export('keras.activations.deserialize')
+@keras_export('keras.activations.deserialize')
 def deserialize(name, custom_objects=None):
   return deserialize_keras_object(
       name,
@@ -202,7 +217,7 @@ def deserialize(name, custom_objects=None):
       printable_module_name='activation function')
 
 
-@tf_export('keras.activations.get')
+@keras_export('keras.activations.get')
 def get(identifier):
   if identifier is None:
     return linear

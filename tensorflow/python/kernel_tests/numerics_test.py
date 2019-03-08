@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -35,11 +36,11 @@ class VerifyTensorAllFiniteTest(test.TestCase):
   def testVerifyTensorAllFiniteSucceeds(self):
     x_shape = [5, 4]
     x = np.random.random_sample(x_shape).astype(np.float32)
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
       t_verified = numerics.verify_tensor_all_finite(t,
                                                      "Input is not a number.")
-      self.assertAllClose(x, t_verified.eval())
+      self.assertAllClose(x, self.evaluate(t_verified))
 
   def testVerifyTensorAllFiniteFails(self):
     x_shape = [5, 4]
@@ -48,21 +49,22 @@ class VerifyTensorAllFiniteTest(test.TestCase):
 
     # Test NaN.
     x[0] = np.nan
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
-        t_verified.eval()
+        self.evaluate(t_verified)
 
     # Test Inf.
     x[0] = np.inf
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       with self.assertRaisesOpError(my_msg):
         t = constant_op.constant(x, shape=x_shape, dtype=dtypes.float32)
         t_verified = numerics.verify_tensor_all_finite(t, my_msg)
-        t_verified.eval()
+        self.evaluate(t_verified)
 
 
+@test_util.run_v1_only("b/120545219")
 class NumericsTest(test.TestCase):
 
   def testInf(self):
@@ -73,7 +75,7 @@ class NumericsTest(test.TestCase):
       check = numerics.add_check_numerics_ops()
       a = control_flow_ops.with_dependencies([check], a)
       with self.assertRaisesOpError("Inf"):
-        a.eval()
+        self.evaluate(a)
 
   def testNaN(self):
     with self.session(graph=ops.Graph()):
@@ -83,7 +85,7 @@ class NumericsTest(test.TestCase):
       check = numerics.add_check_numerics_ops()
       a = control_flow_ops.with_dependencies([check], a)
       with self.assertRaisesOpError("NaN"):
-        a.eval()
+        self.evaluate(a)
 
   def testBoth(self):
     with self.session(graph=ops.Graph()):
@@ -93,13 +95,13 @@ class NumericsTest(test.TestCase):
       check = numerics.add_check_numerics_ops()
       a = control_flow_ops.with_dependencies([check], a)
       with self.assertRaisesOpError("Inf and NaN"):
-        a.eval()
+        self.evaluate(a)
 
   def testPassThrough(self):
     with self.session(graph=ops.Graph()):
       t1 = constant_op.constant([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], shape=[2, 3])
       checked = array_ops.check_numerics(t1, message="pass through test")
-      value = checked.eval()
+      value = self.evaluate(checked)
       self.assertAllEqual(np.array([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]), value)
       self.assertEqual([2, 3], checked.get_shape())
 

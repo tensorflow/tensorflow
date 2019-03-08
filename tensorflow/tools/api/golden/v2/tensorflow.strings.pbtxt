@@ -1,6 +1,10 @@
 path: "tensorflow.strings"
 tf_module {
   member_method {
+    name: "as_string"
+    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
+  }
+  member_method {
     name: "format"
     argspec: "args=[\'template\', \'inputs\', \'placeholder\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'{}\', \'3\', \'None\'], "
   }
@@ -10,11 +14,11 @@ tf_module {
   }
   member_method {
     name: "length"
-    argspec: "args=[\'input\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
+    argspec: "args=[\'input\', \'unit\', \'name\'], varargs=None, keywords=None, defaults=[\'BYTE\', \'None\'], "
   }
   member_method {
     name: "reduce_join"
-    argspec: "args=[\'inputs\', \'axis\', \'keep_dims\', \'separator\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'\', \'None\', \'None\'], "
+    argspec: "args=[\'inputs\', \'axis\', \'keepdims\', \'separator\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'\', \'None\'], "
   }
   member_method {
     name: "regex_full_match"
@@ -34,11 +38,11 @@ tf_module {
   }
   member_method {
     name: "substr"
-    argspec: "args=[\'input\', \'pos\', \'len\', \'name\', \'unit\'], varargs=None, keywords=None, defaults=[\'None\', \'BYTE\'], "
+    argspec: "args=[\'input\', \'pos\', \'len\', \'unit\', \'name\'], varargs=None, keywords=None, defaults=[\'BYTE\', \'None\'], "
   }
   member_method {
     name: "to_hash_bucket"
-    argspec: "args=[\'string_tensor\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'num_buckets\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "to_hash_bucket_fast"
@@ -50,10 +54,34 @@ tf_module {
   }
   member_method {
     name: "to_number"
-    argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'input\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "unicode_decode"
+    argspec: "args=[\'input\', \'input_encoding\', \'errors\', \'replacement_char\', \'replace_control_characters\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "unicode_decode_with_offsets"
+    argspec: "args=[\'input\', \'input_encoding\', \'errors\', \'replacement_char\', \'replace_control_characters\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "unicode_encode"
+    argspec: "args=[\'input\', \'output_encoding\', \'errors\', \'replacement_char\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'None\'], "
   }
   member_method {
     name: "unicode_script"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "unicode_split"
+    argspec: "args=[\'input\', \'input_encoding\', \'errors\', \'replacement_char\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'None\'], "
+  }
+  member_method {
+    name: "unicode_split_with_offsets"
+    argspec: "args=[\'input\', \'input_encoding\', \'errors\', \'replacement_char\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'None\'], "
+  }
+  member_method {
+    name: "unicode_transcode"
+    argspec: "args=[\'input\', \'input_encoding\', \'output_encoding\', \'errors\', \'replacement_char\', \'replace_control_characters\', \'name\'], varargs=None, keywords=None, defaults=[\'replace\', \'65533\', \'False\', \'None\'], "
   }
 }

@@ -197,6 +197,10 @@ Status ZlibOutputBuffer::Flush() {
   return Status::OK();
 }
 
+Status ZlibOutputBuffer::Name(StringPiece* result) const {
+  return file_->Name(result);
+}
+
 Status ZlibOutputBuffer::Sync() {
   TF_RETURN_IF_ERROR(Flush());
   return file_->Sync();
@@ -224,6 +228,8 @@ Status ZlibOutputBuffer::Deflate(int flush) {
   }
   return errors::DataLoss(error_string);
 }
+
+Status ZlibOutputBuffer::Tell(int64* position) { return file_->Tell(position); }
 
 }  // namespace io
 }  // namespace tensorflow

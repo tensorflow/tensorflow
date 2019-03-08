@@ -22,30 +22,30 @@ from __future__ import print_function
 from keras_applications import nasnet
 
 from tensorflow.python.keras.applications import keras_modules_injection
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.applications.nasnet.NASNetMobile',
-           'keras.applications.NASNetMobile')
+@keras_export('keras.applications.nasnet.NASNetMobile',
+              'keras.applications.NASNetMobile')
 @keras_modules_injection
 def NASNetMobile(*args, **kwargs):
   return nasnet.NASNetMobile(*args, **kwargs)
 
 
-@tf_export('keras.applications.nasnet.NASNetLarge',
-           'keras.applications.NASNetLarge')
+@keras_export('keras.applications.nasnet.NASNetLarge',
+              'keras.applications.NASNetLarge')
 @keras_modules_injection
 def NASNetLarge(*args, **kwargs):
   return nasnet.NASNetLarge(*args, **kwargs)
 
 
-@tf_export('keras.applications.nasnet.decode_predictions')
+@keras_export('keras.applications.nasnet.decode_predictions')
 @keras_modules_injection
 def decode_predictions(*args, **kwargs):
   return nasnet.decode_predictions(*args, **kwargs)
 
 
-@tf_export('keras.applications.nasnet.preprocess_input')
+@keras_export('keras.applications.nasnet.preprocess_input')
 @keras_modules_injection
 def preprocess_input(*args, **kwargs):
   return nasnet.preprocess_input(*args, **kwargs)

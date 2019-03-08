@@ -3,6 +3,12 @@ Assignments for Udacity Deep Learning class with TensorFlow
 
 Course information can be found at https://www.udacity.com/course/deep-learning--ud730
 
+## Getting Started with Docker
+
+If you are new to Docker, follow
+[Docker document](https://docs.docker.com/machine/get-started/) to start a
+docker instance. Kindly read the requirements of Windows and Mac carefully.
+
 Running the Docker container from the Google Cloud repository
 -------------------------------------------------------------
 
@@ -17,11 +23,20 @@ Accessing the Notebooks
 
 On linux, go to: http://127.0.0.1:8888
 
-On mac, find the virtual machine's IP using:
+On mac, go to terminal and find the virtual machine's IP using:
 
     docker-machine ip default
 
-Then go to: http://IP:8888 (likely http://192.168.99.100:8888)
+Then go to: http://(ip address received from the above command):8888 (likely
+http://192.168.99.100:8888)
+
+On Windows, use powershell to find the virtual machine's IP using:
+
+    docker-machine ip default
+    
+
+Then go to: http://(ip address received from the above command):8888 (likely
+http://192.168.99.100:8888)
 
 FAQ
 ---
@@ -106,7 +121,7 @@ History
 * 0.1.0: Initial release.
 * 0.2.0: Many fixes, including lower memory footprint and support for Python 3.
 * 0.3.0: Use 0.7.1 release.
-* 0.4.0: Move notMMNIST data for Google Cloud.
+* 0.4.0: Move notMNIST data for Google Cloud.
 * 0.5.0: Actually use 0.7.1 release.
 * 0.6.0: Update to TF 0.10.0, add libjpeg (for Pillow).
 * 1.0.0: Update to TF 1.0.0 release.

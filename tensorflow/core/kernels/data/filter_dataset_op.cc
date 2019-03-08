@@ -13,32 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 
 class FilterDatasetOp : public UnaryDatasetOpKernel {
  public:
   using FilterIteratorPredicate =
-      std::function<Status(IteratorContext*, std::vector<Tensor>, bool*)>;
+      std::function<Status(IteratorContext*, InstantiatedCapturedFunction*,
+                           std::vector<Tensor>, bool*)>;
 
   explicit FilterDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES(ctx, short_circuit_indices_.size() <= 1,
+                errors::InvalidArgument(
+                    "predicate function has more than one return value."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -47,21 +53,14 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-    OP_REQUIRES(ctx, indices.size() <= 1,
-                errors::InvalidArgument(
-                    "predicate function has more than one return value."));
-
     FilterIteratorPredicate filter_pred;
-    if (indices.empty()) {
-      CapturedFunction* raw_captured_func = captured_func.get();
-      filter_pred = [raw_captured_func](IteratorContext* ctx,
-                                        const std::vector<Tensor>& args,
-                                        bool* out_matched) {
+    if (short_circuit_indices_.empty()) {
+      filter_pred = [](IteratorContext* ctx,
+                       InstantiatedCapturedFunction* inst_captured_func,
+                       const std::vector<Tensor>& args, bool* out_matched) {
         std::vector<Tensor> result;
         TF_RETURN_IF_ERROR(
-            raw_captured_func->RunWithBorrowedArgs(ctx, args, &result));
+            inst_captured_func->RunWithBorrowedArgs(ctx, args, &result));
 
         if (result.size() != 1 || result[0].dtype() != DT_BOOL ||
             result[0].NumElements() != 1) {
@@ -72,10 +71,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       };
     } else {
-      filter_pred = [indices](IteratorContext* ctx,
-                              const std::vector<Tensor>& args,
-                              bool* out_matched) {
-        const Tensor& predicate = args[indices[0]];
+      int predicate_index = short_circuit_indices_[0];
+      filter_pred = [predicate_index](
+                        IteratorContext* ctx,
+                        InstantiatedCapturedFunction* inst_captured_func,
+                        const std::vector<Tensor>& args, bool* out_matched) {
+        const Tensor& predicate = args[predicate_index];
         if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
           return errors::InvalidArgument(
               "Filter predicate `f` must return a scalar bool.");
@@ -108,7 +109,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<Iterator>(
+      return absl::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Filter")},
           filter_pred_);
     }
@@ -136,7 +137,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -161,15 +168,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             filtered_elements_(0),
             dropped_elements_(0),
             filter_pred_(std::move(filter_pred)) {
-        std::vector<string> components =
-            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        prefix_end_ = components.back();
       }
 
       Status Initialize(IteratorContext* ctx) override {
         TF_RETURN_IF_ERROR(
             dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
-        return dataset()->captured_func_->Instantiate(ctx);
+        return dataset()->captured_func_->Instantiate(
+            ctx, &instantiated_captured_func_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -197,7 +202,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          TF_RETURN_IF_ERROR(filter_pred_(ctx, *out_tensors, &matched));
+          TF_RETURN_IF_ERROR(filter_pred_(
+              ctx, instantiated_captured_func_.get(), *out_tensors, &matched));
           if (!matched) {
             // Clear the output tensor list since it didn't match.
             out_tensors->clear();
@@ -205,13 +211,15 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
               mutex_lock l(mu_);
               dropped_elements_++;
               stats_aggregator->AddScalar(
-                  strings::StrCat(prefix_end_, "::dropped_elements"),
+                  stats_utils::DroppedElementsScalarName(
+                      dataset()->node_name()),
                   static_cast<float>((dropped_elements_)));
               // TODO(shivaniagrawal): multiple pipelines would collect
               // aggregated number of dropped elements for all the pipelines,
               // exploit tagged_context here.
-              stats_aggregator->IncrementCounter(
-                  prefix_end_, "dropped_elements", static_cast<float>(1));
+              stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                                 stats_utils::kDroppedElements,
+                                                 static_cast<float>(1));
             }
           }
         } while (!matched);
@@ -221,12 +229,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           filtered_elements_++;
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::filtered_elements"),
+              stats_utils::FilterdElementsScalarName(dataset()->node_name()),
               static_cast<float>((filtered_elements_)));
           // TODO(shivaniagrawal): multiple pipelines would collect aggregated
           // number of filtered elements for all the pipelines, exploit
           // tagged_context here.
-          stats_aggregator->IncrementCounter(prefix_end_, "filtered_elements",
+          stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                             stats_utils::kFilteredElements,
                                              static_cast<float>(1));
         }
         *end_of_sequence = false;
@@ -234,6 +243,11 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         if (input_impl_)
@@ -268,7 +282,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       int64 filtered_elements_ GUARDED_BY(mu_);
       int64 dropped_elements_ GUARDED_BY(mu_);
       const FilterIteratorPredicate filter_pred_;
-      string prefix_end_;
+      std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
     const DatasetBase* const input_;
@@ -279,6 +293,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   NameAttrList func_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),

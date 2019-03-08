@@ -19,16 +19,67 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
+
+
+class _ParallelInterleaveDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that maps a function over its input and flattens the result."""
+
+  def __init__(self, input_dataset, map_func, cycle_length, block_length,
+               sloppy, buffer_output_elements, prefetch_input_elements):
+    """See `tf.data.experimental.parallel_interleave()` for details."""
+    self._input_dataset = input_dataset
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
+        map_func, self._transformation_name(), dataset=input_dataset)
+    if not isinstance(self._map_func.output_structure,
+                      dataset_ops.DatasetStructure):
+      raise TypeError("`map_func` must return a `Dataset` object.")
+    self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
+    self._sloppy = ops.convert_to_tensor(
+        sloppy, dtype=dtypes.bool, name="sloppy")
+    self._buffer_output_elements = convert.optional_param_to_tensor(
+        "buffer_output_elements",
+        buffer_output_elements,
+        argument_default=2 * block_length)
+    self._prefetch_input_elements = convert.optional_param_to_tensor(
+        "prefetch_input_elements",
+        prefetch_input_elements,
+        argument_default=2 * cycle_length)
+    variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._sloppy,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func.function,
+        **dataset_ops.flat_structure(self))
+    super(_ParallelInterleaveDataset, self).__init__(input_dataset,
+                                                     variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
+
+  @property
+  def _element_structure(self):
+    return self._structure
+
+  def _transformation_name(self):
+    return "tf.data.experimental.parallel_interleave()"
 
 
 @tf_export("data.experimental.parallel_interleave")
@@ -82,7 +133,7 @@ def parallel_interleave(map_func,
     `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
-    return readers.ParallelInterleaveDataset(
+    return _ParallelInterleaveDataset(
         dataset, map_func, cycle_length, block_length, sloppy,
         buffer_output_elements, prefetch_input_elements)
 
@@ -96,45 +147,45 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
     self._selector_input = selector_input
     self._data_inputs = list(data_inputs)
 
+    first_output_types = dataset_ops.get_legacy_output_types(data_inputs[0])
+    first_output_classes = dataset_ops.get_legacy_output_classes(data_inputs[0])
+
     for data_input in data_inputs[1:]:
-      if (data_input.output_types != data_inputs[0].output_types or
-          data_input.output_classes != data_inputs[0].output_classes):
+      if (dataset_ops.get_legacy_output_types(data_input) != first_output_types
+          or dataset_ops.get_legacy_output_classes(data_input)
+          != first_output_classes):
         raise TypeError("All datasets must have the same type and class.")
+
+    output_shapes = dataset_ops.get_legacy_output_shapes(self._data_inputs[0])
+    for data_input in self._data_inputs[1:]:
+      output_shapes = nest.pack_sequence_as(output_shapes, [
+          ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
+              nest.flatten(output_shapes),
+              nest.flatten(dataset_ops.get_legacy_output_shapes(data_input)))
+      ])
+
+    self._structure = structure.convert_legacy_structure(
+        first_output_types, output_shapes, first_output_classes)
+    super(_DirectedInterleaveDataset, self).__init__()
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return (
-        gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
-            self._selector_input._as_variant_tensor(), [
-                data_input._as_variant_tensor()
-                for data_input in self._data_inputs
-            ], **dataset_ops.flat_structure(self)))
+    return (ged_ops.experimental_directed_interleave_dataset(
+        self._selector_input._variant_tensor,
+        [data_input._variant_tensor for data_input in self._data_inputs],
+        **dataset_ops.flat_structure(self)))
     # pylint: enable=protected-access
 
   def _inputs(self):
     return [self._selector_input] + self._data_inputs
 
   @property
-  def output_classes(self):
-    return self._data_inputs[0].output_classes
-
-  @property
-  def output_shapes(self):
-    ret = self._data_inputs[0].output_shapes
-    for data_input in self._data_inputs[1:]:
-      ret = nest.pack_sequence_as(ret, [
-          ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
-              nest.flatten(ret), nest.flatten(data_input.output_shapes))
-      ])
-    return ret
-
-  @property
-  def output_types(self):
-    return self._data_inputs[0].output_types
+  def _element_structure(self):
+    return self._structure
 
 
-@tf_export("data.experimental.sample_from_datasets")
-def sample_from_datasets(datasets, weights=None, seed=None):
+@tf_export("data.experimental.sample_from_datasets", v1=[])
+def sample_from_datasets_v2(datasets, weights=None, seed=None):
   """Samples elements at random from the datasets in `datasets`.
 
   Args:
@@ -158,7 +209,7 @@ def sample_from_datasets(datasets, weights=None, seed=None):
       length of the `datasets` element.
   """
   num_datasets = len(datasets)
-  if not isinstance(weights, dataset_ops.Dataset):
+  if not isinstance(weights, dataset_ops.DatasetV2):
     if weights is None:
       # Select inputs with uniform probability.
       logits = [[1.0] * num_datasets]
@@ -217,8 +268,15 @@ def sample_from_datasets(datasets, weights=None, seed=None):
   return _DirectedInterleaveDataset(selector_input, datasets)
 
 
-@tf_export("data.experimental.choose_from_datasets")
-def choose_from_datasets(datasets, choice_dataset):
+@tf_export(v1=["data.experimental.sample_from_datasets"])
+def sample_from_datasets_v1(datasets, weights=None, seed=None):
+  return dataset_ops.DatasetV1Adapter(
+      sample_from_datasets_v2(datasets, weights, seed))
+sample_from_datasets_v1.__doc__ = sample_from_datasets_v2.__doc__
+
+
+@tf_export("data.experimental.choose_from_datasets", v1=[])
+def choose_from_datasets_v2(datasets, choice_dataset):
   """Creates a dataset that deterministically chooses elements from `datasets`.
 
   For example, given the following datasets:
@@ -253,10 +311,21 @@ def choose_from_datasets(datasets, choice_dataset):
     TypeError: If the `datasets` or `choice_dataset` arguments have the wrong
       type.
   """
-  if not (choice_dataset.output_types == dtypes.int64
-          and choice_dataset.output_shapes.is_compatible_with(
-              tensor_shape.scalar())
-          and choice_dataset.output_classes == ops.Tensor):
+  if not dataset_ops.get_structure(choice_dataset).is_compatible_with(
+      structure.TensorStructure(dtypes.int64, [])):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
   return _DirectedInterleaveDataset(choice_dataset, datasets)
+
+
+@tf_export(v1=["data.experimental.choose_from_datasets"])
+def choose_from_datasets_v1(datasets, choice_dataset):
+  return dataset_ops.DatasetV1Adapter(
+      choose_from_datasets_v2(datasets, choice_dataset))
+choose_from_datasets_v1.__doc__ = choose_from_datasets_v2.__doc__
+
+
+# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
+# these aliases in place.
+choose_from_datasets = choose_from_datasets_v1
+sample_from_datasets = sample_from_datasets_v1

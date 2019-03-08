@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TPUReplicatedInput"
+  visibility: HIDDEN
+  summary: "Connects N inputs to an N-way replicated TPU computation."
+}

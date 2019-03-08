@@ -32,6 +32,8 @@ from __future__ import print_function
 
 import abc
 
+import six
+
 from tensorflow.python.framework import ops
 
 _PLUGIN_ASSET_PREFIX = "__tensorboard_plugin_asset__"
@@ -65,7 +67,7 @@ def get_plugin_asset(plugin_asset_cls, graph=None):
   name = _PLUGIN_ASSET_PREFIX + plugin_asset_cls.plugin_name
   container = graph.get_collection(name)
   if container:
-    if len(container) is not 1:
+    if len(container) != 1:
       raise ValueError("Collection for %s had %d items, expected 1" %
                        (name, len(container)))
     instance = container[0]
@@ -100,13 +102,14 @@ def get_all_plugin_assets(graph=None):
   out = []
   for name in graph.get_collection(_PLUGIN_ASSET_PREFIX):
     collection = graph.get_collection(_PLUGIN_ASSET_PREFIX + name)
-    if len(collection) is not 1:
+    if len(collection) != 1:
       raise ValueError("Collection for %s had %d items, expected 1" %
                        (name, len(collection)))
     out.append(collection[0])
   return out
 
 
+@six.add_metaclass(abc.ABCMeta)
 class PluginAsset(object):
   """This abstract base class allows TensorBoard to serialize assets to disk.
 
@@ -124,7 +127,6 @@ class PluginAsset(object):
     writer calls assets and the PluginAsset instance provides its contents to be
     written to disk.
   """
-  __metaclass__ = abc.ABCMeta
 
   plugin_name = None
 

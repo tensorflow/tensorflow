@@ -91,11 +91,10 @@ inline __device__ RgbTuple hsv2rgb_cuda(const float h, const float s,
   return tuple;
 }
 
-template <bool AdjustHue, bool AdjustSaturation, bool AdjustV>
+template <bool AdjustHue, bool AdjustSaturation, bool AdjustV, typename T>
 __global__ void adjust_hsv_nhwc(const int64 number_elements,
-                                const float* const __restrict__ input,
-                                float* const output,
-                                const float* const hue_delta,
+                                const T* const __restrict__ input,
+                                T* const output, const float* const hue_delta,
                                 const float* const saturation_scale,
                                 const float* const value_scale) {
   // multiply by 3 since we're dealing with contiguous RGB bytes for each pixel
@@ -111,7 +110,9 @@ __global__ void adjust_hsv_nhwc(const int64 number_elements,
     output[idx + 2] = input[idx + 2];
     return;
   }
-  const HsvTuple hsv = rgb2hsv_cuda(input[idx], input[idx + 1], input[idx + 2]);
+  const HsvTuple hsv = rgb2hsv_cuda(static_cast<float>(input[idx]),
+                                    static_cast<float>(input[idx + 1]),
+                                    static_cast<float>(input[idx + 2]));
   float new_h = hsv.h;
   float new_s = hsv.s;
   float new_v = hsv.v;
@@ -134,9 +135,9 @@ __global__ void adjust_hsv_nhwc(const int64 number_elements,
     new_v = hsv.v * scale;
   }
   const RgbTuple rgb = hsv2rgb_cuda(new_h, new_s, new_v);
-  output[idx] = rgb.r;
-  output[idx + 1] = rgb.g;
-  output[idx + 2] = rgb.b;
+  output[idx] = static_cast<T>(rgb.r);
+  output[idx + 1] = static_cast<T>(rgb.g);
+  output[idx + 2] = static_cast<T>(rgb.b);
 }
 
 }  // namespace internal

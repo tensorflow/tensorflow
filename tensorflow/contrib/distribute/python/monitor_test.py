@@ -23,9 +23,9 @@ import numpy
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import monitor as monitor_lib
-from tensorflow.contrib.distribute.python import one_device_strategy
 from tensorflow.contrib.distribute.python.single_loss_example import single_loss_example
 from tensorflow.python.client import session
+from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops

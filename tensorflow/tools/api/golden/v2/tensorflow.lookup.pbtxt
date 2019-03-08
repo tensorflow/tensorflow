@@ -1,0 +1,23 @@
+path: "tensorflow.lookup"
+tf_module {
+  member {
+    name: "KeyValueTensorInitializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StaticHashTable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StaticVocabularyTable"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TextFileInitializer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+}

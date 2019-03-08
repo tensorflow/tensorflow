@@ -18,10 +18,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -144,6 +144,8 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
 TF_CALL_bfloat16(REGISTER_GPU);
+TF_CALL_uint8(REGISTER_GPU);
+TF_CALL_bool(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

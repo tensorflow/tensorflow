@@ -1,0 +1,49 @@
+path: "tensorflow.lite.Interpreter"
+tf_class {
+  is_instance: "<class \'tensorflow.lite.python.interpreter.Interpreter\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'model_path\', \'model_content\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "allocate_tensors"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_input_details"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_output_details"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tensor"
+    argspec: "args=[\'self\', \'tensor_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_tensor_details"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "invoke"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_all_variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "resize_tensor_input"
+    argspec: "args=[\'self\', \'input_index\', \'tensor_size\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_tensor"
+    argspec: "args=[\'self\', \'tensor_index\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "tensor"
+    argspec: "args=[\'self\', \'tensor_index\'], varargs=None, keywords=None, defaults=None"
+  }
+}

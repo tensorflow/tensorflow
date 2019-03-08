@@ -72,7 +72,7 @@ NodeDef* AddScalarConstNodeHelper(
     MutableGraphView* graph) {
   NodeDef node;
   node.set_op(kConstOpName);
-  SetUniqueGraphNodeName(kConstOpName, graph->GetGraph(), &node);
+  SetUniqueGraphNodeName(kConstOpName, graph->graph(), &node);
 
   (*node.mutable_attr())["dtype"].set_type(dtype);
   std::unique_ptr<tensorflow::TensorProto> tensor =
@@ -92,7 +92,7 @@ NodeDef* AddScalarConstNodeHelper(
 NodeDef* AddScalarPlaceholder(DataType dtype, MutableGraphView* graph) {
   NodeDef node;
   node.set_op("Placeholder");
-  SetUniqueGraphNodeName(node.op(), graph->GetGraph(), &node);
+  SetUniqueGraphNodeName(node.op(), graph->graph(), &node);
   (*node.mutable_attr())["dtype"].set_type(dtype);
   TensorShapeProto* shape = (*node.mutable_attr())["shape"].mutable_shape();
   shape->set_unknown_rank(false);
@@ -107,7 +107,7 @@ NodeDef* AddNode(StringPiece name, StringPiece op,
   if (!name.empty()) {
     node.set_name(string(name));
   } else {
-    SetUniqueGraphNodeName(op, graph->GetGraph(), &node);
+    SetUniqueGraphNodeName(op, graph->graph(), &node);
   }
   node.set_op(string(op));
   for (const string& input : inputs) {
@@ -228,7 +228,14 @@ std::vector<int> FindAllGraphNodesWithOp(const string& op,
 
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph) {
   if (node.input_size() == 0) return nullptr;
-  GraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
+  MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), 0);
+  return graph.GetRegularFanin(input_port).node;
+}
+
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
+                      int64 i) {
+  if (node.input_size() <= i) return nullptr;
+  MutableGraphView::InputPort input_port = graph.GetInputPort(node.name(), i);
   return graph.GetRegularFanin(input_port).node;
 }
 
@@ -293,6 +300,40 @@ Status EnsureNodeNamesUnique(Graph* g) {
 
   return Status::OK();
 }
-}  // end namespace graph_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+
+// Tries to find a Sink node in the graph. A sink node is defined as a node
+// that has at least one input and no outputs. If there are multiple of these,
+// this might return any one of them. This is useful to identify the final
+// Dataset op in the graph but in some cases there might be multiple Identity
+// ops added to the end and this would return the last Identity op in that case.
+
+Status FindSinkNode(const GraphDef& graph_def, NodeDef* sink_node) {
+  absl::flat_hash_map<string, int> all_node_names;
+  absl::flat_hash_map<string, int> node_input_map;
+  for (int i = 0; i < graph_def.node_size(); ++i) {
+    all_node_names.insert_or_assign(graph_def.node(i).name(), i);
+    node_input_map.insert_or_assign(graph_def.node(i).name(), 0);
+  }
+  // Counts how many graph nodes for each input name. Candidate sink
+  // nodes are ones which are inputs into zero nodes.
+  for (const NodeDef& node : graph_def.node()) {
+    for (const string& input_name : node.input()) {
+      node_input_map[input_name]++;
+    }
+  }
+  for (const auto& it : node_input_map) {
+    if (it.second == 0) {
+      const NodeDef& sink_graph_node = graph_def.node(all_node_names[it.first]);
+      if (sink_graph_node.input_size() == 0) {
+        continue;
+      }
+      *sink_node = sink_graph_node;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Failed to find a sink node");
+}
+
+}  // namespace graph_utils
+}  // namespace grappler
+}  // namespace tensorflow

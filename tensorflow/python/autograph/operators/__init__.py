@@ -38,6 +38,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.operators.control_flow import for_stmt
+from tensorflow.python.autograph.operators.control_flow import if_stmt
 from tensorflow.python.autograph.operators.control_flow import while_stmt
 from tensorflow.python.autograph.operators.data_structures import list_append
 from tensorflow.python.autograph.operators.data_structures import list_pop
@@ -45,6 +46,23 @@ from tensorflow.python.autograph.operators.data_structures import list_stack
 from tensorflow.python.autograph.operators.data_structures import ListPopOpts
 from tensorflow.python.autograph.operators.data_structures import ListStackOpts
 from tensorflow.python.autograph.operators.data_structures import new_list
+from tensorflow.python.autograph.operators.exceptions import assert_stmt
+from tensorflow.python.autograph.operators.logical import and_
+from tensorflow.python.autograph.operators.logical import eq
+from tensorflow.python.autograph.operators.logical import gt
+from tensorflow.python.autograph.operators.logical import gt_e
+from tensorflow.python.autograph.operators.logical import in_
+from tensorflow.python.autograph.operators.logical import invert
+from tensorflow.python.autograph.operators.logical import is_
+from tensorflow.python.autograph.operators.logical import is_not
+from tensorflow.python.autograph.operators.logical import lt
+from tensorflow.python.autograph.operators.logical import lt_e
+from tensorflow.python.autograph.operators.logical import not_
+from tensorflow.python.autograph.operators.logical import not_eq
+from tensorflow.python.autograph.operators.logical import not_in
+from tensorflow.python.autograph.operators.logical import or_
+from tensorflow.python.autograph.operators.logical import u_add
+from tensorflow.python.autograph.operators.logical import u_sub
 from tensorflow.python.autograph.operators.py_builtins import float_
 from tensorflow.python.autograph.operators.py_builtins import int_
 from tensorflow.python.autograph.operators.py_builtins import len_
@@ -53,3 +71,5 @@ from tensorflow.python.autograph.operators.py_builtins import range_
 from tensorflow.python.autograph.operators.slices import get_item
 from tensorflow.python.autograph.operators.slices import GetItemOpts
 from tensorflow.python.autograph.operators.slices import set_item
+from tensorflow.python.autograph.operators.special_values import is_undefined
+from tensorflow.python.autograph.operators.special_values import Undefined

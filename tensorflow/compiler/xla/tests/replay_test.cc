@@ -55,7 +55,8 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
       client_->GetComputationShape(computation).ConsumeValueOrDie();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
+  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
+                                            replayed_shape->ToProto()));
 
   // Run it.
   Literal literal =
@@ -87,7 +88,8 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
       client_->GetComputationShape(computation).ConsumeValueOrDie();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
+  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
+                                            replayed_shape->ToProto()));
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
@@ -133,7 +135,8 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
       client_->GetComputationShape(computation).ConsumeValueOrDie();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
+  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
+                                            replayed_shape->ToProto()));
 
   // Run it.
   Literal literal =

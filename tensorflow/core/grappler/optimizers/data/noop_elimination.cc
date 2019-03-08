@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/noop_elimination.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -30,7 +31,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-bool IsTakeAll(const NodeDef& take_node, const GraphView& graph) {
+bool IsTakeAll(const NodeDef& take_node, const MutableGraphView& graph) {
   if (take_node.op() != "TakeDataset") return false;
 
   const auto& count_node = *graph.GetNode(take_node.input(1));
@@ -44,40 +45,50 @@ bool IsConstNodeWithValue(const NodeDef& node, int value) {
   return node.attr().at("value").tensor().int64_val(0) == value;
 }
 
-bool IsSkipNone(const NodeDef& skip_node, const GraphView& graph) {
+bool IsSkipNone(const NodeDef& skip_node, const MutableGraphView& graph) {
   if (skip_node.op() != "SkipDataset") return false;
   // We are looking only for skip(0) nodes.
   return IsConstNodeWithValue(*graph.GetNode(skip_node.input(1)), 0);
 }
 
-bool IsRepeatOne(const NodeDef& repeat_node, const GraphView& graph) {
+bool IsRepeatOne(const NodeDef& repeat_node, const MutableGraphView& graph) {
   if (repeat_node.op() != "RepeatDataset") return false;
   // We are looking only for repeat(1) nodes.
   return IsConstNodeWithValue(*graph.GetNode(repeat_node.input(1)), 1);
 }
 
-bool IsNoOp(const NodeDef& node, const GraphView& graph) {
+bool IsPrefetchZero(const NodeDef& prefetch_node,
+                    const MutableGraphView& graph) {
+  if (prefetch_node.op() != "PrefetchDataset") return false;
+  // We are looking only for prefetch(0) nodes.
+  return IsConstNodeWithValue(*graph.GetNode(prefetch_node.input(1)), 0);
+}
+
+bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
   return IsTakeAll(node, graph) || IsSkipNone(node, graph) ||
-         IsRepeatOne(node, graph);
+         IsRepeatOne(node, graph) || IsPrefetchZero(node, graph);
 }
 
 }  // namespace
 
-Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output) {
+Status NoOpElimination::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   for (const NodeDef& node : item.graph.node()) {
     if (!IsNoOp(node, graph)) continue;
 
     NodeDef* const parent = graph_utils::GetInputNode(node, graph);
-    graph.ReplaceInput(node, *parent);
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), parent->name()));
 
     nodes_to_delete.insert(node.name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -88,5 +99,5 @@ void NoOpElimination::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(NoOpElimination, "noop_elimination");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

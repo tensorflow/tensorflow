@@ -24,6 +24,7 @@ from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -511,15 +513,20 @@ def _rot90_4D(images, k, name_scope):
   result.set_shape([shape[0], None, None, shape[3]])
   return result
 
-@tf_export('image.transpose_image')
-def transpose_image(image):
-  """Transpose image(s) by swapping the height and width dimension.
 
-  See also `transpose()`.
+@tf_export(v1=['image.transpose', 'image.transpose_image'])
+def transpose_image(image):
+  return transpose(image=image, name=None)
+
+
+@tf_export('image.transpose', v1=[])
+def transpose(image, name=None):
+  """Transpose image(s) by swapping the height and width dimension.
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or
            3-D Tensor of shape `[height, width, channels]`.
+    name: A name for this operation (optional).
 
   Returns:
     If `image` was 4-D, a 4-D float Tensor of shape
@@ -530,14 +537,14 @@ def transpose_image(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  with ops.name_scope(None, 'transpose_image', [image]):
+  with ops.name_scope(name, 'transpose', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image = _AssertAtLeast3DImage(image)
     shape = image.get_shape()
     if shape.ndims == 3 or shape.ndims is None:
-      return array_ops.transpose(image, [1, 0, 2], name='transpose_image')
+      return array_ops.transpose(image, [1, 0, 2], name=name)
     elif shape.ndims == 4:
-      return array_ops.transpose(image, [0, 2, 1, 3], name='transpose_image')
+      return array_ops.transpose(image, [0, 2, 1, 3], name=name)
     else:
       raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
@@ -587,7 +594,7 @@ def central_crop(image, central_fraction):
     # Helper method to return the `idx`-th dimension of `tensor`, along with
     # a boolean signifying if the dimension is dynamic.
     def _get_dim(tensor, idx):
-      static_shape = tensor.get_shape()[idx].value
+      static_shape = tensor.get_shape().dims[idx].value
       if static_shape is not None:
         return static_shape, False
       return array_ops.shape(tensor)[idx], True
@@ -930,20 +937,104 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     return resized
 
 
-@tf_export('image.ResizeMethod')
-class ResizeMethod(object):
+@tf_export(v1=['image.ResizeMethod'])
+class ResizeMethodV1(object):
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
   BICUBIC = 2
   AREA = 3
 
 
-@tf_export('image.resize_images')
+@tf_export('image.ResizeMethod', v1=[])
+class ResizeMethod(object):
+  BILINEAR = 'bilinear'
+  NEAREST_NEIGHBOR = 'nearest'
+  BICUBIC = 'bicubic'
+  AREA = 'area'
+  LANCZOS3 = 'lanczos3'
+  LANCZOS5 = 'lanczos5'
+  GAUSSIAN = 'gaussian'
+  MITCHELLCUBIC = 'mitchellcubic'
+
+
+def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
+                          skip_resize_if_same):
+  """Core functionality for v1 and v2 resize functions."""
+  with ops.name_scope(name, 'resize', [images, size]):
+    images = ops.convert_to_tensor(images, name='images')
+    if images.get_shape().ndims is None:
+      raise ValueError('\'images\' contains no shape.')
+    # TODO(shlens): Migrate this functionality to the underlying Op's.
+    is_batch = True
+    if images.get_shape().ndims == 3:
+      is_batch = False
+      images = array_ops.expand_dims(images, 0)
+    elif images.get_shape().ndims != 4:
+      raise ValueError('\'images\' must have either 3 or 4 dimensions.')
+
+    _, height, width, _ = images.get_shape().as_list()
+
+    try:
+      size = ops.convert_to_tensor(size, dtypes.int32, name='size')
+    except (TypeError, ValueError):
+      raise ValueError('\'size\' must be a 1-D int32 Tensor')
+    if not size.get_shape().is_compatible_with([2]):
+      raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
+                       'new_height, new_width')
+    size_const_as_shape = tensor_util.constant_value_as_shape(size)
+    new_height_const = size_const_as_shape.dims[0].value
+    new_width_const = size_const_as_shape.dims[1].value
+
+    if preserve_aspect_ratio:
+      # Get the current shapes of the image, even if dynamic.
+      _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
+
+      # do the computation to find the right scale and height/width.
+      scale_factor_height = (math_ops.to_float(new_height_const) /
+                             math_ops.to_float(current_height))
+      scale_factor_width = (math_ops.to_float(new_width_const) /
+                            math_ops.to_float(current_width))
+      scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
+      scaled_height_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_height)))
+      scaled_width_const = math_ops.to_int32(
+          math_ops.round(scale_factor * math_ops.to_float(current_width)))
+
+      # NOTE: Reset the size and other constants used later.
+      size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
+                                   dtypes.int32, name='size')
+      size_const_as_shape = tensor_util.constant_value_as_shape(size)
+      new_height_const = size_const_as_shape.dims[0].value
+      new_width_const = size_const_as_shape.dims[1].value
+
+    # If we can determine that the height and width will be unmodified by this
+    # transformation, we avoid performing the resize.
+    if skip_resize_if_same and all(
+        x is not None
+        for x in [new_width_const, width, new_height_const, height]) and (
+            width == new_width_const and height == new_height_const):
+      if not is_batch:
+        images = array_ops.squeeze(images, axis=[0])
+      return images
+
+    images = resizer_fn(images, size)
+
+    # NOTE(mrry): The shape functions for the resize ops cannot unpack
+    # the packed values in `new_size`, so set the shape here.
+    images.set_shape([None, new_height_const, new_width_const, None])
+
+    if not is_batch:
+      images = array_ops.squeeze(images, axis=[0])
+    return images
+
+
+@tf_export(v1=['image.resize_images', 'image.resize'])
 def resize_images(images,
                   size,
-                  method=ResizeMethod.BILINEAR,
+                  method=ResizeMethodV1.BILINEAR,
                   align_corners=False,
-                  preserve_aspect_ratio=False):
+                  preserve_aspect_ratio=False,
+                  name=None):
   """Resize `images` to `size` using the specified `method`.
 
   Resized images will be distorted if their original aspect ratio is not
@@ -967,18 +1058,19 @@ def resize_images(images,
   type `float32`.
 
   Args:
-    images: 4-D Tensor of shape `[batch, height, width, channels]` or
-            3-D Tensor of shape `[height, width, channels]`.
-    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-          new size for the images.
+    images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
+      size for the images.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
     align_corners: bool.  If True, the centers of the 4 corner pixels of the
-        input and output tensors are aligned, preserving the values at the
-        corner pixels. Defaults to `False`.
+      input and output tensors are aligned, preserving the values at the corner
+      pixels. Defaults to `False`.
     preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
       then `images` will be resized to a size that fits in `size` while
       preserving the aspect ratio of the original image. Scales up the image if
       `size` is bigger than the current size of the `image`. Defaults to False.
+    name: A name for this operation (optional).
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -992,116 +1084,169 @@ def resize_images(images,
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
-  with ops.name_scope(None, 'resize_images', [images, size]):
-    images = ops.convert_to_tensor(images, name='images')
-    if images.get_shape().ndims is None:
-      raise ValueError('\'images\' contains no shape.')
-    # TODO(shlens): Migrate this functionality to the underlying Op's.
-    is_batch = True
-    if images.get_shape().ndims == 3:
-      is_batch = False
-      images = array_ops.expand_dims(images, 0)
-    elif images.get_shape().ndims != 4:
-      raise ValueError('\'images\' must have either 3 or 4 dimensions.')
 
-    _, height, width, _ = images.get_shape().as_list()
-
-    try:
-      size = ops.convert_to_tensor(size, dtypes.int32, name='size')
-    except (TypeError, ValueError):
-      raise ValueError('\'size\' must be a 1-D int32 Tensor')
-    if not size.get_shape().is_compatible_with([2]):
-      raise ValueError('\'size\' must be a 1-D Tensor of 2 elements: '
-                       'new_height, new_width')
-    size_const_as_shape = tensor_util.constant_value_as_shape(size)
-    new_height_const = size_const_as_shape[0].value
-    new_width_const = size_const_as_shape[1].value
-
-    if preserve_aspect_ratio:
-      # Get the current shapes of the image, even if dynamic.
-      _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
-
-      # do the computation to find the right scale and height/width.
-      scale_factor_height = (math_ops.to_float(new_height_const) /
-                             math_ops.to_float(current_height))
-      scale_factor_width = (math_ops.to_float(new_width_const) /
-                            math_ops.to_float(current_width))
-      scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_height)))
-      scaled_width_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_width)))
-
-      # NOTE: Reset the size and other constants used later.
-      size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
-                                   dtypes.int32, name='size')
-      size_const_as_shape = tensor_util.constant_value_as_shape(size)
-      new_height_const = size_const_as_shape[0].value
-      new_width_const = size_const_as_shape[1].value
-
-    # If we can determine that the height and width will be unmodified by this
-    # transformation, we avoid performing the resize.
-    if all(x is not None
-           for x in [new_width_const, width, new_height_const, height]) and (
-               width == new_width_const and height == new_height_const):
-      if not is_batch:
-        images = array_ops.squeeze(images, axis=[0])
-      return images
-
-    if method == ResizeMethod.BILINEAR:
-      images = gen_image_ops.resize_bilinear(
-          images, size, align_corners=align_corners)
-    elif method == ResizeMethod.NEAREST_NEIGHBOR:
-      images = gen_image_ops.resize_nearest_neighbor(
-          images, size, align_corners=align_corners)
-    elif method == ResizeMethod.BICUBIC:
-      images = gen_image_ops.resize_bicubic(
-          images, size, align_corners=align_corners)
-    elif method == ResizeMethod.AREA:
-      images = gen_image_ops.resize_area(
-          images, size, align_corners=align_corners)
+  def resize_fn(images_t, new_size):
+    """Legacy resize core function, passed to _resize_images_common."""
+    if method == ResizeMethodV1.BILINEAR or method == ResizeMethod.BILINEAR:
+      return gen_image_ops.resize_bilinear(
+          images_t, new_size, align_corners=align_corners)
+    elif (method == ResizeMethodV1.NEAREST_NEIGHBOR or
+          method == ResizeMethod.NEAREST_NEIGHBOR):
+      return gen_image_ops.resize_nearest_neighbor(
+          images_t, new_size, align_corners=align_corners)
+    elif method == ResizeMethodV1.BICUBIC or method == ResizeMethod.BICUBIC:
+      return gen_image_ops.resize_bicubic(
+          images_t, new_size, align_corners=align_corners)
+    elif method == ResizeMethodV1.AREA or method == ResizeMethod.AREA:
+      return gen_image_ops.resize_area(
+          images_t, new_size, align_corners=align_corners)
     else:
       raise ValueError('Resize method is not implemented.')
 
-    # NOTE(mrry): The shape functions for the resize ops cannot unpack
-    # the packed values in `new_size`, so set the shape here.
-    images.set_shape([None, new_height_const, new_width_const, None])
+  return _resize_images_common(
+      images,
+      resize_fn,
+      size,
+      preserve_aspect_ratio=preserve_aspect_ratio,
+      name=name,
+      skip_resize_if_same=True)
 
-    if not is_batch:
-      images = array_ops.squeeze(images, axis=[0])
-    return images
 
+@tf_export('image.resize', v1=[])
+def resize_images_v2(images,
+                     size,
+                     method=ResizeMethod.BILINEAR,
+                     preserve_aspect_ratio=False,
+                     antialias=False,
+                     name=None):
+  """Resize `images` to `size` using the specified `method`.
 
-@tf_export('image.resize_image_with_pad')
-def resize_image_with_pad(image,
-                          target_height,
-                          target_width,
-                          method=ResizeMethod.BILINEAR):
-  """Resizes and pads an image to a target width and height.
+  Resized images will be distorted if their original aspect ratio is not
+  the same as `size`.  To avoid distortions see
+  `tf.image.resize_with_pad`.
 
-  Resizes an image to a target width and height by keeping
-  the aspect ratio the same without distortion. If the target
-  dimensions don't match the image dimensions, the image
-  is resized and then padded with zeroes to match requested
-  dimensions.
+  When 'antialias' is true, the sampling filter will anti-alias the input image
+  as well as interpolate.   When downsampling an image with [anti-aliasing](
+  https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
+  kernel is scaled in order to properly anti-alias the input image signal.
+  'antialias' has no effect when upsampling an image.
+
+  *   <b>`bilinear`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
+    true, becomes a hat/tent filter function with radius 1 when downsampling.
+  *   <b>`lanczos3`</b>:  [Lanczos kernel](
+    https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
+    High-quality practical filter but may have some ringing especially on
+    synthetic images.
+  *   <b>`lanczos5`</b>: [Lanczos kernel] (
+    https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 5.
+    Very-high-quality filter but may have stronger ringing.
+  *   <b>`bicubic`</b>: [Cubic interpolant](
+    https://en.wikipedia.org/wiki/Bicubic_interpolation) of Keys. Equivalent to
+    Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
+    particularly when upsampling.
+  *   <b>`gaussian`</b>: [Gaussian kernel](
+    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
+    sigma = 1.5 / 3.]
+  *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
+    https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+    'antialias' has no effect when used with nearest neighbor interpolation.
+  *   <b>`area`</b>: Anti-aliased resampling with area interpolation.
+    'antialias' has no effect when used with area interpolation; it
+    always anti-aliases.
+  *   <b>`mitchellcubic`</b>: Mitchell-Netravali Cubic non-interpolating filter.
+    For synthetic images (especially those lacking proper prefiltering), less
+    ringing than Keys cubic kernel but less sharp.
+
+  Note that near image edges the filtering kernel may be partially outside the
+  image boundaries. For these pixels, only input pixels inside the image will be
+  included in the filter sum, and the output value will be appropriately
+  normalized.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. Otherwise, the return value has type
+  `float32`.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
-    target_height: Target height.
-    target_width: Target width.
-    method: Method to use for resizing image. See `resize_images()`
+    images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
+      size for the images.
+    method: ResizeMethod.  Defaults to `bilinear`.
+    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
+      then `images` will be resized to a size that fits in `size` while
+      preserving the aspect ratio of the original image. Scales up the image if
+      `size` is bigger than the current size of the `image`. Defaults to False.
+    antialias: Whether to use an anti-aliasing filter when downsampling an
+      image.
+    name: A name for this operation (optional).
 
   Raises:
-    ValueError: if `target_height` or `target_width` are zero or negative.
+    ValueError: if the shape of `images` is incompatible with the
+      shape arguments to this function
+    ValueError: if `size` has invalid shape or type.
+    ValueError: if an unsupported resize method is specified.
 
   Returns:
-    Resized and padded image.
     If `images` was 4-D, a 4-D float Tensor of shape
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
+
+  def resize_fn(images_t, new_size):
+    """Resize core function, passed to _resize_images_common."""
+    scale_and_translate_methods = [
+        ResizeMethod.LANCZOS3, ResizeMethod.LANCZOS5, ResizeMethod.GAUSSIAN,
+        ResizeMethod.MITCHELLCUBIC
+    ]
+
+    def resize_with_scale_and_translate(method):
+      scale = (
+          math_ops.cast(new_size, dtype=dtypes.float32) /
+          math_ops.cast(array_ops.shape(images_t)[1:3], dtype=dtypes.float32))
+      return gen_image_ops.scale_and_translate(
+          images_t,
+          new_size,
+          scale,
+          array_ops.zeros([2]),
+          kernel_type=method,
+          antialias=antialias)
+
+    if method == ResizeMethod.BILINEAR:
+      if antialias:
+        return resize_with_scale_and_translate('triangle')
+      else:
+        return gen_image_ops.resize_bilinear(
+            images_t, new_size, half_pixel_centers=True)
+    elif method == ResizeMethod.NEAREST_NEIGHBOR:
+      return gen_image_ops.resize_nearest_neighbor(
+          images_t, new_size, half_pixel_centers=True)
+    elif method == ResizeMethod.BICUBIC:
+      if antialias:
+        return resize_with_scale_and_translate('keyscubic')
+      else:
+        return gen_image_ops.resize_bicubic(
+            images_t, new_size, half_pixel_centers=True)
+    elif method == ResizeMethod.AREA:
+      return gen_image_ops.resize_area(images_t, new_size)
+    elif method in scale_and_translate_methods:
+      return resize_with_scale_and_translate(method)
+    else:
+      raise ValueError('Resize method is not implemented.')
+
+  return _resize_images_common(
+      images,
+      resize_fn,
+      size,
+      preserve_aspect_ratio=preserve_aspect_ratio,
+      name=name,
+      skip_resize_if_same=False)
+
+
+def _resize_image_with_pad_common(image, target_height, target_width,
+                                  resize_fn):
+  """Core functionality for v1 and v2 resize_image_with_pad functions."""
   with ops.name_scope(None, 'resize_image_with_pad', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image_shape = image.get_shape()
@@ -1156,7 +1301,7 @@ def resize_image_with_pad(image,
     p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_images(image, [resized_height, resized_width], method)
+    resized = resize_fn(image, [resized_height, resized_width])
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
@@ -1172,6 +1317,88 @@ def resize_image_with_pad(image,
     return padded
 
 
+@tf_export(v1=['image.resize_image_with_pad'])
+def resize_image_with_pad_v1(image,
+                             target_height,
+                             target_width,
+                             method=ResizeMethodV1.BILINEAR,
+                             align_corners=False):
+  """Resizes and pads an image to a target width and height.
+
+  Resizes an image to a target width and height by keeping
+  the aspect ratio the same without distortion. If the target
+  dimensions don't match the image dimensions, the image
+  is resized and then padded with zeroes to match requested
+  dimensions.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    target_height: Target height.
+    target_width: Target width.
+    method: Method to use for resizing image. See `resize_images()`
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+      input and output tensors are aligned, preserving the values at the corner
+      pixels. Defaults to `False`.
+
+  Raises:
+    ValueError: if `target_height` or `target_width` are zero or negative.
+
+  Returns:
+    Resized and padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+
+  def _resize_fn(im, new_size):
+    return resize_images(im, new_size, method, align_corners=align_corners)
+
+  return _resize_image_with_pad_common(image, target_height, target_width,
+                                       _resize_fn)
+
+
+@tf_export('image.resize_with_pad', v1=[])
+def resize_image_with_pad_v2(image,
+                             target_height,
+                             target_width,
+                             method=ResizeMethod.BILINEAR,
+                             antialias=False):
+  """Resizes and pads an image to a target width and height.
+
+  Resizes an image to a target width and height by keeping
+  the aspect ratio the same without distortion. If the target
+  dimensions don't match the image dimensions, the image
+  is resized and then padded with zeroes to match requested
+  dimensions.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    target_height: Target height.
+    target_width: Target width.
+    method: Method to use for resizing image. See `image.resize()`
+    antialias: Whether to use anti-aliasing when resizing. See 'image.resize()'.
+
+  Raises:
+    ValueError: if `target_height` or `target_width` are zero or negative.
+
+  Returns:
+    Resized and padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+
+  def _resize_fn(im, new_size):
+    return resize_images_v2(im, new_size, method, antialias=antialias)
+
+  return _resize_image_with_pad_common(image, target_height, target_width,
+                                       _resize_fn)
+
+
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
   """Linearly scales `image` to have zero mean and unit variance.
@@ -1184,7 +1411,8 @@ def per_image_standardization(image):
   away from zero to protect against division by 0 when handling uniform images.
 
   Args:
-    image: 3-D tensor of shape `[height, width, channels]`.
+    image: An n-D Tensor where the last 3 dimensions are `[height, width,
+      channels]`.
 
   Returns:
     The standardized image with same shape as `image`.
@@ -1194,14 +1422,15 @@ def per_image_standardization(image):
   """
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = _Assert3DImage(image)
-    num_pixels = math_ops.reduce_prod(array_ops.shape(image))
+    image = _AssertAtLeast3DImage(image)
+    num_pixels = math_ops.reduce_prod(array_ops.shape(image)[-3:])
 
     image = math_ops.cast(image, dtype=dtypes.float32)
-    image_mean = math_ops.reduce_mean(image)
+    image_mean = math_ops.reduce_mean(image, axis=[-1, -2, -3], keepdims=True)
 
     variance = (
-        math_ops.reduce_mean(math_ops.square(image)) -
+        math_ops.reduce_mean(
+            math_ops.square(image), axis=[-1, -2, -3], keepdims=True) -
         math_ops.square(image_mean))
     variance = gen_nn_ops.relu(variance)
     stddev = math_ops.sqrt(variance)
@@ -1224,14 +1453,14 @@ def random_brightness(image, max_delta, seed=None):
   interval `[-max_delta, max_delta)`.
 
   Args:
-    image: An image.
+    image: An image or images to adjust.
     max_delta: float, must be non-negative.
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
       for behavior.
 
   Returns:
-    The brightness-adjusted image.
+    The brightness-adjusted image(s).
 
   Raises:
     ValueError: if `max_delta` is negative.
@@ -1245,7 +1474,7 @@ def random_brightness(image, max_delta, seed=None):
 
 @tf_export('image.random_contrast')
 def random_contrast(image, lower, upper, seed=None):
-  """Adjust the contrast of an image by a random factor.
+  """Adjust the contrast of an image or images by a random factor.
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1255,11 +1484,10 @@ def random_contrast(image, lower, upper, seed=None):
     lower: float.  Lower bound for the random contrast factor.
     upper: float.  Upper bound for the random contrast factor.
     seed: A Python integer. Used to create a random seed. See
-      `tf.set_random_seed`
-      for behavior.
+      `tf.set_random_seed` for behavior.
 
   Returns:
-    The contrast-adjusted tensor.
+    The contrast-adjusted image(s).
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
@@ -1279,19 +1507,19 @@ def random_contrast(image, lower, upper, seed=None):
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its brightness, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their brightness, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
-  The value `delta` is added to all components of the tensor `image`. Both
-  `image` and `delta` are converted to `float` before adding (and `image` is
-  scaled appropriately if it is in fixed-point representation). For regular
+  The value `delta` is added to all components of the tensor `image`. `image` is
+  converted to `float` and scaled appropriately if it is in fixed-point
+  representation, and `delta` is converted to the same data type. For regular
   images, `delta` should be in the range `[0,1)`, as it is added to the image in
   floating point representation, where pixel values are in the `[0,1)` range.
 
   Args:
-    image: A tensor.
+    image: RGB image or images to adjust.
     delta: A scalar. Amount to add to the pixel values.
 
   Returns:
@@ -1301,10 +1529,14 @@ def adjust_brightness(image, delta):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     adjusted = math_ops.add(
-        flt_image, math_ops.cast(delta, dtypes.float32), name=name)
+        flt_image, math_ops.cast(delta, flt_image.dtype), name=name)
 
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
@@ -1313,9 +1545,9 @@ def adjust_brightness(image, delta):
 def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, adjusts its contrast, and then converts it back to the
-  original data type. If several adjustments are chained it is advisable to
+  This is a convenience method that converts RGB images to float
+  representation, adjusts their contrast, and then converts them back to the
+  original data type. If several adjustments are chained, it is advisable to
   minimize the number of redundant conversions.
 
   `images` is a tensor of at least 3 dimensions.  The last 3 dimensions are
@@ -1340,7 +1572,11 @@ def adjust_contrast(images, contrast_factor):
     images = ops.convert_to_tensor(images, name='images')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = images.dtype
-    flt_images = convert_image_dtype(images, dtypes.float32)
+
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_images = images
+    else:
+      flt_images = convert_image_dtype(images, dtypes.float32)
 
     adjusted = gen_image_ops.adjust_contrastv2(
         flt_images, contrast_factor=contrast_factor, name=name)
@@ -1534,7 +1770,7 @@ def grayscale_to_rgb(images, name=None):
 # pylint: disable=invalid-name
 @tf_export('image.random_hue')
 def random_hue(image, max_delta, seed=None):
-  """Adjust the hue of an RGB image by a random factor.
+  """Adjust the hue of RGB images by a random factor.
 
   Equivalent to `adjust_hue()` but uses a `delta` randomly
   picked in the interval `[-max_delta, max_delta]`.
@@ -1544,10 +1780,10 @@ def random_hue(image, max_delta, seed=None):
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
     max_delta: float.  Maximum value for the random delta.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1567,7 +1803,7 @@ def random_hue(image, max_delta, seed=None):
 
 @tf_export('image.adjust_hue')
 def adjust_hue(image, delta, name=None):
-  """Adjust hue of an RGB image.
+  """Adjust hue of RGB images.
 
   This is a convenience method that converts an RGB image to float
   representation, converts it to HSV, add an offset to the hue channel, converts
@@ -1575,7 +1811,7 @@ def adjust_hue(image, delta, name=None):
   are chained it is advisable to minimize the number of redundant conversions.
 
   `image` is an RGB image.  The image hue is adjusted by converting the
-  image to HSV and rotating the hue channel (H) by
+  image(s) to HSV and rotating the hue channel (H) by
   `delta`.  The image is then converted back to RGB.
 
   `delta` must be in the interval `[-1, 1]`.
@@ -1592,7 +1828,10 @@ def adjust_hue(image, delta, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     rgb_altered = gen_image_ops.adjust_hue(flt_image, delta)
 
@@ -1670,7 +1909,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
 
 @tf_export('image.random_saturation')
 def random_saturation(image, lower, upper, seed=None):
-  """Adjust the saturation of an RGB image by a random factor.
+  """Adjust the saturation of RGB images by a random factor.
 
   Equivalent to `adjust_saturation()` but uses a `saturation_factor` randomly
   picked in the interval `[lower, upper]`.
@@ -1679,10 +1918,10 @@ def random_saturation(image, lower, upper, seed=None):
     image: RGB image or images. Size of the last dimension must be 3.
     lower: float.  Lower bound for the random saturation factor.
     upper: float.  Upper bound for the random saturation factor.
-    seed: An operation-specific seed. It will be used in conjunction
-      with the graph-level seed to determine the real seeds that will be
-      used in this operation. Please see the documentation of
-      set_random_seed for its interaction with the graph-level random seed.
+    seed: An operation-specific seed. It will be used in conjunction with the
+      graph-level seed to determine the real seeds that will be used in this
+      operation. Please see the documentation of set_random_seed for its
+      interaction with the graph-level random seed.
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
@@ -1703,17 +1942,17 @@ def random_saturation(image, lower, upper, seed=None):
 
 @tf_export('image.adjust_saturation')
 def adjust_saturation(image, saturation_factor, name=None):
-  """Adjust saturation of an RGB image.
+  """Adjust saturation of RGB images.
 
-  This is a convenience method that converts an RGB image to float
-  representation, converts it to HSV, add an offset to the saturation channel,
+  This is a convenience method that converts RGB images to float
+  representation, converts them to HSV, add an offset to the saturation channel,
   converts back to RGB and then back to the original data type. If several
   adjustments are chained it is advisable to minimize the number of redundant
   conversions.
 
-  `image` is an RGB image.  The image saturation is adjusted by converting the
-  image to HSV and multiplying the saturation (S) channel by
-  `saturation_factor` and clipping. The image is then converted back to RGB.
+  `image` is an RGB image or images.  The image saturation is adjusted by
+  converting the images to HSV and multiplying the saturation (S) channel by
+  `saturation_factor` and clipping. The images are then converted back to RGB.
 
   Args:
     image: RGB image or images. Size of the last dimension must be 3.
@@ -1727,14 +1966,17 @@ def adjust_saturation(image, saturation_factor, name=None):
     image = ops.convert_to_tensor(image, name='image')
     # Remember original dtype to so we can convert back if needed
     orig_dtype = image.dtype
-    flt_image = convert_image_dtype(image, dtypes.float32)
+    if orig_dtype in (dtypes.float16, dtypes.float32):
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
-    return convert_image_dtype(
-        gen_image_ops.adjust_saturation(flt_image, saturation_factor),
-        orig_dtype)
+    adjusted = gen_image_ops.adjust_saturation(flt_image, saturation_factor)
+
+    return convert_image_dtype(adjusted, orig_dtype)
 
 
-@tf_export('image.is_jpeg')
+@tf_export('io.is_jpeg', 'image.is_jpeg', v1=['io.is_jpeg', 'image.is_jpeg'])
 def is_jpeg(contents, name=None):
   r"""Convenience function to check if the 'contents' encodes a JPEG image.
 
@@ -1769,8 +2011,28 @@ def _is_png(contents, name=None):
     substr = string_ops.substr(contents, 0, 3)
     return math_ops.equal(substr, b'\211PN', name=name)
 
+tf_export('io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg',
+          v1=['io.decode_and_crop_jpeg', 'image.decode_and_crop_jpeg'])(
+              gen_image_ops.decode_and_crop_jpeg)
 
-@tf_export('image.decode_image')
+tf_export('io.decode_bmp', 'image.decode_bmp',
+          v1=['io.decode_bmp', 'image.decode_bmp'])(gen_image_ops.decode_bmp)
+tf_export('io.decode_gif', 'image.decode_gif',
+          v1=['io.decode_gif', 'image.decode_gif'])(gen_image_ops.decode_gif)
+tf_export('io.decode_jpeg', 'image.decode_jpeg',
+          v1=['io.decode_jpeg', 'image.decode_jpeg'])(gen_image_ops.decode_jpeg)
+tf_export('io.decode_png', 'image.decode_png',
+          v1=['io.decode_png', 'image.decode_png'])(gen_image_ops.decode_png)
+
+tf_export('io.encode_jpeg', 'image.encode_jpeg',
+          v1=['io.encode_jpeg', 'image.encode_jpeg'])(gen_image_ops.encode_jpeg)
+tf_export('io.extract_jpeg_shape', 'image.extract_jpeg_shape',
+          v1=['io.extract_jpeg_shape', 'image.extract_jpeg_shape'])(
+              gen_image_ops.extract_jpeg_shape)
+
+
+@tf_export('io.decode_image', 'image.decode_image',
+           v1=['io.decode_image', 'image.decode_image'])
 def decode_image(contents, channels=None, dtype=dtypes.uint8, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
@@ -1940,7 +2202,113 @@ def total_variation(images, name=None):
   return tot_var
 
 
-@tf_export('image.sample_distorted_bounding_box')
+@tf_export('image.sample_distorted_bounding_box', v1=[])
+def sample_distorted_bounding_box_v2(image_size,
+                                     bounding_boxes,
+                                     seed=0,
+                                     min_object_covered=0.1,
+                                     aspect_ratio_range=None,
+                                     area_range=None,
+                                     max_attempts=None,
+                                     use_image_if_no_bounding_boxes=None,
+                                     name=None):
+  """Generate a single randomly distorted bounding box for an image.
+
+  Bounding box annotations are often supplied in addition to ground-truth labels
+  in image recognition or object localization tasks. A common technique for
+  training such a system is to randomly distort an image while preserving
+  its content, i.e. *data augmentation*. This Op outputs a randomly distorted
+  localization of an object, i.e. bounding box, given an `image_size`,
+  `bounding_boxes` and a series of constraints.
+
+  The output of this Op is a single bounding box that may be used to crop the
+  original image. The output is returned as 3 tensors: `begin`, `size` and
+  `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+  image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
+  visualize what the bounding box looks like.
+
+  Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
+  The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
+  and height of the underlying image.
+
+  For example,
+
+  ```python
+      # Generate a single distorted bounding box.
+      begin, size, bbox_for_draw = tf.image.sample_distorted_bounding_box(
+          tf.shape(image),
+          bounding_boxes=bounding_boxes,
+          min_object_covered=0.1)
+
+      # Draw the bounding box in an image summary.
+      image_with_box = tf.image.draw_bounding_boxes(tf.expand_dims(image, 0),
+                                                    bbox_for_draw)
+      tf.summary.image('images_with_box', image_with_box)
+
+      # Employ the bounding box to distort the image.
+      distorted_image = tf.slice(image, begin, size)
+  ```
+
+  Note that if no bounding box information is available, setting
+  `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+  bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+  false and no bounding boxes are supplied, an error is raised.
+
+  Args:
+    image_size: A `Tensor`. Must be one of the following types: `uint8`, `int8`,
+      `int16`, `int32`, `int64`.
+      1-D, containing `[height, width, channels]`.
+    bounding_boxes: A `Tensor` of type `float32`.
+      3-D with shape `[batch, N, 4]` describing the N bounding boxes
+      associated with the image.
+    seed: An optional `int`. Defaults to `0`.
+      If `seed` is set to non-zero, the random number generator is seeded by
+      the given `seed`.  Otherwise, it is seeded by a random seed.
+    min_object_covered: A Tensor of type `float32`. Defaults to `0.1`.
+      The cropped area of the image must contain at least this
+      fraction of any bounding box supplied. The value of this parameter should
+      be non-negative. In the case of 0, the cropped area does not need to
+      overlap any of the bounding boxes supplied.
+    aspect_ratio_range: An optional list of `floats`. Defaults to `[0.75,
+      1.33]`.
+      The cropped area of the image must have an aspect `ratio =
+      width / height` within this range.
+    area_range: An optional list of `floats`. Defaults to `[0.05, 1]`.
+      The cropped area of the image must contain a fraction of the
+      supplied image within this range.
+    max_attempts: An optional `int`. Defaults to `100`.
+      Number of attempts at generating a cropped region of the image
+      of the specified constraints. After `max_attempts` failures, return the
+      entire image.
+    use_image_if_no_bounding_boxes: An optional `bool`. Defaults to `False`.
+      Controls behavior if no bounding boxes supplied.
+      If true, assume an implicit bounding box covering the whole input. If
+      false, raise an error.
+    name: A name for the operation (optional).
+
+  Returns:
+    A tuple of `Tensor` objects (begin, size, bboxes).
+
+    begin: A `Tensor`. Has the same type as `image_size`. 1-D, containing
+    `[offset_height, offset_width, 0]`. Provide as input to
+      `tf.slice`.
+    size: A `Tensor`. Has the same type as `image_size`. 1-D, containing
+    `[target_height, target_width, -1]`. Provide as input to
+      `tf.slice`.
+    bboxes: A `Tensor` of type `float32`. 3-D with shape `[1, 1, 4]` containing
+    the distorted bounding box.
+    Provide as input to `tf.image.draw_bounding_boxes`.
+  """
+  seed1, seed2 = random_seed.get_seed(seed) if seed else (0, 0)
+  return sample_distorted_bounding_box(
+      image_size, bounding_boxes, seed1, seed2, min_object_covered,
+      aspect_ratio_range, area_range, max_attempts,
+      use_image_if_no_bounding_boxes, name)
+
+
+@tf_export(v1=['image.sample_distorted_bounding_box'])
+@deprecation.deprecated(date=None, instructions='`seed2` arg is deprecated.'
+                        'Use sample_distorted_bounding_box_v2 instead.')
 def sample_distorted_bounding_box(image_size,
                                   bounding_boxes,
                                   seed=None,
@@ -2072,9 +2440,9 @@ def non_max_suppression(boxes,
 
   Prunes away boxes that have high intersection-over-union (IOU) overlap
   with previously selected boxes.  Bounding boxes are supplied as
-  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  `[y1, x1, y2, x2]`, where `(y1, x1)` and `(y2, x2)` are the coordinates of any
   diagonal pair of box corners and the coordinates can be provided as normalized
-  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  (i.e., lying in the interval `[0, 1]`) or absolute.  Note that this algorithm
   is agnostic to where the origin is in the coordinate system.  Note that this
   algorithm is invariant to orthogonal transformations and translations
   of the coordinate system; thus translating or reflections of the coordinate
@@ -2082,10 +2450,12 @@ def non_max_suppression(boxes,
   The output of this operation is a set of integers indexing into the input
   collection of bounding boxes representing the selected boxes.  The bounding
   box coordinates corresponding to the selected indices can then be obtained
-  using the `tf.gather operation`.  For example:
+  using the `tf.gather` operation.  For example:
+    ```python
     selected_indices = tf.image.non_max_suppression(
         boxes, scores, max_output_size, iou_threshold)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
@@ -2129,12 +2499,14 @@ def non_max_suppression_padded(boxes,
   boxes and the number of valid indices in the index set.  The bounding box
   coordinates corresponding to the selected indices can then be obtained using
   the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
     selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
         boxes, scores, max_output_size, iou_threshold,
         score_threshold, pad_to_max_output_size=True)
     selected_indices = tf.slice(
         selected_indices_padded, tf.constant([0]), num_valid)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
@@ -2183,10 +2555,12 @@ def non_max_suppression_with_overlaps(overlaps,
   The output of this operation is a set of integers indexing into the input
   collection of bounding boxes representing the selected boxes.  The bounding
   box coordinates corresponding to the selected indices can then be obtained
-  using the `tf.gather operation`.  For example:
+  using the `tf.gather` operation.  For example:
+    ```python
     selected_indices = tf.image.non_max_suppression_overlaps(
         overlaps, scores, max_output_size, iou_threshold)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     overlaps: A 2-D float `Tensor` of shape `[num_boxes, num_boxes]`.
@@ -2208,7 +2582,7 @@ def non_max_suppression_with_overlaps(overlaps,
     overlap_threshold = ops.convert_to_tensor(
         overlap_threshold, name='overlap_threshold')
     # pylint: disable=protected-access
-    return gen_image_ops._non_max_suppression_v3(
+    return gen_image_ops.non_max_suppression_with_overlaps(
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
     # pylint: enable=protected-access
 
@@ -2343,7 +2717,8 @@ def _verify_compatible_image_shapes(img1, img2):
   shape1[-3:].assert_is_compatible_with(shape2[-3:])
 
   if shape1.ndims is not None and shape2.ndims is not None:
-    for dim1, dim2 in zip(reversed(shape1[:-3]), reversed(shape2[:-3])):
+    for dim1, dim2 in zip(reversed(shape1.dims[:-3]),
+                          reversed(shape2.dims[:-3])):
       if not (dim1 == 1 or dim2 == 1 or dim1.is_compatible_with(dim2)):
         raise ValueError(
             'Two images are not compatible: %s and %s' % (shape1, shape2))
@@ -2805,3 +3180,356 @@ def sobel_edges(image):
   output = array_ops.reshape(output, shape=shape)
   output.set_shape(static_image_shape.concatenate([num_kernels]))
   return output
+
+
+def resize_bicubic(images,
+                   size,
+                   align_corners=False,
+                   name=None,
+                   half_pixel_centers=False):
+  return gen_image_ops.resize_bicubic(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+def resize_bilinear(images,
+                    size,
+                    align_corners=False,
+                    name=None,
+                    half_pixel_centers=False):
+  return gen_image_ops.resize_bilinear(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+def resize_nearest_neighbor(images,
+                            size,
+                            align_corners=False,
+                            name=None,
+                            half_pixel_centers=False):
+  return gen_image_ops.resize_nearest_neighbor(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+resize_area_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.AREA...)` instead.'))
+tf_export(v1=['image.resize_area'])(
+    resize_area_deprecation(gen_image_ops.resize_area))
+
+resize_bicubic_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
+tf_export(v1=['image.resize_bicubic'])(
+    resize_bicubic_deprecation(resize_bicubic))
+
+resize_bilinear_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
+tf_export(v1=['image.resize_bilinear'])(
+    resize_bilinear_deprecation(resize_bilinear))
+
+resize_nearest_neighbor_deprecation = deprecation.deprecated(
+    date=None,
+    instructions=(
+        'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
+        'instead.'))
+tf_export(v1=['image.resize_nearest_neighbor'])(
+    resize_nearest_neighbor_deprecation(resize_nearest_neighbor))
+
+
+@tf_export('image.crop_and_resize', v1=[])
+def crop_and_resize_v2(
+    image,
+    boxes,
+    box_indices,
+    crop_size,
+    method='bilinear',
+    extrapolation_value=0,
+    name=None):
+  """Extracts crops from the input image tensor and resizes them.
+
+  Extracts crops from the input image tensor and resizes them using bilinear
+  sampling or nearest neighbor sampling (possibly with aspect ratio change) to a
+  common output size specified by `crop_size`. This is more general than the
+  `crop_to_bounding_box` op which extracts a fixed size slice from the input
+  image and does not allow resizing or aspect ratio change.
+
+  Returns a tensor with `crops` from the input `image` at positions defined at
+  the bounding box locations in `boxes`. The cropped boxes are all resized (with
+  bilinear or nearest neighbor interpolation) to a fixed
+  `size = [crop_height, crop_width]`. The result is a 4-D tensor
+  `[num_boxes, crop_height, crop_width, depth]`. The resizing is corner aligned.
+  In particular, if `boxes = [[0, 0, 1, 1]]`, the method will give identical
+  results to using `tf.image.resize_bilinear()` or
+  `tf.image.resize_nearest_neighbor()`(depends on the `method` argument) with
+  `align_corners=True`.
+
+  Args:
+    image: A 4-D tensor of shape `[batch, image_height, image_width, depth]`.
+      Both `image_height` and `image_width` need to be positive.
+    boxes: A 2-D tensor of shape `[num_boxes, 4]`. The `i`-th row of the tensor
+      specifies the coordinates of a box in the `box_ind[i]` image and is
+      specified in normalized coordinates `[y1, x1, y2, x2]`. A normalized
+      coordinate value of `y` is mapped to the image coordinate at `y *
+      (image_height - 1)`, so as the `[0, 1]` interval of normalized image
+      height is mapped to `[0, image_height - 1]` in image height coordinates.
+      We do allow `y1` > `y2`, in which case the sampled crop is an up-down
+      flipped version of the original image. The width dimension is treated
+      similarly. Normalized coordinates outside the `[0, 1]` range are allowed,
+      in which case we use `extrapolation_value` to extrapolate the input image
+      values.
+    box_indices: A 1-D tensor of shape `[num_boxes]` with int32 values in `[0,
+      batch)`. The value of `box_ind[i]` specifies the image that the `i`-th box
+      refers to.
+    crop_size: A 1-D tensor of 2 elements, `size = [crop_height, crop_width]`.
+      All cropped image patches are resized to this size. The aspect ratio of
+      the image content is not preserved. Both `crop_height` and `crop_width`
+      need to be positive.
+    method: An optional string specifying the sampling method for resizing. It
+      can be either `"bilinear"` or `"nearest"` and default to `"bilinear"`.
+      Currently two sampling methods are supported: Bilinear and Nearest
+      Neighbor.
+    extrapolation_value: An optional `float`. Defaults to `0`. Value used for
+      extrapolation, when applicable.
+    name: A name for the operation (optional).
+
+  Returns:
+    A 4-D tensor of shape `[num_boxes, crop_height, crop_width, depth]`.
+  """
+  return gen_image_ops.crop_and_resize(
+      image, boxes, box_indices, crop_size, method, extrapolation_value, name)
+
+
+@tf_export(v1=['image.crop_and_resize'])
+@deprecation.deprecated_args(
+    None, 'box_ind is deprecated, use box_indices instead', 'box_ind')
+def crop_and_resize_v1(   # pylint: disable=missing-docstring
+    image,
+    boxes,
+    box_ind=None,
+    crop_size=None,
+    method='bilinear',
+    extrapolation_value=0,
+    name=None,
+    box_indices=None):
+  box_ind = deprecation.deprecated_argument_lookup(
+      "box_indices", box_indices, "box_ind", box_ind)
+  return gen_image_ops.crop_and_resize(
+      image, boxes, box_ind, crop_size, method, extrapolation_value, name)
+
+crop_and_resize_v1.__doc__ = gen_image_ops.crop_and_resize.__doc__
+
+
+@tf_export(v1=['image.extract_glimpse'])
+def extract_glimpse(
+    input,  # pylint: disable=redefined-builtin
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    uniform_noise=True,
+    name=None):
+  """Extracts a glimpse from the input tensor.
+
+  Returns a set of windows called glimpses extracted at location
+  `offsets` from the input tensor. If the windows only partially
+  overlaps the inputs, the non overlapping areas will be filled with
+  random noise.
+
+  The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+  glimpse_width, channels]`. The channels and batch dimensions are the
+  same as that of the input tensor. The height and width of the output
+  windows are specified in the `size` parameter.
+
+  The argument `normalized` and `centered` controls how the windows are built:
+
+  * If the coordinates are normalized but not centered, 0.0 and 1.0
+    correspond to the minimum and maximum of each height and width
+    dimension.
+  * If the coordinates are both normalized and centered, they range from
+    -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+    left corner, the lower right corner is located at (1.0, 1.0) and the
+    center is at (0, 0).
+  * If the coordinates are not normalized they are interpreted as
+    numbers of pixels.
+
+  Args:
+    input: A `Tensor` of type `float32`. A 4-D float tensor of shape
+      `[batch_size, height, width, channels]`.
+    size: A `Tensor` of type `int32`. A 1-D tensor of 2 elements containing the
+      size of the glimpses to extract.  The glimpse height must be specified
+      first, following by the glimpse width.
+    offsets: A `Tensor` of type `float32`. A 2-D integer tensor of shape
+      `[batch_size, 2]` containing the y, x locations of the center of each
+      window.
+    centered: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are centered relative to the image, in which case the (0, 0)
+      offset is relative to the center of the input images. If false, the (0,0)
+      offset corresponds to the upper left corner of the input images.
+    normalized: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are normalized.
+    uniform_noise: An optional `bool`. Defaults to `True`. indicates if the
+      noise should be generated using a uniform distribution or a Gaussian
+      distribution.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32`.
+  """
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      uniform_noise=uniform_noise,
+      name=name)
+
+
+@tf_export('image.extract_glimpse', v1=[])
+def extract_glimpse_v2(
+    input,  # pylint: disable=redefined-builtin
+    size,
+    offsets,
+    centered=True,
+    normalized=True,
+    noise='uniform',
+    name=None):
+  """Extracts a glimpse from the input tensor.
+
+  Returns a set of windows called glimpses extracted at location
+  `offsets` from the input tensor. If the windows only partially
+  overlaps the inputs, the non overlapping areas will be filled with
+  random noise.
+
+  The result is a 4-D tensor of shape `[batch_size, glimpse_height,
+  glimpse_width, channels]`. The channels and batch dimensions are the
+  same as that of the input tensor. The height and width of the output
+  windows are specified in the `size` parameter.
+
+  The argument `normalized` and `centered` controls how the windows are built:
+
+  * If the coordinates are normalized but not centered, 0.0 and 1.0
+    correspond to the minimum and maximum of each height and width
+    dimension.
+  * If the coordinates are both normalized and centered, they range from
+    -1.0 to 1.0. The coordinates (-1.0, -1.0) correspond to the upper
+    left corner, the lower right corner is located at (1.0, 1.0) and the
+    center is at (0, 0).
+  * If the coordinates are not normalized they are interpreted as
+    numbers of pixels.
+
+  Args:
+    input: A `Tensor` of type `float32`. A 4-D float tensor of shape
+      `[batch_size, height, width, channels]`.
+    size: A `Tensor` of type `int32`. A 1-D tensor of 2 elements containing the
+      size of the glimpses to extract.  The glimpse height must be specified
+      first, following by the glimpse width.
+    offsets: A `Tensor` of type `float32`. A 2-D integer tensor of shape
+      `[batch_size, 2]` containing the y, x locations of the center of each
+      window.
+    centered: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are centered relative to the image, in which case the (0, 0)
+      offset is relative to the center of the input images. If false, the (0,0)
+      offset corresponds to the upper left corner of the input images.
+    normalized: An optional `bool`. Defaults to `True`. indicates if the offset
+      coordinates are normalized.
+    noise: An optional `string`. Defaults to `uniform`. indicates if the noise
+      should be `uniform` (uniform distribution), `gaussian` (gaussian
+      distribution), or `zero` (zero padding).
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `float32`.
+  """
+  return gen_image_ops.extract_glimpse(
+      input=input,
+      size=size,
+      offsets=offsets,
+      centered=centered,
+      normalized=normalized,
+      noise=noise,
+      uniform_noise=False,
+      name=name)
+
+
+@tf_export('image.combined_non_max_suppression')
+def combined_non_max_suppression(boxes,
+                                 scores,
+                                 max_output_size_per_class,
+                                 max_total_size,
+                                 iou_threshold=0.5,
+                                 score_threshold=float('-inf'),
+                                 pad_per_class=False,
+                                 name=None):
+  """Greedily selects a subset of bounding boxes in descending order of score.
+
+  This operation performs non_max_suppression on the inputs per batch, across
+  all classes.
+  Prunes away boxes that have high intersection-over-union (IOU) overlap
+  with previously selected boxes.  Bounding boxes are supplied as
+  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  diagonal pair of box corners and the coordinates can be provided as normalized
+  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  is agnostic to where the origin is in the coordinate system. Also note that
+  this algorithm is invariant to orthogonal transformations and translations
+  of the coordinate system; thus translating or reflections of the coordinate
+  system result in the same boxes being selected by the algorithm.
+  The output of this operation is the final boxes, scores and classes tensor
+  returned after performing non_max_suppression.
+
+  Args:
+    boxes: A 4-D float `Tensor` of shape `[batch_size, num_boxes, q, 4]`. If `q`
+      is 1 then same boxes are used for all classes otherwise, if `q` is equal
+      to number of classes, class-specific boxes are used.
+    scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]`
+      representing a single score corresponding to each box (each row of boxes).
+    max_output_size_per_class: A scalar integer `Tensor` representing the
+      maximum number of boxes to be selected by non max suppression per class
+    max_total_size: A scalar representing maximum number of boxes retained over
+      all classes.
+    iou_threshold: A float representing the threshold for deciding whether boxes
+      overlap too much with respect to IOU.
+    score_threshold: A float representing the threshold for deciding when to
+      remove boxes based on score.
+    pad_per_class: If false, the output nmsed boxes, scores and classes are
+      padded/clipped to `max_total_size`. If true, the output nmsed boxes,
+      scores and classes are padded to be of length
+      `max_size_per_class`*`num_classes`, unless it exceeds `max_total_size` in
+      which case it is clipped to `max_total_size`. Defaults to false.
+    name: A name for the operation (optional).
+
+  Returns:
+    'nmsed_boxes': A [batch_size, max_detections, 4] float32 tensor
+      containing the non-max suppressed boxes.
+    'nmsed_scores': A [batch_size, max_detections] float32 tensor containing
+      the scores for the boxes.
+    'nmsed_classes': A [batch_size, max_detections] float32 tensor
+      containing the class for boxes.
+    'valid_detections': A [batch_size] int32 tensor indicating the number of
+      valid detections per batch item. Only the top valid_detections[i] entries
+      in nms_boxes[i], nms_scores[i] and nms_class[i] are valid. The rest of the
+      entries are zero paddings.
+  """
+  with ops.name_scope(name, 'combined_non_max_suppression'):
+    iou_threshold = ops.convert_to_tensor(
+        iou_threshold, dtype=dtypes.float32, name='iou_threshold')
+    score_threshold = ops.convert_to_tensor(
+        score_threshold, dtype=dtypes.float32, name='score_threshold')
+    return gen_image_ops.combined_non_max_suppression(
+        boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, pad_per_class)

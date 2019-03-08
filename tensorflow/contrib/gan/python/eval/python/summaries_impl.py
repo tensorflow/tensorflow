@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Common TFGAN summaries."""
+"""Common TF-GAN summaries."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,7 +22,7 @@ from tensorflow.contrib.gan.python import namedtuples
 from tensorflow.contrib.gan.python.eval.python import eval_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.losses import util as loss_util
@@ -261,7 +261,7 @@ def add_stargan_image_summaries(stargan_model,
 
   summary.image(
       'stargan_image_generation',
-      functional_ops.map_fn(
+      map_fn.map_fn(
           _build_image,
           stargan_model.input_data[:num_images],
           parallel_iterations=num_images,

@@ -33,7 +33,7 @@ setup(
     long_description='Tools for capture TPU profile',
     url='https://www.tensorflow.org/tfrc/',
     author='Google Inc.',
-    author_email='opensource@google.com',
+    author_email='packages@tensorflow.org',
     packages=['cloud_tpu_profiler'],
     package_data={
         'cloud_tpu_profiler': ['data/*'],

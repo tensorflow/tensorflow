@@ -17,8 +17,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
 namespace tensorflow {
@@ -61,123 +62,64 @@ class ReverseSequenceOp : public XlaOpKernel {
     const auto seq_lens = context->Input(1);
 
     const int64 batch_size = input_shape.dim_size(batch_dim_);
+    if (batch_size == 0) {
+      context->SetOutput(0, input);
+      return;
+    }
 
-    const DataType input_type = context->input_type(0);
-    const DataType seq_lens_type = context->input_type(1);
+    const xla::PrimitiveType seq_lens_type = context->input_xla_type(1);
     const int64 max_seq_len = input_shape.dim_size(seq_dim_);
 
-    xla::Shape input_xla_shape;
-    OP_REQUIRES_OK(context, TensorShapeToXLAShape(input_type, input_shape,
-                                                  &input_xla_shape));
-    xla::Shape seq_lens_xla_shape;
-    OP_REQUIRES_OK(context, TensorShapeToXLAShape(seq_lens_type, seq_lens_shape,
-                                                  &seq_lens_xla_shape));
-
-    const auto tuple_shape = xla::ShapeUtil::MakeTupleShape({
-        xla::ShapeUtil::MakeShape(seq_lens_xla_shape.element_type(), {}),
-        seq_lens_xla_shape,
-        input_xla_shape,
-    });
-
-    // For each entry in the batch, reverse the sequence.
-    // TODO(b/65689298): generalize the Map() operator to non-scalar cases and
-    // use it here, instead of a While loop.
-
-    // Condition: lambda (i, _, _): i < batch_size
-    auto condition_builder =
-        builder->CreateSubBuilder("reverse_sequence_condition");
-    {
-      auto param =
-          xla::Parameter(condition_builder.get(), 0, tuple_shape, "param");
-      auto i = xla::GetTupleElement(param, 0);
-      xla::Lt(i, XlaHelpers::IntegerLiteral(condition_builder.get(),
-                                            seq_lens_type, batch_size));
+    // Create [batch, sequence, 2] tensor that contains the indices where the
+    // real data belongs
+    xla::XlaOp back = xla::Sub(seq_lens, xla::ScalarLike(seq_lens, 1));
+    xla::XlaOp batch_idx = xla::Iota(
+        builder,
+        xla::ShapeUtil::MakeShape(seq_lens_type, {batch_size, max_seq_len, 1}),
+        /*iota_dimension=*/0);
+    xla::XlaOp forward_idx = xla::Iota(
+        builder,
+        xla::ShapeUtil::MakeShape(seq_lens_type, {batch_size, max_seq_len, 1}),
+        /*iota_dimension=*/1);
+    xla::XlaOp reverse_idx = xla::Sub(back, forward_idx, {0});
+    reverse_idx = xla::Select(xla::Lt(reverse_idx, xla::ZerosLike(reverse_idx)),
+                              forward_idx, reverse_idx);
+    if (batch_dim_ > seq_dim_) {
+      // The output of the XLA gather op keeps indices dimensions in the same
+      // order as they appear in the input. If the batch_dim_ needs to be after
+      // the seq_dim_ in the output, it also needs to be that way in the input
+      // so we transpose.
+      batch_idx = xla::Transpose(batch_idx, {1, 0, 2});
+      forward_idx = xla::Transpose(forward_idx, {1, 0, 2});
+      reverse_idx = xla::Transpose(reverse_idx, {1, 0, 2});
     }
-    auto condition = condition_builder->Build();
-    OP_REQUIRES_OK(context, condition.status());
+    xla::XlaOp start_indices =
+        xla::ConcatInDim(builder, {batch_idx, reverse_idx},
+                         /*dimension=*/2);
 
-    auto body_builder = builder->CreateSubBuilder("reverse_sequence_body");
-    {
-      auto param = xla::Parameter(body_builder.get(), 0, tuple_shape, "param");
-      auto i = xla::GetTupleElement(param, 0);
-      auto seq_lens = xla::GetTupleElement(param, 1);
-      auto output = xla::GetTupleElement(param, 2);
+    xla::GatherDimensionNumbers dnums;
+    dnums.set_index_vector_dim(2);
+    // The first and second element in the third dimension of reverse_idx are
+    // the batch_dim_ offset and the seq_dim_ offset respectively.
+    dnums.add_start_index_map(batch_dim_);
+    dnums.add_start_index_map(seq_dim_);
 
-      // seq_len is the sequence length of the current batch element (rank 1)
-      auto seq_len = xla::DynamicSlice(seq_lens, xla::Reshape(i, {1}), {1});
-
-      // Indices is the offset of the batch element in the input.
-      auto batch_element_indices =
-          xla::Broadcast(XlaHelpers::Zero(body_builder.get(), seq_lens_type),
-                         {input_shape.dims()});
-      batch_element_indices = xla::DynamicUpdateSlice(
-          batch_element_indices, xla::Reshape(i, {1}),
-          xla::Reshape(XlaHelpers::IntegerLiteral(body_builder.get(),
-                                                  seq_lens_type, batch_dim_),
-                       {1}));
-
-      // Slice out the current batch element and pad it out in the sequence
-      // dimension.
-      TensorShape slice_shape = input_shape;
-      slice_shape.set_dim(batch_dim_, 1);
-      slice_shape.set_dim(seq_dim_, max_seq_len);
-      auto slice = xla::DynamicSlice(output, batch_element_indices,
-                                     slice_shape.dim_sizes());
-      auto padding_config = xla::MakeNoPaddingConfig(slice_shape.dims());
-      padding_config.mutable_dimensions(seq_dim_)->set_edge_padding_high(
-          slice_shape.dim_size(seq_dim_));
-      slice = xla::Pad(slice, XlaHelpers::Zero(body_builder.get(), input_type),
-                       padding_config);
-
-      // Now slice out the reversed sequence from its actual start.
-      // sequence_start_indices is the offset of the start of the reversed
-      // sequence in the input. The slice will go into the padding, however, we
-      // will mask off these elements and replace them with elements from the
-      // original input so their values do not matter.
-      auto sequence_start_indices =
-          xla::Broadcast(XlaHelpers::Zero(body_builder.get(), seq_lens_type),
-                         {slice_shape.dims()});
-      sequence_start_indices = xla::DynamicUpdateSlice(
-          sequence_start_indices,
-          xla::Sub(XlaHelpers::IntegerLiteral(body_builder.get(), seq_lens_type,
-                                              max_seq_len),
-                   seq_len),
-          xla::Reshape(XlaHelpers::IntegerLiteral(body_builder.get(),
-                                                  seq_lens_type, seq_dim_),
-                       {1}));
-      slice = xla::DynamicSlice(slice, sequence_start_indices,
-                                slice_shape.dim_sizes());
-
-      // Shift the reversed sequence to the left.
-      output = xla::DynamicUpdateSlice(output, slice, batch_element_indices);
-
-      xla::Tuple(
-          body_builder.get(),
-          {xla::Add(i, XlaHelpers::One(body_builder.get(), seq_lens_type)),
-           seq_lens, output});
+    // batch_dim_ and seq_dim_ are collapsed and the other dimensions are kept
+    // in the gather.
+    for (int i = 0; i < input_shape.dims(); ++i) {
+      if (i != batch_dim_ && i != seq_dim_) {
+        dnums.add_offset_dims(i);
+      } else {
+        dnums.add_collapsed_slice_dims(i);
+      }
     }
-    auto body = body_builder->Build();
-    OP_REQUIRES_OK(context, body.status());
 
-    auto loop_output = xla::While(
-        condition.ValueOrDie(), body.ValueOrDie(),
-        xla::Tuple(builder, {XlaHelpers::Zero(builder, seq_lens_type), seq_lens,
-                             xla::Rev(input, {seq_dim_})}));
-    auto output = xla::GetTupleElement(loop_output, 2);
+    auto slice_sizes = input_shape.dim_sizes();
+    slice_sizes[batch_dim_] = 1;
+    slice_sizes[seq_dim_] = 1;
 
-    // Mask out elements after the sequence length.
-    xla::XlaOp iota =
-        xla::Iota(builder, seq_lens_xla_shape.element_type(), max_seq_len);
-    std::vector<int64> dims(input_shape.dims(), 1);
-    dims[batch_dim_] = batch_size;
-    auto mask = xla::Lt(iota, xla::Reshape(seq_lens, dims), {seq_dim_});
-
-    // Broadcast the mask up to the input shape.
-    mask = xla::Or(mask, xla::Broadcast(xla::ConstantR0<bool>(builder, false),
-                                        input_shape.dim_sizes()));
-
-    output = xla::Select(mask, output, input);
-    context->SetOutput(0, output);
+    context->SetOutput(0,
+                       xla::Gather(input, start_indices, dnums, slice_sizes));
   }
 
  private:

@@ -44,6 +44,13 @@ tf_proto {
       type: TYPE_MESSAGE
       type_name: ".tensorflow.AssetFileDef"
     }
+    field {
+      name: "object_graph_def"
+      number: 7
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.SavedObjectGraph"
+    }
     nested_type {
       name: "MetaInfoDef"
       field {

@@ -198,6 +198,8 @@ std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
   for (HloComputation* computation : computations) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (GlobalSuccessors(instruction).empty()) {
+        // An instruction that has no successors, e.g., an unused instruction,
+        // is in roots, even though it's not the ROOT of its computation.
         roots.push_back(instruction);
       }
     }

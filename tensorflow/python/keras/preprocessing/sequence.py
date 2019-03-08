@@ -22,7 +22,7 @@ from __future__ import print_function
 from keras_preprocessing import sequence
 
 from tensorflow.python.keras import utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 pad_sequences = sequence.pad_sequences
 make_sampling_table = sequence.make_sampling_table
@@ -31,7 +31,7 @@ skipgrams = sequence.skipgrams
 _remove_long_seq = sequence._remove_long_seq  # pylint: disable=protected-access
 
 
-@tf_export('keras.preprocessing.sequence.TimeseriesGenerator')
+@keras_export('keras.preprocessing.sequence.TimeseriesGenerator')
 class TimeseriesGenerator(sequence.TimeseriesGenerator, utils.Sequence):
   """Utility class for generating batches of temporal data.
   This class takes in a sequence of data-points gathered at
@@ -89,7 +89,7 @@ class TimeseriesGenerator(sequence.TimeseriesGenerator, utils.Sequence):
   pass
 
 
-tf_export('keras.preprocessing.sequence.pad_sequences')(pad_sequences)
-tf_export(
+keras_export('keras.preprocessing.sequence.pad_sequences')(pad_sequences)
+keras_export(
     'keras.preprocessing.sequence.make_sampling_table')(make_sampling_table)
-tf_export('keras.preprocessing.sequence.skipgrams')(skipgrams)
+keras_export('keras.preprocessing.sequence.skipgrams')(skipgrams)

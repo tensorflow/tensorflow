@@ -24,6 +24,11 @@ py_library(
         exclude = ["python/learn/**/*_test.py"],
     ),
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     # This library should not depend on sklearn, even though some of the code
     # refers to it. (The code handles the presence of sklearn conditionally.)
     deps = [
@@ -269,6 +274,7 @@ py_test(
     name = "estimator_test",
     size = "medium",
     srcs = ["python/learn/estimators/estimator_test.py"],
+    shard_count = 2,
     srcs_version = "PY2AND3",
     tags = [
         "manual",
@@ -351,9 +357,9 @@ py_test(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
-    shard_count = 4,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["no_oss"],  # flaky b/70524820
     deps = [
@@ -381,6 +387,13 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["noasan"],  # times out b/63678675
+    deps = [":head_test_lib"],
+)
+
+py_library(
+    name = "head_test_lib",
+    srcs = ["python/learn/estimators/head_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":learn",
         "//tensorflow/core:protos_all_py",

@@ -61,7 +61,7 @@ void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
 
 IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
                       llvm::IRBuilder<>* b)
-    : multidim_(ShapeUtil::Rank(shape)),
+    : multidim_(shape.rank()),
       linear_(linear),
       layout_(shape.layout()),
       dims_(shape.dimensions().begin(), shape.dimensions().end()) {
@@ -92,20 +92,8 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       << " should have a layout.";
 }
 
-IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
-                      const Shape& shape, llvm::IRBuilder<>* b)
-    : multidim_(multidim.begin(), multidim.end()),
-      layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
-  CHECK_GT(multidim_.size(), 0);
-  index_type_ = multidim[0]->getType();
-  CHECK_NE(index_type_, nullptr);
-  CHECK_EQ(shape.dimensions_size(), multidim.size());
-  CHECK(LayoutUtil::HasLayout(shape));
-}
-
-IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
-    : base_ptr_(base_ptr), shape_(&shape) {
+IrArray::IrArray(llvm::Value* base_ptr, Shape shape)
+    : base_ptr_(base_ptr), shape_(std::move(shape)) {
   TF_CHECK_OK(ShapeUtil::ValidateShape(shape));
   CHECK(base_ptr_->getType()->isPointerTy());
   int depth = 0;
@@ -117,10 +105,10 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
     ++depth;
   }
 
-  if (!ShapeUtil::IsArray(*shape_) || ShapeUtil::IsScalar(*shape_)) {
+  if (!shape_.IsArray() || ShapeUtil::IsScalar(shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
-    DCHECK_EQ(depth, ShapeUtil::Rank(*shape_)) << shape.ShortDebugString();
+    DCHECK_EQ(depth, shape_.rank()) << shape.ShortDebugString();
   }
 }
 
@@ -137,12 +125,12 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
   const auto& target_index = *this;
-  CHECK_EQ(target_index.size(), ShapeUtil::Rank(output_shape));
+  CHECK_EQ(target_index.size(), output_shape.rank());
   std::vector<std::pair<int64, int64>> common_factors =
       CommonFactors(AsInt64Slice(input_shape.dimensions()),
                     AsInt64Slice(output_shape.dimensions()));
   std::vector<llvm::Value*> source_multidim_index(
-      ShapeUtil::Rank(input_shape), llvm::UndefValue::get(index_type_));
+      input_shape.rank(), llvm::UndefValue::get(index_type_));
   // We compute the source indices in each common factor from only the target
   // indices in the same common factor.
   for (ssize_t k = common_factors.size() - 2; k >= 0; --k) {
@@ -257,7 +245,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     const Shape& shape, const Shape& operand_shape,
     absl::Span<const int64> dimension_mapping,
     llvm::IRBuilder<>* builder) const {
-  int64 rank = ShapeUtil::Rank(operand_shape);
+  int64 rank = operand_shape.rank();
   std::vector<llvm::Value*> source_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     source_index[i] = multidim_[dimension_mapping[i]];
@@ -271,7 +259,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
   // The other dimensions can be masked out with a div and a mod operation.
   std::vector<int64> logical_to_physical =
       LayoutUtil::MakeLogicalToPhysical(shape.layout());
-  int64 output_rank = ShapeUtil::Rank(shape);
+  int64 output_rank = shape.rank();
   // The minimum physical dimension that is broadcasted.
   int64 min_broadcasted_dimension = output_rank;
   // The maximum physical dimension that is broadcasted.
@@ -342,19 +330,19 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
 llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
                                               llvm::IRBuilder<>* b,
                                               absl::string_view name) const {
-  if (ShapeUtil::IsScalar(*shape_)) {
+  if (ShapeUtil::IsScalar(shape_)) {
     // Special handling of scalars: a scalar pretends to have the same value for
     // every index, thus effectively implementing broadcasting of its value
     // over higher-rank arrays.
     return base_ptr_;
   }
-  CHECK_EQ(index.size(), ShapeUtil::Rank(*shape_));
+  CHECK_EQ(index.size(), shape_.rank());
 
-  if (index.LinearValidOnShape(*shape_)) {
+  if (index.LinearValidOnShape(shape_)) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
     return b->CreateInBoundsGEP(
         b->CreateBitCast(base_ptr_,
-                         PrimitiveTypeToIrType(shape_->element_type(), module)
+                         PrimitiveTypeToIrType(shape_.element_type(), module)
                              ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
   }
@@ -364,7 +352,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     // When dimension i is of size 1, LLVM optimization is able to replace
     // index[i] with 0. However, setting index[i] to 0 here still allows LLVM to
     // produce better code in some cases.
-    auto dim = shape_->dimensions(i);
+    auto dim = shape_.dimensions(i);
     actual_index.push_back(
         dim == 1 ? llvm::ConstantInt::get(index[i]->getType(), 0) : index[i]);
   }
@@ -377,8 +365,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   CHECK_GT(index.size(), 0);
   std::vector<llvm::Value*> gep_indices(
       1, llvm::ConstantInt::get(index[0]->getType(), 0));
-  for (int64 i = 0; i < LayoutUtil::MinorToMajor(*shape_).size(); ++i) {
-    int64 dimension = LayoutUtil::Major(shape_->layout(), i);
+  for (int64 i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
   return b->CreateInBoundsGEP(base_ptr_, gep_indices,
@@ -421,19 +409,6 @@ IrArray IrArray::CastToShape(const Shape& new_shape,
       b->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()), new_shape);
   new_irarray.metadata_ = metadata_;
   return new_irarray;
-}
-
-/* static */ IrArray::Index IrArray::BumpIndex(const Index& index,
-                                               int64 which_dimension,
-                                               int64 addend,
-                                               llvm::IRBuilder<>* b) {
-  Index new_index = index;
-  new_index[which_dimension] = b->CreateAdd(
-      index[which_dimension],
-      llvm::ConstantInt::get(index[which_dimension]->getType(), addend), "",
-      /*HasNUW=*/true,
-      /*HasNSW=*/true);
-  return new_index;
 }
 
 }  // namespace llvm_ir

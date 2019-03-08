@@ -167,10 +167,23 @@ class FileSystem {
   virtual Status DeleteDir(const string& dirname) = 0;
 
   /// \brief Deletes the specified directory and all subdirectories and files
-  /// underneath it. undeleted_files and undeleted_dirs stores the number of
-  /// files and directories that weren't deleted (unspecified if the return
-  /// status is not OK).
+  /// underneath it. This is accomplished by traversing the directory tree
+  /// rooted at dirname and deleting entries as they are encountered.
+  ///
+  /// If dirname itself is not readable or does not exist, *undeleted_dir_count
+  /// is set to 1, *undeleted_file_count is set to 0 and an appropriate status
+  /// (e.g. NOT_FOUND) is returned.
+  ///
+  /// If dirname and all its descendants were successfully deleted, TF_OK is
+  /// returned and both error counters are set to zero.
+  ///
+  /// Otherwise, while traversing the tree, undeleted_file_count and
+  /// undeleted_dir_count are updated if an entry of the corresponding type
+  /// could not be deleted. The returned error status represents the reason that
+  /// any one of these entries could not be deleted.
+  ///
   /// REQUIRES: undeleted_files, undeleted_dirs to be not null.
+  ///
   /// Typical return codes:
   ///  * OK - dirname exists and we were able to delete everything underneath.
   ///  * NOT_FOUND - dirname doesn't exist
@@ -220,6 +233,14 @@ class RandomAccessFile {
  public:
   RandomAccessFile() {}
   virtual ~RandomAccessFile();
+
+  /// \brief Returns the name of the file.
+  ///
+  /// This is an optional operation that may not be implemented by every
+  /// filesystem.
+  virtual Status Name(StringPiece* result) const {
+    return errors::Unimplemented("This filesystem does not support Name()");
+  }
 
   /// \brief Reads up to `n` bytes from the file starting at `offset`.
   ///
@@ -284,6 +305,14 @@ class WritableFile {
   /// persisted, depending on the implementation.
   virtual Status Flush() = 0;
 
+  // \brief Returns the name of the file.
+  ///
+  /// This is an optional operation that may not be implemented by every
+  /// filesystem.
+  virtual Status Name(StringPiece* result) const {
+    return errors::Unimplemented("This filesystem does not support Name()");
+  }
+
   /// \brief Syncs contents of file to filesystem.
   ///
   /// This waits for confirmation from the filesystem that the contents
@@ -291,6 +320,16 @@ class WritableFile {
   /// or machine crashes after a successful Sync, the contents should
   /// be properly saved.
   virtual Status Sync() = 0;
+
+  /// \brief Retrieves the current write position in the file, or -1 on
+  /// error.
+  ///
+  /// This is an optional operation, subclasses may choose to return
+  /// errors::Unimplemented.
+  virtual Status Tell(int64* position) {
+    *position = -1;
+    return errors::Unimplemented("This filesystem does not support Tell()");
+  }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(WritableFile);

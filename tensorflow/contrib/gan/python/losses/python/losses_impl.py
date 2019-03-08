@@ -28,7 +28,7 @@ wasserstein_gradient_penalty
 All losses must be able to accept 1D or 2D Tensors, so as to be compatible with
 patchGAN style losses (https://arxiv.org/abs/1611.07004).
 
-To make these losses usable in the TFGAN framework, please create a tuple
+To make these losses usable in the TF-GAN framework, please create a tuple
 version of the losses with `losses_utils.py`.
 """
 
@@ -36,9 +36,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -47,7 +47,6 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.distributions import distribution as ds
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.ops.losses import util
 from tensorflow.python.summary import summary
@@ -69,6 +68,10 @@ __all__ = [
     'combine_adversarial_loss',
     'cycle_consistency_loss',
 ]
+
+
+def _to_float(tensor):
+  return math_ops.cast(tensor, dtypes.float32)
 
 
 # Wasserstein losses from `Wasserstein GAN` (https://arxiv.org/abs/1701.07875).
@@ -100,7 +103,7 @@ def wasserstein_generator_loss(
   """
   with ops.name_scope(scope, 'generator_wasserstein_loss', (
       discriminator_gen_outputs, weights)) as scope:
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
 
     loss = - discriminator_gen_outputs
     loss = losses.compute_weighted_loss(
@@ -146,8 +149,8 @@ def wasserstein_discriminator_loss(
   with ops.name_scope(scope, 'discriminator_wasserstein_loss', (
       discriminator_real_outputs, discriminator_gen_outputs, real_weights,
       generated_weights)) as scope:
-    discriminator_real_outputs = math_ops.to_float(discriminator_real_outputs)
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_real_outputs = _to_float(discriminator_real_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     discriminator_real_outputs.shape.assert_is_compatible_with(
         discriminator_gen_outputs.shape)
 
@@ -322,7 +325,7 @@ def wasserstein_gradient_penalty(
     generated_data: Output of the generator.
     generator_inputs: Exact argument to pass to the generator, which is used
       as optional conditioning to the discriminator.
-    discriminator_fn: A discriminator function that conforms to TFGAN API.
+    discriminator_fn: A discriminator function that conforms to TF-GAN API.
     discriminator_scope: If not `None`, reuse discriminators from this scope.
     epsilon: A small positive number added for numerical stability when
       computing the gradient norm.
@@ -355,7 +358,8 @@ def wasserstein_gradient_penalty(
       raise ValueError('`generated_data` can\'t have unknown rank.')
 
     differences = generated_data - real_data
-    batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+    batch_size = differences.shape.dims[0].value or array_ops.shape(
+        differences)[0]
     alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
     alpha = random_ops.random_uniform(shape=alpha_shape)
     interpolates = real_data + (alpha * differences)
@@ -648,7 +652,7 @@ def least_squares_generator_loss(
   """
   with ops.name_scope(scope, 'lsq_generator_loss',
                       (discriminator_gen_outputs, real_label)) as scope:
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     loss = math_ops.squared_difference(
         discriminator_gen_outputs, real_label) / 2.0
     loss = losses.compute_weighted_loss(
@@ -703,8 +707,8 @@ def least_squares_discriminator_loss(
   """
   with ops.name_scope(scope, 'lsq_discriminator_loss',
                       (discriminator_gen_outputs, real_label)) as scope:
-    discriminator_real_outputs = math_ops.to_float(discriminator_real_outputs)
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_real_outputs = _to_float(discriminator_real_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     discriminator_real_outputs.shape.assert_is_compatible_with(
         discriminator_gen_outputs.shape)
 
@@ -739,11 +743,16 @@ def least_squares_discriminator_loss(
 def _validate_distributions(distributions):
   if not isinstance(distributions, (list, tuple)):
     raise ValueError('`distributions` must be a list or tuple. Instead, '
-                     'found %s.', type(distributions))
+                     'found %s.' % type(distributions))
   for x in distributions:
-    if not isinstance(x, ds.Distribution):
+    # We used to check with `isinstance(x, tf.distributions.Distribution)`.
+    # However, distributions have migrated to `tfp.distributions.Distribution`,
+    # which is a new code repo, so we can't check this way anymore until
+    # TF-GAN is migrated to a new repo as well.
+    # This new check is not sufficient, but is a useful heuristic for now.
+    if not callable(getattr(x, 'log_prob', None)):
       raise ValueError('`distributions` must be a list of `Distributions`. '
-                       'Instead, found %s.', type(x))
+                       'Instead, found %s.' % type(x))
 
 
 def _validate_information_penalty_inputs(
@@ -816,7 +825,7 @@ def _numerically_stable_global_norm(tensor_list):
   Returns:
     A scalar tensor with the global norm.
   """
-  if np.all([x is None for x in tensor_list]):
+  if all(x is None for x in tensor_list):
     return 0.0
 
   list_max = math_ops.reduce_max([math_ops.reduce_max(math_ops.abs(x)) for x in

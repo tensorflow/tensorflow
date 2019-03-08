@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
@@ -40,9 +42,10 @@ class DefinitionInfoTest(test.TestCase):
         arg_types=None,
         owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
-    node = reaching_definitions.resolve(node, entity_info, graphs,
+    node = reaching_definitions.resolve(node, ctx, graphs,
                                         reaching_definitions.Definition)
     return node
 
@@ -238,6 +241,41 @@ class DefinitionInfoTest(test.TestCase):
     self.assertSameDef(creation, mutation)
     self.assertSameDef(creation, use)
 
+  def test_deletion_partial(self):
+
+    def test_fn(a):
+      a = 0
+      if a:
+        del a
+      else:
+        a = 1
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    first_def = fn_body[0].targets[0]
+    second_def = fn_body[1].orelse[0].targets[0]
+    use = fn_body[2].value
+    self.assertNotSameDef(use, first_def)
+    self.assertSameDef(use, second_def)
+
+  def test_deletion_total(self):
+
+    def test_fn(a):
+      if a:
+        a = 0
+      else:
+        a = 1
+      del a
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    use = fn_body[2].value
+    self.assertHasDefs(use, 0)
+
   def test_replacement(self):
 
     def foo(a):
@@ -257,6 +295,24 @@ class DefinitionInfoTest(test.TestCase):
     self.assertSameDef(param, source)
     self.assertNotSameDef(source, target)
     self.assertSameDef(target, retval)
+
+  def test_comprehension_leaking(self):
+
+    def test_fn(a):
+      all(x for x in a)
+      return x  # pylint:disable=undefined-variable
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    listcomp_target = fn_body[0].value.args[0].generators[0].target
+    retval = fn_body[1].value
+
+    # Python2 leaks comprehension symbols. Python3 doesn't.
+    if six.PY2:
+      self.assertSameDef(retval, listcomp_target)
+    else:
+      self.assertHasDefs(retval, 0)
 
 
 if __name__ == '__main__':

@@ -22,16 +22,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
-#include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -43,6 +44,74 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+TensorHandle::TensorHandle(const class Tensor& t, Device* d, Device* op_device,
+                           EagerContext* ctx)
+    : dtype(t.dtype()),
+      node_id_(0),
+      tensor_(t),
+      device_(d),
+      op_device_(op_device),
+      resource_device_(GetResourceDevice(t, ctx)),
+      remote_op_id_(-1),
+      remote_output_num_(-1),
+      remote_shape_node_id_(-1),
+      ctx_(ctx),
+      is_ready_(true) {}
+
+TensorHandle::TensorHandle(uint64 node_id, Device* d, Device* op_device,
+                           Device* resource_device, DataType dtype,
+                           EagerContext* ctx)
+    : dtype(dtype),
+      node_id_(node_id),
+      tensor_(dtype),
+      device_(d),
+      op_device_(op_device),
+      resource_device_(resource_device),
+      remote_op_id_(-1),
+      remote_output_num_(-1),
+      remote_shape_node_id_(-1),
+      ctx_(ctx),
+      is_ready_(ctx == nullptr) {
+  DCHECK_GT(node_id_, 0);
+  DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
+                              : resource_device_ == nullptr);
+}
+
+TensorHandle::TensorHandle(int64 op_id, int32 output_num,
+                           uint64 remote_shape_node_id, DataType dtype,
+                           std::function<void()> call_on_destroy, Device* d,
+                           Device* op_device, Device* resource_device,
+                           EagerContext* ctx)
+    : dtype(dtype),
+      node_id_(0),
+      device_(d),
+      op_device_(op_device),
+      resource_device_(resource_device),
+      remote_op_id_(op_id),
+      remote_output_num_(output_num),
+      remote_shape_node_id_(remote_shape_node_id),
+      call_on_destroy_(std::move(call_on_destroy)),
+      ctx_(ctx),
+      is_ready_(true) {
+  DCHECK(IsRemote()) << "Op ID and output num should be >= 0. Op ID: " << op_id
+                     << ", Output num: " << output_num;
+  DCHECK(dtype == DT_RESOURCE ? resource_device_ != nullptr
+                              : resource_device_ == nullptr);
+}
+
+TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
+    : dtype(dtype),
+      node_id_(0),
+      device_(nullptr),
+      op_device_(nullptr),
+      resource_device_(nullptr),
+      remote_op_id_(-1),
+      remote_output_num_(-1),
+      remote_shape_node_id_(-1),
+      ctx_(nullptr),
+      is_ready_(true),
+      symbolic_tensor(new OutputGraphNode(symbolic_tensor)) {}
 
 bool TensorHandle::IsReady() {
   if (node_id_ == 0) return true;
@@ -79,17 +148,10 @@ Status TensorHandle::Tensor(const tensorflow::Tensor** t) {
   return Status::OK();
 }
 
-Status TensorHandle::Device(tensorflow::Device** d) {
+Status TensorHandle::TensorValue(tensorflow::TensorValue* t) {
   TF_RETURN_IF_ERROR(WaitReady());
   DCHECK(IsReady());
-  *d = device_;
-  return Status::OK();
-}
-
-Status TensorHandle::OpDevice(tensorflow::Device** d) {
-  TF_RETURN_IF_ERROR(WaitReady());
-  DCHECK(IsReady());
-  *d = op_device_;
+  *t = tensorflow::TensorValue(&tensor_);
   return Status::OK();
 }
 
@@ -178,17 +240,12 @@ Status TensorHandle::RemoteAddress(int64* op_id, int32* output_num) {
   return Status::OK();
 }
 
-void TensorHandle::SetTensorAndDevice(const tensorflow::Tensor& tensor,
-                                      tensorflow::Device* device,
-                                      tensorflow::Device* op_device) {
+void TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
   mutex_lock l(ctx_mutex_);
-  DCHECK(node_id_ > 0 && !is_ready_)
-      << "SetTensorAndDevice should be only called  "
-      << "on non-ready handles.";
+  DCHECK(node_id_ > 0 && !is_ready_) << "SetTensor should be only called  "
+                                     << "on non-ready handles.";
   is_ready_ = true;
   tensor_ = tensor;
-  device_ = device;
-  op_device_ = op_device;
 }
 
 Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
@@ -203,10 +260,7 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
   bool is_same_device = (srcd == dstd) || (srcd->name() == dstd->name());
   const bool dst_cpu = dstd->tensorflow_gpu_device_info() == nullptr;
   const bool src_cpu = srcd->tensorflow_gpu_device_info() == nullptr;
-  // both_on_cpu can be true and yet is_same_device is false, if one of src/dst
-  // has device type XLA_CPU, and the other CPU.
-  const bool both_on_cpu = src_cpu && dst_cpu;
-  if (is_same_device || both_on_cpu) {
+  if (is_same_device) {
     *output = new tensorflow::TensorHandle(*src, dstd, dstd, ctx);
     return tensorflow::Status::OK();
   }
@@ -259,6 +313,33 @@ Status TensorHandle::CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
     *output = new tensorflow::TensorHandle(dst, dstd, dstd, ctx);
   }
   return status;
+}
+
+Device* GetResourceDevice(const Tensor& t, EagerContext* ctx) {
+  if (t.dtype() != DT_RESOURCE) {
+    return nullptr;
+  }
+  const ResourceHandle& resource_handle = t.flat<ResourceHandle>()(0);
+  const auto& map = *ctx->device_map();
+  auto it = map.find(resource_handle.device());
+  DCHECK(it != map.end());
+  return it->second;
+}
+
+string TensorHandle::DebugString() const {
+  VLOG(1) << "Calling TensorHandle::DebugString() on " << this;
+
+  if (symbolic_tensor) {
+    return absl::Substitute("TF_Output($0, $1)", symbolic_tensor->oper,
+                            symbolic_tensor->index);
+  }
+
+  string out;
+  strings::StrAppend(&out, "Device: ", device_ ? device_->DebugString() : "[]");
+  // Consider supporting non-CPU tensors (when device_ is non-NULL) if needed.
+  strings::StrAppend(&out, ", Tensor: ", device_ ? "?" : tensor_.DebugString(),
+                     "\n");
+  return out;
 }
 
 }  // namespace tensorflow

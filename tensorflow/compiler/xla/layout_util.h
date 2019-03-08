@@ -21,6 +21,8 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/layout.h"
+#include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -34,7 +36,9 @@ class LayoutUtil {
  public:
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
-  static Layout MakeLayout(absl::Span<const int64> minor_to_major);
+  static Layout MakeLayout(absl::Span<const int64> minor_to_major,
+                           absl::Span<const Tile> tiles = {},
+                           int64 element_size_in_bits = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(
@@ -68,8 +72,11 @@ class LayoutUtil {
   // default.
   static void SetToDefaultLayout(ProgramShape* program_shape);
 
-  // Validates that the layout within the given shape is correct.
-  static Status ValidateLayoutInShape(const Shape& shape);
+  // Validates that the layout within the given shape is correct. The check
+  // is performed for all subshapes as well. If missing layouts are allowed
+  // the check does not fail on array shapes without layouts.
+  static Status ValidateLayoutInShape(const Shape& shape,
+                                      bool allow_missing_layouts = false);
 
   // Validates that the provided layout satisfies invariants for the given
   // shape.
@@ -100,23 +107,6 @@ class LayoutUtil {
   // * R2+: equivalent to row-major. Dimension 0 is the major, dimension 1 is
   //        more minor, and so on until dimension N-1 which is the minor.
   static bool IsMonotonicWithDim0Major(const Layout& layout);
-
-  // Returns whether the layout of the given shape has padding (a
-  // padded_dimension value in Layout is greater than the corresponding
-  // dimension size).
-  static bool IsPadded(const Shape& shape);
-
-  // Returns the padded_dimensions array for the given Shape.  Requires that the
-  // shape is an array and has a dense layout.
-  static absl::Span<const int64> PaddedDimensions(const Shape& shape);
-
-  // Returns the given index of the padded_dimensions array for the given Shape.
-  // Requires that the shape is an array and has a dense layout.
-  static int64 PaddedDimension(const Shape& shape, int64 index);
-
-  // Returns the padding_value for the given Shape.  Requires that the shape is
-  // an array and has a dense layout.
-  static PaddingValue GetPaddingValue(const Shape& shape);
 
   // Returns whether the given Shape is an array (i.e. not a tuple) and has a
   // sparse format layout.
@@ -207,8 +197,6 @@ class LayoutUtil {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(LayoutUtil);
 };
-
-std::ostream& operator<<(std::ostream& out, const Layout& layout);
 
 }  // namespace xla
 

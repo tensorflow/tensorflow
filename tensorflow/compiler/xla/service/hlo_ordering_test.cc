@@ -53,7 +53,7 @@ TEST_F(HloOrderingTest, InstructionsInDifferentComputations) {
   //   %c = Constant(42.0f)
   //
   // This results in a diamond-shaped callgraph.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto builder_c = HloComputation::Builder("C");
@@ -126,7 +126,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   //   %constant = Constant(1.0)
   //   return While(%constant, body, condition)
   //
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto body_builder = HloComputation::Builder("body");
@@ -176,7 +176,7 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
 
 TEST_F(HloOrderingTest, ParametersDefinedBeforeOthers) {
   // Entry parameter should always be defined before other instruction.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
@@ -209,7 +209,7 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   //   %while = While(%constant, body, condition)
   //   %add = Add(%constant, %while)
   //
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto body_builder = HloComputation::Builder("body");
@@ -306,7 +306,7 @@ condition.v4 {
   constant.2 = s32[] constant(2)
   prev.2 = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) parameter(0)
   get-tuple-element.8 = s32[] get-tuple-element(prev.2), index=0
-  ROOT greater-than = pred[] greater-than(constant.2, get-tuple-element.8)
+  ROOT greater-than = pred[] compare(constant.2, get-tuple-element.8), direction=GT
 }
 
 fused_computation {
@@ -407,7 +407,7 @@ TEST_F(HloOrderingTest,
   //   %dead = Constant(123.0)
   //
   // %root should interfere with %dead.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto builder = HloComputation::Builder(TestName());
@@ -455,7 +455,7 @@ TEST_F(HloOrderingTest,
   //   ROOT %call = call({%c}), subcomputation
   //
   // %root should interfere with %dead.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
 
   auto subbuilder = HloComputation::Builder(TestName() + ".sub");

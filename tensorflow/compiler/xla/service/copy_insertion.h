@@ -94,10 +94,12 @@ class CopyInsertion : public HloModulePass {
   Status VerifyNoLiveRangeInterference(const HloOrdering& ordering,
                                        HloModule* module);
 
- private:
+ protected:
   // Override which requires the caller to pass in a call graph.
-  Status AddSpecialCaseCopies(const CallGraph& call_graph, HloModule* module);
+  virtual Status AddSpecialCaseCopies(const CallGraph& call_graph,
+                                      HloModule* module);
 
+ private:
   Status AddCopiesToResolveInterference(HloModule* module);
 
   // Backend specific function that decides whether a fusion can share buffer

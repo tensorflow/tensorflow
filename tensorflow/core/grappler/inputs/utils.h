@@ -20,7 +20,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -31,8 +33,12 @@ bool FilesExist(const std::set<string>& files);
 
 bool FileExists(const string& file, Status* status);
 
-Status ReadGraphDefFromFile(const string& graph_def_pbtxt_path,
-                            GraphDef* result);
+// Reads GraphDef from file in either text or raw serialized format.
+Status ReadGraphDefFromFile(const string& graph_def_path, GraphDef* result);
+
+// Reads MetaGraphDef from file in either text or raw serialized format.
+Status ReadMetaGraphDefFromFile(const string& meta_graph_def_path,
+                                MetaGraphDef* result);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

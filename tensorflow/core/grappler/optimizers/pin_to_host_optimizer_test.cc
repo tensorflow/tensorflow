@@ -28,30 +28,40 @@ namespace {
 
 class PinToHostOptimizerTest : public GrapplerTest {};
 
-TEST_F(PinToHostOptimizerTest, TryFindHostDevice) {
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceNoDevices) {
   gtl::FlatSet<string> devices = {};
-  EXPECT_EQ("ABC", internal::TryFindHostDevice(devices, false, "ABC"));
 
-  devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+  EXPECT_EQ(internal::TryFindHostDevice(devices, false, "ABC"), "");
+}
+
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceCpuXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:CPU:0", "/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, ""), "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:0"),
             "/device:CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, true, "/device:XLA_GPU:*"),
             "/device:CPU:0");
+}
 
-  devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaCpuXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:XLA_CPU:0", "/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
             "/device:XLA_CPU:0");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
             "/device:XLA_CPU:0");
+}
 
-  devices = {"/device:XLA_GPU:0"};
+TEST_F(PinToHostOptimizerTest, TryFindHostDeviceXlaGpu) {
+  gtl::FlatSet<string> devices = {"/device:XLA_GPU:0"};
+
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, ""), "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:0"),
-            "/device:XLA_GPU:0");
+            "");
   EXPECT_EQ(internal::TryFindHostDevice(devices, false, "/device:XLA_GPU:*"),
-            "/device:XLA_GPU:*");
+            "");
 }
 
 TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
@@ -60,9 +70,11 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   Output c = ops::Shape(s.WithOpName("c"), a);
   Output d = ops::Const(s.WithOpName("d"), 0, {1});
   Output e = ops::ReduceProd(s.WithOpName("e"), c, d);
+  int num_int32 = 4;
+  Output f = ops::Const(s.WithOpName("f"), {"test"});
 
   GrapplerItem item;
-  item.fetch = {"a", "c", "d", "e"};
+  item.fetch = {"a", "c", "d", "e", "f"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
@@ -74,19 +86,23 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   auto tensors = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(tensors_expected.size(), tensors.size());
   for (int i = 0; i < tensors.size(); ++i) {
-    test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    if (i < num_int32) {
+      test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    } else {
+      test::ExpectTensorEqual<string>(tensors[i], tensors_expected[i]);
+    }
   }
 
   int found = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "a" || node.name() == "c") {
       EXPECT_TRUE(node.device().empty());
-    } else if (node.name() == "d" || node.name() == "e") {
+    } else if (node.name() == "d" || node.name() == "e" || node.name() == "f") {
       EXPECT_EQ(node.device(), "/device:CPU:0");
     }
     ++found;
   }
-  EXPECT_EQ(found, 4);
+  EXPECT_EQ(found, 5);
 }
 
 TEST_F(PinToHostOptimizerTest, TopologicalSort) {

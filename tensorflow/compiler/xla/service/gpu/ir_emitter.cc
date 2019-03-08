@@ -63,9 +63,6 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &b_, module_,
                 is_nested),
       hlo_module_config_(hlo_module_config) {
-  b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
-      /*fast_math_enabled=*/hlo_module_config.debug_options()
-          .xla_gpu_enable_fast_math()));
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
@@ -93,6 +90,18 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   // constant.
   if (bindings_.BoundToIrValue(*operand)) {
     bindings_.BindHloToIrValue(*bitcast, GetBasePointer(*operand));
+  }
+  return Status::OK();
+}
+
+Status IrEmitter::HandleAddDependency(HloInstruction* add_dependency) {
+  VLOG(2) << "HandleAddDependency: " << add_dependency->ToString();
+  const HloInstruction* operand = add_dependency->operand(0);
+  // Add_Dependency is a no-op, but we still want to bind it to an llvm::Value
+  // sometimes, e.g., when it's operand is a constant or a bitcast of a
+  // constant.
+  if (bindings_.BoundToIrValue(*operand)) {
+    bindings_.BindHloToIrValue(*add_dependency, GetBasePointer(*operand));
   }
   return Status::OK();
 }
@@ -421,7 +430,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   auto on_false = tuple_select->operand(2);
   TF_RET_CHECK(pred->shape().element_type() == PRED);
   TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()));
-  TF_RET_CHECK(ShapeUtil::IsTuple(tuple_select->shape()));
+  TF_RET_CHECK(tuple_select->shape().IsTuple());
   llvm_ir::EmitTupleSelect(GetIrArray(*tuple_select, *tuple_select),
                            GetIrArray(*pred, *tuple_select),
                            GetBasePointer(*on_true), GetBasePointer(*on_false),
@@ -483,8 +492,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       result = llvm::ConstantAggregateZero::get(lhs_array.GetElementLlvmType());
       result = InsertValue(result, value.first, {0});
       result = InsertValue(result, value.second, {1});
-    } else {
+    } else if (ShapeUtil::ElementIsFloating(lhs_shape)) {
       result = FMul(lhs_value, rhs_value);
+    } else {
+      TF_RET_CHECK(ShapeUtil::ElementIsIntegral(lhs_shape));
+      result = Mul(lhs_value, rhs_value);
     }
     target_array.EmitWriteArrayElement(/*index=*/element_index, result, &b_);
     return Status::OK();
@@ -495,18 +507,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   TF_RET_CHECK(!ShapeUtil::IsScalar(lhs_shape) &&
                !ShapeUtil::IsScalar(rhs_shape));
 
-  // Reduce along the last dimension of the LHS and the second-to-last dimension
-  // of the RHS. Vectors are a special case where the reduction dimension is 0
-  // for both LHS and RHS. This results in a vector dot product producing a
-  // scalar.
-  const int64 lhs_reduction_dimension =
-      ShapeUtil::GetDimensionNumber(lhs_shape, -1);
-  const int64 rhs_reduction_dimension =
-      ShapeUtil::Rank(rhs_shape) >= 2 + dnums.lhs_batch_dimensions_size()
-          ? ShapeUtil::GetDimensionNumber(rhs_shape, -2)
-          : dnums.lhs_batch_dimensions_size();
+  const int64 lhs_reduction_dimension = dnums.lhs_contracting_dimensions(0);
+  const int64 rhs_reduction_dimension = dnums.rhs_contracting_dimensions(0);
 
-  // Check that the batch dims don't cover the last two dims.
+  // Check that the batch dims don't cover the reduction dimensions.
   for (int64 batch_dim : dnums.lhs_batch_dimensions()) {
     CHECK_NE(lhs_reduction_dimension, batch_dim);
     CHECK_NE(rhs_reduction_dimension, batch_dim);
@@ -514,7 +518,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
 
   // Verify the reduction dimension in the two operands are the same size.
   TF_RET_CHECK(lhs_shape.dimensions(lhs_reduction_dimension) ==
-               rhs_shape.dimensions(rhs_reduction_dimension));
+               rhs_shape.dimensions(rhs_reduction_dimension))
+      << "lhs_shape.dimensions(" << lhs_reduction_dimension
+      << ") = " << lhs_shape.dimensions(lhs_reduction_dimension)
+      << ", and rhs_shape.dimensions(" << rhs_reduction_dimension
+      << ") = " << rhs_shape.dimensions(rhs_reduction_dimension);
 
   // Create loop nests which loop through the LHS operand dimensions and the RHS
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
@@ -578,9 +586,13 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     llvm::Value* accum_imag = Imag(accum, &b_);
     llvm::Value* imag_sum = FAdd(accum_imag, value.second);
     updated_accum = InsertValue(updated_accum, imag_sum, {1});
-  } else {
+  } else if (ShapeUtil::ElementIsFloating(lhs_shape)) {
     llvm::Value* product = FMul(lhs_element, rhs_element);
     updated_accum = FAdd(accum, product);
+  } else {
+    TF_RET_CHECK(ShapeUtil::ElementIsIntegral(lhs_shape));
+    llvm::Value* product = Mul(lhs_element, rhs_element);
+    updated_accum = Add(accum, product);
   }
   Store(updated_accum, accum_address);
 
@@ -632,9 +644,9 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
   return Unimplemented("Hit a case for fft that is not implemented on GPU.");
 }
 
-Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
+Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
   // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented("CrossReplicaSum is not implemented on GPU.");
+  return Unimplemented("AllReduce is not implemented on GPU.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -642,8 +654,8 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support variadic reduce.
-  if (!ShapeUtil::IsArray(reduce->shape())) {
+  // TODO(b/118332391): Support variadic reduce.
+  if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on GPU");
   }
   auto arg = reduce->operand(0);
@@ -701,15 +713,11 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
 Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   // kFusion for library calls should be handled by
   // IrEmitterUnnested::HandleFusion.
-  CHECK(HloInstruction::FusionKind::kLoop == fusion->fusion_kind());
-
-  std::vector<llvm_ir::IrArray> parameter_arrays;
-  for (HloInstruction* operand : fusion->operands()) {
-    parameter_arrays.push_back(GetIrArray(*operand, *fusion));
-  }
+  CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
                                           GetNestedComputer());
-  FusedIrEmitter fused_emitter(parameter_arrays, &elemental_emitter);
+  FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
+                               &elemental_emitter);
   TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
   return EmitTargetElementLoop(*fusion, fused_emitter.GetRootGenerator());
@@ -782,7 +790,7 @@ StatusOr<llvm::Value*> IrEmitter::ComputeNestedElement(
 std::vector<llvm_ir::IrArray> IrEmitter::ConstructIrArrayForOutputs(
     const HloInstruction& hlo) {
   std::vector<llvm_ir::IrArray> output_arrays;
-  if (ShapeUtil::IsTuple(hlo.shape())) {
+  if (hlo.shape().IsTuple()) {
     int64 num_outputs = ShapeUtil::TupleElementCount(hlo.shape());
     output_arrays.reserve(num_outputs);
     for (int64 i = 0; i < num_outputs; ++i) {

@@ -243,7 +243,7 @@ class ChannelLayoutConstraints {
 
   // Returns true if channel_id has a layout constraint.
   bool IsChannelConstrained(int64 channel_id) const {
-    return constraints_.count(channel_id) > 0;
+    return constraints_.contains(channel_id);
   }
 
   // Given `shape`, apply the layout for `channel_id`. `channel_id` must already
@@ -276,7 +276,7 @@ class ChannelLayoutConstraints {
   }
 
  private:
-  std::unordered_map<int64, Layout> constraints_;
+  absl::flat_hash_map<int64, Layout> constraints_;
 };
 
 // HLO pass which assigns layouts to all instructions in the HLO module while
@@ -314,6 +314,10 @@ class LayoutAssignment : public HloModulePass {
   // being able to change layout means that it requires operands with the same
   // rank as the output to have the same layout as the output.
   static bool InstructionCanChangeLayout(const HloInstruction* instruction);
+
+  // In case of an array shape returns true iff it is at most rank 1. In case of
+  // a tuple shape returns true iff all leaf shapes are at most rank 1.
+  static bool IsAtMostRank1(const Shape& shape);
 
  protected:
   // These methods, invoked by PropagateConstraints, propagate a layout
@@ -362,7 +366,7 @@ class LayoutAssignment : public HloModulePass {
   // `user` that minimizes its cost on that operand.  Returns null if it can't
   // decide the best layout.
   // Precondition: `user` and the operand are array-shaped.
-  std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
+  virtual std::unique_ptr<Layout> ChooseOutputLayoutFromOperandLayout(
       const Layout& operand_layout, const HloInstruction* user,
       int64 operand_no);
 
@@ -407,6 +411,10 @@ class LayoutAssignment : public HloModulePass {
   // minimize the local cost of the computation. This propagation is *not*
   // required for correctness.
   Status PropagateConstraints(LayoutConstraints* constraints);
+
+  Status PropagateBufferConstraintToOperands(
+      const BufferLayoutConstraint& buffer_constraint,
+      LayoutConstraints* constraints);
 
   // Check that all layouts in the module have been set and satisfy all
   // necessary conditions.

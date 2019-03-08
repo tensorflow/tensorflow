@@ -38,8 +38,7 @@ void GraphOptimizer::Optimize(
     std::unique_ptr<Graph>* graph,
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
-    const std::function<bool(const Node*)>& cse_consider_fn,
-    const std::function<bool(const Node*)>& cf_consider_fn) {
+    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -87,9 +86,15 @@ void GraphOptimizer::Optimize(
       DumpGraph("OptimizeCSE", g);
       changed = true;
     }
-    if (opts_.do_function_inlining() && ExpandInlineFunctions(runtime, g)) {
-      DumpGraph("ExpandInlineFunctions", g);
-      changed = true;
+    if (opts_.do_function_inlining()) {
+      InlineFunctionBodyOptions inline_opts;
+      inline_opts.override_device = true;
+
+      bool was_mutated = ExpandInlineFunctions(runtime, g, inline_opts);
+      if (was_mutated) {
+        DumpGraph("ExpandInlineFunctions", g);
+        changed = true;
+      }
     }
     if (!changed) break;
   }
@@ -101,6 +106,13 @@ void GraphOptimizer::Optimize(
   graph->swap(copy);
 
   DumpGraph("ReCopy", graph->get());
+}
+
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              Device* device, std::unique_ptr<Graph>* graph,
+                              const Options& options) {
+  Optimize(runtime, env, device, graph, options.shape_map,
+           options.cse_consider_fn, options.cf_consider_fn);
 }
 
 }  // end namespace tensorflow

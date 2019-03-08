@@ -57,10 +57,13 @@ class XlaSortOpTest(xla_test.XLATestCase):
           xla.sort, [x], expected=[np.arange(101, dtype=dtype)])
 
   def testKeyValueSort(self):
-    supported_types = set(
+    supported_key_types = set(
         [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32])
-    for key_type in supported_types.intersection(self.numeric_types):
-      for value_type in supported_types.intersection(self.numeric_types):
+    supported_value_types = set(
+        [dtypes.bfloat16.as_numpy_dtype, np.float32, np.int32, np.uint32,
+         dtypes.int64.as_numpy_dtype, dtypes.uint64.as_numpy_dtype])
+    for key_type in supported_key_types.intersection(self.numeric_types):
+      for value_type in supported_value_types.intersection(self.numeric_types):
         x = np.arange(101, dtype=key_type)
         np.random.shuffle(x)
         y = (-x).astype(value_type)
