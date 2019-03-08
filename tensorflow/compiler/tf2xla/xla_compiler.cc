@@ -956,6 +956,28 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
   return Status::OK();
 }
 
+// If node is PartitionedCall or StatefulPartitionedCall, returns the
+// name from the "f" attr, else returns node.def().op().
+// Returned pointer points to the internal string either in node's attributes
+// or in its NodeDef. This pointer is valid as long as the node has not been
+// modified.
+Status GetPotentialFunctionName(const Node& node, const string** name) {
+  if (node.IsPartitionedCall()) {
+    const AttrValue* attr_value;
+    TF_RETURN_IF_ERROR(
+        node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
+    if (!attr_value->has_func()) {
+      return errors::InvalidArgument(
+          "The attribute value for attribute 'f' in node ", node.DebugString(),
+          " does not have 'func' field set");
+    }
+    *name = &attr_value->func().name();
+    return Status::OK();
+  }
+  *name = &node.type_string();
+  return Status::OK();
+}
+
 // Check that the graph doesn't have any invalid nodes (e.g. incompatible with
 // given device_type, invalid data type, missing attributes...)
 Status ValidateGraph(const Graph* graph,
@@ -975,7 +997,9 @@ Status ValidateGraph(const Graph* graph,
     if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
       continue;
     }
-    const FunctionDef* fdef = flib_def.Find(node->def().op());
+    const string* function_name;
+    TF_RETURN_IF_ERROR(GetPotentialFunctionName(*node, &function_name));
+    const FunctionDef* fdef = flib_def.Find(*function_name);
     Status s;
     if (fdef) {
       s = ValidateFunctionDef(fdef, flib_def);

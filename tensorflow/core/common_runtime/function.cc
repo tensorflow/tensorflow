@@ -1462,6 +1462,26 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
   return Status::OK();
 }
 
+Status InstantiateFunctionCall(const NodeDef& call_def,
+                               FunctionLibraryRuntime& flr,
+                               FunctionLibraryRuntime::Handle* handle) {
+  const string* func_name;
+  AttrSlice attrs;
+
+  NameAttrList func;
+  if (call_def.op() == "PartitionedCall" ||
+      call_def.op() == "StatefulPartitionedCall") {
+    TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", &func));
+    func_name = &func.name();
+    attrs = AttrSlice(&func.attr());
+  } else {
+    func_name = &call_def.op();
+    attrs = AttrSlice(call_def);
+  }
+
+  return flr.Instantiate(*func_name, attrs, handle);
+}
+
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           Node* caller, const FunctionBody* fbody,
                           const InlineFunctionBodyOptions& options) {
@@ -1633,6 +1653,13 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   return Status::OK();
 }
 
+bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
+                    const Node& node) {
+  return node.IsPartitionedCall() ||
+         node.type_string() == FunctionLibraryDefinition::kGradientOp ||
+         lib_def.Find(node.def().op()) != nullptr;
+}
+
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
                            const InlineFunctionBodyOptions& options) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
@@ -1641,8 +1668,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
 
   for (Node* node : graph->nodes()) {
     // Skip nodes that are not function calls or SymbolicGradient calls.
-    if (fld->Find(node->type_string()) == nullptr &&
-        node->type_string() != FunctionLibraryDefinition::kGradientOp) {
+    if (!IsFunctionCall(*lib->GetFunctionLibraryDefinition(), *node)) {
       continue;
     }
     // Skip function calls that marked noinline.
@@ -1651,9 +1677,8 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
       VLOG(3) << "noinline: " << SummarizeNode(*node);
       continue;
     }
-
     FunctionLibraryRuntime::Handle handle;
-    Status s = lib->Instantiate(node->type_string(), node->attrs(), &handle);
+    Status s = InstantiateFunctionCall(node->def(), *lib, &handle);
     if (!s.ok()) {
       LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
       continue;
@@ -1670,7 +1695,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
     if (inlined.ok()) {
       inlined_any = true;
     } else {
-      VLOG(3) << "Failed to inline function call: node=" << p.first->name()
+      VLOG(1) << "Failed to inline function call: node=" << p.first->name()
               << " error=" << inlined.error_message();
     }
   }
@@ -1866,8 +1891,8 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   const int num_y = static_cast<int>(gbody_->ret_nodes.size());
 
   // Populate 'y_node_outputs_' with node function body outputs.
-  // Populate 'y_grad_nodes' with initial gradient nodes for each return node of
-  // the original function body (these will be 'arg' nodes in the function
+  // Populate 'y_grad_nodes' with initial gradient nodes for each return node
+  // of the original function body (these will be 'arg' nodes in the function
   // gradient body).
   std::vector<NodeOut> y_node_outputs;
   y_node_outputs.reserve(num_y);
@@ -1894,8 +1919,8 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   }
 
   // Call AddSymbolicGradients which will add nodes to graph 'g' that
-  // compute the function gradient (adding an entry in 'x_grad_node_outputs' for
-  // each node in 'x_node_outputs').
+  // compute the function gradient (adding an entry in 'x_grad_node_outputs'
+  // for each node in 'x_node_outputs').
   std::vector<NodeOut> x_grad_node_outputs;
   TF_CHECK_OK(AddSymbolicGradients(y_node_outputs, x_node_outputs,
                                    y_grad_node_outputs, &x_grad_node_outputs,

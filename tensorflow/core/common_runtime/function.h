@@ -201,6 +201,20 @@ inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return ExpandInlineFunctions(lib, graph, InlineFunctionBodyOptions());
 }
 
+// Extracts function name and attributes from `call_def` and invokes
+// flr->Instantiate(name, attrs, handle).
+// `call_def` can be a native function call (where the op type is the function
+// name) or a call through PartitionedCall/StatefulPartitionedCall.
+Status InstantiateFunctionCall(const NodeDef& call_def,
+                               FunctionLibraryRuntime& flr,
+                               FunctionLibraryRuntime::Handle* handle);
+
+// Returns true iff `n` represents a function call. `n` can be a native
+// function call (n.type_string() is the function name),
+// a PartitionedCall/StatefulPartitionedCall, or a SymbolicGradient (which
+// has been deprecated for a while).
+bool IsFunctionCall(const FunctionLibraryDefinition& lib_def, const Node& n);
+
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
 Status FunctionDefToBodyHelper(

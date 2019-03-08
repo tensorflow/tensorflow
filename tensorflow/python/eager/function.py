@@ -38,7 +38,6 @@ from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
-from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -64,7 +63,7 @@ BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 CacheKey = collections.namedtuple("CacheKey", [
     "input_signature", "parent_graph", "device_functions",
-    "colocation_stack", "uses_xla"])
+    "colocation_stack"])
 
 CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
@@ -417,25 +416,6 @@ class _EagerDefinedFunction(object):
             ctx=ctx)
       # Replace empty list with None
       outputs = outputs or None
-    elif self._graph._xla_compile:  # pylint: disable=protected-access
-      g = ops.get_default_graph()
-      self.add_to_graph(g)
-      signature = self.signature
-      with ops.control_dependencies(self._control_captures):
-        op = g.create_op(
-            signature.name,
-            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-            op_def=signature,
-            name="FunctionCall",
-            compute_shapes=False)
-      outputs = op.outputs
-      if not outputs:
-        return op
-      if isinstance(outputs, (ops.Tensor, type(None))):
-        outputs = [outputs]
-      else:
-        outputs = list(outputs)
     else:
       # TODO(akshayka): Either remove this if the FunctionLibraryRuntime
       # creates `PartitionedCallOp` kernels by default, or remove the previous
@@ -1464,16 +1444,13 @@ class Function(object):
         default_graph._distribution_strategy_stack)
     if executing_eagerly:
       colocation_stack = ()
-      uses_xla = ctx.device_spec.device_type == "TPU"
-      if uses_distribution_strategy or uses_xla:
+      if uses_distribution_strategy:
         device_functions = (pydev.merge_device(ctx.device_name),)
       else:
         device_functions = ()
     else:
       colocation_stack = tuple(default_graph._colocation_stack.peek_objs())
-      uses_xla = getattr(default_graph, "_xla_compile", False)
       if (uses_distribution_strategy
-          or uses_xla
           or func_graph_module.device_stack_has_callable(
               default_graph._device_function_stack)):
         # Putting the device in the cache key ensures that call-site device
@@ -1483,7 +1460,7 @@ class Function(object):
         device_functions = ()
     # pylint: enable=protected-access
     return CacheKey(input_signature, parent_graph, device_functions,
-                    colocation_stack, uses_xla)
+                    colocation_stack)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -1572,11 +1549,10 @@ class Function(object):
 
       call_context_key = cache_key.replace(input_signature=None)
 
-      # If there's a provided input signature, or XLA is being used, or
+      # If there's a provided input signature, or
       # there's no cache miss for this calling context so far, go ahead and
       # build the function and bypass shape relaxation retracing.
       if (self.input_signature is not None
-          or cache_key.uses_xla
           or call_context_key not in self._function_cache.missed):
         self._function_cache.missed.add(call_context_key)
         graph_function = self._create_graph_function(args, kwargs)
