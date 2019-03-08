@@ -29,6 +29,6 @@ tf_class {
   }
   member_method {
     name: "num_accelerators"
-    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'accelerator_type\', \'config_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'TPU\', \'None\'], "
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'config_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
 }

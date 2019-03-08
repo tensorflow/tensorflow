@@ -197,6 +197,73 @@ def predict_distributed(model,
         callbacks=callbacks)
 
 
+def _make_step_fn(model, mode, strategy, output_labels):
+  """Create step fn.
+
+  Arguments:
+    model: a Keras Model instance.
+    mode: One of ModeKeys.TRAIN/ModeKeys.TEST/ModeKeys.PREDICT.
+    strategy: a `tf.distribute.Strategy` instance.
+    output_labels: the output labels for the step function.
+
+  Returns:
+    A step function to run by `tf.distribute.Strategy`.
+  """
+
+  def _per_device_execution_function(model):
+    exec_func = model._make_execution_function(mode)
+    return (exec_func.inputs, exec_func.outputs, exec_func.updates_op,
+            exec_func.session_kwargs)
+
+  def step_fn(ctx, inputs):
+    """A step fn that returns update ops."""
+    if mode == ModeKeys.PREDICT:
+      targets = None
+    else:
+      inputs, targets = inputs
+
+    if model._compile_distribution:
+      distributed_training_utils.clone_model_on_replicas(
+          model, strategy, mode, inputs=inputs, targets=targets)
+    else:
+      distributed_training_utils._build_distributed_network(
+          model, strategy, mode, inputs, targets)
+
+    (grouped_inputs, grouped_outputs, grouped_updates,
+     grouped_session_args) = strategy.extended.call_for_each_replica(
+         _per_device_execution_function,
+         args=(distributed_training_utils.get_distributed_model(model, mode),))
+    (all_inputs, all_outputs, all_updates,
+     all_session_args) = distributed_training_utils.unwrap_values(
+         strategy, grouped_inputs, grouped_outputs, grouped_updates,
+         grouped_session_args)
+    combined_fn = K.function(
+        all_inputs,
+        all_outputs,
+        updates=all_updates,
+        name='distributed_' + str(mode) + '_function',
+        **all_session_args)
+
+    for label, output in zip(output_labels, combined_fn.outputs):
+      if mode == ModeKeys.PREDICT:
+        ctx.set_last_step_output(label, output)
+      else:
+        if label == 'loss':
+          reduce_op = ds_reduce_util.ReduceOp.SUM
+        else:
+          # We reduce all other metrics using mean for now. This is temporary
+          # workaround until new metrics are in place.
+          reduce_op = ds_reduce_util.ReduceOp.MEAN
+        ctx.set_last_step_output(label, output, reduce_op)
+
+    # TODO(priyag, sourabhbajaj): Ignoring these things from the combined_fn:
+    # feed_dict, session kwargs, run options, run_metadata for now. These should
+    # be handled appropriately
+    return combined_fn.updates_op
+
+  return step_fn
+
+
 def experimental_tpu_fit_loop(model,
                               dataset,
                               epochs=100,
@@ -254,52 +321,9 @@ def experimental_tpu_fit_loop(model,
       strategy=current_strategy, learning_phase=1)
   scope.__enter__()
 
-  def _per_device_fit_function(model):
-    model._make_fit_function()
-    return (model._fit_function.inputs, model._fit_function.outputs,
-            model._fit_function.updates_op, model._fit_function.session_kwargs)
-
   out_labels = model.metrics_names or []
 
-  def step_fn(ctx, inputs):
-    """Clones the model and calls make_fit_function."""
-    inputs, targets = inputs
-    if model._compile_distribution:
-      distributed_training_utils.clone_model_on_replicas(
-          model, current_strategy, mode, inputs=inputs, targets=targets)
-    else:
-      distributed_training_utils._build_distributed_network(
-          model, current_strategy, mode, inputs, targets)
-
-    (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_fit_function,
-         args=(distributed_training_utils.get_distributed_model(
-             model, ModeKeys.TRAIN),))
-    (all_inputs, all_outputs, all_updates,
-     all_session_args) = distributed_training_utils.unwrap_values(
-         current_strategy, grouped_inputs, grouped_outputs,
-         grouped_updates, grouped_session_args)
-    combined_fn = K.function(
-        all_inputs,
-        all_outputs,
-        updates=all_updates,
-        name='distributed_fit_function',
-        **all_session_args)
-
-    for label, output in zip(out_labels, combined_fn.outputs):
-      if label == 'loss':
-        reduce_op = ds_reduce_util.ReduceOp.SUM
-      else:
-        # We reduce all other metrics using mean for now. This is temporary
-        # workaround until new metrics are in place.
-        reduce_op = ds_reduce_util.ReduceOp.MEAN
-      ctx.set_last_step_output(label, output, reduce_op)
-
-    # TODO(priyag, sourabhbajaj): Ignoring these things from the combined_fn:
-    # feed_dict, session kwargs, run options, run_metadata for now. These should
-    # be handled appropriately
-    return combined_fn.updates_op
+  step_fn = _make_step_fn(model, ModeKeys.TRAIN, current_strategy, out_labels)
 
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
@@ -460,49 +484,8 @@ def experimental_tpu_test_loop(model,
       strategy=current_strategy, learning_phase=0)
   scope.__enter__()
 
-  def _per_device_eval_function(model):
-    model._make_eval_function()
-    return (model._eval_function.inputs, model._eval_function.outputs,
-            model._eval_function.updates_op,
-            model._eval_function.session_kwargs)
-
-  def step_fn(ctx, inputs):
-    """Clones the model and calls make_eval_function."""
-    inputs, targets = inputs
-    if model._compile_distribution:
-      distributed_training_utils.clone_model_on_replicas(
-          model, current_strategy, mode=mode, inputs=inputs, targets=targets)
-    else:
-      distributed_training_utils._build_distributed_network(
-          model, current_strategy, mode, inputs, targets)
-
-    (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_eval_function,
-         args=(distributed_training_utils.get_distributed_model(
-             model, ModeKeys.TEST),))
-
-    (all_inputs, all_outputs, all_updates,
-     all_session_args) = distributed_training_utils.unwrap_values(
-         current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
-         grouped_session_args)
-
-    combined_fn = K.function(
-        all_inputs, all_outputs,
-        updates=all_updates,
-        name='distributed_test_function',
-        **all_session_args)
-
-    for label, output in zip(model.metrics_names, combined_fn.outputs):
-      if label == 'loss':
-        reduce_op = ds_reduce_util.ReduceOp.SUM
-      else:
-        # We reduce all other metrics using mean for now. This is temporary
-        # workaround until new metrics are in place.
-        reduce_op = ds_reduce_util.ReduceOp.MEAN
-      ctx.set_last_step_output(label, output, reduce_op)
-
-    return combined_fn.updates_op
+  out_labels = model.metrics_names
+  step_fn = _make_step_fn(model, ModeKeys.TEST, current_strategy, out_labels)
 
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
@@ -642,43 +625,8 @@ def experimental_tpu_predict_loop(model,
       strategy=current_strategy, learning_phase=0)
   scope.__enter__()
 
-  def _per_device_predict_function(model):
-    model._make_predict_function()
-    return (model.predict_function.inputs,
-            model.predict_function.outputs,
-            model.predict_function.updates_op,
-            model.predict_function.session_kwargs)
-
-  def step_fn(ctx, inputs):
-    """Clones the model and calls make_predict_function."""
-    if model._compile_distribution:
-      distributed_training_utils.clone_model_on_replicas(
-          model, current_strategy, mode, inputs=inputs)
-    else:
-      distributed_training_utils._build_distributed_network(
-          model, current_strategy, mode, inputs)
-
-    (grouped_inputs, grouped_outputs, grouped_updates,
-     grouped_session_args) = current_strategy.extended.call_for_each_replica(
-         _per_device_predict_function,
-         args=(distributed_training_utils.get_distributed_model(
-             model, ModeKeys.PREDICT),))
-
-    (all_inputs, all_outputs, all_updates,
-     all_session_args) = distributed_training_utils.unwrap_values(
-         current_strategy, grouped_inputs, grouped_outputs, grouped_updates,
-         grouped_session_args)
-
-    combined_fn = K.function(
-        all_inputs, all_outputs,
-        updates=all_updates,
-        name='distributed_predict_function',
-        **all_session_args)
-
-    for label, output in zip(model.output_names, combined_fn.outputs):
-      ctx.set_last_step_output(label, output)
-
-    return combined_fn.updates_op
+  out_labels = model.output_names
+  step_fn = _make_step_fn(model, ModeKeys.PREDICT, current_strategy, out_labels)
 
   # Add initial dummy values for outputs.
   initial_loop_values = {}

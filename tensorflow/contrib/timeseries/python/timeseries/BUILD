@@ -161,7 +161,10 @@ py_test(
     ],
     shard_count = 10,
     srcs_version = "PY2AND3",
-    tags = ["no_pip_gpu"],  # b/63391119
+    tags = [
+        "no_pip_gpu",  # b/63391119
+        "notap",  # b/124520733
+    ],
     deps = [
         ":estimators",
         ":feature_keys",

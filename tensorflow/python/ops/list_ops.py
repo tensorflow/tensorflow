@@ -102,13 +102,21 @@ def tensor_list_gather(input_handle,
       name=name)
 
 
-def tensor_list_scatter(tensor, indices, element_shape, name=None):
-  return gen_list_ops.tensor_list_scatter_v2(
-      tensor=tensor,
-      indices=indices,
-      element_shape=_build_element_shape(element_shape),
-      num_elements=-1,
-      name=name)
+def tensor_list_scatter(tensor,
+                        indices,
+                        element_shape=None,
+                        input_handle=None,
+                        name=None):
+  if input_handle is not None:
+    return gen_list_ops.tensor_list_scatter_into_existing_list(
+        input_handle=input_handle, tensor=tensor, indices=indices, name=name)
+  else:
+    return gen_list_ops.tensor_list_scatter_v2(
+        tensor=tensor,
+        indices=indices,
+        element_shape=_build_element_shape(element_shape),
+        num_elements=-1,
+        name=name)
 
 
 def tensor_list_stack(input_handle,
@@ -277,12 +285,12 @@ def _TensorListResizeGrad(op, dlist):
 def _TensorListGatherGrad(op, dtensor):
   """Gradient function for TensorListGather."""
   input_list, indices, _ = op.inputs
-  dlist = gen_list_ops.tensor_list_scatter_v2(
-      tensor=dtensor,
-      indices=indices,
-      element_shape=gen_list_ops.tensor_list_element_shape(
-          input_list, shape_type=dtypes.int32),
-      num_elements=gen_list_ops.tensor_list_length(input_list))
+  element_shape = gen_list_ops.tensor_list_element_shape(
+      input_list, shape_type=dtypes.int32)
+  num_elements = gen_list_ops.tensor_list_length(input_list)
+  dlist = tensor_list_reserve(element_shape, num_elements, dtensor.dtype)
+  dlist = tensor_list_scatter(
+      tensor=dtensor, indices=indices, input_handle=dlist)
   return dlist, None, None
 
 
@@ -301,6 +309,20 @@ def _TensorListScatterGrad(op, dlist):
     return dtensor, None, None, None
   else:
     return dtensor, None, None
+
+
+@ops.RegisterGradient("TensorListScatterIntoExistingList")
+def _TensorListScatterIntoExistingListGrad(op, dlist):
+  """Gradient function for TensorListScatterIntoExistingList."""
+  _, tensor, indices = op.inputs
+  dtensor = gen_list_ops.tensor_list_gather(
+      dlist,
+      indices,
+      element_shape=array_ops.slice(array_ops.shape(tensor), [1], [-1]),
+      element_dtype=tensor.dtype)
+  zeros = array_ops.zeros_like(tensor)
+  dlist = tensor_list_scatter(zeros, indices, indices, input_handle=dlist)
+  return dlist, dtensor, None
 
 
 def _build_element_shape(shape):

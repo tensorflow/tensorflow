@@ -23,11 +23,11 @@ import tempfile
 from absl import app
 from absl import flags
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 # TODO(vbardiovsky): remove these when symbols are public.
 from tensorflow.python.ops import lookup_ops
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 FLAGS = flags.FLAGS
 
@@ -102,4 +102,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
+  tf.enable_v2_behavior()
   app.run(main)

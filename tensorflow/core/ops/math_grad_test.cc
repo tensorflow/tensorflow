@@ -949,6 +949,25 @@ TEST_F(MathGradTest, Xdivy) {
                                 TensorShape({2, 1})));
 }
 
+TEST_F(MathGradTest, SquaredDifference) {
+  auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
+                                 TensorShape({2, 3}));
+  auto y = test::AsTensor<float>({.5f, 2.f}, TensorShape({2, 1}));
+  Tensor dx;
+  Tensor dy;
+  auto g = [](float x, float y) -> float { return 2. * (x - y); };
+  auto h = [](float x, float y) -> float { return 2. * (y - x); };
+  SymGrad("SquaredDifference", x, y, &dx, &dy);
+  test::ExpectClose(
+      dx, test::AsTensor<float>({g(-3.f, .5f), g(-2.f, .5f), g(-1.f, .5f),
+                                 g(1.f, 2.f), g(2.f, 2.f), g(3.f, 2.f)},
+                                TensorShape({2, 3})));
+  test::ExpectClose(
+      dy, test::AsTensor<float>({h(-3.f, .5f) + h(-2.f, .5f) + h(-1.f, .5f),
+                                 h(1.f, 2.f) + h(2.f, 2.f) + h(3.f, 2.f)},
+                                TensorShape({2, 1})));
+}
+
 TEST_F(MathGradTest, Maximum) {
   auto x = test::AsTensor<float>({-3.f, -2.f, -1.f, 1.f, 2.f, 3.f},
                                  TensorShape({2, 3}));

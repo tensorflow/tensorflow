@@ -17,6 +17,8 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/gemm_support.h"
+#include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -49,6 +51,7 @@ struct OpContext {
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  gemm_support::IncrementUsageCounter(context);
   // Creates two temp tensors to store index and axis for internal
   // implementation only.
   auto* scratch_tensor_index = new int;
@@ -57,6 +60,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
+  gemm_support::DecrementUsageCounter(context);
   delete reinterpret_cast<int*>(buffer);
 }
 
@@ -248,6 +252,7 @@ void ResolveAxis(const int* axis_data, int axis_count,
 template <KernelType kernel_type>
 TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
   OpContext op_context(context, node);
+
   int num_axis = static_cast<int>(NumElements(op_context.axis));
   TfLiteTensor* temp_index = GetTemporary(context, node, /*index=*/0);
   TfLiteTensor* resolved_axis = GetTemporary(context, node, /*index=*/1);
@@ -272,13 +277,15 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
         ((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
          (op_params.axis[0] == 2 && op_params.axis[1] == 1))) {
       if (op_context.input->type == kTfLiteUInt8) {
-        reference_ops::Mean(
+        gemmlowp::GemmContext* gemm_context =
+            gemm_support::GetFromContext(context);
+        optimized_ops::Mean(
             op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             op_context.input->params.zero_point, op_context.input->params.scale,
             GetTensorShape(op_context.output),
             GetTensorData<uint8_t>(op_context.output),
             op_context.output->params.zero_point,
-            op_context.output->params.scale);
+            op_context.output->params.scale, gemm_context);
       } else {
         reference_ops::Mean(op_params, GetTensorShape(input),
                             GetTensorData<float>(input),

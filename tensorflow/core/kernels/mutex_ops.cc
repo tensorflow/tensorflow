@@ -148,7 +148,7 @@ class Mutex : public ResourceBase {
             fn_(Status::OK(),
                 SharedLockReleaser{std::make_shared<LockReleaser>(this)});
           } else {
-            fn_(errors::Cancelled("Lock acqusition cancelled."),
+            fn_(errors::Cancelled("Lock acquisition cancelled."),
                 SharedLockReleaser{nullptr});
           }
         },

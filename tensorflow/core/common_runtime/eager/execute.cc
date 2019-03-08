@@ -389,6 +389,8 @@ Status EagerLocalExecute(EagerOperation* op,
       if (!status.ok()) return status;
     }
     if (ctx->LogDevicePlacement()) {
+      printf("Executing op %s in device %s\n", ndef.op().c_str(),
+             device->name().c_str());
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }
@@ -399,8 +401,9 @@ Status EagerLocalExecute(EagerOperation* op,
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
+    auto runner = (flr->runner() != nullptr) ? flr->runner() : ctx->runner();
     GraphCollector* graph_collector = nullptr;
-    if (ctx->ShouldStoreMetadata()) {
+    if (ctx->ShouldStoreGraphs()) {
       graph_collector = ctx->GetGraphCollector();
     }
     // Treat the function as multi_device only when we are not compiling
@@ -416,14 +419,14 @@ Status EagerLocalExecute(EagerOperation* op,
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
       kernel = new KernelAndDeviceFunc(
-          flr, ctx->pflr(), std::move(input_dev_ptrs), ctx->runner(),
+          flr, ctx->pflr(), std::move(input_dev_ptrs), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
       kernel = new KernelAndDeviceOp(
-          ctx->GetRendezvous(), ctx->LogMemory(), flr, ctx->runner(),
+          ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
     }
 
@@ -450,13 +453,15 @@ Status EagerLocalExecute(EagerOperation* op,
   }
   status = ValidateInputTypeAndPlacement(
       ctx, device, op, kernel,
-      ctx->ShouldStoreMetadata() ? ctx->RunMetadataProto() : nullptr);
+      ctx->ShouldStoreStepStats() ? ctx->RunMetadataProto() : nullptr);
   if (!status.ok()) return status;
   std::unique_ptr<NodeExecStats> maybe_stats;
   StepStats* maybe_step_stats = nullptr;
   GraphCollector* graph_collector = nullptr;
-  if (ctx->ShouldStoreMetadata()) {
+  if (ctx->ShouldStoreGraphs()) {
     graph_collector = ctx->GetGraphCollector();
+  }
+  if (ctx->ShouldStoreStepStats()) {
     maybe_step_stats = ctx->RunMetadataProto()->mutable_step_stats();
     int64 now_nanos = Env::Default()->NowNanos();
     maybe_stats.reset(new NodeExecStats);
@@ -773,6 +778,44 @@ bool IsPinnableOp(const string& op_type) {
          !absl::StartsWith(op_type, "XRT");
 }
 
+Status MaybeUpdateFunctionOpDevice(EagerOperation* op) {
+  gtl::FlatMap<Device*, int> device_counts;
+  Device* op_device =
+      op->Device() == nullptr ? op->EagerContext()->HostCPU() : op->Device();
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    TensorHandle* tensor_handle = op->Inputs()[i];
+    if (tensor_handle->dtype == DT_RESOURCE) {
+      Device* resource_device = tensor_handle->resource_device();
+      device_counts[resource_device]++;
+      VLOG(2) << "for op " << op->Name() << " input " << i << " "
+              << DataTypeString(tensor_handle->dtype)
+              << " input device = " << resource_device->name()
+              << ", op device = " << op_device->name();
+    }
+  }
+
+  Device* target_device = nullptr;
+  int target_device_count = 0;
+
+  for (const auto& kv : device_counts) {
+    if (kv.second > target_device_count) {
+      target_device_count = kv.second;
+      target_device = kv.first;
+    }
+  }
+
+  if (target_device != nullptr &&
+      (target_device != op_device || op->Device() == nullptr)) {
+    VLOG(1) << (target_device != op_device ? "Changing " : "Setting ")
+            << "device of operation " << op->Name() << " to "
+            << target_device->name() << " because most inputs are resources on"
+            << " this device.";
+    op->SetDevice(target_device);
+  }
+
+  return Status::OK();
+}
+
 // The Op device may be updated if:
 // - A resource touching input is specified: all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been
@@ -782,6 +825,9 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
+  if (op->is_function()) {
+    return MaybeUpdateFunctionOpDevice(op);
+  }
   EagerContext* ctx = op->EagerContext();
   bool all_inputs_eligible_for_cpu_pinning =
       ctx->PinSmallOpsToCPU() && !op->is_function() && IsPinnableOp(op->Name());
@@ -919,6 +965,31 @@ Status EagerKernelExecute(EagerContext* ctx, Device* device,
                                    maybe_stats, maybe_step_stats,
                                    graph_collector));
   }
+  if (graph_collector != nullptr) {
+    mutex_lock ml(*ctx->MetadataMu());
+    {
+      GraphCollector* collector = ctx->GetGraphCollector();
+      mutex_lock mll(collector->mu);
+
+      // Adding to partition graphs for backward compatibility.
+      for (const auto& graph : collector->partitioned_graphs) {
+        *ctx->RunMetadataProto()->add_partition_graphs() = graph;
+      }
+
+      if (collector->dirty) {
+        auto* function_graphs = ctx->RunMetadataProto()->add_function_graphs();
+        *function_graphs->mutable_post_optimization_graph() =
+            collector->optimized_graph;
+        *function_graphs->mutable_pre_optimization_graph() =
+            collector->raw_graph;
+        for (const auto& graph : collector->partitioned_graphs) {
+          *function_graphs->add_partition_graphs() = graph;
+        }
+      }
+
+      collector->ClearGraphs();
+    }
+  }
   if (maybe_stats != nullptr) {
     int64 nanos = Env::Default()->NowNanos();
     maybe_stats->set_op_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
@@ -927,49 +998,28 @@ Status EagerKernelExecute(EagerContext* ctx, Device* device,
     maybe_stats->set_all_end_rel_micros(nanos / EnvTime::kMicrosToNanos -
                                         maybe_stats->all_start_micros());
     maybe_stats->set_all_end_rel_nanos(nanos - maybe_stats->all_start_nanos());
-    if (ctx->ShouldStoreMetadata()) {
+    if (ctx->ShouldStoreStepStats()) {
       mutex_lock ml(*ctx->MetadataMu());
       {
-        GraphCollector* collector = ctx->GetGraphCollector();
-        mutex_lock mll(collector->mu);
-
-        // Adding to partition graphs for backward compatibility.
-        for (const auto& graph : collector->partitioned_graphs) {
-          *ctx->RunMetadataProto()->add_partition_graphs() = graph;
+        auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();
+        // Lazily initialize the RunMetadata with information about all devices
+        // if this is the first call.
+        while (step_stats->dev_stats_size() < ctx->devices()->size()) {
+          step_stats->add_dev_stats();
         }
-
-        if (collector->dirty) {
-          auto* function_graphs =
-              ctx->RunMetadataProto()->add_function_graphs();
-          *function_graphs->mutable_post_optimization_graph() =
-              collector->optimized_graph;
-          *function_graphs->mutable_pre_optimization_graph() =
-              collector->raw_graph;
-          for (const auto& graph : collector->partitioned_graphs) {
-            *function_graphs->add_partition_graphs() = graph;
+        // Find the current device's index.
+        int device_idx = 0;
+        for (int i = 0; i < ctx->devices()->size(); ++i) {
+          if (ctx->devices()->at(i) == device) {
+            device_idx = i;
+            break;
           }
         }
-
-        collector->ClearGraphs();
+        // Populate the device stats for this device.
+        auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
+        dev_stats->set_device(device->name());
+        *dev_stats->add_node_stats() = *maybe_stats;
       }
-      auto* step_stats = ctx->RunMetadataProto()->mutable_step_stats();
-      // Lazily initialize the RunMetadata with information about all devices if
-      // this is the first call.
-      while (step_stats->dev_stats_size() < ctx->devices()->size()) {
-        step_stats->add_dev_stats();
-      }
-      // Find the current device's index.
-      int device_idx = 0;
-      for (int i = 0; i < ctx->devices()->size(); ++i) {
-        if (ctx->devices()->at(i) == device) {
-          device_idx = i;
-          break;
-        }
-      }
-      // Populate the device stats for this device.
-      auto* dev_stats = step_stats->mutable_dev_stats(device_idx);
-      dev_stats->set_device(device->name());
-      *dev_stats->add_node_stats() = *maybe_stats;
     }
   }
   DCHECK_EQ(num_retvals, outputs.size());

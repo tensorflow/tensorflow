@@ -1,0 +1,23 @@
+path: "tensorflow.lookup.TextFileInitializer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.ops.lookup_ops.TextFileInitializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.lookup_ops.TableInitializerBase\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "key_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "value_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'filename\', \'key_dtype\', \'key_index\', \'value_dtype\', \'value_index\', \'vocab_size\', \'delimiter\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'\\t\', \'None\'], "
+  }
+  member_method {
+    name: "initialize"
+    argspec: "args=[\'self\', \'table\'], varargs=None, keywords=None, defaults=None"
+  }
+}

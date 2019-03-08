@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -39,6 +40,11 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
   explicit FilterDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES(ctx, short_circuit_indices_.size() <= 1,
+                errors::InvalidArgument(
+                    "predicate function has more than one return value."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -47,14 +53,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-    OP_REQUIRES(ctx, indices.size() <= 1,
-                errors::InvalidArgument(
-                    "predicate function has more than one return value."));
-
     FilterIteratorPredicate filter_pred;
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       filter_pred = [](IteratorContext* ctx,
                        InstantiatedCapturedFunction* inst_captured_func,
                        const std::vector<Tensor>& args, bool* out_matched) {
@@ -71,11 +71,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       };
     } else {
-      filter_pred = [indices](IteratorContext* ctx,
-                              InstantiatedCapturedFunction* inst_captured_func,
-                              const std::vector<Tensor>& args,
-                              bool* out_matched) {
-        const Tensor& predicate = args[indices[0]];
+      int predicate_index = short_circuit_indices_[0];
+      filter_pred = [predicate_index](
+                        IteratorContext* ctx,
+                        InstantiatedCapturedFunction* inst_captured_func,
+                        const std::vector<Tensor>& args, bool* out_matched) {
+        const Tensor& predicate = args[predicate_index];
         if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
           return errors::InvalidArgument(
               "Filter predicate `f` must return a scalar bool.");
@@ -167,9 +168,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             filtered_elements_(0),
             dropped_elements_(0),
             filter_pred_(std::move(filter_pred)) {
-        std::vector<string> components =
-            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        prefix_end_ = components.back();
       }
 
       Status Initialize(IteratorContext* ctx) override {
@@ -213,13 +211,15 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
               mutex_lock l(mu_);
               dropped_elements_++;
               stats_aggregator->AddScalar(
-                  strings::StrCat(prefix_end_, "::dropped_elements"),
+                  stats_utils::DroppedElementsScalarName(
+                      dataset()->node_name()),
                   static_cast<float>((dropped_elements_)));
               // TODO(shivaniagrawal): multiple pipelines would collect
               // aggregated number of dropped elements for all the pipelines,
               // exploit tagged_context here.
-              stats_aggregator->IncrementCounter(
-                  prefix_end_, "dropped_elements", static_cast<float>(1));
+              stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                                 stats_utils::kDroppedElements,
+                                                 static_cast<float>(1));
             }
           }
         } while (!matched);
@@ -229,12 +229,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           filtered_elements_++;
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::filtered_elements"),
+              stats_utils::FilterdElementsScalarName(dataset()->node_name()),
               static_cast<float>((filtered_elements_)));
           // TODO(shivaniagrawal): multiple pipelines would collect aggregated
           // number of filtered elements for all the pipelines, exploit
           // tagged_context here.
-          stats_aggregator->IncrementCounter(prefix_end_, "filtered_elements",
+          stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                             stats_utils::kFilteredElements,
                                              static_cast<float>(1));
         }
         *end_of_sequence = false;
@@ -281,7 +282,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       int64 filtered_elements_ GUARDED_BY(mu_);
       int64 dropped_elements_ GUARDED_BY(mu_);
       const FilterIteratorPredicate filter_pred_;
-      string prefix_end_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
@@ -293,6 +293,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   NameAttrList func_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),

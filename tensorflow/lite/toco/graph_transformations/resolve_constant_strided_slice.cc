@@ -71,34 +71,29 @@ void StridedSlice(StridedSliceOperator const& op, Array const& input_array,
   // Each "digit" is incremented individually (by the stride). When it overflows
   // (becomes greater than the stop), that digit is reset and a carry flag is
   // used to increment the next digit.
-  int dst_offset = 0;
-  do {
+  for (size_t dst_offset = 0; dst_offset < output_data.size(); ++dst_offset) {
     // Copy element.
     output_data[dst_offset] = input_buffer.data[Offset(input_shape, src_coord)];
 
-    // Compute next source input coordinates.
-    bool carry = true;
-    for (int axis = 0; axis < num_input_axes; axis++) {
+    // Note we consider elements in the highest dimension are stored
+    // contiguously. So, we increment the stride starting from the highest
+    // dimension.
+    for (int axis = num_input_axes - 1; axis >= 0; --axis) {
       int stride = op.strides[axis];
-      // Increment this axis if we carried from the previous one
-      if (carry) {
-        src_coord[axis] += stride;
-      }
+      src_coord[axis] += stride;
 
-      // Check if we've overflowed.
+      // Check if we've overflowed. If not, we just break from the loop to
+      // continue w/ the element copy. Otherwise, reset the starting coordinate
+      // for this axis and move to the next lower axis.
       int stop = stop_for_axis[axis];
-      if (tflite::strided_slice::LoopCondition(src_coord[axis], stop, stride)) {
-        // Reset axis and set carry
-        src_coord[axis] = tflite::strided_slice::StartForAxis(
-            strided_slice_params, ToRuntimeShape(input_shape), axis);
-        carry = true;
-      } else {
-        carry = false;
+      if (!tflite::strided_slice::LoopCondition(src_coord[axis], stop,
+                                                stride)) {
+        break;
       }
+      src_coord[axis] = tflite::strided_slice::StartForAxis(
+          strided_slice_params, ToRuntimeShape(input_shape), axis);
     }
-    // increment destination buffer offset
-    dst_offset++;
-  } while (dst_offset < output_data.size());
+  }
 }
 
 }  // anonymous namespace

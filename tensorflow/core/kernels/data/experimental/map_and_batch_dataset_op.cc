@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/kernels/inplace_ops_functor.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -59,6 +60,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
  protected:
@@ -86,12 +89,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       map_func = [](IteratorContext* ctx,
                     InstantiatedCapturedFunction* instantiated_captured_func,
                     const string& prefix, std::vector<Tensor> args,
@@ -101,7 +101,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             ctx, std::move(args), out_tensors.get(), std::move(done), prefix);
       };
     } else {
-      std::vector<bool> can_move = ComputeMoveVector(indices);
+      std::vector<bool> can_move = ComputeMoveVector(short_circuit_indices_);
+      const auto& indices = short_circuit_indices_;
       map_func = [raw_captured_func, indices, can_move](
                      IteratorContext* ctx,
                      InstantiatedCapturedFunction* instantiated_captured_func,
@@ -263,9 +264,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                                         (params.dataset->num_parallel_calls_ +
                                          params.dataset->batch_size_ - 1) /
                                             params.dataset->batch_size_)) {
-        std::vector<string> components =
-            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        key_prefix_ = components.back();
       }
 
       ~Iterator() override {
@@ -355,7 +353,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      // BatchResult encapsulates the output batch, as well as anciliary
+      // BatchResult encapsulates the output batch, as well as ancillary
       // metadata required to execute the fused map-and-batch operation.
       struct BatchResult {
         explicit BatchResult(int64 batch_size) {
@@ -403,7 +401,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         const auto& stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator) {
           stats_aggregator->AddScalar(
-              strings::StrCat(key_prefix_, "::thread_utilization"),
+              stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
               static_cast<float>(num_calls_) /
                   static_cast<float>(num_parallel_calls_->value));
         }
@@ -516,9 +514,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!runner_thread_) {
           auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-          runner_thread_.reset(ctx->env()->StartThread(
-              {}, "tf_data_map_and_batch",
-              std::bind(&Iterator::RunnerThread, this, ctx_copy)));
+          runner_thread_ = ctx->StartThread(
+              "tf_data_map_and_batch",
+              std::bind(&Iterator::RunnerThread, this, ctx_copy));
         }
       }
 
@@ -648,7 +646,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           if (stats_aggregator) {
             mutex_lock l(*mu_);
             stats_aggregator->AddScalar(
-                strings::StrCat(key_prefix_, "::thread_utilization"),
+                stats_utils::ThreadUtilizationScalarName(
+                    dataset()->node_name()),
                 static_cast<float>(num_calls_) /
                     static_cast<float>(num_parallel_calls_->value));
           }
@@ -805,7 +804,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       int64 waiting_ GUARDED_BY(*mu_) = 0;
       // Identifies the maximum number of batch results to store.
       int64 max_batch_results_ GUARDED_BY(*mu_);
-      string key_prefix_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 
@@ -826,6 +824,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
   bool preserve_cardinality_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(

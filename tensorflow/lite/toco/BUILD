@@ -310,7 +310,7 @@ cc_library(
         "toco_tooling.h",
     ],
     copts = tf_copts() + select({
-        "//tensorflow:darwin": ["-DTOCO_SUPPORT_PORTABLE_PROTOS=0"],
+        "//tensorflow:macos": ["-DTOCO_SUPPORT_PORTABLE_PROTOS=0"],
         "//conditions:default": [],
     }),
     visibility = ["//visibility:public"],
@@ -335,7 +335,7 @@ cc_library(
         "//tensorflow/lite/toco/tflite:export",
         "//tensorflow/lite/toco/tflite:import",
     ] + select({
-        # Placeholder for internal darwin rule.
+        # Placeholder for internal macOS rule.
         "//conditions:default": [],
     }),
 )

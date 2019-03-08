@@ -17,6 +17,7 @@ ifneq ($(filter CMSIS,$(ALL_TAGS)),)
   CMSIS_PREPROCESSOR_HDRS := \
     tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/hanning.h \
     tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/sin_1k.h \
+    third_party/CMSIS_ext/README.md \
     third_party/CMSIS_ext/arm_cmplx_mag_squared_q10p6.h
 
   PREPROCESSOR_TEST_SRCS += $(CMSIS_PREPROCESSOR_SRCS)
@@ -24,6 +25,9 @@ ifneq ($(filter CMSIS,$(ALL_TAGS)),)
 
   FEATURE_PROVIDER_TEST_SRCS += $(CMSIS_PREPROCESSOR_SRCS)
   FEATURE_PROVIDER_TEST_HDRS += $(CMSIS_PREPROCESSOR_HDRS)
+
+  SIMPLE_FEATURES_GENERATOR_TEST_SRCS += $(CMSIS_PREPROCESSOR_SRCS)
+  SIMPLE_FEATURES_GENERATOR_TEST_HDRS += $(CMSIS_PREPROCESSOR_HDRS)
 
   MICRO_SPEECH_SRCS += $(CMSIS_PREPROCESSOR_SRCS)
   MICRO_SPEECH_HDRS += $(CMSIS_PREPROCESSOR_HDRS)
@@ -43,6 +47,7 @@ ifneq ($(filter CMSIS,$(ALL_TAGS)),)
     $(MAKEFILE_DIR)/downloads/cmsis/CMSIS/DSP/Source/StatisticsFunctions/arm_max_q7.c
 
   THIRD_PARTY_CC_HDRS += \
+    third_party/cmsis/LICENSE.txt \
     third_party/cmsis/CMSIS/Core/Include/cmsis_compiler.h \
     third_party/cmsis/CMSIS/Core/Include/cmsis_gcc.h \
     third_party/cmsis/CMSIS/Core/Include/cmsis_version.h \

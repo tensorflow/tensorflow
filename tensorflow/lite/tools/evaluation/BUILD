@@ -34,23 +34,12 @@ cc_library(
     hdrs = ["evaluation_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/core:lib",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "evaluation_stage_factory",
-    hdrs = ["evaluation_stage_factory.h"],
-    copts = tflite_copts(),
-    deps = [
-        ":evaluation_stage",
-        ":identity_stage",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -61,26 +50,10 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":evaluation_stage",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/cc:scope",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:tensorflow",
-                "//tensorflow/core:protos_all_cc",
-                "//tensorflow/core:core_cpu",
-                "//tensorflow/core:framework",
-                "//tensorflow/core:lib",
-                "//tensorflow/core:ops",
-            ],
-        },
-    ),
-    alwayslink = 1,
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )
 
 tf_cc_test(
@@ -88,31 +61,12 @@ tf_cc_test(
     srcs = ["evaluation_stage_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = [
-        "tflite_not_portable_android",
-        "tflite_not_portable_ios",
-    ],
     deps = [
         ":evaluation_stage",
-        ":evaluation_stage_factory",
         ":identity_stage",
-        "@com_google_googletest//:gtest_main",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_proto_cc",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_proto_cc",
-    ] + select(
-        {
-            "//tensorflow:android": [
-                "//tensorflow/core:android_tensorflow_lib",
-                "//tensorflow/core:android_tensorflow_test_lib",
-            ],
-            "//conditions:default": [
-                "//tensorflow/core:framework",
-                "//tensorflow/core:core_cpu",
-                "//tensorflow/core:ops",
-                "//tensorflow/core:tensorflow",
-            ],
-        },
-    ),
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_googletest//:gtest_main",
+    ],
 )

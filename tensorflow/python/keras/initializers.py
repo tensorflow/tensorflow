@@ -20,9 +20,11 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import init_ops_v2
 
 # These imports are brought in so that keras.initializers.deserialize
 # has them available in module_objects.
@@ -160,9 +162,20 @@ def serialize(initializer):
 
 @keras_export('keras.initializers.deserialize')
 def deserialize(config, custom_objects=None):
+  """Return an `Initializer` object from its config."""
+  if tf2.enabled():
+    # Class names are the same for V1 and V2 but the V2 classes
+    # are aliased in this file so we need to grab them directly
+    # from `init_ops_v2`.
+    module_objects = {
+        obj_name: getattr(init_ops_v2, obj_name)
+        for obj_name in dir(init_ops_v2)
+    }
+  else:
+    module_objects = globals()
   return deserialize_keras_object(
       config,
-      module_objects=globals(),
+      module_objects=module_objects,
       custom_objects=custom_objects,
       printable_module_name='initializer')
 

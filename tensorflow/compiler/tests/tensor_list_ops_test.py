@@ -171,7 +171,7 @@ class ListOpsTest(xla_test.XLATestCase):
           element_dtype=dtypes.float32, element_shape=None, max_num_elements=2)
       l = list_ops.tensor_list_push_back(l, [3.0, 4.0])
       # Pushing an element with a different shape should raise an error.
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Shape"):
+      with self.assertRaisesRegexp(errors.InternalError, "shape"):
         l = list_ops.tensor_list_push_back(l, 5.)
         self.evaluate(
             list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))

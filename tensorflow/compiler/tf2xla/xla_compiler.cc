@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -597,13 +597,13 @@ Status XlaCompiler::CompileFunction(
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
-            << dump_graph::DumpGraphToFile(
+            << DumpGraphToFile(
                    absl::StrCat("xla_compile_function_", function_id), *graph);
   }
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, result));
+      CompileGraph(options, function_id, std::move(graph), args, {}, result));
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -936,7 +936,8 @@ Status XlaCompiler::CompileSingleOp(
   }
   FixupSourceAndSinkEdges(graph.get());
 
-  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
+  return CompileGraph(options, node_def.name(), std::move(graph), args, {},
+                      result);
 }
 
 namespace {
@@ -1019,20 +1020,19 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 
 }  // namespace
 
-Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
-                                 string const& name,
-                                 std::unique_ptr<Graph> graph,
-                                 absl::Span<const XlaCompiler::Argument> args,
-                                 CompilationResult* result) {
+Status XlaCompiler::CompileGraph(
+    const XlaCompiler::CompileOptions& options, string const& name,
+    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
+    CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
-            << dump_graph::DumpGraphToFile(
-                   absl::StrCat("xla_compile_graph_", name), *graph,
-                   flib_runtime_->GetFunctionLibraryDefinition());
+            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
+                               flib_runtime_->GetFunctionLibraryDefinition());
   }
 
   // Report the error here if initialization failed.
@@ -1070,6 +1070,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       &arg_expressions, &result->input_mapping, &result->xla_input_shapes,
       options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
+
+  // Propagate any aliases given to us by the user.
+  for (const xla::XlaBuilder::InputOutputAlias& alias : user_aliases) {
+    builder.SetUpAlias(alias.output_index, alias.param_number,
+                       alias.param_index);
+  }
 
   PushNodeTokenMapping();
   // Use std::set instead of std::unordered_set to ensure determinism.

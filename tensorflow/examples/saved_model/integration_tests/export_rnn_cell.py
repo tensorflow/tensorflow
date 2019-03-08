@@ -22,7 +22,7 @@ from absl import app
 from absl import flags
 import numpy as np
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -33,7 +33,7 @@ def main(argv):
   del argv
 
   root = tf.train.Checkpoint()
-  # Create a cell and attach to our checkpointable.
+  # Create a cell and attach to our trackable.
   root.rnn_cell = tf.keras.layers.LSTMCell(units=10, recurrent_initializer=None)
 
   # Wrap the rnn_cell.__call__ function and assign to next_state.
@@ -60,4 +60,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
+  tf.enable_v2_behavior()
   app.run(main)

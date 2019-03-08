@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -173,7 +172,7 @@ class ConfusionMatrixTest(test.TestCase):
   def testWeighted(self):
     labels = np.arange(5, dtype=np.int32)
     predictions = np.arange(5, dtype=np.int32)
-    weights = constant_op.constant(np.arange(5, dtype=np.int32))
+    weights = np.arange(5, dtype=np.int32)
 
     truth = np.asarray(
         [[0, 0, 0, 0, 0],
