@@ -1253,8 +1253,7 @@ class GlorotUniform(VarianceScaling):
         scale=1.0,
         mode="fan_avg",
         distribution="uniform",
-        seed=seed,
-        dtype=dtype)
+        seed=seed)
 
   def get_config(self):
     return {"seed": self.seed, "dtype": self.dtype.name}
@@ -1292,8 +1291,7 @@ class GlorotNormal(VarianceScaling):
         scale=1.0,
         mode="fan_avg",
         distribution="truncated_normal",
-        seed=seed,
-        dtype=dtype)
+        seed=seed)
 
   def get_config(self):
     return {"seed": self.seed, "dtype": self.dtype.name}
