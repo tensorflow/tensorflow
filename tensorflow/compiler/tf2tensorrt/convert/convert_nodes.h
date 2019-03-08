@@ -565,12 +565,6 @@ class Converter {
   std::vector<std::pair<nvinfer1::ITensor*, nvinfer1::ITensor*>>
       quantization_infer_;
 
-  // This map keeps track of whether an IConstantLayer has been created for a
-  // specific weight. We can then reuse the existing IConstantLayer rather than
-  // duplicating it. The key to this map is TRT_ShapedWeights::GetValues() and
-  // the value is the output of the IConstantLayer.
-  std::unordered_map<const void*, nvinfer1::ITensor*> weights_to_const_layers_;
-
   const TrtPrecisionMode precision_mode_;
 
   const bool use_calibration_;

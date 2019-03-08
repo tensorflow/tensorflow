@@ -360,42 +360,8 @@ Status Converter::GetTrtBroadcastShape(
   return Status::OK();
 }
 
-inline bool DimsEqual(const nvinfer1::Dims& dim_l,
-                      const nvinfer1::Dims& dim_r) {
-  if (dim_l.nbDims != dim_r.nbDims) {
-    return false;
-  }
-  for (int i = 0; i < dim_l.nbDims; i++) {
-    if (dim_l.d[i] != dim_r.d[i]) {
-      return false;
-    }
-  }
-  return true;
-}
-
 nvinfer1::ITensor* Converter::CreateConstantLayer(
     const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
-  // Check if we have already created a constant for this particular weight.
-  const auto iter = weights_to_const_layers_.find(weights.GetValues());
-  if (iter != weights_to_const_layers_.end()) {
-    if (DimsEqual(iter->second->getDimensions(), dims)) {
-      return iter->second;
-    } else {
-      // Reshape if dims don't match.
-      const nvinfer1::ITensor* reshaped_constant = nullptr;
-      Status status = PrepareTensorForShape(TRT_TensorOrWeights(iter->second),
-                                            dims, &reshaped_constant);
-      if (status.ok()) {
-        return const_cast<nvinfer1::ITensor*>(reshaped_constant);
-      } else {
-        // Reshape failed for some reason. We will just build a new constant
-        // from scratch in this case.
-        VLOG(1) << "Could not reshape cached constant, creating new "
-                   "IConstantLayer. Reason: "
-                << status.error_message();
-      }
-    }
-  }
   nvinfer1::Weights trt_weights = weights.GetTrtWeights();
   nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
   if (!layer) return nullptr;
@@ -409,15 +375,6 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   // Add to cache.
   weights_to_const_layers_[weights.GetValues()] = trt_tensor;
   return trt_tensor;
-}
-
-// TODO(tmorris): Use this in more ops where we allow want to allow weights or
-// tensors for an input.
-// TODO(tmorris): Add a caching mechanism so many constant layers are not
-// created for the same weights.
-nvinfer1::ITensor* Converter::GetAsTensor(const TRT_TensorOrWeights& input) {
-  if (input.is_tensor()) return const_cast<nvinfer1::ITensor*>(input.tensor());
-  return CreateConstantLayer(input.weights(), input.GetTrtDims());
 }
 
 Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
@@ -464,6 +421,19 @@ Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
   // Remove batch dimension.
   *trt_axis = tf_axis - 1;
   return Status::OK();
+}
+
+inline bool DimsEqual(const nvinfer1::Dims& dim_l,
+                      const nvinfer1::Dims& dim_r) {
+  if (dim_l.nbDims != dim_r.nbDims) {
+    return false;
+  }
+  for (int i = 0; i < dim_l.nbDims; i++) {
+    if (dim_l.d[i] != dim_r.d[i]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 bool AllLengthsEqual(const std::vector<std::vector<int>>& inputs) {
@@ -771,6 +741,11 @@ bool TFAttrs::get<bool>(const string& key) const {
 
 template <>
 int64 TFAttrs::get<int64>(const string& key) const {
+  return this->at(key)->i();
+}
+
+template <>
+int TFAttrs::get<int>(const string& key) const {
   return this->at(key)->i();
 }
 
@@ -3503,15 +3478,7 @@ Status ConvertPad(OpConverterParams* params) {
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  // TODO(tmorris): There is a bug with Concat and INT32 in TRT - it is supposed
-  // to be supported.
-  TF_RETURN_IF_ERROR(
-      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   TFAttrs attrs(node_def);
-  if (inputs.size() < 3) {
-    return errors::InvalidArgument("ConcatV2 expects at least 3 inputs, at ",
-                                   node_def.name());
-  }
   // Get number of tensor inputs.
   const int num_inputs = attrs.get<int>("N");
   if (num_inputs != static_cast<int>(inputs.size()) - 1) {
@@ -3519,34 +3486,26 @@ Status ConvertConcat(OpConverterParams* params) {
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
         node_def.name());
   }
-  // Get axis.
-  if (!inputs.at(num_inputs).is_weights()) {
-    return errors::Unimplemented("The input \"axis\" for ", node_def.op(),
-                                 " must be a constant, at ", node_def.name());
+  // Validate inputs. Values must be tensors for now.
+  std::vector<std::pair<string, bool>> inputs_is_weight;
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs_is_weight.push_back({StrCat("values_", i), false});
   }
-  auto index_type = attrs.get<DataType>("Tidx");
-  int tf_axis = 0;
-  // TODO(tmorris): Add a helper method for this check and make sure we check
-  // int32 vs int64 in other ops.
-  if (index_type == DataType::DT_INT32) {
-    auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
-    if (axis.size() != 1) {
-      return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
-                                     node_def.name());
-    }
-    tf_axis = axis[0];
-  } else if (index_type == DataType::DT_INT64) {
-    auto axis = inputs.at(num_inputs).weights().GetSpan<int64>();
-    if (axis.size() != 1) {
-      return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
-                                     node_def.name());
-    }
-    tf_axis = static_cast<int>(axis[0]);
+  inputs_is_weight.push_back({"axis", true});
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
+  // TODO(tmorris): There is a bug with Concat and INT32 in TRT - it is supposed
+  // to be supported.
+  TF_RETURN_IF_ERROR(
+      AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  const auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
+  if (axis.size() != 1) {
+    return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
+                                    node_def.name());
   }
   int trt_axis = 0;
-  auto dim = inputs.at(0).GetTrtDims();
+  const auto dim = inputs.at(0).GetTrtDims();
   TF_RETURN_IF_ERROR(
-      ConvertAxis(tf_axis, dim.nbDims, node_def.name(), &trt_axis));
+      ConvertAxis(axis[0], dim.nbDims, node_def.name(), &trt_axis));
   // Check that dimensions match on non-concatenate axis.
   for (int i = 0; i < num_inputs; i++) {
     auto dim_i = inputs.at(i).GetTrtDims();
@@ -3568,8 +3527,7 @@ Status ConvertConcat(OpConverterParams* params) {
   // Gather inputs as tensors
   std::vector<nvinfer1::ITensor const*> input_tensors;
   for (int i = 0; i < num_inputs; i++) {
-    input_tensors.push_back(params->converter->GetAsTensor(inputs.at(i)));
-    TFTRT_RETURN_ERROR_IF_NULLPTR(input_tensors.back(), node_def.name());
+    input_tensors.push_back(inputs.at(i).tensor());
   }
   nvinfer1::IConcatenationLayer* layer =
       params->converter->network()->addConcatenation(
