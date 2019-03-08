@@ -40,7 +40,6 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
@@ -533,15 +532,12 @@ def collect_per_output_metric_info(metrics,
       For instance, if the model has 2 outputs, and for the first output
       we want to compute "binary_accuracy" and "binary_crossentropy",
       and just "binary_accuracy" for the second output,
-      the list would look like: `[
-        {
-          'acc': (binary_accuracy(), mean_obj_1),
-          'ce': (binary_crossentropy(), mean_obj_2)
-        },
-        {
-          'acc': (binary_accuracy(), mean_obj_3)
-        }
-      ]`
+      the list would look like: `[{
+          'acc': binary_accuracy(),
+          'ce': binary_crossentropy(),
+        }, {
+          'acc': binary_accuracy(),
+        }]`
 
   Raises:
       TypeError: if an incorrect type is passed for the `metrics` argument.
@@ -585,18 +581,11 @@ def collect_per_output_metric_info(metrics,
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
 
-      # If the metric function is not stateful, we create a stateful version and
-      # return both the stateless and the stateful version together. For batch
-      # APIs like `train_on_batch` we will use the stateless version and for
-      # other APIs like `fit` we will use the stateful version.
-      is_stateful = isinstance(metric_fn,
-                               base_layer.Layer) and metric_fn.stateful
-      stateful_fn = metric_fn
-      if not is_stateful:
-        stateful_fn = metrics_module.MeanMetricWrapper(
+      # If the metric function is not stateful, we create a stateful version.
+      if not isinstance(metric_fn, metrics_module.Metric):
+        metric_fn = metrics_module.MeanMetricWrapper(
             metric_fn, name=metric_name)
-
-      metrics_dict[metric_name] = (metric_fn, stateful_fn)
+      metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
   return per_output_metrics
