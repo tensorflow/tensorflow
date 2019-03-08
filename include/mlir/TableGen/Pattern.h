@@ -162,6 +162,9 @@ public:
   // value.
   bool isReplaceWithValue() const;
 
+  // Returns true if this DAG node is the `verifyUnusedValue` directive.
+  bool isVerifyUnusedValue() const;
+
   // Returns true if this DAG construct is meant to invoke a native code
   // constructor.
   bool isNativeCodeBuilder() const;

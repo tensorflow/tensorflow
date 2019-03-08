@@ -162,6 +162,11 @@ bool tblgen::DagNode::isReplaceWithValue() const {
   return dagOpDef->getName() == "replaceWithValue";
 }
 
+bool tblgen::DagNode::isVerifyUnusedValue() const {
+  auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
+  return dagOpDef->getName() == "verifyUnusedValue";
+}
+
 bool tblgen::DagNode::isNativeCodeBuilder() const {
   auto *dagOpDef = cast<llvm::DefInit>(node->getOperator())->getDef();
   return dagOpDef->isSubClassOf("cOp");

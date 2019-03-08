@@ -95,6 +95,10 @@ private:
   // replacement.
   std::string handleReplaceWithValue(DagNode tree);
 
+  // Handles the `verifyUnusedValue` directive: emitting C++ statements to check
+  // the `index`-th result of the source op is not used.
+  void handleVerifyUnusedValue(DagNode tree, int index);
+
   // Emits the C++ statement to build a new op out of the given DAG `tree` and
   // returns the variable name that this op is assigned to. If `treeName` is not
   // empty, the created op will be assigned to a variable of the given
@@ -267,11 +271,18 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
   // Emit the heading.
   os << R"(
   PatternMatchResult match(Instruction *op0) const override {
-    // TODO: This just handle 1 result
-    if (op0->getNumResults() != 1) return matchFailure();
     auto ctx = op0->getContext(); (void)ctx;
     auto state = std::make_unique<MatchedState>();)"
      << "\n";
+
+  // The rewrite pattern may specify that certain outputs should be unused in
+  // the source IR. Check it here.
+  for (int i = 0, e = pattern.getNumResults(); i < e; ++i) {
+    DagNode resultTree = pattern.getResultPattern(i);
+    if (resultTree.isVerifyUnusedValue()) {
+      handleVerifyUnusedValue(resultTree, i);
+    }
+  }
 
   for (auto &res : pattern.getSourcePatternBoundResults())
     os.indent(4) << formatv("mlir::Instruction* {0}; (void){0};\n",
@@ -311,6 +322,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
           "Pattern constraints have to be either a type or native constraint");
     }
   }
+
   os.indent(4) << "return matchSuccess(std::move(state));\n  }\n";
 }
 
@@ -351,10 +363,9 @@ void PatternEmitter::emit(StringRef rewriteName) {
 }
 
 void PatternEmitter::emitRewriteMethod() {
-  if (pattern.getNumResults() != 1)
-    PrintFatalError("only single result rules supported");
-
-  DagNode resultTree = pattern.getResultPattern(0);
+  unsigned numResults = pattern.getNumResults();
+  if (numResults == 0)
+    PrintFatalError(loc, "must provide at least one result pattern");
 
   os << R"(
   void rewrite(Instruction *op, std::unique_ptr<PatternState> state,
@@ -363,10 +374,18 @@ void PatternEmitter::emitRewriteMethod() {
     auto loc = op->getLoc(); (void)loc;
 )";
 
-  std::string resultValue =
-      handleRewritePattern(resultTree, /*resultIndex=*/0, /*depth=*/0);
+  // Collect the replacement value for each result
+  llvm::SmallVector<std::string, 2> resultValues;
+  for (unsigned i = 0; i < numResults; ++i) {
+    DagNode resultTree = pattern.getResultPattern(i);
+    resultValues.push_back(handleRewritePattern(resultTree, i, 0));
+  }
 
-  os.indent(4) << "rewriter.replaceOp(op, {" << resultValue;
+  // Emit the final replaceOp() statement
+  os.indent(4) << "rewriter.replaceOp(op, {";
+  interleave(
+      resultValues, [&](const std::string &name) { os << name; },
+      [&]() { os << ", "; });
   os << "});\n  }\n";
 }
 
@@ -379,6 +398,20 @@ std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
                                                  llvm::StringRef treeName) {
   if (resultTree.isNativeCodeBuilder())
     return emitReplaceWithNativeBuilder(resultTree);
+
+  if (resultTree.isVerifyUnusedValue()) {
+    if (depth > 0) {
+      // TODO: Revisit this when we have use cases of matching an intermediate
+      // multi-result op with no uses of its certain results.
+      PrintFatalError(loc, "verifyUnusedValue directive can only be used to "
+                           "verify top-level result");
+    }
+    // The C++ statements to check that this result value is unused are already
+    // emitted in the match() method. So returning a nullptr here directly
+    // should be safe because the C++ RewritePattern harness will use it to
+    // replace nothing.
+    return "nullptr";
+  }
 
   if (resultTree.isReplaceWithValue())
     return handleReplaceWithValue(resultTree);
@@ -400,17 +433,29 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
   return boundArgNameInRewrite(name).str();
 }
 
+void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
+  assert(tree.isVerifyUnusedValue());
+
+  os.indent(4) << "if (!op0->getResult(" << index
+               << ")->use_empty()) return matchFailure();\n";
+}
+
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
                                          int depth, StringRef treeName) {
   Operator &resultOp = tree.getDialectOp(opMap);
-  auto numOpArgs =
-      resultOp.getNumOperands() + resultOp.getNumNativeAttributes();
+  auto numOpArgs = resultOp.getNumArgs();
 
   if (numOpArgs != tree.getNumArgs()) {
     PrintFatalError(loc, formatv("resultant op '{0}' argument number mismatch: "
                                  "{1} in pattern vs. {2} in definition",
                                  resultOp.getOperationName(), tree.getNumArgs(),
                                  numOpArgs));
+  }
+
+  if (resultOp.getNumResults() > 1) {
+    PrintFatalError(
+        loc, formatv("generating multiple-result op '{0}' is unsupported now",
+                     resultOp.getOperationName()));
   }
 
   // A map to collect all nested DAG child nodes' names, with operand index as
