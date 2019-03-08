@@ -93,6 +93,18 @@ private:
 /// BlockHandle.
 class NestedBuilder {
 protected:
+  NestedBuilder() = default;
+  NestedBuilder(const NestedBuilder &) = delete;
+  NestedBuilder(NestedBuilder &&other) : bodyScope(other.bodyScope) {
+    other.bodyScope = nullptr;
+  }
+
+  NestedBuilder &operator=(const NestedBuilder &) = delete;
+  NestedBuilder &operator=(NestedBuilder &&other) {
+    std::swap(bodyScope, other.bodyScope);
+    return *this;
+  }
+
   /// Enter an mlir::Block and setup a ScopedContext to insert instructions at
   /// the end of it. Since we cannot use c++ language-level scoping to implement
   /// scoping itself, we use enter/exit pairs of instructions.
@@ -138,6 +150,11 @@ public:
   /// *only* way to capture the loop induction variable.
   LoopBuilder(ValueHandle *iv, ArrayRef<ValueHandle> lbHandles,
               ArrayRef<ValueHandle> ubHandles, int64_t step);
+  LoopBuilder(const LoopBuilder &) = delete;
+  LoopBuilder(LoopBuilder &&) = default;
+
+  LoopBuilder &operator=(const LoopBuilder &) = delete;
+  LoopBuilder &operator=(LoopBuilder &&) = default;
 
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `stmts` (which build IR snippets in a scoped fashion) is

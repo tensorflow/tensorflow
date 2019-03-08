@@ -7,6 +7,7 @@
 #include <unordered_map>
 
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir-c/Core.h"
+#include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/Builders.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/MLIREmitter.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/Types.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/ExecutionEngine/ExecutionEngine.h"
@@ -177,6 +178,25 @@ struct ContextManager {
   mlir::edsc::ScopedEDSCContext *context;
 };
 
+struct PythonFunctionContext {
+  PythonFunctionContext(PythonFunction f) : function(f) {}
+
+  void enter() {
+    assert(function.function && "function is not set up");
+    assert(context);
+    context = new mlir::edsc::ScopedContext(
+        static_cast<mlir::Function *>(function.function));
+  }
+
+  void exit(py::object, py::object, py::object) {
+    delete context;
+    context = nullptr;
+  }
+
+  PythonFunction function;
+  mlir::edsc::ScopedContext *context;
+};
+
 struct PythonExpr {
   PythonExpr() : expr{nullptr} {}
   PythonExpr(const PythonBindable &bindable);
@@ -187,6 +207,92 @@ struct PythonExpr {
     return Expr(*this).str();
   }
   edsc_expr_t expr;
+};
+
+struct PythonValueHandle {
+  PythonValueHandle(PythonType type)
+      : value(mlir::Type::getFromOpaquePointer(type.type)) {}
+  PythonValueHandle(const PythonValueHandle &other) = default;
+  PythonValueHandle(const mlir::edsc::ValueHandle &other) : value(other) {}
+  operator ValueHandle() const { return value; }
+  operator ValueHandle &() { return value; }
+
+  std::string str() const {
+    return std::to_string(reinterpret_cast<intptr_t>(value.getValue()));
+  }
+
+  mlir::edsc::ValueHandle value;
+};
+
+struct PythonLoopContext {
+  PythonLoopContext(PythonValueHandle lb, PythonValueHandle ub, int64_t step)
+      : lb(lb), ub(ub), step(step) {}
+  PythonLoopContext(const PythonLoopContext &) = delete;
+  PythonLoopContext(PythonLoopContext &&) = default;
+  PythonLoopContext &operator=(const PythonLoopContext &) = delete;
+  PythonLoopContext &operator=(PythonLoopContext &&) = default;
+  ~PythonLoopContext() { assert(!builder && "did not exit from the context"); }
+
+  PythonValueHandle enter() {
+    ValueHandle iv(lb.value.getType());
+    builder = new LoopBuilder(&iv, lb.value, ub.value, step);
+    return iv;
+  }
+
+  void exit(py::object, py::object, py::object) {
+    (*builder)({}); // exit from the builder's scope.
+    delete builder;
+    builder = nullptr;
+  }
+
+  PythonValueHandle lb, ub;
+  int64_t step;
+  LoopBuilder *builder = nullptr;
+};
+
+struct PythonLoopNestContext {
+  PythonLoopNestContext(const std::vector<PythonValueHandle> &lbs,
+                        const std::vector<PythonValueHandle> &ubs,
+                        const std::vector<int64_t> steps)
+      : lbs(lbs), ubs(ubs), steps(steps) {
+    assert(lbs.size() == ubs.size() && lbs.size() == steps.size() &&
+           "expected the same number of lower, upper bounds, and steps");
+  }
+  PythonLoopNestContext(const PythonLoopNestContext &) = delete;
+  PythonLoopNestContext(PythonLoopNestContext &&) = default;
+  PythonLoopNestContext &operator=(const PythonLoopNestContext &) = delete;
+  PythonLoopNestContext &operator=(PythonLoopNestContext &&) = default;
+  ~PythonLoopNestContext() {
+    assert(!builder && "did not exit from the context");
+  }
+
+  std::vector<PythonValueHandle> enter() {
+    if (steps.empty())
+      return {};
+
+    auto type = mlir_type_t(lbs.front().value.getType().getAsOpaquePointer());
+    std::vector<PythonValueHandle> handles(steps.size(),
+                                           PythonValueHandle(type));
+    std::vector<ValueHandle *> handlePtrs;
+    handlePtrs.reserve(steps.size());
+    for (auto &h : handles)
+      handlePtrs.push_back(&h.value);
+    builder = new LoopNestBuilder(
+        handlePtrs, std::vector<ValueHandle>(lbs.begin(), lbs.end()),
+        std::vector<ValueHandle>(ubs.begin(), ubs.end()), steps);
+    return handles;
+  }
+
+  void exit(py::object, py::object, py::object) {
+    (*builder)({}); // exit from the builder's scope.
+    delete builder;
+    builder = nullptr;
+  }
+
+  std::vector<PythonValueHandle> lbs;
+  std::vector<PythonValueHandle> ubs;
+  std::vector<int64_t> steps;
+  LoopNestBuilder *builder = nullptr;
 };
 
 struct PythonBindable : public PythonExpr {
@@ -226,6 +332,17 @@ struct PythonBlock {
   PythonBlock set(const py::list &stmts);
 
   edsc_block_t blk;
+};
+
+struct PythonBlockHandle {
+  PythonBlockHandle() : value(nullptr) {}
+  PythonBlockHandle(const PythonBlockHandle &other) = default;
+  PythonBlockHandle(const mlir::edsc::BlockHandle &other) : value(other) {}
+  operator mlir::edsc::BlockHandle() const { return value; }
+
+  std::string str() const { return "^block"; }
+
+  mlir::edsc::BlockHandle value;
 };
 
 struct PythonAttribute {
@@ -650,6 +767,26 @@ PYBIND11_MODULE(pybind, m) {
                   makeCExprs(owningUBs, ubs), makeCExprs(owningSteps, steps),
                   makeCStmts(owningStmts, stmts)));
   });
+
+  py::class_<PythonLoopContext>(
+      m, "LoopContext", "A context for building the body of a 'for' loop")
+      .def(py::init<PythonValueHandle, PythonValueHandle, int64_t>())
+      .def("__enter__", &PythonLoopContext::enter)
+      .def("__exit__", &PythonLoopContext::exit);
+
+  py::class_<PythonLoopNestContext>(m, "LoopNestContext",
+                                    "A context for building the body of a the "
+                                    "innermost loop in a nest of 'for' loops")
+      .def(py::init<const std::vector<PythonValueHandle> &,
+                    const std::vector<PythonValueHandle> &,
+                    const std::vector<int64_t> &>())
+      .def("__enter__", &PythonLoopNestContext::enter)
+      .def("__exit__", &PythonLoopNestContext::exit);
+
+  m.def("IdxCst", [](int64_t val) -> PythonValueHandle {
+    return ValueHandle(index_t(val));
+  });
+
   m.def("Max", [](const py::list &args) {
     SmallVector<edsc_expr_t, 8> owning;
     return PythonMaxExpr(::Max(makeCExprs(owning, args)));
@@ -817,6 +954,38 @@ PYBIND11_MODULE(pybind, m) {
       .def(py::init<>())
       .def("__enter__", &ContextManager::enter)
       .def("__exit__", &ContextManager::exit);
+
+  py::class_<PythonFunctionContext>(
+      m, "FunctionContext", "A wrapper around mlir::edsc::ScopedContext")
+      .def(py::init<PythonFunction>())
+      .def("__enter__", &PythonFunctionContext::enter)
+      .def("__exit__", &PythonFunctionContext::exit);
+
+  {
+    using namespace mlir::edsc::op;
+    py::class_<PythonValueHandle>(m, "ValueHandle",
+                                  "A wrapper around mlir::edsc::ValueHandle")
+        .def(py::init<PythonType>())
+        .def(py::init<PythonValueHandle>())
+        .def("__add__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value + rhs.value; })
+        .def("__sub__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value - rhs.value; })
+        .def("__mul__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value * rhs.value; })
+        .def("__div__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value / rhs.value; })
+        .def("__truediv__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value / rhs.value; })
+        .def("__mod__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value % rhs.value; });
+  }
 
   py::class_<MLIRFunctionEmitter>(
       m, "MLIRFunctionEmitter",

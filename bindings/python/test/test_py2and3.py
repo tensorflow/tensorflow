@@ -17,6 +17,59 @@ class EdscTest(unittest.TestCase):
     self.f32Type = self.module.make_scalar_type("f32")
     self.indexType = self.module.make_index_type()
 
+  def testLoopContext(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      lhs = E.IdxCst(0)
+      rhs = E.IdxCst(42)
+      with E.LoopContext(lhs, rhs, 1) as i:
+        lhs + rhs + i
+        with E.LoopContext(rhs, rhs + rhs, 2) as j:
+          x = i + j
+    code = str(fun)
+    # TODO(zinenko,ntv): use FileCheck for these tests
+    self.assertIn(
+        '  "for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)} : () -> () {\n',
+        code)
+    self.assertIn("  ^bb1(%i0: index):", code)
+    self.assertIn(
+        '    "for"(%c42, %2) {lower_bound: (d0) -> (d0), step: 2 : index, upper_bound: (d0) -> (d0)} : (index, index) -> () {\n',
+        code)
+    self.assertIn("    ^bb2(%i1: index):", code)
+    self.assertIn(
+        '      %3 = "affine.apply"(%i0, %i1) {map: (d0, d1) -> (d0 + d1)} : (index, index) -> index',
+        code)
+
+  def testLoopNestContext(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      lbs = [E.IdxCst(i) for i in range(4)]
+      ubs = [E.IdxCst(10 * i + 5) for i in range(4)]
+      with E.LoopNestContext(lbs, ubs, [1, 3, 5, 7]) as (i, j, k, l):
+        i + j + k + l
+
+    code = str(fun)
+    self.assertIn(
+        ' "for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (5)} : () -> () {\n',
+        code)
+    self.assertIn("  ^bb1(%i0: index):", code)
+    self.assertIn(
+        '    "for"() {lower_bound: () -> (1), step: 3 : index, upper_bound: () -> (15)} : () -> () {\n',
+        code)
+    self.assertIn("    ^bb2(%i1: index):", code)
+    self.assertIn(
+        '      "for"() {lower_bound: () -> (2), step: 5 : index, upper_bound: () -> (25)} : () -> () {\n',
+        code)
+    self.assertIn("      ^bb3(%i2: index):", code)
+    self.assertIn(
+        '        "for"() {lower_bound: () -> (3), step: 7 : index, upper_bound: () -> (35)} : () -> () {\n',
+        code)
+    self.assertIn("        ^bb4(%i3: index):", code)
+    self.assertIn(
+        '          %2 = "affine.apply"(%i0, %i1, %i2, %i3) {map: (d0, d1, d2, d3) -> (d0 + d1 + d2 + d3)} : (index, index, index, index) -> index',
+        code)
+
+
   def testBindables(self):
     with E.ContextManager():
       i = E.Expr(E.Bindable(self.i32Type))
