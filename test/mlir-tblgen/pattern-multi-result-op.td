@@ -25,3 +25,25 @@ def : Pattern<(ThreeResultOp $input), [
 // CHECK: 	auto vOneResultOp1 = rewriter.create<OneResultOp>(
 // CHECK: 	auto vOneResultOp2 = rewriter.create<OneResultOp>(
 // CHECK: 	rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1, vOneResultOp2});
+
+def : Pattern<(ThreeResultOp $input), [
+        (OneResultOp (OneResultOp:$interm $input)),
+        (OneResultOp $interm),
+        (OneResultOp (OneResultOp $interm))
+      ]>;
+
+// CHECK-LABEL: struct GeneratedConvert1
+
+// CHECK:      void rewrite(
+// CHECK:        auto interm = rewriter.create<OneResultOp>(
+// CHECK-NEXT:     /*input=*/s.input
+// CHECK:        auto vOneResultOp0 = rewriter.create<OneResultOp>(
+// CHECK-NEXT:     /*input=*/interm
+// CHECK:        auto vOneResultOp1 = rewriter.create<OneResultOp>(
+// CHECK-NEXT:     /*input=*/interm
+// CHECK:        auto vOneResultOp2 = rewriter.create<OneResultOp>(
+// CHECK-NEXT:     /*input=*/interm
+// CHECK:        auto vOneResultOp3 = rewriter.create<OneResultOp>(
+// CHECK-NEXT:     /*input=*/vOneResultOp2
+// CHECK:        rewriter.replaceOp(op, {vOneResultOp0, vOneResultOp1, vOneResultOp3});
+

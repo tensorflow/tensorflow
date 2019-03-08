@@ -85,7 +85,7 @@ private:
   // dispatches to concrete handlers. The given tree is the `resultIndex`-th
   // argument of the enclosing DAG.
   std::string handleRewritePattern(DagNode resultTree, int resultIndex,
-                                   int depth, llvm::StringRef treeName = "");
+                                   int depth);
 
   // Emits the C++ statement to replace the matched DAG with a native C++ built
   // value.
@@ -100,11 +100,11 @@ private:
   void handleVerifyUnusedValue(DagNode tree, int index);
 
   // Emits the C++ statement to build a new op out of the given DAG `tree` and
-  // returns the variable name that this op is assigned to. If `treeName` is not
-  // empty, the created op will be assigned to a variable of the given
-  // `treeName`. Otherwise, a unique name will be used as the result value name.
-  std::string emitOpCreate(DagNode tree, int resultIndex, int depth,
-                           llvm::StringRef treeName = "");
+  // returns the variable name that this op is assigned to. If the root op in
+  // DAG `tree` has a specified name, the created op will be assigned to a
+  // variable of the given name. Otherwise, a unique name will be used as the
+  // result value name.
+  std::string emitOpCreate(DagNode tree, int resultIndex, int depth);
 
 private:
   // Pattern instantiation location followed by the location of multiclass
@@ -394,8 +394,7 @@ std::string PatternEmitter::getUniqueValueName(const Operator *op) {
 }
 
 std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
-                                                 int resultIndex, int depth,
-                                                 llvm::StringRef treeName) {
+                                                 int resultIndex, int depth) {
   if (resultTree.isNativeCodeBuilder())
     return emitReplaceWithNativeBuilder(resultTree);
 
@@ -416,7 +415,7 @@ std::string PatternEmitter::handleRewritePattern(DagNode resultTree,
   if (resultTree.isReplaceWithValue())
     return handleReplaceWithValue(resultTree);
 
-  return emitOpCreate(resultTree, resultIndex, depth, treeName);
+  return emitOpCreate(resultTree, resultIndex, depth);
 }
 
 std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
@@ -441,7 +440,7 @@ void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
 }
 
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
-                                         int depth, StringRef treeName) {
+                                         int depth) {
   Operator &resultOp = tree.getDialectOp(opMap);
   auto numOpArgs = resultOp.getNumArgs();
 
@@ -467,13 +466,14 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   // This happens in a recursive manner.
   for (unsigned i = 0, e = resultOp.getNumOperands(); i != e; ++i) {
     if (auto child = tree.getArgAsNestedDag(i)) {
-      childNodeNames[i] =
-          handleRewritePattern(child, i, depth + 1, tree.getArgName(i));
+      childNodeNames[i] = handleRewritePattern(child, i, depth + 1);
     }
   }
 
-  std::string resultValue =
-      treeName.empty() ? getUniqueValueName(&resultOp) : treeName.str();
+  // Use the specified name for this op if available. Generate one otherwise.
+  std::string resultValue = tree.getOpName();
+  if (resultValue.empty())
+    resultValue = getUniqueValueName(&resultOp);
 
   // Then we build the new op corresponding to this DAG node.
 
