@@ -76,7 +76,8 @@ FunctionPassBase *createSimplifyAffineStructuresPass();
 /// equal to `localBufSizeThreshold` are promoted to memory space
 /// `fastMemorySpace'.
 FunctionPassBase *createLoopFusionPass(unsigned fastMemorySpace = 0,
-                                       uint64_t localBufSizeThreshold = 0);
+                                       uint64_t localBufSizeThreshold = 0,
+                                       bool maximalFusion = false);
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
@@ -88,7 +89,7 @@ FunctionPassBase *createPipelineDataTransferPass();
 FunctionPassBase *createLowerAffinePass();
 
 /// Creates a pass to perform tiling on loop nests.
-FunctionPassBase *createLoopTilingPass();
+FunctionPassBase *createLoopTilingPass(uint64_t cacheSizeBytes);
 
 /// Promotes all accessed memref regions to the specified faster memory space
 /// while generating DMAs to move data.

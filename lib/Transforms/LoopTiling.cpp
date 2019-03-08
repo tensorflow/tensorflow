@@ -23,12 +23,15 @@
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/LoopAnalysis.h"
+#include "mlir/Analysis/Utils.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Debug.h"
+#include <iomanip>
 
 using namespace mlir;
 
@@ -36,34 +39,53 @@ using namespace mlir;
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
+static llvm::cl::opt<unsigned long long>
+    clCacheSizeKiB("tile-cache-size",
+                   llvm::cl::desc("Set size of cache to tile for in KiB"),
+                   llvm::cl::cat(clOptionsCategory));
+
+// Tile size to use for all loops (overrides -tile-sizes if provided).
+static llvm::cl::opt<unsigned>
+    clTileSize("tile-size", llvm::cl::desc("Use this tile size for all loops"),
+               llvm::cl::cat(clOptionsCategory));
+
 // List of tile sizes. If any of them aren't provided, they are filled with
 // clTileSize / kDefaultTileSize.
 static llvm::cl::list<unsigned> clTileSizes(
     "tile-sizes",
     llvm::cl::desc(
-        "List of tile sizes for each perfect nest (overrides -tile-size)"),
+        "List of tile sizes for each perfect nest (overridden by -tile-size)"),
     llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
 
 namespace {
 
 /// A pass to perform loop tiling on all suitable loop nests of a Function.
 struct LoopTiling : public FunctionPass<LoopTiling> {
-  void runOnFunction() override;
+  explicit LoopTiling(uint64_t cacheSizeBytes = kDefaultCacheMemCapacity,
+                      bool avoidMaxMinBounds = true)
+      : cacheSizeBytes(cacheSizeBytes), avoidMaxMinBounds(avoidMaxMinBounds) {}
 
+  void runOnFunction() override;
+  void getTileSizes(ArrayRef<OpPointer<AffineForOp>> band,
+                    SmallVectorImpl<unsigned> *tileSizes);
+
+  // Default tile size if nothing is provided.
   constexpr static unsigned kDefaultTileSize = 4;
+  constexpr static uint64_t kDefaultCacheMemCapacity = 512 * 1024UL;
+
+  // Capacity of the cache to tile for.
+  uint64_t cacheSizeBytes;
+  // If true, tile sizes are set to avoid max/min in bounds if possible.
+  bool avoidMaxMinBounds;
 };
 
 } // end anonymous namespace
 
-// Tile size to use for all loops (overridden by -tile-sizes if provided).
-static llvm::cl::opt<unsigned>
-    clTileSize("tile-size", llvm::cl::init(LoopTiling::kDefaultTileSize),
-               llvm::cl::desc("Use this tile size for all loops"),
-               llvm::cl::cat(clOptionsCategory));
-
-/// Creates a pass to perform loop tiling on all suitable loop nests of an
+/// Creates a pass to perform loop tiling on all suitable loop nests of a
 /// Function.
-FunctionPassBase *mlir::createLoopTilingPass() { return new LoopTiling(); }
+FunctionPassBase *mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
+  return new LoopTiling(cacheSizeBytes);
+}
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified
 // location in destination's body.
@@ -213,7 +235,7 @@ Status mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
   getIndexSet(band, &cst);
 
   if (!cst.isHyperRectangular(0, width)) {
-    rootAffineForOp->emitError("tiled code generation unimplemented for the"
+    rootAffineForOp->emitError("tiled code generation unimplemented for the "
                                "non-hyperrectangular case");
     return Status::failure();
   }
@@ -253,18 +275,130 @@ getTileableBands(Function *f,
         getMaximalPerfectLoopNest(forOp);
 }
 
+// Reduce each tile size to the largest divisor of the corresponding trip count
+// (if the trip count is known).
+static void adjustToDivisorsOfTripCounts(ArrayRef<OpPointer<AffineForOp>> band,
+                                         SmallVectorImpl<unsigned> *tileSizes) {
+  assert(band.size() == tileSizes->size() && "invalid tile size count");
+  for (unsigned i = 0, e = band.size(); i < e; i++) {
+    unsigned &tSizeAdjusted = (*tileSizes)[i];
+    auto mayConst = getConstantTripCount(band[i]);
+    if (!mayConst.hasValue())
+      continue;
+    // Adjust the tile size to largest factor of the trip count less than
+    // tSize.
+    uint64_t constTripCount = mayConst.getValue();
+    if (tSizeAdjusted > constTripCount / 2)
+      tSizeAdjusted = constTripCount / 2;
+    while (constTripCount % tSizeAdjusted != 0)
+      tSizeAdjusted--;
+  }
+}
+
+// Returns tile sizes to use. Checks CL options; if none are specified, sets it
+// based on a simple model that looks at the memory footprint and determines
+// tile sizes assuming identity accesses / 1:1 tile size proportional footprint
+// along each of the dimensions being tiled.
+// TODO(mlir-team): evolve this model. Tile size determination is a large area
+// to play with in general.
+void LoopTiling::getTileSizes(ArrayRef<OpPointer<AffineForOp>> band,
+                              SmallVectorImpl<unsigned> *tileSizes) {
+  if (band.empty())
+    return;
+
+  tileSizes->resize(band.size());
+
+  // Use clTileSize for all loops if specified.
+  if (clTileSize.getNumOccurrences() > 0) {
+    std::fill(tileSizes->begin(), tileSizes->end(), clTileSize);
+    return;
+  }
+
+  // Use clTileSizes and fill them with default tile size if it's short.
+  if (!clTileSizes.empty()) {
+    std::fill(tileSizes->begin(), tileSizes->end(),
+              LoopTiling::kDefaultTileSize);
+    std::copy(clTileSizes.begin(),
+              clTileSizes.begin() + std::min(clTileSizes.size(), band.size()),
+              tileSizes->begin());
+    return;
+  }
+
+  // The first loop in the band.
+  auto rootForOp = band[0];
+  (void)rootForOp;
+
+  // Obtain memory footprint and set tile sizes so that a tile fits in
+  // the cache size. This is an approximation with the assumption that the
+  // footprint increases with the tile size linearly in that dimension (i.e.,
+  // assumes one-to-one access function).
+  auto fp = getMemoryFootprintBytes(band[0], 0);
+  if (!fp.hasValue()) {
+    // Fill with default tile sizes if footprint is unknown.
+    std::fill(tileSizes->begin(), tileSizes->end(),
+              LoopTiling::kDefaultTileSize);
+    if (avoidMaxMinBounds)
+      adjustToDivisorsOfTripCounts(band, tileSizes);
+    LLVM_DEBUG(
+        rootForOp->emitWarning("memory footprint unknown: using default tile "
+                               "sizes adjusted to trip count divisors"));
+    return;
+  }
+
+  // Check how many times larger the cache size is when compared to footprint.
+  uint64_t excessFactor = llvm::divideCeil(fp.getValue(), cacheSizeBytes);
+  if (excessFactor <= 1) {
+    // No need of any tiling - set tile size to 1.
+    std::fill(tileSizes->begin(), tileSizes->end(), 1);
+    return;
+  }
+
+  // Divide all loops equally in an attempt to reduce footprint.
+  // TODO(bondhugula): this is approximate. Ideally, obtain reuse factor /
+  // profitability along each dimension and weight tile sizes based on that as
+  // one possible approach. Or compute a polynomial in tile sizes and solve for
+  // it.
+
+  // For an n-d tilable band, compute n^th root of the excess.
+  unsigned tSize =
+      static_cast<unsigned>(floorl(std::pow(excessFactor, 1.0 / band.size())));
+  // We'll keep a running product to determine the last tile size better.
+  unsigned cumulProductOfTileSizes = 1;
+  for (unsigned i = 0, e = band.size(); i < e; i++) {
+    if (i < e - 1)
+      (*tileSizes)[i] = tSize;
+    else
+      // Set last tile size to cover the balance.
+      (*tileSizes)[i] = std::max(1UL, excessFactor / cumulProductOfTileSizes);
+    cumulProductOfTileSizes *= (*tileSizes)[i];
+  }
+  if (avoidMaxMinBounds)
+    adjustToDivisorsOfTripCounts(band, tileSizes);
+}
+
 void LoopTiling::runOnFunction() {
+  // Override cache size if provided on command line.
+  if (clCacheSizeKiB.getNumOccurrences() > 0)
+    cacheSizeBytes = clCacheSizeKiB * 1024;
+
+  // Bands of loops to tile.
   std::vector<SmallVector<OpPointer<AffineForOp>, 6>> bands;
   getTileableBands(getFunction(), &bands);
 
   for (auto &band : bands) {
     // Set up tile sizes; fill missing tile sizes at the end with default tile
     // size or clTileSize if one was provided.
-    SmallVector<unsigned, 6> tileSizes(band.size(), clTileSize);
-    std::copy(clTileSizes.begin(),
-              clTileSizes.begin() + std::min(clTileSizes.size(), band.size()),
-              tileSizes.begin());
-
+    SmallVector<unsigned, 6> tileSizes;
+    getTileSizes(band, &tileSizes);
+    if (llvm::DebugFlag) {
+      std::stringstream msg;
+      msg << "using tile sizes [";
+      for (auto tSize : tileSizes)
+        msg << tSize << " ";
+      msg << "]\n";
+      auto rootForOp = band[0];
+      rootForOp->emitNote(msg.str());
+    }
     if (failed(tileCodeGen(band, tileSizes)))
       return signalPassFailure();
   }

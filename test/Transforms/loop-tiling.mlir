@@ -1,4 +1,5 @@
 // RUN: mlir-opt %s -loop-tile -tile-size=32 | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -loop-tile -tile-cache-size=512 | FileCheck %s --check-prefix=MODEL
 
 // CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0) -> (d0 + 32)
 // CHECK-DAG: [[MAP1:#map[0-9]+]] = (d0) -> (d0 + 32, 50)
@@ -68,3 +69,29 @@ func @loop_max_min_bound(%A : memref<? x i32>, %L : index, %U : index) {
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
 }
+
+// -----
+
+// Cache size is set to 512 KiB. This loop nest accesses about 49 MiB, and the
+// tile sizes chosen would be 6 x 6 x 6. However, to avoid min/max, which is
+// possible here, they are adjusted to 4 x 4 x 5.
+
+// MODEL-LABEL: func @simple_matmul
+func @simple_matmul(%arg0: memref<8x8xvector<64xf32>>, %arg1: memref<8x8xvector<64xf32>>, %arg2: memref<8x8xvector<64xf32>>) -> memref<8x8xvector<64xf32>> {
+  for %i = 0 to 256 {
+    for %j = 0 to 256 {
+      for %k = 0 to 250 {
+        %l = load %arg0[%i, %k] : memref<8x8xvector<64xf32>>
+        %r = load %arg1[%k, %j] : memref<8x8xvector<64xf32>>
+        %o = load %arg2[%i, %j] : memref<8x8xvector<64xf32>>
+        %m = mulf %l, %r : vector<64xf32>
+        %a = addf %o, %m : vector<64xf32>
+        store %a, %arg2[%i, %j] : memref<8x8xvector<64xf32>>
+      }
+    }
+  }
+  return %arg2 : memref<8x8xvector<64xf32>>
+}
+// MODEL:       for %i0 = 0 to 256 step 4 {
+// MODEL-NEXT:    for %i1 = 0 to 256 step 4 {
+// MODEL-NEXT:      for %i2 = 0 to 250 step 5 {

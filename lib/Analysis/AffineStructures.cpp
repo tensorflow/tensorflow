@@ -736,7 +736,7 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
     FlatAffineConstraints localVarCst;
     std::vector<SmallVector<int64_t, 8>> flatExprs;
     if (failed(getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst))) {
-      forOp->emitError("semi-affine expressions not yet supported");
+      forOp->emitWarning("semi-affine expressions not yet supported");
       return Status::failure();
     }
     // Set values for localVarCst.
