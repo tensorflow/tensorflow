@@ -538,6 +538,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
+    # TODO(b/127881287): Re-enable.
+    tags = [
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(
@@ -629,6 +633,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    # TODO(b/127881287): Re-enable.
+    tags = [
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(
