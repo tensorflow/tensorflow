@@ -619,7 +619,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
     // Compute the MemRefRegion accessed.
     auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
-    if (!region->compute(opInst, dmaDepth)) {
+    if (failed(region->compute(opInst, dmaDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");
       LLVM_DEBUG(llvm::dbgs() << "over-approximating to the entire memref\n");
@@ -653,7 +653,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
             return false;
 
           // Perform a union with the existing region.
-          if (!it->second->unionBoundingBox(*region)) {
+          if (failed(it->second->unionBoundingBox(*region))) {
             LLVM_DEBUG(llvm::dbgs()
                        << "Memory region bounding box failed; "
                           "over-approximating to the entire memref\n");

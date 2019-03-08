@@ -24,6 +24,7 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/Support/Status.h"
 
 namespace mlir {
 
@@ -378,14 +379,13 @@ public:
   /// Adds constraints (lower and upper bounds) for the specified 'for'
   /// instruction's Value using IR information stored in its bound maps. The
   /// right identifier is first looked up using forOp's Value. Returns
-  /// false for the yet unimplemented/unsupported cases, and true if the
-  /// information is successfully added. Asserts if the Value corresponding to
-  /// the 'for' instruction isn't found in the constraint system. Any new
-  /// identifiers that are found in the bound operands of the 'for' instruction
-  /// are added as trailing identifiers (either dimensional or symbolic
-  /// depending on whether the operand is a valid ML Function symbol).
+  /// failure for the yet unimplemented/unsupported cases. Asserts if the Value
+  /// corresponding to the 'for' instruction isn't found in the constraint
+  /// system. Any new identifiers that are found in the bound operands of the
+  /// 'for' instruction are added as trailing identifiers (either dimensional or
+  /// symbolic depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
-  bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
+  Status addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
 
   /// Computes the lower and upper bounds of the first 'num' dimensional
   /// identifiers as an affine map of the remaining identifiers (dimensional and
@@ -403,9 +403,8 @@ public:
   /// operand list 'operands'.
   /// This function assumes 'values.size' == 'lbMaps.size' == 'ubMaps.size'.
   /// Note that both lower/upper bounds use operands from 'operands'.
-  /// Returns true on success, returns false for unimplemented cases.
-  bool addSliceBounds(ArrayRef<Value *> values, ArrayRef<AffineMap> lbMaps,
-                      ArrayRef<AffineMap> ubMaps, ArrayRef<Value *> operands);
+  Status addSliceBounds(ArrayRef<Value *> values, ArrayRef<AffineMap> lbMaps,
+                        ArrayRef<AffineMap> ubMaps, ArrayRef<Value *> operands);
 
   // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
@@ -457,13 +456,13 @@ public:
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the front [0, vMap->getNumResults())
   /// and with the dimensions set to the equalities specified by the value map.
-  /// Returns false if the composition fails (when vMap is a semi-affine map).
+  /// Returns failure if the composition fails (when vMap is a semi-affine map).
   /// The vMap's operand Value's are used to look up the right positions in
   /// the FlatAffineConstraints with which to associate. The dimensional and
   /// symbolic operands of vMap should match 1:1 (in the same order) with those
   /// of this constraint system, but the latter could have additional trailing
   /// operands.
-  bool composeMap(AffineValueMap *vMap);
+  Status composeMap(AffineValueMap *vMap);
 
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions
@@ -498,8 +497,8 @@ public:
   /// Tries to fold the specified identifier to a constant using a trivial
   /// equality detection; if successful, the constant is substituted for the
   /// identifier everywhere in the constraint system and then removed from the
-  /// system. Returns true if the folding happens, false otherwise.
-  bool constantFoldId(unsigned pos);
+  /// system.
+  Status constantFoldId(unsigned pos);
 
   /// This method calls constantFoldId for the specified range of identifiers,
   /// 'num' identifiers starting at position 'pos'.
@@ -524,7 +523,7 @@ public:
   ///     9}, output = {s0 + 1 <= d0 <= s0 + 20}.
   /// 3) 'this' = {0 <= d0 <= 5, 1 <= d1 <= 9}, 'other' = {2 <= d0 <= 6, 5 <= d1
   ///     <= 15}, output = {0 <= d0 <= 6, 1 <= d1 <= 15}.
-  bool unionBoundingBox(const FlatAffineConstraints &other);
+  Status unionBoundingBox(const FlatAffineConstraints &other);
 
   unsigned getNumConstraints() const {
     return getNumInequalities() + getNumEqualities();
@@ -663,10 +662,12 @@ private:
   Optional<int64_t> computeConstantLowerOrUpperBound(unsigned pos);
 
   // Eliminates a single identifier at 'position' from equality and inequality
-  // constraints. Returns 'true' if the identifier was eliminated, and false
-  // otherwise.
-  inline bool gaussianEliminateId(unsigned position) {
-    return gaussianEliminateIds(position, position + 1) == 1;
+  // constraints. Returns 'success' if the identifier was eliminated, and
+  // 'failure' otherwise.
+  inline Status gaussianEliminateId(unsigned position) {
+    return gaussianEliminateIds(position, position + 1) == 1
+               ? Status::success()
+               : Status::failure();
   }
 
   // Eliminates identifiers from equality and inequality constraints
@@ -746,30 +747,30 @@ private:
 AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
                               unsigned numSymbols);
 
-/// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
-/// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
-/// 'cst' contains constraints that connect newly introduced local identifiers
-/// to existing dimensional and / symbolic identifiers. See documentation for
-/// AffineExprFlattener on how mod's and div's are flattened.
-bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
-                            unsigned numSymbols,
-                            llvm::SmallVectorImpl<int64_t> *flattenedExpr,
-                            FlatAffineConstraints *cst = nullptr);
+/// Flattens 'expr' into 'flattenedExpr'. Returns failure if 'expr' could not be
+/// flattened (i.e., semi-affine is not yet handled). 'cst' contains constraints
+/// that connect newly introduced local identifiers to existing dimensional and
+/// symbolic identifiers. See documentation for AffineExprFlattener on how
+/// mod's and div's are flattened.
+Status getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                              unsigned numSymbols,
+                              llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                              FlatAffineConstraints *cst = nullptr);
 
 /// Flattens the result expressions of the map to their corresponding flattened
-/// forms and set in 'flattenedExprs'. Returns true on success or false
-/// if any expression in the map could not be flattened (i.e., semi-affine is
-/// not yet handled). 'cst' contains constraints that connect newly introduced
-/// local identifiers to existing dimensional and / symbolic identifiers. See
-/// documentation for AffineExprFlattener on how mod's and div's are flattened.
-/// For all affine expressions that share the same operands (like those of an
-/// affine map), this method should be used instead of repeatedly calling
-/// getFlattenedAffineExpr since local variables added to deal with div's and
-/// mod's will be reused across expressions.
-bool getFlattenedAffineExprs(
+/// forms and set in 'flattenedExprs'. Returns failure if any expression in the
+/// map could not be flattened (i.e., semi-affine is not yet handled). 'cst'
+/// contains constraints that connect newly introduced local identifiers to
+/// existing dimensional and / symbolic identifiers. See documentation for
+/// AffineExprFlattener on how mod's and div's are flattened. For all affine
+/// expressions that share the same operands (like those of an affine map), this
+/// method should be used instead of repeatedly calling getFlattenedAffineExpr
+/// since local variables added to deal with div's and mod's will be reused
+/// across expressions.
+Status getFlattenedAffineExprs(
     AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *cst = nullptr);
-bool getFlattenedAffineExprs(
+Status getFlattenedAffineExprs(
     IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *cst = nullptr);
 

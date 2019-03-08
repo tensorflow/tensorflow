@@ -55,7 +55,7 @@ void mlir::getLoopIVs(const Instruction &inst,
 }
 
 // Populates 'cst' with FlatAffineConstraints which represent slice bounds.
-bool ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
+Status ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
   assert(!lbOperands.empty());
   // Adds src 'ivs' as dimension identifiers in 'cst'.
   unsigned numDims = ivs.size();
@@ -80,17 +80,18 @@ bool ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
       }
     } else {
       if (auto loop = getForInductionVarOwner(value)) {
-        if (!cst->addAffineForOpDomain(loop))
-          return false;
+        if (failed(cst->addAffineForOpDomain(loop)))
+          return Status::failure();
       }
     }
   }
 
   // Add slices bounds on 'ivs' using maps 'lbs'/'ubs' with 'lbOperands[0]'
-  bool ret = cst->addSliceBounds(ivs, lbs, ubs, lbOperands[0]);
-  assert(ret && "should not fail as we never have semi-affine slice maps");
+  Status ret = cst->addSliceBounds(ivs, lbs, ubs, lbOperands[0]);
+  assert(succeeded(ret) &&
+         "should not fail as we never have semi-affine slice maps");
   (void)ret;
-  return true;
+  return Status::success();
 }
 
 // Clears state bounds and operand state.
@@ -150,15 +151,14 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
   return numElements;
 }
 
-bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
+Status MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
   assert(memref == other.memref);
   return cst.unionBoundingBox(*other.getConstraints());
 }
 
 /// Computes the memory region accessed by this memref with the region
 /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-/// surrounding opInst and any additional Function symbols. Returns false if
-/// this fails due to yet unimplemented cases.
+/// surrounding opInst and any additional Function symbols.
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
 //
@@ -173,8 +173,8 @@ bool MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 //
 // TODO(bondhugula): extend this to any other memref dereferencing ops
 // (dma_start, dma_wait).
-bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
-                           ComputationSliceState *sliceState) {
+Status MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
+                             ComputationSliceState *sliceState) {
   assert((inst->isa<LoadOp>() || inst->isa<StoreOp>()) &&
          "load/store op expected");
 
@@ -194,7 +194,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
     extractForInductionVars(ivs, &regionSymbols);
     // A rank 0 memref has a 0-d region.
     cst.reset(rank, loopDepth, 0, regionSymbols);
-    return true;
+    return Status::success();
   }
 
   // Build the constraints for this region.
@@ -235,8 +235,8 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       // bounds expressions involve outer loops or other symbols.
       // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
       // conditionals will be handled when the latter supports it.
-      if (!cst.addAffineForOpDomain(loop))
-        return false;
+      if (failed(cst.addAffineForOpDomain(loop)))
+        return Status::failure();
     } else {
       // Has to be a valid symbol.
       auto *symbol = operand;
@@ -269,17 +269,18 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       }
     }
     // Add upper/lower bounds from 'sliceState' to 'cst'.
-    bool ret = cst.addSliceBounds(sliceState->ivs, sliceState->lbs,
-                                  sliceState->ubs, sliceState->lbOperands[0]);
-    assert(ret && "should not fail as we never have semi-affine slice maps");
+    Status ret = cst.addSliceBounds(sliceState->ivs, sliceState->lbs,
+                                    sliceState->ubs, sliceState->lbOperands[0]);
+    assert(succeeded(ret) &&
+           "should not fail as we never have semi-affine slice maps");
     (void)ret;
   }
 
   // Add access function equalities to connect loop IVs to data dimensions.
-  if (!cst.composeMap(&accessValueMap)) {
+  if (failed(cst.composeMap(&accessValueMap))) {
     inst->emitError("getMemRefRegion: compose affine map failed");
     LLVM_DEBUG(accessValueMap.getAffineMap().dump());
-    return false;
+    return Status::failure();
   }
 
   // Set all identifiers appearing after the first 'rank' identifiers as
@@ -315,7 +316,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
   LLVM_DEBUG(cst.dump());
-  return true;
+  return Status::success();
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
@@ -378,8 +379,8 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
 }
 
 template <typename LoadOrStoreOpPointer>
-bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
-                                   bool emitError) {
+Status mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+                                     bool emitError) {
   static_assert(
       std::is_same<LoadOrStoreOpPointer, OpPointer<LoadOp>>::value ||
           std::is_same<LoadOrStoreOpPointer, OpPointer<StoreOp>>::value,
@@ -388,8 +389,8 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
   Instruction *opInst = loadOrStoreOp->getInstruction();
 
   MemRefRegion region(opInst->getLoc());
-  if (!region.compute(opInst, /*loopDepth=*/0))
-    return false;
+  if (failed(region.compute(opInst, /*loopDepth=*/0)))
+    return Status::success();
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region");
   LLVM_DEBUG(region.getConstraints()->dump());
@@ -429,14 +430,14 @@ bool mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
           "memref out of lower bound access along dimension #" + Twine(r + 1));
     }
   }
-  return outOfBounds;
+  return outOfBounds ? Status::failure() : Status::success();
 }
 
 // Explicitly instantiate the template so that the compiler knows we need them!
-template bool mlir::boundCheckLoadOrStoreOp(OpPointer<LoadOp> loadOp,
-                                            bool emitError);
-template bool mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
-                                            bool emitError);
+template Status mlir::boundCheckLoadOrStoreOp(OpPointer<LoadOp> loadOp,
+                                              bool emitError);
+template Status mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
+                                              bool emitError);
 
 // Returns in 'positions' the Block positions of 'inst' in each ancestor
 // Block from the Block containing instruction, stopping at 'limitBlock'.
@@ -486,17 +487,16 @@ const char *const kSliceFusionBarrierAttrName = "slice_fusion_barrier";
 // out any dst loop IVs at depth greater than 'dstLoopDepth', and computes slice
 // bounds in 'sliceState' which represent the src IVs in terms of the dst IVs,
 // symbols and constants.
-bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
-                                            const MemRefAccess &dstAccess,
-                                            unsigned dstLoopDepth,
-                                            ComputationSliceState *sliceState) {
+Status mlir::getBackwardComputationSliceState(
+    const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
+    unsigned dstLoopDepth, ComputationSliceState *sliceState) {
   bool readReadAccesses =
       srcAccess.opInst->isa<LoadOp>() && dstAccess.opInst->isa<LoadOp>();
   FlatAffineConstraints dependenceConstraints;
   if (!checkMemrefAccessDependence(
           srcAccess, dstAccess, /*loopDepth=*/1, &dependenceConstraints,
           /*dependenceComponents=*/nullptr, /*allowRAR=*/readReadAccesses)) {
-    return false;
+    return Status::failure();
   }
   // Get loop nest surrounding src operation.
   SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
@@ -509,7 +509,7 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
   unsigned numDstLoopIVs = dstLoopIVs.size();
   if (dstLoopDepth > numDstLoopIVs) {
     dstAccess.opInst->emitError("invalid destination loop depth");
-    return false;
+    return Status::failure();
   }
 
   // Project out dimensions other than those up to 'dstLoopDepth'.
@@ -560,7 +560,7 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
     break;
   }
 
-  return true;
+  return Status::success();
 }
 
 /// Creates a computation slice of the loop nest surrounding 'srcOpInst',
@@ -711,8 +711,9 @@ static Optional<int64_t> getMemoryFootprintBytes(const Block &block,
 
     // Compute the memref region symbolic in any IVs enclosing this block.
     auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
-    if (!region->compute(opInst,
-                         /*loopDepth=*/getNestingDepth(*block.begin()))) {
+    if (failed(
+            region->compute(opInst,
+                            /*loopDepth=*/getNestingDepth(*block.begin())))) {
       opInst->emitError("Error obtaining memory region\n");
       error = true;
       return;
@@ -720,7 +721,7 @@ static Optional<int64_t> getMemoryFootprintBytes(const Block &block,
     auto it = regions.find(region->memref);
     if (it == regions.end()) {
       regions[region->memref] = std::move(region);
-    } else if (!it->second->unionBoundingBox(*region)) {
+    } else if (failed(it->second->unionBoundingBox(*region))) {
       opInst->emitError("Error performing a union on a memory region\n");
       error = true;
       return;

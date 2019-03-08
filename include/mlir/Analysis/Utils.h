@@ -30,6 +30,7 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/Status.h"
 #include "llvm/ADT/SmallVector.h"
 #include <memory>
 
@@ -45,12 +46,6 @@ class MemRefAccess;
 template <typename T> class OpPointer;
 class Instruction;
 class Value;
-
-/// Returns true if instruction 'a' dominates instruction b.
-bool dominates(const Instruction &a, const Instruction &b);
-
-/// Returns true if instruction 'a' properly dominates instruction b.
-bool properlyDominates(const Instruction &a, const Instruction &b);
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
@@ -88,9 +83,8 @@ struct ComputationSliceState {
   // identifiers and the values in 'lb/ubOperands' are added as symbols.
   // Constraints are added for all loop IV bounds (dim or symbol), and
   // constraints are added for slice bounds in 'lbs'/'ubs'.
-  // Returns true on success, false otherwise (if we cannot add loop bounds
-  // because of unsupported cases).
-  bool getAsConstraints(FlatAffineConstraints *cst);
+  // Returns failure if we cannot add loop bounds because of unsupported cases.
+  Status getAsConstraints(FlatAffineConstraints *cst);
 
   // Clears all bounds and operands in slice state.
   void clearBounds();
@@ -99,11 +93,10 @@ struct ComputationSliceState {
 /// Computes computation slice loop bounds for the loop nest surrounding
 /// 'srcAccess', where the returned loop bound AffineMaps are functions of
 /// loop IVs from the loop nest surrounding 'dstAccess'.
-/// Returns true on success, false otherwise.
-bool getBackwardComputationSliceState(const MemRefAccess &srcAccess,
-                                      const MemRefAccess &dstAccess,
-                                      unsigned dstLoopDepth,
-                                      ComputationSliceState *sliceState);
+Status getBackwardComputationSliceState(const MemRefAccess &srcAccess,
+                                        const MemRefAccess &dstAccess,
+                                        unsigned dstLoopDepth,
+                                        ComputationSliceState *sliceState);
 
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcOpInst', slices the iteration space of src loop based on slice bounds
@@ -139,15 +132,14 @@ struct MemRefRegion {
 
   /// Computes the memory region accessed by this memref with the region
   /// represented as constraints symbolic/parameteric in 'loopDepth' loops
-  /// surrounding opInst. Returns false if this fails due to yet unimplemented
-  /// cases. The computed region's 'cst' field has exactly as many dimensional
-  /// identifiers as the rank of the memref, and *potentially* additional
-  /// symbolic identifiers which could include any of the loop IVs surrounding
-  /// opInst up until 'loopDepth' and another additional Function symbols
-  /// involved with the access (for eg., those appear in affine.apply's, loop
-  /// bounds, etc.). If 'sliceState' is non-null, operands from 'sliceState'
-  /// are added as symbols, and the following constraints are added to the
-  /// system:
+  /// surrounding opInst. The computed region's 'cst' field has exactly as many
+  /// dimensional identifiers as the rank of the memref, and *potentially*
+  /// additional symbolic identifiers which could include any of the loop IVs
+  /// surrounding opInst up until 'loopDepth' and another additional Function
+  /// symbols involved with the access (for eg., those appear in affine.apply's,
+  /// loop bounds, etc.). If 'sliceState' is non-null, operands from
+  /// 'sliceState' are added as symbols, and the following constraints are added
+  /// to the system:
   /// *) Inequality constraints which represent loop bounds for 'sliceState'
   ///    operands which are loop IVS (these represent the destination loop IVs
   ///    of the slice, and are added as symbols to MemRefRegion's constraint
@@ -168,8 +160,8 @@ struct MemRefRegion {
   ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
   /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
   ///
-  bool compute(Instruction *inst, unsigned loopDepth,
-               ComputationSliceState *sliceState = nullptr);
+  Status compute(Instruction *inst, unsigned loopDepth,
+                 ComputationSliceState *sliceState = nullptr);
 
   FlatAffineConstraints *getConstraints() { return &cst; }
   const FlatAffineConstraints *getConstraints() const { return &cst; }
@@ -204,7 +196,7 @@ struct MemRefRegion {
   Optional<int64_t> getRegionSize();
 
   // Wrapper around FlatAffineConstraints::unionBoundingBox.
-  bool unionBoundingBox(const MemRefRegion &other);
+  Status unionBoundingBox(const MemRefRegion &other);
 
   /// Returns the rank of the memref that this region corresponds to.
   unsigned getRank() const;
@@ -234,12 +226,12 @@ struct MemRefRegion {
 /// otherwise.
 Optional<uint64_t> getMemRefSizeInBytes(MemRefType memRefType);
 
-/// Checks a load or store op for an out of bound access; returns true if the
-/// access is out of bounds along any of the dimensions, false otherwise. Emits
-/// a diagnostic error (with location information) if emitError is true.
+/// Checks a load or store op for an out of bound access; returns failure if the
+/// access is out of bounds along any of the dimensions, success otherwise.
+/// Emits a diagnostic error (with location information) if emitError is true.
 template <typename LoadOrStoreOpPointer>
-bool boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
-                             bool emitError = true);
+Status boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+                               bool emitError = true);
 
 /// Returns the number of surrounding loops common to both A and B.
 unsigned getNumCommonSurroundingLoops(const Instruction &A,

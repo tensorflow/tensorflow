@@ -1123,7 +1123,7 @@ static Value *createPrivateMemRef(OpPointer<AffineForOp> forOp,
 
   // Compute MemRefRegion for 'srcStoreOpInst' at depth 'dstLoopDepth'.
   MemRefRegion region(srcStoreOpInst->getLoc());
-  bool validRegion = region.compute(srcStoreOpInst, dstLoopDepth);
+  bool validRegion = succeeded(region.compute(srcStoreOpInst, dstLoopDepth));
   (void)validRegion;
   assert(validRegion && "unexpected memref region failure");
   SmallVector<int64_t, 4> newShape;
@@ -1252,7 +1252,7 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   // Compute MemRefRegion 'srcWriteRegion' for 'srcStoreOpInst' on 'memref'.
   auto *srcStoreOpInst = srcNode->stores.front();
   MemRefRegion srcWriteRegion(srcStoreOpInst->getLoc());
-  if (!srcWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0)) {
+  if (failed(srcWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Unable to compute MemRefRegion for source operation\n.");
     return false;
@@ -1271,7 +1271,7 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   assert(dstStoreOps.size() == 1);
   auto *dstStoreOpInst = dstStoreOps[0];
   MemRefRegion dstWriteRegion(dstStoreOpInst->getLoc());
-  if (!dstWriteRegion.compute(dstStoreOpInst, /*loopDepth=*/0)) {
+  if (failed(dstWriteRegion.compute(dstStoreOpInst, /*loopDepth=*/0))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Unable to compute MemRefRegion for dest operation\n.");
     return false;
@@ -1304,8 +1304,9 @@ static bool getSliceUnion(Instruction *srcOpInst,
   unsigned numDstLoadOpInsts = dstLoadOpInsts.size();
   assert(numDstLoadOpInsts > 0);
   // Compute the slice bounds between 'srcOpInst' and 'dstLoadOpInsts[0]'.
-  if (!mlir::getBackwardComputationSliceState(
-          srcAccess, MemRefAccess(dstLoadOpInsts[0]), dstLoopDepth, sliceState))
+  if (failed(mlir::getBackwardComputationSliceState(
+          srcAccess, MemRefAccess(dstLoadOpInsts[0]), dstLoopDepth,
+          sliceState)))
     return false;
   // Handle the common case of one dst load without a copy.
   if (numDstLoadOpInsts == 1)
@@ -1313,7 +1314,7 @@ static bool getSliceUnion(Instruction *srcOpInst,
 
   // Initialize 'sliceUnionCst' with the bounds computed in previous step.
   FlatAffineConstraints sliceUnionCst;
-  if (!sliceState->getAsConstraints(&sliceUnionCst)) {
+  if (failed(sliceState->getAsConstraints(&sliceUnionCst))) {
     LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bound constraints\n.");
     return false;
   }
@@ -1324,21 +1325,21 @@ static bool getSliceUnion(Instruction *srcOpInst,
     MemRefAccess dstAccess(dstLoadOpInsts[i]);
     // Compute slice bounds for 'srcOpInst' and 'dstLoadOpInsts[i]'.
     ComputationSliceState tmpSliceState;
-    if (!mlir::getBackwardComputationSliceState(srcAccess, dstAccess,
-                                                dstLoopDepth, &tmpSliceState)) {
+    if (failed(mlir::getBackwardComputationSliceState(
+            srcAccess, dstAccess, dstLoopDepth, &tmpSliceState))) {
       LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bounds\n.");
       return false;
     }
 
     // Compute constraints for 'tmpSliceState' in 'tmpSliceCst'.
     FlatAffineConstraints tmpSliceCst;
-    if (!tmpSliceState.getAsConstraints(&tmpSliceCst)) {
+    if (failed(tmpSliceState.getAsConstraints(&tmpSliceCst))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Unable to compute slice bound constraints\n.");
       return false;
     }
     // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
-    if (!sliceUnionCst.unionBoundingBox(tmpSliceCst)) {
+    if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Unable to compute union bounding box of slice bounds.\n.");
       return false;
@@ -1480,7 +1481,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
   // Compute src loop nest write region size.
   MemRefRegion srcWriteRegion(srcStoreOpInst->getLoc());
-  if (!srcWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0)) {
+  if (failed(srcWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0))) {
     LLVM_DEBUG(llvm::dbgs()
                << "Unable to compute MemRefRegion for source instruction\n.");
     return false;
@@ -1563,8 +1564,8 @@ static bool isFusionProfitable(Instruction *srcOpInst,
     // nest slice 'sliceStates[i - 1]' were to be inserted into the dst loop
     // nest at loop depth 'i'
     MemRefRegion sliceWriteRegion(srcStoreOpInst->getLoc());
-    if (!sliceWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0,
-                                  &sliceStates[i - 1])) {
+    if (failed(sliceWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0,
+                                        &sliceStates[i - 1]))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Failed to compute slice write region at loopDepth: " << i
                  << "\n");

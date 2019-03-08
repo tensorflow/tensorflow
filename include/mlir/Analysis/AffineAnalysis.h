@@ -24,6 +24,7 @@
 #ifndef MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
+#include "mlir/Support/Status.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -48,11 +49,11 @@ void getReachableAffineApplyOps(
 /// Builds a system of constraints with dimensional identifiers corresponding to
 /// the loop IVs of the forOps appearing in that order. Bounds of the loop are
 /// used to add appropriate inequalities. Any symbols founds in the bound
-/// operands are added as symbols in the system. Returns false for the yet
+/// operands are added as symbols in the system. Returns failure for the yet
 /// unimplemented cases.
 //  TODO(bondhugula): handle non-unit strides.
-bool getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
-                 FlatAffineConstraints *domain);
+Status getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
+                   FlatAffineConstraints *domain);
 
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
@@ -92,8 +93,8 @@ struct DependenceComponent {
 /// Checks whether two accesses to the same memref access the same element.
 /// Each access is specified using the MemRefAccess structure, which contains
 /// the operation instruction, indices and memref associated with the access.
-/// Returns 'false' if it can be determined conclusively that the accesses do
-/// not access the same memref element. Returns 'true' otherwise.
+/// Returns 'success' if it can be determined conclusively that the accesses do
+/// not access the same memref element.
 /// If 'allowRAR' is true, will consider read-after-read dependences (typically
 /// used by applications trying to optimize input reuse).
 // TODO(andydavis) Wrap 'dependenceConstraints' and 'dependenceComponents' into
