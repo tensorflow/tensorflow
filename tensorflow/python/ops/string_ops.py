@@ -193,7 +193,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
 
 
 @tf_export("string_split")
-def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
+def string_split(source, delimiter=" ", skip_empty=True, maxsplit=-1):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
@@ -243,7 +243,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
 
 
 @tf_export("strings.split")
-def string_split_v2(source, sep=None, maxsplit=-1):
+def string_split_v2(source, sep=None, skip_empty=True,  maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
@@ -289,12 +289,11 @@ def string_split_v2(source, sep=None, maxsplit=-1):
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
   indices, values, shape = gen_string_ops.string_split_v2(
-      source, sep=sep, maxsplit=maxsplit)
+      source, sep=sep, skip_empty=skip_empty, maxsplit=maxsplit)
   indices.set_shape([None, 2])
   values.set_shape([None])
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
-
 
 def _reduce_join_reduction_dims(x, axis, reduction_indices):
   """Returns range(rank(x) - 1, 0, -1) if reduction_indices is None."""
