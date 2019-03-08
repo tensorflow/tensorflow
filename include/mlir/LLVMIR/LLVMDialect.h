@@ -60,8 +60,6 @@ public:
   static LLVMType get(MLIRContext *context, llvm::Type *llvmType);
 
   llvm::Type *getUnderlyingType() const;
-
-  static char typeID;
 };
 } // end namespace LLVM
 

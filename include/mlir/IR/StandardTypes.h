@@ -88,9 +88,6 @@ public:
 
   /// Support method to enable LLVM-style type casting.
   static bool kindof(unsigned kind) { return kind == StandardTypes::Index; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 /// Integer types can have arbitrary bitwidth up to a large fixed limit.
@@ -120,9 +117,6 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) { return kind == StandardTypes::Integer; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 
   /// Integer representation maximal bitwidth.
   static constexpr unsigned kMaxWidth = 4096;
@@ -181,9 +175,6 @@ public:
 
   /// Return the floating semantics of this float type.
   const llvm::fltSemantics &getFloatSemantics() const;
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 /// This is a common base class between Vector, UnrankedTensor, and RankedTensor
@@ -270,9 +261,6 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) { return kind == StandardTypes::Vector; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 /// Tensor types represent multi-dimensional arrays, and have two variants:
@@ -330,9 +318,6 @@ public:
   static bool kindof(unsigned kind) {
     return kind == StandardTypes::RankedTensor;
   }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 /// Unranked tensor types represent multi-dimensional arrays that have an
@@ -363,9 +348,6 @@ public:
   static bool kindof(unsigned kind) {
     return kind == StandardTypes::UnrankedTensor;
   }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 /// MemRef types represent a region of memory that have a shape with a fixed
@@ -429,9 +411,6 @@ public:
   bool hasStaticShape() const { return getNumDynamicDims() == 0; }
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 
 private:
   /// Get or create a new MemRefType defined by the arguments.  If the resulting

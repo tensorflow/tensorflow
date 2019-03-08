@@ -51,9 +51,6 @@ struct UnknownTypeStorage;
 /// Derived type classes are expected to implement several required
 /// implementaiton hooks:
 ///  * Required:
-///    - static char typeID;
-///      * A unique identifier for this type used during registration.
-///
 ///    - static bool kindof(unsigned kind);
 ///      * Returns if the provided type kind corresponds to an instance of the
 ///        current type. Used for isa/dyn_cast casting functionality.
@@ -133,6 +130,9 @@ public:
     /// Utility declarations for the concrete type class.
     using Base = TypeBase<ConcreteType, BaseType, StorageType>;
     using ImplType = StorageType;
+
+    /// Return a unique identifier for the concrete type.
+    static TypeID *getTypeID() { return TypeID::getID<ConcreteType>(); }
 
   protected:
     /// Get or create a new ConcreteType instance within the context. This
@@ -272,9 +272,6 @@ public:
 
   /// Methods for support type inquiry through isa, cast, and dyn_cast.
   static bool kindof(unsigned kind) { return kind == Kind::Function; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 /// Unknown types represent types of non-registered dialects. These are types
@@ -308,9 +305,6 @@ public:
                                            StringRef typeData);
 
   static bool kindof(unsigned kind) { return kind == Kind::Unknown; }
-
-  /// Unique identifier for this type class.
-  static char typeID;
 };
 
 // Make Type hashable.

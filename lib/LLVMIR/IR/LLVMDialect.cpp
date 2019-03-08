@@ -52,8 +52,6 @@ struct LLVMTypeStorage : public ::mlir::detail::TypeStorage {
 } // end namespace LLVM
 } // end namespace mlir
 
-char LLVMType::typeID = '\0';
-
 LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
   return Base::get(context, FIRST_LLVM_TYPE, llvmType);
 }

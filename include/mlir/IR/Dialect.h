@@ -172,21 +172,21 @@ protected:
   // variadic type, but we can't do that: function template partial
   // specialization is not allowed, and we can't define an overload set
   // because we don't have any arguments of the types we are pushing around.
-  template <typename First, typename... Rest> class VariadicTypeAdder {
-  public:
+  template <typename First, typename... Rest> struct VariadicTypeAdder {
     static void addToSet(Dialect &dialect) {
       VariadicTypeAdder<First>::addToSet(dialect);
       VariadicTypeAdder<Rest...>::addToSet(dialect);
     }
   };
 
-  template <typename First> class VariadicTypeAdder<First> {
-  public:
-    static void addToSet(Dialect &dialect) { dialect.addType(&First::typeID); }
+  template <typename First> struct VariadicTypeAdder<First> {
+    static void addToSet(Dialect &dialect) {
+      dialect.addType(First::getTypeID());
+    }
   };
 
   // Register a type with its given unqiue type identifer.
-  void addType(const void *const typeID);
+  void addType(const TypeID *const typeID);
 
 private:
   Dialect(const Dialect &) = delete;

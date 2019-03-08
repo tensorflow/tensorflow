@@ -366,12 +366,3 @@ unsigned MemRefType::getMemorySpace() const {
 unsigned MemRefType::getNumDynamicDims() const {
   return llvm::count_if(getShape(), [](int64_t i) { return i < 0; });
 }
-
-// Define type identifiers.
-char FloatType::typeID = 0;
-char IndexType::typeID = 0;
-char IntegerType::typeID = 0;
-char VectorType::typeID = 0;
-char RankedTensorType::typeID = 0;
-char UnrankedTensorType::typeID = 0;
-char MemRefType::typeID = 0;

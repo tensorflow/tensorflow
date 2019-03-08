@@ -33,12 +33,20 @@ namespace mlir {
 class Dialect;
 class MLIRContext;
 
+/// TypeID is used to provide a unique address identifier for derived Type
+/// classes.
+struct TypeID {
+  template <typename T> static TypeID *getID() {
+    static TypeID id;
+    return &id;
+  }
+};
+
 //===----------------------------------------------------------------------===//
 // TypeStorage
 //===----------------------------------------------------------------------===//
 
 namespace detail {
-
 class TypeUniquer;
 
 /// Base storage class appearing in a Type.
@@ -228,12 +236,12 @@ private:
   /// Get the dialect that the type 'T' was registered with.
   template <typename T>
   static const Dialect &lookupDialectForType(MLIRContext *ctx) {
-    return lookupDialectForType(ctx, &T::typeID);
+    return lookupDialectForType(ctx, T::getTypeID());
   }
 
   /// Get the dialect that registered the type with the provided typeid.
   static const Dialect &lookupDialectForType(MLIRContext *ctx,
-                                             const void *const typeID);
+                                             const TypeID *const typeID);
 
   //===--------------------------------------------------------------------===//
   // Util
