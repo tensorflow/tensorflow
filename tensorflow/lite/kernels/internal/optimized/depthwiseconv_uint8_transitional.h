@@ -130,15 +130,58 @@ inline int32x4_t vpaddq_s32(int32x4_t a, int8x16_t b) {
 }
 #endif  // !__aarch64__
 
-#ifndef __ARM_FEATURE_DOTPROD
+#ifdef __ARM_FEATURE_DOTPROD
+// The vdotq_lane_s32 takes int8x8t for the rhs parameter, whereas the actual
+// instruction selects from between 4 32-bit (4x8-bit packed) sub-registers, an
+// unusual interpretation of "lane".
+inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
+                                     int8x16_t rhs, const int lane) {
+  switch (lane) {
+    case 0:
+      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 0);
+    case 1:
+      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 1);
+    case 2:
+      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
+                            0);
+    case 3:
+    default:
+      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
+                            1);
+  }
+}
+
+#else
+
 inline int32x4_t vdotq_s32(int32x4_t acc, int8x16_t lhs, int8x16_t rhs) {
   int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), vget_low_s8(rhs)));
   int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), vget_high_s8(rhs)));
   int32x4_t sum = vpaddq_s32(sum0, sum1);
   return vaddq_s32(acc, sum);
 }
-#endif
 
+inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
+                                     int8x16_t rhs, int lane) {
+  int8x8_t lane_rhs;
+  if (lane == 0) {
+    lane_rhs = vreinterpret_s8_s32(
+        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 0));
+  } else if (lane == 1) {
+    lane_rhs = vreinterpret_s8_s32(
+        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 1));
+  } else if (lane == 2) {
+    lane_rhs = vreinterpret_s8_s32(
+        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 0));
+  } else {
+    lane_rhs = vreinterpret_s8_s32(
+        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 1));
+  }
+  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), lane_rhs));
+  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), lane_rhs));
+  int32x4_t sum = vpaddq_s32(sum0, sum1);
+  return vaddq_s32(acc, sum);
+}
+#endif  // !DOTPROD
 #endif  // ARM NEON
 
 template <DepthwiseConvOutputRounding output_rounding>
@@ -1196,11 +1239,237 @@ template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
                       /*max_padding=*/0> {
+  static inline void PackMacroBlockIntrinsics(
+      int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int input_width_micro_repeats =
+        function_params->input_width_micro_repeats;
+    const int block_height = function_params->inbound_block_height;
+    const int residual_width = function_params->residual_width;
+    const int input_height_stride = function_params->input_height_stride;
+
+    TFLITE_DCHECK_EQ(function_params->padding_left, 0);
+    TFLITE_DCHECK_EQ(function_params->padding_right, 0);
+    TFLITE_DCHECK_EQ(function_params->padding_top, 0);
+    TFLITE_DCHECK_EQ(function_params->padding_bottom, 0);
+
+    TFLITE_DCHECK_GE(workspace_height_stride, 4 * width_overall_micro_repeats);
+
+    // Work through one slice, by row, at a time.
+    int8* scratch_data_base = scratch_block_data;
+
+    const int copy_block_height = block_height;
+
+    int adjusted_residual_width =
+        input_width_micro_repeats < width_overall_micro_repeats ? residual_width
+                                                                : 4;
+
+    const int copy_size =
+        (width_overall_micro_repeats - 1) * 4 + adjusted_residual_width;
+
+    TFLITE_DCHECK_LE(
+        copy_size,
+        input_height_stride - width_block_number * input_width_micro_repeats);
+    // We may drop up to stride-1 of trailing input.
+    TFLITE_DCHECK_GE(copy_size, input_height_stride - 1);
+
+    int scratch_data_offset = 0;
+    int input_block_offset = 0;
+
+    constexpr uint8 kSignBit = 0x80;
+
+    // Transpositions are 4x4, but doing 2 at a time is more efficient in NEON
+    // code. Note the blocks of 4x4 are still interleaved down the depth.
+    int8x16_t work_reg;
+    int8x8_t half_work_reg;
+
+    // Effect subtraction of zero-point = 128 by XOR of sign bit.
+    const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
+    half_work_reg = vdup_n_s8(0);
+
+    if (copy_size >= 16) {
+      const int copy_remaining = copy_size & 0x7;
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Work through one slice, by row, at a time.
+        int8* scratch_data = scratch_data_base + scratch_data_offset;
+
+        int copy_done = 0;
+
+        // Main copy loop.
+        for (; (copy_done + 16) <= copy_size; copy_done += 16) {
+          work_reg =
+              vld1q_u8(input_block_data + input_block_offset + copy_done);
+          work_reg = veorq_s8(work_reg, sign_bit);
+          TFLITE_DCHECK_EQ(copy_done % 16, 0);
+          vst1q_s8(scratch_data + copy_done, work_reg);
+        }
+
+        if (copy_done + 8 <= copy_size) {
+          half_work_reg =
+              vld1_u8(input_block_data + input_block_offset + copy_done);
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ(copy_done % 8, 0);
+          vst1_s8(scratch_data + copy_done, half_work_reg);
+          copy_done += 8;
+        }
+
+        TFLITE_DCHECK_EQ(copy_remaining, copy_size - copy_done);
+        // Total amount
+        // = copy_size - copy_done + 4 - adjusted_residual_width
+        // = width_overall_micro_repeats * 4 - start_width - copy_done.
+        // Undone micro blocks
+        // = width_overall_micro_repeats - (start_width + copy_done) / 4.
+
+        // Conditional is (copy_remaining > 0 || trailing_width_padding).
+        if (copy_done < copy_size) {
+          // Employ overlapping-load strategy in order to load full register,
+          // but use only part.
+          // This has the advantage of resulting in zeros after shifting.
+          half_work_reg =
+              vld1_u8(input_block_data + input_block_offset + copy_size - 8);
+
+          half_work_reg =
+              vshl_u64(half_work_reg, vdup_n_s64(-8 * (8 - copy_remaining)));
+
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ(copy_done % 8, 0);
+          vst1_s8(scratch_data + copy_done, half_work_reg);
+          copy_done += 8;
+        }
+
+        // Trailing guard.
+        vst1_s8(scratch_data + copy_done, half_work_reg);
+        vst1_s8(scratch_data + copy_done + 8, half_work_reg);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else if (copy_size >= 4) {
+      const int copy_remaining = copy_size & 0x3;
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Work through one slice, by row, at a time.
+        int8* scratch_data = scratch_data_base + scratch_data_offset;
+
+        int copy_done = 0;
+
+        // Main copy loop.
+        for (; (copy_done + 4) <= copy_size; copy_done += 4) {
+          // Important! Most compilation configurations will compile and run
+          // without the reinterpret_cast. Sanitizers may fail silently on
+          // lane-loading, with a obscure bug or mis-feature probably in
+          // unhygienic macro expansion.
+          half_work_reg = vld1_lane_s32(
+              reinterpret_cast<const int32*>(input_block_data +
+                                             input_block_offset + copy_done),
+              half_work_reg, 0);
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ(copy_done % 4, 0);
+          vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + copy_done),
+                        half_work_reg, 0);
+        }
+
+        TFLITE_DCHECK_EQ(copy_remaining, copy_size - copy_done);
+        // Total amount
+        // = copy_size - copy_done + 4 - adjusted_residual_width
+        // = width_overall_micro_repeats * 4 - start_width - copy_done.
+        // Undone micro blocks
+        // = width_overall_micro_repeats - (start_width + copy_done) / 4.
+
+        // Conditional is (copy_remaining > 0 || trailing_width_padding).
+        if (copy_done < copy_size) {
+          TFLITE_DCHECK_LT(copy_remaining, 4);
+          // Employ overlapping-load strategy in order to load full register,
+          // but use only part.
+          // This has the advantage of resulting in zeros after shifting.
+          half_work_reg = vld1_lane_s32(
+              reinterpret_cast<const int32*>(
+                  input_block_data + input_block_offset + copy_size - 4),
+              half_work_reg, 0);
+
+          half_work_reg =
+              vshl_u64(half_work_reg, vdup_n_s64(-8 * (4 - copy_remaining)));
+
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ(copy_done % 4, 0);
+          vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + copy_done),
+                        half_work_reg, 0);
+          copy_done += 4;
+        }
+        // Trailing guard.
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + copy_done),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + copy_done + 4),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + copy_done + 8),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + copy_done + 12),
+                      half_work_reg, 0);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else {
+      TFLITE_DCHECK_EQ(width_overall_micro_repeats, 1);
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        for (int i = 0; i < copy_size; ++i) {
+          half_work_reg = vshl_n_u64(half_work_reg, 8);
+          half_work_reg = vld1_lane_s8(
+              reinterpret_cast<const int8*>(
+                  input_block_data + input_block_offset + copy_size - 1 - i),
+              half_work_reg, 0);
+        }
+
+        half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        TFLITE_DCHECK_EQ(scratch_data_offset % 4, 0);
+        vst1_lane_s32(
+            reinterpret_cast<int32*>(scratch_data_base + scratch_data_offset),
+            half_work_reg, 0);
+
+        // Trailing guard.
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 4),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 8),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 12),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 16),
+                      half_work_reg, 0);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    }
+
+    scratch_data_base += copy_block_height * workspace_height_stride;
+
+    TFLITE_DCHECK_EQ(
+        scratch_data_base,
+        scratch_block_data + block_height * workspace_height_stride);
+  }
+
   static inline void Run(int32 height_block_number, int32 width_block_number,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+#if defined(__aarch64__)
+    PreloadInputBlock(input_block_data, function_params);
+#endif
+
+    PackMacroBlockIntrinsics(height_block_number, width_block_number,
+                             input_block_data, scratch_block_data,
+                             function_params);
   }
 };
 
@@ -2520,11 +2789,666 @@ struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     DepthwiseConvDepthMultiplication::kUnitInputDepth,
     /*stride=*/1> {
+  static inline void KernelMacroBlockIntrinsics(
+      const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    TFLITE_DCHECK_EQ(function_params->stride, 1);
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int output_width_micro_repeats =
+        function_params->output_width_micro_repeats;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int output_depth = function_params->output_depth;
+
+    const int output_width_overall_micro_repeats =
+        function_params->output_width_overall_micro_repeats;
+    const int block_height = function_params->outbound_block_height;
+    const int residual_width = function_params->output_residual_width;
+    const int output_height_stride = function_params->output_height_stride;
+    const int bias_increment = function_params->bias_increment;
+
+    TFLITE_DCHECK(depth_micro_repeats > 0);
+
+    TFLITE_DCHECK_EQ(bias_increment, 4);
+
+    const int32 output_activation_min =
+        function_params->quantized_activation_min;
+    const int32 output_activation_max =
+        function_params->quantized_activation_max;
+    const int32 output_multiplier = function_params->output_multiplier;
+    const int32 output_shift = function_params->output_shift;
+    const int32 output_offset = function_params->output_offset;
+    TFLITE_DCHECK_GE(output_activation_min, 0);
+    TFLITE_DCHECK_LT(output_activation_min, 256);
+    TFLITE_DCHECK_GE(output_activation_max, 0);
+    TFLITE_DCHECK_LT(output_activation_max, 256);
+    TFLITE_DCHECK_GE(output_offset, -32878);
+    TFLITE_DCHECK_LT(output_offset, 32768);
+
+    const int16x8_t output_offset_vec =
+        vdupq_n_s16(static_cast<int16>(output_offset));
+    const uint8x16_t output_activation_min_vec =
+        vdupq_n_u8(static_cast<uint8>(output_activation_min));
+    const uint8x16_t output_activation_max_vec =
+        vdupq_n_u8(static_cast<uint8>(output_activation_max));
+
+    uint8* output_data_depthwise = output_block_data;
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
+      // Simulate NEON-register transposition of subset of filter.
+      int8x16_t filter_reg_0_a;
+      int8x16_t filter_reg_0_b;
+      int8x16_t filter_reg_1_a;
+      int8x16_t filter_reg_1_b;
+      int8x16_t filter_reg_2_a;
+      int8x16_t filter_reg_2_b;
+      int8x16_t filter_reg_0_a_shifted;
+      int8x16_t filter_reg_1_a_shifted;
+      int8x16_t filter_reg_2_a_shifted;
+
+      filter_reg_0_a = vld1q_s8(filter_workspace);
+      filter_workspace += 16;
+      filter_reg_0_b = vld1q_s8(filter_workspace);
+      filter_workspace += 16;
+      filter_reg_1_a = vld1q_s8(filter_workspace);
+      filter_workspace += 16;
+      filter_reg_1_b = vld1q_s8(filter_workspace);
+      filter_workspace += 16;
+      filter_reg_2_a = vld1q_s8(filter_workspace);
+      filter_workspace += 16;
+      filter_reg_2_b = vld1q_s8(filter_workspace);
+      filter_workspace += 16;
+
+      filter_reg_0_a_shifted = vshlq_n_u32(filter_reg_0_a, 8);
+      filter_reg_1_a_shifted = vshlq_n_u32(filter_reg_1_a, 8);
+      filter_reg_2_a_shifted = vshlq_n_u32(filter_reg_2_a, 8);
+
+      if (block_height == 4) {
+        for (int s = 0; s < 2; ++s) {
+          // Work through one slice, by row, at a time.
+          uint8* output_data_base = output_data_depthwise + 4 * s;
+
+          const int8* next_input_data = scratch_block_data;
+          uint8* output_data = output_data_base;
+
+          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
+          TFLITE_DCHECK_EQ(bias_increment, 4);
+          bias_data += bias_increment;
+
+          int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
+          int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
+          int8x16_t input_bank_c_reg;  //  left 4, right 4, left 5, right 5.
+
+          // Load first sub-micro block of data into operational banks.
+          input_bank_a_reg = vld1q_dup_s32(reinterpret_cast<const int32*>(
+              next_input_data));  // Load lane 0, avoiding
+                                  // uninitialized variable.
+          input_bank_a_reg =
+              vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                 next_input_data + workspace_height_stride),
+                             input_bank_a_reg, 2);
+          input_bank_b_reg = vld1q_dup_s32(reinterpret_cast<const int32*>(
+              next_input_data +
+              2 * workspace_height_stride));  // Load lane 0, avoiding
+                                              // uninitialized variable.
+          input_bank_b_reg =
+              vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                 next_input_data + 3 * workspace_height_stride),
+                             input_bank_b_reg, 2);
+          input_bank_c_reg = vld1q_dup_s32(reinterpret_cast<const int32*>(
+              next_input_data +
+              4 * workspace_height_stride));  // Load lane 0, avoiding
+                                              // uninitialized variable.
+          input_bank_c_reg =
+              vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                 next_input_data + 5 * workspace_height_stride),
+                             input_bank_c_reg, 2);
+
+          int32x4_t acc0;
+          int32x4_t acc1;
+          int32x4_t acc2;
+          int32x4_t acc3;
+
+          acc0 = adjusted_bias_data;
+          acc1 = adjusted_bias_data;
+          acc2 = adjusted_bias_data;
+          acc3 = adjusted_bias_data;
+
+          acc0 = vdotq_four_lane_s32(acc0, filter_reg_2_a, input_bank_b_reg, 0);
+          acc1 = vdotq_four_lane_s32(acc1, filter_reg_1_a, input_bank_b_reg, 0);
+          acc2 = vdotq_four_lane_s32(acc2, filter_reg_0_a, input_bank_b_reg, 0);
+          acc3 = vdotq_four_lane_s32(acc3, filter_reg_0_a, input_bank_b_reg, 2);
+
+          for (int i_width = 0; i_width < output_width_micro_repeats;
+               ++i_width) {
+            next_input_data += 4;
+
+            // Iterate over input width shifts within 4x4 blocks.
+            {
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_0_a, input_bank_a_reg,
+                                         0);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_1_a, input_bank_a_reg,
+                                         2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_0_a, input_bank_a_reg,
+                                         2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_a, input_bank_b_reg,
+                                         2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_1_a, input_bank_b_reg,
+                                         2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_2_a, input_bank_c_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_1_a, input_bank_c_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_2_a, input_bank_c_reg,
+                                         2);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc2, -output_shift);
+              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc3, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              int16x8_t acc_s16_2_3 =
+                  vcombine_s16(vqmovn_s32(acc2), vqmovn_s32(acc3));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
+              // Apply the activation function.
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
+                                                  vqmovun_s16(acc_s16_2_3));
+              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+
+              vst1q_lane_u8x4(output_data, acc_u8_all, 0);
+              vst1q_lane_u8x4(output_data + output_height_stride, acc_u8_all,
+                              1);
+              vst1q_lane_u8x4(output_data + 2 * output_height_stride,
+                              acc_u8_all, 2);
+              vst1q_lane_u8x4(output_data + 3 * output_height_stride,
+                              acc_u8_all, 3);
+
+              output_data += output_depth;
+            }
+            // Load next sub-micro block of data.
+            input_bank_a_reg =
+                vld1q_lane_s32(reinterpret_cast<const int32*>(next_input_data),
+                               input_bank_a_reg, 1);
+            input_bank_a_reg =
+                vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                   next_input_data + workspace_height_stride),
+                               input_bank_a_reg, 3);
+            input_bank_b_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               2 * workspace_height_stride),
+                input_bank_b_reg, 1);
+            input_bank_b_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               3 * workspace_height_stride),
+                input_bank_b_reg, 3);
+            input_bank_c_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               4 * workspace_height_stride),
+                input_bank_c_reg, 1);
+            input_bank_c_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               5 * workspace_height_stride),
+                input_bank_c_reg, 3);
+
+            {
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+              acc2 = adjusted_bias_data;
+              acc3 = adjusted_bias_data;
+
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_0_a_shifted,
+                                         input_bank_a_reg, 0);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_1_a_shifted,
+                                         input_bank_a_reg, 2);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_2_a_shifted,
+                                         input_bank_b_reg, 0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_0_a_shifted,
+                                         input_bank_a_reg, 2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_1_a_shifted,
+                                         input_bank_b_reg, 0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_a_shifted,
+                                         input_bank_b_reg, 2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_0_a_shifted,
+                                         input_bank_b_reg, 0);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_1_a_shifted,
+                                         input_bank_b_reg, 2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_2_a_shifted,
+                                         input_bank_c_reg, 0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_0_a_shifted,
+                                         input_bank_b_reg, 2);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_1_a_shifted,
+                                         input_bank_c_reg, 0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_2_a_shifted,
+                                         input_bank_c_reg, 2);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc2, -output_shift);
+              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc3, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              int16x8_t acc_s16_2_3 =
+                  vcombine_s16(vqmovn_s32(acc2), vqmovn_s32(acc3));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
+              // Apply the activation function.
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
+                                                  vqmovun_s16(acc_s16_2_3));
+              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+
+              vst1q_lane_u8x4(output_data, acc_u8_all, 0);
+              vst1q_lane_u8x4(output_data + output_height_stride, acc_u8_all,
+                              1);
+              vst1q_lane_u8x4(output_data + 2 * output_height_stride,
+                              acc_u8_all, 2);
+              vst1q_lane_u8x4(output_data + 3 * output_height_stride,
+                              acc_u8_all, 3);
+
+              input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 16);
+              input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 16);
+              input_bank_c_reg = vshrq_n_u64(input_bank_c_reg, 16);
+
+              output_data += output_depth;
+            }
+
+            {
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+              acc2 = adjusted_bias_data;
+              acc3 = adjusted_bias_data;
+
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_0_a, input_bank_a_reg,
+                                         0);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_1_a, input_bank_a_reg,
+                                         2);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_2_a, input_bank_b_reg,
+                                         0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_0_a, input_bank_a_reg,
+                                         2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_1_a, input_bank_b_reg,
+                                         0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_a, input_bank_b_reg,
+                                         2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_0_a, input_bank_b_reg,
+                                         0);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_1_a, input_bank_b_reg,
+                                         2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_2_a, input_bank_c_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_0_a, input_bank_b_reg,
+                                         2);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_1_a, input_bank_c_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_2_a, input_bank_c_reg,
+                                         2);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc2, -output_shift);
+              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc3, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              int16x8_t acc_s16_2_3 =
+                  vcombine_s16(vqmovn_s32(acc2), vqmovn_s32(acc3));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
+              // Apply the activation function.
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
+                                                  vqmovun_s16(acc_s16_2_3));
+              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+
+              vst1q_lane_u8x4(output_data, acc_u8_all, 0);
+              vst1q_lane_u8x4(output_data + output_height_stride, acc_u8_all,
+                              1);
+              vst1q_lane_u8x4(output_data + 2 * output_height_stride,
+                              acc_u8_all, 2);
+              vst1q_lane_u8x4(output_data + 3 * output_height_stride,
+                              acc_u8_all, 3);
+
+              output_data += output_depth;
+            }
+
+            {
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+              acc2 = adjusted_bias_data;
+              acc3 = adjusted_bias_data;
+
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_0_a_shifted,
+                                         input_bank_a_reg, 0);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_1_a_shifted,
+                                         input_bank_a_reg, 2);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_2_a_shifted,
+                                         input_bank_b_reg, 0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_0_a_shifted,
+                                         input_bank_a_reg, 2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_1_a_shifted,
+                                         input_bank_b_reg, 0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_a_shifted,
+                                         input_bank_b_reg, 2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_0_a_shifted,
+                                         input_bank_b_reg, 0);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_1_a_shifted,
+                                         input_bank_b_reg, 2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_2_a_shifted,
+                                         input_bank_c_reg, 0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_0_a_shifted,
+                                         input_bank_b_reg, 2);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_1_a_shifted,
+                                         input_bank_c_reg, 0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_2_a_shifted,
+                                         input_bank_c_reg, 2);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc2, -output_shift);
+              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc3, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              int16x8_t acc_s16_2_3 =
+                  vcombine_s16(vqmovn_s32(acc2), vqmovn_s32(acc3));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
+              // Apply the activation function.
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
+                                                  vqmovun_s16(acc_s16_2_3));
+              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+
+              vst1q_lane_u8x4(output_data, acc_u8_all, 0);
+              vst1q_lane_u8x4(output_data + output_height_stride, acc_u8_all,
+                              1);
+              vst1q_lane_u8x4(output_data + 2 * output_height_stride,
+                              acc_u8_all, 2);
+              vst1q_lane_u8x4(output_data + 3 * output_height_stride,
+                              acc_u8_all, 3);
+
+              input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 16);
+              input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 16);
+              input_bank_c_reg = vshrq_n_u64(input_bank_c_reg, 16);
+
+              output_data += output_depth;
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+              acc2 = adjusted_bias_data;
+              acc3 = adjusted_bias_data;
+
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_2_a, input_bank_b_reg,
+                                         0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_1_a, input_bank_b_reg,
+                                         0);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_0_a, input_bank_b_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_0_a, input_bank_b_reg,
+                                         2);
+            }
+          }
+
+          if (residual_width > 0) {
+            next_input_data += 4;
+            const int output_width = residual_width;
+
+            // Load next sub-micro block of data.
+            input_bank_a_reg =
+                vld1q_lane_s32(reinterpret_cast<const int32*>(next_input_data),
+                               input_bank_a_reg, 1);
+            input_bank_a_reg =
+                vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                   next_input_data + workspace_height_stride),
+                               input_bank_a_reg, 3);
+            input_bank_b_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               2 * workspace_height_stride),
+                input_bank_b_reg, 1);
+            input_bank_b_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               3 * workspace_height_stride),
+                input_bank_b_reg, 3);
+            input_bank_c_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               4 * workspace_height_stride),
+                input_bank_c_reg, 1);
+            input_bank_c_reg = vld1q_lane_s32(
+                reinterpret_cast<const int32*>(next_input_data +
+                                               5 * workspace_height_stride),
+                input_bank_c_reg, 3);
+
+            // Iterate over input width shifts within 4x4 blocks.
+            for (int x = 0; x < output_width; ++x) {
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_0_a, input_bank_a_reg,
+                                         0);
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_1_a, input_bank_a_reg,
+                                         2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_0_a, input_bank_a_reg,
+                                         2);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_2_a, input_bank_b_reg,
+                                         2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_1_a, input_bank_b_reg,
+                                         2);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_2_a, input_bank_c_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_1_a, input_bank_c_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_2_a, input_bank_c_reg,
+                                         2);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              acc2 = vqrdmulhq_n_s32(acc2, output_multiplier);
+              acc2 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc2, -output_shift);
+              acc3 = vqrdmulhq_n_s32(acc3, output_multiplier);
+              acc3 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc3, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              int16x8_t acc_s16_2_3 =
+                  vcombine_s16(vqmovn_s32(acc2), vqmovn_s32(acc3));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              acc_s16_2_3 = vqaddq_s16(acc_s16_2_3, output_offset_vec);
+              // Apply the activation function.
+              uint8x16_t acc_u8_all = vcombine_u8(vqmovun_s16(acc_s16_0_1),
+                                                  vqmovun_s16(acc_s16_2_3));
+              acc_u8_all = vmaxq_u8(acc_u8_all, output_activation_min_vec);
+              acc_u8_all = vminq_u8(acc_u8_all, output_activation_max_vec);
+
+              vst1q_lane_u8x4(output_data, acc_u8_all, 0);
+              vst1q_lane_u8x4(output_data + output_height_stride, acc_u8_all,
+                              1);
+              vst1q_lane_u8x4(output_data + 2 * output_height_stride,
+                              acc_u8_all, 2);
+              vst1q_lane_u8x4(output_data + 3 * output_height_stride,
+                              acc_u8_all, 3);
+
+              input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 8);
+              input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 8);
+              input_bank_c_reg = vshrq_n_u64(input_bank_c_reg, 8);
+
+              output_data += output_depth;
+
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+              acc2 = adjusted_bias_data;
+              acc3 = adjusted_bias_data;
+
+              acc0 = vdotq_four_lane_s32(acc0, filter_reg_2_a, input_bank_b_reg,
+                                         0);
+              acc1 = vdotq_four_lane_s32(acc1, filter_reg_1_a, input_bank_b_reg,
+                                         0);
+              acc2 = vdotq_four_lane_s32(acc2, filter_reg_0_a, input_bank_b_reg,
+                                         0);
+              acc3 = vdotq_four_lane_s32(acc3, filter_reg_0_a, input_bank_b_reg,
+                                         2);
+            }
+          }
+          // scratch_block_data += 4 * workspace_height_stride;
+          output_data_base += 4 * output_height_stride;
+
+          // Move to next sub-block: advance to second set of filters, to new
+          // bias.
+          filter_reg_0_a = filter_reg_0_b;
+          filter_reg_1_a = filter_reg_1_b;
+          filter_reg_2_a = filter_reg_2_b;
+          filter_reg_0_a_shifted = vshlq_n_u32(filter_reg_0_a, 8);
+          filter_reg_1_a_shifted = vshlq_n_u32(filter_reg_1_a, 8);
+          filter_reg_2_a_shifted = vshlq_n_u32(filter_reg_2_a, 8);
+        }
+      } else {
+        // Block height < 4.
+        for (int s = 0; s < 2; ++s) {
+          // Work through one slice, by row, at a time.
+          uint8* output_data_base = output_data_depthwise + 4 * s;
+
+          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
+          TFLITE_DCHECK_EQ(bias_increment, 4);
+          bias_data += bias_increment;
+
+          for (int k_height = 0; k_height < block_height; ++k_height) {
+            const int8* next_input_data =
+                scratch_block_data + k_height * workspace_height_stride;
+            uint8* output_data = output_data_base;
+
+            int8x16_t input_bank_a_reg;  //  left 0, right 0, left 1, right 1.
+            int8x16_t input_bank_b_reg;  //  left 2, right 2, left 3, right 3.
+
+            // Load first sub-micro block of data into operational banks.
+            input_bank_a_reg = vld1q_dup_s32(reinterpret_cast<const int32*>(
+                next_input_data));  // Load lane 0, avoiding uninitialized
+                                    // variable.
+            input_bank_a_reg =
+                vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                   next_input_data + workspace_height_stride),
+                               input_bank_a_reg, 2);
+            input_bank_b_reg = vld1q_dup_s32(reinterpret_cast<const int32*>(
+                next_input_data +
+                2 * workspace_height_stride));  // Load lane 0, avoiding
+                                                // uninitialized variable.
+
+            for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+                 ++i_width) {
+              next_input_data += 4;
+              const int output_width =
+                  i_width == output_width_micro_repeats ? residual_width : 4;
+
+              // Load next sub-micro block of data.
+              input_bank_a_reg = vld1q_lane_s32(
+                  reinterpret_cast<const int32*>(next_input_data),
+                  input_bank_a_reg, 1);
+              input_bank_a_reg =
+                  vld1q_lane_s32(reinterpret_cast<const int32*>(
+                                     next_input_data + workspace_height_stride),
+                                 input_bank_a_reg, 3);
+              input_bank_b_reg = vld1q_lane_s32(
+                  reinterpret_cast<const int32*>(next_input_data +
+                                                 2 * workspace_height_stride),
+                  input_bank_b_reg, 1);
+              // Iterate over input width shifts within 4x4 blocks.
+              for (int x = 0; x < output_width; ++x) {
+                int32x4_t acc = adjusted_bias_data;
+                acc = vdotq_four_lane_s32(acc, filter_reg_0_a, input_bank_a_reg,
+                                          0);
+                acc = vdotq_four_lane_s32(acc, filter_reg_1_a, input_bank_a_reg,
+                                          2);
+                acc = vdotq_four_lane_s32(acc, filter_reg_2_a, input_bank_b_reg,
+                                          0);
+
+                // Fixed-point multiplication.
+                acc = vqrdmulhq_n_s32(acc, output_multiplier);
+                acc = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                    acc, -output_shift);
+                // Add the output offset.
+                // Note that we need to fill the top half with vcombine, but can
+                // drop the instruction in ASM code.
+                int16x8_t acc_s16_0_0 =
+                    vcombine_s16(vqmovn_s32(acc), vqmovn_s32(acc));
+                acc_s16_0_0 = vqaddq_s16(acc_s16_0_0, output_offset_vec);
+                // Apply the activation function.
+                uint8x8_t acc_u8_0_0 = vqmovun_s16(acc_s16_0_0);
+                acc_u8_0_0 =
+                    vmax_u8(acc_u8_0_0, vget_low_u8(output_activation_min_vec));
+                acc_u8_0_0 =
+                    vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
+
+                // if (x==1) {
+                vst1_lane_u8x4(output_data, acc_u8_0_0, 0);
+                // }
+
+                input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 8);
+                input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 8);
+
+                output_data += output_depth;
+              }
+            }
+            output_data_base += output_height_stride;
+          }
+
+          // Move to next sub-block: advance to second set of filters.
+          filter_reg_0_a = filter_reg_0_b;
+          filter_reg_1_a = filter_reg_1_b;
+          filter_reg_2_a = filter_reg_2_b;
+        }
+      }
+      output_data_depthwise += 8;
+    }
+  }  // NOLINT(readability/fn_size) Manually unrolled.
+
   static inline void Run(const int8* scratch_block_data,
                          const int8* filter_workspace, const int32* bias_data,
                          uint8* output_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+    KernelMacroBlockIntrinsics(scratch_block_data, filter_workspace, bias_data,
+                               output_block_data, function_params);
   }
 };
 

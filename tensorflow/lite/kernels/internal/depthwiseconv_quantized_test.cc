@@ -189,7 +189,9 @@ inline void DispatchDepthwiseConv(
               input_shape, filter_shape, params);
 
       ASSERT_TRUE(kernel_type == DotProduct3x3KernelType::kPlain ||
-                  kernel_type == DotProduct3x3KernelType::kStride2);
+                  kernel_type == DotProduct3x3KernelType::kStride2 ||
+                  kernel_type ==
+                      DotProduct3x3KernelType::kWithDepthMultiplicationStride1);
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
@@ -752,6 +754,20 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad
         Values(false),                                 // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(kLooseIntrinsicsTolerance)              // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+
+INSTANTIATE_TEST_SUITE_P(
+    IntrinsicsAlt, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::
+                   kUseIntrinsics3x3DotProduct),       // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Values(false),                                 // test_stride
+        Values(false),                                 // test_pad
+        Values(true),                                  // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
         Values(kLooseIntrinsicsTolerance)              // loose_tolerance
         ),
