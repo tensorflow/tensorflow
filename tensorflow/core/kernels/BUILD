@@ -700,6 +700,8 @@ cc_library(
     defines = select({
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
+        "//tensorflow:rpi3": [],
+        "//tensorflow:rpi3-armv8": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
@@ -713,6 +715,8 @@ cc_library(
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
+        "//tensorflow:rpi3": [],
+        "//tensorflow:rpi3-armv8": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
@@ -2618,6 +2622,8 @@ tf_cc_test(
     srcs = select({
         "//tensorflow:android": [],
         "//tensorflow:arm": [],
+        "//tensorflow:rpi3": [],
+        "//tensorflow:rpi3-armv8": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_ppc64le": [],
         ":no_mkldnn_contraction_kernel": [],
