@@ -3715,60 +3715,31 @@ void TestConvertConcat(OpConverterTest* test) {
   struct TestParams {
     std::vector<std::vector<int>> input_shapes;
     std::vector<std::vector<int>> input_values;
-    std::vector<bool> input_is_weight;
     int axis;
     std::vector<int> expected_output_dims;
     std::vector<int> expected_output;
   };
 
   // Ok.
-  const int kConcatOKCases = 8;
+  const int kConcatOKCases = 4;
   TestParams ok_params[kConcatOKCases] = {
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
        /*input_values=*/{{1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}},
-       /*input_is_weight=*/{0, 0},
        /*axis=*/1,
        /*expected_output_dims=*/{2, 2, 3},
        /*expected_output=*/{1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6}},
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
        /*input_values=*/{{1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}},
-       /*input_is_weight=*/{0, 0},
        /*axis=*/2,
        /*expected_output_dims=*/{1, 4, 3},
        /*expected_output=*/{1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6}},
       {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
        /*input_values=*/{{1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}},
-       /*input_is_weight=*/{0, 0},
-       /*axis=*/3,
-       /*expected_output_dims=*/{1, 2, 6},
-       /*expected_output=*/{1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6}},
-      {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
-       /*input_values=*/{{1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}},
-       /*input_is_weight=*/{1, 0},
-       /*axis=*/1,
-       /*expected_output_dims=*/{2, 2, 3},
-       /*expected_output=*/{1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6}},
-      {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
-       /*input_values=*/{{1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}},
-       /*input_is_weight=*/{1, 1},
-       /*axis=*/2,
-       /*expected_output_dims=*/{1, 4, 3},
-       /*expected_output=*/{1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6}},
-      {/*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
-       /*input_values=*/{{1, 2, 3, 4, 5, 6}, {1, 2, 3, 4, 5, 6}},
-       /*input_is_weight=*/{0, 1},
        /*axis=*/3,
        /*expected_output_dims=*/{1, 2, 6},
        /*expected_output=*/{1, 2, 3, 1, 2, 3, 4, 5, 6, 4, 5, 6}},
       {/*input_shapes=*/{{1}, {2}, {3}, {1}, {1}, {2}},
        /*input_values=*/{{1}, {2, 3}, {4, 5, 6}, {7}, {8}, {9, 10}},
-       /*input_is_weight=*/{0, 0, 0, 0, 0, 0},
-       /*axis=*/1,
-       /*expected_output_dims=*/{10},
-       /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
-      {/*input_shapes=*/{{1}, {2}, {3}, {1}, {1}, {2}},
-       /*input_values=*/{{1}, {2, 3}, {4, 5, 6}, {7}, {8}, {9, 10}},
-       /*input_is_weight=*/{0, 0, 0, 0, 1, 0},
        /*axis=*/1,
        /*expected_output_dims=*/{10},
        /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}},
@@ -3781,14 +3752,7 @@ void TestConvertConcat(OpConverterTest* test) {
     NodeDef node_def = get_concat_nodedef(dtype, num_inputs);
     // Create inputs.
     for (int j = 0; j < num_inputs; ++j) {
-      const string input_name = StrCat("values_", j);
-      if (ok_params[i].input_is_weight[j]) {
-        test->AddTestWeights<CType>(
-            input_name, ok_params[i].input_shapes[j],
-            ConvertVector<int, CType>(ok_params[i].input_values[j]));
-      } else {
-        test->AddTestTensor(input_name, ok_params[i].input_shapes[j]);
-      }
+      test->AddTestTensor(input_name, ok_params[i].input_shapes[j]);
     }
     test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
     test->RunValidationAndConversion(node_def);
@@ -3801,11 +3765,9 @@ void TestConvertConcat(OpConverterTest* test) {
     // Create input data for tensors.
     DataVec input_data;
     for (int j = 0; j < num_inputs; ++j) {
-      if (!ok_params[i].input_is_weight[j]) {
-        input_data.push_back({StrCat("values_", j),
-                              test::AsTensor<CType>(ConvertVector<int, CType>(
-                                  ok_params[i].input_values[j]))});
-      }
+      input_data.push_back({StrCat("values_", j),
+                            test::AsTensor<CType>(ConvertVector<int, CType>(
+                                ok_params[i].input_values[j]))});
     }
     DataVec output_data{
         {"my_concat",
@@ -3860,7 +3822,7 @@ TEST_F(OpConverterTest, ConvertConcat) {
                                "batch dimension, at my_concat");
   }
   {
-    // Inputs have inconsistent rank.
+    // Inputs have inconsistent rank, should fail.
     Reset();
     NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
     AddTestTensor("values_0", {1, 2, 3});
@@ -3871,7 +3833,18 @@ TEST_F(OpConverterTest, ConvertConcat) {
                                "rank, at my_concat");
   }
   {
-    // Inputs have inconsistent non-axis shapes.
+    // An input is a weight, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestWeights<float>("values_1", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "ConcatV2 received inputs with inconsistent "
+                               "rank, at my_concat");
+  }
+  {
+    // Inputs have inconsistent non-axis shapes, should fail.
     Reset();
     NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
     AddTestTensor("values_0", {1, 2, 3});
