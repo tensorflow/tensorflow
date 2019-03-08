@@ -3465,6 +3465,57 @@ void BroadcastDiv4DSlow(const ArithmeticParams& params,
   }
 }
 
+// TODO(benoitjacob): BroadcastDiv is intentionally duplicated from
+// reference_ops.h. For more details see the comment above the generic
+// version of BroadcastDiv4DSlow.
+inline void BroadcastDiv4DSlow(const ArithmeticParams& params,
+                               const RuntimeShape& unextended_input1_shape,
+                               const uint8* input1_data,
+                               const RuntimeShape& unextended_input2_shape,
+                               const uint8* input2_data,
+                               const RuntimeShape& unextended_output_shape,
+                               uint8* output_data) {
+  TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+
+  NdArrayDesc<4> desc1;
+  NdArrayDesc<4> desc2;
+  NdArrayDescsForElementwiseBroadcast(unextended_input1_shape,
+                                      unextended_input2_shape, &desc1, &desc2);
+  
+  const float scale = static_cast<float>(
+      static_cast<double>(params.output_multiplier) /
+      (1 << (31 - params.output_shift)));
+
+  for (int b = 0; b < output_shape.Dims(0); ++b) {
+    for (int y = 0; y < output_shape.Dims(1); ++y) {
+      for (int x = 0; x < output_shape.Dims(2); ++x) {
+        for (int c = 0; c < output_shape.Dims(3); ++c) {
+          const int32 input1_val =
+              params.input1_offset +
+              input1_data[SubscriptToIndex(desc1, b, y, x, c)];
+          const int32 input2_val =
+              params.input2_offset +
+              input2_data[SubscriptToIndex(desc2, b, y, x, c)];
+          const float quotient =
+              static_cast<float>(input1_val) / input2_val;
+          const int32 unclamped_result =
+              params.output_offset +
+              static_cast<int32>(std::round(scale * quotient));
+          const int32 clamped_output = std::min(
+              params.quantized_activation_max,
+              std::max(params.quantized_activation_min, unclamped_result));
+          output_data[Offset(output_shape, b, y, x, c)] =
+            static_cast<uint8>(clamped_output);
+        }
+      }
+    }
+  }
+}
+
 // TODO(aselle): This is not actually optimized yet.
 inline void SubNonBroadcast(const ArithmeticParams& params,
                             const RuntimeShape& input1_shape,
