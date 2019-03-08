@@ -2177,11 +2177,341 @@ struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/2> {
+  static inline void KernelMacroBlockIntrinsics(
+      const int8* scratch_block_data, const int8* filter_workspace,
+      const int32* bias_data, uint8* output_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int input_width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int output_width_micro_repeats =
+        function_params->output_width_micro_repeats;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int depth = function_params->input_depth;
+    const int stride_val = function_params->stride;
+    const int four_over_stride = function_params->four_over_stride;
+
+    const int workspace_width_micro_repeats =
+        function_params->workspace_width_micro_repeats;
+    const int output_width_overall_micro_repeats =
+        function_params->output_width_overall_micro_repeats;
+    const int block_height = function_params->outbound_block_height;
+    const int residual_width = function_params->output_residual_width;
+    const int output_height_stride = function_params->output_height_stride;
+    const int bias_increment = function_params->bias_increment;
+
+    TFLITE_DCHECK(depth_micro_repeats > 0);
+    const int width_micro_stride = 4 * 8;
+    const int depth_micro_stride =
+        width_micro_stride * input_width_overall_micro_repeats;
+
+    const int32 output_activation_min =
+        function_params->quantized_activation_min;
+    const int32 output_activation_max =
+        function_params->quantized_activation_max;
+    const int32 output_multiplier = function_params->output_multiplier;
+    const int32 output_shift = function_params->output_shift;
+    const int32 output_offset = function_params->output_offset;
+    TFLITE_DCHECK_GE(output_activation_min, 0);
+    TFLITE_DCHECK_LT(output_activation_min, 256);
+    TFLITE_DCHECK_GE(output_activation_max, 0);
+    TFLITE_DCHECK_LT(output_activation_max, 256);
+    TFLITE_DCHECK_GE(output_offset, -32878);
+    TFLITE_DCHECK_LT(output_offset, 32768);
+
+    // This version only does min/max on 64 bits.
+    const int16x8_t output_offset_vec =
+        vdupq_n_s16(static_cast<int16>(output_offset));
+    const uint8x8_t output_activation_min_vec =
+        vdup_n_u8(static_cast<uint8>(output_activation_min));
+    const uint8x8_t output_activation_max_vec =
+        vdup_n_u8(static_cast<uint8>(output_activation_max));
+
+    constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
+
+    TFLITE_DCHECK_EQ(stride_val, 2);
+    TFLITE_DCHECK_LE(block_height, 2);
+
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
+      const int8* filter_block =
+          filter_workspace + shuffled_filter_increment * j_depth;
+
+      if (block_height == 2) {
+        for (int s = 0; s < 2; ++s) {
+          // Simulate NEON-register transposition of subset of filter.
+          int8x16_t filter_reg_0_a;
+          int8x16_t filter_reg_1_a;
+          int8x16_t filter_reg_2_a;
+
+          filter_reg_0_a = vld1q_s8(filter_block + s * 16);
+          filter_reg_1_a = vld1q_s8(filter_block + s * 16 + 32);
+          filter_reg_2_a = vld1q_s8(filter_block + s * 16 + 64);
+
+          const int8* scratch_data =
+              scratch_block_data + depth_micro_stride * j_depth;
+          uint8* output_data = output_block_data + 8 * j_depth;
+          const int8* input_data_0 = scratch_data + s * 2 * 8;
+
+          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
+          TFLITE_DCHECK_EQ(bias_increment, 4);
+
+          // Load first sub-micro block of data into operational banks.
+          int8x16_t left_bank_0_reg = vld1q_s8(input_data_0);
+          int8x16_t left_bank_1_reg =
+              vld1q_s8(input_data_0 + workspace_height_stride);
+          int8x16_t left_bank_2_reg =
+              vld1q_s8(input_data_0 + 2 * workspace_height_stride);
+          int8x16_t left_bank_3_reg =
+              vld1q_s8(input_data_0 + 3 * workspace_height_stride);
+          int8x16_t left_bank_4_reg =
+              vld1q_s8(input_data_0 + 4 * workspace_height_stride);
+
+          int8x16_t right_bank_0_reg;
+          int8x16_t right_bank_1_reg;
+          int8x16_t right_bank_2_reg;
+          int8x16_t right_bank_3_reg;
+          int8x16_t right_bank_4_reg;
+
+          int32x4_t acc0;
+          int32x4_t acc1;
+
+          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+               ++i_width) {
+            const int output_width = i_width == output_width_micro_repeats
+                                         ? residual_width
+                                         : four_over_stride;
+            TFLITE_DCHECK_LE(output_width * stride_val, 4);
+            const int8* input_data =
+                input_data_0 + width_micro_stride * i_width;
+            const bool no_right_block = i_width == output_width_micro_repeats &&
+                                        output_width_overall_micro_repeats ==
+                                            workspace_width_micro_repeats;
+
+            if (!no_right_block) {
+              // Load next sub-micro block of data.
+              right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
+              right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
+                                          workspace_height_stride);
+              right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
+                                          2 * workspace_height_stride);
+              right_bank_3_reg = vld1q_s8(input_data + width_micro_stride +
+                                          3 * workspace_height_stride);
+              right_bank_4_reg = vld1q_s8(input_data + width_micro_stride +
+                                          4 * workspace_height_stride);
+            }
+
+            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
+
+            // Iterate over input width shifts within 4x4 blocks.
+            {
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+
+              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+              acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
+              acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
+              acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              // Apply the activation function.
+              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
+              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+              vst1_lane_u8x4(output_data_base, acc_u8, 0);
+              vst1_lane_u8x4(output_data_base + output_height_stride, acc_u8,
+                             1);
+
+              left_bank_0_reg = vrev32q_u16(left_bank_0_reg);
+              left_bank_1_reg = vrev32q_u16(left_bank_1_reg);
+              left_bank_2_reg = vrev32q_u16(left_bank_2_reg);
+              left_bank_3_reg = vrev32q_u16(left_bank_3_reg);
+              left_bank_4_reg = vrev32q_u16(left_bank_4_reg);
+              vtrn1_s8x2_in_place(&left_bank_0_reg, &right_bank_0_reg);
+              vtrn1_s8x2_in_place(&left_bank_1_reg, &right_bank_1_reg);
+              vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
+              vtrn1_s8x2_in_place(&left_bank_3_reg, &right_bank_3_reg);
+              vtrn1_s8x2_in_place(&left_bank_4_reg, &right_bank_4_reg);
+            }
+
+            if (output_width > 1) {
+              acc0 = adjusted_bias_data;
+              acc1 = adjusted_bias_data;
+
+              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+              acc1 = vdotq_s32(acc1, filter_reg_0_a, left_bank_2_reg);
+              acc1 = vdotq_s32(acc1, filter_reg_1_a, left_bank_3_reg);
+              acc1 = vdotq_s32(acc1, filter_reg_2_a, left_bank_4_reg);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              acc1 = vqrdmulhq_n_s32(acc1, output_multiplier);
+              acc1 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc1, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc1));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              // Apply the activation function.
+              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
+              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+              vst1_lane_u8x4(output_data_base + depth, acc_u8, 0);
+              vst1_lane_u8x4(output_data_base + depth + output_height_stride,
+                             acc_u8, 1);
+
+              left_bank_0_reg = right_bank_0_reg;
+              left_bank_1_reg = right_bank_1_reg;
+              left_bank_2_reg = right_bank_2_reg;
+              left_bank_3_reg = right_bank_3_reg;
+              left_bank_4_reg = right_bank_4_reg;
+            }
+          }
+          bias_data += bias_increment;
+        }
+      } else {
+        for (int s = 0; s < 2; ++s) {
+          // Simulate NEON-register transposition of subset of filter.
+          int8x16_t filter_reg_0_a;
+          int8x16_t filter_reg_1_a;
+          int8x16_t filter_reg_2_a;
+
+          filter_reg_0_a = vld1q_s8(filter_block + s * 16);
+          filter_reg_1_a = vld1q_s8(filter_block + s * 16 + 32);
+          filter_reg_2_a = vld1q_s8(filter_block + s * 16 + 64);
+
+          const int8* scratch_data =
+              scratch_block_data + depth_micro_stride * j_depth;
+          uint8* output_data = output_block_data + 8 * j_depth;
+          const int8* input_data_0 = scratch_data + s * 2 * 8;
+
+          const int32x4_t adjusted_bias_data = vld1q_s32(bias_data);
+          TFLITE_DCHECK_EQ(bias_increment, 4);
+
+          // Load first sub-micro block of data into operational banks.
+          int8x16_t left_bank_0_reg = vld1q_s8(input_data_0);
+          int8x16_t left_bank_1_reg =
+              vld1q_s8(input_data_0 + workspace_height_stride);
+          int8x16_t left_bank_2_reg =
+              vld1q_s8(input_data_0 + 2 * workspace_height_stride);
+
+          int8x16_t right_bank_0_reg;
+          int8x16_t right_bank_1_reg;
+          int8x16_t right_bank_2_reg;
+
+          int32x4_t acc0;
+
+          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+               ++i_width) {
+            const int output_width = i_width == output_width_micro_repeats
+                                         ? residual_width
+                                         : four_over_stride;
+            TFLITE_DCHECK_LE(output_width * stride_val, 4);
+            const int8* input_data =
+                input_data_0 + width_micro_stride * i_width;
+            const bool no_right_block = i_width == output_width_micro_repeats &&
+                                        output_width_overall_micro_repeats ==
+                                            workspace_width_micro_repeats;
+
+            if (!no_right_block) {
+              // Load next sub-micro block of data.
+              right_bank_0_reg = vld1q_s8(input_data + width_micro_stride);
+              right_bank_1_reg = vld1q_s8(input_data + width_micro_stride +
+                                          workspace_height_stride);
+              right_bank_2_reg = vld1q_s8(input_data + width_micro_stride +
+                                          2 * workspace_height_stride);
+            }
+
+            uint8* output_data_base = output_data + depth * 2 * i_width + 4 * s;
+
+            // Iterate over input width shifts within 4x4 blocks.
+            {
+              acc0 = adjusted_bias_data;
+
+              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc0));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              // Apply the activation function.
+              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
+              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+              vst1_lane_u8x4(output_data_base, acc_u8, 0);
+
+              left_bank_0_reg = vrev32q_u16(left_bank_0_reg);
+              left_bank_1_reg = vrev32q_u16(left_bank_1_reg);
+              left_bank_2_reg = vrev32q_u16(left_bank_2_reg);
+              vtrn1_s8x2_in_place(&left_bank_0_reg, &right_bank_0_reg);
+              vtrn1_s8x2_in_place(&left_bank_1_reg, &right_bank_1_reg);
+              vtrn1_s8x2_in_place(&left_bank_2_reg, &right_bank_2_reg);
+            }
+
+            if (output_width > 1) {
+              acc0 = adjusted_bias_data;
+
+              acc0 = vdotq_s32(acc0, filter_reg_0_a, left_bank_0_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_1_a, left_bank_1_reg);
+              acc0 = vdotq_s32(acc0, filter_reg_2_a, left_bank_2_reg);
+
+              // Fixed-point multiplication.
+              acc0 = vqrdmulhq_n_s32(acc0, output_multiplier);
+              acc0 = DivideByPOT<DepthwiseConvOutputRounding::kUpward>::Run(
+                  acc0, -output_shift);
+              // Add the output offset.
+              int16x8_t acc_s16_0_1 =
+                  vcombine_s16(vqmovn_s32(acc0), vqmovn_s32(acc0));
+              acc_s16_0_1 = vqaddq_s16(acc_s16_0_1, output_offset_vec);
+              // Apply the activation function.
+              uint8x8_t acc_u8 = vqmovun_s16(acc_s16_0_1);
+              acc_u8 = vmax_u8(acc_u8, output_activation_min_vec);
+              acc_u8 = vmin_u8(acc_u8, output_activation_max_vec);
+
+              vst1_lane_u8x4(output_data_base + depth, acc_u8, 0);
+
+              left_bank_0_reg = right_bank_0_reg;
+              left_bank_1_reg = right_bank_1_reg;
+              left_bank_2_reg = right_bank_2_reg;
+            }
+          }
+          bias_data += bias_increment;
+        }
+      }
+    }
+  }  // NOLINT(readability/fn_size) Manually unrolled.
+
   static inline void Run(const int8* scratch_block_data,
                          const int8* filter_workspace, const int32* bias_data,
                          uint8* output_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+    KernelMacroBlockIntrinsics(scratch_block_data, filter_workspace, bias_data,
+                               output_block_data, function_params);
   }
 };
 

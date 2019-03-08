@@ -188,7 +188,8 @@ inline void DispatchDepthwiseConv(
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
 
-      ASSERT_TRUE(kernel_type == DotProduct3x3KernelType::kPlain);
+      ASSERT_TRUE(kernel_type == DotProduct3x3KernelType::kPlain ||
+                  kernel_type == DotProduct3x3KernelType::kStride2);
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
           DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct>(
           params, input_shape, input_data, filter_shape, filter_data,
@@ -332,7 +333,7 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   if (test_param.loose_tolerance) {
     mean_tolerance = 500.f;
     diff_mean_tolerance = 256;
-    diff_median_tolerance = 175;
+    diff_median_tolerance = 225;
   }
 
   // Normally we should require bit-for-bit exact results. Unfortunately a bug
@@ -748,7 +749,7 @@ INSTANTIATE_TEST_SUITE_P(
         Values(DepthwiseConvImplementation::
                    kUseIntrinsics3x3DotProduct),       // forced_invocation
         Values(1000),                                  // tests_to_run
-        Values(false),                                 // test_stride
+        Bool(),                                        // test_stride
         Bool(),                                        // test_pad
         Values(false),                                 // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
