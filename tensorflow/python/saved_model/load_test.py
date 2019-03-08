@@ -1102,6 +1102,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       load.load(path, tags=[tag_constants.EVAL])
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
+    load.load(path, tags=set([tag_constants.SERVING]))
 
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
