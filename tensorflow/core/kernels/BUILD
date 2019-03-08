@@ -6817,6 +6817,20 @@ tf_mkl_kernel_library(
     ] + mkl_deps(),
 )
 
+tf_cc_test(
+    name = "bias_op_test",
+    size = "small",
+    srcs = ["bias_op_test.cc"],
+    deps = [
+        ":bias_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
