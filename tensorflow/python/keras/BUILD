@@ -538,9 +538,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
-    # TODO(b/127881287): Re-enable.
     tags = [
-        "no_windows_gpu",
+        "no_windows",  # TODO(b/127888631)
+        "no_windows_gpu",  # TODO(b/127881287)
     ],
 )
 
