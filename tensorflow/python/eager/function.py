@@ -1567,8 +1567,8 @@ class Function(object):
                    self._python_function, cache_key)
       logging.vlog(2,
                    "Python function signature [args: %s] [kwargs: %s]",
-                   str(args),
-                   str(kwargs))
+                   args,
+                   kwargs)
 
       call_context_key = cache_key.replace(input_signature=None)
 
