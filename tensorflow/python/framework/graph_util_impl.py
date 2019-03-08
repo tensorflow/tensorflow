@@ -53,7 +53,7 @@ def _is_variable_op(op):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.must_run_on_cpu")
+    instructions="Use `tf.compat.v1.graph_util.must_run_on_cpu`")
 @tf_export(v1=["graph_util.must_run_on_cpu"])
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
   """Returns True if the given node_def must run on CPU, otherwise False.
@@ -156,7 +156,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.extract_sub_graph")
+    instructions="Use `tf.compat.v1.graph_util.extract_sub_graph`")
 @tf_export(v1=["graph_util.extract_sub_graph"])
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
@@ -197,7 +197,8 @@ def extract_sub_graph(graph_def, dest_nodes):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.remove_training_nodes")
+    instructions="Use `tf.compat.v1.graph_util.tensor_shape_from_node_def_name`"
+)
 @tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
@@ -215,7 +216,7 @@ def tensor_shape_from_node_def_name(graph, input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.convert_variables_to_constants")
+    instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
 @tf_export(v1=["graph_util.convert_variables_to_constants"])
 def convert_variables_to_constants(sess,
                                    input_graph_def,
@@ -248,15 +249,6 @@ def convert_variables_to_constants(sess,
   found_variables = {}
   variable_names = []
   variable_dict_names = []
-  identity_ops_input_map = {}
-
-  def is_found_variable(input_tensor_name):
-    # Determines if the `input_tensor_name` is in `found_variables` or is an
-    # Identity op with an input that is in `found_variables`.
-    return ((input_tensor_name in found_variables) or
-            (input_tensor_name in identity_ops_input_map and
-             identity_ops_input_map[input_tensor_name] in found_variables))
-
   for node in inference_graph.node:
     if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
@@ -270,9 +262,6 @@ def convert_variables_to_constants(sess,
         variable_names.append(variable_name + "/Read/ReadVariableOp:0")
       else:
         variable_names.append(variable_name + ":0")
-    elif node.op == "Identity":
-      # Creates a map of Identity node names to the input names.
-      identity_ops_input_map[node.name] = node.input[0].split(":")[0]
   if variable_names:
     returned_variables = sess.run(variable_names)
   else:
@@ -295,15 +284,11 @@ def convert_variables_to_constants(sess,
               tensor=tensor_util.make_tensor_proto(
                   data, dtype=dtype.type, shape=data.shape)))
       how_many_converted += 1
-    elif (input_node.op == "ReadVariableOp" and
-          is_found_variable(input_node.input[0])):
+    elif input_node.op == "ReadVariableOp" and (
+        input_node.input[0] in found_variables):
       # The preceding branch converts all VarHandleOps of ResourceVariables to
       # constants, so we need to convert the associated ReadVariableOps to
       # Identity ops.
-      #
-      # Handles the following cases:
-      #   Variable --> ReadVariableOp
-      #   Variable --> Identity --> ReadVariableOp
       output_node.op = "Identity"
       output_node.name = input_node.name
       output_node.input.extend([input_node.input[0]])
@@ -321,7 +306,7 @@ def convert_variables_to_constants(sess,
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.remove_training_nodes")
+    instructions="Use `tf.compat.v1.graph_util.remove_training_nodes`")
 @tf_export(v1=["graph_util.remove_training_nodes"])
 def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
@@ -369,18 +354,26 @@ def remove_training_nodes(input_graph, protected_nodes=None):
     nodes_after_removal.append(new_node)
 
   types_to_splice = {"Identity": True}
+  control_input_names = set()
+  node_names_with_control_input = set()
+  for node in nodes_after_removal:
+    for node_input in node.input:
+      if "^" in node_input:
+        control_input_names.add(node_input.replace("^", ""))
+        node_names_with_control_input.add(node.name)
+
   names_to_splice = {}
   for node in nodes_after_removal:
     if node.op in types_to_splice and node.name not in protected_nodes:
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.
-      has_control_edge = False
-      for input_name in node.input:
-        if re.match(r"^\^", input_name):
-          has_control_edge = True
-      if not has_control_edge:
+      if node.name not in node_names_with_control_input:
         names_to_splice[node.name] = node.input[0]
+
+  # We also don't want to remove nodes which are used as control edge inputs.
+  names_to_splice = {name: value for name, value in names_to_splice.items()
+                     if name not in control_input_names}
 
   nodes_after_splicing = []
   for node in nodes_after_removal:

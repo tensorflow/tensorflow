@@ -61,11 +61,11 @@ namespace toco {
   minmax.max = max_array.GetBuffer<ArrayDataType::kFloat>().data[0];
   // We always want [min, max] to contain 0.
   if (minmax.min > 0 || minmax.max < 0) {
-    LOG(ERROR) << "For " << LogName(*fakequant_op) << " the MinMax range "
-               << "[" << minmax.min << ", " << minmax.max
-               << "] does not contain 0. "
-               << "Proceeding by tweaking it to contain 0, which will result "
-                  "in poor accuracy.";
+    LOG(WARNING) << "For " << LogName(*fakequant_op) << " the MinMax range "
+                 << "[" << minmax.min << ", " << minmax.max
+                 << "] does not contain 0. "
+                 << "Proceeding by tweaking it to contain 0, which will result "
+                    "in poor accuracy.";
   }
   minmax.min = std::min(minmax.min, 0.);
   minmax.max = std::max(minmax.max, 0.);

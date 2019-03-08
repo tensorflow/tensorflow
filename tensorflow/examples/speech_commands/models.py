@@ -71,9 +71,12 @@ def prepare_model_settings(label_count, sample_rate, clip_duration_ms,
   elif preprocess == 'mfcc':
     average_window_width = -1
     fingerprint_width = feature_bin_count
+  elif preprocess == 'micro':
+    average_window_width = -1
+    fingerprint_width = feature_bin_count
   else:
-    raise ValueError('Unknown preprocess mode "%s" (should be "mfcc" or'
-                     ' "average")' % (preprocess))
+    raise ValueError('Unknown preprocess mode "%s" (should be "mfcc",'
+                     ' "average", or "micro")' % (preprocess))
   fingerprint_size = fingerprint_width * spectrogram_length
   return {
       'desired_samples': desired_samples,

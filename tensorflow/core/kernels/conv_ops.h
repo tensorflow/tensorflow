@@ -110,7 +110,7 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
 
 // Computes and validates convolutions dimensions from Conv2D parameters. If
 // parameters are valid, dimensions will be updated with derived convolution
-// dimensions, otherwise error will be returned.
+// dimensions, otherwise an error will be returned.
 Status ComputeConv2DDimension(const Conv2DParameters& params,
                               const Tensor& input, const Tensor& filter,
                               Conv2DDimensions* dimensions);

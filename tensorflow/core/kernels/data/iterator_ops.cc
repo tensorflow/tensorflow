@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include <memory>
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/optional_ops.h"
+#include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -51,14 +53,15 @@ const char kIteratorVariantTypeName[] = "tensorflow::Iterator";
 
 class IteratorResource : public ResourceBase {
  public:
-  IteratorResource(const DataTypeVector& output_dtypes,
+  IteratorResource(Env* env, const DataTypeVector& output_dtypes,
                    const std::vector<PartialTensorShape>& output_shapes,
                    const int /*unused: graph_def_version*/,
                    std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
                    FunctionLibraryRuntime* lib)
-      : device_mgr_(std::move(device_mgr)),
+      : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+        device_mgr_(std::move(device_mgr)),
         iterator_state_(std::make_shared<State>(
             std::move(flib_def), std::move(pflr), lib, nullptr /* iterator */)),
         output_dtypes_(output_dtypes),
@@ -77,6 +80,7 @@ class IteratorResource : public ResourceBase {
       params.function_handle_cache =
           captured_state->function_handle_cache.get();
       params.resource_mgr = &captured_state->resource_mgr;
+      params.thread_factory = unbounded_thread_pool_.get_thread_factory();
       return captured_state->iterator->GetNext(
           IteratorContext(std::move(params)), out_tensors, end_of_sequence);
     } else {
@@ -163,6 +167,8 @@ class IteratorResource : public ResourceBase {
     params.lib = new_state->lib;
     params.function_handle_cache = new_state->function_handle_cache.get();
     params.resource_mgr = &new_state->resource_mgr;
+    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
+
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &new_state->iterator));
     TF_RETURN_IF_ERROR(
@@ -179,6 +185,7 @@ class IteratorResource : public ResourceBase {
       params.allocator_getter = [device](AllocatorAttributes attrs) {
         return device->GetAllocator(attrs);
       };
+      params.thread_factory = unbounded_thread_pool_.get_thread_factory();
       IteratorContext iter_ctx(std::move(params));
       TF_RETURN_IF_ERROR(new_state->iterator->Restore(&iter_ctx, reader));
     }
@@ -233,6 +240,7 @@ class IteratorResource : public ResourceBase {
     params.lib = new_state->lib;
     params.function_handle_cache = new_state->function_handle_cache.get();
     params.resource_mgr = &new_state->resource_mgr;
+    params.thread_factory = unbounded_thread_pool_.get_thread_factory();
     TF_RETURN_IF_ERROR(dataset->MakeIterator(IteratorContext(std::move(params)),
                                              "Iterator", &iterator));
     TF_RETURN_IF_ERROR(
@@ -284,6 +292,7 @@ class IteratorResource : public ResourceBase {
     std::unique_ptr<IteratorBase> iterator;
   };
 
+  UnboundedThreadPool unbounded_thread_pool_;
   mutex mu_;
   const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
   std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
@@ -432,14 +441,14 @@ void IteratorHandleOp::Compute(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
           context,
           mgr->LookupOrCreate<IteratorResource>(
               cinfo_.container(), cinfo_.name(), &resource,
-              [lib, &device_mgr, &flib_def, &pflr, this](IteratorResource** ret)
-                  EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                    *ret = new IteratorResource(
-                        output_dtypes_, output_shapes_, graph_def_version_,
-                        std::move(device_mgr), std::move(flib_def),
-                        std::move(pflr), lib);
-                    return Status::OK();
-                  }));
+              [context, lib, &device_mgr, &flib_def, &pflr,
+               this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                *ret = new IteratorResource(
+                    context->env(), output_dtypes_, output_shapes_,
+                    graph_def_version_, std::move(device_mgr),
+                    std::move(flib_def), std::move(pflr), lib);
+                return Status::OK();
+              }));
 
       Status s = VerifyResource(resource);
       if (TF_PREDICT_FALSE(!s.ok())) {
@@ -522,7 +531,7 @@ void AnonymousIteratorHandleOp::Compute(OpKernelContext* context) {
       existing_resource->Unref();
     }
     IteratorResource* new_resource = new IteratorResource(
-        output_dtypes_, output_shapes_, graph_def_version_,
+        context->env(), output_dtypes_, output_shapes_, graph_def_version_,
         std::move(device_mgr), std::move(flib_def), std::move(pflr), lib);
     // Create the resource with our chosen name under the resource lookup
     // mutex to avoid another kernel racily creating a resource with this
@@ -837,11 +846,12 @@ class OneShotIteratorOp : public AsyncOpKernel {
     TF_RETURN_IF_ERROR(
         ctx->resource_manager()->LookupOrCreate<IteratorResource>(
             cinfo->container(), cinfo->name(), iterator,
-            [lib, this, &flib_def, &pflr](IteratorResource** ret)
+            [ctx, lib, this, &flib_def, &pflr](IteratorResource** ret)
                 EXCLUSIVE_LOCKS_REQUIRED(mu_) {
                   *ret = new IteratorResource(
-                      output_dtypes_, output_shapes_, graph_def_version_,
-                      nullptr, std::move(flib_def), std::move(pflr), lib);
+                      ctx->env(), output_dtypes_, output_shapes_,
+                      graph_def_version_, nullptr, std::move(flib_def),
+                      std::move(pflr), lib);
                   return Status::OK();
                 }));
 

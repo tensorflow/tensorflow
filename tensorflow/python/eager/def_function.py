@@ -31,7 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
@@ -113,8 +113,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
@@ -210,6 +210,29 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     self._cached_shape_as_list = None
 
 
+RUN_FUNCTIONS_EAGERLY = False
+
+
+@tf_export("config.experimental_run_functions_eagerly")
+def run_functions_eagerly(run_eagerly):
+  """Enables / disables eager execution of `tf.function`s.
+
+  After calling `tf.config.experimental_run_functions_eagerly(True)` all
+  invocations of tf.function will run eagerly instead of running through a graph
+  function.
+
+  This can be useful for debugging or profiling.
+
+  Similarly, calling `tf.config.experimental_run_functions_eagerly(False)` will
+  revert the behavior of all functions to graph functions.
+
+  Args:
+    run_eagerly: Boolean. Whether to run functions eagerly.
+  """
+  global RUN_FUNCTIONS_EAGERLY
+  RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
+
+
 class FunctionDeleter(object):
 
   def __init__(self, func_graph):
@@ -257,7 +280,6 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
-    self._input_signature = input_signature
     # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
     # same FunctionSpec. Consider removing it from both and passing in instead.
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
@@ -296,19 +318,13 @@ class Function(object):
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(self._python_function, wrapped_fn),
-        input_signature=self._input_signature,
+        tf_decorator.make_decorator(
+            self._python_function,
+            wrapped_fn,
+            decorator_argspec=self._function_spec.fullargspec),
+        input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)
-
-  def _canonicalize_function_inputs(self, args, kwds):
-    """Canonicalize the inputs to the Python function."""
-    if self._input_signature is None or args or kwds:
-      return self._function_spec.canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
-    # If an input signature is defined, we may need to fetch a concrete function
-    # without any inputs specified. In this case args and kwds should be ignored
-    # but running _canonicalize_function_inputs would raise an exception.
-    return (), {}
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -379,10 +395,12 @@ class Function(object):
 
     self._python_function = decorator(self._python_function)
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
-        self._python_function, self._input_signature)
+        self._python_function, self.input_signature)
 
   def __call__(self, *args, **kwds):
     """Calls the graph function."""
+    if RUN_FUNCTIONS_EAGERLY:
+      return self._python_function(*args, **kwds)
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
@@ -412,7 +430,8 @@ class Function(object):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
+      canon_args, canon_kwds = self._function_spec.canonicalize_function_inputs(
+          *args, **kwds)
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
 
@@ -469,7 +488,8 @@ class Function(object):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
+    canon_args, canon_kwds = self._function_spec.canonicalize_function_inputs(
+        *args, **kwds)
     return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
   @property
@@ -479,7 +499,7 @@ class Function(object):
 
   @property
   def input_signature(self):
-    return self._input_signature
+    return self._function_spec.input_signature
 
   @property
   def function_spec(self):
@@ -489,7 +509,8 @@ class Function(object):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    # Note: there is no reason not to autograph once the overhead is negligible.
+    @function_lib.defun(autograph=False)  # tf.function internal, pure graph
     def initialize_variables():
       for v, init in initializer_map.items():
         with ops.init_scope():
@@ -548,14 +569,16 @@ class Function(object):
     Returns:
       A list of instances of `Function`.
     """
-    if self._input_signature is not None:
+    if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
     # pylint: disable=protected-access
     if self._stateful_fn:
-      concrete_functions.extend(self._stateful_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateful_fn._function_cache.all_values())
     if self._stateless_fn:
-      concrete_functions.extend(self._stateless_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
     deduplicated_concrete_functions = list()
     seen_signatures = list()

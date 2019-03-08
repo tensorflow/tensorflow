@@ -118,6 +118,20 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   }
 };
 
+TEST(FloatActivationsOpTest, Elu) {
+  FloatActivationsOpModel m(BuiltinOperator_ELU,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
+  m.SetInput({
+      0, -6, 2, -4,     //
+      3, -2, 10, -0.1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 0.0, -0.997521, 2.0, -0.981684,    //
+                                 3.0, -0.864665, 10.0, -0.0951626,  //
+                             })));
+}
+
 TEST(FloatActivationsOpTest, Relu) {
   FloatActivationsOpModel m(BuiltinOperator_RELU,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
@@ -772,7 +786,7 @@ TEST(FloatActivationsOpTest, LogSoftmax) {
                               })));
 }
 
-TEST(QuantizedActivationsOpTest, LogSoftmax) {
+TEST(QuantizedActivationsOpTest, LogSoftmaxUint8) {
   const float kLogSoftmaxQuantizedTolerance = 16 / 256.0;
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOG_SOFTMAX,
@@ -792,6 +806,30 @@ TEST(QuantizedActivationsOpTest, LogSoftmax) {
                   kLogSoftmaxQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({189, 93, 221, 253, 142, 63, 255, 111}));
+}
+
+TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
+  const float kLogSoftmaxQuantizedTolerance = 0.06355;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_LOG_SOFTMAX,
+      /*input=*/{TensorType_INT8, {2, 4}, -10, 10},
+      /*output=*/{TensorType_INT8, {}, 0, 0, 16. / 256, 127});
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      -4.14297, -10.14297, -2.14297, -.142971,    //
+                      -7.00104, -12.00104, -.00104087, -9.00104,  //
+                  },
+                  kLogSoftmaxQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         61, -36, 93, 125,   //
+                                         15, -65, 127, -16,  //
+                                     }));
 }
 
 // A base class of PRelu op model. It provides the constructor for

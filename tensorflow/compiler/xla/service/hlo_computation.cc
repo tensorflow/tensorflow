@@ -124,6 +124,24 @@ HloInstruction* HloComputation::AddParameter(
   return instructions_.back().get();
 }
 
+HloInstruction* HloComputation::AddEntryComputationParameter(
+    std::unique_ptr<HloInstruction> instruction) {
+  CHECK_EQ(instruction->opcode(), HloOpcode::kParameter);
+  CHECK_EQ(instruction->parameter_number(), num_parameters());
+  CHECK(parent()->entry_computation() == this);
+
+  HloModuleConfig config = parent()->config();
+  config.mutable_entry_computation_layout()->add_parameter_layout(
+      ShapeLayout(instruction->shape()));
+  parent()->set_config(config);
+
+  instruction->set_parent(this);
+  param_instructions_.push_back(instruction.get());
+  AddInstructionInternal(std::move(instruction));
+
+  return instructions_.back().get();
+}
+
 Status HloComputation::RemoveParameter(int64 param_no) {
   CHECK_GE(param_no, 0);
   CHECK_LT(param_no, param_instructions_.size());

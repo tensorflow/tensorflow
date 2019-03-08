@@ -17,11 +17,19 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
+#include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -103,7 +111,8 @@ bool HasForwardedRefInput(const Node& node) {
   return false;
 }
 
-Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
+xla::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
+                                              GraphCycles* cycles) {
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     // We rely on the node IDs in the cycle detection graph being consecutive
     // integers starting from 0.
@@ -166,9 +175,11 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
       }
 
       if (!cycles->InsertEdge(src, dst)) {
-        return errors::Internal(
-            "Cycle detected when adding ", src_type, "->", dst_type,
-            " edge: ", DescribeCycle(cycles, *graph, src, dst));
+        // TODO(b/127521408): We can probably handle this situation with a more
+        // sophisticated SCC based algorithm, but for now we bail out.
+        VLOG(1) << "Cycle detected when adding " << src_type << "->" << dst_type
+                << " edge: " << DescribeCycle(cycles, *graph, src, dst);
+        return false;
       }
       // Drop the original edge.
       continue;
@@ -186,7 +197,8 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
           DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
     }
   }
-  return Status::OK();
+
+  return true;
 }
 
 absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {
@@ -234,6 +246,128 @@ Status AdjustCycleDetectionGraphForResourceOps(
     CHECK(cycles->InsertEdge(phantom_node_id, unsafe_dep.second));
   }
   return Status::OK();
+}
+
+Status PickDeviceForXlaImpl(absl::Span<const string> device_names,
+                            bool allow_mixing_unknown_and_cpu,
+                            bool* out_can_pick_device,
+                            string* out_device_picked) {
+  if (out_can_pick_device) {
+    *out_can_pick_device = true;
+  }
+
+#define FAILED_TO_PICK_DEVICE(failing_status) \
+  do {                                        \
+    if (out_can_pick_device) {                \
+      *out_can_pick_device = false;           \
+      return Status::OK();                    \
+    } else {                                  \
+      return failing_status;                  \
+    }                                         \
+  } while (false)
+
+  TF_RET_CHECK(!device_names.empty()) << "No devices to choose from";
+  DCHECK_NE(out_can_pick_device == nullptr, out_device_picked == nullptr);
+
+  absl::flat_hash_set<absl::string_view> device_names_set;
+  for (absl::string_view device_name : device_names) {
+    if (!device_name.empty()) {
+      device_names_set.insert(device_name);
+    }
+  }
+
+  absl::optional<absl::string_view> maybe_gpu_device;
+  absl::optional<absl::string_view> maybe_cpu_device;
+  absl::optional<absl::string_view> maybe_unknown_device;
+
+  for (absl::string_view device_name : device_names_set) {
+    DeviceNameUtils::ParsedName parsed_name;
+    TF_RET_CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_name))
+        << device_name;
+    if (parsed_name.type == "GPU") {
+      if (maybe_gpu_device) {
+        FAILED_TO_PICK_DEVICE(errors::Internal(
+            "Multiple GPU devices ", absl::StrJoin(device_names, ", ")));
+      }
+      maybe_gpu_device = device_name;
+    } else if (parsed_name.type == "CPU") {
+      if (maybe_cpu_device) {
+        FAILED_TO_PICK_DEVICE(errors::Internal(
+            "Multiple CPU devices ", absl::StrJoin(device_names, ", ")));
+      }
+      maybe_cpu_device = device_name;
+    } else {
+      if (maybe_unknown_device) {
+        FAILED_TO_PICK_DEVICE(errors::Internal(
+            "Multiple unknown devices ", absl::StrJoin(device_names, ", ")));
+      }
+      maybe_unknown_device = device_name;
+    }
+  }
+
+  if (maybe_unknown_device && maybe_gpu_device) {
+    FAILED_TO_PICK_DEVICE(errors::Internal(
+        "Found both unknown and GPU devices: ", *maybe_unknown_device, ", ",
+        *maybe_gpu_device));
+  }
+
+  if (!allow_mixing_unknown_and_cpu) {
+    if (maybe_unknown_device && maybe_cpu_device) {
+      FAILED_TO_PICK_DEVICE(errors::Internal(
+          "Found both unknown and CPU devices: ", *maybe_unknown_device, ", ",
+          *maybe_cpu_device));
+    }
+  }
+
+  if (out_device_picked) {
+    if (maybe_gpu_device) {
+      *out_device_picked = string(*maybe_gpu_device);
+    } else if (maybe_unknown_device) {
+      *out_device_picked = string(*maybe_unknown_device);
+    } else {
+      *out_device_picked = string(*maybe_cpu_device);
+    }
+  }
+
+  return Status::OK();
+
+#undef FAILED_TO_PICK_DEVICE
+}
+
+Status PickDeviceForXla(absl::Span<const string> device_names,
+                        bool allow_mixing_unknown_and_cpu,
+                        string* out_device_picked) {
+  return PickDeviceForXlaImpl(device_names, allow_mixing_unknown_and_cpu,
+                              /*out_can_pick_device=*/nullptr,
+                              out_device_picked);
+}
+
+Status CanPickDeviceForXla(absl::Span<const string> device_names,
+                           bool allow_mixing_unknown_and_cpu,
+                           bool* out_can_pick_device) {
+  return PickDeviceForXlaImpl(device_names, allow_mixing_unknown_and_cpu,
+                              out_can_pick_device,
+                              /*out_device_picked=*/nullptr);
+}
+
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+    const GraphOptimizationPassOptions& options) {
+  OptimizerOptions::GlobalJitLevel global_jit_level =
+      options.session_options->config.graph_options()
+          .optimizer_options()
+          .global_jit_level();
+  if (global_jit_level == OptimizerOptions::DEFAULT) {
+    // To set compilation to be on by default, change the following line.
+    global_jit_level = OptimizerOptions::OFF;
+  }
+  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+  if (flags->tf_xla_auto_jit != OptimizerOptions::DEFAULT) {
+    // If the flag tf_xla_auto_jit is a valid, non-DEFAULT setting, it overrides
+    // the setting in ConfigProto.
+    global_jit_level =
+        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
+  }
+  return global_jit_level;
 }
 
 }  // namespace tensorflow

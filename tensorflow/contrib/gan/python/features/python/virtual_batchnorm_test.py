@@ -112,7 +112,7 @@ class VirtualBatchnormTest(test.TestCase):
           batch, axis, training=True)
 
       # Get VBN's batch normalization on reference batch.
-      batch_axis = 0 if axis is not 0 else 1  # axis and batch_axis can't same
+      batch_axis = 0 if axis != 0 else 1  # axis and batch_axis can't same
       vbn = virtual_batchnorm.VBN(batch, axis, batch_axis=batch_axis)
       vbn_normalized = vbn.reference_batch_normalization()
 

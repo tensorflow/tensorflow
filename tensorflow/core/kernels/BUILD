@@ -33,6 +33,7 @@ load(
     "if_android",
     "if_not_windows",
     "tf_cc_binary",
+    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -45,6 +46,7 @@ load(
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_kernel_tests_linkstatic",
@@ -160,7 +162,6 @@ tf_kernel_library(
     name = "clustering_ops",
     prefix = "clustering_ops",
     deps = [
-        "//tensorflow/core:clustering_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -230,6 +231,7 @@ tf_kernel_library(
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
+        "concat_lib_gpu.h",
         "cuda_device_array.h",
         "cuda_device_array_gpu.h",
     ],
@@ -268,7 +270,7 @@ tf_kernel_library(
     deps = [
         ":eigen_helpers",
         ":fill_functor",
-        ":gpu_util_hdrs",
+        ":gpu_utils",
         ":image_resizer_state",
         ":ops_util",
         "//tensorflow/core:core_cpu",
@@ -462,9 +464,29 @@ cc_library(
     hdrs = ["conv_ops_gpu.h"],
 )
 
+# We keep this target only because some contrib/ targets depend on it. The
+# reason why the contrib/ targets can't depend on gpu_utils is that, some
+# of the targets are tf_custom_op_library. tf_custom_op_library forbids the
+# dependency to tensorflow/core:lib, which gpu_utils certainly depends on.
 cc_library(
     name = "gpu_util_hdrs",
     hdrs = ["gpu_utils.h"],
+)
+
+tf_cuda_library(
+    name = "gpu_utils",
+    srcs = if_cuda_is_configured(["gpu_utils.cc"]),
+    hdrs = ["gpu_utils.h"],
+    deps = [
+        ":gpu_util_hdrs",
+        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:conv_autotuning_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:logger",
+        "//tensorflow/core:stream_executor",
+        "//tensorflow/core/util/proto:proto_utils",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
 tf_cc_test(
@@ -607,6 +629,7 @@ tf_kernel_library(
     gpu_srcs = [
         "split_lib_gpu.cu.cc",
         "split_lib.h",
+        "split_lib_gpu.h",
     ],
     deps = [
         ":cuda_device_array",
@@ -618,9 +641,7 @@ tf_kernel_library(
 
 cc_library(
     name = "split_lib_hdrs",
-    hdrs = [
-        "split_lib.h",
-    ],
+    hdrs = ["split_lib.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
@@ -832,7 +853,6 @@ cc_library(
     deps = [
         ":batch_space_ops",
         ":bcast_ops",
-        ":bitcast_op",
         ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
@@ -884,8 +904,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bitcast_op",
-    prefix = "bitcast_op",
-    deps = ARRAY_DEPS,
+    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
+    deps = ["//tensorflow/c/kernels:bitcast_op"],
 )
 
 tf_kernel_library(
@@ -1253,7 +1273,7 @@ tf_kernel_library(
     visibility = ["//visibility:public"],
     deps = [
         ":bounds_check_lib",
-        ":gpu_util_hdrs",
+        ":gpu_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -1761,7 +1781,7 @@ tf_cc_test(
     size = "small",
     srcs = ["slice_op_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2688,7 +2708,7 @@ tf_cc_tests(
         "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2918,7 +2938,7 @@ tf_kernel_library(
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
     linkopts = select({
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
@@ -3339,7 +3359,7 @@ tf_kernel_library(
     }),
     deps = MATH_DEPS + [
         ":eigen_contraction_kernel",
-        ":gpu_util_hdrs",
+        ":gpu_utils",
     ] + select({
         ":xsmm": ["@libxsmm_archive//:xsmm_avx"],
         "//conditions:default": [],
@@ -3554,7 +3574,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["scan_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -3577,7 +3597,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["reduction_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -3761,6 +3781,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/util/proto:proto_utils",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -4341,7 +4362,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stateful_random_ops_op_lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -5625,7 +5645,10 @@ filegroup(
         "conv_grad_ops.h",
         "conv_ops.cc",
         "conv_ops_3d.cc",
-        "conv_ops_fused.cc",
+        "conv_ops_fused_double.cc",
+        "conv_ops_fused_float.cc",
+        "conv_ops_fused_half.cc",
+        "conv_ops_fused_impl.h",
         "conv_ops_using_gemm.cc",
         "crop_and_resize_op.cc",
         "crop_and_resize_op.h",
@@ -5846,7 +5869,7 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = glob(
+    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
         [
             "*.cc",
             "*.h",
@@ -6325,6 +6348,29 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_quantized_conv_ops_test",
+    size = "small",
+    srcs = ["mkl_quantized_conv_ops_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
+    deps = [
+        ":mkl_conv_op",
+        ":mkl_input_conversion_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "quantize_op_test",
     size = "small",
@@ -6771,11 +6817,25 @@ tf_mkl_kernel_library(
     ] + mkl_deps(),
 )
 
+tf_cc_test(
+    name = "bias_op_test",
+    size = "small",
+    srcs = ["bias_op_test.cc"],
+    deps = [
+        ":bias_op",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
     srcs = ["mkl_conv_ops_test.cc"],
-    tags = ["no_mac"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6802,8 +6862,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
 
@@ -6945,12 +7003,9 @@ tf_mkl_kernel_library(
             "//third_party/eigen3",
             "@gemmlowp",
             "@mkl_dnn",
-            "//tensorflow/core:array_ops_op_lib",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
-            "//tensorflow/core:math_ops_op_lib",
-            "//tensorflow/core:nn_ops_op_lib",
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
@@ -6960,7 +7015,7 @@ tf_cc_test_mkl(
     name = "mkl_requantize_ops_test",
     size = "small",
     srcs = ["mkl_requantize_ops_test.cc"],
-    tags = ["no_mac"],  #TODO(penporn): Re-enable the test on MacOS.
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_requantize_ops",
         ":ops_testutil",
@@ -7170,5 +7225,24 @@ cc_header_only_library(
     name = "quantize_and_dequantize_op_hdrs",
     deps = [
         ":quantize_and_dequantize_op",
+    ],
+)
+
+cc_library(
+    name = "kernel_platform_strings",
+    srcs = ["kernel_platform_strings.h"],
+    deps = [
+        "//tensorflow/core:platform_strings",
+    ],
+    alwayslink = 1,
+)
+
+# Shared object that links all the kernels TF needs.
+tf_cc_shared_object(
+    name = "libtfkernel_all_kernels.so",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_platform_strings",
+        "//tensorflow/core:all_kernels_impl",
     ],
 )

@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
@@ -270,8 +271,13 @@ TfLiteStatus LogSoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 255);
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+    if (input->type == kTfLiteUInt8) {
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 255);
+    }
+    if (input->type == kTfLiteInt8) {
+      TF_LITE_ENSURE_EQ(context, output->params.zero_point, 127);
+    }
     TF_LITE_ENSURE_EQ(context, output->params.scale, 16.0 / 256);
 
     static const double kBeta = 1.0;
@@ -854,6 +860,21 @@ TfLiteStatus LogSoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
       }
       return kTfLiteOk;
     }
+    case kTfLiteInt8: {
+      const auto input_shape = GetTensorShape(input);
+      const auto output_shape = GetTensorShape(output);
+      const int trailing_dim = input_shape.DimensionsCount() - 1;
+      const int outer_size =
+          MatchingFlatSizeSkipDim(input_shape, trailing_dim, output_shape);
+      const int depth =
+          MatchingDim(input_shape, trailing_dim, output_shape, trailing_dim);
+      reference_integer_ops::LogSoftmax(
+          data->input_multiplier, data->input_left_shift,
+          data->reverse_scaling_divisor, data->reverse_scaling_right_shift,
+          data->diff_min, outer_size, depth, GetTensorData<int8_t>(input),
+          GetTensorData<int8_t>(output));
+      return kTfLiteOk;
+    }
     default:
       context->ReportError(context, "Only float32 supported currently., got %s",
                            TfLiteTypeGetName(input->type));
@@ -923,7 +944,30 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
+      return kTfLiteOk;
+    } break;
+    default:
+      context->ReportError(context, "Only float32 supported currently, got %s.",
+                           TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+}
+
 }  // namespace activations
+
+TfLiteRegistration* Register_ELU() {
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 activations::GenericPrepare,
+                                 activations::EluEval};
+  return &r;
+}
 
 TfLiteRegistration* Register_RELU() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,

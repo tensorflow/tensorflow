@@ -48,8 +48,7 @@ def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   return _apply_fn
 
 
-# TODO(b/38416882): Properly export in the `tf.data.experimental` API when
-# stable or make private / remove.
+@tf_export("data.experimental.bytes_produced_stats")
 def bytes_produced_stats(tag):
   """Records the number of bytes produced by each element of the input dataset.
 

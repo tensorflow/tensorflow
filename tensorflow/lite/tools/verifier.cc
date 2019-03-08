@@ -110,9 +110,8 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                                ErrorReporter* error_reporter) {
   uint64_t bytes_required = 1;
   if (!tensor.shape()) {
-    ReportError(error_reporter, "Tensor %s shape is empty",
-                tensor.name()->c_str());
-    return false;
+    // Empty tensor. Avoid further checks.
+    return true;
   }
   for (int dim : *tensor.shape()) {
     bytes_required *= dim;
@@ -199,14 +198,6 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
       variable_tensors, output_tensors;
   for (int i = 0; i < subgraph.tensors()->Length(); ++i) {
     const auto* tensor = subgraph.tensors()->Get(i);
-    bool is_constant_tensor = false;
-    if (model.buffers() && tensor->buffer() > 0 &&
-        tensor->buffer() < model.buffers()->size()) {
-      auto* buffer = model.buffers()->Get(tensor->buffer());
-      if (buffer && buffer->data()) {
-        is_constant_tensor = true;
-      }
-    }
     if (IsConstantTensor(*tensor, model)) {
       constant_tensors.insert(i);
     } else if (tensor->is_variable()) {
@@ -222,6 +213,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
     const auto& opcode = model.operator_codes()->Get(op->opcode_index());
     // Check for invalid inputs by ensuring all exist in produced_tensors.
     for (const int input_idx : *op->inputs()) {
+      if (input_idx == kOptionalTensor) continue;
       if (constant_tensors.find(input_idx) == constant_tensors.end() &&
           variable_tensors.find(input_idx) == variable_tensors.end() &&
           subgraph_input_tensors.find(input_idx) ==

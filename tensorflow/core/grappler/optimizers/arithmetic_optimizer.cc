@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
+using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -1774,6 +1775,63 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Performs the conversion:
+// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
+ public:
+  explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FuseSquaredDiffStage", ctx, ctx_ext) {}
+  ~FuseSquaredDiffStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsSquare(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &b));
+    // Optimize only if base is a Sub whose output is not being consumed
+    // elsewhere.
+    if (IsSub(*b) && !IsInPreserveSet(*b) &&
+        (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      node->set_op("Identity");
+      b->set_op("SquaredDifference");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(b);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Log(Softmax(x)) => LogSoftmax(x)
+class LogSoftmaxStage : public ArithmeticOptimizerStage {
+ public:
+  explicit LogSoftmaxStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("LogSoftmaxStage", ctx, ctx_ext) {}
+  ~LogSoftmaxStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override { return IsLog(*node); }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* x;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    // Optimize only if arg is a Softmax whose output is not being consumed
+    // elsewhere.
+    if (IsSoftmax(*x) && !IsInPreserveSet(*x) &&
+        (NumNonControlOutputs(*x, *ctx().node_map) == 1)) {
+      // Log(Softmax(x)) => LogSoftmax(Identity(x))
+      node->set_op("LogSoftmax");
+      x->set_op("Identity");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
+    }
+    return Status::OK();
+  }
+};
+
 // Bypass redundant reshape nodes:
 //
 //   Reshape                    Reshape  <-+
@@ -2721,7 +2779,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMax(*node) || IsMin(*node) || IsAnyMaxPool(*node);
+    return IsAnyMax(*node) || IsAnyMin(*node) || IsAnyMaxPool(*node) ||
+           IsArgMax(*node) || IsArgMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2755,9 +2814,15 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
       if (!is_non_decreasing) {
         // Flip Min<->Max if the function is non-increasing, e.g.
         // Max(Neg(x)) = Neg(Min(x)).
-        const string opposite = IsMax(*reduction_node) ? "Min" : "Max";
+        const string opposite = FlipMinMax(*reduction_node);
         reduction_node->set_op(opposite);
       }
+
+      if (IsArgMax(*reduction_node) || IsArgMin(*reduction_node)) {
+        // ArgMax(Sqrt(x)) = ArgMax(x)
+        inner_function->set_op("Identity");
+      }
+
       AddToOptimizationQueue(reduction_node);
       AddToOptimizationQueue(inner_function);
       AddToOptimizationQueue(inner_input);
@@ -2776,6 +2841,16 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
         }
       }
       AddToOptimizationQueue(consumer);
+    }
+  }
+
+ private:
+  string FlipMinMax(const NodeDef& node) {
+    const string& op = node.op();
+    if (IsAnyMax(node) || IsArgMax(node)) {
+      return str_util::StringReplace(op, "Max", "Min", false);
+    } else {
+      return str_util::StringReplace(op, "Min", "Max", false);
     }
   }
 };
@@ -3505,6 +3580,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.convert_log_softmax)
+    pipeline.AddStage<LogSoftmaxStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
   if (options_.convert_expm1)
@@ -3513,6 +3590,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
   if (options_.remove_stack_strided_slice_same_axis)
     pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.fuse_squared_diff)
+    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

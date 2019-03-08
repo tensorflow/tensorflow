@@ -69,7 +69,7 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
         out = x1 + x2 + x3
       array_ops.squeeze(out, name=output_name)
     return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
+        gdef=g.as_graph_def(add_shapes=True),
         input_names=[input_name, w1_name, w2_name],
         input_dims=[[input_dims, w1_dims, w2_dims]],
         output_names=[output_name],
@@ -77,14 +77,7 @@ class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    if (run_params.dynamic_engine and
-        not trt_test.IsQuantizationMode(run_params.precision_mode)):
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
-    return ["TRTEngineOp_1"]
-
-  def ExpectedEnginesToRun(self, run_params):
-    """Return the expected engines to run."""
-    return ["TRTEngineOp_1"]
+    return ["TRTEngineOp_0", "TRTEngineOp_1"]
 
 
 if __name__ == "__main__":

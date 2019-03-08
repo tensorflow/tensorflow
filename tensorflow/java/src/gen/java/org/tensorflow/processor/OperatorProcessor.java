@@ -357,10 +357,10 @@ public final class OperatorProcessor extends AbstractProcessor {
                     + "  // Optional attributes\n"
                     + "  ops.math().matMul(a, b, MatMul.transposeA(true));\n"
                     + "  // Naming operators\n"
-                    + "  ops.withName(“foo”).constant(5); // name “foo”\n"
+                    + "  ops.withName(\"foo\").constant(5); // name \"foo\"\n"
                     + "  // Names can exist in a hierarchy\n"
-                    + "  Ops sub = ops.withSubScope(“sub”);\n"
-                    + "  sub.withName(“bar”).constant(4); // “sub/bar”\n"
+                    + "  Ops sub = ops.withSubScope(\"sub\");\n"
+                    + "  sub.withName(\"bar\").constant(4); // \"sub/bar\"\n"
                     + "}\n"
                     + "}</pre>\n",
                 T_GRAPH,

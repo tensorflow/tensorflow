@@ -421,7 +421,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
       keras.layers.ZeroPadding3D(padding=None)
 
 
-@test_util.disable_all_xla('b/124289666')  # align_corners=False unimplemented
+@test_util.disable_all_xla('align_corners=False not supported by XLA')
 @keras_parameterized.run_all_keras_modes
 class UpSamplingTest(keras_parameterized.TestCase):
 
