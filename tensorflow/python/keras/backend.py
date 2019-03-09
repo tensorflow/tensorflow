@@ -514,7 +514,9 @@ def get_default_session_config():
   else:
     num_thread = int(os.environ.get('OMP_NUM_THREADS'))
     config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
+        intra_op_parallelism_threads=num_thread,
+        inter_op_parallelism_threads=num_thread,
+        allow_soft_placement=True)
   return config
 
 
