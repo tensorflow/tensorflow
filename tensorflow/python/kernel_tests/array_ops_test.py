@@ -1819,5 +1819,42 @@ class BatchGatherNdTest(test_util.TensorFlowTestCase):
     self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
 
+class RepeatTest(test_util.TensorFlowTestCase):
+
+  def testRepeatScalar(self):
+    with self.test_session():
+      v_tf = array_ops.repeat(constant_op.constant(3), 4)
+      v_np = np.repeat(3, 4)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  def testRepeatMatrix(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), 2)
+      v_np = np.repeat(x, 2)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  def testRepeatMatrixAxis0(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), constant_op.constant([1, 2]), axis=0)
+      v_np = np.repeat(x, [1, 2], axis=0)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  def testRepeatMatrixAxis1(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), constant_op.constant(3), axis=1)
+      v_np = np.repeat(x, 3, axis=1)
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+  def testRepeatMatrixRepeatArray(self):
+    with self.test_session():
+      x = np.array([[1, 2], [3, 4]], dtype=np.int32)
+      v_tf = array_ops.repeat(constant_op.constant(x), [1, 2, 3, 4])
+      v_np = np.repeat(x, [1, 2, 3, 4])
+      self.assertAllEqual(v_tf.eval(), v_np)
+
+
 if __name__ == "__main__":
   test_lib.main()
