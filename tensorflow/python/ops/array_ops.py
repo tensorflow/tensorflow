@@ -4769,7 +4769,7 @@ def get_positive_axis(axis, ndims):
 #
 # External (OSS) `tf.repeat` feature request:
 # https://github.com/tensorflow/tensorflow/issues/8246
-def repeat(data, repeats, axis, name=None):
+def repeat_with_axis(data, repeats, axis, name=None):
   """Repeats elements of `data`.
   Args:
     data: An `N`-dimensional tensor.
@@ -4867,7 +4867,7 @@ def tile_one_dimension(data, axis, multiple):
     multiples[axis] = multiple
   else:
     ones_value = ones(rank(data), dtypes.int32)
-    multiples = ops.concat([ones_value[:axis], [multiple], ones[axis + 1:]],
+    multiples = concat([ones_value[:axis], [multiple], ones_value[axis + 1:]],
                                  axis=0)
   return tile(data, multiples)
 
@@ -4876,12 +4876,29 @@ def _with_nonzero_rank(data):
   """If `data` is scalar, then add a dimension; otherwise return as-is."""
   if data.shape.ndims is not None:
     if data.shape.ndims == 0:
-      return array_ops.stack([data])
+      return stack([data])
     else:
       return data
   else:
-    data_shape = array_ops.shape(data)
-    data_ndims = array_ops.rank(data)
-    return array_ops.reshape(
+    data_shape = shape(data)
+    data_ndims = rank(data)
+    return reshape(
         data,
-        array_ops.concat([[1], data_shape], axis=0)[-data_ndims:])
+        concat([[1], data_shape], axis=0)[-data_ndims:])
+
+def repeat(input, repeats, axis=None, name=None):
+  """Repeat elements of an array
+  Args:
+    input: A Tensor.
+    repeats: An 1-D `int` Tensor. The number of repetitions for each element.
+      repeats is broadcasted to fit the shape of the given axis
+    axis: An int. The axis along which to repeat values. By default, use the
+      flattened input array, and return a flat output array.
+    name: name of the op.
+  Returns:
+    A Tensor which has the same shape as a, except along the given axis.
+  """
+  if axis is None:
+    input = reshape(input, [-1])
+    axis = 0
+  return repeat_with_axis(input, repeats, axis, name)
