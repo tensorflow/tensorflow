@@ -24,7 +24,7 @@
 
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/Status.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 
@@ -154,7 +154,7 @@ public:
 
   /// Run the converter on the provided module.
   LLVM_NODISCARD
-  Status convert(Module *m);
+  LogicalResult convert(Module *m);
 
 protected:
   /// Derived classes must implement this hook to produce a set of conversion

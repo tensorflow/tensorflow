@@ -1,4 +1,4 @@
-//===- Status.h - Utilities for handling success/failure --------*- C++ -*-===//
+//===- LogicalResult.h - Utilities for handling success/failure -*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_SUPPORT_STATUS_H
-#define MLIR_SUPPORT_STATUS_H
+#ifndef MLIR_SUPPORT_LOGICAL_RESULT_H
+#define MLIR_SUPPORT_LOGICAL_RESULT_H
 
 #include "mlir/Support/LLVM.h"
 
@@ -24,25 +24,29 @@ namespace mlir {
 
 // Values that can be used to signal success/failure. This should be used in
 // conjunction with the 'succeeded' and 'failed' functions below.
-struct Status {
+struct LogicalResult {
   enum ResultEnum { Success, Failure } value;
-  Status(ResultEnum v) : value(v) {}
+  LogicalResult(ResultEnum v) : value(v) {}
 
   /// Utility method to generate a success result.
-  static Status success() { return Success; }
+  static LogicalResult success() { return Success; }
 
   /// Utility method to generate a failure result.
-  static Status failure() { return Failure; }
+  static LogicalResult failure() { return Failure; }
 };
 
-/// Utility function that returns true if the provided Status corresponds
+/// Utility function that returns true if the provided LogicalResult corresponds
 /// to a success value.
-inline bool succeeded(Status result) { return result.value == Status::Success; }
+inline bool succeeded(LogicalResult result) {
+  return result.value == LogicalResult::Success;
+}
 
-/// Utility function that returns true if the provided Status corresponds
+/// Utility function that returns true if the provided LogicalResult corresponds
 /// to a failure value.
-inline bool failed(Status result) { return result.value == Status::Failure; }
+inline bool failed(LogicalResult result) {
+  return result.value == LogicalResult::Failure;
+}
 
 } // namespace mlir
 
-#endif // MLIR_SUPPORT_STATUS_H
+#endif // MLIR_SUPPORT_LOGICAL_RESULT_H

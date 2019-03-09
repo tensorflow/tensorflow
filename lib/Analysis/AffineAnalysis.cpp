@@ -98,8 +98,8 @@ void mlir::getReachableAffineApplyOps(
 // stride information in FlatAffineConstraints. (For eg., by using iv - lb %
 // step = 0 and/or by introducing a method in FlatAffineConstraints
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
-Status mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
-                         FlatAffineConstraints *domain) {
+LogicalResult mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
+                                FlatAffineConstraints *domain) {
   SmallVector<Value *, 4> indices;
   extractForInductionVars(forOps, &indices);
   // Reset while associated Values in 'indices' to the domain.
@@ -107,9 +107,9 @@ Status mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
   for (auto forOp : forOps) {
     // Add constraints from forOp's bounds.
     if (failed(domain->addAffineForOpDomain(forOp)))
-      return Status::failure();
+      return LogicalResult::failure();
   }
-  return Status::success();
+  return LogicalResult::success();
 }
 
 // Computes the iteration domain for 'opInst' and populates 'indexSet', which
@@ -118,8 +118,8 @@ Status mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
 // 'indexSet' correspond to the loops surounding 'inst' from outermost to
 // innermost.
 // TODO(andydavis) Add support to handle IfInsts surrounding 'inst'.
-static Status getInstIndexSet(const Instruction *inst,
-                              FlatAffineConstraints *indexSet) {
+static LogicalResult getInstIndexSet(const Instruction *inst,
+                                     FlatAffineConstraints *indexSet) {
   // TODO(andydavis) Extend this to gather enclosing IfInsts and consider
   // factoring it out into a utility function.
   SmallVector<OpPointer<AffineForOp>, 4> loops;
@@ -380,13 +380,13 @@ static void addDomainConstraints(const FlatAffineConstraints &srcDomain,
 // semi-affine). Returns success otherwise.
 // TODO(bondhugula): assumes that dependenceDomain doesn't have local
 // variables already. Fix this soon.
-static Status
+static LogicalResult
 addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
                            const AffineValueMap &dstAccessMap,
                            const ValuePositionMap &valuePosMap,
                            FlatAffineConstraints *dependenceDomain) {
   if (dependenceDomain->getNumLocalIds() != 0)
-    return Status::failure();
+    return LogicalResult::failure();
   AffineMap srcMap = srcAccessMap.getAffineMap();
   AffineMap dstMap = dstAccessMap.getAffineMap();
   assert(srcMap.getNumResults() == dstMap.getNumResults());
@@ -404,7 +404,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   // Get flattened expressions for the source destination maps.
   if (failed(getFlattenedAffineExprs(srcMap, &srcFlatExprs, &srcLocalVarCst)) ||
       failed(getFlattenedAffineExprs(dstMap, &destFlatExprs, &destLocalVarCst)))
-    return Status::failure();
+    return LogicalResult::failure();
 
   unsigned srcNumLocalIds = srcLocalVarCst.getNumLocalIds();
   unsigned dstNumLocalIds = destLocalVarCst.getNumLocalIds();
@@ -511,7 +511,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
 
     dependenceDomain->addInequality(ineq);
   }
-  return Status::success();
+  return LogicalResult::success();
 }
 
 // Returns the number of outer loop common to 'src/dstDomain'.

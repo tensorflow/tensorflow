@@ -24,7 +24,7 @@
 
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/OpDefinition.h"
-#include "mlir/Support/Status.h"
+#include "mlir/Support/LogicalResult.h"
 
 namespace mlir {
 
@@ -385,15 +385,15 @@ public:
   /// instruction are added as trailing identifiers (either dimensional or
   /// symbolic depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
-  Status addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
+  LogicalResult addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
 
   /// Adds a lower or an upper bound for the identifier at the specified
   /// position with constraints being drawn from the specified bound map and
   /// operands. If `eq` is true, add a single equality equal to the bound map's
   /// first result expr.
-  Status addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
-                              ArrayRef<Value *> operands, bool eq,
-                              bool lower = true);
+  LogicalResult addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
+                                     ArrayRef<Value *> operands, bool eq,
+                                     bool lower = true);
 
   /// Computes the lower and upper bounds of the first 'num' dimensional
   /// identifiers as an affine map of the remaining identifiers (dimensional and
@@ -411,8 +411,10 @@ public:
   /// operand list 'operands'.
   /// This function assumes 'values.size' == 'lbMaps.size' == 'ubMaps.size'.
   /// Note that both lower/upper bounds use operands from 'operands'.
-  Status addSliceBounds(ArrayRef<Value *> values, ArrayRef<AffineMap> lbMaps,
-                        ArrayRef<AffineMap> ubMaps, ArrayRef<Value *> operands);
+  LogicalResult addSliceBounds(ArrayRef<Value *> values,
+                               ArrayRef<AffineMap> lbMaps,
+                               ArrayRef<AffineMap> ubMaps,
+                               ArrayRef<Value *> operands);
 
   // Adds an inequality (>= 0) from the coefficients specified in inEq.
   void addInequality(ArrayRef<int64_t> inEq);
@@ -477,7 +479,7 @@ public:
   /// symbolic operands of vMap should match 1:1 (in the same order) with those
   /// of this constraint system, but the latter could have additional trailing
   /// operands.
-  Status composeMap(AffineValueMap *vMap);
+  LogicalResult composeMap(AffineValueMap *vMap);
 
   /// Projects out (aka eliminates) 'num' identifiers starting at position
   /// 'pos'. The resulting constraint system is the shadow along the dimensions
@@ -513,7 +515,7 @@ public:
   /// equality detection; if successful, the constant is substituted for the
   /// identifier everywhere in the constraint system and then removed from the
   /// system.
-  Status constantFoldId(unsigned pos);
+  LogicalResult constantFoldId(unsigned pos);
 
   /// This method calls constantFoldId for the specified range of identifiers,
   /// 'num' identifiers starting at position 'pos'.
@@ -538,7 +540,7 @@ public:
   ///     9}, output = {s0 + 1 <= d0 <= s0 + 20}.
   /// 3) 'this' = {0 <= d0 <= 5, 1 <= d1 <= 9}, 'other' = {2 <= d0 <= 6, 5 <= d1
   ///     <= 15}, output = {0 <= d0 <= 6, 1 <= d1 <= 15}.
-  Status unionBoundingBox(const FlatAffineConstraints &other);
+  LogicalResult unionBoundingBox(const FlatAffineConstraints &other);
 
   unsigned getNumConstraints() const {
     return getNumInequalities() + getNumEqualities();
@@ -679,10 +681,10 @@ private:
   // Eliminates a single identifier at 'position' from equality and inequality
   // constraints. Returns 'success' if the identifier was eliminated, and
   // 'failure' otherwise.
-  inline Status gaussianEliminateId(unsigned position) {
+  inline LogicalResult gaussianEliminateId(unsigned position) {
     return gaussianEliminateIds(position, position + 1) == 1
-               ? Status::success()
-               : Status::failure();
+               ? LogicalResult::success()
+               : LogicalResult::failure();
   }
 
   // Eliminates identifiers from equality and inequality constraints
@@ -767,10 +769,10 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// that connect newly introduced local identifiers to existing dimensional and
 /// symbolic identifiers. See documentation for AffineExprFlattener on how
 /// mod's and div's are flattened.
-Status getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
-                              unsigned numSymbols,
-                              llvm::SmallVectorImpl<int64_t> *flattenedExpr,
-                              FlatAffineConstraints *cst = nullptr);
+LogicalResult
+getFlattenedAffineExpr(AffineExpr expr, unsigned numDims, unsigned numSymbols,
+                       llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                       FlatAffineConstraints *cst = nullptr);
 
 /// Flattens the result expressions of the map to their corresponding flattened
 /// forms and set in 'flattenedExprs'. Returns failure if any expression in the
@@ -782,10 +784,10 @@ Status getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
 /// method should be used instead of repeatedly calling getFlattenedAffineExpr
 /// since local variables added to deal with div's and mod's will be reused
 /// across expressions.
-Status getFlattenedAffineExprs(
+LogicalResult getFlattenedAffineExprs(
     AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *cst = nullptr);
-Status getFlattenedAffineExprs(
+LogicalResult getFlattenedAffineExprs(
     IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
     FlatAffineConstraints *cst = nullptr);
 

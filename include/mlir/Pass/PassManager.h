@@ -18,7 +18,7 @@
 #ifndef MLIR_PASS_PASSMANAGER_H
 #define MLIR_PASS_PASSMANAGER_H
 
-#include "mlir/Support/Status.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace mlir {
@@ -54,7 +54,7 @@ public:
 
   /// Run the passes within this manager on the provided module.
   LLVM_NODISCARD
-  Status run(Module *module);
+  LogicalResult run(Module *module);
 
 private:
   /// A stack of nested pass executors on sub-module IR units, e.g. function.

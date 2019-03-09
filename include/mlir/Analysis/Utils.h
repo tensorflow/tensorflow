@@ -30,7 +30,7 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/Status.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
 #include <memory>
 
@@ -84,7 +84,7 @@ struct ComputationSliceState {
   // Constraints are added for all loop IV bounds (dim or symbol), and
   // constraints are added for slice bounds in 'lbs'/'ubs'.
   // Returns failure if we cannot add loop bounds because of unsupported cases.
-  Status getAsConstraints(FlatAffineConstraints *cst);
+  LogicalResult getAsConstraints(FlatAffineConstraints *cst);
 
   // Clears all bounds and operands in slice state.
   void clearBounds();
@@ -93,10 +93,9 @@ struct ComputationSliceState {
 /// Computes computation slice loop bounds for the loop nest surrounding
 /// 'srcAccess', where the returned loop bound AffineMaps are functions of
 /// loop IVs from the loop nest surrounding 'dstAccess'.
-Status getBackwardComputationSliceState(const MemRefAccess &srcAccess,
-                                        const MemRefAccess &dstAccess,
-                                        unsigned dstLoopDepth,
-                                        ComputationSliceState *sliceState);
+LogicalResult getBackwardComputationSliceState(
+    const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
+    unsigned dstLoopDepth, ComputationSliceState *sliceState);
 
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcOpInst', slices the iteration space of src loop based on slice bounds
@@ -160,8 +159,8 @@ struct MemRefRegion {
   ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
   /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
   ///
-  Status compute(Instruction *inst, unsigned loopDepth,
-                 ComputationSliceState *sliceState = nullptr);
+  LogicalResult compute(Instruction *inst, unsigned loopDepth,
+                        ComputationSliceState *sliceState = nullptr);
 
   FlatAffineConstraints *getConstraints() { return &cst; }
   const FlatAffineConstraints *getConstraints() const { return &cst; }
@@ -196,7 +195,7 @@ struct MemRefRegion {
   Optional<int64_t> getRegionSize();
 
   // Wrapper around FlatAffineConstraints::unionBoundingBox.
-  Status unionBoundingBox(const MemRefRegion &other);
+  LogicalResult unionBoundingBox(const MemRefRegion &other);
 
   /// Returns the rank of the memref that this region corresponds to.
   unsigned getRank() const;
@@ -230,8 +229,8 @@ Optional<uint64_t> getMemRefSizeInBytes(MemRefType memRefType);
 /// access is out of bounds along any of the dimensions, success otherwise.
 /// Emits a diagnostic error (with location information) if emitError is true.
 template <typename LoadOrStoreOpPointer>
-Status boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
-                               bool emitError = true);
+LogicalResult boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
+                                      bool emitError = true);
 
 /// Returns the number of surrounding loops common to both A and B.
 unsigned getNumCommonSurroundingLoops(const Instruction &A,

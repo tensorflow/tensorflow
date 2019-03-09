@@ -35,7 +35,8 @@ using namespace mlir::detail;
 void Pass::anchor() {}
 
 /// Forwarding function to execute this pass.
-Status FunctionPassBase::run(Function *fn, FunctionAnalysisManager &fam) {
+LogicalResult FunctionPassBase::run(Function *fn,
+                                    FunctionAnalysisManager &fam) {
   // Initialize the pass state.
   passState.emplace(fn, fam);
 
@@ -46,12 +47,12 @@ Status FunctionPassBase::run(Function *fn, FunctionAnalysisManager &fam) {
   fam.invalidate(passState->preservedAnalyses);
 
   // Return false if the pass signaled a failure.
-  return passState->irAndPassFailed.getInt() ? Status::failure()
-                                             : Status::success();
+  return passState->irAndPassFailed.getInt() ? LogicalResult::failure()
+                                             : LogicalResult::success();
 }
 
 /// Forwarding function to execute this pass.
-Status ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
+LogicalResult ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
   // Initialize the pass state.
   passState.emplace(module, mam);
 
@@ -62,8 +63,8 @@ Status ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
   mam.invalidate(passState->preservedAnalyses);
 
   // Return false if the pass signaled a failure.
-  return passState->irAndPassFailed.getInt() ? Status::failure()
-                                             : Status::success();
+  return passState->irAndPassFailed.getInt() ? LogicalResult::failure()
+                                             : LogicalResult::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -97,7 +98,7 @@ public:
   FunctionPassExecutor &operator=(const FunctionPassExecutor &) = delete;
 
   /// Run the executor on the given function.
-  Status run(Function *function, FunctionAnalysisManager &fam);
+  LogicalResult run(Function *function, FunctionAnalysisManager &fam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -122,7 +123,7 @@ public:
   ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
 
   /// Run the executor on the given module.
-  Status run(Module *module, ModuleAnalysisManager &mam);
+  LogicalResult run(Module *module, ModuleAnalysisManager &mam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -140,23 +141,23 @@ private:
 } // end namespace mlir
 
 /// Run all of the passes in this manager over the current function.
-Status detail::FunctionPassExecutor::run(Function *function,
-                                         FunctionAnalysisManager &fam) {
+LogicalResult detail::FunctionPassExecutor::run(Function *function,
+                                                FunctionAnalysisManager &fam) {
   // Run each of the held passes.
   for (auto &pass : passes)
     if (failed(pass->run(function, fam)))
-      return Status::failure();
-  return Status::success();
+      return LogicalResult::failure();
+  return LogicalResult::success();
 }
 
 /// Run all of the passes in this manager over the current module.
-Status detail::ModulePassExecutor::run(Module *module,
-                                       ModuleAnalysisManager &mam) {
+LogicalResult detail::ModulePassExecutor::run(Module *module,
+                                              ModuleAnalysisManager &mam) {
   // Run each of the held passes.
   for (auto &pass : passes)
     if (failed(pass->run(module, mam)))
-      return Status::failure();
-  return Status::success();
+      return LogicalResult::failure();
+  return LogicalResult::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -288,7 +289,7 @@ void PassManager::addPass(FunctionPassBase *pass) {
 }
 
 /// Run the passes within this manager on the provided module.
-Status PassManager::run(Module *module) {
+LogicalResult PassManager::run(Module *module) {
   ModuleAnalysisManager mam(module);
   return mpe->run(module, mam);
 }

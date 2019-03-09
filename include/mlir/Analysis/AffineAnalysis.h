@@ -24,7 +24,7 @@
 #ifndef MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 #define MLIR_ANALYSIS_AFFINE_ANALYSIS_H
 
-#include "mlir/Support/Status.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
@@ -52,8 +52,8 @@ void getReachableAffineApplyOps(
 /// operands are added as symbols in the system. Returns failure for the yet
 /// unimplemented cases.
 //  TODO(bondhugula): handle non-unit strides.
-Status getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
-                   FlatAffineConstraints *domain);
+LogicalResult getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
+                          FlatAffineConstraints *domain);
 
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {

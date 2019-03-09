@@ -78,7 +78,7 @@ struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
       : unrollJamFactor(unrollJamFactor) {}
 
   void runOnFunction() override;
-  Status runOnAffineForOp(OpPointer<AffineForOp> forOp);
+  LogicalResult runOnAffineForOp(OpPointer<AffineForOp> forOp);
 };
 } // end anonymous namespace
 
@@ -98,7 +98,7 @@ void LoopUnrollAndJam::runOnFunction() {
 
 /// Unroll and jam a 'for' inst. Default unroll jam factor is
 /// kDefaultUnrollJamFactor. Return failure if nothing was done.
-Status LoopUnrollAndJam::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
+LogicalResult LoopUnrollAndJam::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   // Unroll and jam by the factor that was passed if any.
   if (unrollJamFactor.hasValue())
     return loopUnrollJamByFactor(forOp, unrollJamFactor.getValue());
@@ -110,8 +110,8 @@ Status LoopUnrollAndJam::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   return loopUnrollJamByFactor(forOp, kDefaultUnrollJamFactor);
 }
 
-Status mlir::loopUnrollJamUpToFactor(OpPointer<AffineForOp> forOp,
-                                     uint64_t unrollJamFactor) {
+LogicalResult mlir::loopUnrollJamUpToFactor(OpPointer<AffineForOp> forOp,
+                                            uint64_t unrollJamFactor) {
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
   if (mayBeConstantTripCount.hasValue() &&
@@ -121,8 +121,8 @@ Status mlir::loopUnrollJamUpToFactor(OpPointer<AffineForOp> forOp,
 }
 
 /// Unrolls and jams this loop by the specified factor.
-Status mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
-                                   uint64_t unrollJamFactor) {
+LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
+                                          uint64_t unrollJamFactor) {
   // Gathers all maximal sub-blocks of instructions that do not themselves
   // include a for inst (a instruction could have a descendant for inst though
   // in its tree).
@@ -153,13 +153,13 @@ Status mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
   assert(unrollJamFactor >= 1 && "unroll jam factor should be >= 1");
 
   if (unrollJamFactor == 1 || forOp->getBody()->empty())
-    return Status::failure();
+    return LogicalResult::failure();
 
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
   if (!mayBeConstantTripCount.hasValue() &&
       getLargestDivisorOfTripCount(forOp) % unrollJamFactor != 0)
-    return Status::failure();
+    return LogicalResult::failure();
 
   auto lbMap = forOp->getLowerBoundMap();
   auto ubMap = forOp->getUpperBoundMap();
@@ -169,18 +169,18 @@ Status mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
   // do such unrolling for a Function would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
   if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
-    return Status::failure();
+    return LogicalResult::failure();
 
   // Same operand list for lower and upper bound for now.
   // TODO(bondhugula): handle bounds with different sets of operands.
   if (!forOp->matchingBoundOperandList())
-    return Status::failure();
+    return LogicalResult::failure();
 
   // If the trip count is lower than the unroll jam factor, no unroll jam.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() < unrollJamFactor)
-    return Status::failure();
+    return LogicalResult::failure();
 
   auto *forInst = forOp->getInstruction();
 
@@ -241,7 +241,7 @@ Status mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
 
   // Promote the loop body up if this has turned into a single iteration loop.
   promoteIfSingleIteration(forOp);
-  return Status::success();
+  return LogicalResult::success();
 }
 
 static PassRegistration<LoopUnrollAndJam> pass("loop-unroll-jam",

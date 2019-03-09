@@ -40,7 +40,7 @@ public:
   // conversion patterns and to convert function and block argument types.
   // Converts the `module` in-place by replacing all existing functions with the
   // converted ones.
-  static Status convert(DialectConversion *conversion, Module *module);
+  static LogicalResult convert(DialectConversion *conversion, Module *module);
 
 private:
   // Constructs a FunctionConversion by storing the hooks.
@@ -61,14 +61,14 @@ private:
   // from `valueRemapping` and the converted blocks from `blockRemapping`, and
   // passes them to `converter->rewriteTerminator` function defined in the
   // pattern, together with `builder`.
-  Status convertOpWithSuccessors(DialectOpConversion *converter,
-                                 Instruction *op, FuncBuilder &builder);
+  LogicalResult convertOpWithSuccessors(DialectOpConversion *converter,
+                                        Instruction *op, FuncBuilder &builder);
 
   // Converts an operation without successors.  Extracts the converted operands
   // from `valueRemapping` and passes them to the `converter->rewrite` function
   // defined in the pattern, together with `builder`.
-  Status convertOp(DialectOpConversion *converter, Instruction *op,
-                   FuncBuilder &builder);
+  LogicalResult convertOp(DialectOpConversion *converter, Instruction *op,
+                          FuncBuilder &builder);
 
   // Converts a block by traversing its instructions sequentially, looking for
   // the first pattern match and dispatching the instruction conversion to
@@ -77,8 +77,8 @@ private:
   //
   // After converting operations, traverses the successor blocks unless they
   // have been visited already as indicated in `visitedBlocks`.
-  Status convertBlock(Block *block, FuncBuilder &builder,
-                      llvm::DenseSet<Block *> &visitedBlocks);
+  LogicalResult convertBlock(Block *block, FuncBuilder &builder,
+                             llvm::DenseSet<Block *> &visitedBlocks);
 
   // Converts the module as follows.
   // 1. Call `convertFunction` on each function of the module and collect the
@@ -86,7 +86,7 @@ private:
   // 2. Remap all function attributes in the new functions to point to the new
   // functions instead of the old ones.
   // 3. Replace old functions with the new in the module.
-  Status run(Module *m);
+  LogicalResult run(Module *m);
 
   // Pointer to a specific dialect pass.
   DialectConversion *dialectConversion;
@@ -114,7 +114,7 @@ SmallVector<Value *, 4> impl::FunctionConversion::lookupValues(
   return remapped;
 }
 
-Status impl::FunctionConversion::convertOpWithSuccessors(
+LogicalResult impl::FunctionConversion::convertOpWithSuccessors(
     DialectOpConversion *converter, Instruction *op, FuncBuilder &builder) {
   SmallVector<Block *, 2> destinations;
   destinations.reserve(op->getNumSuccessors());
@@ -142,12 +142,12 @@ Status impl::FunctionConversion::convertOpWithSuccessors(
       llvm::makeArrayRef(operands.data(),
                          operands.data() + firstSuccessorOperand),
       destinations, operandsPerDestination, builder);
-  return Status::success();
+  return LogicalResult::success();
 }
 
-Status impl::FunctionConversion::convertOp(DialectOpConversion *converter,
-                                           Instruction *op,
-                                           FuncBuilder &builder) {
+LogicalResult
+impl::FunctionConversion::convertOp(DialectOpConversion *converter,
+                                    Instruction *op, FuncBuilder &builder) {
   auto operands = lookupValues(op->getOperands());
   assert((!operands.empty() || op->getNumOperands() == 0) &&
          "converting op before ops defining its operands");
@@ -155,14 +155,14 @@ Status impl::FunctionConversion::convertOp(DialectOpConversion *converter,
   auto results = converter->rewrite(op, operands, builder);
   if (results.size() != op->getNumResults())
     return (op->emitError("rewriting produced a different number of results"),
-            Status::failure());
+            LogicalResult::failure());
 
   for (unsigned i = 0, e = results.size(); i < e; ++i)
     mapping.map(op->getResult(i), results[i]);
-  return Status::success();
+  return LogicalResult::success();
 }
 
-Status
+LogicalResult
 impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
                                        llvm::DenseSet<Block *> &visitedBlocks) {
   // First, add the current block to the list of visited blocks.
@@ -174,7 +174,7 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
   for (Instruction &inst : *block) {
     if (inst.getNumBlockLists() != 0) {
       inst.emitError("unsupported region instruction");
-      return Status::failure();
+      return LogicalResult::failure();
     }
 
     // Find the first matching conversion and apply it.
@@ -185,9 +185,9 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
 
       if (inst.getNumSuccessors() != 0) {
         if (failed(convertOpWithSuccessors(conversion, &inst, builder)))
-          return Status::failure();
+          return LogicalResult::failure();
       } else if (failed(convertOp(conversion, &inst, builder))) {
-        return Status::failure();
+        return LogicalResult::failure();
       }
       converted = true;
       break;
@@ -202,9 +202,9 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
     if (visitedBlocks.count(succ) != 0)
       continue;
     if (failed(convertBlock(succ, builder, visitedBlocks)))
-      return Status::failure();
+      return LogicalResult::failure();
   }
-  return Status::success();
+  return LogicalResult::success();
 }
 
 Function *impl::FunctionConversion::convertFunction(Function *f) {
@@ -260,14 +260,14 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
   return newFunction.release();
 }
 
-Status impl::FunctionConversion::convert(DialectConversion *conversion,
-                                         Module *module) {
+LogicalResult impl::FunctionConversion::convert(DialectConversion *conversion,
+                                                Module *module) {
   return impl::FunctionConversion(conversion).run(module);
 }
 
-Status impl::FunctionConversion::run(Module *module) {
+LogicalResult impl::FunctionConversion::run(Module *module) {
   if (!module)
-    return Status::failure();
+    return LogicalResult::failure();
 
   MLIRContext *context = module->getContext();
   conversions = dialectConversion->initConverters(context);
@@ -283,7 +283,7 @@ Status impl::FunctionConversion::run(Module *module) {
   for (auto *func : originalFuncs) {
     Function *converted = convertFunction(func);
     if (!converted)
-      return Status::failure();
+      return LogicalResult::failure();
 
     auto origFuncAttr = FunctionAttr::get(func, context);
     auto convertedFuncAttr = FunctionAttr::get(converted, context);
@@ -305,7 +305,7 @@ Status impl::FunctionConversion::run(Module *module) {
   for (auto *func : convertedFuncs)
     module->getFunctions().push_back(func);
 
-  return Status::success();
+  return LogicalResult::success();
 }
 
 // Create a function type with arguments and results converted, and argument
@@ -328,6 +328,6 @@ DialectConversion::convertFunctionSignatureType(
       FunctionType::get(arguments, results, type.getContext()), argAttrs.vec());
 }
 
-Status DialectConversion::convert(Module *m) {
+LogicalResult DialectConversion::convert(Module *m) {
   return impl::FunctionConversion::convert(this, m);
 }

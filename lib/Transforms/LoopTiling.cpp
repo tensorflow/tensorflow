@@ -173,8 +173,8 @@ static void constructTiledIndexSetHyperRect(
 /// Tiles the specified band of perfectly nested loops creating tile-space loops
 /// and intra-tile loops. A band is a contiguous set of loops.
 //  TODO(bondhugula): handle non hyper-rectangular spaces.
-Status mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
-                         ArrayRef<unsigned> tileSizes) {
+LogicalResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
+                                ArrayRef<unsigned> tileSizes) {
   assert(!band.empty());
   assert(band.size() == tileSizes.size() && "Incorrect number of tile sizes");
 
@@ -237,7 +237,7 @@ Status mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
   if (!cst.isHyperRectangular(0, width)) {
     rootAffineForOp->emitError("tiled code generation unimplemented for the "
                                "non-hyperrectangular case");
-    return Status::failure();
+    return LogicalResult::failure();
   }
 
   constructTiledIndexSetHyperRect(origLoops, newLoops, tileSizes);
@@ -249,7 +249,7 @@ Status mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
   // Erase the old loop nest.
   rootAffineForOp->erase();
 
-  return Status::success();
+  return LogicalResult::success();
 }
 
 // Identify valid and profitable bands of loops to tile. This is currently just
