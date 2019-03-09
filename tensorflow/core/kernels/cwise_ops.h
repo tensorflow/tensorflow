@@ -493,7 +493,6 @@ struct scalar_round_op_google {
   }
 };
 
-template <>
 template <typename Scalar>
 struct scalar_round_op_google<Scalar, true> {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
