@@ -694,18 +694,6 @@ static void emitOpDefinitions(const RecordKeeper &recordKeeper,
   emitOpClasses(defs, os);
 }
 
-static void emitOpDefFile(const RecordKeeper &recordKeeper, raw_ostream &os) {
-  emitSourceFileHeader("Op def file", os);
-
-  const auto &defs = recordKeeper.getAllDerivedDefinitions("Op");
-  os << "#ifndef ALL_OPS\n#define ALL_OPS(OP, NAME)\n#endif\n";
-  for (const auto *def : defs) {
-    os << "ALL_OPS(" << def->getName() << ", \""
-       << def->getValueAsString("opName") << "\")\n";
-  }
-  os << "#undef ALL_OPS";
-}
-
 static mlir::GenRegistration
     genOpDefinitions("gen-op-definitions", "Generate op definitions",
                      [](const RecordKeeper &records, raw_ostream &os) {
