@@ -193,6 +193,16 @@ class GraphConverter(object):
         graph_id=b"tf_graph")
     self._converted = True
 
+  def _add_nodes_blacklist(self):
+    if self._nodes_blacklist:
+      collection_def = self._grappler_meta_graph_def.collection_def["train_op"]
+      blacklist = collection_def.node_list.value
+      for i in self._nodes_blacklist:
+        if isinstance(i, ops.Tensor):
+          blacklist.append(_to_bytes(i.name))
+        else:
+          blacklist.append(_to_bytes(i))
+
   def _convert_graph_def(self):
     """Convert the input GraphDef."""
     graph = ops.Graph()
@@ -200,18 +210,7 @@ class GraphConverter(object):
       importer.import_graph_def(self._input_graph_def, name="")
     self._grappler_meta_graph_def = saver.export_meta_graph(
         graph_def=graph.as_graph_def(add_shapes=True), graph=graph)
-    if self._nodes_blacklist:
-      output_collection = meta_graph_pb2.CollectionDef()
-      output_list = output_collection.node_list.value
-      for i in self._nodes_blacklist:
-        if isinstance(i, ops.Tensor):
-          output_list.append(_to_bytes(i.name))
-        else:
-          output_list.append(_to_bytes(i))
-      # TODO(laigd): use another key as the self._nodes_blacklist are really
-      # not train_op.
-      self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
-          output_collection)
+    self._add_nodes_blacklist()
 
     self._run_conversion()
 
@@ -252,6 +251,8 @@ class GraphConverter(object):
         ]:
           self._grappler_meta_graph_def.collection_def[key].CopyFrom(
               input_meta_graph_def.collection_def[key])
+
+      self._add_nodes_blacklist()
 
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
@@ -643,6 +644,8 @@ class TrtGraphConverter(GraphConverter):
     # Check compatibility of TensorRT version.
     compiled_version = get_linked_tensorrt_version()
     loaded_version = get_loaded_tensorrt_version()
+    tf_logging.info("Linked TensorRT version: %s" % str(compiled_version))
+    tf_logging.info("Loaded TensorRT version: %s" % str(loaded_version))
     version_mismatch = False
     if loaded_version[0] < compiled_version[0]:
       tf_logging.error(
