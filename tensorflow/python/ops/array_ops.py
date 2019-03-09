@@ -4721,12 +4721,11 @@ def convert_to_int_tensor(tensor, name, dtype=dtypes.int32):
   """Converts the given value to an integer Tensor."""
   tensor = ops.convert_to_tensor(tensor, name=name, preferred_dtype=dtype)
   if tensor.dtype.is_integer:
-    tensor = math_ops.cast(tensor, dtype)
+    tensor = gen_math_ops.cast(tensor, dtype)
   else:
     raise TypeError(
         "%s must be an integer tensor; dtype=%s" % (name, tensor.dtype))
   return tensor
-
 
 def get_positive_axis(axis, ndims):
   """Validate an `axis` parameter, and normalize it to be positive.
@@ -4761,8 +4760,8 @@ def get_positive_axis(axis, ndims):
   elif axis < 0:
     raise ValueError("axis may only be negative if ndims is statically known.")
   return axis
- 
- 
+
+
 # This op is intended to exactly match the semantics of numpy.repeat, with
 # one exception: numpy.repeat has special (and somewhat non-intuitive) behavior
 # when axis is not specified.  Rather than implement that special behavior, we
@@ -4772,7 +4771,6 @@ def get_positive_axis(axis, ndims):
 # https://github.com/tensorflow/tensorflow/issues/8246
 def repeat(data, repeats, axis, name=None):
   """Repeats elements of `data`.
-
   Args:
     data: An `N`-dimensional tensor.
     repeats: A 1-D integer tensor specifying how many times each element in
@@ -4781,11 +4779,9 @@ def repeat(data, repeats, axis, name=None):
     axis: `int`.  The axis along which to repeat values.  Must be less than
       `max(N, 1)`.
     name: A name for the operation.
-
   Returns:
     A tensor with `max(N, 1)` dimensions.  Has the same shape as `data`,
     except that dimension `axis` has size `sum(repeats)`.
-
   #### Examples:
     ```python
     >>> repeat(['a', 'b', 'c'], repeats=[3, 0, 2], axis=0)
@@ -4806,7 +4802,7 @@ def repeat(data, repeats, axis, name=None):
 
     # If `data` is a scalar, then upgrade it to a vector.
     data = _with_nonzero_rank(data)
-    data_shape = array_ops.shape(data)
+    data_shape = shape(data)
 
     # If `axis` is negative, then convert it to a positive value.
     axis = get_positive_axis(axis, data.shape.ndims)
@@ -4817,43 +4813,43 @@ def repeat(data, repeats, axis, name=None):
 
     # If we know that `repeats` is a scalar, then we can just tile & reshape.
     if repeats.shape.ndims == 0:
-      expanded = array_ops.expand_dims(data, axis + 1)
+      expanded = expand_dims(data, axis + 1)
       tiled = tile_one_dimension(expanded, axis + 1, repeats)
-      result_shape = array_ops.concat(
+      result_shape = concat(
           [data_shape[:axis], [-1], data_shape[axis + 1:]], axis=0)
-      return array_ops.reshape(tiled, result_shape)
+      return reshape(tiled, result_shape)
 
     # Broadcast the `repeats` tensor so rank(repeats) == axis + 1.
     if repeats.shape.ndims != axis + 1:
-      repeats_shape = array_ops.shape(repeats)
-      repeats_ndims = array_ops.rank(repeats)
-      broadcast_shape = array_ops.concat(
+      repeats_shape = shape(repeats)
+      repeats_ndims = rank(repeats)
+      broadcast_shape = concat(
           [data_shape[:axis + 1 - repeats_ndims], repeats_shape], axis=0)
-      repeats = array_ops.broadcast_to(repeats, broadcast_shape)
+      repeats = broadcast_to(repeats, broadcast_shape)
       repeats.set_shape([None] * (axis + 1))
 
     # Create a "sequence mask" based on `repeats`, where slices across `axis`
     # contain one `True` value for each repetition.  E.g., if
     # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
-    max_repeat = math_ops.maximum(0, math_ops.reduce_max(repeats))
-    mask = array_ops.sequence_mask(repeats, max_repeat)
+    max_repeat = gen_math_ops.maximum(0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
+    mask = sequence_mask(repeats, max_repeat)
 
     # Add a new dimension around each value that needs to be repeated, and
     # then tile that new dimension to match the maximum number of repetitions.
-    expanded = array_ops.expand_dims(data, axis + 1)
+    expanded = expand_dims(data, axis + 1)
     tiled = tile_one_dimension(expanded, axis + 1, max_repeat)
 
     # Use `boolean_mask` to discard the extra repeated values.  This also
     # flattens all dimensions up through `axis`.
-    masked = array_ops.boolean_mask(tiled, mask)
+    masked = boolean_mask(tiled, mask)
 
     # Reshape the output tensor to add the outer dimensions back.
     if axis == 0:
       result = masked
     else:
-      result_shape = array_ops.concat(
+      result_shape = concat(
           [data_shape[:axis], [-1], data_shape[axis + 1:]], axis=0)
-      result = array_ops.reshape(masked, result_shape)
+      result = reshape(masked, result_shape)
 
     # Preserve shape information.
     if data.shape.ndims is not None:
@@ -4863,7 +4859,6 @@ def repeat(data, repeats, axis, name=None):
 
     return result
 
-
 def tile_one_dimension(data, axis, multiple):
   """Tiles a single dimension of a tensor."""
   # Assumes axis is a nonnegative int.
@@ -4871,10 +4866,10 @@ def tile_one_dimension(data, axis, multiple):
     multiples = [1] * data.shape.ndims
     multiples[axis] = multiple
   else:
-    ones = array_ops.ones(array_ops.rank(data), dtypes.int32)
-    multiples = array_ops.concat([ones[:axis], [multiple], ones[axis + 1:]],
+    ones_value = ones(rank(data), dtypes.int32)
+    multiples = ops.concat([ones_value[:axis], [multiple], ones[axis + 1:]],
                                  axis=0)
-  return array_ops.tile(data, multiples)
+  return tile(data, multiples)
 
 
 def _with_nonzero_rank(data):
