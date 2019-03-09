@@ -343,9 +343,9 @@ StatusOr<poplar::program::Program> CreateInterIpuCopy(
     return xla::FailedPrecondition("No unique IPU number on %s", inst->name());
   }
 
-  out =
-      poputil::copyToIpu(res.main_graph, out, seq, sharding.GetUniqueDevice(),
-                         GetDebugName(inst));
+  out = poputil::copyToIpu(
+      res.main_graph, out, seq, sharding.GetUniqueDevice(), GetDebugName(inst),
+      poplar::TensorCloneMethod::PRESERVE_ORDER_AND_ALIASES);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
