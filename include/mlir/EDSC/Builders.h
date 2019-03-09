@@ -233,8 +233,8 @@ private:
   BlockBuilder &operator=(const BlockBuilder &other) = delete;
 };
 
-/// Base class for Handles that cannot be constructed explicitly by a user of
-/// the API.
+/// Base class for ValueHandle, InstructionHandle and BlockHandle.
+/// Not meant to be used outside of these classes.
 struct CapturableHandle {
 protected:
   CapturableHandle() = default;
@@ -347,6 +347,7 @@ struct InstructionHandle : public CapturableHandle {
                                   ArrayRef<NamedAttribute> attributes = {});
 
   operator Instruction *() { return inst; }
+  Instruction *getInstruction() { return inst; }
 
 private:
   Instruction *inst;

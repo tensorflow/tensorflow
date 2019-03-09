@@ -97,14 +97,14 @@ ValueHandle ValueHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
                                 ArrayRef<NamedAttribute> attributes) {
   Instruction *inst =
       InstructionHandle::create(name, operands, resultTypes, attributes);
+  if (inst->getNumResults() == 1) {
+    return ValueHandle(inst->getResult(0));
+  }
   if (auto f = inst->dyn_cast<AffineForOp>()) {
     // Immediately create the loop body so we can just insert instructions right
     // away.
     f->createBody();
     return ValueHandle(f->getInductionVar());
-  }
-  if (inst->getNumResults() == 1) {
-    return ValueHandle(inst->getResult(0));
   }
   llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
 }
