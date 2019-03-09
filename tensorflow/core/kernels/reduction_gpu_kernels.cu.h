@@ -652,8 +652,8 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel,grid_dim, block_dim, 0, cu_stream,
-        in, out, extent_x, extent_y, op, init);
+    GPU_LAUNCH_KERNEL((ColumnReduceMax16ColumnsKernel<IN_T, OUT_T, Op>), grid_dim, block_dim, 0,
+        cu_stream, in, out, extent_x, extent_y, op, init);
   } else {
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
@@ -661,15 +661,17 @@ void LaunchColumnReduction_LTE16Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                       TensorShape({static_cast<int64>(
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
-    GPU_LAUNCH_KERNEL(ColumnReduceMax16ColumnsKernel, dim3(grid_dim), dim3(block_dim), 0, cu_stream,
-        in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
-        init);
+    GPU_LAUNCH_KERNEL((ColumnReduceMax16ColumnsKernel<IN_T, T*, Op>),
+                      grid_dim, block_dim, 0, cu_stream, in,
+                      (T*)temp_storage.flat<int8_t>().data(),
+                      extent_x, extent_y, op, init);
 
-    dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
+    dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1) / TF_RED_WARPSIZE, 1, 1);
     dim3 num_threads(128, 1, 1);
-    GPU_LAUNCH_KERNEL((CleanupSegments<T*,OUT_T,Op>),new_grid_dim, num_threads, 0, cu_stream,
-        ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
-        grid_dim.y, op, init);
+    GPU_LAUNCH_KERNEL((CleanupSegments<T*, OUT_T, Op>), new_grid_dim,
+                      num_threads, 0, cu_stream,
+                      (T*)temp_storage.flat<int8_t>().data(), out,
+                      extent_x, extent_y, grid_dim.y, op, init);
   }
 }
 
@@ -688,8 +690,9 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
   }
 
   if (grid_dim.y == 1) {
-    GPU_LAUNCH_KERNEL((ColumnReduceKernel<IN_T, OUT_T, Op>), grid_dim, block_dim, 0, cu_stream,
-        in, out, extent_x, extent_y, op, init);
+    GPU_LAUNCH_KERNEL((ColumnReduceKernel<IN_T, OUT_T, Op>), grid_dim,
+                      block_dim, 0, cu_stream, in, out, extent_x,
+                      extent_y, op, init);
   } else {
     Tensor temp_storage;
     OP_REQUIRES_OK(ctx,
@@ -698,15 +701,16 @@ void LaunchColumnReduction_LTE4096Cols(OpKernelContext* ctx, OUT_T out, IN_T in,
                                           sizeof(T) * extent_y * grid_dim.y)}),
                                       &temp_storage));
 
-    GPU_LAUNCH_KERNEL((ColumnReduceKernel<IN_T, T*, Op>), grid_dim, block_dim, 0, cu_stream,
-        in, (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op,
-        init);
+    GPU_LAUNCH_KERNEL(
+        (ColumnReduceKernel<IN_T, T*, Op>), grid_dim, block_dim, 0, cu_stream, in,
+        (T*)temp_storage.flat<int8_t>().data(), extent_x, extent_y, op, init);
 
     dim3 new_grid_dim((grid_dim.y * extent_y + (TF_RED_WARPSIZE-1)) / TF_RED_WARPSIZE, 1, 1);
     dim3 num_threads(128, 1, 1);
-     GPU_LAUNCH_KERNEL((CleanupSegments<T*,OUT_T,Op>), new_grid_dim, num_threads, 0, cu_stream,
-        ((T*)temp_storage.flat<int8_t>().data()), out, extent_x, extent_y,
-        grid_dim.y, op, init);
+    GPU_LAUNCH_KERNEL((CleanupSegments<T*, OUT_T, Op>), new_grid_dim,
+                      block_dim, 0, cu_stream,
+                      (T*)temp_storage.flat<int8_t>().data(), out,
+                      extent_x, extent_y, grid_dim.y, op, init);
   }
 }
 
@@ -714,26 +718,20 @@ template <typename T, typename Op, typename OUT_T, typename IN_T>
 void LaunchColumnReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
                            int extent_x, int extent_y, Op op, T init,
                            const gpuStream_t& cu_stream) {
-#ifdef GOOGLE_CUDA
-// FIXME on ROCm
   if (extent_y <= 16) {
     LaunchColumnReduction_LTE16Cols(ctx, out, in, extent_x, extent_y, op, init,
                                     cu_stream);
   } else if (extent_y <= 4096) {
-    LaunchColumnReduction_LTE4096Cols<T, Op, OUT_T, IN_T>(ctx, out, in, extent_x, extent_y, op,
-
+    LaunchColumnReduction_LTE4096Cols(ctx, out, in, extent_x, extent_y, op,
                                       init, cu_stream);
   } else {
-#endif
     int threads_per_block = 128;
     int num_blocks = Eigen::divup(extent_y, threads_per_block);
 
-    GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
-        in, out, 1, extent_x, extent_y, op);
-#ifdef GOOGLE_CUDA
-// FIXME on ROCm
+    GPU_LAUNCH_KERNEL((ColumnReduceSimpleKernel<IN_T, OUT_T, Op>),
+                      num_blocks, threads_per_block, 0, cu_stream,
+                      in, out, 1, extent_x, extent_y, op);
   }
-#endif
 }
 
 template <typename T, typename Op, typename OUT_T, typename IN_T>
@@ -746,8 +744,9 @@ void Launch3DYReduction(OpKernelContext* ctx, OUT_T out, IN_T in, int extent_x,
 
   // TODO(eriche): this won't be very good in the case of small x
   //                small z and large y.
-  GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel, dim3(num_blocks), dim3(threads_per_block), 0, cu_stream,
-      in, out, extent_x, extent_y, extent_z, op);
+  GPU_LAUNCH_KERNEL(ColumnReduceSimpleKernel<IN_T, OUT_T, Op>,
+                    num_blocks, threads_per_block, 0, cu_stream, in,
+                    out, extent_x, extent_y, extent_z, op);
 }
 
 template <typename T, typename Op, typename OUT_T, typename IN_T>
