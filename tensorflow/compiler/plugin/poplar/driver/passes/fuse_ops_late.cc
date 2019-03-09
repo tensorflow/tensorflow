@@ -298,57 +298,6 @@ static const std::vector<HloMatcherPattern> patterns = {
     })
   ),
 
-  // Average pool (valid)
-  HloMatcherPattern(
-    PatternType("avg_pool"),
-    PatternMetaTarget(1),
-    PatternInputs({4}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDivide, NodeOperands({1, 3}), IsAveragePool},
-      {HloOpcode::kReduceWindow, NodeOperands({4, 2}), Is2DReductionWindow},
-      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloOpcode::kConstant, NodeOperands({})},
-      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
-    })
-  ),
-
-  // Average pool (same)
-  HloMatcherPattern(
-    PatternType("avg_pool"),
-    PatternMetaTarget(1),
-    PatternInputs({7}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDivide, NodeOperands({1, 2}), IsAveragePool},
-      {HloOpcode::kReduceWindow, NodeOperands({7, 6}), Is2DReductionWindow},
-      {HloOpcode::kBroadcast, NodeOperands({3})},
-      {HloOpcode::kReduceWindow, NodeOperands({4, 6})},
-      {HloOpcode::kBroadcast, NodeOperands({5})},
-      {HloOpcode::kConstant, NodeOperands({}), IsConstantOne},
-      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
-    })
-  ),
-
-  // Average pool (same) - broadcast converted to reshape
-  HloMatcherPattern(
-    PatternType("avg_pool"),
-    PatternMetaTarget(1),
-    PatternInputs({7}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDivide, NodeOperands({1, 2}), IsAveragePool},
-      {HloOpcode::kReduceWindow, NodeOperands({7, 6}), Is2DReductionWindow},
-      {HloOpcode::kReshape, NodeOperands({3})},
-      {HloOpcode::kReduceWindow, NodeOperands({4, 6})},
-      {HloOpcode::kBroadcast, NodeOperands({5})},
-      {HloOpcode::kConstant, NodeOperands({}), IsConstantOne},
-      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
-    })
-  ),
-
   // Bias reduction and application (constant)
   HloMatcherPattern(
     PatternType("bias_apply"),

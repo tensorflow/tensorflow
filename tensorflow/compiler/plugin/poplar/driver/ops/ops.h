@@ -102,6 +102,7 @@ poplar::Tensor AddGroupsDimensionToWeights(const poplin::ConvParams& p,
                                            const poplar::Tensor& t,
                                            bool flipped);
 
+std::set<unsigned int> GetPoolingReductionDims(const Window& window);
 /* Ops */
 
 StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
@@ -170,13 +171,17 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
 
 StatusOr<poplar::program::Program> CreatePoplibsPooling(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
-    popnn::PoolingType reduction_type, const Window& window,
+    popnn::PoolingType pooling_type, const Window& window,
     absl::optional<const HloInstruction*> optional_reduction_op =
         absl::nullopt);
 
+StatusOr<poplar::program::Program> CreatePoplibsMaxPoolGrad(
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
+    const Window& window);
+
 StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
-    popnn::PoolingType reduction_type, const Window& window);
+    popnn::PoolingType pooling_type, const Window& window);
 
 StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
                                                      const HloInstruction* inst,

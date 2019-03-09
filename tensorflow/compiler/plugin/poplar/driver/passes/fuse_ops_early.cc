@@ -127,22 +127,6 @@ static const std::vector<HloMatcherPattern> patterns = {
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
     })
   ),
-
-  // Average pool (valid) - broadcast
-  HloMatcherPattern(
-    PatternType("avg_pool"),
-    PatternMetaTarget(1),
-    PatternInputs({5}),
-    PatternOutputs({0}),
-    Pattern({
-      {HloOpcode::kDivide, NodeOperands({1, 3}), IsAveragePool},
-      {HloOpcode::kReduceWindow, NodeOperands({5, 2}), Is2DReductionWindow},
-      {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
-      {HloOpcode::kBroadcast, NodeOperands({4})},
-      {HloOpcode::kConstant, NodeOperands({})},
-      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
-    })
-  ),
 };
 // clang-format on
 

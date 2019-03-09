@@ -268,7 +268,8 @@ StatusOr<poplar::program::Program> CreateCustomCallOp(
     const xla::Shape& output, TensorMap& tensor_map) {
   poplar::Graph& graph = GetGraph(res, inst);
   if (IsPoplibsCustomOp(inst)) {
-    VLOG(1) << "Processing " << inst->name() << " as Poplibs call";
+    VLOG(1) << "Processing " << inst->custom_call_target()
+            << " as Poplibs call";
     return CreatePoplibsOp(graph, res, inst, output, tensor_map);
   } else if (IsInterIpuCopy(inst)) {
     return CreateInterIpuCopy(res, inst, output, tensor_map);

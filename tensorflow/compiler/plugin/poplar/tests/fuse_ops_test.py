@@ -499,7 +499,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['avg/fusion/avgPool10x10']
+      ok = ['avg/custom-call.*/avgPool10x10']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAvgPoolValidWithBroadcast(self):
@@ -537,7 +537,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['avg/fusion/avgPool5x5']
+      ok = ['avg/custom-call.*/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -577,7 +577,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['avg/fusion/avgPool5x5']
+      ok = ['avg/custom-call.*/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFullyConnectedWithBias(self):

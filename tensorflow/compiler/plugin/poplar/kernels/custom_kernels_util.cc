@@ -60,7 +60,9 @@ absl::optional<PoplibsLib> StringToPoplibsLib(const std::string& name) {
 }
 
 std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
-  static std::vector<std::string> names = {"GroupNormGrad",
+  static std::vector<std::string> names = {"AvgPool",
+                                           "AvgPoolGrad",
+                                           "GroupNormGrad",
                                            "GroupNormInference",
                                            "GroupNormStatistics",
                                            "GroupNormTraining",
@@ -79,6 +81,8 @@ absl::optional<PoplibsOp> StringToPoplibsOp(const std::string& name) {
   static absl::flat_hash_map<std::string, PoplibsOp> mapping = {
       // Poplin:
       // Popnn:
+      {"AvgPool", PoplibsOp::AvgPool},
+      {"AvgPoolGrad", PoplibsOp::AvgPoolGrad},
       {"GroupNormGrad", PoplibsOp::GroupNormGrad},
       {"GroupNormInference", PoplibsOp::GroupNormInference},
       {"GroupNormStatistics", PoplibsOp::GroupNormStatistics},

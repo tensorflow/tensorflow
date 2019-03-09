@@ -44,7 +44,15 @@ StatusOr<poplar::program::Program> CreateMaxPoolOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 
+StatusOr<poplar::program::Program> CreateAvgPoolOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
+
 StatusOr<poplar::program::Program> CreateMaxPoolGradOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
+
+StatusOr<poplar::program::Program> CreateAvgPoolGradOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 }  // namespace poplarplugin
