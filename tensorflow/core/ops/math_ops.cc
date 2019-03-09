@@ -973,17 +973,6 @@ REGISTER_OP("ArgMax")
 	.Doc(R"doc(Returns the index with the largest value across dimensions of a tensor.
 inputs: Must all be the same size and shape.
 Note that in case of ties the identity of the return value is not guaranteed.
-For example:
-import tensorflow as tf
-
-a = [1, 10, 26.9, 2.8, 166.32, 62.3]
-
-b = tf.math.argmax(input = a)
-
-c = tf.keras.backend.eval(b)  # c = 4
-
-# here a[4] = 166.32 which is the largest element of a
-
 )doc");
 
 REGISTER_OP("ArgMin")
@@ -993,7 +982,10 @@ REGISTER_OP("ArgMin")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .Attr("output_type: {int32, int64} = DT_INT64")
-    .SetShapeFn(ArgOpShape);
+    .SetShapeFn(ArgOpShape)
+	.Doc(R"doc(Returns the index with the smallest value across axes of a tensor.
+Note that in case of ties the identity of the return value is not guaranteed
+)doc");
 
 namespace {
 

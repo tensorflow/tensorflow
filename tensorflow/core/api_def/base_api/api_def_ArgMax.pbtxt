@@ -23,7 +23,7 @@ b = tf.math.argmax(input = a)
 
 c = tf.keras.backend.eval(b)  # c = 4
 
-# here a[4] = 166.32 which is the largest element of a
+# here a[4] = 166.32 which is the largest element of a across axis 0
 
 ```
 END
