@@ -42,14 +42,18 @@ _TF_ACTIVATIONS_V2 = {
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
-  """Softmax activation function.
+  """The softmax activation function transforms the outputs so that all values are in 
+  range (0, 1) and sum to 1. It is is often used as activation of the last layer of a 
+  classification network because the result could be interpreted as probability 
+  distribution. To calculate the softmax all inputs `x` become exp(x) divided by the sum 
+  of all exponential values.
 
   Arguments:
       x : Input tensor.
       axis: Integer, axis along which the softmax normalization is applied.
 
   Returns:
-      Tensor, output of softmax transformation.
+      Tensor, output of softmax transformation (all values are non-negative and sum to 1).
 
   Raises:
       ValueError: In case `dim(x) == 1`.
@@ -170,6 +174,17 @@ def tanh(x):
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
+  """Sigmoid.
+  Applies the sigmoid activation function. The sigmoid function is defined as 
+  1 divided by (1 + exp(-x)). It's curve is like an "S" and is like a smoothed 
+  version of the Heaviside function. For small values (<-5) the sigmoid returns 
+  a value close to zero and for larger values (>5) the result of the funtion gets 
+  close to 1.
+  Arguments:
+      x: A tensor or variable.
+  Returns:
+      A tensor.
+  """
   return nn.sigmoid(x)
 
 
