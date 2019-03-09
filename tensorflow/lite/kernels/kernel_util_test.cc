@@ -44,7 +44,7 @@ class KernelUtilTest : public ::testing::Test {
     TfLiteTensorFree(tensor);
     tensor->dims = TfLiteIntArrayCreate(dims.size());
     int i = 0;
-    for (int d : dims) {
+    for (const auto& d : dims) {
       tensor->dims->data[i] = d;
       ++i;
     }
