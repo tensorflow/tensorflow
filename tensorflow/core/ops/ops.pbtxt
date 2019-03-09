@@ -7702,6 +7702,13 @@ op {
       i: 0
     }
   }
+  attr {
+    name: "time_major"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
   is_stateful: true
 }
 op {
@@ -8264,6 +8271,13 @@ op {
   }
   attr {
     name: "is_training"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "time_major"
     type: "bool"
     default_value {
       b: true
