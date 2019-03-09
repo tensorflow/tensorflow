@@ -209,10 +209,12 @@ def implicit_val_and_grad(f):
     if not variables:
       raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
-    if not isinstance(variables,float):
-      raise ValueError("Gradient calculation supports only float types.")
+    for v in variables:  
+      if is_floating(v) == False:
+        raise ValueError("Gradient calculation supports only float types.")
     
     sources = [v.handle for v in variables]
+
     grad = imperative_grad.imperative_grad(this_tape, nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
