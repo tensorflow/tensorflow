@@ -59,7 +59,7 @@ template <typename T>
 inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
                                      int32_t zero_point) {
   std::vector<float> f;
-  for (const T q : data) {
+  for (const T& q : data) {
     f.push_back(scale * (q - zero_point));
   }
   return f;
@@ -276,7 +276,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (const T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
@@ -296,7 +296,7 @@ class SingleOpModel {
                << ". Requested " << typeToTfLiteType<T>() << ", got "
                << t->type;
     }
-    for (const T f : data) {
+    for (const T& f : data) {
       *v = f;
       ++v;
     }
