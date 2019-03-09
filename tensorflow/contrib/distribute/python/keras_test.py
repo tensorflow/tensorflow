@@ -831,7 +831,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       self.assertEqual(interleaved_output.history['val_loss'],
                        [x[0] for x in user_controlled_output])
-      self.assertEqual(interleaved_output.history['val_mean_absolute_error'],
+      val_mean_absolute_error = interleaved_output.history.get(
+          'val_mean_absolute_error')
+      if not val_mean_absolute_error:
+        # The name of the metric changed in TF2.0
+        val_mean_absolute_error = interleaved_output.history['val_mae']
+      self.assertEqual(val_mean_absolute_error,
                        [x[1] for x in user_controlled_output])
       self.assertEqual(interleaved_output.history['val_categorical_accuracy'],
                        [x[2] for x in user_controlled_output])
