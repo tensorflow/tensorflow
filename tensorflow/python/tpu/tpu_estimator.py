@@ -2970,6 +2970,19 @@ class TPUEstimator(estimator_lib.Estimator):
         if mode == model_fn_lib.ModeKeys.EVAL:
           compile_op, total_loss, host_calls, scaffold, eval_hooks = (
               _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
+          if ctx.embedding_config:
+            g = ops.get_default_graph()
+            table_to_config_dict = (
+                ctx.embedding_config.tpu_embedding.table_to_config_dict)
+            embedding_variable_name_by_table, _ = (
+                _tpu_estimator_embedding.get_full_variable_names(
+                    g, table_to_config_dict)
+            )
+            embedding_variables_and_ops = (
+                ctx.embedding_config.tpu_embedding.create_variables_and_ops(
+                    embedding_variable_name_by_table
+                ))
+            tpu_init_ops.extend(embedding_variables_and_ops.load_ops())
           iterations_per_loop_var = _create_or_get_iterations_per_loop()
           mean_loss = math_ops.div(
               total_loss,
