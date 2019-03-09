@@ -1587,50 +1587,46 @@ def adjust_contrast(images, contrast_factor):
 @tf_export('image.adjust_gamma')
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs Gamma Correction on the input image.
-
-  Also known as Power Law Transform. This function transforms the
-  input image pixelwise according to the equation `Out = In**gamma`
-  after scaling each pixel to the range 0 to 1.
-
+  Also known as Power Law Transform. This function converts the
+  input images at first to float representation, then transforms them
+  pixelwise according to the equation `Out = gain * In**gamma`,
+  and then converts the back to the original data type.
   Args:
-    image : A Tensor.
+    image : RGB image or images to adjust.
     gamma : A scalar or tensor. Non negative real number.
     gain  : A scalar or tensor. The constant multiplier.
-
   Returns:
-    A Tensor. Gamma corrected output image.
-
+    A Tensor. A Gamma-adjusted tensor of the same shape and type as `image`.
   Raises:
     ValueError: If gamma is negative.
-
   Notes:
     For gamma greater than 1, the histogram will shift towards left and
     the output image will be darker than the input image.
     For gamma less than 1, the histogram will shift towards right and
     the output image will be brighter than the input image.
-
   References:
     [1] http://en.wikipedia.org/wiki/Gamma_correction
   """
 
   with ops.name_scope(None, 'adjust_gamma', [image, gamma, gain]) as name:
-    # Convert pixel value to DT_FLOAT for computing adjusted image.
-    img = ops.convert_to_tensor(image, name='img', dtype=dtypes.float32)
-    # Keep image dtype for computing the scale of corresponding dtype.
     image = ops.convert_to_tensor(image, name='image')
+    # Remember original dtype to so we can convert back if needed
+    orig_dtype = image.dtype
+
+    if orig_dtype in [dtypes.float16, dtypes.float32]:
+      flt_image = image
+    else:
+      flt_image = convert_image_dtype(image, dtypes.float32)
 
     assert_op = _assert(gamma >= 0, ValueError,
                         'Gamma should be a non-negative real number.')
     if assert_op:
       gamma = control_flow_ops.with_dependencies(assert_op, gamma)
 
-    # scale = max(dtype) - min(dtype).
-    scale = constant_op.constant(
-        image.dtype.limits[1] - image.dtype.limits[0], dtype=dtypes.float32)
     # According to the definition of gamma correction.
-    adjusted_img = (img / scale)**gamma * scale * gain
+    adjusted_img = gain * flt_image**gamma
 
-    return adjusted_img
+    return convert_image_dtype(adjusted_img, orig_dtype, saturate=True)
 
 
 @tf_export('image.convert_image_dtype')
