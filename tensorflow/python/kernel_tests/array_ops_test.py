@@ -1837,14 +1837,16 @@ class RepeatTest(test_util.TensorFlowTestCase):
   def testRepeatMatrixAxis0(self):
     with self.test_session():
       x = np.array([[1, 2], [3, 4]], dtype=np.int32)
-      v_tf = array_ops.repeat(constant_op.constant(x), constant_op.constant([1, 2]), axis=0)
+      v_tf = array_ops.repeat(
+          constant_op.constant(x), constant_op.constant([1, 2]), axis=0)
       v_np = np.repeat(x, [1, 2], axis=0)
       self.assertAllEqual(v_tf.eval(), v_np)
 
   def testRepeatMatrixAxis1(self):
     with self.test_session():
       x = np.array([[1, 2], [3, 4]], dtype=np.int32)
-      v_tf = array_ops.repeat(constant_op.constant(x), constant_op.constant(3), axis=1)
+      v_tf = array_ops.repeat(
+          constant_op.constant(x), constant_op.constant(3), axis=1)
       v_np = np.repeat(x, 3, axis=1)
       self.assertAllEqual(v_tf.eval(), v_np)
 

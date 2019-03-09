@@ -4831,7 +4831,8 @@ def repeat_with_axis(data, repeats, axis, name=None):
     # Create a "sequence mask" based on `repeats`, where slices across `axis`
     # contain one `True` value for each repetition.  E.g., if
     # `repeats = [3, 1, 2]`, then `mask = [[1, 1, 1], [1, 0, 0], [1, 1, 0]]`.
-    max_repeat = gen_math_ops.maximum(0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
+    max_repeat = gen_math_ops.maximum(
+        0, gen_math_ops._max(repeats, _all_dimensions(repeats)))
     mask = sequence_mask(repeats, max_repeat)
 
     # Add a new dimension around each value that needs to be repeated, and
@@ -4868,7 +4869,7 @@ def tile_one_dimension(data, axis, multiple):
   else:
     ones_value = ones(rank(data), dtypes.int32)
     multiples = concat([ones_value[:axis], [multiple], ones_value[axis + 1:]],
-                                 axis=0)
+                       axis=0)
   return tile(data, multiples)
 
 
@@ -4887,7 +4888,7 @@ def _with_nonzero_rank(data):
         concat([[1], data_shape], axis=0)[-data_ndims:])
 
 @tf_export("repeat")
-def repeat(input, repeats, axis=None, name=None):
+def repeat(input, repeats, axis=None, name=None): # pylint: disable=redefined-builtin
   """Repeat elements of an array
   Args:
     input: A Tensor.
