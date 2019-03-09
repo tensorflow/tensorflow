@@ -58,6 +58,11 @@ def assert_splits_match(nested_splits_lists):
   ]
 
 
+# Note: imported here to avoid circular dependency of array_ops.
+get_positive_axis = array_ops.get_positive_axis
+convert_to_int_tensor = array_ops.convert_to_int_tensor
+repeat = array_ops.repeat_with_axis
+
 def lengths_to_splits(lengths):
   """Returns splits corresponding to the given lengths."""
   return array_ops.concat([[0], math_ops.cumsum(lengths)], axis=-1)
