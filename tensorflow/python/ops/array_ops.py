@@ -4886,6 +4886,7 @@ def _with_nonzero_rank(data):
         data,
         concat([[1], data_shape], axis=0)[-data_ndims:])
 
+@tf_export("repeat")
 def repeat(input, repeats, axis=None, name=None):
   """Repeat elements of an array
   Args:
