@@ -694,10 +694,12 @@ class RNN(Layer):
       full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
                         ] + additional_specs
       # Perform the call with temporarily replaced input_spec
-      original_input_spec = self.input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)
-      self.input_spec = original_input_spec
+      # Remove the additional_specs from input spec and keep the rest. It is
+      # important to keep since the input spec was populated by build(), and
+      # will be reused in the stateful=True.
+      self.input_spec = self.input_spec[:-len(additional_specs)]
       return output
     else:
       if initial_state is not None:
