@@ -51,14 +51,7 @@ InstructionHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
                                              ArrayRef<ValueHandle> operands) {
   assert(!*bh && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(captures, operands);
-  { // Clone the scope explicitly to avoid modifying the insertion point in the
-    // current scope which result in surprising usage.
-    auto *currentB = ScopedContext::getBuilder();
-    FuncBuilder b(currentB->getInsertionBlock(), currentB->getInsertionPoint());
-    Location loc = ScopedContext::getLocation();
-    ScopedContext scope(b, loc);
-    BlockBuilder(bh, captures)({/* no body */});
-  } // Release before adding the branch to the eagerly created block.
+  BlockBuilder(bh, captures)({/* no body */});
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
   return InstructionHandle::create<BranchOp>(bh->getBlock(), ops);
 }
@@ -83,14 +76,8 @@ InstructionHandle mlir::edsc::intrinsics::COND_BR(
   assert(!*falseBranch && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(trueCaptures, trueOperands);
   enforceEmptyCapturesMatchOperands(falseCaptures, falseOperands);
-  { // Clone the scope explicitly.
-    auto *currentB = ScopedContext::getBuilder();
-    FuncBuilder b(currentB->getInsertionBlock(), currentB->getInsertionPoint());
-    Location loc = ScopedContext::getLocation();
-    ScopedContext scope(b, loc);
-    BlockBuilder(trueBranch, trueCaptures)({/* no body */});
-    BlockBuilder(falseBranch, falseCaptures)({/* no body */});
-  } // Release before adding the branch to the eagerly created block.
+  BlockBuilder(trueBranch, trueCaptures)({/* no body */});
+  BlockBuilder(falseBranch, falseCaptures)({/* no body */});
   SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return InstructionHandle::create<CondBranchOp>(

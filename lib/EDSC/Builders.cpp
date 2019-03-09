@@ -125,8 +125,14 @@ InstructionHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
 }
 
 BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
+  auto *currentB = ScopedContext::getBuilder();
+  auto *ib = currentB->getInsertionBlock();
+  auto ip = currentB->getInsertionPoint();
   BlockHandle res;
   res.block = ScopedContext::getBuilder()->createBlock();
+  // createBlock sets the insertion point inside the block.
+  // We do not want this behavior when using declarative builders with nesting.
+  currentB->setInsertionPoint(ib, ip);
   for (auto t : argTypes) {
     res.block->addArgument(t);
   }

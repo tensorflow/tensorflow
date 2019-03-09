@@ -401,6 +401,29 @@ TEST_FUNC(custom_ops) {
   f->print(llvm::outs());
 }
 
+TEST_FUNC(insertion_in_block) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto indexType = IndexType::get(&globalContext());
+  auto f = makeFunction("insertion_in_block", {}, {indexType, indexType});
+  ScopedContext scope(f.get());
+  BlockHandle b1;
+  // clang-format off
+  ValueHandle::create<ConstantIntOp>(0, 32);
+  BlockBuilder(&b1, {})({
+    ValueHandle::create<ConstantIntOp>(1, 32)
+  });
+  ValueHandle::create<ConstantIntOp>(2, 32);
+  // CHECK-LABEL: @insertion_in_block
+  // CHECK: {{.*}} = constant 0 : i32
+  // CHECK: {{.*}} = constant 2 : i32
+  // CHECK: ^bb1:   // no predecessors
+  // CHECK: {{.*}} = constant 1 : i32
+  // clang-format on
+  f->print(llvm::outs());
+}
+
 int main() {
   RUN_TESTS();
   return 0;
