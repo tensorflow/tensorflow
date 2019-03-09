@@ -92,6 +92,38 @@ mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
   return ValueHandle(inst->getResult(0));
 }
 
+ValueHandle ValueHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
+                                ArrayRef<Type> resultTypes,
+                                ArrayRef<NamedAttribute> attributes) {
+  Instruction *inst =
+      InstructionHandle::create(name, operands, resultTypes, attributes);
+  if (auto f = inst->dyn_cast<AffineForOp>()) {
+    // Immediately create the loop body so we can just insert instructions right
+    // away.
+    f->createBody();
+    return ValueHandle(f->getInductionVar());
+  }
+  if (inst->getNumResults() == 1) {
+    return ValueHandle(inst->getResult(0));
+  }
+  llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
+}
+
+InstructionHandle
+InstructionHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
+                          ArrayRef<Type> resultTypes,
+                          ArrayRef<NamedAttribute> attributes) {
+  OperationState state(ScopedContext::getContext(),
+                       ScopedContext::getLocation(), name);
+  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  state.addOperands(ops);
+  state.addTypes(resultTypes);
+  for (const auto &attr : attributes) {
+    state.addAttribute(attr.first, attr.second);
+  }
+  return InstructionHandle(ScopedContext::getBuilder()->createOperation(state));
+}
+
 BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
   BlockHandle res;
   res.block = ScopedContext::getBuilder()->createBlock();
@@ -139,7 +171,8 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
   enter(body);
 }
 
-ValueHandle mlir::edsc::LoopBuilder::operator()(ArrayRef<ValueHandle> stmts) {
+ValueHandle
+mlir::edsc::LoopBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   /// The particular use case concerns nested blocks:
@@ -176,7 +209,7 @@ mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
 }
 
 ValueHandle
-mlir::edsc::LoopNestBuilder::operator()(ArrayRef<ValueHandle> stmts) {
+mlir::edsc::LoopNestBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
   // Iterate on the calling operator() on all the loops in the nest.
   // The iteration order is from innermost to outermost because enter/exit needs
   // to be asymmetric (i.e. enter() occurs on LoopBuilder construction, exit()
@@ -212,7 +245,7 @@ mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle *bh,
 
 /// Only serves as an ordering point between entering nested block and creating
 /// stmts.
-void mlir::edsc::BlockBuilder::operator()(ArrayRef<ValueHandle> stmts) {
+void mlir::edsc::BlockBuilder::operator()(ArrayRef<CapturableHandle> stmts) {
   // Call to `exit` must be explicit and asymmetric (cannot happen in the
   // destructor) because of ordering wrt comma operator.
   exit();

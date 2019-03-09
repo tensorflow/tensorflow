@@ -30,6 +30,7 @@ namespace mlir {
 namespace edsc {
 
 class BlockHandle;
+class InstructionHandle;
 class ValueHandle;
 
 /// Provides a set of first class intrinsics.
@@ -41,7 +42,7 @@ namespace intrinsics {
 ///
 /// Prerequisites:
 ///   All Handles have already captured previously constructed IR objects.
-ValueHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
+InstructionHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
 
 /// Creates a new mlir::Block* and branches to it from the current block.
 /// Argument types are specified by `operands`.
@@ -56,8 +57,8 @@ ValueHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
 ///   All `operands` have already captured an mlir::Value*
 ///   captures.size() == operands.size()
 ///   captures and operands are pairwise of the same type.
-ValueHandle BR(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
-               ArrayRef<ValueHandle> operands);
+InstructionHandle BR(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
+                     ArrayRef<ValueHandle> operands);
 
 /// Branches into the mlir::Block* captured by BlockHandle `trueBranch` with
 /// `trueOperands` if `cond` evaluates to `true` (resp. `falseBranch` and
@@ -65,9 +66,10 @@ ValueHandle BR(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
 ///
 /// Prerequisites:
 ///   All Handles have captured previouly constructed IR objects.
-ValueHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
-                    ArrayRef<ValueHandle> trueOperands, BlockHandle falseBranch,
-                    ArrayRef<ValueHandle> falseOperands);
+InstructionHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
+                          ArrayRef<ValueHandle> trueOperands,
+                          BlockHandle falseBranch,
+                          ArrayRef<ValueHandle> falseOperands);
 
 /// Eagerly creates new mlir::Block* with argument types specified by
 /// `trueOperands`/`falseOperands`.
@@ -85,12 +87,12 @@ ValueHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
 ///   `falseCaptures`.size() == `falseOperands`.size()
 ///   `trueCaptures` and `trueOperands` are pairwise of the same type
 ///   `falseCaptures` and `falseOperands` are pairwise of the same type.
-ValueHandle COND_BR(ValueHandle cond, BlockHandle *trueBranch,
-                    ArrayRef<ValueHandle *> trueCaptures,
-                    ArrayRef<ValueHandle> trueOperands,
-                    BlockHandle *falseBranch,
-                    ArrayRef<ValueHandle *> falseCaptures,
-                    ArrayRef<ValueHandle> falseOperands);
+InstructionHandle COND_BR(ValueHandle cond, BlockHandle *trueBranch,
+                          ArrayRef<ValueHandle *> trueCaptures,
+                          ArrayRef<ValueHandle> trueOperands,
+                          BlockHandle *falseBranch,
+                          ArrayRef<ValueHandle *> falseCaptures,
+                          ArrayRef<ValueHandle> falseOperands);
 
 ////////////////////////////////////////////////////////////////////////////////
 // TODO(ntv): Intrinsics below this line should be TableGen'd.
@@ -103,13 +105,13 @@ ValueHandle LOAD(ValueHandle base, llvm::ArrayRef<ValueHandle> indices);
 /// Builds an mlir::ReturnOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
 /// Returns an empty ValueHandle.
-ValueHandle RETURN(llvm::ArrayRef<ValueHandle> operands);
+InstructionHandle RETURN(llvm::ArrayRef<ValueHandle> operands);
 
 /// Builds an mlir::StoreOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
 /// Returns an empty ValueHandle.
-ValueHandle STORE(ValueHandle value, ValueHandle base,
-                  llvm::ArrayRef<ValueHandle> indices);
+InstructionHandle STORE(ValueHandle value, ValueHandle base,
+                        llvm::ArrayRef<ValueHandle> indices);
 
 } // namespace intrinsics
 

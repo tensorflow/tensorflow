@@ -363,6 +363,39 @@ TEST_FUNC(builder_helpers) {
   f->print(llvm::outs());
 }
 
+TEST_FUNC(custom_ops) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto indexType = IndexType::get(&globalContext());
+  auto f = makeFunction("custom_ops", {}, {indexType, indexType});
+
+  ScopedContext scope(f.get());
+  CustomInstruction<ValueHandle> MY_CUSTOM_OP("my_custom_op");
+  CustomInstruction<InstructionHandle> MY_CUSTOM_INST_0("my_custom_inst_0");
+  CustomInstruction<InstructionHandle> MY_CUSTOM_INST_2("my_custom_inst_2");
+
+  // clang-format off
+  ValueHandle vh(indexType);
+  InstructionHandle ih0, ih2;
+  IndexHandle m, n, M(f->getArgument(0)), N(f->getArgument(1));
+  IndexHandle ten(index_t(10)), twenty(index_t(20));
+  LoopNestBuilder({&m, &n}, {M, N}, {M + ten, N + twenty}, {1, 1})({
+    vh = MY_CUSTOM_OP({m, m + n}, {indexType}, {}),
+    ih0 = MY_CUSTOM_INST_0({m, m + n}, {}),
+    ih2 = MY_CUSTOM_INST_2({m, m + n}, {indexType, indexType}),
+  });
+
+  // CHECK-LABEL: @custom_ops
+  // CHECK: for %i0 {{.*}}
+  // CHECK:   for %i1 {{.*}}
+  // CHECK:     {{.*}} = "my_custom_op"{{.*}} : (index, index) -> index
+  // CHECK:     "my_custom_inst_0"{{.*}} : (index, index) -> ()
+  // CHECK:     {{.*}} = "my_custom_inst_2"{{.*}} : (index, index) -> (index, index)
+  // clang-format on
+  f->print(llvm::outs());
+}
+
 int main() {
   RUN_TESTS();
   return 0;

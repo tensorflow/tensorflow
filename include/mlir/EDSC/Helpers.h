@@ -106,7 +106,7 @@ struct IndexedValue {
 
   /// Emits a `store`.
   // NOLINTNEXTLINE: unconventional-assign-operator
-  ValueHandle operator=(ValueHandle rhs) {
+  InstructionHandle operator=(ValueHandle rhs) {
     return intrinsics::STORE(rhs, getBase(), indices);
   }
 
@@ -122,10 +122,10 @@ struct IndexedValue {
   ValueHandle operator-(ValueHandle e);
   ValueHandle operator*(ValueHandle e);
   ValueHandle operator/(ValueHandle e);
-  ValueHandle operator+=(ValueHandle e);
-  ValueHandle operator-=(ValueHandle e);
-  ValueHandle operator*=(ValueHandle e);
-  ValueHandle operator/=(ValueHandle e);
+  InstructionHandle operator+=(ValueHandle e);
+  InstructionHandle operator-=(ValueHandle e);
+  InstructionHandle operator*=(ValueHandle e);
+  InstructionHandle operator/=(ValueHandle e);
   ValueHandle operator+(IndexedValue e) {
     return *this + static_cast<ValueHandle>(e);
   }
@@ -138,16 +138,16 @@ struct IndexedValue {
   ValueHandle operator/(IndexedValue e) {
     return *this / static_cast<ValueHandle>(e);
   }
-  ValueHandle operator+=(IndexedValue e) {
+  InstructionHandle operator+=(IndexedValue e) {
     return this->operator+=(static_cast<ValueHandle>(e));
   }
-  ValueHandle operator-=(IndexedValue e) {
+  InstructionHandle operator-=(IndexedValue e) {
     return this->operator-=(static_cast<ValueHandle>(e));
   }
-  ValueHandle operator*=(IndexedValue e) {
+  InstructionHandle operator*=(IndexedValue e) {
     return this->operator*=(static_cast<ValueHandle>(e));
   }
-  ValueHandle operator/=(IndexedValue e) {
+  InstructionHandle operator/=(IndexedValue e) {
     return this->operator/=(static_cast<ValueHandle>(e));
   }
 

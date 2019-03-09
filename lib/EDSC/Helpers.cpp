@@ -71,19 +71,19 @@ ValueHandle mlir::edsc::IndexedValue::operator/(ValueHandle e) {
   return static_cast<ValueHandle>(*this) / e;
 }
 
-ValueHandle mlir::edsc::IndexedValue::operator+=(ValueHandle e) {
+InstructionHandle mlir::edsc::IndexedValue::operator+=(ValueHandle e) {
   using op::operator+;
   return intrinsics::STORE(*this + e, getBase(), indices);
 }
-ValueHandle mlir::edsc::IndexedValue::operator-=(ValueHandle e) {
+InstructionHandle mlir::edsc::IndexedValue::operator-=(ValueHandle e) {
   using op::operator-;
   return intrinsics::STORE(*this - e, getBase(), indices);
 }
-ValueHandle mlir::edsc::IndexedValue::operator*=(ValueHandle e) {
+InstructionHandle mlir::edsc::IndexedValue::operator*=(ValueHandle e) {
   using op::operator*;
   return intrinsics::STORE(*this * e, getBase(), indices);
 }
-ValueHandle mlir::edsc::IndexedValue::operator/=(ValueHandle e) {
+InstructionHandle mlir::edsc::IndexedValue::operator/=(ValueHandle e) {
   using op::operator/;
   return intrinsics::STORE(*this / e, getBase(), indices);
 }

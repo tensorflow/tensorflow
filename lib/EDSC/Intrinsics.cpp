@@ -22,15 +22,15 @@
 using namespace mlir;
 using namespace mlir::edsc;
 
-ValueHandle mlir::edsc::intrinsics::BR(BlockHandle bh,
-                                       ArrayRef<ValueHandle> operands) {
+InstructionHandle mlir::edsc::intrinsics::BR(BlockHandle bh,
+                                             ArrayRef<ValueHandle> operands) {
   assert(bh && "Expected already captured BlockHandle");
   for (auto &o : operands) {
     (void)o;
     assert(o && "Expected already captured ValueHandle");
   }
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
-  return ValueHandle::create<BranchOp>(bh.getBlock(), ops);
+  return InstructionHandle::create<BranchOp>(bh.getBlock(), ops);
 }
 static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
                                               ArrayRef<ValueHandle> operands) {
@@ -46,9 +46,9 @@ static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
   }
 }
 
-ValueHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
-                                       ArrayRef<ValueHandle *> captures,
-                                       ArrayRef<ValueHandle> operands) {
+InstructionHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
+                                             ArrayRef<ValueHandle *> captures,
+                                             ArrayRef<ValueHandle> operands) {
   assert(!*bh && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(captures, operands);
   { // Clone the scope explicitly to avoid modifying the insertion point in the
@@ -60,21 +60,21 @@ ValueHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
     BlockBuilder(bh, captures)({/* no body */});
   } // Release before adding the branch to the eagerly created block.
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
-  return ValueHandle::create<BranchOp>(bh->getBlock(), ops);
+  return InstructionHandle::create<BranchOp>(bh->getBlock(), ops);
 }
 
-ValueHandle
+InstructionHandle
 mlir::edsc::intrinsics::COND_BR(ValueHandle cond, BlockHandle trueBranch,
                                 ArrayRef<ValueHandle> trueOperands,
                                 BlockHandle falseBranch,
                                 ArrayRef<ValueHandle> falseOperands) {
   SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
-  return ValueHandle::create<CondBranchOp>(cond, trueBranch.getBlock(), trueOps,
-                                           falseBranch.getBlock(), falseOps);
+  return InstructionHandle::create<CondBranchOp>(
+      cond, trueBranch.getBlock(), trueOps, falseBranch.getBlock(), falseOps);
 }
 
-ValueHandle mlir::edsc::intrinsics::COND_BR(
+InstructionHandle mlir::edsc::intrinsics::COND_BR(
     ValueHandle cond, BlockHandle *trueBranch,
     ArrayRef<ValueHandle *> trueCaptures, ArrayRef<ValueHandle> trueOperands,
     BlockHandle *falseBranch, ArrayRef<ValueHandle *> falseCaptures,
@@ -93,7 +93,7 @@ ValueHandle mlir::edsc::intrinsics::COND_BR(
   } // Release before adding the branch to the eagerly created block.
   SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
-  return ValueHandle::create<CondBranchOp>(
+  return InstructionHandle::create<CondBranchOp>(
       cond, trueBranch->getBlock(), trueOps, falseBranch->getBlock(), falseOps);
 }
 
@@ -107,14 +107,16 @@ mlir::edsc::intrinsics::LOAD(ValueHandle base,
   return ValueHandle::create<LoadOp>(base.getValue(), ops);
 }
 
-ValueHandle mlir::edsc::intrinsics::RETURN(ArrayRef<ValueHandle> operands) {
+InstructionHandle
+mlir::edsc::intrinsics::RETURN(ArrayRef<ValueHandle> operands) {
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
-  return ValueHandle::create<ReturnOp>(ops);
+  return InstructionHandle::create<ReturnOp>(ops);
 }
 
-ValueHandle
+InstructionHandle
 mlir::edsc::intrinsics::STORE(ValueHandle value, ValueHandle base,
                               llvm::ArrayRef<ValueHandle> indices = {}) {
   SmallVector<Value *, 4> ops(indices.begin(), indices.end());
-  return ValueHandle::create<StoreOp>(value.getValue(), base.getValue(), ops);
+  return InstructionHandle::create<StoreOp>(value.getValue(), base.getValue(),
+                                            ops);
 }

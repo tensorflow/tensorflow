@@ -38,6 +38,7 @@ struct index_t {
 };
 
 class BlockHandle;
+class CapturableHandle;
 class NestedBuilder;
 class ValueHandle;
 
@@ -162,7 +163,7 @@ public:
   /// In order to be admissible in a nested ArrayRef<ValueHandle>, operator()
   /// returns a ValueHandle::null() that cannot be captured.
   // TODO(ntv): when loops return escaping ssa-values, this should be adapted.
-  ValueHandle operator()(ArrayRef<ValueHandle> stmts);
+  ValueHandle operator()(ArrayRef<CapturableHandle> stmts);
 };
 
 /// Explicit nested LoopBuilder. Offers a compressed multi-loop builder to avoid
@@ -192,7 +193,7 @@ public:
                   ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
 
   // TODO(ntv): when loops return escaping ssa-values, this should be adapted.
-  ValueHandle operator()(ArrayRef<ValueHandle> stmts);
+  ValueHandle operator()(ArrayRef<CapturableHandle> stmts);
 
 private:
   SmallVector<LoopBuilder, 4> loops;
@@ -225,11 +226,18 @@ public:
   /// The only purpose of this operator is to serve as a sequence point so that
   /// the evaluation of `stmts` (which build IR snippets in a scoped fashion) is
   /// sequenced strictly after the constructor of BlockBuilder.
-  void operator()(ArrayRef<ValueHandle> stmts);
+  void operator()(ArrayRef<CapturableHandle> stmts);
 
 private:
   BlockBuilder(const BlockBuilder &) = delete;
   BlockBuilder &operator=(const BlockBuilder &other) = delete;
+};
+
+/// Base class for Handles that cannot be constructed explicitly by a user of
+/// the API.
+struct CapturableHandle {
+protected:
+  CapturableHandle() = default;
 };
 
 /// ValueHandle implements a (potentially "delayed") typed Value abstraction.
@@ -245,7 +253,13 @@ private:
 ///   2. delayed state (empty value), in which case it represents an eagerly
 ///      typed "delayed" value that can be hold a Value in the future;
 ///   3. constructed state,in which case it holds a Value.
-class ValueHandle {
+///
+/// A ValueHandle is meant to capture a single Value* and should be used for
+/// instructions that have a single result. For convenience of use, we also
+/// include AffineForOp in this category although it does not return a value.
+/// In the case of AffineForOp, the captured Value* is the loop induction
+/// variable.
+class ValueHandle : public CapturableHandle {
 public:
   /// A ValueHandle in a null state can never be captured;
   static ValueHandle null() { return ValueHandle(); }
@@ -275,14 +289,13 @@ public:
 
   /// ValueHandle is a value type, the assignment operator typechecks before
   /// assigning.
-  /// ```
   ValueHandle &operator=(const ValueHandle &other);
 
   /// Implicit conversion useful for automatic conversion to Container<Value*>.
   operator Value *() const { return getValue(); }
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
-  /// of MLIR without duplicating the type system or the AST.
+  /// of MLIR without duplicating the type system or the op definitions.
   template <typename Op, typename... Args>
   static ValueHandle create(Args... args);
 
@@ -290,6 +303,11 @@ public:
   // TODO: createOrFold when available and move inside of the `create` method.
   static ValueHandle createComposedAffineApply(AffineMap map,
                                                ArrayRef<Value *> operands);
+
+  /// Generic create for a named instruction producing a single value.
+  static ValueHandle create(StringRef name, ArrayRef<ValueHandle> operands,
+                            ArrayRef<Type> resultTypes,
+                            ArrayRef<NamedAttribute> attributes = {});
 
   bool hasValue() const { return v != nullptr; }
   Value *getValue() const { return v; }
@@ -303,12 +321,59 @@ private:
   Value *v;
 };
 
+/// An InstructionHandle can be used in lieu of ValueHandle to capture the
+/// instruction in cases when one does not care about, or cannot extract, a
+/// unique Value* from the instruction.
+/// This can be used for capturing zero result instructions as well as
+/// multi-result instructions that are not supported by ValueHandle.
+/// We do not distinguish further between zero and multi-result instructions at
+/// this time.
+struct InstructionHandle : public CapturableHandle {
+  InstructionHandle() : inst(nullptr) {}
+  InstructionHandle(Instruction *inst) : inst(inst) {}
+
+  InstructionHandle(const InstructionHandle &) = default;
+  InstructionHandle &operator=(const InstructionHandle &) = default;
+
+  /// Generic mlir::Op create. This is the key to being extensible to the whole
+  /// of MLIR without duplicating the type system or the op definitions.
+  template <typename Op, typename... Args>
+  static InstructionHandle create(Args... args);
+
+  /// Generic create for a named instruction.
+  static InstructionHandle create(StringRef name,
+                                  ArrayRef<ValueHandle> operands,
+                                  ArrayRef<Type> resultTypes,
+                                  ArrayRef<NamedAttribute> attributes = {});
+
+  operator Instruction *() { return inst; }
+
+private:
+  Instruction *inst;
+};
+
+/// Simple wrapper to build a generic instruction without successor blocks.
+template <typename HandleType> struct CustomInstruction {
+  CustomInstruction(StringRef name) : name(name) {
+    static_assert(std::is_same<HandleType, ValueHandle>() ||
+                      std::is_same<HandleType, InstructionHandle>(),
+                  "Only CustomInstruction<ValueHandle> or "
+                  "CustomInstruction<InstructionHandle> can be constructed.");
+  }
+  HandleType operator()(ArrayRef<ValueHandle> operands = {},
+                        ArrayRef<Type> resultTypes = {},
+                        ArrayRef<NamedAttribute> attributes = {}) {
+    return HandleType::create(name, operands, resultTypes, attributes);
+  }
+  std::string name;
+};
+
 /// A BlockHandle represents a (potentially "delayed") Block abstraction.
 /// This extra abstraction is necessary because an mlir::Block is not an
 /// mlir::Value.
 /// A BlockHandle should be captured by pointer but otherwise passed by Value
 /// everywhere.
-class BlockHandle {
+class BlockHandle : public CapturableHandle {
 public:
   /// A BlockHandle constructed without an mlir::Block* represents a "delayed"
   /// Block. A delayed Block represents the declaration (in the PL sense) of a
@@ -339,6 +404,14 @@ private:
 };
 
 template <typename Op, typename... Args>
+InstructionHandle InstructionHandle::create(Args... args) {
+  return InstructionHandle(
+      ScopedContext::getBuilder()
+          ->create<Op>(ScopedContext::getLocation(), args...)
+          ->getInstruction());
+}
+
+template <typename Op, typename... Args>
 ValueHandle ValueHandle::create(Args... args) {
   Instruction *inst = ScopedContext::getBuilder()
                           ->create<Op>(ScopedContext::getLocation(), args...)
@@ -350,9 +423,8 @@ ValueHandle ValueHandle::create(Args... args) {
       f->createBody();
       return ValueHandle(f->getInductionVar());
     }
-    return ValueHandle();
   }
-  llvm_unreachable("unsupported inst with > 1 results");
+  llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
 }
 
 namespace op {
