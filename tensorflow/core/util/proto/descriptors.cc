@@ -25,7 +25,7 @@ namespace {
 // Build a `DescriptorPool` from the named file or URI. The file or URI
 // must be available to the current TensorFlow environment.
 //
-// The file must contiain a serialized `FileDescriptorSet`. See
+// The file must contain a serialized `FileDescriptorSet`. See
 // `GetDescriptorPool()` for more information.
 Status GetDescriptorPoolFromFile(
     tensorflow::Env* env, const string& filename,
