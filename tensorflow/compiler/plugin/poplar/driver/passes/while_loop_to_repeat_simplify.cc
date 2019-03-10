@@ -55,11 +55,16 @@ StatusOr<int64> ConvertWhileToRepeat(HloInstruction* while_inst) {
 
   // The root instruction must be the comparison
   HloInstruction* c_inst = while_condition->root_instruction();
-  switch (c_inst->opcode()) {
-    case HloOpcode::kLt:
-    case HloOpcode::kLe:
-    case HloOpcode::kGt:
-    case HloOpcode::kGe:
+  if (c_inst->opcode() != HloOpcode::kCompare) {
+    return xla::FailedPrecondition("%s", err_msg);
+  }
+
+  // Only some comparisons are ok
+  switch (c_inst->comparison_direction()) {
+    case ComparisonDirection::kLt:
+    case ComparisonDirection::kLe:
+    case ComparisonDirection::kGt:
+    case ComparisonDirection::kGe:
       break;
     default:
       return xla::FailedPrecondition("%s", err_msg);
@@ -118,13 +123,13 @@ StatusOr<int64> ConvertWhileToRepeat(HloInstruction* while_inst) {
   // than (or equal)) and that the resulting increment is *only* used in the
   // output tuple of the while body in the same index
   int64 delta;
-  switch (c_inst->opcode()) {
-    case HloOpcode::kLt:
-    case HloOpcode::kLe:
+  switch (c_inst->comparison_direction()) {
+    case ComparisonDirection::kLt:
+    case ComparisonDirection::kLe:
       delta = 1;
       break;
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
+    case ComparisonDirection::kGe:
+    case ComparisonDirection::kGt:
     default:
       delta = -1;
       break;
@@ -150,23 +155,23 @@ StatusOr<int64> ConvertWhileToRepeat(HloInstruction* while_inst) {
   //   are executed) - to do that set the number of iterations to 0.
   int64 number_of_iterations = 0;
 
-  switch (c_inst->opcode()) {
-    case HloOpcode::kLt:
+  switch (c_inst->comparison_direction()) {
+    case ComparisonDirection::kLt:
       if (initial_value < compare_value) {
         number_of_iterations = compare_value - initial_value;
       }
       break;
-    case HloOpcode::kLe:
+    case ComparisonDirection::kLe:
       if (initial_value <= compare_value) {
         number_of_iterations = compare_value - initial_value + 1;
       }
       break;
-    case HloOpcode::kGe:
+    case ComparisonDirection::kGe:
       if (initial_value >= compare_value) {
         number_of_iterations = initial_value - compare_value + 1;
       }
       break;
-    case HloOpcode::kGt:
+    case ComparisonDirection::kGt:
     default:
       if (initial_value > compare_value) {
         number_of_iterations = initial_value - compare_value;

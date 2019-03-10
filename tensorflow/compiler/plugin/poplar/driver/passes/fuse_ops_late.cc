@@ -101,7 +101,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     PatternOutputs({0}),
     Pattern({
       {HloOpcode::kSelect, NodeOperands({1, 3, 2}), IsFloatType},
-      {HloOpcode::kGt, NodeOperands({4, 2}), IsTfReluGradOp},
+      {HloOpcode::kCompare, NodeOperands({4, 2}), IsTfReluGradGeOp},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
@@ -116,7 +116,7 @@ static const std::vector<HloMatcherPattern> patterns = {
     PatternOutputs({0}),
     Pattern({
       {HloOpcode::kSelect, NodeOperands({1, 4, 2}), IsFloatType},
-      {HloOpcode::kGt, NodeOperands({5, 2}), IsTfReluGradOp},
+      {HloOpcode::kCompare, NodeOperands({5, 2}), IsTfReluGradGeOp},
       {HloOpcode::kBroadcast, NodeOperands({3})},
       {HloOpcode::kConstant, NodeOperands({}), IsConstantZero},
       {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},

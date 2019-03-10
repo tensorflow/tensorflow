@@ -45,10 +45,10 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalTie) {
   auto c1_cond =
       builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::MakeShape(S32, {}), tuple_cond, 1));
-  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0_cond, limit0_cond));
-  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c1_cond, limit1_cond));
+  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {}), c0_cond, limit0_cond, ComparisonDirection::kLt));
+  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {}), c1_cond, limit1_cond, ComparisonDirection::kLt));
   auto and_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0_cond, lt1_cond));
   HloComputation* comp_cond =
@@ -141,10 +141,10 @@ TEST_F(WhileLoopConditionSimplifyTest, SimplifyDoubleConditionalUneven) {
   auto c1_cond =
       builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::MakeShape(S32, {}), tuple_cond, 1));
-  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0_cond, limit0_cond));
-  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c1_cond, limit1_cond));
+  auto lt0_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {}), c0_cond, limit0_cond, ComparisonDirection::kLt));
+  auto lt1_cond = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+      ShapeUtil::MakeShape(PRED, {}), c1_cond, limit1_cond, ComparisonDirection::kLt));
   auto and_cond = builder_cond.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0_cond, lt1_cond));
   HloComputation* comp_cond =
@@ -221,10 +221,10 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyNonIntegral) {
         ShapeUtil::MakeShape(F32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(F32, {}), tuple, 1));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, c1, limit1));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kLt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0, lt1));
 
@@ -289,8 +289,8 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyNonUniqueCond) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
     auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
-    auto lt = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+    auto lt = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c, limit, ComparisonDirection::kLt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt, lt));
 
@@ -352,10 +352,10 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyIncrementNotOne) {
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 1));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, c1, limit1));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kLt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0, lt1));
 
@@ -426,10 +426,10 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyNonConst) {
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 1));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, c1, limit1));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kGt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0, lt1));
 
@@ -494,8 +494,8 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifySingleConditional) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
     auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
-    builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+    builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c, limit, ComparisonDirection::kLt));
 
     comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
   }
@@ -560,12 +560,12 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyTripleConditional) {
         ShapeUtil::MakeShape(S32, {}), tuple, 1));
     auto c2 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 2));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c1, limit1));
-    auto lt2 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c2, limit2));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kLt));
+    auto lt2 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c2, limit2, ComparisonDirection::kLt));
     auto and_lt0_lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0, lt1));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
@@ -643,10 +643,10 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyAnythingButLTs) {
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 1));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, c1, limit1));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kGt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0, lt1));
 
@@ -715,10 +715,10 @@ TEST_F(WhileLoopConditionSimplifyTest, DontSimplifyAnythingButANDs) {
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 1));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c1, limit1));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kLt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kOr, lt0, lt1));
 

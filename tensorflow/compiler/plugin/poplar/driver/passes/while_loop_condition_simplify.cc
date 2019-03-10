@@ -81,7 +81,11 @@ StatusOr<bool> TrySimplifyLoopCondition(HloInstruction* while_inst) {
         }
         break;
       }
-      case HloOpcode::kLt: {
+      case HloOpcode::kCompare: {
+        if (inst->comparison_direction() != ComparisonDirection::kLt) {
+          return false;
+        }
+
         // Make sure LHS of LT is a GTE from the parameter tuple and RHS is a
         // constant which is integral
         const bool lhs_is_GTE_from_param =

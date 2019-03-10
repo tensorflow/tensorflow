@@ -185,6 +185,12 @@ bool IsTfReluGradOp(const HloInstruction* inst) {
   return tf_core_op == "ReluGrad";
 }
 
+bool IsTfReluGradGeOp(const HloInstruction* inst) {
+  const std::string& tf_core_op = inst->metadata().op_type();
+  return tf_core_op == "ReluGrad" &&
+         inst->comparison_direction() == ComparisonDirection::kGt;
+}
+
 bool IsTrueParameter(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kParameter;
 }
@@ -358,6 +364,10 @@ bool IsNonLinearity(const HloInstruction* inst) {
 bool IsNonLinearityGradient(const HloInstruction* inst) {
   return IsPopOpsFusion(inst, "relugrad") ||
          IsPopOpsFusion(inst, "sigmoidgrad");
+}
+
+bool IsCompareEqual(const HloInstruction* inst) {
+  return inst->comparison_direction() == ComparisonDirection::kEq;
 }
 
 }  // namespace poplarplugin

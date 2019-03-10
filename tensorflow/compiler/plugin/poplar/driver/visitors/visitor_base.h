@@ -43,6 +43,8 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleElementwiseBinary(HloInstruction* inst) override;
 
+  Status HandleCompare(HloInstruction* inst) override;
+
   Status HandleConvert(HloInstruction* inst) override;
 
   Status HandleClamp(HloInstruction* inst) override;

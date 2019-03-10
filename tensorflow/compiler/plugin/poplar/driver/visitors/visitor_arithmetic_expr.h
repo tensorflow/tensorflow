@@ -39,6 +39,7 @@ class ArithmeticExprVisitor : public FullVisitor {
 
   Status HandleElementwiseUnary(HloInstruction* inst) override;
   Status HandleElementwiseBinary(HloInstruction* inst) override;
+  Status HandleCompare(HloInstruction* inst) override;
   Status HandleSelect(HloInstruction* inst) override;
   Status HandleClamp(HloInstruction* inst) override;
   Status HandleParameter(HloInstruction* inst) override;

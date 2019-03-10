@@ -292,10 +292,10 @@ HloModule module
   %get-tuple-element.71 = f32[1,1,2,2]{3,2,1,0} get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=6
   %get-tuple-element.65 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=0
   %get-tuple-element.68 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=3
-  %less-than.74 = pred[] less-than(s32[] %get-tuple-element.65, s32[] %get-tuple-element.68)
+  %less-than.74 = pred[] compare(s32[] %get-tuple-element.65, s32[] %get-tuple-element.68), direction=LT
   %get-tuple-element.66 = s32[] get-tuple-element((s32[], s32[], f32[], s32[], f32[2]{0}, f32[1,4,4,2]{3,2,1,0}, f32[1,1,2,2]{3,2,1,0}) %arg_tuple.64), index=1
   %constant.72 = s32[] constant(2)
-  %less-than.73 = pred[] less-than(s32[] %get-tuple-element.66, s32[] %constant.72)
+  %less-than.73 = pred[] compare(s32[] %get-tuple-element.66, s32[] %constant.72), direction=LT
   %and.75 = pred[] and(pred[] %less-than.74, pred[] %less-than.73)
   ROOT %tuple.76 = (pred[]) tuple(pred[] %and.75)
 }

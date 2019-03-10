@@ -163,8 +163,8 @@ TEST_F(RootTokenReplacerTest, TokenInWhileLoop) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c1, limit0));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit0, ComparisonDirection::kLt));
 
     comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
   }

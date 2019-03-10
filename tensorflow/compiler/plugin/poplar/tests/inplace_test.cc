@@ -90,7 +90,7 @@ cond {
   p_c = (s32[], s32[20], s32[20]) parameter(0)
   p0_c = s32[] get-tuple-element(p_c), index=0
   z_c = s32[] constant(0)
-  ROOT eq_c = pred[] equal-to(p0_c, z_c)
+  ROOT eq_c = pred[] compare(p0_c, z_c), direction=EQ
 }
 
 ENTRY c1 {
@@ -537,7 +537,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {

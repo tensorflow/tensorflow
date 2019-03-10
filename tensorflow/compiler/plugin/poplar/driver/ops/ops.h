@@ -61,6 +61,9 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFn(const HloInstruction*);
 
 StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(const HloInstruction*);
 
+StatusOr<popops::expr::BinaryOpType> LookupComparisonFn(
+    const HloInstruction* inst);
+
 Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
 
@@ -110,6 +113,10 @@ StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
     const xla::Shape& output, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateComparisonOp(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 

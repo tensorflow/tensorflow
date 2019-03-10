@@ -754,7 +754,7 @@ _pop_op_relugrad {
   arg_0.1 = f32[1,12] parameter(0)
   constant.9.10.clone.1 = f32[] constant(0)
   broadcast.9.11.clone.1 = f32[1,12] broadcast(constant.9.10.clone.1), dimensions={}
-  greater-than.9.44.clone = pred[1,12] greater-than(arg_0.1, broadcast.9.11.clone.1)
+  greater-than.9.44.clone = pred[1,12] compare(arg_0.1, broadcast.9.11.clone.1), direction=GT
   arg_1 = f32[1,12] parameter(1)
   ROOT select.9.45.clone = f32[1,12] select(pred[1,12] greater-than.9.44.clone, arg_1, broadcast.9.11.clone.1)
 }
@@ -867,7 +867,7 @@ _pop_op_relugrad {
   arg_0.1 = f32[1,12] parameter(0)
   constant.9.10.clone.1 = f32[] constant(0)
   broadcast.9.11.clone.1 = f32[1,12] broadcast(constant.9.10.clone.1), dimensions={}
-  greater-than.9.44.clone = pred[1,12] greater-than(arg_0.1, broadcast.9.11.clone.1)
+  greater-than.9.44.clone = pred[1,12] compare(arg_0.1, broadcast.9.11.clone.1), direction=GT
   arg_1 = f32[1,12] parameter(1)
   ROOT select.9.45.clone = f32[1,12] select(pred[1,12] greater-than.9.44.clone, arg_1, broadcast.9.11.clone.1)
 }
@@ -997,7 +997,7 @@ _pop_op_relugrad {
   arg_0.1 = f32[1,12] parameter(0)
   constant.9.10.clone.1 = f32[] constant(0)
   broadcast.9.11.clone.1 = f32[1,12] broadcast(constant.9.10.clone.1), dimensions={}
-  greater-than.9.44.clone = pred[1,12] greater-than(arg_0.1, broadcast.9.11.clone.1)
+  greater-than.9.44.clone = pred[1,12] compare(arg_0.1, broadcast.9.11.clone.1), direction=GT
   arg_1 = f32[1,12] parameter(1)
   ROOT select.9.45.clone = f32[1,12] select(pred[1,12] greater-than.9.44.clone, arg_1, broadcast.9.11.clone.1)
 }

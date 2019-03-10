@@ -51,7 +51,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -93,7 +93,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(0)
-  ROOT result = pred[] greater-than-or-equal-to(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=GE
 }
 
 ENTRY entry {
@@ -135,7 +135,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(0)
-  ROOT result = pred[] greater-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
 
 ENTRY entry {
@@ -177,7 +177,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(999)
-  ROOT result = pred[] less-than-or-equal-to(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LE
 }
 
 ENTRY entry {
@@ -219,7 +219,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(999)
-  ROOT result = pred[] less-than-or-equal-to(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LE
 }
 
 ENTRY entry {
@@ -253,7 +253,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(999)
-  ROOT result = pred[] less-than-or-equal-to(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LE
 }
 
 ENTRY entry {
@@ -288,7 +288,7 @@ condition {
   p_cond = (f32[],f32[]) parameter(0)
   p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
   const = f32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -330,7 +330,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -384,7 +384,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] greater-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
 
 ENTRY entry {
@@ -438,7 +438,7 @@ condition {
   p_cond = (u32[],u32[]) parameter(0)
   p_cond.0 = u32[] get-tuple-element((u32[],u32[]) p_cond), index=0
   const = u32[] constant(10)
-  ROOT result = pred[] greater-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
 
 ENTRY entry {
@@ -493,7 +493,7 @@ condition {
   p_cond = (s32[],s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[],s32[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -557,7 +557,7 @@ condition {
   p_cond = (s32[],s32[],u8[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -620,7 +620,7 @@ condition1 {
   p_cond = (s32[],s32[],u8[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 body2 {
@@ -635,7 +635,7 @@ condition2 {
   p_cond = (u8[]) parameter(0)
   p_cond.0 = u8[] get-tuple-element((u8[]) p_cond), index=0
   const = u8[] constant(200)
-  ROOT result = pred[] greater-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=GT
 }
 
 ENTRY entry {
@@ -682,7 +682,7 @@ condition1 {
   p_cond = (s32[],s32[],u8[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[],u8[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 body2 {
@@ -697,7 +697,7 @@ condition2 {
   p_cond = (u8[]) parameter(0)
   p_cond.0 = u8[] get-tuple-element((u8[]) p_cond), index=0
   const = u8[] constant(255)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -744,7 +744,7 @@ condition {
   p_cond = (s32[],s32[]) parameter(0)
   p_cond.0 = s32[] get-tuple-element((s32[],s32[]) p_cond), index=0
   const = s32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {
@@ -800,7 +800,7 @@ condition {
   p_cond = (f32[],f32[]) parameter(0)
   p_cond.0 = f32[] get-tuple-element((f32[],f32[]) p_cond), index=0
   const = f32[] constant(10)
-  ROOT result = pred[] less-than(p_cond.0, const)
+  ROOT result = pred[] compare(p_cond.0, const), direction=LT
 }
 
 ENTRY entry {

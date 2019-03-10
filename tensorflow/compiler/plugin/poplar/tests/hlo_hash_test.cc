@@ -42,10 +42,10 @@ void CreateWhileLoop(HloModule* module, std::string test_name) {
         ShapeUtil::MakeShape(F32, {}), tuple, 0));
     auto c1 = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(F32, {}), tuple, 1));
-    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c0, limit0));
-    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGt, c1, limit1));
+    auto lt0 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c0, limit0, ComparisonDirection::kLt));
+    auto lt1 = builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c1, limit1, ComparisonDirection::kGt));
     builder_cond.AddInstruction(HloInstruction::CreateBinary(
         ShapeUtil::MakeShape(PRED, {}), HloOpcode::kAnd, lt0, lt1));
 
@@ -130,7 +130,7 @@ HloModule top
   %arg_0.1 = f32[1,12]{1,0} parameter(0)
   %constant.9.10.clone.1 = f32[] constant(0), metadata={op_type="Relu" op_name="Relu"}
   %broadcast.9.11.clone.1 = f32[1,12]{1,0} broadcast(f32[] %constant.9.10.clone.1), dimensions={}, metadata={op_type="Relu" op_name="Relu"}
-  %greater-than.9.44.clone = pred[1,12]{1,0} greater-than(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
+  %greater-than.9.44.clone = pred[1,12]{1,0} compare(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), direction=GT, metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
   %arg_1 = f32[1,12]{1,0} parameter(1)
   ROOT %select.9.45.clone = f32[1,12]{1,0} select(pred[1,12]{1,0} %greater-than.9.44.clone, f32[1,12]{1,0} %arg_1, f32[1,12]{1,0} %broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
 }
@@ -207,7 +207,7 @@ HloModule top
   %__arg_0.1 = f32[1,12]{1,0} parameter(0)
   %__constant.9.10.clone.1 = f32[] constant(0), metadata={op_type="Relu" op_name="Relu"}
   %__broadcast.9.11.clone.1 = f32[1,12]{1,0} broadcast(f32[] %__constant.9.10.clone.1), dimensions={}, metadata={op_type="Relu" op_name="Relu"}
-  %__greater-than.9.44.clone = pred[1,12]{1,0} greater-than(f32[1,12]{1,0} %__arg_0.1, f32[1,12]{1,0} %__broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
+  %__greater-than.9.44.clone = pred[1,12]{1,0} compare(f32[1,12]{1,0} %__arg_0.1, f32[1,12]{1,0} %__broadcast.9.11.clone.1), direction=GT, metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
   %__arg_1 = f32[1,12]{1,0} parameter(1)
   ROOT %__select.9.45.clone = f32[1,12]{1,0} select(pred[1,12]{1,0} %__greater-than.9.44.clone, f32[1,12]{1,0} %__arg_1, f32[1,12]{1,0} %__broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
 }
@@ -300,7 +300,7 @@ HloModule top
   %arg_0.1 = f32[1,12]{1,0} parameter(0)
   %constant.9.10.clone.1 = f32[] constant(0), metadata={op_type="Relu" op_name="Relu"}
   %broadcast.9.11.clone.1 = f32[1,12]{1,0} broadcast(f32[] %constant.9.10.clone.1), dimensions={}, metadata={op_type="Relu" op_name="Relu"}
-  %greater-than.9.44.clone = pred[1,12]{1,0} greater-than(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
+  %greater-than.9.44.clone = pred[1,12]{1,0} compare(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), direction=GT, metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
   %arg_1 = f32[1,12]{1,0} parameter(1)
   ROOT %select.9.45.clone = f32[1,12]{1,0} select(pred[1,12]{1,0} %greater-than.9.44.clone, f32[1,12]{1,0} %arg_1, f32[1,12]{1,0} %broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
 }
@@ -431,7 +431,7 @@ HloModule top
   %arg_0.1 = f32[1,12]{1,0} parameter(0)
   %constant.9.10.clone.1 = f32[] constant(0), metadata={op_type="Relu" op_name="Relu"}
   %broadcast.9.11.clone.1 = f32[1,12]{1,0} broadcast(f32[] %constant.9.10.clone.1), dimensions={}, metadata={op_type="Relu" op_name="Relu"}
-  %greater-than.9.44.clone = pred[1,12]{1,0} greater-than(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
+  %greater-than.9.44.clone = pred[1,12]{1,0} compare(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), direction=GT, metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
   %arg_1 = f32[1,12]{1,0} parameter(1)
   ROOT %select.9.45.clone = f32[1,12]{1,0} select(pred[1,12]{1,0} %greater-than.9.44.clone, f32[1,12]{1,0} %arg_1, f32[1,12]{1,0} %broadcast.9.11.clone.1), metadata={op_type="ReluGrad" op_name="gradients/Relu_grad/ReluGrad"}
 }
@@ -509,7 +509,7 @@ HloModule top
   %arg_0.1 = f32[1,12]{1,0} parameter(0)
   %constant.9.10.clone.1 = f32[] constant(0)
   %broadcast.9.11.clone.1 = f32[1,12]{1,0} broadcast(f32[] %constant.9.10.clone.1), dimensions={}
-  %greater-than.9.44.clone = pred[1,12]{1,0} greater-than(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1)
+  %greater-than.9.44.clone = pred[1,12]{1,0} compare(f32[1,12]{1,0} %arg_0.1, f32[1,12]{1,0} %broadcast.9.11.clone.1), direction=GT
   %arg_1 = f32[1,12]{1,0} parameter(1)
   ROOT %select.9.45.clone = f32[1,12]{1,0} select(pred[1,12]{1,0} %greater-than.9.44.clone, f32[1,12]{1,0} %arg_1, f32[1,12]{1,0} %broadcast.9.11.clone.1)
 }

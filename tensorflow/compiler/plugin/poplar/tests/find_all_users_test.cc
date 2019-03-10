@@ -477,7 +477,7 @@ cond {
   c_p0 = (s32[], f16[4], f16[4]) parameter(0)
   c_c0 = s32[] constant(4)
   c_e0 = s32[] get-tuple-element(c_p0), index=0
-  ROOT eq = pred[] equal-to(c_e0, c_c0)
+  ROOT eq = pred[] compare(c_e0, c_c0), direction=EQ
 }
 
 body {

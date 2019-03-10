@@ -48,7 +48,7 @@ bool IsReducableArtithmetic(const HloComputation* computation) {
     return false;
   }
 
-  switch (root->opcode()) {
+  switch (root->opcode() ) {
     case HloOpcode::kAdd:
     case HloOpcode::kMultiply:
     case HloOpcode::kMaximum:
@@ -67,11 +67,15 @@ bool IsSimpleSelection(const HloComputation* computation) {
     return false;
   }
 
-  switch (root->opcode()) {
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
+  if (root->opcode() != HloOpcode::kCompare) {
+    return false;
+  }
+
+  switch (root->comparison_direction()) {
+    case ComparisonDirection::kGe:
+    case ComparisonDirection::kGt:
+    case ComparisonDirection::kLe:
+    case ComparisonDirection::kLt:
       return true;
     default:
       return false;
@@ -110,9 +114,9 @@ bool IsPoplibsPool(const HloInstruction* inst,
   return (reduction_count <= 2);
 }
 
-static Literal GetIdentityConstantLiteral(const HloOpcode opcode,
+static Literal GetIdentityConstantLiteral(const HloInstruction* root,
                                           const HloInstruction* reduce) {
-  switch (opcode) {
+  switch (root->opcode()) {
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     default:
@@ -121,19 +125,21 @@ static Literal GetIdentityConstantLiteral(const HloOpcode opcode,
     case HloOpcode::kOr:
       return LiteralUtil::One(reduce->shape().element_type());
     case HloOpcode::kMaximum:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
       return LiteralUtil::MinValue(reduce->shape().element_type());
     case HloOpcode::kMinimum:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
       return LiteralUtil::MaxValue(reduce->shape().element_type());
+    case HloOpcode::kCompare:
+      switch (root->comparison_direction()) {
+        case ComparisonDirection::kGe:
+        case ComparisonDirection::kGt:
+          return LiteralUtil::MinValue(reduce->shape().element_type());
+        case ComparisonDirection::kLe:
+        case ComparisonDirection::kLt:
+          return LiteralUtil::MaxValue(reduce->shape().element_type());
+        default:
+          return LiteralUtil::Zero(reduce->shape().element_type());
+      }
   }
-}
-
-static Literal GetIdentityConstantLiteral(const HloInstruction* root,
-                                          const HloInstruction* reduce) {
-  return GetIdentityConstantLiteral(root->opcode(), reduce);
 }
 
 static popops::Operation PoplibsReductionOperation(const HloInstruction* inst) {
@@ -177,14 +183,14 @@ static const std::string& ReductionVertexBaseName(const HloInstruction* inst) {
 }
 
 static const std::string& SelectionVertexBaseName(const HloInstruction* inst) {
-  switch (inst->opcode()) {
-    case HloOpcode::kGe:
+  switch (inst->comparison_direction()) {
+    case ComparisonDirection::kGe:
       return reduction_ge;
-    case HloOpcode::kGt:
+    case ComparisonDirection::kGt:
       return reduction_gt;
-    case HloOpcode::kLe:
+    case ComparisonDirection::kLe:
       return reduction_le;
-    case HloOpcode::kLt:
+    case ComparisonDirection::kLt:
       return reduction_lt;
     default:
       // Cannot reach here
@@ -268,6 +274,7 @@ static poplar::Type GetReductionType(const popnn::PoolingType& pooling_type,
     default:
       return input_type;
   }
+  return input_type;
 }
 
 static popnn::pooling::PoolParams GetPoplibsPoolParams(

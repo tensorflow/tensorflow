@@ -634,8 +634,8 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
     auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
-    builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+    builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c, limit, ComparisonDirection::kLt));
 
     comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
   }
@@ -743,8 +743,8 @@ TEST_F(AllocationFinderTest, FindRepeatTensorAllocations) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(10)));
     auto c = builder_cond.AddInstruction(HloInstruction::CreateGetTupleElement(
         ShapeUtil::MakeShape(S32, {}), tuple, 0));
-    builder_cond.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, c, limit));
+    builder_cond.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), c, limit, ComparisonDirection::kLt));
 
     comp_cond = hlo_module->AddEmbeddedComputation(builder_cond.Build());
   }

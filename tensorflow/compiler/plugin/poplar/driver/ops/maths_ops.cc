@@ -100,24 +100,12 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
       return popops::expr::BinaryOpType::ATAN2;
     case HloOpcode::kDivide:
       return popops::expr::BinaryOpType::DIVIDE;
-    case HloOpcode::kEq:
-      return popops::expr::BinaryOpType::EQUAL;
-    case HloOpcode::kGt:
-      return popops::expr::BinaryOpType::GREATER_THAN;
-    case HloOpcode::kGe:
-      return popops::expr::BinaryOpType::GREATER_THAN_EQUAL;
-    case HloOpcode::kLt:
-      return popops::expr::BinaryOpType::LESS_THAN;
-    case HloOpcode::kLe:
-      return popops::expr::BinaryOpType::LESS_THAN_EQUAL;
     case HloOpcode::kMaximum:
       return popops::expr::BinaryOpType::MAXIMUM;
     case HloOpcode::kMinimum:
       return popops::expr::BinaryOpType::MINIMUM;
     case HloOpcode::kMultiply:
       return popops::expr::BinaryOpType::MULTIPLY;
-    case HloOpcode::kNe:
-      return popops::expr::BinaryOpType::NOT_EQUAL;
     case HloOpcode::kPower:
       return popops::expr::BinaryOpType::POWER;
     case HloOpcode::kRemainder:
@@ -153,6 +141,32 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
   return tensorflow::errors::Unknown(
       StrCat("[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
+
+StatusOr<popops::expr::BinaryOpType> LookupComparisonFn(
+    const HloInstruction* inst) {
+  auto direction = inst->comparison_direction();
+  switch (direction) {
+    case ComparisonDirection::kEq:
+      return popops::expr::BinaryOpType::EQUAL;
+    case ComparisonDirection::kGt:
+      return popops::expr::BinaryOpType::GREATER_THAN;
+    case ComparisonDirection::kGe:
+      return popops::expr::BinaryOpType::GREATER_THAN_EQUAL;
+    case ComparisonDirection::kLt:
+      return popops::expr::BinaryOpType::LESS_THAN;
+    case ComparisonDirection::kLe:
+      return popops::expr::BinaryOpType::LESS_THAN_EQUAL;
+    case ComparisonDirection::kNe:
+      return popops::expr::BinaryOpType::NOT_EQUAL;
+    default:
+      break;
+  }
+
+  return tensorflow::errors::Unknown(
+      StrCat("[Poplar] Invalid opcode lookup ",
+             ComparisonDirectionToString(direction)));
+}
+
 
 static std::string GetMatMulPass(const HloInstruction* inst,
                                  const CompilerAnnotations& annotations) {
@@ -319,6 +333,42 @@ StatusOr<poplar::program::Program> CreateBinaryElementwiseOp(
 
     return seq;
   }
+}
+
+StatusOr<poplar::program::Program> CreateComparisonOp(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map) {
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  poplar::program::Sequence seq;
+  
+  poplar::Tensor in0;
+  TF_ASSIGN_OR_RETURN(
+      in0, FindInstructionInput(tensor_map, res, inst, 0, seq, false));
+
+  poplar::Tensor in1;
+  TF_ASSIGN_OR_RETURN(
+      in1, FindInstructionInput(tensor_map, res, inst, 1, seq, false));
+
+  poplar::Tensor out;
+
+  popops::expr::BinaryOpType op;
+  TF_ASSIGN_OR_RETURN(op, LookupComparisonFn(inst));
+
+  out = popops::map(graph, op, in0, in1, seq, GetDebugName(inst));
+
+  // Occasionally, due to an interplay of implicit broadcasting and
+  // arithmetic re-arrangement, the output of an op is larger than the inputs
+  // generate
+  if (ShapeUtil::ElementsIn(output_shape) != out.numElements()) {
+    TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
+  }
+
+  out = out.reshape(PoplarShapeFromXlaShape(output_shape));
+
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+
+  return seq;
 }
 
 namespace {

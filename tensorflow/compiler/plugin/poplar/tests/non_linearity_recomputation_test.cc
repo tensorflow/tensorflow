@@ -64,7 +64,7 @@ TEST_F(NonLinearityRecomputationTest, RecomputeRelu) {
    arg_0.3 = f32[1,4,4,2]{3,2,1,0} parameter(0)
    constant.20.clone.2 = f32[] constant(0)
    broadcast.21.clone.2 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[] constant.20.clone.2), dimensions={}
-   greater-than.72.clone = pred[1,4,4,2]{3,2,1,0} greater-than(f32[1,4,4,2]{3,2,1,0} arg_0.3, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.2)
+   greater-than.72.clone = pred[1,4,4,2]{3,2,1,0} compare(f32[1,4,4,2]{3,2,1,0} arg_0.3, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.2), direction=GT
    arg_1.1 = f32[1,4,4,2]{3,2,1,0} parameter(1)
    ROOT select.73.clone = f32[1,4,4,2]{3,2,1,0} select(pred[1,4,4,2]{3,2,1,0} greater-than.72.clone, f32[1,4,4,2]{3,2,1,0} arg_1.1, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.2)
  }
@@ -73,7 +73,7 @@ TEST_F(NonLinearityRecomputationTest, RecomputeRelu) {
    arg_0.4 = f32[1,4,4,2]{3,2,1,0} parameter(0)
    constant.20.clone.3 = f32[] constant(0)
    broadcast.21.clone.3 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[] constant.20.clone.3), dimensions={}
-   greater-than.46.clone = pred[1,4,4,2]{3,2,1,0} greater-than(f32[1,4,4,2]{3,2,1,0} arg_0.4, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.3)
+   greater-than.46.clone = pred[1,4,4,2]{3,2,1,0} compare(f32[1,4,4,2]{3,2,1,0} arg_0.4, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.3), direction=GT
    arg_1.2 = f32[1,4,4,2]{3,2,1,0} parameter(1)
    ROOT select.47.clone = f32[1,4,4,2]{3,2,1,0} select(pred[1,4,4,2]{3,2,1,0} greater-than.46.clone, f32[1,4,4,2]{3,2,1,0} arg_1.2, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.3)
  }
@@ -247,7 +247,7 @@ TEST_F(NonLinearityRecomputationTest, DontRecomputeRelu) {
    arg_0.3 = f32[1,4,4,2]{3,2,1,0} parameter(0)
    constant.20.clone.2 = f32[] constant(0)
    broadcast.21.clone.2 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[] constant.20.clone.2), dimensions={}
-   greater-than.72.clone = pred[1,4,4,2]{3,2,1,0} greater-than(f32[1,4,4,2]{3,2,1,0} arg_0.3, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.2)
+   greater-than.72.clone = pred[1,4,4,2]{3,2,1,0} compare(f32[1,4,4,2]{3,2,1,0} arg_0.3, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.2), direction=GT
    arg_1.1 = f32[1,4,4,2]{3,2,1,0} parameter(1)
    ROOT select.73.clone = f32[1,4,4,2]{3,2,1,0} select(pred[1,4,4,2]{3,2,1,0} greater-than.72.clone, f32[1,4,4,2]{3,2,1,0} arg_1.1, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.2)
  }
@@ -256,7 +256,7 @@ TEST_F(NonLinearityRecomputationTest, DontRecomputeRelu) {
    arg_0.4 = f32[1,4,4,2]{3,2,1,0} parameter(0)
    constant.20.clone.3 = f32[] constant(0)
    broadcast.21.clone.3 = f32[1,4,4,2]{3,2,1,0} broadcast(f32[] constant.20.clone.3), dimensions={}
-   greater-than.46.clone = pred[1,4,4,2]{3,2,1,0} greater-than(f32[1,4,4,2]{3,2,1,0} arg_0.4, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.3)
+   greater-than.46.clone = pred[1,4,4,2]{3,2,1,0} compare(f32[1,4,4,2]{3,2,1,0} arg_0.4, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.3), direction=GT
    arg_1.2 = f32[1,4,4,2]{3,2,1,0} parameter(1)
    ROOT select.47.clone = f32[1,4,4,2]{3,2,1,0} select(pred[1,4,4,2]{3,2,1,0} greater-than.46.clone, f32[1,4,4,2]{3,2,1,0} arg_1.2, f32[1,4,4,2]{3,2,1,0} broadcast.21.clone.3)
  }

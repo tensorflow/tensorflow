@@ -104,6 +104,24 @@ Status ArithmeticExprVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status ArithmeticExprVisitor::HandleCompare(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  // find the op
+  popops::expr::BinaryOpType op;
+  TF_ASSIGN_OR_RETURN(op, LookupComparisonFn(inst));
+
+  // get the inputs
+  std::unique_ptr<popops::expr::Expr> in0;
+  TF_ASSIGN_OR_RETURN(in0, FindExpressionInput(inst->operand(0)));
+  std::unique_ptr<popops::expr::Expr> in1;
+  TF_ASSIGN_OR_RETURN(in1, FindExpressionInput(inst->operand(1)));
+
+  // create new expression
+  expressions_map_[inst] = std::unique_ptr<popops::expr::BinaryOp>(
+      new popops::expr::BinaryOp(op, *in0.get(), *in1.get()));
+  return Status::OK();
+}
+
 Status ArithmeticExprVisitor::HandleSelect(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   // set the op

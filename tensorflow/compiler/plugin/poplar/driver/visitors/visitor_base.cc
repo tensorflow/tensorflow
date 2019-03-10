@@ -104,6 +104,16 @@ Status BaseVisitor::HandleElementwiseBinary(HloInstruction* inst) {
   return Status::OK();
 }
 
+Status BaseVisitor::HandleCompare(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(
+      prog, CreateComparisonOp(resources_, inst, GetOutputShape(inst),
+                               tensor_map));
+  sequence.add(prog);
+  return Status::OK();
+}
+
 Status BaseVisitor::HandleConvert(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   poplar::program::Program prog;
