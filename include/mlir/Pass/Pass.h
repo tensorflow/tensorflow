@@ -47,6 +47,9 @@ public:
   /// Return the kind of this pass.
   Kind getKind() const { return passIDAndKind.getInt(); }
 
+  /// Returns the derived pass name.
+  virtual StringRef getName() = 0;
+
 protected:
   Pass(const PassID *passID, Kind kind) : passIDAndKind(passID, kind) {}
 
@@ -181,8 +184,7 @@ class PassModel : public BasePassT {
 protected:
   PassModel() : BasePassT(PassID::getID<PassT>()) {}
 
-  /// TODO(riverriddle) Provide additional utilities for cloning, getting the
-  /// derived class name, etc.
+  /// TODO(riverriddle) Provide additional utilities for cloning, etc.
 
   /// Signal that some invariant was broken when running. The IR is allowed to
   /// be in an invalid state.
@@ -213,6 +215,14 @@ protected:
   }
   void markAnalysesPreserved(const AnalysisID *id) {
     this->getPassState().preservedAnalyses.preserve(id);
+  }
+
+  /// Returns the derived pass name.
+  StringRef getName() override {
+    StringRef name = llvm::getTypeName<PassT>();
+    if (!name.consume_front("mlir::"))
+      name.consume_front("(anonymous namespace)::");
+    return name;
   }
 };
 } // end namespace detail

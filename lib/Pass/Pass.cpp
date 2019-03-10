@@ -40,15 +40,28 @@ LogicalResult FunctionPassBase::run(Function *fn,
   // Initialize the pass state.
   passState.emplace(fn, fam);
 
+  // Instrument before the pass has run.
+  auto pi = fam.getPassInstrumentor();
+  if (pi)
+    pi->runBeforePass(this, fn);
+
   // Invoke the virtual runOnFunction function.
   runOnFunction();
 
   // Invalidate any non preserved analyses.
   fam.invalidate(passState->preservedAnalyses);
 
-  // Return false if the pass signaled a failure.
-  return passState->irAndPassFailed.getInt() ? LogicalResult::failure()
-                                             : LogicalResult::success();
+  // Instrument after the pass has run.
+  bool passFailed = passState->irAndPassFailed.getInt();
+  if (pi) {
+    if (passFailed)
+      pi->runAfterPassFailed(this, fn);
+    else
+      pi->runAfterPass(this, fn);
+  }
+
+  // Return if the pass signaled a failure.
+  return passFailed ? LogicalResult::failure() : LogicalResult::success();
 }
 
 /// Forwarding function to execute this pass.
@@ -56,15 +69,28 @@ LogicalResult ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
   // Initialize the pass state.
   passState.emplace(module, mam);
 
+  // Instrument before the pass has run.
+  auto pi = mam.getPassInstrumentor();
+  if (pi)
+    pi->runBeforePass(this, module);
+
   // Invoke the virtual runOnModule function.
   runOnModule();
 
   // Invalidate any non preserved analyses.
   mam.invalidate(passState->preservedAnalyses);
 
-  // Return false if the pass signaled a failure.
-  return passState->irAndPassFailed.getInt() ? LogicalResult::failure()
-                                             : LogicalResult::success();
+  // Instrument after the pass has run.
+  bool passFailed = passState->irAndPassFailed.getInt();
+  if (pi) {
+    if (passFailed)
+      pi->runAfterPassFailed(this, module);
+    else
+      pi->runAfterPass(this, module);
+  }
+
+  // Return if the pass signaled a failure.
+  return passFailed ? LogicalResult::failure() : LogicalResult::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -290,20 +316,34 @@ void PassManager::addPass(FunctionPassBase *pass) {
 
 /// Run the passes within this manager on the provided module.
 LogicalResult PassManager::run(Module *module) {
-  ModuleAnalysisManager mam(module);
+  ModuleAnalysisManager mam(module, instrumentor.get());
   return mpe->run(module, mam);
+}
+
+/// Add the provided instrumentation to the pass manager. This takes ownership
+/// over the given pointer.
+void PassManager::addInstrumentation(PassInstrumentation *pi) {
+  if (!instrumentor)
+    instrumentor.reset(new PassInstrumentor());
+
+  instrumentor->addInstrumentation(pi);
 }
 
 //===----------------------------------------------------------------------===//
 // AnalysisManager
 //===----------------------------------------------------------------------===//
 
+/// Returns a pass instrumentation object for the current function.
+PassInstrumentor *FunctionAnalysisManager::getPassInstrumentor() const {
+  return parent->getPassInstrumentor();
+}
+
 /// Create an analysis slice for the given child function.
 FunctionAnalysisManager ModuleAnalysisManager::slice(Function *function) {
   assert(function->getModule() == moduleAnalyses.getIRUnit() &&
          "function has a different parent module");
   auto it = functionAnalyses.try_emplace(function, function);
-  return {&moduleAnalyses, &it.first->second};
+  return {this, &it.first->second};
 }
 
 /// Invalidate any non preserved analyses.

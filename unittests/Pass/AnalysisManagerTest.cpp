@@ -38,7 +38,7 @@ TEST(AnalysisManagerTest, FineGrainModuleAnalysisPreservation) {
 
   // Test fine grain invalidation of the module analysis manager.
   std::unique_ptr<Module> module(new Module(&context));
-  ModuleAnalysisManager mam(&*module);
+  ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
 
   // Query two different analyses, but only preserve one before invalidating.
   mam.getAnalysis<MyAnalysis>();
@@ -65,7 +65,7 @@ TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
   module->getFunctions().push_back(func1);
 
   // Test fine grain invalidation of the function analysis manager.
-  ModuleAnalysisManager mam(&*module);
+  ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
   FunctionAnalysisManager fam = mam.slice(func1);
 
   // Query two different analyses, but only preserve one before invalidating.
@@ -94,7 +94,7 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
 
   // Test fine grain invalidation of a function analysis from within a module
   // analysis manager.
-  ModuleAnalysisManager mam(&*module);
+  ModuleAnalysisManager mam(&*module, /*passInstrumentor=*/nullptr);
 
   // Query two different analyses, but only preserve one before invalidating.
   mam.getFunctionAnalysis<MyAnalysis>(func1);

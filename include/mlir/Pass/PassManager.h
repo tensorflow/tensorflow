@@ -26,6 +26,8 @@ class FunctionPassBase;
 class Module;
 class ModulePassBase;
 class Pass;
+class PassInstrumentation;
+class PassInstrumentor;
 
 namespace detail {
 class PassExecutor;
@@ -56,6 +58,10 @@ public:
   LLVM_NODISCARD
   LogicalResult run(Module *module);
 
+  /// Add the provided instrumentation to the pass manager. This takes ownership
+  /// over the given pointer.
+  void addInstrumentation(PassInstrumentation *pi);
+
 private:
   /// A stack of nested pass executors on sub-module IR units, e.g. function.
   llvm::SmallVector<detail::PassExecutor *, 1> nestedExecutorStack;
@@ -65,6 +71,9 @@ private:
 
   /// Flag that specifies if the IR should be verified after each pass has run.
   bool verifyPasses;
+
+  /// A manager for pass instrumentations.
+  std::unique_ptr<PassInstrumentor> instrumentor;
 };
 
 } // end namespace mlir

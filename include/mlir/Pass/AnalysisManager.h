@@ -19,9 +19,11 @@
 #define MLIR_PASS_ANALYSISMANAGER_H
 
 #include "mlir/IR/Module.h"
+#include "mlir/Pass/PassInstrumentation.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/Support/TypeName.h"
 
 namespace mlir {
 /// A special type used by analyses to provide an address that identifies a
@@ -100,20 +102,36 @@ template <typename IRUnitT> class AnalysisMap {
   using ConceptMap =
       DenseMap<const AnalysisID *, std::unique_ptr<AnalysisConcept>>;
 
+  /// Utility to return the name of the given analysis class.
+  template <typename AnalysisT> static llvm::StringRef getAnalysisName() {
+    StringRef name = llvm::getTypeName<AnalysisT>();
+    if (!name.consume_front("mlir::"))
+      name.consume_front("(anonymous namespace)::");
+    return name;
+  }
+
 public:
   explicit AnalysisMap(IRUnitT *ir) : ir(ir) {}
 
   /// Get an analysis for the current IR unit, computing it if necessary.
-  template <typename AnalysisT> AnalysisT &getAnalysis() {
+  template <typename AnalysisT> AnalysisT &getAnalysis(PassInstrumentor *pi) {
+    auto *id = AnalysisID::getID<AnalysisT>();
+
     typename ConceptMap::iterator it;
     bool wasInserted;
-    std::tie(it, wasInserted) =
-        analyses.try_emplace(AnalysisID::getID<AnalysisT>());
+    std::tie(it, wasInserted) = analyses.try_emplace(id);
 
     // If we don't have a cached analysis for this function, compute it directly
     // and add it to the cache.
-    if (wasInserted)
+    if (wasInserted) {
+      if (pi)
+        pi->runBeforeAnalysis(getAnalysisName<AnalysisT>(), id, ir);
+
       it->second = llvm::make_unique<AnalysisModel<AnalysisT>>(ir);
+
+      if (pi)
+        pi->runAfterAnalysis(getAnalysisName<AnalysisT>(), id, ir);
+    }
     return static_cast<AnalysisModel<AnalysisT> &>(*it->second).analysis;
   }
 
@@ -154,6 +172,7 @@ private:
 //===----------------------------------------------------------------------===//
 // Analysis Management
 //===----------------------------------------------------------------------===//
+class ModuleAnalysisManager;
 
 /// An analysis manager for a specific function instance. This class can only be
 /// constructed from a ModuleAnalysisManager instance.
@@ -163,13 +182,11 @@ public:
   // exist and if it does it may be stale.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedModuleAnalysis() const {
-    return parentImpl->getCachedAnalysis<AnalysisT>();
-  }
+  getCachedModuleAnalysis() const;
 
   // Query for the given analysis for the current function.
   template <typename AnalysisT> AnalysisT &getAnalysis() {
-    return impl->getAnalysis<AnalysisT>();
+    return impl->getAnalysis<AnalysisT>(getPassInstrumentor());
   }
 
   // Query for a cached entry of the given analysis on the current function.
@@ -189,14 +206,17 @@ public:
   /// Clear any held analyses.
   void clear() { impl->clear(); }
 
-private:
-  FunctionAnalysisManager(const detail::AnalysisMap<Module> *parentImpl,
-                          detail::AnalysisMap<Function> *impl)
-      : parentImpl(parentImpl), impl(impl) {}
+  /// Returns a pass instrumentation object for the current function. This value
+  /// may be null.
+  PassInstrumentor *getPassInstrumentor() const;
 
-  /// A reference to the analysis map of the parent module within the owning
-  /// analysis manager.
-  const detail::AnalysisMap<Module> *parentImpl;
+private:
+  FunctionAnalysisManager(const ModuleAnalysisManager *parent,
+                          detail::AnalysisMap<Function> *impl)
+      : parent(parent), impl(impl) {}
+
+  /// A reference to the parent analysis manager.
+  const ModuleAnalysisManager *parent;
 
   /// A reference to the impl analysis map within the owning analysis manager.
   detail::AnalysisMap<Function> *impl;
@@ -208,7 +228,8 @@ private:
 /// An analysis manager for a specific module instance.
 class ModuleAnalysisManager {
 public:
-  ModuleAnalysisManager(Module *module) : moduleAnalyses(module) {}
+  ModuleAnalysisManager(Module *module, PassInstrumentor *passInstrumentor)
+      : moduleAnalyses(module), passInstrumentor(passInstrumentor) {}
   ModuleAnalysisManager(const ModuleAnalysisManager &) = delete;
   ModuleAnalysisManager &operator=(const ModuleAnalysisManager &) = delete;
 
@@ -232,7 +253,7 @@ public:
   /// Query for the analysis for the module. The analysis is computed if it does
   /// not exist.
   template <typename AnalysisT> AnalysisT &getAnalysis() {
-    return moduleAnalyses.getAnalysis<AnalysisT>();
+    return moduleAnalyses.getAnalysis<AnalysisT>(getPassInstrumentor());
   }
 
   /// Query for a cached analysis for the module, or return null.
@@ -247,13 +268,28 @@ public:
   /// Invalidate any non preserved analyses.
   void invalidate(const detail::PreservedAnalyses &pa);
 
+  /// Returns a pass instrumentation object for the current module. This value
+  /// may be null.
+  PassInstrumentor *getPassInstrumentor() const { return passInstrumentor; }
+
 private:
   /// The cached analyses for functions within the current module.
   DenseMap<Function *, detail::AnalysisMap<Function>> functionAnalyses;
 
   /// The analyses for the owning module.
   detail::AnalysisMap<Module> moduleAnalyses;
+
+  /// An optional instrumentation object.
+  PassInstrumentor *passInstrumentor;
 };
+
+// Query for a cached analysis on the parent Module. The analysis may not exist
+// and if it does it may be stale.
+template <typename AnalysisT>
+llvm::Optional<std::reference_wrapper<AnalysisT>>
+FunctionAnalysisManager::getCachedModuleAnalysis() const {
+  return parent->getCachedAnalysis<AnalysisT>();
+}
 
 } // end namespace mlir
 
