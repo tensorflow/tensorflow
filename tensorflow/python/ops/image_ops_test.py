@@ -211,6 +211,48 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
+  def testGrayscaleToRGBInputValidation(self):
+    # tests whether the grayscale_to_rgb function raises
+    # an exception if the input images' last dimension is
+    # not of size 1, i.e. the images have shape
+    # [batch size, height, width] or [height, width]
+
+    # tests if an exception is raised if a three dimensional
+    # input is used, i.e. the images have shape [batch size, height, width]
+    with self.cached_session(use_gpu=True):
+      # 3-D input with batch dimension.
+      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 1, 2])
+    
+      # this is the error message we expect the function to raise
+      err_msg = "Last dimension of a grayscale image should be size 1."
+        
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      try:
+        image_ops.grayscale_to_rgb(x_tf)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+
+    # tests if an exception is raised if a two dimensional
+    # input is used, i.e. the images have shape [height, width]
+    with self.cached_session(use_gpu=True):
+      # 2-D input without batch dimension.
+      x_np = np.array([[1, 2]], dtype=np.uint8).reshape([1, 2])
+    
+      # this is the error message we expect the function to raise
+      err_msg = "A grayscale image must be at least three-dimensional."
+        
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+      try:
+        image_ops.grayscale_to_rgb(x_tf)
+      except Exception as e:
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+      
   @test_util.run_deprecated_v1
   def testShapeInference(self):
     # Shape inference works and produces expected output where possible

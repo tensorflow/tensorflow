@@ -236,6 +236,66 @@ def _CheckAtLeast3DImage(image, require_static=True):
     return []
 
 
+def _AssertGrayscaleImage(image):
+  """Assert that we are working with a properly shaped
+     grayscale image.
+
+    Performs the check statically if possible (i.e. if the shape
+    is statically known). Otherwise adds a control dependency
+    to an assert op that checks the dynamic shape.
+
+    Args:
+      image: >= 3-D Tensor of size [*, height, width, depth]
+
+    Raises:
+      ValueError: if image.shape is not a [>= 3] vector or if 
+                last dimension is not size 1.
+
+    Returns:
+      If the shape of `image` could be verified statically, `image` is
+      returned unchanged, otherwise there will be a control dependency
+      added that asserts the correct dynamic shape.
+  """
+  return control_flow_ops.with_dependencies(
+      _CheckGrayscaleImage(image, require_static=False), image)
+
+
+def _CheckGrayscaleImage(image, require_static=True):
+    """Assert that we are working with properly shaped
+    grayscale image.
+
+    Args:
+      image: >= 3-D Tensor of size [*, height, width, depth]
+
+    Raises:
+      ValueError: if image.shape is not a [>= 3] vector or if 
+                last dimension is not size 1.
+
+    Returns:
+      An empty list, if `image` has fully defined dimensions. Otherwise, a list
+      containing an assert op is returned.
+    """
+    try:
+        if image.get_shape().ndims is None:
+            image_shape = image.get_shape().with_rank(3)
+        else:
+            image_shape = image.get_shape().with_rank_at_least(3)
+    except ValueError:
+        raise ValueError("A grayscale image must be at least three-dimensional.")
+    if require_static and not image_shape.is_fully_defined():
+      raise ValueError('\'image\' must be fully defined.')
+    if image_shape.is_fully_defined():
+        if image_shape[-1] != 1:
+            raise ValueError("Last dimension of a grayscale image should be size 1.")
+    if not image_shape.is_fully_defined():
+        return [
+            check_ops.assert_equal(array_ops.shape(image)[-1], 1,
+                message="Last dimension of a grayscale image should be size 1.")
+        ]
+    else:
+        return []
+
+
 def fix_image_flip_shape(image, result):
   """Set the shape to 3 dimensional if we don't know anything else.
 
@@ -1748,6 +1808,7 @@ def grayscale_to_rgb(images, name=None):
 
   Outputs a tensor of the same `DType` and rank as `images`.  The size of the
   last dimension of the output is 3, containing the RGB value of the pixels.
+  The input images' last dimension must be size 1.
 
   Args:
     images: The Grayscale tensor to convert. Last dimension must be size 1.
@@ -1756,7 +1817,9 @@ def grayscale_to_rgb(images, name=None):
   Returns:
     The converted grayscale image(s).
   """
-  with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:
+  with ops.name_scope(name, 'grayscale_to_rgb', [images]) as name:    
+    _AssertGrayscaleImage(images)
+    
     images = ops.convert_to_tensor(images, name='images')
     rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
     shape_list = ([array_ops.ones(rank_1, dtype=dtypes.int32)] +
