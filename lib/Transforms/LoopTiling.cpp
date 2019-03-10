@@ -237,7 +237,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
   if (!cst.isHyperRectangular(0, width)) {
     rootAffineForOp->emitError("tiled code generation unimplemented for the "
                                "non-hyperrectangular case");
-    return LogicalResult::failure();
+    return failure();
   }
 
   constructTiledIndexSetHyperRect(origLoops, newLoops, tileSizes);
@@ -249,7 +249,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
   // Erase the old loop nest.
   rootAffineForOp->erase();
 
-  return LogicalResult::success();
+  return success();
 }
 
 // Identify valid and profitable bands of loops to tile. This is currently just

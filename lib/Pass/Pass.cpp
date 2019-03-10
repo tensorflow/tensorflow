@@ -61,7 +61,7 @@ LogicalResult FunctionPassBase::run(Function *fn,
   }
 
   // Return if the pass signaled a failure.
-  return passFailed ? LogicalResult::failure() : LogicalResult::success();
+  return failure(passFailed);
 }
 
 /// Forwarding function to execute this pass.
@@ -90,7 +90,7 @@ LogicalResult ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
   }
 
   // Return if the pass signaled a failure.
-  return passFailed ? LogicalResult::failure() : LogicalResult::success();
+  return failure(passFailed);
 }
 
 //===----------------------------------------------------------------------===//
@@ -172,8 +172,8 @@ LogicalResult detail::FunctionPassExecutor::run(Function *function,
   // Run each of the held passes.
   for (auto &pass : passes)
     if (failed(pass->run(function, fam)))
-      return LogicalResult::failure();
-  return LogicalResult::success();
+      return failure();
+  return success();
 }
 
 /// Run all of the passes in this manager over the current module.
@@ -182,8 +182,8 @@ LogicalResult detail::ModulePassExecutor::run(Module *module,
   // Run each of the held passes.
   for (auto &pass : passes)
     if (failed(pass->run(module, mam)))
-      return LogicalResult::failure();
-  return LogicalResult::success();
+      return failure();
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

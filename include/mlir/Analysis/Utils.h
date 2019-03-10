@@ -30,7 +30,6 @@
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
-#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
 #include <memory>
 

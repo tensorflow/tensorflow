@@ -107,9 +107,9 @@ LogicalResult mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
   for (auto forOp : forOps) {
     // Add constraints from forOp's bounds.
     if (failed(domain->addAffineForOpDomain(forOp)))
-      return LogicalResult::failure();
+      return failure();
   }
-  return LogicalResult::success();
+  return success();
 }
 
 // Computes the iteration domain for 'opInst' and populates 'indexSet', which
@@ -386,7 +386,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
                            const ValuePositionMap &valuePosMap,
                            FlatAffineConstraints *dependenceDomain) {
   if (dependenceDomain->getNumLocalIds() != 0)
-    return LogicalResult::failure();
+    return failure();
   AffineMap srcMap = srcAccessMap.getAffineMap();
   AffineMap dstMap = dstAccessMap.getAffineMap();
   assert(srcMap.getNumResults() == dstMap.getNumResults());
@@ -404,7 +404,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   // Get flattened expressions for the source destination maps.
   if (failed(getFlattenedAffineExprs(srcMap, &srcFlatExprs, &srcLocalVarCst)) ||
       failed(getFlattenedAffineExprs(dstMap, &destFlatExprs, &destLocalVarCst)))
-    return LogicalResult::failure();
+    return failure();
 
   unsigned srcNumLocalIds = srcLocalVarCst.getNumLocalIds();
   unsigned dstNumLocalIds = destLocalVarCst.getNumLocalIds();
@@ -511,7 +511,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
 
     dependenceDomain->addInequality(ineq);
   }
-  return LogicalResult::success();
+  return success();
 }
 
 // Returns the number of outer loop common to 'src/dstDomain'.

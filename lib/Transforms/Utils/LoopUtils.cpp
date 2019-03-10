@@ -94,11 +94,11 @@ AffineMap mlir::getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
 LogicalResult mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
   Optional<uint64_t> tripCount = getConstantTripCount(forOp);
   if (!tripCount.hasValue() || tripCount.getValue() != 1)
-    return LogicalResult::failure();
+    return failure();
 
   // TODO(mlir-team): there is no builder for a max.
   if (forOp->getLowerBoundMap().getNumResults() != 1)
-    return LogicalResult::failure();
+    return failure();
 
   // Replaces all IV uses to its single iteration value.
   auto *iv = forOp->getInductionVar();
@@ -129,7 +129,7 @@ LogicalResult mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
   block->getInstructions().splice(Block::iterator(forInst),
                                   forOp->getBody()->getInstructions());
   forOp->erase();
-  return LogicalResult::success();
+  return success();
 }
 
 /// Promotes all single iteration for inst's in the Function, i.e., moves
@@ -215,7 +215,7 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
                                  ArrayRef<uint64_t> shifts,
                                  bool unrollPrologueEpilogue) {
   if (forOp->getBody()->empty())
-    return LogicalResult::success();
+    return success();
 
   // If the trip counts aren't constant, we would need versioning and
   // conditional guards (or context information to prevent such versioning). The
@@ -224,7 +224,7 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
     LLVM_DEBUG(forOp->emitNote("non-constant trip count loop not handled"));
-    return LogicalResult::success();
+    return success();
   }
   uint64_t tripCount = mayBeConstTripCount.getValue();
 
@@ -243,7 +243,7 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
   // Such large shifts are not the typical use case.
   if (maxShift >= numChildInsts) {
     forOp->emitWarning("not shifting because shifts are unrealistically large");
-    return LogicalResult::success();
+    return success();
   }
 
   // An array of instruction groups sorted by shift amount; each group has all
@@ -329,7 +329,7 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
       epilogue->getInstruction() != prologue->getInstruction())
     loopUnrollFull(epilogue);
 
-  return LogicalResult::success();
+  return success();
 }
 
 /// Unrolls this loop completely.
@@ -342,7 +342,7 @@ LogicalResult mlir::loopUnrollFull(OpPointer<AffineForOp> forOp) {
     }
     return loopUnrollByFactor(forOp, tripCount);
   }
-  return LogicalResult::failure();
+  return failure();
 }
 
 /// Unrolls and jams this loop by the specified factor or by the trip count (if
@@ -367,7 +367,7 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
     return promoteIfSingleIteration(forOp);
 
   if (forOp->getBody()->empty())
-    return LogicalResult::failure();
+    return failure();
 
   auto lbMap = forOp->getLowerBoundMap();
   auto ubMap = forOp->getUpperBoundMap();
@@ -377,12 +377,12 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
   // do such unrolling for a Function would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
   if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
-    return LogicalResult::failure();
+    return failure();
 
   // Same operand list for lower and upper bound for now.
   // TODO(bondhugula): handle bounds with different operand lists.
   if (!forOp->matchingBoundOperandList())
-    return LogicalResult::failure();
+    return failure();
 
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
@@ -390,7 +390,7 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
   // TODO(bondhugula): option to specify cleanup loop unrolling.
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() < unrollFactor)
-    return LogicalResult::failure();
+    return failure();
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
   Instruction *forInst = forOp->getInstruction();
@@ -451,7 +451,7 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
 
   // Promote the loop body up if this has turned into a single iteration loop.
   promoteIfSingleIteration(forOp);
-  return LogicalResult::success();
+  return success();
 }
 
 /// Performs loop interchange on 'forOpA' and 'forOpB', where 'forOpB' is

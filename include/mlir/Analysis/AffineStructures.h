@@ -682,9 +682,7 @@ private:
   // constraints. Returns 'success' if the identifier was eliminated, and
   // 'failure' otherwise.
   inline LogicalResult gaussianEliminateId(unsigned position) {
-    return gaussianEliminateIds(position, position + 1) == 1
-               ? LogicalResult::success()
-               : LogicalResult::failure();
+    return success(gaussianEliminateIds(position, position + 1) == 1);
   }
 
   // Eliminates identifiers from equality and inequality constraints

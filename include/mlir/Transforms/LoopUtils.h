@@ -36,7 +36,7 @@ class FuncBuilder;
 template <typename T> class OpPointer;
 
 /// Unrolls this for instruction completely if the trip count is known to be
-/// constant.
+/// constant. Returns failure otherwise.
 LogicalResult loopUnrollFull(OpPointer<AffineForOp> forOp);
 /// Unrolls this for instruction by the specified unroll factor. Returns failure
 /// if the loop cannot be unrolled either due to restrictions or due to invalid

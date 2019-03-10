@@ -142,7 +142,7 @@ LogicalResult impl::FunctionConversion::convertOpWithSuccessors(
       llvm::makeArrayRef(operands.data(),
                          operands.data() + firstSuccessorOperand),
       destinations, operandsPerDestination, builder);
-  return LogicalResult::success();
+  return success();
 }
 
 LogicalResult
@@ -155,11 +155,11 @@ impl::FunctionConversion::convertOp(DialectOpConversion *converter,
   auto results = converter->rewrite(op, operands, builder);
   if (results.size() != op->getNumResults())
     return (op->emitError("rewriting produced a different number of results"),
-            LogicalResult::failure());
+            failure());
 
   for (unsigned i = 0, e = results.size(); i < e; ++i)
     mapping.map(op->getResult(i), results[i]);
-  return LogicalResult::success();
+  return success();
 }
 
 LogicalResult
@@ -174,7 +174,7 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
   for (Instruction &inst : *block) {
     if (inst.getNumBlockLists() != 0) {
       inst.emitError("unsupported region instruction");
-      return LogicalResult::failure();
+      return failure();
     }
 
     // Find the first matching conversion and apply it.
@@ -185,9 +185,9 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
 
       if (inst.getNumSuccessors() != 0) {
         if (failed(convertOpWithSuccessors(conversion, &inst, builder)))
-          return LogicalResult::failure();
+          return failure();
       } else if (failed(convertOp(conversion, &inst, builder))) {
-        return LogicalResult::failure();
+        return failure();
       }
       converted = true;
       break;
@@ -202,9 +202,9 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
     if (visitedBlocks.count(succ) != 0)
       continue;
     if (failed(convertBlock(succ, builder, visitedBlocks)))
-      return LogicalResult::failure();
+      return failure();
   }
-  return LogicalResult::success();
+  return success();
 }
 
 Function *impl::FunctionConversion::convertFunction(Function *f) {
@@ -267,7 +267,7 @@ LogicalResult impl::FunctionConversion::convert(DialectConversion *conversion,
 
 LogicalResult impl::FunctionConversion::run(Module *module) {
   if (!module)
-    return LogicalResult::failure();
+    return failure();
 
   MLIRContext *context = module->getContext();
   conversions = dialectConversion->initConverters(context);
@@ -283,7 +283,7 @@ LogicalResult impl::FunctionConversion::run(Module *module) {
   for (auto *func : originalFuncs) {
     Function *converted = convertFunction(func);
     if (!converted)
-      return LogicalResult::failure();
+      return failure();
 
     auto origFuncAttr = FunctionAttr::get(func, context);
     auto convertedFuncAttr = FunctionAttr::get(converted, context);
@@ -305,7 +305,7 @@ LogicalResult impl::FunctionConversion::run(Module *module) {
   for (auto *func : convertedFuncs)
     module->getFunctions().push_back(func);
 
-  return LogicalResult::success();
+  return success();
 }
 
 // Create a function type with arguments and results converted, and argument

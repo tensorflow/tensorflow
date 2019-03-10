@@ -82,7 +82,7 @@ static LogicalResult getFlattenedAffineExprs(
     FlatAffineConstraints *localVarCst) {
   if (exprs.empty()) {
     localVarCst->reset(numDims, numSymbols);
-    return LogicalResult::success();
+    return success();
   }
 
   AffineExprFlattener flattener(numDims, numSymbols, exprs[0].getContext());
@@ -90,7 +90,7 @@ static LogicalResult getFlattenedAffineExprs(
   // local identifiers / expressions are shared.
   for (auto expr : exprs) {
     if (!expr.isPureAffine())
-      return LogicalResult::failure();
+      return failure();
 
     flattener.walkPostOrder(expr);
   }
@@ -104,7 +104,7 @@ static LogicalResult getFlattenedAffineExprs(
     localVarCst->clearAndCopyFrom(flattener.localVarCst);
   }
 
-  return LogicalResult::success();
+  return success();
 }
 
 // Flattens 'expr' into 'flattenedExpr'. Returns failure if 'expr' was unable to
@@ -128,7 +128,7 @@ LogicalResult mlir::getFlattenedAffineExprs(
     FlatAffineConstraints *localVarCst) {
   if (map.getNumResults() == 0) {
     localVarCst->reset(map.getNumDims(), map.getNumSymbols());
-    return LogicalResult::success();
+    return success();
   }
   return ::getFlattenedAffineExprs(map.getResults(), map.getNumDims(),
                                    map.getNumSymbols(), flattenedExprs,
@@ -140,7 +140,7 @@ LogicalResult mlir::getFlattenedAffineExprs(
     FlatAffineConstraints *localVarCst) {
   if (set.getNumConstraints() == 0) {
     localVarCst->reset(set.getNumDims(), set.getNumSymbols());
-    return LogicalResult::success();
+    return success();
   }
   return ::getFlattenedAffineExprs(set.getConstraints(), set.getNumDims(),
                                    set.getNumSymbols(), flattenedExprs,
@@ -614,7 +614,7 @@ LogicalResult FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
                                      &localCst))) {
     LLVM_DEBUG(llvm::dbgs()
                << "composition unimplemented for semi-affine maps\n");
-    return LogicalResult::failure();
+    return failure();
   }
   assert(flatExprs.size() == vMap->getNumResults());
 
@@ -673,7 +673,7 @@ LogicalResult FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
     addEquality(eqToAdd);
   }
 
-  return LogicalResult::success();
+  return success();
 }
 
 // Turn a dimension into a symbol.
@@ -737,7 +737,7 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
   // Pre-condition for this method.
   if (!findId(*forOp->getInductionVar(), &pos)) {
     assert(false && "Value not found");
-    return LogicalResult::failure();
+    return failure();
   }
 
   if (forOp->getStep() != 1)
@@ -756,12 +756,12 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
                                        ncForOp->getLowerBoundOperands().end());
     if (failed(addLowerOrUpperBound(pos, forOp->getLowerBoundMap(), lbOperands,
                                     /*eq=*/false, /*lower=*/true)))
-      return LogicalResult::failure();
+      return failure();
   }
 
   if (forOp->hasConstantUpperBound()) {
     addConstantUpperBound(pos, forOp->getConstantUpperBound() - step);
-    return LogicalResult::success();
+    return success();
   }
   // Non-constant upper bound case.
   OpPointer<AffineForOp> ncForOp =
@@ -1633,7 +1633,7 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
   std::vector<SmallVector<int64_t, 8>> flatExprs;
   if (failed(getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst))) {
     LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
-    return LogicalResult::failure();
+    return failure();
   }
 
   // Merge and align with localVarCst.
@@ -1688,7 +1688,7 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
               : flatExpr[flatExpr.size() - 1] - 1;
     eq ? addEquality(ineq) : addInequality(ineq);
   }
-  return LogicalResult::success();
+  return success();
 }
 
 // Adds slice lower bounds represented by lower bounds in 'lbMaps' and upper
@@ -1722,25 +1722,25 @@ LogicalResult FlatAffineConstraints::addSliceBounds(
         lbMap.getResult(0) + 1 == ubMap.getResult(0)) {
       if (failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/true,
                                       /*lower=*/true)))
-        return LogicalResult::failure();
+        return failure();
       if (failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/true,
                                       /*lower=*/true)))
-        return LogicalResult::failure();
+        return failure();
       continue;
     }
 
     if (lbMap && failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/false,
                                              /*lower=*/true)))
-      return LogicalResult::failure();
+      return failure();
     if (lbMap && failed(addLowerOrUpperBound(pos, lbMap, operands, /*eq=*/false,
                                              /*lower=*/true)))
-      return LogicalResult::failure();
+      return failure();
 
     if (ubMap && failed(addLowerOrUpperBound(pos, ubMap, operands, /*eq=*/false,
                                              /*lower=*/false)))
-      return LogicalResult::failure();
+      return failure();
   }
-  return LogicalResult::success();
+  return success();
 }
 
 void FlatAffineConstraints::addEquality(ArrayRef<int64_t> eq) {
@@ -1931,13 +1931,13 @@ LogicalResult FlatAffineConstraints::constantFoldId(unsigned pos) {
   assert(pos < getNumIds() && "invalid position");
   int rowIdx;
   if ((rowIdx = findEqualityToConstant(*this, pos)) == -1)
-    return LogicalResult::failure();
+    return failure();
 
   // atEq(rowIdx, pos) is either -1 or 1.
   assert(atEq(rowIdx, pos) * atEq(rowIdx, pos) == 1);
   int64_t constVal = -atEq(rowIdx, getNumCols() - 1) / atEq(rowIdx, pos);
   setAndEliminate(pos, constVal);
-  return LogicalResult::success();
+  return success();
 }
 
 void FlatAffineConstraints::constantFoldIdRange(unsigned pos, unsigned num) {
@@ -2670,13 +2670,13 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
     if (!extent.hasValue())
       // TODO(bondhugula): symbolic extents when necessary.
       // TODO(bondhugula): handle union if a dimension is unbounded.
-      return LogicalResult::failure();
+      return failure();
 
     auto otherExtent =
         other.getConstantBoundOnDimSize(d, &otherLb, &otherLbDivisor);
     if (!otherExtent.hasValue() || lbDivisor != otherLbDivisor)
       // TODO(bondhugula): symbolic extents when necessary.
-      return LogicalResult::failure();
+      return failure();
 
     assert(lbDivisor > 0 && "divisor always expected to be positive");
 
@@ -2691,7 +2691,7 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
       auto constLb = getConstantLowerBound(d);
       auto constOtherLb = other.getConstantLowerBound(d);
       if (!constLb.hasValue() || !constOtherLb.hasValue())
-        return LogicalResult::failure();
+        return failure();
       std::fill(minLb.begin(), minLb.end(), 0);
       minLb.back() = std::min(constLb.getValue(), constOtherLb.getValue());
     }
@@ -2713,7 +2713,7 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
       auto constUb = getConstantUpperBound(d);
       auto constOtherUb = other.getConstantUpperBound(d);
       if (!constUb.hasValue() || !constOtherUb.hasValue())
-        return LogicalResult::failure();
+        return failure();
       std::fill(maxUb.begin(), maxUb.end(), 0);
       maxUb.back() = std::max(constUb.getValue(), constOtherUb.getValue());
     }
@@ -2742,5 +2742,5 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
     addInequality(boundingUbs[d]);
   }
 
-  return LogicalResult::success();
+  return success();
 }

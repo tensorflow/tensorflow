@@ -23,17 +23,25 @@
 namespace mlir {
 
 // Values that can be used to signal success/failure. This should be used in
-// conjunction with the 'succeeded' and 'failed' functions below.
+// conjunction with the utility functions below.
 struct LogicalResult {
   enum ResultEnum { Success, Failure } value;
   LogicalResult(ResultEnum v) : value(v) {}
-
-  /// Utility method to generate a success result.
-  static LogicalResult success() { return Success; }
-
-  /// Utility method to generate a failure result.
-  static LogicalResult failure() { return Failure; }
 };
+
+/// Utility function to generate a LogicalResult. If isSuccess is true a
+/// `success` result is generated, otherwise a 'failure' result is generated.
+inline LogicalResult success(bool isSuccess = true) {
+  return LogicalResult{isSuccess ? LogicalResult::Success
+                                 : LogicalResult::Failure};
+}
+
+/// Utility function to generate a LogicalResult. If isFailure is true a
+/// `failure` result is generated, otherwise a 'success' result is generated.
+inline LogicalResult failure(bool isFailure = true) {
+  return LogicalResult{isFailure ? LogicalResult::Failure
+                                 : LogicalResult::Success};
+}
 
 /// Utility function that returns true if the provided LogicalResult corresponds
 /// to a success value.

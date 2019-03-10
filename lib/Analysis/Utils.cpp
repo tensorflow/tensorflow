@@ -82,7 +82,7 @@ ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
     } else {
       if (auto loop = getForInductionVarOwner(value)) {
         if (failed(cst->addAffineForOpDomain(loop)))
-          return LogicalResult::failure();
+          return failure();
       }
     }
   }
@@ -92,7 +92,7 @@ ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
   assert(succeeded(ret) &&
          "should not fail as we never have semi-affine slice maps");
   (void)ret;
-  return LogicalResult::success();
+  return success();
 }
 
 // Clears state bounds and operand state.
@@ -195,7 +195,7 @@ LogicalResult MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
     extractForInductionVars(ivs, &regionSymbols);
     // A rank 0 memref has a 0-d region.
     cst.reset(rank, loopDepth, 0, regionSymbols);
-    return LogicalResult::success();
+    return success();
   }
 
   // Build the constraints for this region.
@@ -237,7 +237,7 @@ LogicalResult MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       // TODO(bondhugula): rewrite this to use getInstIndexSet; this way
       // conditionals will be handled when the latter supports it.
       if (failed(cst.addAffineForOpDomain(loop)))
-        return LogicalResult::failure();
+        return failure();
     } else {
       // Has to be a valid symbol.
       auto *symbol = operand;
@@ -270,7 +270,7 @@ LogicalResult MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
   if (failed(cst.composeMap(&accessValueMap))) {
     inst->emitError("getMemRefRegion: compose affine map failed");
     LLVM_DEBUG(accessValueMap.getAffineMap().dump());
-    return LogicalResult::failure();
+    return failure();
   }
 
   // Set all identifiers appearing after the first 'rank' identifiers as
@@ -306,7 +306,7 @@ LogicalResult MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region:\n");
   LLVM_DEBUG(cst.dump());
-  return LogicalResult::success();
+  return success();
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
@@ -380,7 +380,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
 
   MemRefRegion region(opInst->getLoc());
   if (failed(region.compute(opInst, /*loopDepth=*/0)))
-    return LogicalResult::success();
+    return success();
 
   LLVM_DEBUG(llvm::dbgs() << "Memory region");
   LLVM_DEBUG(region.getConstraints()->dump());
@@ -420,7 +420,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
           "memref out of lower bound access along dimension #" + Twine(r + 1));
     }
   }
-  return outOfBounds ? LogicalResult::failure() : LogicalResult::success();
+  return failure(outOfBounds);
 }
 
 // Explicitly instantiate the template so that the compiler knows we need them!
@@ -486,7 +486,7 @@ LogicalResult mlir::getBackwardComputationSliceState(
   if (!checkMemrefAccessDependence(
           srcAccess, dstAccess, /*loopDepth=*/1, &dependenceConstraints,
           /*dependenceComponents=*/nullptr, /*allowRAR=*/readReadAccesses)) {
-    return LogicalResult::failure();
+    return failure();
   }
   // Get loop nest surrounding src operation.
   SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
@@ -499,7 +499,7 @@ LogicalResult mlir::getBackwardComputationSliceState(
   unsigned numDstLoopIVs = dstLoopIVs.size();
   if (dstLoopDepth > numDstLoopIVs) {
     dstAccess.opInst->emitError("invalid destination loop depth");
-    return LogicalResult::failure();
+    return failure();
   }
 
   // Project out dimensions other than those up to 'dstLoopDepth'.
@@ -550,7 +550,7 @@ LogicalResult mlir::getBackwardComputationSliceState(
     break;
   }
 
-  return LogicalResult::success();
+  return success();
 }
 
 /// Creates a computation slice of the loop nest surrounding 'srcOpInst',

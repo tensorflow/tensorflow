@@ -153,13 +153,13 @@ LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
   assert(unrollJamFactor >= 1 && "unroll jam factor should be >= 1");
 
   if (unrollJamFactor == 1 || forOp->getBody()->empty())
-    return LogicalResult::failure();
+    return failure();
 
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
   if (!mayBeConstantTripCount.hasValue() &&
       getLargestDivisorOfTripCount(forOp) % unrollJamFactor != 0)
-    return LogicalResult::failure();
+    return failure();
 
   auto lbMap = forOp->getLowerBoundMap();
   auto ubMap = forOp->getUpperBoundMap();
@@ -169,18 +169,18 @@ LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
   // do such unrolling for a Function would be to specialize the loop for the
   // 'hotspot' case and unroll that hotspot.
   if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
-    return LogicalResult::failure();
+    return failure();
 
   // Same operand list for lower and upper bound for now.
   // TODO(bondhugula): handle bounds with different sets of operands.
   if (!forOp->matchingBoundOperandList())
-    return LogicalResult::failure();
+    return failure();
 
   // If the trip count is lower than the unroll jam factor, no unroll jam.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() < unrollJamFactor)
-    return LogicalResult::failure();
+    return failure();
 
   auto *forInst = forOp->getInstruction();
 
@@ -241,7 +241,7 @@ LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
 
   // Promote the loop body up if this has turned into a single iteration loop.
   promoteIfSingleIteration(forOp);
-  return LogicalResult::success();
+  return success();
 }
 
 static PassRegistration<LoopUnrollAndJam> pass("loop-unroll-jam",
