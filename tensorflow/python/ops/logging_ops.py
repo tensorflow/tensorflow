@@ -23,6 +23,8 @@ import pprint
 import random
 import sys
 
+import os
+
 import six
 
 from tensorflow.python import pywrap_tensorflow
@@ -220,6 +222,9 @@ def print_v2(*inputs, **kwargs):
       recursively printed per Tensor. If None, then the first 3 and last 3
       elements of each dimension are printed for each tensor. If set to -1, it
       will print all elements of every tensor.
+    sep: The string to use to separate the inputs. Defaults to " ".
+    end: End character that is appended at the end the the printed string.
+      Defaults to the newline character.
     name: A name for the operation (optional).
 
   Returns:
@@ -236,6 +241,8 @@ def print_v2(*inputs, **kwargs):
   output_stream = kwargs.pop("output_stream", sys.stderr)
   name = kwargs.pop("name", None)
   summarize = kwargs.pop("summarize", 3)
+  sep = kwargs.pop("sep", " ")
+  end = kwargs.pop("end", os.linesep)
   if kwargs:
     raise ValueError("Unrecognized keyword arguments for tf.print: %s" % kwargs)
   format_name = None
@@ -332,13 +339,14 @@ def print_v2(*inputs, **kwargs):
     # the formatted/printed output will not contain quotes around tensors.
     # (example of where these quotes might appear: if we have added a
     # placeholder string into a list, then pretty-formatted that list)
-    template = " ".join(templates)
+    template = sep.join(templates)
     template = template.replace("'" + placeholder + "'", placeholder)
     formatted_string = string_ops.string_format(
         inputs=tensors, template=template, placeholder=placeholder,
         summarize=summarize,
         name=format_name)
 
+  formatted_string = formatted_string + end
   return gen_logging_ops.print_v2(formatted_string,
                                   output_stream=output_stream_string,
                                   name=name)

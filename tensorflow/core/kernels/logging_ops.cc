@@ -44,7 +44,7 @@ Status AppendStringToFile(const std::string& fname, StringPiece data,
   mutex_lock l(*file_mutex);
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewAppendableFile(fname, &file));
-  Status a = file->Append(absl::StrCat(data, "\n"));
+  Status a = file->Append(data);
   Status c = file->Close();
   return a.ok() ? c : a;
 }
@@ -182,15 +182,15 @@ class PrintV2Op : public OpKernel {
         listener(msg.c_str());
       }
     } else if (output_stream_ == "stdout") {
-      std::cout << msg << std::endl;
+      std::cout << msg;
     } else if (output_stream_ == "stderr") {
-      std::cerr << msg << std::endl;
+      std::cerr << msg;
     } else if (output_stream_ == "log(info)") {
-      LOG(INFO) << msg << std::endl;
+      LOG(INFO) << msg;
     } else if (output_stream_ == "log(warning)") {
-      LOG(WARNING) << msg << std::endl;
+      LOG(WARNING) << msg;
     } else if (output_stream_ == "log(error)") {
-      LOG(ERROR) << msg << std::endl;
+      LOG(ERROR) << msg;
     } else {
       string error_msg = strings::StrCat(
           "Unknown output stream: ", output_stream_, ", Valid streams are:");
