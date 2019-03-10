@@ -59,7 +59,7 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
   def test_softmax(self):
     testing_utils.layer_test(keras.layers.Softmax,
                              kwargs={'axis': 1},
-                             input_shape=(2, 3, 4)
+                             input_shape=(2, 3, 4))
   def test_swish_basic(self):
     for beta in [0., .5, 2.]:
       testing_utils.layer_test(keras.layers.Swish,
