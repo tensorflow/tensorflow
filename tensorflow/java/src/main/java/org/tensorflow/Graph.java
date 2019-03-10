@@ -287,19 +287,19 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
       try (Reference ref = subgraph.ref()) {
 
         for (int i = 0; i < ninputs; i++) {
-          Operation op = new Operation(subgraph, inputHandles[i]);
-          inputs[i] = new Output<>(op, inputIndices[i]);
+          Operation op = new GraphNode(subgraph, inputHandles[i]);
+          inputs[i] = op.output(inputIndices[i]);
         }
 
         for (int i = 0; i < noutputs; i++) {
-          Operation op = new Operation(subgraph, outputHandles[i]);
-          outputs[i] = new Output<>(op, outputIndices[i]);
+          Operation op = new GraphNode(subgraph, outputHandles[i]);
+          outputs[i] = op.output(outputIndices[i]);
         }
 
         subgraphBuilder.buildSubgraph(subgraph, inputs, outputs);
 
         for (int i = 0, j = noutputs; i < noutputs; i++, j++) {
-          outputHandlesAndIndices[i] = outputs[i].op().getUnsafeNativeHandle();
+          outputHandlesAndIndices[i] = outputs[i].getUnsafeNativeHandle();
           outputHandlesAndIndices[j] = (long) outputs[i].index();
         }
       }
@@ -330,7 +330,7 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
       try (Reference ref = ref()) {
 
         for (int i = 0; i < ninputs; i++) {
-          inputHandles[i] = inputs[i].op().getUnsafeNativeHandle();
+          inputHandles[i] = inputs[i].getUnsafeNativeHandle();
           inputIndices[i] = inputs[i].index();
         }
 
@@ -338,8 +338,8 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
             whileLoop(nativeHandle, inputHandles, inputIndices, name, cgBuilder, bgBuilder);
 
         for (int i = 0, j = ninputs; i < ninputs; ++i, ++j) {
-          Operation op = new Operation(this, outputHandlesAndIndices[i]);
-          outputs[i] = new Output<>(op, (int) outputHandlesAndIndices[j]);
+          Operation op = new GraphNode(this, outputHandlesAndIndices[i]);
+          outputs[i] = op.output((int) outputHandlesAndIndices[j]);
         }
       }
       return outputs;
