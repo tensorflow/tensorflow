@@ -24,9 +24,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit tests for {@link org.tensorflow.GraphNodeBuilder}. */
+/** Unit tests for {@link org.tensorflow.GraphOperationBuilder}. */
 @RunWith(JUnit4.class)
-public class GraphNodeBuilderTest {
+public class GraphOperationBuilderTest {
   // TODO(ashankar): Restore this test once the C API gracefully handles mixing graphs and
   // operations instead of segfaulting.
   @Test
@@ -168,7 +168,7 @@ public class GraphNodeBuilderTest {
         Tensor<Boolean> yes = Tensors.create(true);
         Tensor<Boolean> no = Tensors.create(false)) {
       Output<Boolean> placeholder = TestUtil.placeholder(g, "boolean", Boolean.class);
-      GraphNode check =
+      GraphOperation check =
           g.opBuilder("Assert", "assert")
               .addInput(placeholder)
               .addInputList(new Output<?>[] {placeholder})

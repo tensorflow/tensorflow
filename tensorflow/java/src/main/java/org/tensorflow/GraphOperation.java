@@ -18,18 +18,18 @@ package org.tensorflow;
 /**
  * Implementation for an {@link Operation} added as a node to a {@link Graph}. 
  *
- * <p>GraphNode instances are valid only as long as the {@link Graph} they are a
+ * <p>GraphOperation instances are valid only as long as the {@link Graph} they are a
  * part of is valid. Thus, if {@link Graph#close()} has been invoked, then methods on the 
  * GraphOperation instance  may fail with an {@code IllegalStateException}.
  *
  * <p>GraphOperation instances are immutable and thread-safe.
  */
-public final class GraphNode extends AbstractOperation {
+public final class GraphOperation extends AbstractOperation {
 
   // Create an GraphOperation instance referring to an operation in g, with the given handle to the C
   // TF_Operation object.  The handle is valid only as long as g has not been closed, hence it is
   // called unsafeHandle.  Graph.ref() is used to safely use the unsafeHandle.
-  GraphNode(Graph g, long unsafeNativeHandle) {
+  GraphOperation(Graph g, long unsafeNativeHandle) {
     this.graph = g;
     this.unsafeNativeHandle = unsafeNativeHandle;
   }
@@ -99,10 +99,10 @@ public final class GraphNode extends AbstractOperation {
     if (o == this) {
       return true;
     }
-    if (!(o instanceof GraphNode)) {
+    if (!(o instanceof GraphOperation)) {
       return false;
     }
-    GraphNode that = (GraphNode) o;
+    GraphOperation that = (GraphOperation) o;
     if (graph != that.graph) {
       return false;
     }

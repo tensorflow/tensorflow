@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_NODE_BUILDER_JNI_H_
-#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_NODE_BUILDER_JNI_H_
+#ifndef TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_OPERATION_BUILDER_JNI_H_
+#define TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_OPERATION_BUILDER_JNI_H_
 
 #include <jni.h>
 
@@ -23,173 +23,173 @@ extern "C" {
 #endif
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    allocate
  * Signature: (JLjava/lang/String;Ljava/lang/String;)J
  */
-JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphNodeBuilder_allocate(
+JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphOperationBuilder_allocate(
     JNIEnv *, jclass, jlong, jstring, jstring);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    finish
  * Signature: (J)J
  */
-JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphNodeBuilder_finish(
+JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphOperationBuilder_finish(
     JNIEnv *, jclass, jlong);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    addInput
  * Signature: (JJI)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_addInput(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_addInput(
     JNIEnv *, jclass, jlong, jlong, jint);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    addInputList
  * Signature: (J[J[I)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_addInputList(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_addInputList(
     JNIEnv *, jclass, jlong, jlongArray, jintArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    addControlInput
  * Signature: (JJ)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_addControlInput(
+Java_org_tensorflow_GraphOperationBuilder_addControlInput(
     JNIEnv *, jclass, jlong, jlong);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setDevice
  * Signature: (JLjava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setDevice(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setDevice(
     JNIEnv *, jclass, jlong, jstring);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrString
  * Signature: (JLjava/lang/String;[B)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrString(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrString(
     JNIEnv *, jclass, jlong, jstring, jbyteArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrInt
  * Signature: (JLjava/lang/String;J)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrInt(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrInt(
     JNIEnv *, jclass, jlong, jstring, jlong);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrIntList
  * Signature: (JLjava/lang/String;[J)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrIntList(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrIntList(
     JNIEnv *, jclass, jlong, jstring, jlongArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrFloat
  * Signature: (JLjava/lang/String;F)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrFloat(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrFloat(
     JNIEnv *, jclass, jlong, jstring, jfloat);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrFloatList
  * Signature: (JLjava/lang/String;[F)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrFloatList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrFloatList(
     JNIEnv *, jclass, jlong, jstring, jfloatArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrBool
  * Signature: (JLjava/lang/String;Z)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrBool(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrBool(
     JNIEnv *, jclass, jlong, jstring, jboolean);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrBoolList
  * Signature: (JLjava/lang/String;[Z)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrBoolList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrBoolList(
     JNIEnv *, jclass, jlong, jstring, jbooleanArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrType
  * Signature: (JLjava/lang/String;I)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrType(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrType(
     JNIEnv *, jclass, jlong, jstring, jint);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrTypeList
  * Signature: (JLjava/lang/String;[I)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrTypeList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrTypeList(
     JNIEnv *, jclass, jlong, jstring, jintArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrTensor
  * Signature: (JLjava/lang/String;J)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrTensor(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrTensor(
     JNIEnv *, jclass, jlong, jstring, jlong);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrTensorList
  * Signature: (JLjava/lang/String;[J)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrTensorList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrTensorList(
     JNIEnv *, jclass, jlong, jstring, jlongArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrShape
  * Signature: (JLjava/lang/String;[JI)V
  */
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrShape(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrShape(
     JNIEnv *, jclass, jlong, jstring, jlongArray, jint);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrShapeList
  * Signature: (JLjava/lang/String;[J[I)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrShapeList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrShapeList(
     JNIEnv *, jclass, jlong, jstring, jlongArray, jintArray);
 
 /*
- * Class:     org_tensorflow_GraphNodeBuilder
+ * Class:     org_tensorflow_GraphOperationBuilder
  * Method:    setAttrStringList
  * Signature: (JLjava/lang/String;[L)V
  */
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrStringList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrStringList(
     JNIEnv *, jclass, jlong, jstring, jobjectArray);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_NODE_BUILDER_JNI_H_
+#endif  // TENSORFLOW_JAVA_SRC_MAIN_NATIVE_GRAPH_OPERATION_BUILDER_JNI_H_

@@ -18,11 +18,11 @@ package org.tensorflow;
 import java.nio.charset.Charset;
 
 /**
- * An {@link OperationBuilder} for adding {@link GraphNode}s to a {@link Graph}.
+ * An {@link OperationBuilder} for adding {@link GraphOperation}s to a {@link Graph}.
  */
-public final class GraphNodeBuilder implements OperationBuilder {
+public final class GraphOperationBuilder implements OperationBuilder {
 
-  GraphNodeBuilder(Graph graph, String type, String name) {
+  GraphOperationBuilder(Graph graph, String type, String name) {
     this.graph = graph;
     Graph.Reference r = graph.ref();
     try {
@@ -33,15 +33,15 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   /**
-   * Add the {@link GraphNode} being built to the {@link Graph}.
+   * Add the {@link GraphOperation} being built to the {@link Graph}.
    *
    * <p>The OperationBuilder is not usable after build() returns.
    */
   @Override
-  public GraphNode build() {
+  public GraphOperation build() {
     Graph.Reference r = graph.ref();
     try {
-      GraphNode op = new GraphNode(graph, finish(unsafeNativeHandle));
+      GraphOperation op = new GraphOperation(graph, finish(unsafeNativeHandle));
       unsafeNativeHandle = 0;
       return op;
     } finally {
@@ -50,13 +50,13 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder addControlInput(Operation control) {
-    if (!(control instanceof GraphNode)) {
-      throw new IllegalArgumentException("Only GraphNode operations can be used as control input");
+  public GraphOperationBuilder addControlInput(Operation control) {
+    if (!(control instanceof GraphOperation)) {
+      throw new IllegalArgumentException("Only GraphOperation instances can be used as control inputs");
     }
     Graph.Reference r = graph.ref();
     try {
-      addControlInput(unsafeNativeHandle, ((GraphNode)control).getUnsafeNativeHandle());
+      addControlInput(unsafeNativeHandle, ((GraphOperation)control).getUnsafeNativeHandle());
     } finally {
       r.close();
     }
@@ -64,7 +64,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder addInput(Output<?> input) {
+  public GraphOperationBuilder addInput(Output<?> input) {
     Graph.Reference r = graph.ref();
     try {
       addInput(unsafeNativeHandle, input.getUnsafeNativeHandle(), input.index());
@@ -75,7 +75,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder addInputList(Output<?>[] inputs) {
+  public GraphOperationBuilder addInputList(Output<?>[] inputs) {
     Graph.Reference r = graph.ref();
     try {
       long[] opHandles = new long[inputs.length];
@@ -92,7 +92,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setDevice(String device) {
+  public GraphOperationBuilder setDevice(String device) {
     Graph.Reference r = graph.ref();
     try {
       setDevice(unsafeNativeHandle, device);
@@ -103,13 +103,13 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, String value) {
+  public GraphOperationBuilder setAttr(String name, String value) {
     setAttr(name, value.getBytes(Charset.forName("UTF-8")));
     return this;
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, byte[] value) {
+  public GraphOperationBuilder setAttr(String name, byte[] value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrString(unsafeNativeHandle, name, value);
@@ -120,7 +120,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, long value) {
+  public GraphOperationBuilder setAttr(String name, long value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrInt(unsafeNativeHandle, name, value);
@@ -131,7 +131,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, long[] value) {
+  public GraphOperationBuilder setAttr(String name, long[] value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrIntList(unsafeNativeHandle, name, value);
@@ -142,7 +142,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, float value) {
+  public GraphOperationBuilder setAttr(String name, float value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrFloat(unsafeNativeHandle, name, value);
@@ -153,7 +153,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, float[] value) {
+  public GraphOperationBuilder setAttr(String name, float[] value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrFloatList(unsafeNativeHandle, name, value);
@@ -164,7 +164,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, boolean value) {
+  public GraphOperationBuilder setAttr(String name, boolean value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrBool(unsafeNativeHandle, name, value);
@@ -175,7 +175,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, boolean[] value) {
+  public GraphOperationBuilder setAttr(String name, boolean[] value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrBoolList(unsafeNativeHandle, name, value);
@@ -186,7 +186,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, DataType value) {
+  public GraphOperationBuilder setAttr(String name, DataType value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrType(unsafeNativeHandle, name, value.c());
@@ -197,7 +197,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, DataType[] value) {
+  public GraphOperationBuilder setAttr(String name, DataType[] value) {
     int[] ctypes = new int[value.length];
     for (int i = 0; i < value.length; ++i) {
       ctypes[i] = value[i].c();
@@ -212,7 +212,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, Tensor<?> value) {
+  public GraphOperationBuilder setAttr(String name, Tensor<?> value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrTensor(unsafeNativeHandle, name, value.getNativeHandle());
@@ -223,7 +223,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, Tensor<?>[] value) {
+  public GraphOperationBuilder setAttr(String name, Tensor<?>[] value) {
     long[] handles = new long[value.length];
     int idx = 0;
     for (Tensor<?> t : value) {
@@ -239,7 +239,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, Shape value) {
+  public GraphOperationBuilder setAttr(String name, Shape value) {
     Graph.Reference r = graph.ref();
     try {
       setAttrShape(unsafeNativeHandle, name, value.asArray(), value.numDimensions());
@@ -250,7 +250,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, Shape[] value) {
+  public GraphOperationBuilder setAttr(String name, Shape[] value) {
     int[] numDimensions = new int[value.length];
     int totalNumDimensions = 0;
     for (int idx = 0; idx < value.length; ++idx) {
@@ -281,7 +281,7 @@ public final class GraphNodeBuilder implements OperationBuilder {
   }
 
   @Override
-  public GraphNodeBuilder setAttr(String name, String[] value) {
+  public GraphOperationBuilder setAttr(String name, String[] value) {
     Charset utf8 = Charset.forName("UTF-8");
     Object[] objects = new Object[value.length];
     for (int i = 0; i < value.length; ++i) {
