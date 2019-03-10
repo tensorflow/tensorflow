@@ -1501,7 +1501,7 @@ TEST_F(MklLayoutPassTest, Input_ControlEdge_PadWithFusedConv2D_Positive) {
 // ts that there are no duplicate output control edges after merge.
 // If both the merging ops have output control edge to a common op,
 // then after merge, the merged op will have only one control edge
-// to that commom op. This test only add additional output control edge check
+// to that common op. This test only add additional output control edge check
 // based on the previous test NodeMerge_PadWithFusedConv2D_Positive1
 // padding is VALID type
 // A = input(image), B = input(paddings), C = Pad(A, B) = input of conv2D,
