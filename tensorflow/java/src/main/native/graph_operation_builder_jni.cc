@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/java/src/main/native/exception_jni.h"
-#include "tensorflow/java/src/main/native/graph_node_builder_jni.h"
+#include "tensorflow/java/src/main/native/graph_operation_builder_jni.h"
 
 namespace {
 TF_OperationDescription* requireHandle(JNIEnv* env, jlong handle) {
@@ -50,7 +50,7 @@ TF_Tensor* requireTensor(JNIEnv* env, jlong handle) {
 }
 }  // namespace
 
-JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphNodeBuilder_allocate(
+JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphOperationBuilder_allocate(
     JNIEnv* env, jclass clazz, jlong graph_handle, jstring type, jstring name) {
   if (graph_handle == 0) {
     throwException(env, kIllegalStateException,
@@ -68,7 +68,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphNodeBuilder_allocate(
   return reinterpret_cast<jlong>(d);
 }
 
-JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphNodeBuilder_finish(
+JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphOperationBuilder_finish(
     JNIEnv* env, jclass clazz, jlong handle) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return 0;
@@ -82,7 +82,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphNodeBuilder_finish(
   return 0;
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_addInput(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_addInput(
     JNIEnv* env, jclass clazz, jlong handle, jlong op_handle, jint index) {
   TF_Output out;
   if (!resolveOutput(env, op_handle, index, &out)) return;
@@ -91,7 +91,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_addInput(
   TF_AddInput(d, out);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_addInputList(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_addInputList(
     JNIEnv* env, jclass clazz, jlong handle, jlongArray op_handles,
     jintArray indices) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -118,7 +118,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_addInputList(
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_addControlInput(
+Java_org_tensorflow_GraphOperationBuilder_addControlInput(
     JNIEnv* env, jclass clazz, jlong handle, jlong op_handle) {
   if (op_handle == 0) {
     throwException(env, kIllegalStateException,
@@ -132,7 +132,7 @@ Java_org_tensorflow_GraphNodeBuilder_addControlInput(
   TF_AddControlInput(d, control);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setDevice(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setDevice(
     JNIEnv* env, jclass clazz, jlong handle, jstring device) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
@@ -142,7 +142,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setDevice(
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrString(
+Java_org_tensorflow_GraphOperationBuilder_setAttrString(
     JNIEnv* env, jclass clazz, jlong handle, jstring name, jbyteArray value) {
   static_assert(sizeof(jbyte) == 1,
                 "Require Java byte to be represented as a single byte");
@@ -157,7 +157,7 @@ Java_org_tensorflow_GraphNodeBuilder_setAttrString(
 
 #define DEFINE_SET_ATTR_SCALAR(name, jtype, ctype)                          \
   JNIEXPORT void JNICALL                                                    \
-  Java_org_tensorflow_GraphNodeBuilder_setAttr##name(                  \
+  Java_org_tensorflow_GraphOperationBuilder_setAttr##name(                  \
       JNIEnv* env, jclass clazz, jlong handle, jstring name, jtype value) { \
     static_assert(                                                          \
         sizeof(ctype) >= sizeof(jtype),                                     \
@@ -171,7 +171,7 @@ Java_org_tensorflow_GraphNodeBuilder_setAttrString(
 
 #define DEFINE_SET_ATTR_LIST(name, jname, jtype, ctype)            \
   JNIEXPORT void JNICALL                                           \
-  Java_org_tensorflow_GraphNodeBuilder_setAttr##name##List(   \
+  Java_org_tensorflow_GraphOperationBuilder_setAttr##name##List(   \
       JNIEnv* env, jclass clazz, jlong handle, jstring name,       \
       jtype##Array value) {                                        \
     TF_OperationDescription* d = requireHandle(env, handle);       \
@@ -205,7 +205,7 @@ DEFINE_SET_ATTR(Type, Int, jint, TF_DataType);
 #undef DEFINE_SET_ATTR_LIST
 #undef DEFINE_SET_ATTR_SCALAR
 
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrTensor(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrTensor(
     JNIEnv* env, jclass clazz, jlong handle, jstring name,
     jlong tensor_handle) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -221,7 +221,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrTensor(
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrTensorList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrTensorList(
     JNIEnv* env, jclass clazz, jlong handle, jstring name,
     jlongArray tensor_handles) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -245,7 +245,7 @@ Java_org_tensorflow_GraphNodeBuilder_setAttrTensorList(
   env->ReleaseStringUTFChars(name, cname);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrShape(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrShape(
     JNIEnv* env, jclass clazz, jlong handle, jstring name, jlongArray shape,
     jint num_dims) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -267,7 +267,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_GraphNodeBuilder_setAttrShape(
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrShapeList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrShapeList(
     JNIEnv* env, jclass clazz, jlong handle, jstring name, jlongArray shapes,
     jintArray num_dims) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -303,7 +303,7 @@ Java_org_tensorflow_GraphNodeBuilder_setAttrShapeList(
 }
 
 JNIEXPORT void JNICALL
-Java_org_tensorflow_GraphNodeBuilder_setAttrStringList(
+Java_org_tensorflow_GraphOperationBuilder_setAttrStringList(
     JNIEnv* env, jclass object, jlong handle, jstring name,
     jobjectArray values) {
   TF_OperationDescription* d = requireHandle(env, handle);

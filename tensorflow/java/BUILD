@@ -147,11 +147,11 @@ tf_java_test(
 )
 
 tf_java_test(
-    name = "GraphNodeBuilderTest",
+    name = "GraphOperationBuilderTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/GraphNodeBuilderTest.java"],
+    srcs = ["src/test/java/org/tensorflow/GraphOperationBuilderTest.java"],
     javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.GraphNodeBuilderTest",
+    test_class = "org.tensorflow.GraphOperationBuilderTest",
     deps = [
         ":tensorflow",
         ":testutil",
@@ -160,11 +160,11 @@ tf_java_test(
 )
 
 tf_java_test(
-    name = "GraphNodeTest",
+    name = "GraphOperationTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/GraphNodeTest.java"],
+    srcs = ["src/test/java/org/tensorflow/GraphOperationTest.java"],
     javacopts = JAVACOPTS,
-    test_class = "org.tensorflow.GraphNodeTest",
+    test_class = "org.tensorflow.GraphOperationTest",
     deps = [
         ":tensorflow",
         ":testutil",

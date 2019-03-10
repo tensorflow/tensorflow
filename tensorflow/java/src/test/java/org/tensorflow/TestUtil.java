@@ -44,7 +44,7 @@ public class TestUtil {
     }
   }
 
-  public static GraphNode constantOp(Graph g, String name, Object value) {
+  public static GraphOperation constantOp(Graph g, String name, Object value) {
     try (Tensor<?> t = Tensor.create(value)) {
       return g.opBuilder("Const", name)
           .setAttr("dtype", t.dataType())

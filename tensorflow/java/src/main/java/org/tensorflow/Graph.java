@@ -68,13 +68,13 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
    *
    * <p>Or {@code null} if no such operation exists in the Graph.
    */
-  public GraphNode operation(String name) {
+  public GraphOperation operation(String name) {
     synchronized (nativeHandleLock) {
       long oph = operation(nativeHandle, name);
       if (oph == 0) {
         return null;
       }
-      return new GraphNode(this, oph);
+      return new GraphOperation(this, oph);
     }
   }
 
@@ -98,8 +98,8 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
    *     then some resources may leak.
    */
   @Override
-  public GraphNodeBuilder opBuilder(String type, String name) {
-    return new GraphNodeBuilder(this, type, name);
+  public GraphOperationBuilder opBuilder(String type, String name) {
+    return new GraphOperationBuilder(this, type, name);
   }
 
   /**
@@ -215,7 +215,7 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
             + " were expected");
       }
       for (int i = 0, j = ndy; i < ndy; ++i, ++j) {
-        GraphNode op = new GraphNode(this, dyHandlesAndIndices[i]);
+        GraphOperation op = new GraphOperation(this, dyHandlesAndIndices[i]);
         dy[i] = new Output<>(op, (int) dyHandlesAndIndices[j]);
       }
     }
@@ -287,12 +287,12 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
       try (Reference ref = subgraph.ref()) {
 
         for (int i = 0; i < ninputs; i++) {
-          Operation op = new GraphNode(subgraph, inputHandles[i]);
+          Operation op = new GraphOperation(subgraph, inputHandles[i]);
           inputs[i] = op.output(inputIndices[i]);
         }
 
         for (int i = 0; i < noutputs; i++) {
-          Operation op = new GraphNode(subgraph, outputHandles[i]);
+          Operation op = new GraphOperation(subgraph, outputHandles[i]);
           outputs[i] = op.output(outputIndices[i]);
         }
 
@@ -338,7 +338,7 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
             whileLoop(nativeHandle, inputHandles, inputIndices, name, cgBuilder, bgBuilder);
 
         for (int i = 0, j = ninputs; i < ninputs; ++i, ++j) {
-          Operation op = new GraphNode(this, outputHandlesAndIndices[i]);
+          Operation op = new GraphOperation(this, outputHandlesAndIndices[i]);
           outputs[i] = op.output((int) outputHandlesAndIndices[j]);
         }
       }
@@ -412,7 +412,7 @@ public final class Graph implements ExecutionEnvironment, AutoCloseable {
         long[] nativeReturn = nextOperation(reference.nativeHandle(), this.position);
 
         if ((nativeReturn != null) && (nativeReturn[0] != 0)) {
-          this.operation = new GraphNode(this.graph, nativeReturn[0]);
+          this.operation = new GraphOperation(this.graph, nativeReturn[0]);
           this.position = (int) nativeReturn[1];
         }
       } finally {

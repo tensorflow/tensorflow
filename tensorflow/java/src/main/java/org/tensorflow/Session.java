@@ -204,7 +204,7 @@ public final class Session implements AutoCloseable {
      * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
      */
     public Runner addTarget(String operation) {
-      GraphNode op = operationByName(operation);
+      GraphOperation op = operationByName(operation);
       if (op != null) {
         targets.add(op);
       }
@@ -214,14 +214,14 @@ public final class Session implements AutoCloseable {
     /**
      * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
      * 
-     * @throws execption if the operation is not a {@link GraphNode}
+     * @throws execption if the operation is not a {@link GraphOperation}
      */
     public Runner addTarget(Operation operation) {
-      if (!(operation instanceof GraphNode)) {
+      if (!(operation instanceof GraphOperation)) {
         throw new IllegalArgumentException("Operation of type " + operation.getClass().getName() +
             " is not supported in graph sessions");
       }
-      targets.add((GraphNode) operation);
+      targets.add((GraphOperation) operation);
       return this;
     }
     
@@ -310,7 +310,7 @@ public final class Session implements AutoCloseable {
         idx++;
       }
       idx = 0;
-      for (GraphNode op : targets) {
+      for (GraphOperation op : targets) {
         targetOpHandles[idx++] = op.getUnsafeNativeHandle();
       }
       Reference runRef = new Reference();
@@ -372,8 +372,8 @@ public final class Session implements AutoCloseable {
       }
     }
 
-    private GraphNode operationByName(String opName) {
-      GraphNode op = graph.operation(opName);
+    private GraphOperation operationByName(String opName) {
+      GraphOperation op = graph.operation(opName);
       if (op == null) {
         throw new IllegalArgumentException("No Operation named [" + opName + "] in the Graph");
       }
@@ -398,7 +398,7 @@ public final class Session implements AutoCloseable {
     private ArrayList<Output<?>> inputs = new ArrayList<Output<?>>();
     private ArrayList<Tensor<?>> inputTensors = new ArrayList<Tensor<?>>();
     private ArrayList<Output<?>> outputs = new ArrayList<Output<?>>();
-    private ArrayList<GraphNode> targets = new ArrayList<GraphNode>();
+    private ArrayList<GraphOperation> targets = new ArrayList<GraphOperation>();
     private byte[] runOptions = null;
   }
 
