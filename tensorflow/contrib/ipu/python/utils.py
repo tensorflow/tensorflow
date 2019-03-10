@@ -618,9 +618,9 @@ def extract_compile_reports(events):
   result = []
   for e in events:
     evt = IpuTraceEvent.FromString(e)
-    if evt.type == IpuTraceEvent.COMPILE_BEGIN:
+    if evt.type == IpuTraceEvent.COMPILE_END:
       try:
-        module = evt.execute.module_name.decode('utf-8')
+        module = evt.compile_end.module_name.decode('utf-8')
         rep = evt.compile_end.compilation_report.decode('utf-8')
         result += [(module, rep)]
       except UnicodeDecodeError:

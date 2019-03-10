@@ -145,17 +145,21 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       evts = ipu.utils.extract_all_events(e)
       self.assertEqual(count_compile_end_events(evts), 1)
 
-      compilation_rep  = ipu.utils.extract_comilation_report_from_events(e)
+      compilation_rep  = ipu.utils.extract_compile_reports(e)
       self.assertEqual(len(compilation_rep), 1)
       self.assertEqual(type(compilation_rep), list)
       self.assertEqual(type(compilation_rep[0]), tuple)
       self.assertTrue(compilation_rep[0][0].startswith("cluster"))
+      self.assertTrue(len(compilation_rep[0][1]) > 1000)
+      self.assertTrue(compilation_rep[0][1].startswith('{'))
 
-      execution_rep  = ipu.utils.extract_comilation_report_from_events(e)
+      execution_rep  = ipu.utils.extract_execute_reports(e)
       self.assertEqual(len(execution_rep), 1)
       self.assertEqual(type(execution_rep), list)
       self.assertEqual(type(execution_rep[0]), tuple)
       self.assertTrue(execution_rep[0][0].startswith("cluster"))
+      self.assertTrue(len(execution_rep[0][1]) > 1000)
+      self.assertTrue(execution_rep[0][1].startswith('{'))
 
   def testIpuWhileScope(self):
     # 1: design is targetted at the device
