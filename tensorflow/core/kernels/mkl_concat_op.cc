@@ -484,7 +484,7 @@ class MklConcatOp : public OpKernel {
         output_tensor->flat<uint8>().size() * sizeof(uint8));
   }
 
-  // This method finds the most commom format across all MKL inputs
+  // This method finds the most common format across all MKL inputs
   // Inputs:
   //   1. input_shapes: shapes of input (MKL) tensors.
   //   2. concat_dim: concat dimension.
