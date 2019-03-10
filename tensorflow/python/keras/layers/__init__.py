@@ -32,6 +32,7 @@ from tensorflow.python.keras.layers.advanced_activations import ELU
 from tensorflow.python.keras.layers.advanced_activations import ReLU
 from tensorflow.python.keras.layers.advanced_activations import ThresholdedReLU
 from tensorflow.python.keras.layers.advanced_activations import Softmax
+from tensorflow.python.keras.layers.advanced_activations import Swish
 
 # Convolution layers.
 from tensorflow.python.keras.layers.convolutional import Conv1D
