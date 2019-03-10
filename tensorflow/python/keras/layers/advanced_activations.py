@@ -331,7 +331,7 @@ class ReLU(Layer):
   def compute_output_shape(self, input_shape):
     return input_shape
 
-  @keras_export('keras.layers.Swish')
+@keras_export('keras.layers.Swish')
 class Swish(Layer):
   """Swish stands for self-gated activation function.
   This is new activation function defined by Google.
