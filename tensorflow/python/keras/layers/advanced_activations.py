@@ -330,3 +330,50 @@ class ReLU(Layer):
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
+
+  @keras_export('keras.layers.Swish')
+class Swish(Layer):
+  """Swish stands for self-gated activation function.
+  This is new activation function defined by Google.
+  Like ReLU, Swish is unbounded above and bounded below, below is the paper.
+  https://arxiv.org/pdf/1710.05941v1.pdf
+  Input shape:
+      Arbitrary. Use the keyword argument `input_shape`
+      (tuple of integers, does not include the samples axis)
+      when using this layer as the first layer in a model.
+  Output shape:
+      Same shape as the input.
+  Arguments:
+      beta: float >= 0. Scaling factor
+      trainable: whether to learn the scaling factor during training or not
+  """
+
+  def __init__(self, beta=1.0, trainable=False, **kwargs):
+    super(Swish, self).__init__(**kwargs)
+    self.supports_masking = True
+    self.beta = beta
+    self.trainable = trainable
+
+  @tf_utils.shape_type_conversion
+  def build(self, input_shape):
+    self.scaling_factor = K.variable(self.beta,
+                                     dtype=K.floatx(),
+                                     name='scaling_factor')
+    if self.trainable:
+      self._trainable_weights.append(self.scaling_factor)
+    super(Swish, self).build(input_shape)
+
+  def call(self, inputs):
+    return inputs * K.sigmoid(self.scaling_factor * inputs)
+
+  def get_config(self):
+    config = {
+        'beta': self.get_weights()[0] if self.trainable else self.beta,
+        'trainable': self.trainable
+    }
+    base_config = super(Swish, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @tf_utils.shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
