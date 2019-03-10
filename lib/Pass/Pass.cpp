@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Pass/Pass.h"
+#include "PassDetail.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassManager.h"
 
@@ -97,75 +98,6 @@ LogicalResult ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
 // PassExecutor
 //===----------------------------------------------------------------------===//
 
-namespace mlir {
-namespace detail {
-/// The abstract base pass executor class.
-class PassExecutor {
-public:
-  enum Kind { FunctionExecutor, ModuleExecutor };
-  explicit PassExecutor(Kind kind) : kind(kind) {}
-
-  /// Get the kind of this executor.
-  Kind getKind() const { return kind; }
-
-private:
-  /// The kind of executor this object is.
-  Kind kind;
-};
-
-/// A pass executor that contains a list of passes over a function.
-class FunctionPassExecutor : public PassExecutor {
-public:
-  FunctionPassExecutor() : PassExecutor(Kind::FunctionExecutor) {}
-  FunctionPassExecutor(FunctionPassExecutor &&) = default;
-
-  // TODO(riverriddle) Allow copying.
-  FunctionPassExecutor(const FunctionPassExecutor &) = delete;
-  FunctionPassExecutor &operator=(const FunctionPassExecutor &) = delete;
-
-  /// Run the executor on the given function.
-  LogicalResult run(Function *function, FunctionAnalysisManager &fam);
-
-  /// Add a pass to the current executor. This takes ownership over the provided
-  /// pass pointer.
-  void addPass(FunctionPassBase *pass) { passes.emplace_back(pass); }
-
-  static bool classof(const PassExecutor *pe) {
-    return pe->getKind() == Kind::FunctionExecutor;
-  }
-
-private:
-  std::vector<std::unique_ptr<FunctionPassBase>> passes;
-};
-
-/// A pass executor that contains a list of passes over a module unit.
-class ModulePassExecutor : public PassExecutor {
-public:
-  ModulePassExecutor() : PassExecutor(Kind::ModuleExecutor) {}
-  ModulePassExecutor(ModulePassExecutor &&) = default;
-
-  // Don't allow copying.
-  ModulePassExecutor(const ModulePassExecutor &) = delete;
-  ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
-
-  /// Run the executor on the given module.
-  LogicalResult run(Module *module, ModuleAnalysisManager &mam);
-
-  /// Add a pass to the current executor. This takes ownership over the provided
-  /// pass pointer.
-  void addPass(ModulePassBase *pass) { passes.emplace_back(pass); }
-
-  static bool classof(const PassExecutor *pe) {
-    return pe->getKind() == Kind::ModuleExecutor;
-  }
-
-private:
-  /// Set of passes to run on the given module.
-  std::vector<std::unique_ptr<ModulePassBase>> passes;
-};
-} // end namespace detail
-} // end namespace mlir
-
 /// Run all of the passes in this manager over the current function.
 LogicalResult detail::FunctionPassExecutor::run(Function *function,
                                                 FunctionAnalysisManager &fam) {
@@ -189,32 +121,6 @@ LogicalResult detail::ModulePassExecutor::run(Module *module,
 //===----------------------------------------------------------------------===//
 // ModuleToFunctionPassAdaptor
 //===----------------------------------------------------------------------===//
-
-namespace {
-/// An adaptor module pass used to run function passes over all of the
-/// non-external functions of a module.
-class ModuleToFunctionPassAdaptor
-    : public ModulePass<ModuleToFunctionPassAdaptor> {
-public:
-  ModuleToFunctionPassAdaptor() = default;
-  ModuleToFunctionPassAdaptor(ModuleToFunctionPassAdaptor &&) = default;
-
-  // TODO(riverriddle) Allow copying.
-  ModuleToFunctionPassAdaptor(const ModuleToFunctionPassAdaptor &) = delete;
-  ModuleToFunctionPassAdaptor &
-  operator=(const ModuleToFunctionPassAdaptor &) = delete;
-
-  /// Run the held function pipeline over all non-external functions within the
-  /// module.
-  void runOnModule() override;
-
-  /// Returns the function pass executor for this adaptor.
-  FunctionPassExecutor &getFunctionExecutor() { return fpe; }
-
-private:
-  FunctionPassExecutor fpe;
-};
-} // end anonymous namespace
 
 /// Execute the held function pass over all non-external functions within the
 /// module.
@@ -366,3 +272,9 @@ void ModuleAnalysisManager::invalidate(const detail::PreservedAnalyses &pa) {
   for (auto &analysisPair : functionAnalyses)
     analysisPair.second.invalidate(pa);
 }
+
+//===----------------------------------------------------------------------===//
+// PassInstrumentation
+//===----------------------------------------------------------------------===//
+
+PassInstrumentation::~PassInstrumentation() {}
