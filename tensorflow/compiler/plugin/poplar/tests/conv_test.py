@@ -444,8 +444,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_',
-            'DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6']
+      ok = ['DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDepthwiseConvBackpropFilter1x1WithRelu(self):
@@ -477,7 +476,6 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = ['DepthwiseConv2dNativeBackpropFilter/fusion*/Conv_6x6',
-            'Copy_',
             'Relu/fusion.*/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

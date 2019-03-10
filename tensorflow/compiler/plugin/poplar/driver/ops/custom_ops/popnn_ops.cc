@@ -233,7 +233,6 @@ StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  VLOG(1) << "Processing " << inst->name() << " as CreateLstmLayerFwdOp.";
   poplar::program::Sequence seq;
   popnn::lstm::LstmWeights weights;
 
@@ -285,7 +284,6 @@ StatusOr<poplar::program::Program> CreateLstmLayerBwdOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  VLOG(1) << "Processing " << inst->name() << " as CreateLstmLayerBwdOp.";
   poplar::program::Sequence seq;
   popnn::lstm::LstmWeights weights;
 
@@ -433,6 +431,8 @@ StatusOr<poplar::program::Program> CreateGroupNormStatisticsOp(
 
 const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
   static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
+      {PoplibsOp::AvgPool, {AllocatePoolingOp, CreateAvgPoolOp}},
+      {PoplibsOp::AvgPoolGrad, {AllocatePoolingOp, CreateAvgPoolGradOp}},
       {PoplibsOp::GroupNormGrad, {AllocateNormGradOp, CreateGroupNormGradOp}},
       {PoplibsOp::GroupNormInference,
        {AllocateNormInferenceAndTrainingOp, CreateGroupNormInferenceOp}},

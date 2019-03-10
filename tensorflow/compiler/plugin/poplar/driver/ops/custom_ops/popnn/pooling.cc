@@ -48,11 +48,19 @@ StatusOr<poplar::program::Program> CreateMaxPoolOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  VLOG(1) << "Processing " << inst->name() << " as MaxPool.";
-
   TF_ASSIGN_OR_RETURN(Window window,
                       attribute_map.GetAttributeAsWindow("window"));
   return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::MAX,
+                              window);
+}
+
+StatusOr<poplar::program::Program> CreateAvgPoolOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
+  TF_ASSIGN_OR_RETURN(Window window,
+                      attribute_map.GetAttributeAsWindow("window"));
+  return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::AVG,
                               window);
 }
 
@@ -60,12 +68,19 @@ StatusOr<poplar::program::Program> CreateMaxPoolGradOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  VLOG(1) << "Processing " << inst->name() << " as MaxPoolGrad.";
+  TF_ASSIGN_OR_RETURN(Window window,
+                      attribute_map.GetAttributeAsWindow("window"));
+  return CreatePoplibsMaxPoolGrad(res, inst, tensor_map, window);
+}
 
+StatusOr<poplar::program::Program> CreateAvgPoolGradOp(
+    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output_shape, TensorMap& tensor_map,
+    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
   TF_ASSIGN_OR_RETURN(Window window,
                       attribute_map.GetAttributeAsWindow("window"));
   return CreatePoplibsPoolingGrad(res, inst, tensor_map,
-                                  popnn::PoolingType::MAX, window);
+                                  popnn::PoolingType::AVG, window);
 }
 
 }  // namespace poplarplugin

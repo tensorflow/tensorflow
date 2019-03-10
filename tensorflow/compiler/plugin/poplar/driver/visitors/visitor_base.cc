@@ -63,7 +63,6 @@ static std::map<std::string, CustomCallFn> custom_call_map = {
     {"matmul_biasadd", CreateMatMulBiasAddOp},
     {"norm_scale_add", RandomNormalScale},
     {"uniform_scale_add", RandomUniformScale},
-    {"avg_pool", CreatePoplibsWindowReduction},
     {"wide_const", CreateWideConstant},
     {"depthwise_conv", CreateConv2D},
     {"conv_with_reverse", Create2DConvWithReverse},

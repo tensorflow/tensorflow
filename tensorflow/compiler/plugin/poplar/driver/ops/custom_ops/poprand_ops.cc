@@ -19,8 +19,6 @@ StatusOr<poplar::program::Program> CreateTruncatedNormalOp(
     poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map,
     const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  VLOG(1) << "Processing " << inst->name();
-
   poplar::program::Program prog;
 
   TF_ASSIGN_OR_RETURN(prog,

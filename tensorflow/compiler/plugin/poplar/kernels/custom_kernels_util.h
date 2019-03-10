@@ -48,7 +48,9 @@ absl::optional<PoplibsLib> StringToPoplibsLib(const std::string&);
 enum class PoplibsOp : uint32 {
   // Poplin:
   // Popnn:
-  GroupNormGrad = 0,
+  AvgPool = 0,
+  AvgPoolGrad,
+  GroupNormGrad,
   GroupNormInference,
   GroupNormStatistics,
   GroupNormTraining,

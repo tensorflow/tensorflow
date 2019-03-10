@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 // XLA specific pooling ops.
+#include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/ipu_kernels_common.h"
@@ -107,10 +108,13 @@ xla::StatusOr<xla::Window> MakeWindow(const xla::Shape& input_shape,
 }
 
 // Superclass of pooling ops.
-class PoolingOp : public XlaOpKernel {
+class PoolingOp : public XlaOpKernel, IpuOpKernel {
  public:
-  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims, PoplibsOp op_type)
+      : XlaOpKernel(ctx),
+        num_spatial_dims_(num_spatial_dims),
+        op_type_(op_type) {
+    AddRequiredAttributesToMap();
     if (ctx->num_inputs() == 1) {
       std::vector<int32> ksize_int;
       std::vector<int32> stride_int;
@@ -132,6 +136,64 @@ class PoolingOp : public XlaOpKernel {
     Padding padding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
     padding_ = (padding == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    auto ksize_or_error = GetKernelSize(ctx);
+    OP_REQUIRES_OK(ctx, ksize_or_error.status());
+    std::vector<int64> ksize = ksize_or_error.ValueOrDie();
+
+    auto stride_or_error = GetStride(ctx);
+    OP_REQUIRES_OK(ctx, stride_or_error.status());
+    std::vector<int64> stride = stride_or_error.ValueOrDie();
+
+    const TensorShape tensor_in_shape = ctx->InputShape(0);
+    OP_REQUIRES(ctx, tensor_in_shape.dims() == num_dims(),
+                errors::InvalidArgument("Input to ", type_string(),
+                                        " operator must have ", num_dims(),
+                                        " dimensions"));
+    xla::XlaOp input = ctx->Input(0);
+
+    // Get the input shape
+    xla::PrimitiveType input_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+    xla::Shape input_shape = TensorShapeToXLAShape(input_type, tensor_in_shape);
+
+    xla::XlaBuilder& b = *ctx->builder();
+
+    auto window_or_error =
+        MakeWindow(input_shape, ksize, stride, padding_, {}, {});
+    OP_REQUIRES_OK(ctx, window_or_error.status());
+    xla::Window window = window_or_error.ValueOrDie();
+    attribute_map_.AddAttribute("window", window);
+
+    // Infer the shape - pooling shape can be inferred using
+    // InferReduceWindowShape where the computation is scalars.
+    xla::Shape scalar_shape =
+        xla::ShapeUtil::MakeShape(input_shape.element_type(), {});
+    xla::ProgramShape scalar_comp_shape = xla::ShapeUtil::MakeProgramShape(
+        {scalar_shape, scalar_shape}, scalar_shape);
+    auto output_shape_or_error = xla::ShapeInference::InferReduceWindowShape(
+        input_shape, scalar_shape, window, scalar_comp_shape);
+    OP_REQUIRES_OK(ctx, output_shape_or_error.status());
+    xla::Shape output_shape = output_shape_or_error.ValueOrDie();
+
+    // Get the reduction dimensions.
+    auto reduction_dims = GetPoolingReductionDims(window);
+
+    xla::XlaOp output;
+    if (reduction_dims.size()) {
+      std::vector<xla::XlaOp> args = {input};
+      output = xla::CustomCall(
+          &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn, op_type_), args,
+          output_shape, attribute_map_.Serialise());
+    } else {
+      // This is a no-op when there are no reducing dimensions.
+      output = input;
+    }
+
+    ctx->SetOutput(0, output);
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
@@ -186,75 +248,6 @@ class PoolingOp : public XlaOpKernel {
   }
 
  protected:
-  const int num_spatial_dims_;
-  std::vector<int64> ksize_;
-  std::vector<int64> stride_;
-  xla::Padding padding_;
-  TensorFormat data_format_ = FORMAT_NHWC;
-};
-
-class MaxPoolOp : public PoolingOp, IpuOpKernel {
- public:
-  MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
-      : PoolingOp(ctx, num_spatial_dims) {
-    AddRequiredAttributesToMap();
-    string data_format_str;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
-    OP_REQUIRES(ctx, FormatFromString(data_format_str, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    auto ksize_or_error = GetKernelSize(ctx);
-    OP_REQUIRES_OK(ctx, ksize_or_error.status());
-    std::vector<int64> ksize = ksize_or_error.ValueOrDie();
-
-    auto stride_or_error = GetStride(ctx);
-    OP_REQUIRES_OK(ctx, stride_or_error.status());
-    std::vector<int64> stride = stride_or_error.ValueOrDie();
-
-    const TensorShape tensor_in_shape = ctx->InputShape(0);
-    OP_REQUIRES(ctx, tensor_in_shape.dims() == num_dims(),
-                errors::InvalidArgument("Input to ", type_string(),
-                                        " operator must have ", num_dims(),
-                                        " dimensions"));
-    xla::XlaOp input = ctx->Input(0);
-
-    // Get the input shape
-    xla::PrimitiveType input_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
-    xla::Shape input_shape = TensorShapeToXLAShape(input_type, tensor_in_shape);
-
-    xla::XlaBuilder& b = *ctx->builder();
-
-    auto window_or_error =
-        MakeWindow(input_shape, ksize, stride, padding_, {}, {});
-    OP_REQUIRES_OK(ctx, window_or_error.status());
-    xla::Window window = window_or_error.ValueOrDie();
-    attribute_map_.AddAttribute("window", window);
-
-    // Infer the shape - max pool shape can be inferred using
-    // InferReduceWindowShape where the computation is scalars.
-    xla::Shape scalar_shape =
-        xla::ShapeUtil::MakeShape(input_shape.element_type(), {});
-    xla::ProgramShape scalar_comp_shape = xla::ShapeUtil::MakeProgramShape(
-        {scalar_shape, scalar_shape}, scalar_shape);
-    auto output_shape_or_error = xla::ShapeInference::InferReduceWindowShape(
-        input_shape, scalar_shape, window, scalar_comp_shape);
-    OP_REQUIRES_OK(ctx, output_shape_or_error.status());
-    xla::Shape output_shape = output_shape_or_error.ValueOrDie();
-
-    std::vector<xla::XlaOp> args = {input};
-    xla::XlaOp output = xla::CustomCall(
-        &b,
-        GetPoplibsCustomOpTargetString(PoplibsLib::Popnn, PoplibsOp::MaxPool),
-        args, output_shape, attribute_map_.Serialise());
-
-    ctx->SetOutput(0, output);
-  }
-
- protected:
   const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
 
   const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
@@ -262,6 +255,18 @@ class MaxPoolOp : public PoolingOp, IpuOpKernel {
   };
 
   const uint64 NumberOfInplaceOperands() override { return 0; }
+
+  const int num_spatial_dims_;
+  std::vector<int64> ksize_;
+  std::vector<int64> stride_;
+  xla::Padding padding_;
+  PoplibsOp op_type_;
+};
+
+class MaxPoolOp : public PoolingOp {
+ public:
+  MaxPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
+      : PoolingOp(ctx, num_spatial_dims, PoplibsOp::MaxPool) {}
 };
 
 class MaxPool2DOp : public MaxPoolOp {
@@ -283,6 +288,27 @@ REGISTER_XLA_OP(Name("MaxPoolV2")
 //       : MaxPoolOp(ctx, /*num_spatial_dims=*/3) {}
 // };
 // REGISTER_XLA_OP(Name("MaxPool3D").Device(DEVICE_IPU_XLA_JIT), MaxPool3DOp);
+
+class AvgPoolOp : public PoolingOp {
+ public:
+  AvgPoolOp(OpKernelConstruction* ctx, int num_spatial_dims)
+      : PoolingOp(ctx, num_spatial_dims, PoplibsOp::AvgPool) {}
+};
+
+class AvgPool2DOp : public AvgPoolOp {
+ public:
+  explicit AvgPool2DOp(OpKernelConstruction* ctx)
+      : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {}
+};
+REGISTER_XLA_OP(Name("AvgPool").Device(DEVICE_IPU_XLA_JIT), AvgPool2DOp);
+
+// TODO - uncomment this for T5956/T6966.
+// class AvgPool3DOp : public AvgPoolOp {
+//  public:
+//   explicit AvgPool3DOp(OpKernelConstruction* ctx)
+//       : AvgPoolOp(ctx, /*num_spatial_dims=*/3) {}
+// };
+// REGISTER_XLA_OP(Name("AvgPool3D").Device(DEVICE_IPU_XLA_JIT), AvgPool3DOp);
 
 // The operation to compute MaxPool gradients.
 // It takes three inputs:
@@ -350,8 +376,8 @@ class MaxPoolGradOp : public XlaOpKernel, IpuOpKernel {
                                         "-dimensional"));
 
     auto input = ctx->Input(0);
-    auto output = ctx->Input(1);
-    auto output_backprop = ctx->Input(2);
+    auto out = ctx->Input(1);
+    auto out_backprop = ctx->Input(2);
 
     xla::PrimitiveType input_type;
     OP_REQUIRES_OK(ctx,
@@ -368,13 +394,21 @@ class MaxPoolGradOp : public XlaOpKernel, IpuOpKernel {
     xla::Window window = window_or_error.ValueOrDie();
     attribute_map_.AddAttribute("window", window);
 
-    std::vector<xla::XlaOp> args = {input, output, output_backprop};
-    xla::XlaOp input_backprop =
-        xla::CustomCall(&b,
-                        GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
-                                                       PoplibsOp::MaxPoolGrad),
-                        args, input_shape, attribute_map_.Serialise());
+    // Get the reduction dimensions.
+    auto reduction_dims = GetPoolingReductionDims(window);
 
+    xla::XlaOp input_backprop;
+    if (reduction_dims.size()) {
+      std::vector<xla::XlaOp> args = {input, out, out_backprop};
+      input_backprop =
+          xla::CustomCall(&b,
+                          GetPoplibsCustomOpTargetString(
+                              PoplibsLib::Popnn, PoplibsOp::MaxPoolGrad),
+                          args, input_shape, attribute_map_.Serialise());
+    } else {
+      // The gradient is all 0s when we don't reduce.
+      input_backprop = xla::Zeros(&b, input_shape);
+    }
     ctx->SetOutput(0, input_backprop);
   }
 
@@ -391,18 +425,12 @@ class MaxPoolGradOp : public XlaOpKernel, IpuOpKernel {
   std::vector<int64> ksize_;
   std::vector<int64> stride_;
   Padding padding_;
-  TensorFormat data_format_ = FORMAT_NHWC;
 };
 
 class MaxPool2DGradOp : public MaxPoolGradOp {
  public:
   explicit MaxPool2DGradOp(OpKernelConstruction* ctx)
-      : MaxPoolGradOp(ctx, /*num_spatial_dims=*/2) {
-    string data_format;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format));
-    OP_REQUIRES(ctx, FormatFromString(data_format, &data_format_),
-                errors::InvalidArgument("Invalid data format"));
-  }
+      : MaxPoolGradOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(Name("MaxPoolGrad").Device(DEVICE_IPU_XLA_JIT),
                 MaxPool2DGradOp);
@@ -420,6 +448,121 @@ REGISTER_XLA_OP(Name("MaxPoolGradV2")
 // };
 // REGISTER_XLA_OP(Name("MaxPool3DGrad").Device(DEVICE_IPU_XLA_JIT),
 // MaxPool3DGradOp);
+
+// The operation to compute AvgPool gradients.
+// It takes two inputs:
+//   - The shape of the original input tensor
+//   - Backprop tensor for output
+// It produces one output: backprop tensor for input.
+class AvgPoolGradOp : public XlaOpKernel, IpuOpKernel {
+ public:
+  AvgPoolGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
+      : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
+    AddRequiredAttributesToMap();
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
+    OP_REQUIRES(ctx, ksize_.size() == num_dims(),
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
+    OP_REQUIRES(ctx, stride_.size() == num_dims(),
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
+    OP_REQUIRES(ctx, ksize_[0] == 1 && stride_[0] == 1,
+                errors::Unimplemented(
+                    "Pooling is not yet supported on the batch dimension."));
+  }
+
+  int num_dims() const { return num_spatial_dims_ + 2; }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    TensorShape tensor_input_shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &tensor_input_shape));
+    const TensorShape tensor_out_backprop_shape = ctx->InputShape(1);
+
+    // For avgpooling, tensor_in_shape should have num_dims() dimensions.
+    OP_REQUIRES(ctx, tensor_input_shape.dims() == num_dims(),
+                errors::InvalidArgument("orig_tensor_input_shape must be ",
+                                        num_dims(), "-dimensional"));
+
+    // For avgpooling, out_backprop should have num_dims() dimensions.
+    OP_REQUIRES(ctx, tensor_out_backprop_shape.dims() == num_dims(),
+                errors::InvalidArgument("out_backprop must be ", num_dims(),
+                                        "-dimensional"));
+
+    auto out_backprop = ctx->Input(1);
+
+    xla::PrimitiveType data_type;
+    OP_REQUIRES_OK(ctx,
+                   DataTypeToPrimitiveType(ctx->input_type(1), &data_type));
+    xla::Shape input_shape =
+        TensorShapeToXLAShape(data_type, tensor_input_shape);
+    xla::XlaBuilder& b = *ctx->builder();
+
+    xla::Padding xla_padding =
+        (padding_ == VALID) ? xla::Padding::kValid : xla::Padding::kSame;
+
+    auto window_or_error =
+        MakeWindow(input_shape, ksize_, stride_, xla_padding, {}, {});
+    OP_REQUIRES_OK(ctx, window_or_error.status());
+    xla::Window window = window_or_error.ValueOrDie();
+    attribute_map_.AddAttribute("window", window);
+
+    // Get the reduction dimensions.
+    auto reduction_dims = GetPoolingReductionDims(window);
+
+    xla::XlaOp input_backprop;
+    if (reduction_dims.size()) {
+      std::vector<xla::XlaOp> args = {out_backprop};
+      input_backprop =
+          xla::CustomCall(&b,
+                          GetPoplibsCustomOpTargetString(
+                              PoplibsLib::Popnn, PoplibsOp::AvgPoolGrad),
+                          args, input_shape, attribute_map_.Serialise());
+    } else {
+      // The gradient is all 0s when we don't reduce.
+      input_backprop = xla::Zeros(&b, input_shape);
+    }
+
+    ctx->SetOutput(0, input_backprop);
+  }
+
+ protected:
+  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
+
+  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
+    return {};
+  };
+
+  const uint64 NumberOfInplaceOperands() override { return 0; }
+
+  const int num_spatial_dims_;
+  std::vector<int64> ksize_;
+  std::vector<int64> stride_;
+  Padding padding_;
+};
+
+class AvgPool2DGradOp : public AvgPoolGradOp {
+ public:
+  explicit AvgPool2DGradOp(OpKernelConstruction* ctx)
+      : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {}
+};
+REGISTER_XLA_OP(Name("AvgPoolGrad")
+                    .Device(DEVICE_IPU_XLA_JIT)
+                    .CompileTimeConstantInput("orig_input_shape"),
+                AvgPool2DGradOp);
+
+// TODO - uncomment this for T5956/T6966.
+// class AvgPool3DGradOp : public AvgPoolGradOp {
+//  public:
+//   explicit AvgPool3DGradOp(OpKernelConstruction* ctx)
+//       : AvgPoolGradOp(ctx, /*num_spatial_dims=*/3) {}
+// };
+// REGISTER_XLA_OP(
+//     Name("AvgPool3DGrad").Device(DEVICE_IPU_XLA_JIT).CompileTimeConstantInput("orig_input_shape"),
+//     AvgPool3DGradOp);
 
 }  // anonymous namespace
 }  // namespace tensorflow

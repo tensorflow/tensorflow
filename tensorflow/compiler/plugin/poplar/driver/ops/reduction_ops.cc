@@ -14,6 +14,7 @@
 
 #include <popnn/Pooling.hpp>
 #include <popnn/PoolingDef.hpp>
+#include <popops/Cast.hpp>
 #include <popops/ElementWise.hpp>
 #include <popops/Pad.hpp>
 #include <popops/Reduce.hpp>
@@ -212,13 +213,24 @@ static std::size_t GetOverlapLayerNum(const Tpos& pos, const Tlimit& limit) {
   return layer;
 }
 
-static std::set<unsigned int> GetReductionDims(const Window& window) {
+std::set<unsigned int> GetPoolingReductionDims(const Window& window) {
   std::set<unsigned int> reduction_dims;
   for (int64 i = 0; i < window.dimensions_size(); i++) {
     auto& d = window.dimensions(i);
     if (d.size() != 1 || d.stride() != 1 || d.padding_low() != 0 ||
         d.padding_high() != 0) {
       reduction_dims.insert(i);
+    }
+  }
+
+  // TODO make sure this works with T5956.
+  // When we have a single reduction dimension, add an adjacent dimension for
+  // reduction as well.
+  if (reduction_dims.size() == 1) {
+    if (reduction_dims.count(window.dimensions_size() - 1) == 0) {
+      reduction_dims.insert(window.dimensions_size() - 1);
+    } else {
+      reduction_dims.insert(window.dimensions_size() - 2);
     }
   }
   return reduction_dims;
@@ -238,21 +250,22 @@ static std::vector<unsigned int> GetShuffleInputDimensionsForPoplar(
 }
 
 static std::vector<unsigned int> GetShuffleOutputDimensionsForPoplar(
-    const Window& window, const std::vector<unsigned int> shuffle_in) {
+    const std::vector<unsigned int> shuffle_in) {
   std::vector<unsigned int> shuffle_out(shuffle_in.size());
-  for (int i = 0; i < window.dimensions_size(); i++) {
+  for (int i = 0; i < shuffle_in.size(); i++) {
     shuffle_out[shuffle_in[i]] = i;
   }
   return shuffle_out;
 }
 
-static poplar::Type getReductionType(const popnn::PoolingType& pooling_type,
+static poplar::Type GetReductionType(const popnn::PoolingType& pooling_type,
                                      const poplar::Type& input_type) {
   switch (pooling_type) {
     case popnn::PoolingType::AVG:
     case popnn::PoolingType::SUM:
       return (input_type == poplar::HALF) ? poplar::FLOAT : input_type;
     case popnn::PoolingType::MAX:
+    default:
       return input_type;
   }
 }
@@ -282,11 +295,9 @@ static popnn::pooling::PoolParams GetPoplibsPoolParams(
     padding_upper.push_back((int)d.padding_high());
   }
 
-  auto data_type = getReductionType(pooling_type, input_data_type);
-
   return {pooling_type, input_field_shape, kernel_shape,
           stride,       padding_lower,     padding_upper,
-          num_channels, batch_size,        data_type};
+          num_channels, batch_size,        input_data_type};
 }
 
 StatusOr<poplar::program::Program> CreateSimpleReduction(
@@ -464,37 +475,15 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
     return prog;
   } else {
-    const HloInstruction* reduction_op;
     popnn::PoolingType reduction_type;
-
-    switch (inst->opcode()) {
-      case HloOpcode::kFusion: {
-        if (IsPopOpsFusion(inst, "avg_pool")) {
-          reduction_type = popnn::PoolingType::AVG;
-          reduction_op = inst->fused_instructions_computation()
-                             ->root_instruction()
-                             ->operand(0);
-        } else {
-          return xla::FailedPrecondition("Unknown outlined fusion.");
-        }
+    CHECK_EQ(inst->opcode(), HloOpcode::kReduceWindow);
+    switch (inst->to_apply()->root_instruction()->opcode()) {
+      case HloOpcode::kMaximum: {
+        reduction_type = popnn::PoolingType::MAX;
         break;
       }
-      case HloOpcode::kReduceWindow: {
-        reduction_op = inst;
-        switch (inst->to_apply()->root_instruction()->opcode()) {
-          case HloOpcode::kMaximum: {
-            reduction_type = popnn::PoolingType::MAX;
-            break;
-          }
-          case HloOpcode::kAdd: {
-            reduction_type = popnn::PoolingType::SUM;
-            break;
-          }
-          default: {
-            return xla::FailedPrecondition("Unsupported window reduction %s.",
-                                           inst->name());
-          }
-        }
+      case HloOpcode::kAdd: {
+        reduction_type = popnn::PoolingType::SUM;
         break;
       }
       default: {
@@ -503,32 +492,24 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
       }
     }
     return CreatePoplibsPooling(res, inst, tensor_map, reduction_type,
-                                reduction_op->window(), reduction_op);
+                                inst->window(), inst);
   }
 }
 
 StatusOr<poplar::program::Program> CreatePoplibsPooling(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
-    popnn::PoolingType reduction_type, const Window& window,
+    popnn::PoolingType pooling_type, const Window& window,
     absl::optional<const HloInstruction*> optional_reduction_op) {
   poplar::Graph& graph = GetGraph(res, inst);
   poplar::program::Sequence prog;
 
   TF_ASSIGN_OR_RETURN(poplar::Tensor to_reduce,
                       FindInstructionInput(tensor_map, res, inst, 0, prog));
-  auto reduction_dims = GetReductionDims(window);
+  auto reduction_dims = GetPoolingReductionDims(window);
 
   if (reduction_dims.size() == 0) {
     TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, to_reduce));
     return prog;
-  }
-
-  if (reduction_dims.size() == 1) {
-    if (reduction_dims.count(window.dimensions_size() - 1) == 0) {
-      reduction_dims.insert(window.dimensions_size() - 1);
-    } else {
-      reduction_dims.insert(window.dimensions_size() - 2);
-    }
   }
 
   if (reduction_dims.size() != 2) {
@@ -539,13 +520,30 @@ StatusOr<poplar::program::Program> CreatePoplibsPooling(
       GetShuffleInputDimensionsForPoplar(window, reduction_dims);
   to_reduce = to_reduce.dimShuffle(shuffle_in);
 
-  auto pool_params =
-      GetPoplibsPoolParams(reduction_type, window, to_reduce.shape(),
-                           reduction_dims, to_reduce.elementType());
+  // TODO(T7321) The default expected behaviour is to do any partial
+  // calculations in FP32, however popnn:pooling currently does not support
+  // having an FP16 input and FP32 partials. We therefore upcast the input if
+  // required and then downcast the result.
+  auto input_type = to_reduce.elementType();
+  auto reduction_type = GetReductionType(pooling_type, input_type);
+  const bool cast_required = input_type != reduction_type;
+  // Do the cast to make sure partials are at higher precision.
+  if (cast_required) {
+    to_reduce = popops::cast(graph, to_reduce, reduction_type, prog,
+                             GetDebugName(inst) + "/PreCast");
+  }
+  auto pool_params = GetPoplibsPoolParams(
+      pooling_type, window, to_reduce.shape(), reduction_dims, reduction_type);
 
   poplar::Tensor out =
       popnn::pooling::pool(graph, pool_params, to_reduce, prog,
                            GetDebugName(inst), res.default_pooling_options);
+
+  // Do the cast to to the original input type.
+  if (cast_required) {
+    out = popops::cast(graph, out, input_type, prog,
+                       GetDebugName(inst) + "/PostCast");
+  }
 
   if (optional_reduction_op) {
     // We apply the initial_value of the pooling in the non-default base
@@ -575,17 +573,16 @@ StatusOr<poplar::program::Program> CreatePoplibsPooling(
     }
   }
 
-  const auto shuffle_out =
-      GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
+  const auto shuffle_out = GetShuffleOutputDimensionsForPoplar(shuffle_in);
   out = out.dimShuffle(shuffle_out);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return prog;
 }
 
-StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
+StatusOr<poplar::program::Program> CreatePoplibsMaxPoolGrad(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
-    popnn::PoolingType reduction_type, const Window& window) {
+    const Window& window) {
   poplar::program::Sequence seq;
   poplar::Graph& graph = GetGraph(res, inst);
 
@@ -599,11 +596,11 @@ StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
   TF_ASSIGN_OR_RETURN(output_grad,
                       FindInstructionInput(tensor_map, res, inst, 2, seq));
 
-  if (window.dimensions().size() != 4) {
-    return xla::FailedPrecondition("Poplar pooling only supports 2D pooling");
+  const auto reduction_dims = GetPoolingReductionDims(window);
+  if (reduction_dims.size() != 2) {
+    return xla::FailedPrecondition("Popnn pooling only supports 2D pooling.");
   }
 
-  const auto reduction_dims = GetReductionDims(window);
   const auto shuffle_in =
       GetShuffleInputDimensionsForPoplar(window, reduction_dims);
 
@@ -611,18 +608,85 @@ StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
   output_grad = output_grad.dimShuffle(shuffle_in);
   output = output.dimShuffle(shuffle_in);
 
-  auto pool_params = GetPoplibsPoolParams(reduction_type, window, input.shape(),
-                                          reduction_dims, input.elementType());
+  auto pool_params =
+      GetPoplibsPoolParams(popnn::PoolingType::MAX, window, input.shape(),
+                           reduction_dims, input.elementType());
 
   poplar::Tensor out = popnn::pooling::poolInputGradient(
-      graph, pool_params, input, output, output_grad, seq, GetDebugName(inst),
-      res.default_pooling_options);
+      graph, pool_params, input, output, output_grad, false, seq,
+      GetDebugName(inst), res.default_pooling_options);
   // Shuffle back
-  const auto shuffle_out =
-      GetShuffleOutputDimensionsForPoplar(window, shuffle_in);
+  const auto shuffle_out = GetShuffleOutputDimensionsForPoplar(shuffle_in);
   out = out.dimShuffle(shuffle_out);
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;
+}
+
+StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
+    popnn::PoolingType pooling_type, const Window& window) {
+  if (pooling_type == popnn::PoolingType::MAX) {
+    return xla::FailedPrecondition("Calling invalid function for MaxPoolGrad.");
+  }
+
+  poplar::program::Sequence prog;
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  poplar::Tensor output_grad;
+  TF_ASSIGN_OR_RETURN(output_grad,
+                      FindInstructionInput(tensor_map, res, inst, 0, prog));
+  // Get the input shape (same shape as the input grad i.e. the output shape).
+  auto optional_input_shape =
+      convert_array<std::vector<std::size_t>>(inst->shape().dimensions());
+  if (!optional_input_shape) {
+    return xla::FailedPrecondition(
+        "CreatePoplibsPoolingGrad - cannot cast input_shape.");
+  }
+  std::vector<std::size_t> input_shape = *optional_input_shape;
+
+  const auto reduction_dims = GetPoolingReductionDims(window);
+  if (reduction_dims.size() != 2) {
+    return xla::FailedPrecondition("Popnn pooling only supports 2D pooling.");
+  }
+
+  const auto shuffle_in =
+      GetShuffleInputDimensionsForPoplar(window, reduction_dims);
+  // Shuffle the input shape and the output grad tensor into a NC... shape.
+  std::vector<std::size_t> input_shape_shuffled(input_shape.size());
+  for (uint64 i = 0; i < input_shape.size(); i++) {
+    input_shape_shuffled[i] = input_shape[shuffle_in[i]];
+  }
+  output_grad = output_grad.dimShuffle(shuffle_in);
+
+  // TODO(T7321) The default expected behaviour is to do any partial
+  // calculations in FP32, however popnn:pooling currently does not support
+  // having an FP16 input and FP32 partials. We therefore upcast the input if
+  // required and then downcast the result.
+  auto output_grad_type = output_grad.elementType();
+  auto reduction_type = GetReductionType(pooling_type, output_grad_type);
+  const bool cast_required = output_grad_type != reduction_type;
+  if (cast_required) {
+    output_grad = popops::cast(graph, output_grad, reduction_type, prog,
+                               GetDebugName(inst) + "/PreCast");
+  }
+
+  auto pool_params =
+      GetPoplibsPoolParams(pooling_type, window, input_shape_shuffled,
+                           reduction_dims, reduction_type);
+  poplar::Tensor out = popnn::pooling::poolInputGradient(
+      graph, pool_params, 1, output_grad, prog, GetDebugName(inst),
+      res.default_pooling_options);
+
+  if (cast_required) {
+    out = popops::cast(graph, out, output_grad_type, prog,
+                       GetDebugName(inst) + "/PreCast");
+  }
+
+  // Shuffle back
+  const auto shuffle_out = GetShuffleOutputDimensionsForPoplar(shuffle_in);
+  out = out.dimShuffle(shuffle_out);
+  TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+  return prog;
 }
 
 StatusOr<poplar::program::Program> CreateSimpleSelectAndScatter(

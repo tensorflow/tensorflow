@@ -611,20 +611,34 @@ def extract_all_io_events(events):
         pass
   return result
 
-def extract_execution_state_timing_list_from_events(events):
-  """Get execution state timing lists out of the execution event trace. Any
-  execution events which have a timing list will be included in the results.
+def extract_compile_reports(events):
+  """Get a list of all compiler reports in the event list.
   :param events: A list of IpuTraceEvent objects
-  :return: A list of one entry per execute event, of a tuple containing the
-           module name and the execution state timings list"""
+  :return: A list of tuples containing the module namd and report."""
+  result = []
+  for e in events:
+    evt = IpuTraceEvent.FromString(e)
+    if evt.type == IpuTraceEvent.COMPILE_END:
+      try:
+        module = evt.compile_end.module_name.decode('utf-8')
+        rep = evt.compile_end.compilation_report.decode('utf-8')
+        result += [(module, rep)]
+      except UnicodeDecodeError:
+        pass
+  return result
+
+def extract_execute_reports(events):
+  """Get a list of all compiler reports in the event list.
+  :param events: A list of IpuTraceEvent objects
+  :return: A list of tuples containing the module namd and report."""
   result = []
   for e in events:
     evt = IpuTraceEvent.FromString(e)
     if evt.type == IpuTraceEvent.EXECUTE:
       try:
         module = evt.execute.module_name.decode('utf-8')
-        timings = evt.execute.activity_trace.decode('utf-8')
-        result += [(module, timings)]
+        rep = evt.execute.execution_report.decode('utf-8')
+        result += [(module, rep)]
       except UnicodeDecodeError:
         pass
   return result
