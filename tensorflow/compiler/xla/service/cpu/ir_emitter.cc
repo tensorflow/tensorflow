@@ -890,16 +890,19 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // location is computed by calling the `scatter` function with the source
   // value and the current output value.
   SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(), &b_);
-  llvm_ir::IrArray::Index selected_index(source_index.GetType());
+  std::vector<llvm::Value*> selected_multi_index;
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot =
         InBoundsGEP(selected_index_address, {b_.getInt32(i)});
-    selected_index.push_back(Load(selected_index_address_slot));
+    selected_multi_index.push_back(Load(selected_index_address_slot));
   }
   llvm_ir::IrArray source_array(GetIrArrayFor(source));
   llvm::Value* source_value =
       source_array.EmitReadArrayElement(source_index, &b_);
   llvm_ir::IrArray output_array(GetIrArrayFor(select_and_scatter));
+  llvm_ir::IrArray::Index selected_index(
+      selected_multi_index, /*linear=*/nullptr, output_array.GetShape(),
+      source_index.GetType());
   llvm::Value* output_value =
       output_array.EmitReadArrayElement(selected_index, &b_);
   llvm::Value* scatter_value =
@@ -2113,18 +2116,21 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // Compute the output index the operand element should be assigned to.
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
-  llvm_ir::IrArray::Index output_index(operand_index.GetType());
+  std::vector<llvm::Value*> output_multi_index;
   for (size_t i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset =
         Mul(operand_index[i],
             b_.getInt64(padding_config.dimensions(i).interior_padding() + 1));
     llvm::Value* index = Add(
         offset, b_.getInt64(padding_config.dimensions(i).edge_padding_low()));
-    output_index.push_back(index);
+    output_multi_index.push_back(index);
   }
 
   // Store the operand element to the computed output location.
   llvm_ir::IrArray output_array(GetIrArrayFor(pad));
+  llvm_ir::IrArray::Index output_index(output_multi_index, /*linear=*/nullptr,
+                                       output_array.GetShape(),
+                                       operand_index.GetType());
   output_array.EmitWriteArrayElement(output_index, operand_data, &b_);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);

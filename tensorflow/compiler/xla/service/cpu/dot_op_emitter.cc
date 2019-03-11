@@ -532,18 +532,21 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // the rhs and lhs indexes with the reduction dimensions removed. The terms
   // from the rhs index are the lower dimensions in the index so we add them
   // first.
-  llvm_ir::IrArray::Index target_index(lhs_index.GetType());
+  std::vector<llvm::Value*> target_multi_index;
   for (int dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
-      target_index.push_back(lhs_index[dimension]);
+      target_multi_index.push_back(lhs_index[dimension]);
     }
   }
   for (int dimension = 0; dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
-      target_index.push_back(rhs_index[dimension]);
+      target_multi_index.push_back(rhs_index[dimension]);
     }
   }
 
+  llvm_ir::IrArray::Index target_index(target_multi_index, /*linear=*/nullptr,
+                                       target_array_.GetShape(),
+                                       lhs_index.GetType());
   target_array_.EmitWriteArrayElement(target_index, result, b_);
 
   // Set the IR builder insert point to the exit basic block of the outer most

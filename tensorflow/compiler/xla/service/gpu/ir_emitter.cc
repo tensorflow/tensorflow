@@ -600,20 +600,22 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // address. The index into the target address is the concatenation of the rhs
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
-  llvm_ir::IrArray::Index target_index(index_type);
+  std::vector<llvm::Value*> target_multi_index;
   for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
-      target_index.push_back(lhs_index[dimension]);
+      target_multi_index.push_back(lhs_index[dimension]);
     }
   }
   // Skip over the batch dimensions to not have them in the index twice.
   for (size_t dimension = dnums.lhs_batch_dimensions_size();
        dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
-      target_index.push_back(rhs_index[dimension]);
+      target_multi_index.push_back(rhs_index[dimension]);
     }
   }
   SetToFirstInsertPoint(reduction_loop->GetExitBasicBlock(), &b_);
+  llvm_ir::IrArray::Index target_index(target_multi_index, /*linear=*/nullptr,
+                                       target_array.GetShape(), index_type);
   target_array.EmitWriteArrayElement(
       target_index,
       Load(accum_address),  // The value written to the target array.
