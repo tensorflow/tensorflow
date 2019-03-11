@@ -73,9 +73,6 @@ tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
     copts = tf_copts(),
-    swig_includes = [
-        "//tensorflow/python:platform/base.i",
-    ],
     deps = [
         "//tensorflow/compiler/tf2tensorrt:py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_conversion",
