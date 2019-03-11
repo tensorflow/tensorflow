@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "cuda/include/cudnn.h"
@@ -1456,32 +1456,32 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_MAX_POOL_KERNELS);
 // default Eigen implementation so we are using the custom kernel as the
 // default. However, you can explicitly invoke the eigen version using
 // kernel_label_map.
-#define REGISTER_GPU_ONLY_POOL_KERNELS(T)                            \
-  REGISTER_KERNEL_BUILDER(Name("MaxPool")                            \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .Label("eigen_tensor"),                \
-                          MaxPoolingOp<GPUDevice, T>);               \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                          \
-                              .Device(DEVICE_GPU)                    \
-                              .HostMemory("ksize")                   \
-                              .HostMemory("strides")                 \
-                              .TypeConstraint<T>("T")                \
-                              .Label("eigen_tensor"),                \
-                          MaxPoolingV2Op<GPUDevice, T>);             \
-  REGISTER_KERNEL_BUILDER(                                           \
-      Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"),     \
-      MaxPoolingNoMaskOp<GPUDevice, T>);                             \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                          \
-                              .Device(DEVICE_GPU)                    \
-                              .HostMemory("ksize")                   \
-                              .HostMemory("strides")                 \
-                              .TypeConstraint<T>("T"),               \
-                          MaxPoolingNoMaskV2Op<GPUDevice, T>);       \
-  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGradWithArgmax")          \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int64>("Targmax"),     \
+#define REGISTER_GPU_ONLY_POOL_KERNELS(T)                        \
+  REGISTER_KERNEL_BUILDER(Name("MaxPool")                        \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<T>("T")            \
+                              .Label("eigen_tensor"),            \
+                          MaxPoolingOp<GPUDevice, T>);           \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                      \
+                              .Device(DEVICE_GPU)                \
+                              .HostMemory("ksize")               \
+                              .HostMemory("strides")             \
+                              .TypeConstraint<T>("T")            \
+                              .Label("eigen_tensor"),            \
+                          MaxPoolingV2Op<GPUDevice, T>);         \
+  REGISTER_KERNEL_BUILDER(                                       \
+      Name("MaxPool").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      MaxPoolingNoMaskOp<GPUDevice, T>);                         \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolV2")                      \
+                              .Device(DEVICE_GPU)                \
+                              .HostMemory("ksize")               \
+                              .HostMemory("strides")             \
+                              .TypeConstraint<T>("T"),           \
+                          MaxPoolingNoMaskV2Op<GPUDevice, T>);   \
+  REGISTER_KERNEL_BUILDER(Name("MaxPoolGradGradWithArgmax")      \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<T>("T")            \
+                              .TypeConstraint<int64>("Targmax"), \
                           MaxPoolingGradGradWithArgmaxOp<GPUDevice, T>);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_ONLY_POOL_KERNELS);
 

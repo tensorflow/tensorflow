@@ -63,15 +63,12 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE bool IsGreaterThan(dtype a, dtype b) {
 // MaxPoolForwardNCHW<<<(output_size + kThreadsPerBlock - 1) / kThreadsPerBlock,
 //                      kThreadsPerBlock, 0, cuda_stream>>>(...);
 template <bool propagate_nans, typename dtype>
-__global__ void MaxPoolForwardNCHW(const int nthreads, const dtype* bottom_data,
-                                   const int channels, const int height,
-                                   const int width, const int pooled_height,
-                                   const int pooled_width, const int kernel_h,
-                                   const int kernel_w, const int stride_h,
-                                   const int stride_w, const int pad_t,
-                                   const int pad_l, dtype* top_data,
-                                   int64* mask,
-                                   const bool include_batch_in_index) {
+__global__ void MaxPoolForwardNCHW(
+    const int nthreads, const dtype* bottom_data, const int channels,
+    const int height, const int width, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    dtype* top_data, int64* mask, const bool include_batch_in_index) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     int pw = index % pooled_width;
     int ph = (index / pooled_width) % pooled_height;
@@ -140,15 +137,12 @@ __global__ void MaxPoolForwardNoMaskKernel_NCHW_VECT_C(
 }
 
 template <bool propagate_nans, typename dtype>
-__global__ void MaxPoolForwardNHWC(const int nthreads, const dtype* bottom_data,
-                                   const int height, const int width,
-                                   const int channels, const int pooled_height,
-                                   const int pooled_width, const int kernel_h,
-                                   const int kernel_w, const int stride_h,
-                                   const int stride_w, const int pad_t,
-                                   const int pad_l, dtype* top_data,
-                                   int64* mask,
-                                   const bool include_batch_in_index) {
+__global__ void MaxPoolForwardNHWC(
+    const int nthreads, const dtype* bottom_data, const int height,
+    const int width, const int channels, const int pooled_height,
+    const int pooled_width, const int kernel_h, const int kernel_w,
+    const int stride_h, const int stride_w, const int pad_t, const int pad_l,
+    dtype* top_data, int64* mask, const bool include_batch_in_index) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
@@ -248,9 +242,9 @@ __global__ void MaxPoolBackward(const int nthreads, const dtype* top_diff,
                                 const int bottom_offset, dtype* bottom_diff,
                                 const bool include_batch_in_index) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    const int offset = include_batch_in_index ? 0 : (index / top_offset) * bottom_offset;
-    CudaAtomicAdd(bottom_diff + offset + mask[index],
-                  top_diff[index]);
+    const int offset =
+        include_batch_in_index ? 0 : (index / top_offset) * bottom_offset;
+    CudaAtomicAdd(bottom_diff + offset + mask[index], top_diff[index]);
   }
 }
 
@@ -372,11 +366,11 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     const int64* mask, const int top_offset,
-                                    const int bottom_offset,
-                                    dtype* bottom_diff,
+                                    const int bottom_offset, dtype* bottom_diff,
                                     const bool include_batch_in_index) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    const int offset = include_batch_in_index ? 0 : (index / bottom_offset) * top_offset;
+    const int offset =
+        include_batch_in_index ? 0 : (index / bottom_offset) * top_offset;
     bottom_diff[index] = top_diff[offset + mask[index]];
   }
 }
