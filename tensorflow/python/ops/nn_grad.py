@@ -830,15 +830,15 @@ def _BatchNormWithGlobalNormalizationGrad(op, grad):
   return dx, dm, dv, db, dg
 
 
-def _BaseFusedBatchNormGrad(op, use_v2, *grad):
+def _BaseFusedBatchNormGrad(op, version, *grad):
   """Return the gradients for the 3 inputs of BatchNorm.
 
   Args:
     op: The BatchNormOp for which we need to compute gradients.
-    use_v2: Boolean indicating whether to use the V2 version of the fused batch
-      norm gradient.
-    *grad: An argument list for tensors of gradients wrt the outputs with
-      grad[0] as grad_y.
+    version: Integer indicating which version to use of the fused batch
+            norm gradient.
+    *grad: An argument list for tensors of gradients wrt the outputs
+          with grad[0] as grad_y.
 
   Returns:
     grad_x: gradient for x, which is scale * rsqrt(variance + epsilon) *
@@ -861,48 +861,61 @@ def _BaseFusedBatchNormGrad(op, use_v2, *grad):
   epsilon = op.get_attr("epsilon")
   data_format = op.get_attr("data_format")
   is_training = op.get_attr("is_training")
-  grad_fun = (
-      gen_nn_ops.fused_batch_norm_grad_v2
-      if use_v2 else gen_nn_ops.fused_batch_norm_grad)
+  if version == 2:
+    grad_fun = gen_nn_ops.fused_batch_norm_grad_v3
+  elif version == 1:
+    grad_fun = gen_nn_ops.fused_batch_norm_grad_v2
+  else:
+    grad_fun = gen_nn_ops.fused_batch_norm_grad
   if is_training:
-    return grad_fun(
-        grad_y,
-        x,
-        scale,
-        op.outputs[3],
-        op.outputs[4],
-        epsilon=epsilon,
-        data_format=data_format,
-        is_training=is_training)
+    args = {
+        "y_backprop":grad_y,
+        "x":x,
+        "scale":scale,
+        "reserve_space_1":op.outputs[3],
+        "reserve_space_2":op.outputs[4],
+        "epsilon":epsilon,
+        "data_format":data_format,
+        "is_training":is_training
+    }
+    if version == 2:
+      args["reserve_space"] = op.outputs[5]
+    return grad_fun(**args)
   else:
     pop_mean = op.inputs[3]
     pop_var = op.inputs[4]
     if data_format == b"NCHW":
       x = array_ops.transpose(x, [0, 2, 3, 1])
       grad_y = array_ops.transpose(grad_y, [0, 2, 3, 1])
-    dx, dscale, doffset, _, _ = grad_fun(
-        grad_y,
-        x,
-        scale,
-        pop_mean,
-        pop_var,
-        epsilon=epsilon,
-        data_format="NHWC",
-        is_training=is_training)
+    args = {
+        "y_backprop":grad_y,
+        "x":x,
+        "scale":scale,
+        "reserve_space_1":pop_mean,
+        "reserve_space_2":pop_var,
+        "epsilon":epsilon,
+        "data_format":"NHWC",
+        "is_training":is_training
+    }
+    if version == 2:
+      args["reserve_space"] = op.outputs[5]
+    dx, dscale, doffset, _, _ = grad_fun(**args)
     if data_format == b"NCHW":
       dx = array_ops.transpose(dx, [0, 3, 1, 2])
     return dx, dscale, doffset, None, None
 
-
 @ops.RegisterGradient("FusedBatchNorm")
 def _FusedBatchNormGrad(op, *grad):
-  return _BaseFusedBatchNormGrad(op, False, *grad)
+  return _BaseFusedBatchNormGrad(op, 0, *grad)
 
 
 @ops.RegisterGradient("FusedBatchNormV2")
 def _FusedBatchNormV2Grad(op, *grad):
-  return _BaseFusedBatchNormGrad(op, True, *grad)
+  return _BaseFusedBatchNormGrad(op, 1, *grad)
 
+@ops.RegisterGradient("FusedBatchNormV3")
+def _FusedBatchNormV3Grad(op, *grad):
+  return _BaseFusedBatchNormGrad(op, 2, *grad)
 
 def _BatchNormGrad(grad_y,
                    x,
@@ -1024,6 +1037,11 @@ def _FusedBatchNormGradGrad(op, *grad):
 @ops.RegisterGradient("FusedBatchNormGradV2")
 def _FusedBatchNormGradGradV2(op, *grad):
   return _FusedBatchNormGradGrad(op, *grad)
+
+@ops.RegisterGradient("FusedBatchNormGradV3")
+def _FusedBatchNormGradGradV3(op, *grad):
+  grad_grad_y, grad_x, grad_scale, _, _ = _FusedBatchNormGradGrad(op, *grad)
+  return grad_grad_y, grad_x, grad_scale, None, None, None
 
 
 @ops.RegisterGradient("L2Loss")

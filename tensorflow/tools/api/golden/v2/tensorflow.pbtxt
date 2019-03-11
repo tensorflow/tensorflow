@@ -625,6 +625,14 @@ tf_module {
     argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_autograph_options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\'], "
   }
   member_method {
+    name: "fused_batch_norm_grad_v3"
+    argspec: "args=[\'y_backprop\', \'x\', \'scale\', \'reserve_space_1\', \'reserve_space_2\', \'reserve_space\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+  }
+  member_method {
+    name: "fused_batch_norm_v3"
+    argspec: "args=[\'x\', \'scale\', \'offset\', \'mean\', \'variance\', \'epsilon\', \'data_format\', \'is_training\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0001\', \'NHWC\', \'True\', \'None\'], "
+  }
+  member_method {
     name: "gather"
     argspec: "args=[\'params\', \'indices\', \'validate_indices\', \'axis\', \'batch_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'0\', \'None\'], "
   }

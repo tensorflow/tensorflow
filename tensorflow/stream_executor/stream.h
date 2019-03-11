@@ -242,6 +242,21 @@ class Stream {
       std::function<const DeviceMemory<float> &()> var_to_inv_var,
       std::function<void()> inv_var_to_var);
 
+  Stream& ThenBatchNormalizationForward(
+      const DeviceMemory<float>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+      DeviceMemory<float>* saved_inv_var, bool is_training,
+      std::function<const DeviceMemory<float>&()> var_to_inv_var,
+      std::function<void()> inv_var_to_var,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator);
+
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<float> &y_backprop, const DeviceMemory<float> &x,
       const DeviceMemory<float> &scale, const DeviceMemory<float> &mean,
@@ -249,6 +264,16 @@ class Stream {
       const dnn::BatchDescriptor &scale_offset_desc, const double epsilon,
       DeviceMemory<float> *x_backprop, DeviceMemory<float> *scale_backprop,
       DeviceMemory<float> *offset_backprop);
+
+  Stream& ThenBatchNormalizationBackward(
+      const DeviceMemory<float>& y_backprop, const DeviceMemory<float>& x,
+      const DeviceMemory<float>& scale, const DeviceMemory<float>& mean,
+      const DeviceMemory<float>& inv_var, const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
+      DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator);
 
   Stream &ThenBatchNormalizationForward(
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
@@ -263,6 +288,21 @@ class Stream {
       std::function<const DeviceMemory<float> &()> var_to_inv_var,
       std::function<void()> inv_var_to_var);
 
+  Stream& ThenBatchNormalizationForward(
+      const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& offset,
+      const DeviceMemory<float>& estimated_mean,
+      const DeviceMemory<float>& estimated_variance,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
+      DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
+      DeviceMemory<float>* saved_inv_var, bool is_training,
+      std::function<const DeviceMemory<float>&()> var_to_inv_var,
+      std::function<void()> inv_var_to_var,
+      ScratchAllocator* reserve_space_allocator,
+      ScratchAllocator* workspace_allocator);
+
   Stream &ThenBatchNormalizationBackward(
       const DeviceMemory<Eigen::half> &y_backprop,
       const DeviceMemory<Eigen::half> &x, const DeviceMemory<float> &scale,
@@ -272,6 +312,17 @@ class Stream {
       DeviceMemory<Eigen::half> *x_backprop,
       DeviceMemory<float> *scale_backprop,
       DeviceMemory<float> *offset_backprop);
+
+  Stream& ThenBatchNormalizationBackward(
+      const DeviceMemory<Eigen::half>& y_backprop,
+      const DeviceMemory<Eigen::half>& x, const DeviceMemory<float>& scale,
+      const DeviceMemory<float>& mean, const DeviceMemory<float>& inv_var,
+      const dnn::BatchDescriptor& x_desc,
+      const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
+      DeviceMemory<Eigen::half>* x_backprop,
+      DeviceMemory<float>* scale_backprop, DeviceMemory<float>* offset_backprop,
+      DeviceMemory<uint8>* reserve_space_data,
+      ScratchAllocator* workspace_allocator);
 
   Stream &ThenConvolve(const dnn::BatchDescriptor &input_descriptor,
                        const DeviceMemory<float> &input_data,

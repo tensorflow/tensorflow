@@ -26,6 +26,71 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+void CompileWithVersion(XlaOpKernelContext* ctx, bool epsilon_,
+                        TensorFormat data_format_, bool is_training_,
+                        bool is_on_gpu_, bool use_v3) {
+  xla::PrimitiveType input_type;
+  OP_REQUIRES_OK(ctx,
+                 DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
+  xla::PrimitiveType scale_type;
+  OP_REQUIRES_OK(ctx,
+                 DataTypeToPrimitiveType(ctx->input_type(1), &scale_type));
+
+  xla::XlaOp input = ctx->Input(0);
+  TensorShape input_shape = ctx->InputShape(0);
+
+  int feature_index =
+      GetTensorFeatureDimIndex(input_shape.dims(), data_format_);
+
+  // TODO(b/69928690): support mixed precision in the XLA batch normalization
+  // operators. As a workaround, cast everything to the statistics type (which
+  // may be more precise than the input type).
+  input = xla::ConvertElementType(input, scale_type);
+
+  if (is_training_) {
+    xla::XlaOp output = xla::BatchNormTraining(
+        input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index);
+
+    // In training mode, outputs the normalized value as well as the
+    // calculated mean and variance.
+    ctx->SetOutput(0, xla::ConvertElementType(xla::GetTupleElement(output, 0),
+                                              input_type));
+    ctx->SetOutput(1, xla::GetTupleElement(output, 1));
+    ctx->SetOutput(2, xla::GetTupleElement(output, 2));
+
+    // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
+    // space 1 & 2". They are used to pass the per-batch mean and
+    // variance to the gradient. Here we maintain the same behavior by setting
+    // them to the mean and variance calculated by BatchNormTraining.
+    ctx->SetOutput(3, xla::GetTupleElement(output, 1));
+    if (is_on_gpu_) {
+      // The last two outputs from the FusedBatchNorm training TensorFlow GPU
+      // op are implementation defined.  For now we rely on the in-practice
+      // behavior of the op:
+      //   output 3 is the mean
+      //   output 4 is rsqrt(variance + epsilon)
+      xla::XlaOp variance = xla::GetTupleElement(output, 2);
+      ctx->SetOutput(4, xla::Rsqrt(xla::Add(
+                            variance, xla::ScalarLike(variance, epsilon_))));
+    } else {
+      ctx->SetOutput(4, xla::GetTupleElement(output, 2));
+    }
+  } else {
+    xla::XlaOp output = xla::BatchNormInference(
+        input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
+        epsilon_, feature_index);
+    ctx->SetOutput(0, xla::ConvertElementType(output, input_type));
+    // Directly send input to output as mean and variance in inference mode.
+    ctx->SetOutput(1, ctx->Input(3));
+    ctx->SetOutput(2, ctx->Input(4));
+    ctx->SetOutput(3, ctx->Input(3));
+    ctx->SetOutput(4, ctx->Input(4));
+  }
+  if (use_v3) {
+    ctx->SetConstantOutput(5, Tensor());
+  }
+}
+
 class FusedBatchNormOp : public XlaOpKernel {
  public:
   explicit FusedBatchNormOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
@@ -40,63 +105,8 @@ class FusedBatchNormOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::PrimitiveType input_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
-    xla::PrimitiveType scale_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(ctx->input_type(1), &scale_type));
-
-    xla::XlaOp input = ctx->Input(0);
-    TensorShape input_shape = ctx->InputShape(0);
-
-    int feature_index =
-        GetTensorFeatureDimIndex(input_shape.dims(), data_format_);
-
-    // TODO(b/69928690): support mixed precision in the XLA batch normalization
-    // operators. As a workaround, cast everything to the statistics type (which
-    // may be more precise than the input type).
-    input = xla::ConvertElementType(input, scale_type);
-
-    if (is_training_) {
-      xla::XlaOp output = xla::BatchNormTraining(
-          input, ctx->Input(1), ctx->Input(2), epsilon_, feature_index);
-
-      // In training mode, outputs the normalized value as well as the
-      // calculated mean and variance.
-      ctx->SetOutput(0, xla::ConvertElementType(xla::GetTupleElement(output, 0),
-                                                input_type));
-      ctx->SetOutput(1, xla::GetTupleElement(output, 1));
-      ctx->SetOutput(2, xla::GetTupleElement(output, 2));
-
-      // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
-      // space 1 & 2". They are used to pass the per-batch mean and
-      // variance to the gradient. Here we maintain the same behavior by setting
-      // them to the mean and variance calculated by BatchNormTraining.
-      ctx->SetOutput(3, xla::GetTupleElement(output, 1));
-      if (is_on_gpu_) {
-        // The last two outputs from the FusedBatchNorm training TensorFlow GPU
-        // op are implementation defined.  For now we rely on the in-practice
-        // behavior of the op:
-        //   output 3 is the mean
-        //   output 4 is rsqrt(variance + epsilon)
-        xla::XlaOp variance = xla::GetTupleElement(output, 2);
-        ctx->SetOutput(4, xla::Rsqrt(xla::Add(
-                              variance, xla::ScalarLike(variance, epsilon_))));
-      } else {
-        ctx->SetOutput(4, xla::GetTupleElement(output, 2));
-      }
-    } else {
-      xla::XlaOp output = xla::BatchNormInference(
-          input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
-          epsilon_, feature_index);
-      ctx->SetOutput(0, xla::ConvertElementType(output, input_type));
-      // Directly send input to output as mean and variance in inference mode.
-      ctx->SetOutput(1, ctx->Input(3));
-      ctx->SetOutput(2, ctx->Input(4));
-      ctx->SetOutput(3, ctx->Input(3));
-      ctx->SetOutput(4, ctx->Input(4));
-    }
+    CompileWithVersion(ctx, epsilon_, data_format_, is_training_,
+                       is_on_gpu_, /*use_v3=*/false);
   }
 
  private:
@@ -106,8 +116,35 @@ class FusedBatchNormOp : public XlaOpKernel {
   bool is_on_gpu_;
 };
 
+class FusedBatchNormOpV3 : public XlaOpKernel {
+ public:
+  explicit FusedBatchNormOpV3(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("epsilon", &epsilon_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("is_training", &is_training_));
+    string data_format_str;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(
+        ctx, FormatFromString(data_format_str, &data_format_),
+        errors::InvalidArgument("Invalid data format: ", data_format_str));
+    is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
+  }
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    CompileWithVersion(ctx, epsilon_, data_format_, is_training_,
+                       is_on_gpu_, /*use_v3=*/true);
+  }
+
+ private:
+  float epsilon_;
+  TensorFormat data_format_;
+  bool is_training_;
+  bool is_on_gpu_;
+};
+
+
 REGISTER_XLA_OP(Name("FusedBatchNorm"), FusedBatchNormOp);
 REGISTER_XLA_OP(Name("FusedBatchNormV2"), FusedBatchNormOp);
+REGISTER_XLA_OP(Name("FusedBatchNormV3"), FusedBatchNormOpV3);
 
 class FusedBatchNormGradOp : public XlaOpKernel {
  public:
@@ -223,6 +260,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("FusedBatchNormGrad"), FusedBatchNormGradOp);
 REGISTER_XLA_OP(Name("FusedBatchNormGradV2"), FusedBatchNormGradOp);
+REGISTER_XLA_OP(Name("FusedBatchNormGradV3"), FusedBatchNormGradOp);
 
 }  // namespace
 }  // namespace tensorflow
