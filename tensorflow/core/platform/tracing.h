@@ -150,7 +150,8 @@ class TraceCollector {
 
   virtual ~TraceCollector() {}
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      StringPiece name_part1, StringPiece name_part2) const = 0;
+      StringPiece name_part1, StringPiece name_part2,
+      StringPiece requested_dev) const = 0;
   virtual std::unique_ptr<Handle> CreateActivityHandle(
       StringPiece name_part1, StringPiece name_part2,
       bool is_expensive) const = 0;
@@ -179,17 +180,18 @@ const TraceCollector* GetTraceCollector();
 class ScopedAnnotation {
  public:
   explicit ScopedAnnotation(StringPiece name)
-      : ScopedAnnotation(name, StringPiece()) {}
+      : ScopedAnnotation(name, StringPiece(), StringPiece("unknown")) {}
 
   // If tracing is enabled, add a name scope of
   // "<name_part1>:<name_part2>".  This can be cheaper than the
   // single-argument constructor because the concatenation of the
   // label string is only done if tracing is enabled.
-  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2)
+  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2,
+                   StringPiece requested_dev)
       : handle_([&] {
           auto trace_collector = GetTraceCollector();
           return trace_collector ? trace_collector->CreateAnnotationHandle(
-                                       name_part1, name_part2)
+                                       name_part1, name_part2, requested_dev)
                                  : nullptr;
         }()) {}
 

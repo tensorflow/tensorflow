@@ -440,7 +440,8 @@ void BaseGPUDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
         "Invalid synchronous 'Compute' on GPU for '_Recv' op"));
   } else {
     tracing::ScopedAnnotation annotation(op_kernel->name(),
-                                         op_kernel->type_string());
+                                         op_kernel->type_string(),
+                                         op_kernel->requested_device());
     ComputeHelper(op_kernel, context);
   }
 }

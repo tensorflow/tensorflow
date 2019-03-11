@@ -117,7 +117,8 @@ class CUPTIClient {
   virtual ~CUPTIClient() {}
 
   // Records the mapping between correlation ID and kernel name.
-  virtual void AddCorrelationId(uint32 correlation_id, const string &name) = 0;
+  virtual void AddCorrelationId(uint32 correlation_id, const string &name,
+                                const string &device) = 0;
 
   virtual void AddMemcpyRecord(const CUpti_ActivityMemcpy *memcpy) = 0;
   
@@ -167,7 +168,7 @@ class CUPTIManager {
     client_to_threads_[client].insert(tid);
   }
   
-  void AddCorrelationId(uint32 correlation_id, const string &name) {
+  void AddCorrelationId(uint32 correlation_id, const string &name, const string &device) {
     auto tid = std::this_thread::get_id();
     mutex_lock l(mu_);
     if (thread_to_client_.find(tid) == thread_to_client_.end()) {
@@ -180,7 +181,7 @@ class CUPTIManager {
       return;
     }
 
-    client->AddCorrelationId(correlation_id, name);
+    client->AddCorrelationId(correlation_id, name, device);
     correlation_to_client_[correlation_id] = client;
     if (client_to_correlations_.find(client) == client_to_correlations_.end()) {
       client_to_correlations_[client];
@@ -395,6 +396,7 @@ CUPTIManager *GetCUPTIManager() {
 // of the current thread.  The annotation is guaranteed to remain live
 // for the duration of the CUPTI API callback.
 TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_annotation);
+TF_STATIC_THREAD_LOCAL_POD(const char *, tls_current_dev);
 
 class DeviceTracerImpl : public DeviceTracer,
                          public CUPTIClient,
@@ -410,19 +412,26 @@ class DeviceTracerImpl : public DeviceTracer,
 
   // tracing::TraceCollector interface:
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
-      StringPiece name_part1, StringPiece name_part2) const {
+      StringPiece name_part1, StringPiece name_part2, StringPiece requested_dev) const {
     cupti_manager_->MapThreadToClient(std::this_thread::get_id(), const_cast<DeviceTracerImpl*>(this));
     struct Impl : public tracing::TraceCollector::Handle {
       string annotation;
-      explicit Impl(string &&name_scope) : annotation(name_scope) {
+      string device;
+      explicit Impl(string &&name_scope, string requested_dev) : annotation(name_scope), 
+                                                                 device(requested_dev) {
         VLOG(2) << "CreateAnnotationHandle " << annotation;
         // Remember the most recent ScopedAnnotation for each thread.
         tls_current_annotation.get() = annotation.c_str();
+        tls_current_dev.get() = device.c_str();
       }
-      ~Impl() override { tls_current_annotation.get() = nullptr; }
+      ~Impl() override {
+        tls_current_annotation.get() = nullptr;
+        tls_current_dev.get() = nullptr;
+      }
     };
+    // string dev = requested_dev.data() ? requested_dev.data() : "";
     return std::unique_ptr<Handle>(
-        new Impl{ConcatenateNames(name_part1, name_part2)});
+        new Impl{ConcatenateNames(name_part1, name_part2), requested_dev.data()});
   }
 
   virtual std::unique_ptr<Handle> CreateActivityHandle(StringPiece, StringPiece,
@@ -434,7 +443,8 @@ class DeviceTracerImpl : public DeviceTracer,
  protected:
   // This callback is used exclusively by CUPTIManager.
   friend class CUPTIManager;
-  void AddCorrelationId(uint32 correlation_id, const string &name) override;
+  void AddCorrelationId(uint32 correlation_id, const string &name,
+                        const string &device) override;
 
   void AddMemcpyRecord(const CUpti_ActivityMemcpy *memcpy) override {
     mutex_lock l(trace_mu_);
@@ -499,6 +509,7 @@ class DeviceTracerImpl : public DeviceTracer,
   mutex trace_mu_;
   static constexpr size_t kMaxRecords = 1024 * 1024;
   std::map<uint32, string> correlations_ GUARDED_BY(trace_mu_);
+  std::map<uint32, string> device_correlations_ GUARDED_BY(trace_mu_);
   std::vector<KernelRecord> kernel_records_ GUARDED_BY(trace_mu_);
   std::vector<MemcpyRecord> memcpy_records_ GUARDED_BY(trace_mu_);
 
@@ -605,11 +616,13 @@ Status DeviceTracerImpl::Stop() {
 }
 
 void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
-                                        const string &name) {
+                                        const string &name,
+                                        const string &device) {
   VLOG(2) << correlation_id << " : " << name;
   mutex_lock l(trace_mu_);
   if (correlations_.size() >= kMaxRecords) return;
   correlations_.emplace(correlation_id, name);
+  device_correlations_.emplace(correlation_id, device);
 }
 
 /*static*/ void DeviceTracerImpl::ApiCallback(void *userdata,
@@ -625,6 +638,7 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
   // CUDA API call.  If this pointer is non-null then the ScopedAnnotation
   // must be valid.
   const char *tls_annotation = tls_current_annotation.get();
+  const char *tls_device = tls_current_dev.get();
 
   if ((domain == CUPTI_CB_DOMAIN_DRIVER_API) &&
       (cbid == CUPTI_DRIVER_TRACE_CBID_cuLaunchKernel)) {
@@ -637,7 +651,8 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
       }
       const string annotation =
           tls_annotation ? tls_annotation : cbInfo->symbolName;
-      manager->AddCorrelationId(cbInfo->correlationId, annotation);
+      const string device = tls_device ? tls_device : annotation;
+      manager->AddCorrelationId(cbInfo->correlationId, annotation, device);
     }
   } else if ((domain == CUPTI_CB_DOMAIN_RUNTIME_API) &&
              (cbid == CUPTI_RUNTIME_TRACE_CBID_cudaMemcpy_v3020 ||
@@ -652,7 +667,8 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
       }
       if (tls_annotation) {
         const string annotation = tls_annotation;
-        manager->AddCorrelationId(cbInfo->correlationId, annotation);
+        const string device = tls_device;
+        manager->AddCorrelationId(cbInfo->correlationId, annotation, device);
       }
     }
   } else if ((domain == CUPTI_CB_DOMAIN_DRIVER_API) &&
@@ -664,7 +680,8 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
               cbid == CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2)) {
     if (cbInfo->callbackSite == CUPTI_API_EXIT && tls_annotation) {
       const string annotation = tls_annotation;
-      manager->AddCorrelationId(cbInfo->correlationId, annotation);
+      const string device = tls_device;
+      manager->AddCorrelationId(cbInfo->correlationId, annotation, device);
     }
   } else {
     VLOG(1) << "Unhandled API Callback for " << domain << " " << cbid;
@@ -677,18 +694,11 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
     return errors::FailedPrecondition("DeviceTracer is still enabled.");
   }
 
-  // TODO(pbar) Handle device IDs and prefix properly.
-  const string prefix = "";
-  const int id = 0;
-  const string stream_device =
-      strings::StrCat(prefix, "/device:GPU:", id, "/stream:");
-  const string memcpy_device =
-      strings::StrCat(prefix, "/device:GPU:", id, "/memcpy");
-
   mutex_lock l2(trace_mu_);
   for (const auto &rec : kernel_records_) {
     auto it = correlations_.find(rec.correlation_id);
     const string name = (it != correlations_.cend()) ? it->second : "unknown";
+    const string stream_device = device_correlations_.find(rec.correlation_id)->second;
     NodeExecStats *ns = new NodeExecStats;
     ns->set_all_start_micros(start_walltime_us_ +
                              ((rec.start_timestamp - start_timestamp_) / 1000));
@@ -702,12 +712,13 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
     // ns->set_timeline_label(details);
     auto nscopy = new NodeExecStats;
     *nscopy = *ns;
-    collector->Save(strings::StrCat(stream_device, "all"), ns);
-    collector->Save(strings::StrCat(stream_device, rec.stream_id), nscopy);
+    collector->Save(strings::StrCat(stream_device, "/stream:all"), ns);
+    collector->Save(strings::StrCat(stream_device, "/stream:", rec.stream_id), nscopy);
   }
   for (const auto &rec : memcpy_records_) {
     auto it = correlations_.find(rec.correlation_id);
     const string name = (it != correlations_.cend()) ? it->second : "unknown";
+    const string memcpy_device = device_correlations_.find(rec.correlation_id)->second;
     NodeExecStats *ns = new NodeExecStats;
     ns->set_all_start_micros(start_walltime_us_ +
                              ((rec.start_timestamp - start_timestamp_) / 1000));
@@ -727,8 +738,8 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
     ns->set_timeline_label(details);
     auto nscopy = new NodeExecStats;
     *nscopy = *ns;
-    collector->Save(memcpy_device, ns);
-    collector->Save(strings::StrCat(stream_device, rec.stream_id), nscopy);
+    collector->Save(strings::StrCat(memcpy_device, "/memcpy:all"), ns);
+    collector->Save(strings::StrCat(memcpy_device, "/memcpy:", rec.stream_id), nscopy);
   }
   return Status::OK();
 }
