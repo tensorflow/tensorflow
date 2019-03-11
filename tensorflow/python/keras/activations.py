@@ -154,7 +154,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Arguments:
       x: A tensor or variable.
       alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: float. Saturation threshold.
+      max_value: float. Saturation threshold.Returns:
       threshold: float. Threshold value for thresholded activation.
 
   Returns:
@@ -165,16 +165,52 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
-  return nn.tanh(x)
+  """
+  The hyperbolic tangent function outputs in the range (-1, 1), thus mapping str  ongly negative inputs to negative values.
+  
+  Arguments:
+      x: Input tensor   
+      y: (e^x-e^-x)/(e^x+e^-x)
+  Returns:
+      A tensor
+  
+  Input: [ 1.        -0.5        3.4000001 -2.0999999  0.        -6.5      ]
+  Output: [ 0.76159418 -0.46211717  0.9977749  -0.97045201  0.         -0.999995  47]
 
+  """
+  return nn.tanh(x)
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
+  """
+  Sigmoid function ranges between (0,1).
+  
+  Arguments:
+      x: Input tensor
+      y: 1/(1+e^-x)
+  
+  Returns:
+      A tensor
+  
+  Input:[ 1.        -0.5        3.4000001 -2.0999999  0.        -6.5      ]  
+  Output:[ 0.7310586   0.37754068  0.96770459  0.10909683  0.5         0.0015011  8]
+  """
   return nn.sigmoid(x)
 
 
 @keras_export('keras.activations.exponential')
 def exponential(x):
+  '''
+  It is a function which converts values into its exponential.
+  Arguments:
+      x = input tesor
+      y = e^x
+  Returns:
+      A tensor
+
+  Input:[-0.5 -0.1  0.   0.1  0.5] 
+  Output:[0.60653067 0.9048374  1.         1.105171   1.6487212 ]
+  '''
   return math_ops.exp(x)
 
 
