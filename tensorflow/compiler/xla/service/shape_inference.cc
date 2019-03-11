@@ -156,14 +156,6 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   return Status::OK();
 }
 
-bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
-  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
-         window_dimension.padding_low() == 0 &&
-         window_dimension.padding_high() == 0 &&
-         window_dimension.window_dilation() == 1 &&
-         window_dimension.base_dilation() == 1;
-}
-
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        const Window& window,
                                        PrimitiveType element_type,
@@ -205,7 +197,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           window.DebugString());
     }
 
-    if (base_shape.is_dynamic_dimension(i) && !IsTrivialWindowDimension(dim)) {
+    if (base_shape.is_dynamic_dimension(i) &&
+        !window_util::IsTrivialWindowDimension(dim)) {
       return Unimplemented(
           "Dynamic shape is not supported for non trivial window: %s",
           window_util::ToString(window));
