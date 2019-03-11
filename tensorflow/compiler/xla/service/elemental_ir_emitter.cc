@@ -1871,7 +1871,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   llvm::Type* index_type = index.GetType();
   // This is the index into `operand` that holds the element we want to
   // generate.
-  IrArray::Index operand_index(index_type);
+  std::vector<llvm::Value*> operand_multi_index;
 
   // First copy in the window indices to operand_index. Also collect a mapping
   // from operand dimension to output window dimension. Elided window dimensions
@@ -1880,11 +1880,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
   for (int64 i = 0, e = operand_shape.dimensions_size(), operand_index_dim = 0;
        i < e; i++) {
     if (absl::c_binary_search(dim_numbers.collapsed_slice_dims(), i)) {
-      operand_index.push_back(index.GetConstantWithIndexType(0));
+      operand_multi_index.push_back(index.GetConstantWithIndexType(0));
     } else {
       int64 output_window_dim = dim_numbers.offset_dims(operand_index_dim++);
       operand_to_output_dim[i] = output_window_dim;
-      operand_index.push_back(index[output_window_dim]);
+      operand_multi_index.push_back(index[output_window_dim]);
     }
   }
 
@@ -1930,8 +1930,9 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
                         gather_dim_component_extended, is_signed),
         is_signed);
 
-    operand_index[operand_dim] =
-        Add(operand_index[operand_dim], gather_dim_component_extended_inbound);
+    operand_multi_index[operand_dim] =
+        Add(operand_multi_index[operand_dim],
+            gather_dim_component_extended_inbound);
   };
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
@@ -1955,6 +1956,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
       add_to_operand_index(gather_dim_component, i);
     }
   }
+  IrArray::Index operand_index(operand_multi_index, /*linear=*/nullptr,
+                               operand_shape, index_type);
   return operand_generator(operand_index);
 }
 

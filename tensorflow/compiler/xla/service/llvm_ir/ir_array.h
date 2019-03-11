@@ -112,8 +112,6 @@ class IrArray {
     llvm::Value* operator[](size_t i) const { return multidim()[i]; }
     llvm::Value*& operator[](size_t i) { return mutable_multidim()[i]; }
 
-    void push_back(llvm::Value* value) { mutable_multidim().push_back(value); }
-
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
 
