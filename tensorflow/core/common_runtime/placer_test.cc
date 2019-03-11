@@ -239,20 +239,23 @@ class PlacerTest : public ::testing::Test {
   // placement will use the default DeviceSet (of 10 CPU and 10 GPU devices).
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
-  Status Place(Graph* graph, DeviceSet* devices, SessionOptions* options) {
-    Placer placer(graph, devices, options, nullptr);
+  Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
+               bool log_device_placement) {
+    Placer placer(graph, devices, nullptr, allow_soft_placement,
+                  log_device_placement);
     return placer.Run();
   }
 
   Status Place(Graph* graph, DeviceSet* devices) {
-    return Place(graph, devices, nullptr);
+    return Place(graph, devices, true, false);
   }
 
-  Status Place(Graph* graph, SessionOptions* options) {
-    return Place(graph, &devices_, options);
+  Status Place(Graph* graph, bool allow_soft_placement,
+               bool log_device_placement) {
+    return Place(graph, &devices_, allow_soft_placement, log_device_placement);
   }
 
-  Status Place(Graph* graph) { return Place(graph, &devices_, nullptr); }
+  Status Place(Graph* graph) { return Place(graph, &devices_, true, false); }
 
   // Returns the node in "graph" with the given name.
   //
@@ -752,9 +755,7 @@ TEST_F(PlacerTest, TestPartialSpecGpuToCpu) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
   EXPECT_DEVICE_CONTAINS(g, "in", "/device:fakecpu");
   EXPECT_DEVICE_TYPE(g, "var", "FakeGPU");
@@ -928,10 +929,7 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
       }
     }
 
-    SessionOptions options;
-    options.config.set_allow_soft_placement(allow_soft_placement);
-    options.config.set_log_device_placement(true);
-    Status s = Place(&g, &options);
+    Status s = Place(&g, allow_soft_placement, true);
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
     EXPECT_TRUE(str_util::StrContains(
         s.error_message(),
@@ -973,8 +971,7 @@ TEST_F(PlacerTest, TestReferenceConnectionIgnoreInfeasible) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  s = Place(&g, &options);
+  s = Place(&g, false, false);
   TF_EXPECT_OK(s);
   EXPECT_DEVICE_TYPE(g, "var_0", "FakeGPU");
   EXPECT_DEVICE_TYPE(g, "assign", "FakeGPU");
@@ -1005,8 +1002,7 @@ TEST_F(PlacerTest, TestReferenceConnectionMoreSpecificDestinationSourceWins) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  s = Place(&g, &options);
+  s = Place(&g, false, false);
   TF_EXPECT_OK(s);
   EXPECT_DEVICE_TYPE(g, "var_0", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
@@ -1031,8 +1027,7 @@ TEST_F(PlacerTest, TestReferenceConnectionNoSourceDevice) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  s = Place(&g, &options);
+  s = Place(&g, false, false);
   TF_EXPECT_OK(s);
   EXPECT_DEVICE_TYPE(g, "var_0", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
@@ -1101,10 +1096,7 @@ TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   }
 
   bool allow_soft_placement = GetParam();
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  options.config.set_log_device_placement(true);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
     EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
@@ -1179,10 +1171,7 @@ TEST_P(SoftPlacementPlacerTest,
   }
 
   bool allow_soft_placement = GetParam();
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  options.config.set_log_device_placement(true);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
   } else {
@@ -1444,9 +1433,7 @@ TEST_F(PlacerTest, TestNonexistentGpuAllowSoftPlacement) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
   EXPECT_DEVICE_CONTAINS(g, "in", "/device:fakegpu:0");
 }
 
@@ -1461,8 +1448,7 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakegpu:11"));
 }
@@ -1478,8 +1464,7 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(s.error_message(),
@@ -1498,8 +1483,7 @@ TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakecpu:0"));
   EXPECT_TRUE(str_util::StrContains(
@@ -1518,8 +1502,7 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
@@ -1540,8 +1523,7 @@ TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
@@ -1559,9 +1541,7 @@ TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
 }
 
 // Test that a graph with device type and reference constraints on
@@ -1588,9 +1568,7 @@ TEST_F(PlacerTest, TestDeviceTypeConstraintsAllowSoftPlacement) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
   EXPECT_DEVICE_TYPE(g, "var_gpu", "FakeGPU");
   EXPECT_DEVICE_TYPE(g, "force_gpu", "FakeGPU");
   EXPECT_COLOCATED(g, "var_gpu", "force_gpu");
@@ -1729,10 +1707,7 @@ TEST_P(SoftPlacementPlacerTest,
   TF_ASSERT_OK(BuildGraph(graph, &g));
 
   bool allow_soft_placement = GetParam();
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  options.config.set_log_device_placement(true);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
     EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
@@ -1821,9 +1796,7 @@ TEST_P(SoftPlacementPlacerTest,
 
   bool allow_soft_placement = GetParam();
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, false);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
     EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
