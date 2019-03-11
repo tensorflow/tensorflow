@@ -581,8 +581,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   DumpGraph("Before calling Placer", graph.get());
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  Placer placer(graph.get(), &device_set, &session_options,
-                flr->device() /* Default device */);
+  Placer placer(graph.get(), &device_set, flr->device() /* Default device */,
+                options.config_proto.allow_soft_placement(),
+                options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
 
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());
