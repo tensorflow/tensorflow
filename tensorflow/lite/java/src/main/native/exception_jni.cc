@@ -33,9 +33,11 @@ void throwException(JNIEnv* env, const char* clazz, const char* fmt, ...) {
   auto* message = static_cast<char*>(malloc(max_msg_len));
   if (message && (vsnprintf(message, max_msg_len, fmt, args) >= 0)) {
     env->ThrowNew(env->FindClass(clazz), message);
-    free(message);
   } else {
     env->ThrowNew(env->FindClass(clazz), "");
+  }
+  if (message) {
+    free(message);
   }
   va_end(args);
 }
