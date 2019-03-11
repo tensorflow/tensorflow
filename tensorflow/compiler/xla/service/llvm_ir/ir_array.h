@@ -91,9 +91,10 @@ class IrArray {
 
     // Constructs an index from both a multi-dimensional index and a linear
     // index. "shape" has the same meaning as that in the constructor that takes
-    // only a linear index.
+    // only a linear index. 'index_type' is only used if 'shape' is a scalar and
+    // 'linear' is nullptr.
     Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
-          const Shape& shape);
+          const Shape& shape, llvm::Type* index_type = nullptr);
 
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64 dim,
@@ -112,10 +113,6 @@ class IrArray {
     llvm::Value*& operator[](size_t i) { return mutable_multidim()[i]; }
 
     void push_back(llvm::Value* value) { mutable_multidim().push_back(value); }
-    void InsertAt(int64 index, llvm::Value* value) {
-      CHECK_LE(index, size());
-      mutable_multidim().insert(mutable_multidim().begin() + index, value);
-    }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
