@@ -348,7 +348,8 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx,
   if (!batch_norm || !IsFusedBatchNorm(*batch_norm)) return false;
 
   // V2 has a separate data type for the scale/offset/mean/variance inputs.
-  if (batch_norm->op() == "FusedBatchNormV2" &&
+  if ((batch_norm->op() == "FusedBatchNormV2" ||
+       batch_norm->op() == "FusedBatchNormV3") &&
       !HasDataType(batch_norm, DT_FLOAT, "U"))
     return false;
 
