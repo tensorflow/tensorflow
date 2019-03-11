@@ -58,11 +58,25 @@ RUN apt-get update --allow-insecure-repositories && DEBIAN_FRONTEND=noninteracti
 RUN apt-get update --allow-insecure-repositories && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --allow-unauthenticated \
     rocm-dev rocm-libs rocm-utils rocm-cmake \
-    rocfft miopen-hip miopengemm rocblas hipblas rocrand \
     rocm-profiler cxlactivitylogger && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+# rocfft miopen-hip miopengemm rocblas hipblas rocrand \
 
+# Build HCC from source, cleanup the default HCC to avoid issue
+#RUN rm -rf /opt/rocm/hcc-1.0 && rm -rf /opt/rocm/lib/*.bc
+#RUN cd $HOME && git clone --recursive -b clang_tot_upgrade https://github.com/RadeonOpenCompute/hcc.git
+#RUN cd $HOME && mkdir -p build.hcc && cd build.hcc && cmake -DCMAKE_BUILD_TYPE=Release ../hcc
+#RUN cd $HOME/build.hcc && make -j $(nproc) && make package && dpkg -i hcc*.deb
+#RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
+
+# Build HIP from source
+RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git && \
+    mkdir HIP/build && cd HIP/build && \
+    git checkout -b 2019-03-06 0c4a40efcc974e5a4b2935fb84b3e8d368e9880b && \
+    cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
+
+# Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
 ENV HIP_PATH=$ROCM_PATH/hip
 ENV OPENCL_ROOT=$ROCM_PATH/opencl
@@ -73,9 +87,25 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
-# Workadround : build HIP from source that has HIP PR 933 + PR 936 merged
-RUN cd $HOME && git clone -b pr_933_936_fixes https://github.com/deven-amd/HIP.git
-RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make package -j$(nproc) && dpkg -i *.deb
+# Build rocBLAS from source
+RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
+RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/hipBLAS.git && cd hipBLAS && ./install.sh -id
+
+# Build rcFFT from source
+RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -icd
+
+# Build rocRAND from source
+RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
+
+# Build MIOpen from source
+RUN cd $HOME && git clone -b master https://github.com/RadeonOpenCompute/rocm-cmake.git && cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
+RUN cd $HOME && git clone -b 0.4.0  https://github.com/RadeonOpenCompute/clang-ocl.git && cd $HOME/clang-ocl && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-clang-ocl*.deb
+RUN cd $HOME && git clone -b 1.1.5  https://github.com/ROCmSoftwarePlatform/MIOpenGEMM.git && cd $HOME/MIOpenGEMM && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./miopengemm*.deb
+RUN cd $HOME && git clone -b 1.7.1  https://github.com/ROCmSoftwarePlatform/MIOpen.git
+RUN cd $HOME/MIOpen && cmake -P install_deps.cmake && \
+    mkdir -p build && cd build && \
+    CXX=/opt/rocm/hcc/bin/hcc cmake -DMIOPEN_BACKEND=HIP -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" -D#CMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" .. -DMIOPEN_MAKE_BOOST_PUBLIC=ON && \
+    make -j $(nproc) && make package && dpkg -i ./MIOpen*.deb
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
