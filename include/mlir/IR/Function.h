@@ -15,9 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// Functions are the basic unit of composition in MLIR.  There are three
-// different kinds of functions: external functions, CFG functions, and ML
-// functions.
+// Functions are the basic unit of composition in MLIR.
 //
 //===----------------------------------------------------------------------===//
 
