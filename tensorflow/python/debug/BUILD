@@ -47,6 +47,7 @@ py_library(
         ":cli_test_utils",
         ":debug_py",
         ":grpc_debug_test_server",
+        ":grpc_tensorflow_server",
         ":grpc_tensorflow_server_lib",
         ":offline_analyzer_lib",
         ":session_debug_testlib",
@@ -1124,7 +1125,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = [":grpc_tensorflow_server_lib"],
+    data = [":grpc_tensorflow_server"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
