@@ -38,6 +38,14 @@ xla_proto_library(
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
+tf_proto_library(
+    name = "poplibs_ops",
+    srcs = ["kernels/poplibs_ops.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    j2objc_api_version = 1,
+)
+
 cc_library(
     name = "custom_kernels_util",
     srcs = [
@@ -47,6 +55,7 @@ cc_library(
         "kernels/custom_kernels_util.h",
     ],
     deps = [
+        ":poplibs_ops_cc_impl",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:hlo",
         "@jsoncpp_git//:jsoncpp",

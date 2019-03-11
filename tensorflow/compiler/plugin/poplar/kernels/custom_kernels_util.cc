@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/poplibs_ops.pb.h"
 
 #include "include/json/json.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -34,81 +35,12 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
-
-std::string PoplibsLibToString(const PoplibsLib& poplibs_lib) {
-  static std::vector<std::string> names = {"Poplin", "Popnn", "Popops",
-                                           "Poprand"};
-  if (names.size() != static_cast<uint32>(PoplibsLib::_NumLibs)) {
-    LOG(FATAL) << "The number of Poplibs libraries does not match.";
-  }
-  return names[static_cast<uint32>(poplibs_lib)];
+std::string GetPoplibsCustomOpTargetString(PoplibsOp::Lib lib,
+                                           PoplibsOp::Op op) {
+  return PoplibsOp_Lib_Name(lib) + "::" + PoplibsOp_Op_Name(op);
 }
 
-absl::optional<PoplibsLib> StringToPoplibsLib(const std::string& name) {
-  static absl::flat_hash_map<std::string, PoplibsLib> mapping = {
-      {"Poplin", PoplibsLib::Poplin},
-      {"Popnn", PoplibsLib::Popnn},
-      {"Popops", PoplibsLib::Popops},
-      {"Poprand", PoplibsLib::Poprand}};
-  if (mapping.size() != static_cast<uint32>(PoplibsLib::_NumLibs)) {
-    LOG(FATAL) << "The number of Poplibs libraries does not match.";
-  }
-  if (mapping.count(name) == 0) {
-    return absl::nullopt;
-  }
-  return mapping.at(name);
-}
-
-std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
-  static std::vector<std::string> names = {"AvgPool",
-                                           "AvgPoolGrad",
-                                           "GroupNormGrad",
-                                           "GroupNormInference",
-                                           "GroupNormStatistics",
-                                           "GroupNormTraining",
-                                           "LstmLayerBwd",
-                                           "LstmLayerFwd",
-                                           "MaxPool",
-                                           "MaxPoolGrad",
-                                           "TruncatedNormal"};
-  if (names.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
-    LOG(FATAL) << "The number of Poplibs Custom Ops does not match.";
-  }
-  return names[static_cast<uint32>(poplibs_op)];
-}
-
-absl::optional<PoplibsOp> StringToPoplibsOp(const std::string& name) {
-  static absl::flat_hash_map<std::string, PoplibsOp> mapping = {
-      // Poplin:
-      // Popnn:
-      {"AvgPool", PoplibsOp::AvgPool},
-      {"AvgPoolGrad", PoplibsOp::AvgPoolGrad},
-      {"GroupNormGrad", PoplibsOp::GroupNormGrad},
-      {"GroupNormInference", PoplibsOp::GroupNormInference},
-      {"GroupNormStatistics", PoplibsOp::GroupNormStatistics},
-      {"GroupNormTraining", PoplibsOp::GroupNormTraining},
-      {"LstmLayerBwd", PoplibsOp::LstmLayerBwd},
-      {"LstmLayerFwd", PoplibsOp::LstmLayerFwd},
-      {"MaxPool", PoplibsOp::MaxPool},
-      {"MaxPoolGrad", PoplibsOp::MaxPoolGrad},
-      // Popops:
-      // Poprand:
-      {"TruncatedNormal", PoplibsOp::TruncatedNormal}};
-  if (mapping.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
-    LOG(FATAL) << "The number of Poplibs Custom Ops does not match.";
-  }
-  if (mapping.count(name) == 0) {
-    return absl::nullopt;
-  }
-  return mapping.at(name);
-}
-
-std::string GetPoplibsCustomOpTargetString(const PoplibsLib& poplibs_lib,
-                                           const PoplibsOp& poplibs_op) {
-  return PoplibsLibToString(poplibs_lib) + "::" + PoplibsOpToString(poplibs_op);
-}
-
-absl::optional<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
+absl::optional<std::pair<PoplibsOp::Lib, PoplibsOp::Op>> GetPoplibsCustomOp(
     const HloInstruction* inst) {
   if (inst->opcode() == HloOpcode::kCustomCall) {
     std::vector<std::string> split =
@@ -116,15 +48,18 @@ absl::optional<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
     if (split.size() != 2) {
       return absl::nullopt;
     }
-    auto poplibs_lib = StringToPoplibsLib(split[0]);
-    if (poplibs_lib == absl::nullopt) {
+    PoplibsOp::Lib lib;
+    bool lib_parsed = PoplibsOp_Lib_Parse(split[0], &lib);
+    if (!lib_parsed) {
       return absl::nullopt;
     }
-    auto poplibs_op = StringToPoplibsOp(split[1]);
-    if (poplibs_op == absl::nullopt) {
+
+    PoplibsOp::Op op;
+    bool op_parsed = PoplibsOp_Op_Parse(split[1], &op);
+    if (!op_parsed) {
       return absl::nullopt;
     }
-    return std::make_pair(poplibs_lib.value(), poplibs_op.value());
+    return std::make_pair(lib, op);
   }
   return absl::nullopt;
 }
@@ -133,17 +68,13 @@ const bool IsPoplibsCustomOp(const HloInstruction* inst) {
   return GetPoplibsCustomOp(inst) != absl::nullopt;
 }
 
-const bool IsPoplibsCustomOp(const HloInstruction* inst,
-                             const PoplibsLib& target_poplibs_lib,
-                             const PoplibsOp& target_poplibs_op) {
+const bool IsPoplibsCustomOp(const HloInstruction* inst, PoplibsOp::Lib lib,
+                             PoplibsOp::Op op) {
   auto ret = GetPoplibsCustomOp(inst);
   if (!ret) {
     return false;
   }
-  PoplibsLib poplibs_lib;
-  PoplibsOp poplibs_op;
-  std::tie(poplibs_lib, poplibs_op) = *ret;
-  return target_poplibs_lib == poplibs_lib && target_poplibs_op == poplibs_op;
+  return ret->first == lib && ret->second == op;
 }
 
 const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst) {
@@ -154,18 +85,16 @@ const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst) {
   if (!ret) {
     return false;
   }
-  PoplibsLib poplibs_lib;
-  PoplibsOp poplibs_op;
-  std::tie(poplibs_lib, poplibs_op) = *ret;
-  switch (poplibs_lib) {
-    case PoplibsLib::Popops: {
-      switch (poplibs_op) {
+
+  switch (ret->first) {
+    case PoplibsOp::Popops: {
+      switch (ret->second) {
         default: { return false; }
       }
       break;
     }
-    case PoplibsLib::Poprand: {
-      switch (poplibs_op) {
+    case PoplibsOp::Poprand: {
+      switch (ret->second) {
         case PoplibsOp::TruncatedNormal: {
           return true;
         }

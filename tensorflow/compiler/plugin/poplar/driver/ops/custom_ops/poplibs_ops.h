@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/poplibs_ops.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 #include <string>
@@ -58,7 +59,7 @@ class PoplibsOpDef {
 class PoplibsOpManager {
  public:
   // Registration method
-  static void RegsiterOp(PoplibsLib poplibs_lib, PoplibsOp poplibs_op,
+  static void RegsiterOp(PoplibsOp::Lib lib, PoplibsOp::Op op,
                          std::unique_ptr<PoplibsOpDef> poplibs_op_def);
   static StatusOr<PoplibsOpDef*> GetOp(const HloCustomCallInstruction* inst);
 
@@ -66,18 +67,15 @@ class PoplibsOpManager {
   PoplibsOpManager() = default;
   static PoplibsOpManager& GetInstance();
 
-  absl::flat_hash_map<std::pair<PoplibsLib, PoplibsOp>,
+  absl::flat_hash_map<std::pair<PoplibsOp::Lib, PoplibsOp::Op>,
                       std::unique_ptr<PoplibsOpDef>>
       ops;
 };
 
 class PoplibsOpRegistrar {
  public:
-  PoplibsOpRegistrar(PoplibsLib poplibs_lib, PoplibsOp poplibs_op,
-                     std::unique_ptr<PoplibsOpDef> poplibs_op_def) {
-    PoplibsOpManager::RegsiterOp(poplibs_lib, poplibs_op,
-                                 std::move(poplibs_op_def));
-  }
+  PoplibsOpRegistrar(PoplibsOp::Lib lib, PoplibsOp::Op op,
+                     std::unique_ptr<PoplibsOpDef> poplibs_op_def);
 
   PoplibsOpRegistrar() = delete;
 };
@@ -86,7 +84,7 @@ class PoplibsOpRegistrar {
   namespace {                                                         \
   static PoplibsOpRegistrar                                           \
       registrar__poplibs_op__##poplibs_lib##__##poplibs_op##__object( \
-          PoplibsLib::poplibs_lib, PoplibsOp::poplibs_op,             \
+          PoplibsOp::poplibs_lib, PoplibsOp::poplibs_op,              \
           std::unique_ptr<PoplibsOpDef>(new poplibs_op_def));         \
   }
 

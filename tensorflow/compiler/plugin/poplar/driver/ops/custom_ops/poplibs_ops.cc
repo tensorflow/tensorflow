@@ -31,14 +31,14 @@ namespace xla {
 namespace poplarplugin {
 
 void PoplibsOpManager::RegsiterOp(
-    PoplibsLib poplibs_lib, PoplibsOp poplibs_op,
+    PoplibsOp::Lib lib, PoplibsOp::Op op,
     std::unique_ptr<PoplibsOpDef> poplibs_op_def) {
   auto& ops = GetInstance().ops;
-  auto key = std::make_pair(poplibs_lib, poplibs_op);
+  auto key = std::make_pair(lib, op);
   if (ops.contains(key)) {
     LOG(FATAL) << "Trying to register the same op twice ("
-               << PoplibsLibToString(poplibs_lib) << ", "
-               << PoplibsOpToString(poplibs_op) << ").";
+               << PoplibsOp_Lib_Name(lib) << ", " << PoplibsOp_Op_Name(op)
+               << ").";
   }
   ops[key] = std::move(poplibs_op_def);
 }
@@ -63,8 +63,14 @@ StatusOr<PoplibsOpDef*> PoplibsOpManager::GetOp(
     return itr->second.get();
   }
   return xla::FailedPrecondition("Could not find definition for %s::%s.",
-                                 PoplibsLibToString(ret->first).c_str(),
-                                 PoplibsOpToString(ret->second).c_str());
+                                 PoplibsOp_Lib_Name(ret->first).c_str(),
+                                 PoplibsOp_Op_Name(ret->second).c_str());
+}
+
+PoplibsOpRegistrar::PoplibsOpRegistrar(
+    PoplibsOp::Lib lib, PoplibsOp::Op op,
+    std::unique_ptr<PoplibsOpDef> poplibs_op_def) {
+  PoplibsOpManager::RegsiterOp(lib, op, std::move(poplibs_op_def));
 }
 
 }  // namespace poplarplugin

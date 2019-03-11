@@ -316,13 +316,13 @@ bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
 
 bool IsNormInference(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kBatchNormInference ||
-         IsPoplibsCustomOp(inst, PoplibsLib::Popnn,
+         IsPoplibsCustomOp(inst, PoplibsOp::Popnn,
                            PoplibsOp::GroupNormInference);
 }
 
 bool IsNormTraining(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kBatchNormTraining ||
-         IsPoplibsCustomOp(inst, PoplibsLib::Popnn,
+         IsPoplibsCustomOp(inst, PoplibsOp::Popnn,
                            PoplibsOp::GroupNormTraining);
 }
 
@@ -332,7 +332,7 @@ bool IsNormInferenceOrTraining(const HloInstruction* inst) {
 
 bool IsNormGradient(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kBatchNormGrad ||
-         IsPoplibsCustomOp(inst, PoplibsLib::Popnn, PoplibsOp::GroupNormGrad);
+         IsPoplibsCustomOp(inst, PoplibsOp::Popnn, PoplibsOp::GroupNormGrad);
 }
 
 bool IsGTEIndex0(const HloInstruction* inst) {

@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_CUSOM_KERNELS_UTIL_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_KERNELS_IPU_CUSOM_KERNELS_UTIL_H_
 
+#include "tensorflow/compiler/plugin/poplar/kernels/poplibs_ops.pb.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 #include "include/json/json.h"
@@ -33,52 +34,18 @@ class HloInstruction;
 class Window;
 
 namespace poplarplugin {
-
-enum class PoplibsLib : uint32 {
-  Poplin = 0,
-  Popnn,
-  Popops,
-  Poprand,
-  // Do not add beyond this point.
-  _NumLibs
-};
-std::string PoplibsLibToString(const PoplibsLib&);
-absl::optional<PoplibsLib> StringToPoplibsLib(const std::string&);
-
-enum class PoplibsOp : uint32 {
-  // Poplin:
-  // Popnn:
-  AvgPool = 0,
-  AvgPoolGrad,
-  GroupNormGrad,
-  GroupNormInference,
-  GroupNormStatistics,
-  GroupNormTraining,
-  LstmLayerBwd,
-  LstmLayerFwd,
-  MaxPool,
-  MaxPoolGrad,
-  // Popops:
-  // Poprand:
-  TruncatedNormal,
-  // Do not add beyond this point.
-  _NumOps
-};
-std::string PoplibsOpToString(const PoplibsOp&);
-absl::optional<PoplibsOp> StringToPoplibsOp(const std::string&);
-
 // Function used to get the string target for the kCustomCall
-std::string GetPoplibsCustomOpTargetString(const PoplibsLib&, const PoplibsOp&);
+std::string GetPoplibsCustomOpTargetString(PoplibsOp::Lib lib,
+                                           PoplibsOp::Op op);
 // Tried to convert the string target for the kCustomCall
-absl::optional<std::pair<PoplibsLib, PoplibsOp>> GetPoplibsCustomOp(
+absl::optional<std::pair<PoplibsOp::Lib, PoplibsOp::Op>> GetPoplibsCustomOp(
     const HloInstruction* inst);
 
 // Returns true if inst is a call to a custom op for Poplibs
 const bool IsPoplibsCustomOp(const HloInstruction* inst);
 // Returns true if inst is a call to a custom op for Poplibs of a certain type.
-const bool IsPoplibsCustomOp(const HloInstruction* inst,
-                             const PoplibsLib& poplibs_lib,
-                             const PoplibsOp& poplibs_op);
+const bool IsPoplibsCustomOp(const HloInstruction* inst, PoplibsOp::Lib lib,
+                             PoplibsOp::Op op);
 // Returns true if inst is a call to a custom op for Poplibs which is
 // elementwise.
 const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst);

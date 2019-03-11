@@ -110,7 +110,8 @@ xla::StatusOr<xla::Window> MakeWindow(const xla::Shape& input_shape,
 // Superclass of pooling ops.
 class PoolingOp : public XlaOpKernel, IpuOpKernel {
  public:
-  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims, PoplibsOp op_type)
+  PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims,
+            PoplibsOp::Op op_type)
       : XlaOpKernel(ctx),
         num_spatial_dims_(num_spatial_dims),
         op_type_(op_type) {
@@ -186,7 +187,7 @@ class PoolingOp : public XlaOpKernel, IpuOpKernel {
     if (reduction_dims.size()) {
       std::vector<xla::XlaOp> args = {input};
       output = xla::CustomCall(
-          &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popnn, op_type_), args,
+          &b, GetPoplibsCustomOpTargetString(PoplibsOp::Popnn, op_type_), args,
           output_shape, attribute_map_.Serialise());
     } else {
       // This is a no-op when there are no reducing dimensions.
@@ -260,7 +261,7 @@ class PoolingOp : public XlaOpKernel, IpuOpKernel {
   std::vector<int64> ksize_;
   std::vector<int64> stride_;
   xla::Padding padding_;
-  PoplibsOp op_type_;
+  PoplibsOp::Op op_type_;
 };
 
 class MaxPoolOp : public PoolingOp {
@@ -403,7 +404,7 @@ class MaxPoolGradOp : public XlaOpKernel, IpuOpKernel {
       input_backprop =
           xla::CustomCall(&b,
                           GetPoplibsCustomOpTargetString(
-                              PoplibsLib::Popnn, PoplibsOp::MaxPoolGrad),
+                              PoplibsOp::Popnn, PoplibsOp::MaxPoolGrad),
                           args, input_shape, attribute_map_.Serialise());
     } else {
       // The gradient is all 0s when we don't reduce.
@@ -519,7 +520,7 @@ class AvgPoolGradOp : public XlaOpKernel, IpuOpKernel {
       input_backprop =
           xla::CustomCall(&b,
                           GetPoplibsCustomOpTargetString(
-                              PoplibsLib::Popnn, PoplibsOp::AvgPoolGrad),
+                              PoplibsOp::Popnn, PoplibsOp::AvgPoolGrad),
                           args, input_shape, attribute_map_.Serialise());
     } else {
       // The gradient is all 0s when we don't reduce.
