@@ -116,11 +116,6 @@ class IrArray {
       CHECK_LE(index, size());
       mutable_multidim().insert(mutable_multidim().begin() + index, value);
     }
-    void InsertAt(int64 index, int64 count, llvm::Value* value) {
-      CHECK_LE(index, size());
-      mutable_multidim().insert(mutable_multidim().begin() + index, count,
-                                value);
-    }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
