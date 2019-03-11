@@ -501,6 +501,11 @@ message RunOptions {
     // and tail) latency.
     // Consider using this option for CPU-bound workloads like inference.
     bool use_run_handler_pool = 2;
+    // If true, then operations within this session::run() calls will be
+    // kept executing forever, without passing through python runtime:
+    // e.g. sess.run(tf.print(tf.constant(1)), options=tf.RunOptions(
+    //        experimental=tf.RunOptions.Experimental(run_forever=True)))
+    bool run_forever = 3;
   };
 
   Experimental experimental = 8;

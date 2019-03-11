@@ -61,6 +61,12 @@ tf_proto {
         label: LABEL_OPTIONAL
         type: TYPE_BOOL
       }
+      field {
+        name: "run_forever"
+        number: 3
+        label: LABEL_OPTIONAL
+        type: TYPE_BOOL
+      }
     }
     enum_type {
       name: "TraceLevel"

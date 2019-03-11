@@ -463,6 +463,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
                                   CallFrameInterface* call_frame,
                                   ExecutorsAndKeys* executors_and_keys,
                                   RunMetadata* run_metadata) {
+  do {
+
   const uint64 start_time_usecs = Env::Default()->NowMicros();
   string session_id_meta = strings::StrCat("SessionRun #id=", step_id, "#");
   tracing::ScopedActivity activity(session_id_meta);
@@ -721,6 +723,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
     }
   }
   metrics::UpdateGraphExecTime(Env::Default()->NowMicros() - start_time_usecs);
+
+  } while (run_options.experimental().run_forever());
 
   return Status::OK();
 }
