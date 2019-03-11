@@ -233,12 +233,14 @@ bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
 bool IsFusedBatchNorm(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2" ||
+         op == "FusedBatchNormV3";
 }
 
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
+  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
+         op == "FusedBatchNormGradV3";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }

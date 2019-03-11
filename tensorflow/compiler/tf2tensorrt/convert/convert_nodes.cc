@@ -4051,7 +4051,8 @@ static void RegisterValidatableOpConverters(
   for (auto pool_op_type : {"AvgPool", "MaxPool"}) {
     (*registration)[pool_op_type] = ConvertPool;
   }
-  for (auto normalization_op_type : {"FusedBatchNorm", "FusedBatchNormV2"}) {
+  for (auto normalization_op_type :
+       {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3"}) {
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
   for (auto unary_op_pair : *UnaryOperationMap()) {

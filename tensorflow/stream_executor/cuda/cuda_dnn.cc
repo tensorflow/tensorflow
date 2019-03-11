@@ -1500,6 +1500,54 @@ port::StatusOr<DeviceMemory<uint8>> CreateRnnWorkspace(
   return workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
 }
 
+#if CUDNN_VERSION >= 7402
+port::StatusOr<DeviceMemory<uint8>> CreateBatchNormForwardWorkspace(
+    Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+    const cudnnBatchNormOps_t& bn_ops,
+    const CudnnTensorDescriptor& x_descriptor,
+    const CudnnTensorDescriptor& scale_offset_descriptor,
+    ScratchAllocator* workspace_allocator) {
+  // Query the workspace size.
+  size_t workspace_size_in_bytes = 0;
+  RETURN_IF_CUDNN_ERROR(
+      cudnnGetBatchNormalizationForwardTrainingExWorkspaceSize(
+          /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+          /*xDesc=*/x_descriptor.handle(), /*zDesc=*/NULL,
+          /*yDesc=*/x_descriptor.handle(),
+          /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
+          /*activationDesc=*/NULL, /*sizeInBytes=*/&workspace_size_in_bytes));
+  // Allocate the workspace.
+  if (workspace_size_in_bytes == 0) {
+    return DeviceMemory<uint8>();
+  }
+  return workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+}
+
+port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
+    Stream* stream, const CudnnHandle& cudnn, const cudnnBatchNormMode_t& mode,
+    const cudnnBatchNormOps_t& bn_ops,
+    const CudnnTensorDescriptor& x_descriptor,
+    const CudnnTensorDescriptor& scale_offset_descriptor,
+    ScratchAllocator* workspace_allocator) {
+  // Query the workspace size.
+  size_t workspace_size_in_bytes = 0;
+  RETURN_IF_CUDNN_ERROR(cudnnGetBatchNormalizationBackwardExWorkspaceSize(
+      /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+      /*xDesc=*/x_descriptor.handle(),
+      /*yDesc=*/x_descriptor.handle(),
+      /*dyDesc=*/x_descriptor.handle(),
+      /*dzDesc=*/NULL,
+      /*dxDesc=*/x_descriptor.handle(),
+      /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
+      /*activationDesc=*/NULL, /*sizeInBytes=*/&workspace_size_in_bytes));
+  // Allocate the workspace.
+  if (workspace_size_in_bytes == 0) {
+    return DeviceMemory<uint8>();
+  }
+  return workspace_allocator->AllocateBytes(stream, workspace_size_in_bytes);
+}
+#endif
+
 }  // namespace
 
 template <class T>
@@ -3185,6 +3233,8 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<float>* y, DeviceMemory<float>* batch_mean,
     DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
     DeviceMemory<float>* saved_inv_var, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return IsStatusOk(
@@ -3192,7 +3242,8 @@ bool CudnnSupport::DoBatchNormalizationForward(
           stream, dnn::DataType::kFloat, dnn::DataType::kFloat, x, scale,
           offset, estimated_mean, estimated_variance, x_desc, scale_offset_desc,
           epsilon, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          is_training, reserve_space_allocator, workspace_allocator,
+          std::move(var_to_inv_var), std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3206,6 +3257,8 @@ bool CudnnSupport::DoBatchNormalizationForward(
     DeviceMemory<Eigen::half>* y, DeviceMemory<float>* batch_mean,
     DeviceMemory<float>* batch_var, DeviceMemory<float>* saved_mean,
     DeviceMemory<float>* saved_inv_var, bool is_training,
+    ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
     std::function<const DeviceMemory<float>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   return IsStatusOk(
@@ -3213,7 +3266,8 @@ bool CudnnSupport::DoBatchNormalizationForward(
           stream, dnn::DataType::kHalf, dnn::DataType::kFloat, x, scale, offset,
           estimated_mean, estimated_variance, x_desc, scale_offset_desc,
           epsilon, y, batch_mean, batch_var, saved_mean, saved_inv_var,
-          is_training, std::move(var_to_inv_var), std::move(inv_var_to_var)),
+          is_training, reserve_space_allocator, workspace_allocator,
+          std::move(var_to_inv_var), std::move(inv_var_to_var)),
       /*report_error=*/true);
 }
 
@@ -3228,7 +3282,9 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<T>* y, DeviceMemory<U>* batch_mean, DeviceMemory<U>* batch_var,
     DeviceMemory<U>* saved_mean, DeviceMemory<U>* saved_inv_var,
-    bool is_training, std::function<const DeviceMemory<U>&()> var_to_inv_var,
+    bool is_training, ScratchAllocator* reserve_space_allocator,
+    ScratchAllocator* workspace_allocator,
+    std::function<const DeviceMemory<U>&()> var_to_inv_var,
     std::function<void()> inv_var_to_var) {
   CudnnTensorDescriptor x_descriptor(x_desc, ToCudnnDataType(input_data_type));
   CudnnTensorDescriptor scale_offset_descriptor(
@@ -3242,6 +3298,39 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
   float one = 1.0;
   float zero = 0.0;
   auto cudnn = cudnn_->GetHandle(parent_, stream);
+
+#if CUDNN_VERSION >= 7402
+  cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
+#endif
+  DeviceMemory<uint8> workspace;
+  DeviceMemory<uint8> reserve_space;
+  if (reserve_space_allocator != nullptr) {
+#if CUDNN_VERSION >= 7402
+    SE_ASSIGN_OR_RETURN(workspace,
+                        CreateBatchNormForwardWorkspace(
+                            stream, cudnn, mode, bn_ops, x_descriptor,
+                            scale_offset_descriptor, workspace_allocator))
+    if (is_training) {
+      size_t reserve_space_size_in_bytes = 0;
+      RETURN_IF_CUDNN_ERROR(
+          cudnnGetBatchNormalizationTrainingExReserveSpaceSize(
+              /*handle=*/cudnn.handle(), /*mode=*/mode, /*bnOps=*/bn_ops,
+              /*activationDesc=*/NULL, /*xDesc=*/x_descriptor.handle(),
+              /*sizeInBytes=*/&reserve_space_size_in_bytes));
+      SE_ASSIGN_OR_RETURN(reserve_space,
+                          reserve_space_allocator->AllocateBytes(
+                              stream, reserve_space_size_in_bytes));
+    }
+#else
+    if (is_training) {
+      // dummy allocation for reserve_space
+      size_t reserve_space_size_in_bytes = 0;
+      SE_ASSIGN_OR_RETURN(reserve_space,
+                          reserve_space_allocator->AllocateBytes(
+                              stream, reserve_space_size_in_bytes));
+    }
+#endif
+  }
 
   if (is_training) {
     CHECK_EQ(batch_mean->is_null(), batch_var->is_null())
@@ -3259,12 +3348,50 @@ port::Status CudnnSupport::DoBatchNormalizationForwardImpl(
       batch_var_opaque = nullptr;
     }
 
-    RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
-        cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
-        x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
-        scale.opaque(), offset.opaque(), 1.0, batch_mean_opaque,
-        batch_var_opaque, epsilon, saved_mean->opaque(),
-        saved_inv_var->opaque()));
+    if (reserve_space_allocator != nullptr) {
+#if CUDNN_VERSION >= 7402
+      RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTrainingEx(
+          /*handle=*/cudnn.handle(),
+          /*mode=*/mode,
+          /*bnOps=*/bn_ops,
+          /*alpha=*/&one,
+          /*beta=*/&zero,
+          /*xDesc=*/x_descriptor.handle(),
+          /*xData=*/x.opaque(),
+          /*zDesc=*/NULL,
+          /*zData=*/NULL,
+          /*yDesc=*/x_descriptor.handle(),
+          /*yData=*/y->opaque(),
+          /*bnScaleBiasMeanVarDesc=*/scale_offset_descriptor.handle(),
+          /*bnScaleData=*/scale.opaque(),
+          /*bnBiasData=*/offset.opaque(),
+          /*exponentialAverageFactor=*/1.0,
+          /*resultRunningMeanData=*/batch_mean_opaque,
+          /*resultRunningVarianceData=*/batch_var_opaque,
+          /*epsilon=*/epsilon,
+          /*saveMean=*/saved_mean->opaque(),
+          /*saveInvVariance=*/saved_inv_var->opaque(),
+          /*cudnnActivationDescriptor_t=*/NULL,
+          /*workspace=*/workspace.opaque(),
+          /*workSpaceSizeInBytes=*/workspace.size(),
+          /*reserveSpace=*/reserve_space.opaque(),
+          /*reserveSpaceSizeInBytes=*/reserve_space.size()));
+#else
+      RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
+          cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
+          x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
+          scale.opaque(), offset.opaque(), 1.0, batch_mean_opaque,
+          batch_var_opaque, epsilon, saved_mean->opaque(),
+          saved_inv_var->opaque()));
+#endif
+    } else {
+      RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardTraining(
+          cudnn.handle(), mode, &one, &zero, x_descriptor.handle(), x.opaque(),
+          x_descriptor.handle(), y->opaque(), scale_offset_descriptor.handle(),
+          scale.opaque(), offset.opaque(), 1.0, batch_mean_opaque,
+          batch_var_opaque, epsilon, saved_mean->opaque(),
+          saved_inv_var->opaque()));
+    }
   } else {
     const void* maybe_inv_var = estimated_variance.opaque();
     RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationForwardInference(
@@ -3283,11 +3410,14 @@ bool CudnnSupport::DoBatchNormalizationBackward(
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<float>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop) {
+    DeviceMemory<float>* offset_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   return IsStatusOk(DoBatchNormalizationBackwardImpl(
                         stream, CUDNN_DATA_FLOAT, CUDNN_DATA_FLOAT, y_backprop,
                         x, scale, mean, inv_var, x_desc, scale_offset_desc,
-                        epsilon, x_backprop, scale_backprop, offset_backprop),
+                        epsilon, x_backprop, scale_backprop, offset_backprop,
+                        reserve_space_data, workspace_allocator),
                     /*report_error=*/true);
 }
 
@@ -3298,11 +3428,14 @@ bool CudnnSupport::DoBatchNormalizationBackward(
     const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<Eigen::half>* x_backprop, DeviceMemory<float>* scale_backprop,
-    DeviceMemory<float>* offset_backprop) {
+    DeviceMemory<float>* offset_backprop,
+    DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   return IsStatusOk(DoBatchNormalizationBackwardImpl(
                         stream, CUDNN_DATA_HALF, CUDNN_DATA_FLOAT, y_backprop,
                         x, scale, mean, inv_var, x_desc, scale_offset_desc,
-                        epsilon, x_backprop, scale_backprop, offset_backprop),
+                        epsilon, x_backprop, scale_backprop, offset_backprop,
+                        reserve_space_data, workspace_allocator),
                     /*report_error=*/true);
 }
 
@@ -3314,7 +3447,8 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
     const DeviceMemory<U>& inv_var, const dnn::BatchDescriptor& x_desc,
     const dnn::BatchDescriptor& scale_offset_desc, const double epsilon,
     DeviceMemory<T>* x_backprop, DeviceMemory<U>* scale_backprop,
-    DeviceMemory<U>* offset_backprop) {
+    DeviceMemory<U>* offset_backprop, DeviceMemory<uint8>* reserve_space_data,
+    ScratchAllocator* workspace_allocator) {
   CudnnTensorDescriptor x_descriptor(
       x_desc, static_cast<cudnnDataType_t>(cudnn_input_type));
   CudnnTensorDescriptor scale_offset_descriptor(
@@ -3330,13 +3464,63 @@ port::Status CudnnSupport::DoBatchNormalizationBackwardImpl(
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
-      cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
-      x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
-      x_descriptor.handle(), x_backprop->opaque(),
-      scale_offset_descriptor.handle(), scale.opaque(),
-      scale_backprop->opaque(), offset_backprop->opaque(), epsilon,
-      mean.opaque(), inv_var.opaque()));
+  if (reserve_space_data != nullptr) {
+#if CUDNN_VERSION >= 7402
+    cudnnBatchNormOps_t bn_ops = CUDNN_BATCHNORM_OPS_BN;
+    SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
+                        CreateBatchNormBackwardWorkspace(
+                            stream, cudnn, mode, bn_ops, x_descriptor,
+                            scale_offset_descriptor, workspace_allocator))
+    RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackwardEx(
+        /*handle=*/cudnn.handle(),
+        /*mode=*/mode,
+        /*bnOps=*/bn_ops,
+        /*alphaDataDiff=*/&one,
+        /*betaDataDiff=*/&zero,
+        /*alphaParamDiff=*/&one,
+        /*betaParamDiff=*/&zero,
+        /*xDesc=*/x_descriptor.handle(),
+        /*xData=*/x.opaque(),
+        /*yDesc=*/NULL,
+        /*yData=*/NULL,
+        /*dyDesc=*/x_descriptor.handle(),
+        /*dyData=*/y_backprop.opaque(),
+        /*dzDesc=*/NULL,
+        /*dzData=*/NULL,
+        /*dxDesc=*/x_descriptor.handle(),
+        /*dxData=*/x_backprop->opaque(),
+        /*dBnScaleBiasDesc=*/scale_offset_descriptor.handle(),
+        /*bnScaleData=*/scale.opaque(),
+        /*bnBiasData=*/NULL,
+        /*dBnScaleData=*/scale_backprop->opaque(),
+        /*dBnBiasData=*/offset_backprop->opaque(),
+        /*epsilon=*/epsilon,
+        /*savedMean=*/mean.opaque(),
+        /*savedInvVariance=*/inv_var.opaque(),
+        /*activationDesc=*/NULL,
+        /*workspace=*/workspace.opaque(),
+        /*workSpaceSizeInBytes=*/workspace.size(),
+        /*reserveSpace=*/reserve_space_data->opaque(),
+        /*reserveSpaceSizeInBytes=*/reserve_space_data->size()));
+#else
+    RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
+        cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
+        x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
+        x_descriptor.handle(), x_backprop->opaque(),
+        scale_offset_descriptor.handle(), scale.opaque(),
+        scale_backprop->opaque(), offset_backprop->opaque(), epsilon,
+        mean.opaque(), inv_var.opaque()));
+#endif
+  } else {
+    RETURN_IF_CUDNN_ERROR(cudnnBatchNormalizationBackward(
+        cudnn.handle(), mode, &one, &zero, &one, &zero, x_descriptor.handle(),
+        x.opaque(), x_descriptor.handle(), y_backprop.opaque(),
+        x_descriptor.handle(), x_backprop->opaque(),
+        scale_offset_descriptor.handle(), scale.opaque(),
+        scale_backprop->opaque(), offset_backprop->opaque(), epsilon,
+        mean.opaque(), inv_var.opaque()));
+  }
+
   return port::Status::OK();
 }
 
