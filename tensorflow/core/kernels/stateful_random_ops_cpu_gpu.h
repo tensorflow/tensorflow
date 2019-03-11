@@ -27,24 +27,21 @@ namespace tensorflow {
 // The following 2 functions use the contract "lower 32 bits for the first
 // uint32, higher 32 bits for the second". Note that this is endian-neutral,
 // unlike a direct memory copy `memcpy(output, &input, 8)`.
-template <typename INT64>
-PHILOX_DEVICE_FUNC void Int64ToUint32s(INT64 input, uint32* output1,
-                                       uint32* output2) {
+PHILOX_DEVICE_INLINE void Int64ToUint32s(int64 input, uint32* output1,
+                                         uint32* output2) {
   auto u64 = static_cast<uint64>(input);
   *output1 = static_cast<uint32>(u64);
   *output2 = static_cast<uint32>(u64 >> 32);
 }
 
-template <typename UINT32>
-PHILOX_DEVICE_FUNC int64 Uint32sToInt64(UINT32 input1, UINT32 input2) {
+PHILOX_DEVICE_INLINE int64 Uint32sToInt64(uint32 input1, uint32 input2) {
   auto u64_1 = static_cast<uint64>(input1);
   auto u64_2 = static_cast<uint64>(input2);
   return static_cast<int64>(u64_1 | (u64_2 << 32));
 }
 
-template <typename STATE_ELEMENT_TYPE>
-PHILOX_DEVICE_FUNC PhiloxRandom
-GetPhiloxRandomFromMem(STATE_ELEMENT_TYPE const* ptr) {
+PHILOX_DEVICE_INLINE PhiloxRandom
+GetPhiloxRandomFromMem(StateElementType const* ptr) {
   PhiloxRandom::ResultType counter;
   PhiloxRandom::Key key;
   Int64ToUint32s(ptr[0], &counter[0], &counter[1]);
@@ -53,9 +50,8 @@ GetPhiloxRandomFromMem(STATE_ELEMENT_TYPE const* ptr) {
   return PhiloxRandom(counter, key);
 }
 
-template <typename PHILOX_RANDOM>
-PHILOX_DEVICE_FUNC void WritePhiloxRandomToMem(PHILOX_RANDOM const& philox,
-                                               StateElementType* ptr) {
+PHILOX_DEVICE_INLINE void WritePhiloxRandomToMem(PhiloxRandom const& philox,
+                                                 StateElementType* ptr) {
   PhiloxRandom::ResultType const& counter = philox.counter();
   PhiloxRandom::Key const& key = philox.key();
   ptr[0] = Uint32sToInt64(counter[0], counter[1]);
@@ -63,10 +59,9 @@ PHILOX_DEVICE_FUNC void WritePhiloxRandomToMem(PHILOX_RANDOM const& philox,
   ptr[2] = Uint32sToInt64(key[0], key[1]);
 }
 
-template <typename PHILOX_RANDOM>
-PHILOX_DEVICE_FUNC void UpdateMemWithPhiloxRandom(PHILOX_RANDOM const& philox,
-                                                  int64 output_size,
-                                                  StateElementType* ptr) {
+PHILOX_DEVICE_INLINE void UpdateMemWithPhiloxRandom(PhiloxRandom const& philox,
+                                                    int64 output_size,
+                                                    StateElementType* ptr) {
   auto new_philox = philox;
   // Multiplier 256 is the same as in `FillPhiloxRandomTask`; do not change
   // it just here.

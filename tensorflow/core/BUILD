@@ -1629,8 +1629,8 @@ cc_library(
     srcs = ["common_runtime/testlib_ops.cc"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        ":framework",
+        ":lib",
     ],
     alwayslink = 1,
 )
@@ -1705,6 +1705,7 @@ filegroup(
             "platform/**/logger.cc",
             "platform/default/test_benchmark.*",
             "platform/cuda.h",
+            "platform/rocm.h",
             "platform/google/**/*",
             "platform/hadoop/**/*",
             "platform/gif.h",
@@ -2259,6 +2260,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = ["framework/resource_handle.h"] + glob(
         "platform/jpeg.h",
         "platform/png.h",
         "platform/**/cuda.h",
+        "platform/**/rocm.h",
         "platform/**/stream_executor.h",
     ],
 )
@@ -2371,6 +2373,7 @@ cc_library(
             "**/*test*",
             "platform/**/cuda.h",
             "platform/**/cuda_libdevice_path.cc",
+            "platform/**/rocm.h",
             "platform/**/stream_executor.h",
             "platform/**/env_time.cc",
             "platform/**/device_tracer.cc",
@@ -2866,6 +2869,7 @@ tf_cuda_library(
     srcs = ["platform/stream_executor.h"],
     hdrs = [
         "platform/cuda.h",
+        "platform/rocm.h",
         "platform/stream_executor.h",
     ],
     deps = [
@@ -3141,6 +3145,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
@@ -3301,7 +3306,7 @@ cc_library(
 )
 
 GPU_RUNTIME_HEADERS = [
-    "common_runtime/gpu/cuda_host_allocator.h",
+    "common_runtime/gpu/gpu_host_allocator.h",
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",

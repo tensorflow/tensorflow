@@ -514,7 +514,9 @@ def get_default_session_config():
   else:
     num_thread = int(os.environ.get('OMP_NUM_THREADS'))
     config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
+        intra_op_parallelism_threads=num_thread,
+        inter_op_parallelism_threads=num_thread,
+        allow_soft_placement=True)
   return config
 
 
@@ -2956,7 +2958,10 @@ class GraphExecutionFunction(object):
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
     self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
-    with ops.control_dependencies(self.outputs):
+    # TODO(b/127668432): Consider using autograph to generate these
+    # dependencies in call.
+    # Index 0 = total loss or model output for `predict`.
+    with ops.control_dependencies([self.outputs[0]]):
       updates_ops = []
       for update in updates:
         if isinstance(update, tuple):

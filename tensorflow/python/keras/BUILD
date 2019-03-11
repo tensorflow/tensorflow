@@ -538,6 +538,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
+    tags = [
+        "no_windows",  # TODO(b/127888631)
+        "no_windows_gpu",  # TODO(b/127881287)
+    ],
 )
 
 tf_py_test(
@@ -587,7 +591,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/128025959): Re-enable.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -629,6 +634,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    # TODO(b/127881287): Re-enable.
+    tags = [
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(

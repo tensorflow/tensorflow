@@ -41,6 +41,12 @@ using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
 using ::testing::Bool;
 using ::testing::Values;
 
+#if defined(__aarch64__)
+static constexpr bool kLooseIntrinsicsTolerance = false;
+#else
+static constexpr bool kLooseIntrinsicsTolerance = true;
+#endif
+
 // Currently, this is used in place of a Boolean "is symmetric?".
 enum class ParamsSpecialization {
   kNone = 0,
@@ -141,7 +147,6 @@ inline void DispatchDepthwiseConv(
     }
     case DepthwiseConvImplementation::kUseNeon3x3DotProduct:
     case DepthwiseConvImplementation::kUseUnwound3x3DotProduct:
-    case DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct:
       // TODO(b/118426582) Placeholder for future dispatches.
       break;
     case DepthwiseConvImplementation::kUseCModel3x3DotProduct: {
@@ -175,6 +180,26 @@ inline void DispatchDepthwiseConv(
           params, input_shape, input_data, filter_shape, filter_data,
           bias_shape, bias_data, output_shape, output_data);
       return;
+    }
+    case DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct: {
+#if defined(USE_NEON)
+      using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
+      DotProduct3x3KernelType kernel_type =
+          optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+              input_shape, filter_shape, params);
+
+      ASSERT_TRUE(kernel_type == DotProduct3x3KernelType::kPlain ||
+                  kernel_type == DotProduct3x3KernelType::kStride2 ||
+                  kernel_type ==
+                      DotProduct3x3KernelType::kWithDepthMultiplicationStride1);
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
+          DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data);
+      return;
+#else
+      break;
+#endif
     }
     case DepthwiseConvImplementation::kUseGenericKernel: {
       optimized_ops::depthwise_conv::DepthwiseConvGeneral(
@@ -310,7 +335,7 @@ int TestOneDepthwiseConvWithGivenOutputShift(
   if (test_param.loose_tolerance) {
     mean_tolerance = 500.f;
     diff_mean_tolerance = 256;
-    diff_median_tolerance = 175;
+    diff_median_tolerance = 225;
   }
 
   // Normally we should require bit-for-bit exact results. Unfortunately a bug
@@ -718,6 +743,36 @@ INSTANTIATE_TEST_SUITE_P(
         Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
+
+#if defined(USE_NEON)
+INSTANTIATE_TEST_SUITE_P(
+    Intrinsics, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::
+                   kUseIntrinsics3x3DotProduct),       // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Bool(),                                        // test_stride
+        Bool(),                                        // test_pad
+        Values(false),                                 // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(kLooseIntrinsicsTolerance)              // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+
+INSTANTIATE_TEST_SUITE_P(
+    IntrinsicsAlt, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::
+                   kUseIntrinsics3x3DotProduct),       // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Values(false),                                 // test_stride
+        Values(false),                                 // test_pad
+        Values(true),                                  // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(kLooseIntrinsicsTolerance)              // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+#endif
 
 }  // namespace
 }  // namespace tflite

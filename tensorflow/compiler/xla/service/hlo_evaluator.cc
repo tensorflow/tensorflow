@@ -1216,8 +1216,8 @@ Status HloEvaluator::HandleCall(HloInstruction* call) {
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result = embedded_evaluator.Evaluate(*computation, arg_literals)
-                       .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result,
+                      embedded_evaluator.Evaluate(*computation, arg_literals));
 
   evaluated_[call] = std::move(result);
   return Status::OK();
@@ -1251,9 +1251,8 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result =
-      embedded_evaluator.Evaluate(*readded_computation, arg_literals)
-          .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result, embedded_evaluator.Evaluate(
+                                          *readded_computation, arg_literals));
 
   evaluated_[fusion] = std::move(result);
   return Status::OK();
@@ -1277,10 +1276,10 @@ Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result = embedded_evaluator
-                       .Evaluate(*conditional->branch_computation(branch_index),
-                                 {&branch_computation_arg})
-                       .ConsumeValueOrDie();
+  TF_ASSIGN_OR_RETURN(Literal result,
+                      embedded_evaluator.Evaluate(
+                          *conditional->branch_computation(branch_index),
+                          {&branch_computation_arg}));
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();

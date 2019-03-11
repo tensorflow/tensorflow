@@ -208,13 +208,9 @@ class FuncGraph(ops.Graph):
       # any None op_seed for random_op in the function, in which case we end up
       # using function seed, which could be unintended behavior for the op.
       self._seed_used = False
-      device_type = context.context().device_spec.device_type
-      self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
-                           or device_type == "XLA_CPU")
     else:
       self.seed = graph.seed
       self._seed_used = False
-      self._xla_compile = getattr(graph, "_xla_compile", False)
       # TODO(allenl): Figure out if we can remove colocation stack
       # specialization (currently used in cond_v2), here and in the cache key.
       self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
@@ -297,11 +293,10 @@ class FuncGraph(ops.Graph):
       # restored.
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
-        if self._distribution_strategy_stack or self._xla_compile:
+        if self._distribution_strategy_stack:
           self._add_device_to_stack(context.context().device_name)
       else:
         if (self._distribution_strategy_stack
-            or self._xla_compile
             or device_stack_has_callable(graph._device_function_stack)):
           # Hard-code devices from device functions in the function body
           self._device_function_stack = graph._device_function_stack.copy()

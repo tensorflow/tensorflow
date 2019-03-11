@@ -227,10 +227,9 @@ bool IsCompilableCall(const NodeDef& call_def,
   }
 
   FunctionLibraryRuntime::Handle handle;
-  Status status =
-      lib_runtime->Instantiate(call_def.op(), AttrSlice(call_def), &handle);
+  Status status = InstantiateFunctionCall(call_def, *lib_runtime, &handle);
   if (!status.ok()) {
-    VLOG(2) << "Rejecting " << call_def.op()
+    VLOG(2) << "Rejecting " << call_def.DebugString()
             << ": could not instantiate: " << status;
     return false;
   }
