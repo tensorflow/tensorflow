@@ -348,8 +348,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
     # Put the while loop op on TPU host 0.
     with ops.device(self._host_device):
-      replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
-                                               initial_loop_values)
+      if self.steps_per_run == 1:
+        replicate_outputs = rewrite_fn()
+      else:
+        replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
+                                                 initial_loop_values)
 
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs)
