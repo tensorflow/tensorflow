@@ -581,11 +581,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   DumpGraph("Before calling Placer", graph.get());
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  // TODO(b/125933502): Currently config proto in function call options is not
-  // respected by placer, because placer and config proto has different default
-  // behaviors (allowing soft placement by default, vs. not allowing it). Pass
-  // config proto with appropriate default values to placer here.
-  Placer placer(graph.get(), &device_set, nullptr, /* No session options */
+  Placer placer(graph.get(), &device_set, &session_options,
                 flr->device() /* Default device */);
   TF_RETURN_IF_ERROR(placer.Run());
 
