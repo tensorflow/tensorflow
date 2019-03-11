@@ -36,6 +36,24 @@ bool verifyCompatibleOperandBroadcast(const Instruction *op);
 } // namespace impl
 
 namespace util {
+/// Returns the result broadcasted shape from the two given shapes. Returns
+/// llvm::None if the given two shapes are not broadcast compatible.
+///
+/// The rules for determing the result shape are:
+///
+/// Zip together the dimensions in the two given shapes by prepending the shape
+/// with less dimensions with 1s. For each dimension pair, deduces the result
+/// dimension according to the following order:
+/// - If there are unknown dimensions, follows the TensorFlow behavior:
+///   - If either dimension is greater than 1, we assume that the program is
+///     correct, and the other dimension will be broadcast to match it.
+///   - If either dimension is 1, the other dimension is the result.
+///   - Otherwise, the result dimension is unknown dimension.
+/// - If one of the dimension is 1, the other dimension is the result.
+/// - If two dimensions are the same, that's the result.
+/// - Otherwise, incompatible shape.
+Optional<SmallVector<int64_t, 4>> getBroadcastedShape(ArrayRef<int64_t> shape1,
+                                                      ArrayRef<int64_t> shape2);
 /// Returns the result broadcast composition type from the two given types by
 /// following NumPy broadcast semantics. Returned type may have dynamic shape if
 /// either of the input types has dynamic shape. Returns null type if the two

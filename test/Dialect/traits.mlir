@@ -136,10 +136,9 @@ func @broadcast_tensor_tensor_tensor(tensor<8x1x6x1xi32>, tensor<7x1x5xi32>) -> 
 
 // -----
 
-// Check incompatible operand types with unknown dimension
 func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<?xi32>) -> tensor<4x3x2xi32> {
 ^bb0(%arg0: tensor<4x3x2xi32>, %arg1: tensor<?xi32>):
-  // expected-error @+1 {{operands don't have broadcast-compatible types}}
+  // CHECK: %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<4x3x2xi32>, tensor<?xi32>) -> tensor<4x3x2xi32>
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<4x3x2xi32>, tensor<?xi32>) -> tensor<4x3x2xi32>
   return %0 : tensor<4x3x2xi32>
 }
