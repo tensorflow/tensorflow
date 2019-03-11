@@ -55,6 +55,11 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
     testing_utils.layer_test(keras.layers.ThresholdedReLU,
                              kwargs={'theta': 0.5},
                              input_shape=(2, 3, 4))
+  
+  def test_noisy_relu(self):
+    testing_utils.layer_test(keras.layers.NoisyReLU,
+                             kwargs={'noise': 1.5},
+                             input_shape=(2, 3, 4))
 
   def test_softmax(self):
     testing_utils.layer_test(keras.layers.Softmax,

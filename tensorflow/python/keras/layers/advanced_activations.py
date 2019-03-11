@@ -330,3 +330,41 @@ class ReLU(Layer):
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     return input_shape
+
+
+@keras_export('keras.layers.NoisyReLU')
+class NoisyReLU(Layer):
+  """Noisy Rectified Linear Unit activation function.
+
+  It follows:
+  `f(x) = x+Y for x > 0, where Y is noise`,
+  `f(x) = 0 otherwise`.
+
+  Input shape:
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
+
+  Output shape:
+    Same shape as the input.
+
+  Arguments:
+    noise: Float >= 0. Threshold location of activation.
+  """
+
+  def __init__(self, noise=1.0, **kwargs):
+    super(NoisyReLU, self).__init__(**kwargs)
+    self.supports_masking = True
+    self.noise = K.cast_to_floatx(noise)
+
+  def call(self, inputs):
+    return ((inputs+self.noise) * math_ops.cast(math_ops.greater(inputs, 0.0), K.floatx()))
+
+  def get_config(self):
+    config = {'noise': float(self.noise)}
+    base_config = super(NoisyReLU, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+  @tf_utils.shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
