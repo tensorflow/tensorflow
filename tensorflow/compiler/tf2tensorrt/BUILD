@@ -271,6 +271,7 @@ tf_cuda_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
