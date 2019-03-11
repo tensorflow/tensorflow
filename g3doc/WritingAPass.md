@@ -24,7 +24,8 @@ performed, a pass may derive from [FunctionPass](#function-pass) or
 
 A function pass operates on a per-function granularity, executing on
 non-external functions within a module in no particular order. Function passes
-are not able to:
+have the following restrictions, and any noncompliance will lead to problematic
+behavior in multithreaded and other advanced scenarios:
 
 *   Modify anything within the parent module, outside of the current function
     being operated on. This includes adding or removing functions from the
@@ -36,12 +37,15 @@ are not able to:
         rely on running on all functions within a module.
 *   Access, or modify, the state of another function within the module.
     *   Other threads may be operating on different functions within the module.
+*   Maintain any global mutable state, e.g. static variables within the source
+    file. All mutable state should be maintained by an instance of the pass.
 
 To create a function pass, a derived class must adhere to the following:
 
 *   Inherit from the CRTP class `FunctionPass`.
 *   Override the virtual `void runOnFunction()` method.
-*   Must be copy-constructible.
+*   Must be copy-constructible, multiple instances of the pass may be created by
+    the pass manager to process functions in parallel.
 
 A simple function pass may look like:
 
@@ -70,10 +74,13 @@ static PassRegistration<MyFunctionPass> pass(
 
 A module pass operates on a per-module granularity, executing on the entire
 program as a unit. As such, module passes are able to add/remove/modify any
-functions freely. Module passes still have constraints though, they are not able
-to:
+functions freely. Module passes have the following restrictions, and any
+noncompliance will lead to problematic behavior in multithreaded and other
+advanced scenarios:
 
 *   Maintain pass state across invocations of runOnModule.
+*   Maintain any global mutable state, e.g. static variables within the source
+    file. All mutable state should be maintained by an instance of the pass.
 
 To create a module pass, a derived class must adhere to the following:
 
@@ -133,46 +140,49 @@ above, let's see some examples:
     *   `getCachedFunctionAnalysis<>`
 
 ```c++
-/// An interesting analysis.
-struct MyAnalysis {
-  // Compute this analysis with the provided module.
-  MyAnalysis(Module *module);
-
+/// An interesting function analysis.
+struct MyFunctionAnalysis {
   // Compute this analysis with the provided function.
-  MyAnalysis(Function *function);
+  MyFunctionAnalysis(Function *function);
+};
+
+/// An interesting module analysis.
+struct MyModuleAnalysis {
+  // Compute this analysis with the provided module.
+  MyModuleAnalysis(Module *module);
 };
 
 void MyFunctionPass::runOnFunction() {
-  // Query MyAnalysis for the current function.
-  MyAnalysis &myAnalysis = getAnalysis<MyAnalysis>();
+  // Query MyFunctionAnalysis for the current function.
+  MyFunctionAnalysis &myAnalysis = getAnalysis<MyFunctionAnalysis>();
 
-  // Query a cached instance of MyAnalysis for the current function. It
+  // Query a cached instance of MyFunctionAnalysis for the current function. It
   // will not be computed if it doesn't exist.
-  auto optionalAnalysis = getCachedAnalysis<MyAnalysis>();
+  auto optionalAnalysis = getCachedAnalysis<MyFunctionAnalysis>();
   if (optionalAnalysis)
     ...
 
-  // Query a cached instance of MyAnalysis for the parent module of the
+  // Query a cached instance of MyModuleAnalysis for the parent module of the
   // current function. It will not be computed if it doesn't exist.
-  auto optionalAnalysis = getCachedModuleAnalysis<MyAnalysis>();
+  auto optionalAnalysis = getCachedModuleAnalysis<MyModuleAnalysis>();
   if (optionalAnalysis)
     ...
 }
 
 void MyModulePass::runOnModule() {
-  // Query MyAnalysis for the current module.
-  MyAnalysis &myAnalysis = getAnalysis<MyAnalysis>();
+  // Query MyModuleAnalysis for the current module.
+  MyModuleAnalysis &myAnalysis = getAnalysis<MyModuleAnalysis>();
 
-  // Query a cached instance of MyAnalysis for the current module. It
+  // Query a cached instance of MyModuleAnalysis for the current module. It
   // will not be computed if it doesn't exist.
-  auto optionalAnalysis = getCachedAnalysis<MyAnalysis>();
+  auto optionalAnalysis = getCachedAnalysis<MyModuleAnalysis>();
   if (optionalAnalysis)
     ...
 
-  // Query MyAnalysis for a child function of the current module. It
+  // Query MyFunctionAnalysis for a child function of the current module. It
   // will be computed if it doesn't exist.
-  auto *function = &*getModule().begin();
-  MyAnalysis &myAnalysis = getFunctionAnalysis<MyAnalysis>(function);
+  auto *fn = &*getModule().begin();
+  MyFunctionAnalysis &myAnalysis = getFunctionAnalysis<MyFunctionAnalysis>(fn);
 }
 ```
 
@@ -297,27 +307,34 @@ static PassRegistration<MyPass> pass("command-line-arg", "description");
 Described above is the mechanism used for registering a specific derived pass
 class. On top of that, MLIR allows for registering custom pass pipelines in a
 similar fashion. This allows for custom pipelines to be available to tools like
-mlir-opt in the same way that passes are. Pipelines are registered via a similar
-mechanism to passes in the form of `PassPipelineRegistration`. Compared to
-`PassRegistration`, this class takes an additional parameter in the form of a
+mlir-opt in the same way that passes are, which is useful for encapsulating
+common pipelines like the "-O1" series of passes. Pipelines are registered via a
+similar mechanism to passes in the form of `PassPipelineRegistration`. Compared
+to `PassRegistration`, this class takes an additional parameter in the form of a
 pipeline builder that modifies a provided PassManager.
 
 ```c++
 void pipelineBuilder(PassManager &pm) {
-    pm.addPass(new MyPass());
-    pm.addPass(new MyOtherPass());
+  pm.addPass(new MyPass());
+  pm.addPass(new MyOtherPass());
 }
 
+// Register an existing pipeline builder function.
 static PassPipelineRegistration pipeline(
-    "command-line-arg", "description", pipelineBuilder);
+  "command-line-arg", "description", pipelineBuilder);
+
+// Register an inline pipeline builder.
+static PassPipelineRegistration pipeline(
+  "command-line-arg", "description", [](PassManager &pm) {
+    pm.addPass(new MyPass());
+    pm.addPass(new MyOtherPass());
+  });
 ```
 
 Pipeline registration also allows for simplified registration of
 specifializations for existing passes:
 
 ```c++
-Pass *createFooPass10() { return new FooPass(10); }
-
 static PassPipelineRegistration foo10(
-    "foo-10", "Foo Pass 10", createFooPass10);
+    "foo-10", "Foo Pass 10", [] { return new FooPass(10); } );
 ```
