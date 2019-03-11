@@ -367,14 +367,17 @@ __global__ void MaxPoolGradBackwardNoMaskNHWC(
 //     bottom_offset: the pre-computed per-image offset of the maxpool output.
 //         This is equal to Hout*Wout*C.
 //     bottom_diff: the gradient of the gradient w.r.t. output.
+//     include_batch_in_index: whether to include batch dimension in flattened
+//         index of `argmax`.
 template <typename dtype>
 __global__ void MaxPoolGradBackward(const int nthreads, const dtype* top_diff,
                                     const int64* mask, const int top_offset,
                                     const int bottom_offset,
-                                    dtype* bottom_diff) {
+                                    dtype* bottom_diff,
+                                    const bool include_batch_in_index) {
   CUDA_1D_KERNEL_LOOP(index, nthreads) {
-    int image_id = (index / bottom_offset);
-    bottom_diff[index] = top_diff[image_id * top_offset + mask[index]];
+    const int offset = include_batch_in_index ? 0 : (index / bottom_offset) * top_offset;
+    bottom_diff[index] = top_diff[offset + mask[index]];
   }
 }
 
@@ -504,12 +507,14 @@ template <typename T>
 bool MaxPoolGradBackwardWithArgmax<T>::operator()(
     const int output_size, const int input_size, const T* top_diff,
     const int64* mask, const int top_offset, const int bottom_offset,
-    T* bottom_diff, const Eigen::GpuDevice& d) {
+    T* bottom_diff, const Eigen::GpuDevice& d,
+    const bool include_batch_in_index) {
   if (input_size == 0) return true;
   CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
   MaxPoolGradBackward<<<config.block_count, config.thread_per_block, 0,
                         d.stream()>>>(output_size, top_diff, mask, top_offset,
-                                      bottom_offset, bottom_diff);
+                                      bottom_offset, bottom_diff,
+                                      include_batch_in_index);
   return d.ok();
 }
 

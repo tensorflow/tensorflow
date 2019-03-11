@@ -76,7 +76,8 @@ struct MaxPoolGradBackwardWithArgmax {
   bool operator()(const int output_size, const int input_size,
                   const T* top_diff, const int64* mask, const int top_offset,
                   const int bottom_offset, T* bottom_diff,
-                  const Eigen::GpuDevice& d);
+                  const Eigen::GpuDevice& d,
+                  const bool include_batch_in_index);
 };
 
 template <typename T>
