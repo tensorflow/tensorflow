@@ -39,6 +39,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
+from tensorflow.python.util import nest
 
 
 class _TestException(Exception):
@@ -325,6 +326,19 @@ class DistributionTestBase(test.TestCase):
 class OneDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any one-device DistributionStrategy."""
 
+  def _test_run(self, strategy):
+    out1 = strategy.experimental_run_v2(lambda: constant_op.constant(4.))
+    self.assertAllEqual([4.], self.evaluate(strategy.unwrap(out1)))
+
+    out2 = strategy.experimental_run_v2(
+        lambda x: {"a": x * 2, "b": x * x}, args=(out1,))
+    out2_vals = self.evaluate(nest.map_structure(strategy.unwrap, out2))
+    self.assertAllEqual([8.], out2_vals["a"])
+    self.assertAllEqual([16.], out2_vals["b"])
+
+    out3 = strategy.experimental_run_v2(lambda b, a: a + 2 * b + 2, kwargs=out2)
+    self.assertAllEqual([42.], self.evaluate(strategy.unwrap(out3)))
+
   def _test_all_reduce_sum(self, strategy):
     self._test_collective_comms(
         strategy, _all_sum, inputs=(4., [42., 43.]), expected=(4., [42., 43.]))
@@ -397,6 +411,20 @@ class OneDeviceDistributionTestBase(test.TestCase):
 
 class TwoDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any two-device DistributionStrategy."""
+
+  def _test_run(self, strategy):
+    out1 = strategy.experimental_run_v2(
+        lambda: ds_context.get_replica_context().replica_id_in_sync_group + 1)
+    self.assertAllEqual([1, 2], self.evaluate(strategy.unwrap(out1)))
+
+    out2 = strategy.experimental_run_v2(
+        lambda x: {"a": x * 2, "b": x * x}, args=(out1,))
+    out2_vals = self.evaluate(nest.map_structure(strategy.unwrap, out2))
+    self.assertAllEqual([2, 4], out2_vals["a"])
+    self.assertAllEqual([1, 4], out2_vals["b"])
+
+    out3 = strategy.experimental_run_v2(lambda b, a: a + 2 * b + 2, kwargs=out2)
+    self.assertAllEqual([6, 14], self.evaluate(strategy.unwrap(out3)))
 
   def _test_all_reduce_sum(self, strategy):
     self._test_collective_comms(
