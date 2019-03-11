@@ -934,7 +934,8 @@ class PoolingTest(test.TestCase):
             padding="VALID",
             include_batch_in_index=include_batch_in_index)
         out = self.evaluate(out_op).flatten()
-        self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0, 21.0, 23.0, 27.0, 29.0])
+        self.assertAllClose(out,
+                            [11.0, 12.0, 14.0, 16.0, 21.0, 23.0, 27.0, 29.0])
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
