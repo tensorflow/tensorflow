@@ -28,7 +28,7 @@ from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
 
-class SavedModelTest(tf.test.TestCase):
+class SavedModelPart1Test(tf.test.TestCase):
 
   def assertCommandSucceeded(self, binary, **flags):
     command_parts = [binary]
@@ -69,17 +69,6 @@ class SavedModelTest(tf.test.TestCase):
     use_binary = resource_loader.get_path_to_datafile(
         "use_model_in_sequential_keras")
     self.assertCommandSucceeded(use_binary, model_dir=export_dir)
-
-  @test_util.run_v2_only
-  def test_mnist_cnn(self):
-    export_dir = self.get_temp_dir()
-    export_binary = resource_loader.get_path_to_datafile("export_mnist_cnn")
-    self.assertCommandSucceeded(export_binary, export_dir=export_dir,
-                                fast_test_mode="true")
-
-    use_binary = resource_loader.get_path_to_datafile("use_mnist_cnn")
-    self.assertCommandSucceeded(use_binary, export_dir=export_dir,
-                                fast_test_mode="true")
 
 if __name__ == "__main__":
   tf.enable_v2_behavior()
