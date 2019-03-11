@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/popnn/pooling.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/poplibs_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
@@ -35,53 +34,58 @@ limitations under the License.
 
 namespace xla {
 namespace poplarplugin {
+namespace {
+class MaxPoolOp : public PoplibsOpDef {
+  StatusOr<poplar::program::Program> Creator(
+      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+      const xla::Shape& output_shape, TensorMap& tensor_map,
+      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+    TF_ASSIGN_OR_RETURN(Window window,
+                        attribute_map.GetAttributeAsWindow("window"));
+    return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::MAX,
+                                window);
+  }
+};
+REGISTER_POPLIBS_OP(Popnn, MaxPool, MaxPoolOp);
 
-StatusOr<poplar::Tensor> AllocatePoolingOp(
-    poplar::Graph& graph, CompilerResources& res, const std::string& name,
-    const TensorTarget& tensor_target,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map,
-    const TensorMap& tensor_map) {
-  return xla::FailedPrecondition("%s should not be allocating.", name.c_str());
-}
+class AvgPoolOp : public PoplibsOpDef {
+  StatusOr<poplar::program::Program> Creator(
+      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+      const xla::Shape& output_shape, TensorMap& tensor_map,
+      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+    TF_ASSIGN_OR_RETURN(Window window,
+                        attribute_map.GetAttributeAsWindow("window"));
+    return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::AVG,
+                                window);
+  }
+};
+REGISTER_POPLIBS_OP(Popnn, AvgPool, AvgPoolOp);
 
-StatusOr<poplar::program::Program> CreateMaxPoolOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  TF_ASSIGN_OR_RETURN(Window window,
-                      attribute_map.GetAttributeAsWindow("window"));
-  return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::MAX,
-                              window);
-}
+class MaxPoolGradOp : public PoplibsOpDef {
+  StatusOr<poplar::program::Program> Creator(
+      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+      const xla::Shape& output_shape, TensorMap& tensor_map,
+      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+    TF_ASSIGN_OR_RETURN(Window window,
+                        attribute_map.GetAttributeAsWindow("window"));
+    return CreatePoplibsMaxPoolGrad(res, inst, tensor_map, window);
+  }
+};
+REGISTER_POPLIBS_OP(Popnn, MaxPoolGrad, MaxPoolGradOp);
 
-StatusOr<poplar::program::Program> CreateAvgPoolOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  TF_ASSIGN_OR_RETURN(Window window,
-                      attribute_map.GetAttributeAsWindow("window"));
-  return CreatePoplibsPooling(res, inst, tensor_map, popnn::PoolingType::AVG,
-                              window);
-}
+class AvgPoolGradOp : public PoplibsOpDef {
+  StatusOr<poplar::program::Program> Creator(
+      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+      const xla::Shape& output_shape, TensorMap& tensor_map,
+      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+    TF_ASSIGN_OR_RETURN(Window window,
+                        attribute_map.GetAttributeAsWindow("window"));
+    return CreatePoplibsPoolingGrad(res, inst, tensor_map,
+                                    popnn::PoolingType::AVG, window);
+  }
+};
+REGISTER_POPLIBS_OP(Popnn, AvgPoolGrad, AvgPoolGradOp);
 
-StatusOr<poplar::program::Program> CreateMaxPoolGradOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  TF_ASSIGN_OR_RETURN(Window window,
-                      attribute_map.GetAttributeAsWindow("window"));
-  return CreatePoplibsMaxPoolGrad(res, inst, tensor_map, window);
-}
-
-StatusOr<poplar::program::Program> CreateAvgPoolGradOp(
-    poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map,
-    const IPUCustomKernelsUtil::AttributeMap& attribute_map) {
-  TF_ASSIGN_OR_RETURN(Window window,
-                      attribute_map.GetAttributeAsWindow("window"));
-  return CreatePoplibsPoolingGrad(res, inst, tensor_map,
-                                  popnn::PoolingType::AVG, window);
-}
-
+}  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
