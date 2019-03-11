@@ -190,15 +190,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "8e3a302d37f232dec041bf3f3916ca3fa5689216d42112898a4e36581f2f4ce5",
-        strip_prefix = "google-cloud-cpp-0.6.1",
+        sha256 = "06bc735a117ec7ea92ea580e7f2ffa4b1cd7539e0e04f847bf500588d7f0fe90",
+        strip_prefix = "google-cloud-cpp-0.7.0",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://mirror.bazel.build/github.com/googleapis/google-cloud-cpp/archive/v0.6.1.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.6.1.tar.gz",
+            "https://mirror.bazel.build/github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
         ],
     )
 
