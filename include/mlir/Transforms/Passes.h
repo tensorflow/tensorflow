@@ -108,10 +108,6 @@ FunctionPassBase *createMemRefDataFlowOptPass();
 /// Creates a pass to strip debug information from a function.
 FunctionPassBase *createStripDebugInfoPass();
 
-/// Creates a pass to convert Standard and Builtin dialects into the LLVMIR
-/// dialect.
-ModulePassBase *createConvertToLLVMIRPass();
-
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_PASSES_H
