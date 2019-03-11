@@ -921,11 +921,12 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
 
   Shape inner_shape = DropFirstDim(outer_array.GetShape());
-  llvm_ir::IrArray::Index slice_index(b->getInt64Ty());
-  slice_index.push_back(batch_index);
-  slice_index.InsertAt(
-      /*index=*/1, outer_array.GetShape().dimensions_size() - 1,
-      b->getInt64(0));
+  std::vector<llvm::Value*> multidim_index(inner_shape.rank() + 1,
+                                           b->getInt64(0));
+  multidim_index[0] = batch_index;
+  llvm_ir::IrArray::Index slice_index(multidim_index,
+                                      /*linear=*/nullptr,
+                                      outer_array.GetShape());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
   llvm::Type* slice_ptr_type =
       llvm_ir::ShapeToIrType(inner_shape, module)->getPointerTo();
