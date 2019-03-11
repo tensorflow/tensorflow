@@ -91,8 +91,8 @@ RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
 RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/hipBLAS.git && cd hipBLAS && ./install.sh -id
 
-# Build rcFFT from source
-RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -icd
+# Build rocFFT from source
+RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id
 
 # Build rocRAND from source
 RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
