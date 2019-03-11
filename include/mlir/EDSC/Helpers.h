@@ -62,6 +62,9 @@ public:
   unsigned rank() const { return lbs.size(); }
   unsigned fastestVarying() const { return rank() - 1; }
 
+  IndexHandle lb(unsigned idx) { return lbs[idx]; }
+  IndexHandle ub(unsigned idx) { return ubs[idx]; }
+  int64_t step(unsigned idx) { return steps[idx]; }
   std::tuple<IndexHandle, IndexHandle, int64_t> range(unsigned idx) {
     return std::make_tuple(lbs[idx], ubs[idx], steps[idx]);
   }
@@ -93,15 +96,18 @@ ValueHandle operator/(ValueHandle v, IndexedValue i);
 /// Assigning to an IndexedValue emits an actual store operation, while using
 /// converting an IndexedValue to a ValueHandle emits an actual load operation.
 struct IndexedValue {
-  explicit IndexedValue(MemRefView &v, llvm::ArrayRef<ValueHandle> indices = {})
-      : view(v), indices(indices.begin(), indices.end()) {}
+  explicit IndexedValue(Type t) : base(t) {}
+  explicit IndexedValue(Value *v, llvm::ArrayRef<ValueHandle> indices = {})
+      : IndexedValue(ValueHandle(v), indices) {}
+  explicit IndexedValue(ValueHandle v, llvm::ArrayRef<ValueHandle> indices = {})
+      : base(v), indices(indices.begin(), indices.end()) {}
 
   IndexedValue(const IndexedValue &rhs) = default;
   IndexedValue &operator=(const IndexedValue &rhs) = default;
 
   /// Returns a new `IndexedValue`.
   IndexedValue operator()(llvm::ArrayRef<ValueHandle> indices = {}) {
-    return IndexedValue(view, indices);
+    return IndexedValue(base, indices);
   }
 
   /// Emits a `store`.
@@ -110,7 +116,7 @@ struct IndexedValue {
     return intrinsics::STORE(rhs, getBase(), indices);
   }
 
-  ValueHandle getBase() const { return view.base; }
+  ValueHandle getBase() const { return base; }
 
   /// Emits a `load` when converting to a ValueHandle.
   explicit operator ValueHandle() {
@@ -152,7 +158,7 @@ struct IndexedValue {
   }
 
 private:
-  MemRefView &view;
+  ValueHandle base;
   llvm::SmallVector<ValueHandle, 8> indices;
 };
 

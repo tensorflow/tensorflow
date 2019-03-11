@@ -326,13 +326,16 @@ TEST_FUNC(builder_helpers) {
   // clang-format off
   ValueHandle f7(
       ValueHandle::create<ConstantFloatOp>(llvm::APFloat(7.0f), f32Type));
-  MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)), vC(f->getArgument(2));
-  IndexedValue A(vA), B(vB), C(vC);
+  MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)),
+      vC(f->getArgument(2));
+  IndexedValue A(f->getArgument(0)), B(f->getArgument(1)), C(f->getArgument(2));
   IndexHandle i, j, k1, k2, lb0, lb1, lb2, ub0, ub1, ub2;
   int64_t step0, step1, step2;
   std::tie(lb0, ub0, step0) = vA.range(0);
   std::tie(lb1, ub1, step1) = vA.range(1);
-  std::tie(lb2, ub2, step2) = vA.range(2);
+  lb2 = vA.lb(2);
+  ub2 = vA.ub(2);
+  step2 = vA.step(2);
   LoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})({
     LoopBuilder(&k1, lb2, ub2, step2)({
       C({i, j, k1}) = f7 + A({i, j, k1}) + B({i, j, k1}),
