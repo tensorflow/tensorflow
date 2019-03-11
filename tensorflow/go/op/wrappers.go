@@ -27914,6 +27914,14 @@ func QuantizedConv2D(scope *Scope, input tf.Output, filter tf.Output, min_input 
 // ResourceGatherAttr is an optional argument to ResourceGather.
 type ResourceGatherAttr func(optionalAttr)
 
+// ResourceGatherBatchDims sets the optional batch_dims attribute to value.
+// If not specified, defaults to 0
+func ResourceGatherBatchDims(value int64) ResourceGatherAttr {
+	return func(m optionalAttr) {
+		m["batch_dims"] = value
+	}
+}
+
 // ResourceGatherValidateIndices sets the optional validate_indices attribute to value.
 // If not specified, defaults to true
 func ResourceGatherValidateIndices(value bool) ResourceGatherAttr {
