@@ -74,15 +74,16 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
 }
 
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
-                      llvm::Value* linear, const Shape& shape)
+                      llvm::Value* linear, const Shape& shape,
+                      llvm::Type* index_type)
     : multidim_(multidim.begin(), multidim.end()),
       linear_(linear),
       layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
+      dims_(shape.dimensions().begin(), shape.dimensions().end()),
+      index_type_(index_type) {
   if (size()) {
     index_type_ = multidim_[0]->getType();
-  } else {
-    CHECK_NE(linear_, nullptr);
+  } else if (linear_ != nullptr) {
     index_type_ = linear_->getType();
   }
   CHECK_NE(index_type_, nullptr);

@@ -1125,16 +1125,21 @@ Status IrEmitterUnnested::EmitScatter(
 
     // Now load the indices corresponding to the current window from
     // scatter_indices.
-    llvm_ir::IrArray::Index raw_scatter_index_index(input_scatter_multidim,
-                                                    index.GetType());
-    raw_scatter_index_index.InsertAt(dim_numbers.index_vector_dim(), nullptr);
+    std::vector<llvm::Value*> raw_scatter_index_multidim =
+        input_scatter_multidim;
+    raw_scatter_index_multidim.insert(
+        raw_scatter_index_multidim.begin() + dim_numbers.index_vector_dim(),
+        nullptr);
     llvm::Value* is_in_bounds = b_.getTrue();
     for (int64 i = 0, e = dim_numbers.scatter_dims_to_operand_dims_size();
          i != e; ++i) {
       // Our index is stored along index_vector_dim, insert that into the lookup
       // index into scatter_indices.
-      raw_scatter_index_index[dim_numbers.index_vector_dim()] =
-          raw_scatter_index_index.GetConstantWithIndexType(i);
+      raw_scatter_index_multidim[dim_numbers.index_vector_dim()] =
+          index.GetConstantWithIndexType(i);
+      llvm_ir::IrArray::Index raw_scatter_index_index(
+          raw_scatter_index_multidim, /*linear=*/nullptr, scatter_indices_shape,
+          index.GetType());
 
       int64 operand_dim = dim_numbers.scatter_dims_to_operand_dims(i);
       TF_ASSIGN_OR_RETURN(
