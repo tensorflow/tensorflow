@@ -288,7 +288,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     // has specifically told us not to do it.
     return current_config_.speed_size_config().has_recompute_non_linearities()
                ? current_config_.speed_size_config().recompute_non_linearities()
-               : true;
+               : false;
   }
 
   poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }
