@@ -839,9 +839,14 @@ class PoolingTest(test.TestCase):
         1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
         0.0, 1.0, 0.0, 1.0
     ]
-    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
-               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
-               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
+    configs = [
+        # CPU
+        [False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
+        [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
+        # GPU
+        [True, False, [0, 1, 3, 5, 0, 2, 6, 8]],
+        [True, True, [0, 1, 3, 5, 9, 11, 15, 17]]
+    ]
 
     for use_gpu, include_batch_in_index, argmax_exp in configs:
       with GetDeviceScope(self, use_gpu=use_gpu):
