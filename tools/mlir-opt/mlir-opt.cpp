@@ -149,7 +149,7 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     passEntry->addToPipeline(pm);
 
   // Add any necessary instrumentations.
-  // Note: The pass timing instrumentation should be added first to avoid any
+  // Note: The pass timing instrumentation should be added last to avoid any
   // potential "ghost" timing from other instrumentations being unintentionally
   // included in the timing results.
   if (passTiming)

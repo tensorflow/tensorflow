@@ -76,14 +76,14 @@ public:
   /// See PassInstrumentation::runAfterPass for details.
   template <typename IRUnitT> void runAfterPass(Pass *pass, IRUnitT *ir) {
     llvm::Any irAny(ir);
-    for (auto &instr : instrumentations)
+    for (auto &instr : llvm::reverse(instrumentations))
       instr->runAfterPass(pass, irAny);
   }
 
   /// See PassInstrumentation::runAfterPassFailed for details.
   template <typename IRUnitT> void runAfterPassFailed(Pass *pass, IRUnitT *ir) {
     llvm::Any irAny(ir);
-    for (auto &instr : instrumentations)
+    for (auto &instr : llvm::reverse(instrumentations))
       instr->runAfterPassFailed(pass, irAny);
   }
 
@@ -99,7 +99,7 @@ public:
   template <typename IRUnitT>
   void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT *ir) {
     llvm::Any irAny(ir);
-    for (auto &instr : instrumentations)
+    for (auto &instr : llvm::reverse(instrumentations))
       instr->runAfterAnalysis(name, id, irAny);
   }
 
