@@ -58,14 +58,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-string AsString(const std::string& str) {
-  return string(str.data(), str.length());
-}
-
-llvm::StringRef AsStringRef(absl::string_view str) {
-  return llvm::StringRef(str.data(), str.size());
-}
-
 std::unique_ptr<llvm::Module> DropConstantInitializers(
     const llvm::Module& module) {
   std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
@@ -81,7 +73,7 @@ string DumpModuleToString(const llvm::Module& module) {
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 llvm::CallInst* EmitCallToIntrinsic(
@@ -248,7 +240,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+  return b->CreateGlobalStringPtr(encoded_shape);
 }
 
 StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
@@ -334,7 +326,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
     b->CreateBr(if_data.after_block);
   } else {
     if_data.after_block = if_data.if_block->splitBasicBlock(
-        b->GetInsertPoint(), AsStringRef(absl::StrCat(name, "-after")));
+        b->GetInsertPoint(), absl::StrCat(name, "-after"));
   }
 
   // Our basic block should now end with an unconditional branch.  Remove it;

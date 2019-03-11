@@ -49,7 +49,6 @@ limitations under the License.
 namespace xla {
 
 using absl::StrCat;
-using llvm_ir::AsStringRef;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
@@ -1722,8 +1721,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     exit_block = llvm_ir::CreateBasicBlock(
         /*insert_before=*/nullptr, IrName(hlo, "merge"), b_);
   } else {
-    exit_block = init_block->splitBasicBlock(b_->GetInsertPoint(),
-                                             AsStringRef(IrName(hlo, "merge")));
+    exit_block =
+        init_block->splitBasicBlock(b_->GetInsertPoint(), IrName(hlo, "merge"));
     init_block->getTerminator()->eraseFromParent();
   }
 
@@ -1839,8 +1838,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
         is_signed);
 
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
+    start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
     slice_start_index[i] = start_index_value;
   }
 
@@ -2002,8 +2000,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
         EmitIntegralMax(index_typed_const(0), start_index_value, is_signed),
         is_signed);
 
-    start_index_value->setName(
-        AsStringRef(IrName(hlo, StrCat("start_idx", i))));
+    start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
     slice_start_index[i] = start_index_value;
     slice_limit_index[i] = Add(slice_start_index[i], update_dim_size);
 

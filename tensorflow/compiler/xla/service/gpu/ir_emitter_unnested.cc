@@ -231,7 +231,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     if (alloc->IsPreallocatedTempBuffer()) {
       fn_arg->setName("temp_buf");
     } else {
-      fn_arg->setName(llvm_ir::AsStringRef(StrCat("alloc", alloc->index())));
+      fn_arg->setName(StrCat("alloc", alloc->index()));
     }
   }
 
@@ -1666,8 +1666,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
     llvm::Value* loc;
     if (slice.allocation()->is_constant()) {
       loc = ir_emitter_context_->llvm_module()->getGlobalVariable(
-          llvm_ir::AsStringRef(llvm_ir::ConstantBufferAllocationToGlobalName(
-              *slice.allocation())));
+          llvm_ir::ConstantBufferAllocationToGlobalName(*slice.allocation()));
       CHECK_NE(loc, nullptr);
     } else {
       loc = InBoundsGEP(kernel_args.at(slice.allocation()),
@@ -1696,7 +1695,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
   }
 
   return absl::make_unique<KernelThunk>(
-      non_constant_buffers, llvm_ir::AsString(kernel->getName()),
+      non_constant_buffers, kernel->getName(),
       implements_whole_instruction ? inst : nullptr, unroll_factor);
 }
 
@@ -3843,8 +3842,7 @@ Status IrEmitterUnnested::EmitConstantGlobals() {
         global_type, /*isConstant=*/should_emit_initializer,
         llvm::GlobalValue::ExternalLinkage,
         /*Initializer=*/initializer,
-        llvm_ir::AsStringRef(
-            llvm_ir::ConstantBufferAllocationToGlobalName(allocation)));
+        llvm_ir::ConstantBufferAllocationToGlobalName(allocation));
     global_for_const->setAlignment(kConstantBufferAlignBytes);
     ir_emitter_context_->llvm_module()->getGlobalList().push_back(
         global_for_const);
