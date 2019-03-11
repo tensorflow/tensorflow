@@ -311,31 +311,31 @@ Status Converter::GetTrtBroadcastShape(
   }
 
   const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
-  auto compute_output_dims =
-      [](const TRT_TensorOrWeights& input, int broadcast_num_dims,
-         int* output_dims_array, nvinfer1::Dims* output_dims) {
-        const nvinfer1::Dims input_dims = input.GetTrtDims();
-        std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
-        std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
-                  output_dims_array + broadcast_num_dims - input_dims.nbDims);
-        if (input.is_tensor()) {
-          const int true_input_dims = input_dims.nbDims + 1;
-          if (true_input_dims < broadcast_num_dims) {
-            return errors::InvalidArgument(
-                "Broadcasting beyond batch dimension is not supported ",
-                "(tensor #dims ", true_input_dims, " vs broadcast #dims ",
-                broadcast_num_dims, ")");
-          }
-          // Set the batch dimension to -1, since batch size is not supposed to
-          // be broadcasted.
-          output_dims_array[0] = -1;
-        }
-        // Copy to output dimensions (stripping the batch dimension).
-        output_dims->nbDims = broadcast_num_dims - 1;
-        std::copy(output_dims_array + 1, output_dims_array + broadcast_num_dims,
-                  output_dims->d);
-        return Status::OK();
-      };
+  auto compute_output_dims = [](const TRT_TensorOrWeights& input,
+                                int broadcast_num_dims, int* output_dims_array,
+                                nvinfer1::Dims* output_dims) {
+    const nvinfer1::Dims input_dims = input.GetTrtDims();
+    std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
+    std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
+              output_dims_array + broadcast_num_dims - input_dims.nbDims);
+    if (input.is_tensor()) {
+      const int true_input_dims = input_dims.nbDims + 1;
+      if (true_input_dims < broadcast_num_dims) {
+        return errors::InvalidArgument(
+            "Broadcasting beyond batch dimension is not supported ",
+            "(tensor #dims ", true_input_dims, " vs broadcast #dims ",
+            broadcast_num_dims, ")");
+      }
+      // Set the batch dimension to -1, since batch size is not supposed to
+      // be broadcasted.
+      output_dims_array[0] = -1;
+    }
+    // Copy to output dimensions (stripping the batch dimension).
+    output_dims->nbDims = broadcast_num_dims - 1;
+    std::copy(output_dims_array + 1, output_dims_array + broadcast_num_dims,
+              output_dims->d);
+    return Status::OK();
+  };
 
   // Compute the output dimensions.
   const int broadcast_num_dims =
@@ -2296,7 +2296,11 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   }
 // TRT 5.1 adds a slice layer. For older versions, we attempt to use the
 // padding layer with negative padding.
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if (NV_TENSORRT_MAJOR > 5 ||                               \
+     (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)) && \
+    0
+  // TODO(laigd): TRT 5.1 RC has a bug when ISliceLayer is used along with
+  // IConcatenationLayer, so disable ISliceLayer for now until it's fixed.
   // Use ISliceLayer.
   nvinfer1::Dims begin_dims, size_dims, stride_dims;
   TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(begin, &begin_dims,
