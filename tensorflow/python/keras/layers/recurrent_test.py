@@ -1315,6 +1315,17 @@ class RNNTest(keras_parameterized.TestCase):
     model = keras.Model([inputs, state_h, state_c], decoder_out)
     model.reset_states()
 
+  def test_reset_states(self):
+    # See https://github.com/tensorflow/tensorflow/issues/25852
+    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+      simple_rnn = keras.layers.SimpleRNN(1, stateful=True)
+      simple_rnn.reset_states()
+
+    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+      cell = Minimal2DRNNCell(1, 2)
+      custom_rnn = keras.layers.RNN(cell, stateful=True)
+      custom_rnn.reset_states()
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.

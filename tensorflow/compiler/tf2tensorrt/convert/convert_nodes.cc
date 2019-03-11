@@ -2243,8 +2243,8 @@ Status ConvertSqueeze(OpConverterParams* params) {
     // Make sure target dimension is size 1.
     if (input_dims[axis] != 1) {
       return errors::InvalidArgument(
-          "Cannot squeeze a dimension which isn't size 1, at ",
-          node_def.name());
+          "Cannot squeeze ", axis, "th dimension ", input_dims[axis],
+          " which isn't size 1, at ", node_def.name());
     }
     // Mark dim for removal by setting to 0.
     input_dims[axis] = 0;
@@ -3700,13 +3700,59 @@ Status ConvertGather(OpConverterParams* params) {
   int trt_axis = 0;
   TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
                                  node_def.name(), &trt_axis));
+  TRT_TensorOrWeights params_tensor = inputs.at(0);
+  TRT_TensorOrWeights indices_tensor = inputs.at(1);
+  if (indices_tensor.batch_size() != 1) {
+    return errors::InvalidArgument("Only indices with batch 1 are supported.");
+  }
+  // Both input are tensors, and the TF gather result will have rank:
+  // (params.nbDims + 1) + (indices.nbDims + 1) - 1,
+  // where "+ 1" adds the batch dim.
+  const int tf_gather_output_rank = params_tensor.GetTrtDims().nbDims +
+                                    indices_tensor.GetTrtDims().nbDims + 1;
+  if (tf_gather_output_rank > nvinfer1::Dims::MAX_DIMS + 1) {
+    return errors::InvalidArgument(
+        "Result of gather has dimension greater than ",
+        nvinfer1::Dims::MAX_DIMS + 1);
+  }
   if (params->validation_only) return Status::OK();
 
+  // Note on how IGatherLayer works: if both the data and indices tensors have
+  // a batch size dimension of size N, it performs:
+  // for batchid in xrange(N):
+  //   output[batchid, a0, ..., an, i, ..., j, b0, ..., bn] = (
+  //       data[batchid, a0, ..., an, indices[batchid, i, ..., j] b0, ..., bn])
   nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
-      *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
-      *const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor()), trt_axis);
+      *const_cast<nvinfer1::ITensor*>(params_tensor.tensor()),
+      *const_cast<nvinfer1::ITensor*>(indices_tensor.tensor()), trt_axis);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+
+  nvinfer1::ITensor* gather_output = layer->getOutput(0);
+  nvinfer1::Dims trt_gather_output_dims = gather_output->getDimensions();
+  // Note for the "- 2": one is for the output batch dim encapsulated by TF-TRT,
+  // and the other is for the output dimension that is squeezed by IGatherLayer
+  // because of the implicit batch dim in the indices (see the above note).
+  if (trt_gather_output_dims.nbDims != tf_gather_output_rank - 2) {
+    return errors::Internal(
+        "Get unexpected output dimensions of IGatherLayer. Expect nbDims: ",
+        tf_gather_output_rank - 2,
+        ", actual nbDims: ", trt_gather_output_dims.nbDims);
+  }
+  // Reshape the output so after adding the implicit batch dim it'll match the
+  // output shape of TF GatherV2.
+  for (int i = trt_gather_output_dims.nbDims; i > trt_axis; --i) {
+    trt_gather_output_dims.d[i] = trt_gather_output_dims.d[i - 1];
+  }
+  trt_gather_output_dims.d[trt_axis] = 1;
+  ++trt_gather_output_dims.nbDims;
+
+  const nvinfer1::ITensor* output_tensor = nullptr;
+  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+      TRT_TensorOrWeights(gather_output), trt_gather_output_dims,
+      /*validation_only=*/false, &output_tensor));
+
+  params->outputs->push_back(
+      TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return Status::OK();
 }
 
