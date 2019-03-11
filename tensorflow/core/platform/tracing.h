@@ -151,7 +151,7 @@ class TraceCollector {
   virtual ~TraceCollector() {}
   virtual std::unique_ptr<Handle> CreateAnnotationHandle(
       StringPiece name_part1, StringPiece name_part2,
-      StringPiece requested_dev) const = 0;
+      StringPiece src_dev, StringPiece dst_dev) const = 0;
   virtual std::unique_ptr<Handle> CreateActivityHandle(
       StringPiece name_part1, StringPiece name_part2,
       bool is_expensive) const = 0;
@@ -188,12 +188,19 @@ class ScopedAnnotation {
   // label string is only done if tracing is enabled.
   ScopedAnnotation(StringPiece name_part1, StringPiece name_part2,
                    StringPiece requested_dev)
-      : handle_([&] {
-          auto trace_collector = GetTraceCollector();
-          return trace_collector ? trace_collector->CreateAnnotationHandle(
-                                       name_part1, name_part2, requested_dev)
-                                 : nullptr;
-        }()) {}
+      : ScopedAnnotation(name_part1, name_part2, requested_dev, StringPiece()) {}
+
+  // Except for memcpy,
+  //   - src_dev is requested_dev
+  //   - dst_dev is an empty StringPiece()
+  ScopedAnnotation(StringPiece name_part1, StringPiece name_part2,
+                    StringPiece src_dev, StringPiece dst_dev)
+       : handle_([&] {
+           auto trace_collector = GetTraceCollector();
+           return trace_collector ? trace_collector->CreateAnnotationHandle(
+                                        name_part1, name_part2, src_dev, dst_dev)
+                                  : nullptr;
+         }()) {}
 
   bool IsEnabled() const { return static_cast<bool>(handle_); }
 
