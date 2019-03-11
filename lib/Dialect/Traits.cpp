@@ -171,6 +171,18 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   return scalarType;
 }
 
+/// Returns true if the two given types are both vectors or ranked tensors and
+/// they have the same shape, regardless of element types.
+static bool isSameShapedVectorOrTensor(Type type1, Type type2) {
+  if (auto vType1 = type1.dyn_cast<RankedTensorType>())
+    if (auto vType2 = type2.dyn_cast<RankedTensorType>())
+      return vType1.getShape() == vType2.getShape();
+  if (auto vType1 = type1.dyn_cast<VectorType>())
+    if (auto vType2 = type2.dyn_cast<VectorType>())
+      return vType1.getShape() == vType2.getShape();
+  return false;
+}
+
 bool OpTrait::impl::verifyCompatibleOperandBroadcast(const Instruction *op) {
   assert(op->getNumOperands() == 2 &&
          "only support broadcast check on two operands");
@@ -185,10 +197,14 @@ bool OpTrait::impl::verifyCompatibleOperandBroadcast(const Instruction *op) {
 
   if (!broadcastedType)
     return op->emitOpError("operands don't have broadcast-compatible types");
-  if (broadcastedType != retType)
+
+  bool hasCompatRetType = (retType == broadcastedType) ||
+                          retType.isa<UnrankedTensorType>() ||
+                          isSameShapedVectorOrTensor(retType, broadcastedType);
+  if (!hasCompatRetType)
     return op->emitOpError(
-        llvm::formatv("result type '{0}' is not the expected broadcasted type "
-                      "'{1}' compute from the operand types",
+        llvm::formatv("result type '{0}' does not have the same shape as the "
+                      "broadcasted type '{1}' computed from the operand types",
                       retType, broadcastedType));
 
   return false;

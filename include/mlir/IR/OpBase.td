@@ -233,6 +233,7 @@ class TypedTensor<Type t>
                     "{0}.cast<TensorType>().getElementType()",
                     "tensor">;
 
+def I1Tensor  : TypedTensor<I1>;
 def F32Tensor : TypedTensor<F32>;
 
 // Type constraint for integer-like types: integers, indices, vectors of

@@ -99,7 +99,7 @@ func @broadcast_scalar_vector_vector(tensor<4xf32>, tensor<vector<4xf32>>) -> te
 // Check incompatible vector and tensor result type
 func @broadcast_scalar_vector_vector(tensor<4xf32>, tensor<4xf32>) -> vector<4xf32> {
 ^bb0(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>):
-  // expected-error @+1 {{not the expected broadcasted type}}
+  // expected-error @+1 {{does not have the same shape as the broadcasted type}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "Relu6"} : (tensor<4xf32>, tensor<4xf32>) -> vector<4xf32>
   return %0 : vector<4xf32>
 }
@@ -119,7 +119,7 @@ func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<3x3xi32>) -> tens
 // Check incompatible result type with known dimension
 func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<3x1xi32>) -> tensor<4x3x3xi32> {
 ^bb0(%arg0: tensor<4x3x2xi32>, %arg1: tensor<3x1xi32>):
-  // expected-error @+1 {{not the expected broadcasted type}}
+  // expected-error @+1 {{does not have the same shape as the broadcasted type}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<4x3x2xi32>, tensor<3x1xi32>) -> tensor<4x3x3xi32>
   return %0 : tensor<4x3x3xi32>
 }
@@ -129,7 +129,7 @@ func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<3x1xi32>) -> tens
 // Check incompatible result type with known dimension
 func @broadcast_tensor_tensor_tensor(tensor<8x1x6x1xi32>, tensor<7x1x5xi32>) -> tensor<8x7x6x1xi32> {
 ^bb0(%arg0: tensor<8x1x6x1xi32>, %arg1: tensor<7x1x5xi32>):
-  // expected-error @+1 {{not the expected broadcasted type}}
+  // expected-error @+1 {{does not have the same shape as the broadcasted type}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "Relu6"} : (tensor<8x1x6x1xi32>, tensor<7x1x5xi32>) -> tensor<8x7x6x1xi32>
   return %0 : tensor<8x7x6x1xi32>
 }
@@ -148,7 +148,7 @@ func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<?xi32>) -> tensor
 // Check incompatible result type with unknown dimension
 func @broadcast_tensor_tensor_tensor(tensor<?x1x6x1xi32>, tensor<7x1x5xi32>) -> tensor<8x7x6x5xi32> {
 ^bb0(%arg0: tensor<?x1x6x1xi32>, %arg1: tensor<7x1x5xi32>):
-  // expected-error @+1 {{not the expected broadcasted type}}
+  // expected-error @+1 {{does not have the same shape as the broadcasted type}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "Relu6"} : (tensor<?x1x6x1xi32>, tensor<7x1x5xi32>) -> tensor<8x7x6x5xi32>
   return %0 : tensor<8x7x6x5xi32>
 }
@@ -177,7 +177,27 @@ func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<*xi32>) -> tensor
 // Check unranked operand but ranked result
 func @broadcast_tensor_tensor_tensor(tensor<4x3x2xi32>, tensor<*xi32>) -> tensor<4x3x2xi32> {
 ^bb0(%arg0: tensor<4x3x2xi32>, %arg1: tensor<*xi32>):
-  // expected-error @+1 {{not the expected broadcasted type}}
+  // expected-error @+1 {{does not have the same shape as the broadcasted type}}
   %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function: "RELU6"} : (tensor<4x3x2xi32>, tensor<*xi32>) -> tensor<4x3x2xi32>
   return %0 : tensor<4x3x2xi32>
+}
+
+// -----
+
+// Check different input and output element types
+func @broadcast_cmp_op(tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1> {
+^bb0(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>):
+  // CHECK: %0 = "tf.Less"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  %0 = "tf.Less"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+}
+
+// -----
+
+// Check unranked operand and result with different element types
+func @broadcast_cmp_op(tensor<*xi32>, tensor<i32>) -> tensor<*xi1> {
+^bb0(%arg0: tensor<*xi32>, %arg1: tensor<i32>):
+  // CHECK: %0 = "tf.Less"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+  %0 = "tf.Less"(%arg0, %arg1) : (tensor<*xi32>, tensor<i32>) -> tensor<*xi1>
+  return %0 : tensor<*xi1>
 }
