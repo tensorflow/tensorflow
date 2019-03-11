@@ -729,8 +729,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   }
   const CpuAotCompilationOptions& options =
       static_cast<const CpuAotCompilationOptions&>(aot_options);
-  llvm::StringRef target_triple = llvm_ir::AsStringRef(options.triple());
-  llvm::Triple triple(llvm::Triple::normalize(target_triple));
+  llvm::Triple triple(llvm::Triple::normalize(options.triple()));
   std::string error;
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
@@ -768,13 +767,12 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       pie_level = llvm::PIELevel::Large;
       break;
   }
-  llvm::StringRef cpu_name = llvm_ir::AsStringRef(options.cpu_name());
-  llvm::StringRef features = llvm_ir::AsStringRef(options.features());
   llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
-  std::unique_ptr<llvm::TargetMachine> target_machine = absl::WrapUnique(
-      target->createTargetMachine(triple.getTriple(), cpu_name, features,
-                                  CompilerTargetOptions(modules[0]->config()),
-                                  reloc_model, llvm::None, opt_level));
+  std::unique_ptr<llvm::TargetMachine> target_machine =
+      absl::WrapUnique(target->createTargetMachine(
+          triple.getTriple(), options.cpu_name(), options.features(),
+          CompilerTargetOptions(modules[0]->config()), reloc_model, llvm::None,
+          opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   llvm::LLVMContext llvm_context;
@@ -868,7 +866,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                             /*is_top_level_computation=*/true,
                             schedule.sequence(computation).instructions()));
 
-    CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
+    CHECK(entry_function->getName() == entry_point_name);
 
     ModuleHook pre_optimization_ir_dump_hook;
     ModuleHook post_optimization_ir_dump_hook;

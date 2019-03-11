@@ -74,7 +74,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 }  // namespace
@@ -173,8 +172,7 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
   emitted_value_[bitcast] =
       BitCast(GetEmittedValueFor(bitcast->operand(0)),
-              IrShapeType(bitcast->shape())->getPointerTo(),
-              AsStringRef(IrName(bitcast)));
+              IrShapeType(bitcast->shape())->getPointerTo(), IrName(bitcast));
   return Status::OK();
 }
 
@@ -2219,7 +2217,6 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   absl::Span<HloInstruction* const> operands(custom_call->operands());
-  absl::string_view custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
@@ -2254,7 +2251,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   auto* custom_call_ir_function = llvm::dyn_cast<llvm::Function>(
       module_
           ->getOrInsertFunction(
-              AsStringRef(custom_call_target),
+              custom_call->custom_call_target(),
               llvm::FunctionType::get(
                   /*Result=*/b_.getVoidTy(),
                   /*Params=*/{i8_ptr_type, operands_alloca->getType()},
@@ -2337,7 +2334,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
   // Terminates the current block with a branch to a while header.
   llvm::BasicBlock* header_bb = llvm::BasicBlock::Create(
-      module_->getContext(), AsStringRef(IrName(xla_while, "header")),
+      module_->getContext(), IrName(xla_while, "header"),
       compute_function_->function());
   Br(header_bb);
   b_.SetInsertPoint(header_bb);
@@ -2350,11 +2347,11 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0));
 
   // Branches to the body or to the while exit depending on the condition.
-  llvm::BasicBlock* body_bb = llvm::BasicBlock::Create(
-      module_->getContext(), AsStringRef(IrName(xla_while, "body")),
-      compute_function_->function());
+  llvm::BasicBlock* body_bb =
+      llvm::BasicBlock::Create(module_->getContext(), IrName(xla_while, "body"),
+                               compute_function_->function());
   llvm::BasicBlock* exit_bb = llvm::BasicBlock::Create(
-      module_->getContext(), AsStringRef(IrName(xla_while, "exit")));
+      module_->getContext(), IrName(xla_while, "exit"));
   CondBr(while_predicate, body_bb, exit_bb);
 
   // Calls the body function from the body block.
@@ -2697,7 +2694,7 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
   int64 prof_counter_idx = it->second;
   string counter_name = IrName("prof_counter", hlo.name());
   return GEP(GetProfileCountersArgument(), b_.getInt64(prof_counter_idx),
-             AsStringRef(counter_name));
+             counter_name);
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
@@ -2741,7 +2738,7 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
 void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,
                                                  HloInstruction* hlo) {
   auto* cycle_start = ReadCycleCounter(b);
-  cycle_start->setName(AsStringRef(IrName(hlo, "cycle_start")));
+  cycle_start->setName(IrName(hlo, "cycle_start"));
   cycle_starts_[hlo] = cycle_start;
   if (first_read_cycle_start_ == nullptr) {
     first_read_cycle_start_ = cycle_start;
@@ -2752,7 +2749,7 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* b,
                                                  HloInstruction* hlo,
                                                  llvm::Value* prof_counter) {
   auto* cycle_end = ReadCycleCounter(b);
-  cycle_end->setName(AsStringRef(IrName(hlo, "cycle_end")));
+  cycle_end->setName(IrName(hlo, "cycle_end"));
   auto* cycle_start = cycle_starts_[hlo];
   UpdateProfileCounter(b, prof_counter, cycle_end, cycle_start);
   last_read_cycle_end_ = cycle_end;
@@ -2925,7 +2922,7 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(op));
   llvm::Value* addr = EmitBufferPointer(slice, target_shape);
-  addr->setName(AsStringRef(IrName(op)));
+  addr->setName(IrName(op));
   emitted_value_[op] = addr;
   return Status::OK();
 }

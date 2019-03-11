@@ -45,14 +45,13 @@ class TargetOptions;
 namespace xla {
 namespace llvm_ir {
 
-// Convert a std::string (used by LLVM's interfaces) to string.
-string AsString(const std::string& str);
-
 // Convert a absl::string_view to a llvm::StringRef. Note: both
 // absl::string_view and llvm::StringRef are non-owning pointers into a
 // string in memory. This method is used to feed strings to LLVM
 // & Clang APIs that expect llvm::StringRef.
-llvm::StringRef AsStringRef(absl::string_view str);
+inline llvm::StringRef AsStringRef(absl::string_view str) {
+  return llvm::StringRef(str.data(), str.size());
+}
 
 template <typename T>
 llvm::ArrayRef<T> AsArrayRef(const std::vector<T>& vec) {
@@ -71,7 +70,7 @@ string DumpToString(const T& entity) {
   llvm::raw_string_ostream ostream(buffer_string);
   entity.print(ostream);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 // Dump the given LLVM module to a string. This requires a function distinct
