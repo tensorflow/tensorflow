@@ -27,6 +27,7 @@
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
+#include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/PointerUnion.h"
 #include <memory>
 
@@ -90,11 +91,11 @@ public:
   /// if everything is ok.
   bool (&verifyInvariants)(const Instruction *op);
 
-  /// This hook implements a constant folder for this operation.  It returns
-  /// true if folding failed, or returns false and fills in `results` on
-  /// success.
-  bool (&constantFoldHook)(const Instruction *op, ArrayRef<Attribute> operands,
-                           SmallVectorImpl<Attribute> &results);
+  /// This hook implements a constant folder for this operation.  It fills in
+  /// `results` on success.
+  LogicalResult (&constantFoldHook)(const Instruction *op,
+                                    ArrayRef<Attribute> operands,
+                                    SmallVectorImpl<Attribute> &results);
 
   /// This hook implements a generalized folder for this operation.  Operations
   /// can implement this to provide simplifications rules that are applied by
@@ -104,19 +105,19 @@ public:
   /// can only perform the following changes to the operation:
   ///
   ///  1. They can leave the operation alone and without changing the IR, and
-  ///     return true.
+  ///     return failure.
   ///  2. They can mutate the operation in place, without changing anything else
-  ///     in the IR.  In this case, return false.
+  ///     in the IR.  In this case, return success.
   ///  3. They can return a list of existing values that can be used instead of
   ///     the operation.  In this case, fill in the results list and return
-  ///     false.  The caller will remove the operation and use those results
+  ///     success.  The caller will remove the operation and use those results
   ///     instead.
   ///
   /// This allows expression of some simple in-place canonicalizations (e.g.
   /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
   /// not allow for canonicalizations that need to introduce new operations, not
   /// even constants (e.g. "x-x -> 0" cannot be expressed).
-  bool (&foldHook)(Instruction *op, SmallVectorImpl<Value *> &results);
+  LogicalResult (&foldHook)(Instruction *op, SmallVectorImpl<Value *> &results);
 
   /// This hook returns any canonicalization pattern rewrites that the operation
   /// supports, for use by the canonicalization pass.
@@ -149,10 +150,11 @@ private:
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
       void (&printAssembly)(const Instruction *op, OpAsmPrinter *p),
       bool (&verifyInvariants)(const Instruction *op),
-      bool (&constantFoldHook)(const Instruction *op,
-                               ArrayRef<Attribute> operands,
-                               SmallVectorImpl<Attribute> &results),
-      bool (&foldHook)(Instruction *op, SmallVectorImpl<Value *> &results),
+      LogicalResult (&constantFoldHook)(const Instruction *op,
+                                        ArrayRef<Attribute> operands,
+                                        SmallVectorImpl<Attribute> &results),
+      LogicalResult (&foldHook)(Instruction *op,
+                                SmallVectorImpl<Value *> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
       : name(name), dialect(dialect), isClassFor(isClassFor),

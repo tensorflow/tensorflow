@@ -415,13 +415,13 @@ public:
   /// Attempt to constant fold this operation with the specified constant
   /// operand values - the elements in "operands" will correspond directly to
   /// the operands of the operation, but may be null if non-constant.  If
-  /// constant folding is successful, this returns false and fills in the
-  /// `results` vector.  If not, this returns true and `results` is unspecified.
-  bool constantFold(ArrayRef<Attribute> operands,
-                    SmallVectorImpl<Attribute> &results) const;
+  /// constant folding is successful, this fills in the `results` vector.  If
+  /// not, `results` is unspecified.
+  LogicalResult constantFold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<Attribute> &results) const;
 
   /// Attempt to fold this operation using the Op's registered foldHook.
-  bool fold(SmallVectorImpl<Value *> &results);
+  LogicalResult fold(SmallVectorImpl<Value *> &results);
 
   //===--------------------------------------------------------------------===//
   // Conversions to declared operations like DimOp

@@ -204,7 +204,7 @@ Attribute AffineApplyOp::constantFold(ArrayRef<Attribute> operands,
                                       MLIRContext *context) const {
   auto map = getAffineMap();
   SmallVector<Attribute, 1> result;
-  if (map.constantFold(operands, result))
+  if (failed(map.constantFold(operands, result)))
     return Attribute();
   return result[0];
 }
@@ -837,7 +837,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
       assert(boundMap.getNumResults() >= 1 &&
              "bound maps should have at least one result");
       SmallVector<Attribute, 4> foldedResults;
-      if (boundMap.constantFold(operandConstants, foldedResults))
+      if (failed(boundMap.constantFold(operandConstants, foldedResults)))
         return;
 
       // Compute the max or min as applicable over the results.

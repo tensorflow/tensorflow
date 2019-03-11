@@ -216,7 +216,7 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     // If constant folding was successful, create the result constants, RAUW the
     // operation and remove it.
     resultConstants.clear();
-    if (!op->constantFold(operandConstants, resultConstants)) {
+    if (succeeded(op->constantFold(operandConstants, resultConstants))) {
       builder.setInsertionPoint(op);
 
       // Add the operands to the worklist for visitation.
@@ -256,7 +256,7 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     // operation.
     originalOperands.assign(op->operand_begin(), op->operand_end());
     resultValues.clear();
-    if (!op->fold(resultValues)) {
+    if (succeeded(op->fold(resultValues))) {
       // If the result was an in-place simplification (e.g. max(x,x,y) ->
       // max(x,y)) then add the original operands to the worklist so we can make
       // sure to revisit them.

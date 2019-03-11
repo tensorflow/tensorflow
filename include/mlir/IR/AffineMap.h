@@ -35,6 +35,7 @@ class AffineMapStorage;
 
 class AffineExpr;
 class Attribute;
+struct LogicalResult;
 class MLIRContext;
 
 /// A multi-dimensional affine map
@@ -115,10 +116,9 @@ public:
                                   unsigned numResultSyms);
 
   /// Folds the results of the application of an affine map on the provided
-  /// operands to a constant if possible. Returns false if the folding happens,
-  /// true otherwise.
-  bool constantFold(ArrayRef<Attribute> operandConstants,
-                    SmallVectorImpl<Attribute> &results) const;
+  /// operands to a constant if possible.
+  LogicalResult constantFold(ArrayRef<Attribute> operandConstants,
+                             SmallVectorImpl<Attribute> &results) const;
 
   /// Returns the AffineMap resulting from composing `this` with `map`.
   /// The resulting AffineMap has as many AffineDimExpr as `map` and as many

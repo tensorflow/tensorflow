@@ -73,7 +73,7 @@ struct constant_op_binder {
     if (op->getNumOperands() > 0 || op->getNumResults() != 1)
       return false;
     SmallVector<Attribute, 1> foldedAttr;
-    if (!op->constantFold(/*operands=*/llvm::None, foldedAttr)) {
+    if (succeeded(op->constantFold(/*operands=*/llvm::None, foldedAttr))) {
       *bind_value = foldedAttr.front();
       return true;
     }

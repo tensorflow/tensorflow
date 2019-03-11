@@ -21,6 +21,7 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Support/Functional.h"
+#include "mlir/Support/LogicalResult.h"
 #include "mlir/Support/MathExtras.h"
 #include "llvm/ADT/StringRef.h"
 
@@ -166,8 +167,9 @@ ArrayRef<AffineExpr> AffineMap::getRangeSizes() const {
 /// Folds the results of the application of an affine map on the provided
 /// operands to a constant if possible. Returns false if the folding happens,
 /// true otherwise.
-bool AffineMap::constantFold(ArrayRef<Attribute> operandConstants,
-                             SmallVectorImpl<Attribute> &results) const {
+LogicalResult
+AffineMap::constantFold(ArrayRef<Attribute> operandConstants,
+                        SmallVectorImpl<Attribute> &results) const {
   assert(getNumInputs() == operandConstants.size());
 
   // Fold each of the result expressions.
@@ -177,13 +179,13 @@ bool AffineMap::constantFold(ArrayRef<Attribute> operandConstants,
     auto folded = exprFolder.constantFold(expr);
     // If we didn't fold to a constant, then folding fails.
     if (!folded)
-      return true;
+      return failure();
 
     results.push_back(folded);
   }
   assert(results.size() == getNumResults() &&
          "constant folding produced the wrong number of results");
-  return false;
+  return success();
 }
 
 /// Walk all of the AffineExpr's in this mapping.  The results are visited

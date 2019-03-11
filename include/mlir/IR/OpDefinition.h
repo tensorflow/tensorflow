@@ -241,9 +241,9 @@ class FoldingHook {
 public:
   /// This is an implementation detail of the constant folder hook for
   /// AbstractOperation.
-  static bool constantFoldHook(const Instruction *op,
-                               ArrayRef<Attribute> operands,
-                               SmallVectorImpl<Attribute> &results) {
+  static LogicalResult constantFoldHook(const Instruction *op,
+                                        ArrayRef<Attribute> operands,
+                                        SmallVectorImpl<Attribute> &results) {
     return op->cast<ConcreteType>()->constantFold(operands, results,
                                                   op->getContext());
   }
@@ -252,19 +252,20 @@ public:
   /// fold this operation with the specified constant operand values - the
   /// elements in "operands" will correspond directly to the operands of the
   /// operation, but may be null if non-constant.  If constant folding is
-  /// successful, this returns false and fills in the `results` vector.  If not,
-  /// this returns true and `results` is unspecified.
+  /// successful, this fills in the `results` vector.  If not, `results` is
+  /// unspecified.
   ///
   /// If not overridden, this fallback implementation always fails to fold.
   ///
-  bool constantFold(ArrayRef<Attribute> operands,
-                    SmallVectorImpl<Attribute> &results,
-                    MLIRContext *context) const {
-    return true;
+  LogicalResult constantFold(ArrayRef<Attribute> operands,
+                             SmallVectorImpl<Attribute> &results,
+                             MLIRContext *context) const {
+    return failure();
   }
 
   /// This is an implementation detail of the folder hook for AbstractOperation.
-  static bool foldHook(Instruction *op, SmallVectorImpl<Value *> &results) {
+  static LogicalResult foldHook(Instruction *op,
+                                SmallVectorImpl<Value *> &results) {
     return op->cast<ConcreteType>()->fold(results);
   }
 
@@ -276,12 +277,12 @@ public:
   /// can only perform the following changes to the operation:
   ///
   ///  1. They can leave the operation alone and without changing the IR, and
-  ///     return true.
+  ///     return failure.
   ///  2. They can mutate the operation in place, without changing anything else
-  ///     in the IR.  In this case, return false.
+  ///     in the IR.  In this case, return success.
   ///  3. They can return a list of existing values that can be used instead of
   ///     the operation.  In this case, fill in the results list and return
-  ///     false.  The caller will remove the operation and use those results
+  ///     success.  The caller will remove the operation and use those results
   ///     instead.
   ///
   /// This allows expression of some simple in-place canonicalizations (e.g.
@@ -291,7 +292,7 @@ public:
   ///
   /// If not overridden, this fallback implementation always fails to fold.
   ///
-  bool fold(SmallVectorImpl<Value *> &results) { return true; }
+  LogicalResult fold(SmallVectorImpl<Value *> &results) { return failure(); }
 };
 
 /// This template specialization defines the constantFoldHook and foldHook as
@@ -303,16 +304,16 @@ class FoldingHook<ConcreteType, isSingleResult,
 public:
   /// This is an implementation detail of the constant folder hook for
   /// AbstractOperation.
-  static bool constantFoldHook(const Instruction *op,
-                               ArrayRef<Attribute> operands,
-                               SmallVectorImpl<Attribute> &results) {
+  static LogicalResult constantFoldHook(const Instruction *op,
+                                        ArrayRef<Attribute> operands,
+                                        SmallVectorImpl<Attribute> &results) {
     auto result =
         op->cast<ConcreteType>()->constantFold(operands, op->getContext());
     if (!result)
-      return true;
+      return failure();
 
     results.push_back(result);
-    return false;
+    return success();
   }
 
   /// Op implementations can implement this hook.  It should attempt to constant
@@ -330,13 +331,14 @@ public:
   }
 
   /// This is an implementation detail of the folder hook for AbstractOperation.
-  static bool foldHook(Instruction *op, SmallVectorImpl<Value *> &results) {
+  static LogicalResult foldHook(Instruction *op,
+                                SmallVectorImpl<Value *> &results) {
     auto *result = op->cast<ConcreteType>()->fold();
     if (!result)
-      return true;
+      return failure();
     if (result != op->getResult(0))
       results.push_back(result);
-    return false;
+    return success();
   }
 
   /// This hook implements a generalized folder for this operation.  Operations

@@ -475,9 +475,9 @@ void OpEmitter::emitFolders() {
       os << "  Attribute constantFold(ArrayRef<Attribute> operands,\n"
             "                         MLIRContext *context) const;\n";
     } else {
-      os << "  bool constantFold(ArrayRef<Attribute> operands,\n"
-         << "                    SmallVectorImpl<Attribute> &results,\n"
-         << "                    MLIRContext *context) const;\n";
+      os << "  LogicalResult constantFold(ArrayRef<Attribute> operands,\n"
+         << "                             SmallVectorImpl<Attribute> &results,"
+         << "\n                             MLIRContext *context) const;\n";
     }
   }
 

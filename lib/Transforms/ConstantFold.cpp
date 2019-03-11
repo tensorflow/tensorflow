@@ -63,7 +63,7 @@ void ConstantFold::foldInstruction(Instruction *op) {
 
   // Attempt to constant fold the operation.
   SmallVector<Attribute, 8> resultConstants;
-  if (op->constantFold(operandConstants, resultConstants))
+  if (failed(op->constantFold(operandConstants, resultConstants)))
     return;
 
   // Ok, if everything succeeded, then we can create constants corresponding
