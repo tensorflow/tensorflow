@@ -48,6 +48,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): These are limitations of our implementation that could be
   // removed with a bit of effort.
+  TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
@@ -140,13 +141,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:
       TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
       break;
-    case kTfLiteInt8: {
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, int8_t);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, int8_t);
-      }
-    } break;
+    case kTfLiteInt8:
+      TF_LITE_CONCATENATION(reference_ops, int8_t);
+      break;
     case kTfLiteInt64:
       TF_LITE_CONCATENATION(reference_ops, int64_t);
       break;
