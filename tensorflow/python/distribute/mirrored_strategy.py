@@ -319,7 +319,7 @@ def _cluster_spec_to_device_list(cluster_spec, num_gpus_per_worker):
   devices = []
   for task_type in ("chief", "worker"):
     for task_id in range(len(cluster_spec.as_dict().get(task_type, []))):
-      if num_gpus_per_worker is 0:
+      if num_gpus_per_worker == 0:
         devices.append("/job:%s/task:%d" % (task_type, task_id))
       else:
         devices.extend([

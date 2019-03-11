@@ -176,7 +176,7 @@ class CollectiveAllReduceStrategyTestBase(
       def update(v, g):
         return v.assign_sub(0.05 * g, use_locking=True)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""

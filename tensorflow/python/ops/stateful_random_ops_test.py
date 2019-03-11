@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_random_ops
@@ -138,7 +139,7 @@ class StatefulRandomOpsTest(test.TestCase):
 
     def new():
       with ops.device("/device:CPU:0"):
-        return random.get_global_generator().standard_normal(shape, dtype=dtype)
+        return random.get_global_generator().normal(shape, dtype=dtype)
 
     for _ in range(100):
       self.assertAllEqual(old(), new())
@@ -164,7 +165,7 @@ class StatefulRandomOpsTest(test.TestCase):
 
     def new():
       with ops.device(test_util.gpu_device_name()):
-        return random.get_global_generator().standard_normal(shape, dtype=dtype)
+        return random.get_global_generator().normal(shape, dtype=dtype)
 
     for _ in range(100):
       self.assertAllEqual(old(), new())
@@ -203,7 +204,7 @@ class StatefulRandomOpsTest(test.TestCase):
 
     random.reset_global_generator(50)
     with self.assertRaisesWithPredicateMatch(
-        AssertionError, "variable.*deleted"):
+        errors_impl.NotFoundError, "Resource .+ does not exist"):
       a = f()
       random.reset_global_generator(50)
       b = f()

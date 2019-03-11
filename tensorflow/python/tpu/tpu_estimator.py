@@ -62,6 +62,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.tpu import _tpu_estimator_embedding
 from tensorflow.python.tpu import error_handling
 from tensorflow.python.tpu import functional as tpu_functional
+from tensorflow.python.tpu import profile_logger
 from tensorflow.python.tpu import session_support
 from tensorflow.python.tpu import tensor_tracer
 from tensorflow.python.tpu import tpu
@@ -439,6 +440,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                enqueue_ops,
                dequeue_ops,
                tpu_compile_op,
+               prof_logger,
                run_infeed_loop_on_coordinator=True,
                rendezvous=None,
                master=None,
@@ -468,6 +470,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     # initialization.
     self._should_initialize_tpu = not ctx.model_parallelism_enabled
     self._tpu_compile_op = tpu_compile_op
+    self._profile_logger = prof_logger
 
   def begin(self):
     logging.info('TPU job name %s', self._master_job)
@@ -528,6 +531,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     if self._should_initialize_tpu:
       logging.info('Init TPU system')
       start = time.time()
+      self._profile_logger.log_event('init_system', 'begin')
       with ops.Graph().as_default():
         with tf_session.Session(
             self._master, config=self._session_config) as sess:
@@ -535,6 +539,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
               tpu.initialize_system(
                   job=self._master_job,
                   embedding_config=self._embedding_layer_config))
+      self._profile_logger.log_event('init_system', 'end')
       logging.info('Initialized TPU in %d seconds', time.time() - start)
 
     session.run(self._init_ops,
@@ -584,13 +589,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
 class TPUInfeedOutfeedSessionHookForPrediction(TPUInfeedOutfeedSessionHook):
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops, tpu_compile_op,
-               rendezvous=None, master=None, session_config=None):
+  def __init__(self, ctx, enqueue_ops, dequeue_ops, tpu_compile_op, prof_logger,
+               rendezvous=None, master=None,
+               session_config=None):
     super(TPUInfeedOutfeedSessionHookForPrediction, self).__init__(
         ctx,
         enqueue_ops,
         dequeue_ops,
         tpu_compile_op=tpu_compile_op,
+        prof_logger=prof_logger,
         run_infeed_loop_on_coordinator=False,
         rendezvous=rendezvous,
         master=master,
@@ -984,6 +991,8 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
     signals = None
+    num_replicas = ctx.num_replicas
+    core_id = 0
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -1000,7 +1009,18 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
                     features, labels, signals))
-          broadcasted_inputs.append(flattened_inputs)
+            if (ctx.config.tpu_config.eval_training_input_configuration is
+                tpu_config.InputPipelineConfig.SLICED):
+              input_slices = [
+                  array_ops.split(x, num_replicas) for x in flattened_inputs
+              ]
+          if (ctx.config.tpu_config.eval_training_input_configuration is
+              tpu_config.InputPipelineConfig.SLICED):
+            # for each core, slice out the flattened_inputs for each core.
+            broadcasted_inputs.append([x[core_id] for x in input_slices])
+            core_id += 1
+          else:
+            broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(broadcasted_inputs[0]))
@@ -2362,6 +2382,7 @@ class TPUEstimator(estimator_lib.Estimator):
 
     self._is_input_fn_invoked = None
     self._rendezvous = {}
+    self._profile_logger = profile_logger.ProfileLogger(self.model_dir)
 
   def _add_meta_graph_for_mode(self,
                                builder,
@@ -2692,6 +2713,7 @@ class TPUEstimator(estimator_lib.Estimator):
     rendezvous = error_handling.ErrorRendezvous(num_sources=3)
     self._rendezvous[model_fn_lib.ModeKeys.TRAIN] = rendezvous
     try:
+      self._profile_logger.log_event('train', 'begin')
       return super(TPUEstimator, self).train(
           input_fn=input_fn,
           hooks=hooks,
@@ -2701,6 +2723,7 @@ class TPUEstimator(estimator_lib.Estimator):
     except Exception:  # pylint: disable=broad-except
       rendezvous.record_error('training_loop', sys.exc_info())
     finally:
+      self._profile_logger.log_event('train', 'end')
       rendezvous.record_done('training_loop')
       rendezvous.raise_errors()
 
@@ -2713,6 +2736,7 @@ class TPUEstimator(estimator_lib.Estimator):
     rendezvous = error_handling.ErrorRendezvous(num_sources=3)
     self._rendezvous[model_fn_lib.ModeKeys.EVAL] = rendezvous
     try:
+      self._profile_logger.log_event('eval', 'begin')
       return super(TPUEstimator, self).evaluate(
           input_fn,
           steps=steps,
@@ -2722,6 +2746,7 @@ class TPUEstimator(estimator_lib.Estimator):
     except Exception:  # pylint: disable=broad-except
       rendezvous.record_error('evaluation_loop', sys.exc_info())
     finally:
+      self._profile_logger.log_event('eval', 'end')
       rendezvous.record_done('evaluation_loop')
       rendezvous.raise_errors()
 
@@ -2734,6 +2759,7 @@ class TPUEstimator(estimator_lib.Estimator):
     rendezvous = error_handling.ErrorRendezvous(num_sources=3)
     self._rendezvous[model_fn_lib.ModeKeys.PREDICT] = rendezvous
     try:
+      self._profile_logger.log_event('predict', 'begin')
       for result in super(TPUEstimator, self).predict(
           input_fn=input_fn,
           predict_keys=predict_keys,
@@ -2744,6 +2770,7 @@ class TPUEstimator(estimator_lib.Estimator):
     except Exception:  # pylint: disable=broad-except
       rendezvous.record_error('prediction_loop', sys.exc_info())
     finally:
+      self._profile_logger.log_event('predict', 'end')
       rendezvous.record_done('prediction_loop')
       rendezvous.raise_errors()
 
@@ -2755,6 +2782,8 @@ class TPUEstimator(estimator_lib.Estimator):
 
     def _model_fn(features, labels, mode, config, params):
       """A Estimator `model_fn` for TPUEstimator."""
+
+      self._profile_logger.log_event('model_fn', 'begin')
 
       # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
       # but not in `export_savedmodel()`.
@@ -2795,6 +2824,7 @@ class TPUEstimator(estimator_lib.Estimator):
           if self._log_every_n_steps is not None:
             estimator_spec = estimator_spec._replace(
                 training_hooks=estimator_spec.training_hooks + (examples_hook,))
+          self._profile_logger.log_event('model_fn', 'end')
           return estimator_spec
 
         assert labels is None, '`labels` passed to `model_fn` must be `None`.'
@@ -2811,9 +2841,10 @@ class TPUEstimator(estimator_lib.Estimator):
           tpu_init_ops.append(dummy_table_variables_init)
 
         input_holders = _InputPipeline(input_fn, batch_axis, ctx)
+        self._profile_logger.log_event('setup_infeed', 'begin')
         enqueue_ops, dequeue_fn, input_hooks, run_infeed_loop_on_coordinator = (
             input_holders.generate_infeed_enqueue_ops_and_dequeue_fn())
-
+        self._profile_logger.log_event('setup_infeed', 'end')
         graph = ops.get_default_graph()
         for enqueue_op in enqueue_ops:
           if isinstance(enqueue_op, list):
@@ -2876,6 +2907,7 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   host_ops,
                   tpu_compile_op=compile_op,
+                  prof_logger=self._profile_logger,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
@@ -2926,6 +2958,7 @@ class TPUEstimator(estimator_lib.Estimator):
           train_op = control_flow_ops.group(*update_ops)
           graph.add_to_collection(_TPU_TRAIN_OP, train_op)
 
+          self._profile_logger.log_event('model_fn', 'end')
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=loss,
@@ -2937,6 +2970,19 @@ class TPUEstimator(estimator_lib.Estimator):
         if mode == model_fn_lib.ModeKeys.EVAL:
           compile_op, total_loss, host_calls, scaffold, eval_hooks = (
               _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
+          if ctx.embedding_config:
+            g = ops.get_default_graph()
+            table_to_config_dict = (
+                ctx.embedding_config.tpu_embedding.table_to_config_dict)
+            embedding_variable_name_by_table, _ = (
+                _tpu_estimator_embedding.get_full_variable_names(
+                    g, table_to_config_dict)
+            )
+            embedding_variables_and_ops = (
+                ctx.embedding_config.tpu_embedding.create_variables_and_ops(
+                    embedding_variable_name_by_table
+                ))
+            tpu_init_ops.extend(embedding_variables_and_ops.load_ops())
           iterations_per_loop_var = _create_or_get_iterations_per_loop()
           mean_loss = math_ops.div(
               total_loss,
@@ -2984,6 +3030,7 @@ class TPUEstimator(estimator_lib.Estimator):
                   enqueue_ops,
                   eval_update_ops + host_ops,
                   tpu_compile_op=compile_op,
+                  prof_logger=self._profile_logger,
                   run_infeed_loop_on_coordinator=(
                       run_infeed_loop_on_coordinator),
                   rendezvous=self._rendezvous[mode],
@@ -2995,6 +3042,7 @@ class TPUEstimator(estimator_lib.Estimator):
           if eval_hooks:
             hooks.extend(eval_hooks)
 
+          self._profile_logger.log_event('model_fn', 'end')
           return model_fn_lib.EstimatorSpec(
               mode,
               loss=mean_loss,
@@ -3063,6 +3111,7 @@ class TPUEstimator(estimator_lib.Estimator):
             TPUInfeedOutfeedSessionHookForPrediction(
                 ctx, enqueue_ops, host_ops, rendezvous=self._rendezvous[mode],
                 tpu_compile_op=compile_op,
+                prof_logger=self._profile_logger,
                 master=self._config.master,
                 session_config=self._session_config),
         ] + input_hooks
@@ -3070,6 +3119,7 @@ class TPUEstimator(estimator_lib.Estimator):
         if prediction_hooks:
           hooks.extend(prediction_hooks)
 
+        self._profile_logger.log_event('model_fn', 'end')
         return model_fn_lib.EstimatorSpec(
             mode,
             prediction_hooks=hooks,

@@ -97,6 +97,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
             cls.v2_symbols["tf." + name] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
+      visitor.private_map["tf.compat"] = ["v1"]
       traverse.traverse(tf.compat.v2, visitor)
 
     if hasattr(tf.compat, "v1"):
@@ -515,17 +516,6 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
                      "model_dir=model_dir, "
                      "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
     _, report, errors, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
-
-  def testGetVariableWithUseResource(self):
-    text = "tf.get_variable(name=\"a\")"
-    expected_text = "tf.compat.v1.get_variable(name=\"a\", use_resource=False)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
-
-    text = "tf.get_variable(name=\"a\", use_resource=None)"
-    expected_text = "tf.compat.v1.get_variable(name=\"a\", use_resource=None)"
-    _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
   def testExtractGlimpse(self):

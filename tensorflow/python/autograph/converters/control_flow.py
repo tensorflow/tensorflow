@@ -274,24 +274,40 @@ class ControlFlowTransformer(converter.Base):
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
     reserved_symbols = body_scope.referenced
 
-    # Note that it doesn't matter whether the variables are live after the loop.
-    # If the loop modifies them nonlocally (e.g. the result of an iteration
-    # depends on the previous iteration), then they need to be included in
-    # the loop state, regardless of whether they are later used or not.
-    loop_state = body_scope.modified & live_in
+    loop_state = []
+    for s in body_scope.modified:
+
+      # Variables not live into or out of the loop are considered local to the
+      # loop.
+      if s not in live_in and s not in live_out:
+        continue
+
+      # Mutations made to objects created inside the loop will appear as writes
+      # to composite symbols. Because these mutations appear as modifications
+      # made to composite symbols, we check whether the composite's parent is
+      # actually live into the loop.
+      # Example:
+      #   while cond:
+      #     x = Foo()
+      #     x.foo = 2 * x.foo  # x.foo is live into the loop, but x is not.
+      if s.is_composite() and not all(p in live_in for p in s.support_set):
+        continue
+
+      loop_state.append(s)
+    loop_state = frozenset(loop_state)
 
     # Variable that are used or defined inside the loop, but not defined
     # before entering the loop
-    undefined_lives = ((loop_state - defined_in)
-                       | ((body_scope.modified - live_in) & live_out))
+    undefined_lives = loop_state - defined_in
+
     # Only simple variables must be defined. The composite ones will be
     # implicitly checked at runtime.
-    undefined_simple_lives = {v for v in undefined_lives if v.is_simple()}
+    possibly_undefs = {v for v in undefined_lives if v.is_simple()}
 
-    return loop_state, reserved_symbols, undefined_simple_lives
+    return loop_state, reserved_symbols, possibly_undefs
 
   def _state_constructs(self, loop_state, reserved_symbols):
-    loop_state = list(loop_state)
+    loop_state = tuple(loop_state)
     state_ssf = [
         self.ctx.namer.new_symbol(s.ssf(), reserved_symbols) for s in loop_state
     ]
@@ -312,7 +328,7 @@ class ControlFlowTransformer(converter.Base):
   def visit_While(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols, possibly_undef = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undefs = self._get_loop_state(node)
 
     # Note: one might expect we can dispatch based on the loop condition.
     # But because that is dependent on the state, it cannot be evaluated ahead
@@ -376,7 +392,7 @@ class ControlFlowTransformer(converter.Base):
           extra_deps=tuple(s.ast() for s in cond_closure),
       )
 
-    undefined_assigns = self._create_undefined_assigns(possibly_undef)
+    undefined_assigns = self._create_undefined_assigns(possibly_undefs)
     return undefined_assigns + node
 
   def _create_for_loop_early_stopping(self, loop_state, state_ssf,
@@ -449,7 +465,7 @@ class ControlFlowTransformer(converter.Base):
   def visit_For(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols, possibly_undef = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undefs = self._get_loop_state(node)
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
@@ -476,7 +492,7 @@ class ControlFlowTransformer(converter.Base):
                                   'should create state variables.')
       node = self._create_for_loop_without_state(node, body_name, node_body)
 
-    undefined_assigns = self._create_undefined_assigns(possibly_undef)
+    undefined_assigns = self._create_undefined_assigns(possibly_undefs)
     return undefined_assigns + node
 
 

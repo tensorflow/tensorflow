@@ -457,14 +457,18 @@ class TestDistributionStrategyWithNormalizationLayer(test.TestCase,
       with distribution.scope():
         model = keras.models.Sequential()
         norm = keras.layers.BatchNormalization(
-            input_shape=(10,), momentum=0.8, fused=fused)
+            input_shape=(
+                10,
+                20,
+                30,
+            ), momentum=0.8, fused=fused)
         model.add(norm)
         model.compile(
             loss='mse',
             optimizer=gradient_descent.GradientDescentOptimizer(0.01))
 
       # centered on 5.0, variance 10.0
-      x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 10))
+      x = np.random.normal(loc=5.0, scale=10.0, size=(1000, 10, 20, 30))
       x = x.astype('float32')
       dataset = dataset_ops.Dataset.from_tensor_slices((x, x))
       dataset = dataset.repeat(100)

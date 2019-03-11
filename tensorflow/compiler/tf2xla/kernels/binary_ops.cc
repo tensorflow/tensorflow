@@ -161,7 +161,7 @@ XLA_MAKE_BINARY(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(ReciprocalGrad, xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
-    xla::Mul(xla::Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
+    xla::Mul((lhs * lhs) * lhs,
              xla::Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
              extend_dimensions));
 XLA_MAKE_BINARY(

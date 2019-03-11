@@ -1012,7 +1012,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // operations. For similar reasons, if the operand and output have the same
     // rank, try to match the operand's layout to the output.
     if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
-        instruction->shape().rank() == 1) {
+        ShapeUtil::TrueRank(instruction->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
     }
@@ -1072,7 +1072,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations. For similar reasons, if the operand and output have the same
     // rank, try to match the outputs's layout to the operand.
-    if (operand->shape().rank() == 1 &&
+    if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
         ShapeUtil::TrueRank(user->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
@@ -2001,6 +2001,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConditional:
@@ -2012,24 +2013,18 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLe:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
-    case HloOpcode::kLt:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:

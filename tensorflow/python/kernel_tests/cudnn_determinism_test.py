@@ -93,8 +93,8 @@ class ConvolutionTest(test.TestCase):
         in_shape, filter_op, out_op, strides=_STRIDES, padding=_PADDING)
     self._assert_reproducible(input_gradient_op)
 
-  # TODO(duncanriach-nvidia): (1) add test to confirm that forward autotuning
-  #   is disabled for cuDNN convolution; (2) add test for deterministic cuDNN
+  # TODO(duncanriach): (1) add test to confirm that forward autotuning is
+  #   disabled for cuDNN convolution; (2) add test for deterministic cuDNN
   #   max-pooling
 
 

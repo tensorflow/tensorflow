@@ -988,12 +988,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe: {
+    case HloOpcode::kCompare: {
       TF_ASSIGN_OR_RETURN(const Shape& shape,
                           InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                         broadcast_dimensions));
@@ -1721,11 +1716,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   if (batch_group_count > 1 && input_batch % kernel_output_features != 0) {
     return InvalidArgument(
-        "Expected output feature dimension (value %d) to be divisible by "
-        "input_batch (value %d) for batch group count %d; "
+        "Expected input batch (value %d) to be divisible by output feature "
+        "dimension size (value %d) for batch group count %d; "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        kernel_output_features, input_batch, batch_group_count,
+        input_batch, kernel_output_features, batch_group_count,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }

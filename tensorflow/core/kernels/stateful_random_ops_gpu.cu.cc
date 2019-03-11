@@ -18,7 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
-#include "tensorflow/core/kernels/stateful_random_ops.h"
+#include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/util/cuda_launch_config.h"
 
 namespace tensorflow {
@@ -54,7 +54,7 @@ __global__ void FillKernel(
 template <typename Distribution>
 void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
     OpKernelContext* ctx, const GPUDevice& d, int64 output_size,
-    int64 alg_tag_skip, ScopedUnlockUnref* not_used, Tensor* state_tensor,
+    int64 alg_tag_skip, ScopedUnlockUnrefVar* not_used, Tensor* state_tensor,
     typename Distribution::ResultElementType* output_data) {
   OP_REQUIRES(
       ctx, alg_tag_skip == 0,

@@ -329,7 +329,7 @@ def experimental_tpu_fit_loop(model,
   initial_loop_values = {}
   initial_loop_values['loss'] = constant_op.constant(1e7)
   for name in model.metrics_names[1:]:
-    tensor = model._all_stateful_metrics_tensors[name]
+    tensor = model._all_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
   use_steps = steps_per_epoch is not None
@@ -491,7 +491,7 @@ def experimental_tpu_test_loop(model,
   initial_loop_values = {}
   initial_loop_values['loss'] = constant_op.constant(1e7)
   for name in model.metrics_names[1:]:
-    tensor = model._all_stateful_metrics_tensors[name]
+    tensor = model._all_metrics_tensors[name]
     initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
 
   # TODO(priyag): Use steps_per_run when we use new metrics as they will

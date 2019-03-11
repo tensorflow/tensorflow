@@ -212,6 +212,7 @@ cc_library(
         ":padding",
         ":sharding_builder",
         ":xla_computation",
+        "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",

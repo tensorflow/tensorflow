@@ -42,9 +42,8 @@ from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 
-@keras_export('keras.layers.BatchNormalization', v1=[])
-class BatchNormalizationV2(Layer):
-  """Batch normalization layer (Ioffe and Szegedy, 2014).
+class BatchNormalizationBase(Layer):
+  """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
@@ -132,7 +131,8 @@ class BatchNormalizationV2(Layer):
       Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
-  # The BatchNormalizationV1 subclass sets this to False to use the V1 behavior.
+  # By default, the base class uses V2 behavior. The BatchNormalizationV1
+  # subclass sets this to False to use the V1 behavior.
   _USE_V2_BEHAVIOR = True
 
   def __init__(self,
@@ -158,7 +158,7 @@ class BatchNormalizationV2(Layer):
                adjustment=None,
                name=None,
                **kwargs):
-    super(BatchNormalizationV2, self).__init__(
+    super(BatchNormalizationBase, self).__init__(
         name=name, trainable=trainable, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
@@ -772,22 +772,22 @@ class BatchNormalizationV2(Layer):
                       'layer cannot be serialized and has been omitted from '
                       'the layer config. It will not be included when '
                       're-creating the layer from the saved config.')
-    base_config = super(BatchNormalizationV2, self).get_config()
+    base_config = super(BatchNormalizationBase, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _replace_in_v2_docstring(old, new):
-  string = BatchNormalizationV2.__doc__
+def _replace_in_base_docstring(old, new):
+  string = BatchNormalizationBase.__doc__
   if old not in string:
-    raise ValueError('Could not find following string in BatchNormalizationV2 '
-                     'docstring: "{}"'.format(old))
+    raise ValueError('Could not find following string in BatchNormalizationBase'
+                     ' docstring: "{}"'.format(old))
   return string.replace(old, new)
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
-class BatchNormalizationV1(BatchNormalizationV2):
+class BatchNormalizationV1(BatchNormalizationBase):
 
-  __doc__ = _replace_in_v2_docstring(
+  __doc__ = _replace_in_base_docstring(
       '''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
@@ -799,6 +799,12 @@ class BatchNormalizationV1(BatchNormalizationV2):
       If `False`, use the system recommended implementation.''')
 
   _USE_V2_BEHAVIOR = False
+
+
+@keras_export('keras.layers.BatchNormalization', v1=[])  # pylint: disable=missing-docstring
+class BatchNormalizationV2(BatchNormalizationBase):
+
+  pass
 
 
 BatchNormalization = None  # pylint: disable=invalid-name

@@ -24,8 +24,10 @@ upper_tabs:
         path: /lite/guide/android
       - title: "iOS quickstart"
         path: /lite/guide/ios
-      - title: "TensorFlow Lite FAQ"
+      - title: "FAQ"
         path: /lite/guide/faq
+      - title: "Roadmap"
+        path: /lite/guide/roadmap
 
       - heading: "Convert a model"
       - title: "TensorFlow Lite converter"
@@ -76,6 +78,13 @@ upper_tabs:
       - title: "Build for Raspberry Pi"
         path: /lite/guide/build_rpi
 
+      - heading: "Microcontroller"
+      - title: "Overview"
+        path: /lite/guide/microcontroller
+      - title: "TensorFlow Codelab"
+        path: https://g.co/codelabs/sparkfunTF
+        status: external
+
     - name: "Examples"
       contents:
       - title: "Examples"
@@ -85,30 +94,22 @@ upper_tabs:
       contents:
       - title: "Overview"
         path: /lite/models/
-      - title: "Image classification"
-        section:
-        - title: "Overview"
-          path: /lite/models/image_classification/overview
-        - title: "Android"
-          path: /lite/models/image_classification/android
-        - title: "iOS"
-          path: /lite/models/image_classification/ios
+      - heading: "Image classification"
+      - title: "Overview"
+        path: /lite/models/image_classification/overview
+      - title: "Android"
+        path: /lite/models/image_classification/android
+      - title: "iOS"
+        path: /lite/models/image_classification/ios
+      - heading: "Other techniques"
       - title: "Object detection"
-        section:
-        - title: "Overview"
-          path: /lite/models/object_detection/overview
+        path: /lite/models/object_detection/overview
       - title: "Pose estimation"
-        section:
-        - title: "Overview"
-          path: /lite/models/pose_estimation/overview
+        path: /lite/models/pose_estimation/overview
       - title: "Segmentation"
-        section:
-        - title: "Overview"
-          path: /lite/models/segmentation/overview
+        path: /lite/models/segmentation/overview
       - title: "Smart reply"
-        section:
-        - title: "Overview"
-          path: /lite/models/smart_reply/overview
+        path: /lite/models/smart_reply/overview
 
     - name: "API"
       skip_translation: true

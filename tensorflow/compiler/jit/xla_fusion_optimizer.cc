@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -208,7 +209,12 @@ Status XlaFusionOptimizer::Optimize(grappler::Cluster* cluster,
   }
 
   GraphCycles cycles;
-  TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(&graph, &cycles));
+  TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
+                      CreateCycleDetectionGraph(&graph, &cycles));
+  if (!cycle_detection_graph_ok) {
+    return Status::OK();
+  }
+
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
       &graph, &graph.flib_def(), /*resource_ops_to_ignore=*/{}, &cycles));
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import os
 import tempfile
 
@@ -625,9 +626,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(ValueError, "Cannot canonicalize"):
+    with self.assertRaisesRegexp(ValueError, "Python inputs incompatible"):
       # We cannot call the function with a constant of shape ().
-      self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+      imported.f(constant_op.constant(2)).numpy()
 
     # TODO(vbardiovsky): When classes are revived with input_signatures, we
     # should also check that the calls below are not generating any more
@@ -1077,6 +1078,38 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
+  def test_partial(self, cycles):
+    # TODO(vbardiovsky): Figure out the story for FunctionSpec vs partial vs
+    # input_signature.
+    self.skipTest("Partial does not work for serialization.")
+
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(), [0.0])
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(), [0.0])
+
+  def test_convert_to_input_signature(self, cycles):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return x
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    root = self.cycle(root, cycles)
+
+    self.assertEqual([2], root.f([2]).numpy())
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -1088,6 +1121,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       load.load(path, tags=[tag_constants.EVAL])
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
+    load.load(path, tags=set([tag_constants.SERVING]))
 
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())

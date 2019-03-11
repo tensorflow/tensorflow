@@ -1302,6 +1302,19 @@ class RNNTest(keras_parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
       layer(x)
 
+  def test_full_input_spec(self):
+    # See https://github.com/tensorflow/tensorflow/issues/25985
+    inputs = keras.layers.Input(batch_shape=(1, 1, 1))
+    state_h = keras.layers.Input(batch_shape=(1, 1))
+    state_c = keras.layers.Input(batch_shape=(1, 1))
+    states = [state_h, state_c]
+    decoder_out = keras.layers.LSTM(1, stateful=True)(
+        inputs,
+        initial_state=states
+    )
+    model = keras.Model([inputs, state_h, state_c], decoder_out)
+    model.reset_states()
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.

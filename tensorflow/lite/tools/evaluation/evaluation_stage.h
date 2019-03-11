@@ -15,15 +15,26 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_TOOLS_EVALUATION_EVALUATION_STAGE_H_
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_EVALUATION_STAGE_H_
 
+#include <functional>
+#include <map>
 #include <regex>  // NOLINT
+#include <utility>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
+#include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
 namespace tflite {
 namespace evaluation {
+
+class EvaluationStage;
+
+typedef std::function<std::unique_ptr<EvaluationStage>(
+    const EvaluationStageConfig&)>
+    FactoryFunc;
 
 // Superclass for a single stage of an EvaluationPipeline.
 // Provides basic functionality for construction and accessing
@@ -43,17 +54,42 @@ class EvaluationStage {
   bool Init(absl::flat_hash_map<std::string, void*>& object_map);
 
   // An individual run of the EvaluationStage. Returns false if there was a
-  // failure, true otherwise. Populates metrics into the EvaluationStageMetrics
-  // proto.
+  // failure, true otherwise.
   // Init() should be called before any calls to run().
   // Inputs are acquired from and outputs are written to the incoming
   // object_map, using appropriate TAGs.
   //
   // NOTE: The EvaluationStage should maintain ownership of outputs it
-  // populates into object_map. Ownership of inputs will be maintained
+  // populates into object_map. Ownership of inputs must be maintained
   // elsewhere.
-  virtual bool Run(absl::flat_hash_map<std::string, void*>& object_map,
-                   EvaluationStageMetrics& metrics) = 0;
+  virtual bool Run(absl::flat_hash_map<std::string, void*>& object_map) = 0;
+
+  // Returns the latest metrics based on all Run() calls made so far.
+  virtual EvaluationStageMetrics LatestMetrics() = 0;
+
+  // The canonical way to instantiate EvaluationStages.
+  // Remember to call <classname>_ENABLE() first.
+  static std::unique_ptr<EvaluationStage> Create(
+      const EvaluationStageConfig& config) {
+    if (!config.has_specification() ||
+        !config.specification().has_process_class()) {
+      LOG(ERROR) << "Process specification not present in config: "
+                 << config.name();
+      return nullptr;
+    }
+    auto& factory_ptr =
+        (*GetFactoryMapPtr())[config.specification().process_class()];
+    if (!factory_ptr) return nullptr;
+    return factory_ptr(config);
+  }
+
+  // Used by DEFINE_REGISTRATION.
+  // This method takes ownership of factory.
+  // Should only be used via DEFINE_REGISTRATION macro.
+  static void RegisterStage(const ProcessClass& process_class,
+                            FactoryFunc class_factory) {
+    (*GetFactoryMapPtr())[process_class] = std::move(class_factory);
+  }
 
   virtual ~EvaluationStage() = default;
 
@@ -62,8 +98,7 @@ class EvaluationStage {
   // Each subclass constructor must invoke this constructor.
   //
   // NOTE: Do NOT use constructors to obtain new EvaluationStages. Use
-  // tflite::evaluation::GetEvaluationStageFromConfig from
-  // evaluation_stage_factory.h instead.
+  // EvaluationStage::Create instead.
   explicit EvaluationStage(const EvaluationStageConfig& config)
       : config_(config) {}
 
@@ -90,8 +125,9 @@ class EvaluationStage {
 
   // Populates a pointer to the object corresponding to provided TAG.
   // Returns true if success, false otherwise.
-  // object_map must contain {name : object pointer} mappings, with one of the
-  // names being mapped to the expected TAG in the EvaluationStageConfig.
+  // object_map contain a {name : object pointer} mapping, with the
+  // name being mapped to the expected TAG in the EvaluationStageConfig.
+  // NOTE: object pointer must be non-NULL.
   template <class T>
   bool GetObjectFromTag(const std::string& tag,
                         absl::flat_hash_map<std::string, void*>& object_map,
@@ -100,7 +136,7 @@ class EvaluationStage {
     // Find name corresponding to TAG.
     auto mapping_iter = tags_to_names_map_.find(tag);
     if (mapping_iter == tags_to_names_map_.end()) {
-      LOG(ERROR) << "Unexpected TAG: " << tag;
+      LOG(ERROR) << "Unexpected TAG to GetObjectFromTag: " << tag;
       return false;
     }
     const std::string& expected_name = mapping_iter->second;
@@ -109,6 +145,10 @@ class EvaluationStage {
     auto object_iter = object_map.find(expected_name);
     if (object_iter == object_map.end()) {
       LOG(ERROR) << "Could not find object for name: " << expected_name;
+      return false;
+    }
+    if (!object_iter->second) {
+      LOG(ERROR) << "Found null pointer for name: " << expected_name;
       return false;
     }
     *object_ptr = static_cast<T*>(object_iter->second);
@@ -126,7 +166,7 @@ class EvaluationStage {
     // Find name corresponding to TAG.
     auto mapping_iter = tags_to_names_map_.find(tag);
     if (mapping_iter == tags_to_names_map_.end()) {
-      LOG(ERROR) << "Unexpected TAG: " << tag;
+      LOG(ERROR) << "Unexpected TAG to AssignObjectToTag: " << tag;
       return false;
     }
     const std::string& expected_name = mapping_iter->second;
@@ -135,7 +175,7 @@ class EvaluationStage {
     return true;
   }
 
-  const EvaluationStageConfig config_;
+  EvaluationStageConfig config_;
 
  private:
   // Verifies that all TAGs from expected_tags are present in
@@ -148,6 +188,13 @@ class EvaluationStage {
   bool ProcessExpectedTags(const std::vector<std::string>& expected_tags,
                            std::vector<std::string>& tag_to_name_mappings);
 
+  static std::map<ProcessClass, FactoryFunc>* GetFactoryMapPtr() {
+    return process_class_to_factory_map_;
+  }
+
+  // Used by factories.
+  static std::map<ProcessClass, FactoryFunc>* process_class_to_factory_map_;
+
   // Maps expected TAGs to their names as defined by the EvaluationStageConfig.
   absl::flat_hash_map<std::string, std::string> tags_to_names_map_;
 
@@ -158,6 +205,34 @@ class EvaluationStage {
   // To ensure correct formatting in TAG names.
   const std::regex kTagPattern{"^[A-Z0-9_]+$", std::regex::optimize};
 };
+
+// Add this to headers of new EvaluationStages.
+#define DECLARE_FACTORY(classname) void classname##_ENABLE();
+
+// Add this to implementation files of new EvaluationStages.
+// Call <stage_name>_ENABLE() before using EvaluationStage::Create for the
+// class.
+#define DEFINE_FACTORY(classname, processclass)                                \
+  void classname##_ENABLE() {                                                  \
+    FactoryFunc classname##Factory = [](const EvaluationStageConfig& config) { \
+      return absl::make_unique<classname>(config);                             \
+    };                                                                         \
+    EvaluationStage::RegisterStage(processclass, classname##Factory);          \
+  }
+
+// Use this to assign a non-nullptr pointer to tag in object_map.
+#define ASSIGN_OBJECT(tag, ptr, object_map)       \
+  if (!AssignObjectToTag(tag, ptr, object_map)) { \
+    return false;                                 \
+  }
+
+// Use this to obtain pointers to required object.
+// Will return false if name corresponding to tag is not found, or if the
+// pointer found is nullptr.
+#define GET_OBJECT(tag, object_map, location)         \
+  if (!GetObjectFromTag(tag, object_map, location)) { \
+    return false;                                     \
+  }
 
 }  // namespace evaluation
 }  // namespace tflite

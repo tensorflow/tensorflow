@@ -556,7 +556,7 @@ TEST_F(WhileLoopInvariantCodeMotionTest, DoNotHoistOutOfSingleIteration) {
       p_cond = (f32[2], f32[2], f32[2], s32[]) parameter(0)
       gte = s32[] get-tuple-element(p_cond), index=3
       const = s32[] constant(42)
-      ROOT result = pred[] equal-to(gte, const)
+      ROOT result = pred[] compare(gte, const), direction=EQ
     }
 
     ENTRY entry {

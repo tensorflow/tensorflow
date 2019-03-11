@@ -7,7 +7,7 @@
 TensorFlow Lite inference is the process of executing a TensorFlow Lite
 model on-device and extracting meaningful results from it. Inference is the
 final step in using the model on-device in the
-[architecture](./overview.md#tensorflow-lite-architecture).
+[architecture](index.md#tensorflow_lite_architecture).
 
 Inference for TensorFlow Lite models is run through an interpreter. This
 document outlines the various APIs for the interpreter along with the
@@ -23,14 +23,15 @@ TensorFlow Lite inference on device typically follows the following steps.
    execution graph.
 
 1. **Transforming Data**
-   Input data acquired by the user generally may not match the input data format        expected by the model. For eg., a user may need to resize an image or change
+   Input data acquired by the user generally may not match the input data format
+   expected by the model. For eg., a user may need to resize an image or change
    the image format to be used by the model.
 
 1. **Running Inference**
 
    This step involves using the API to execute the model. It involves a few
    steps such as building the interpreter, and allocating tensors as explained
-   in detail in [Running a Model](running-a-model).
+   in detail in [Running a Model](#running_a_model).
 
 1. **Interpreting Output**
 
@@ -50,15 +51,15 @@ On Android, TensorFlow Lite inference can be performed using either Java or C++
 APIs. The Java APIs provide convenience and can be used directly within your
 Android Activity classes. The C++ APIs on the other hand may offer more
 flexibility and speed, but may require writing JNI wrappers to move data between
-Java and C++ layers. You can find an example [here](./demo_android.md)
+Java and C++ layers. You can find an example [here](android.md).
 
 #### iOS
 TensorFlow Lite provides Swift/Objective C++ APIs for inference on iOS. An
-example can be found [here](./demo_ios.md)
+example can be found [here](ios.md).
 
 #### Linux
-On Linux platforms such as [Raspberry Pi](./rpi.md), TensorFlow Lite C++ and
-Python APIs can be used to run inference.
+On Linux platforms such as [Raspberry Pi](build_rpi.md), TensorFlow Lite C++
+and Python APIs can be used to run inference.
 
 
 ## API Guides
@@ -68,9 +69,10 @@ experimental bindings for several other languages (C, Swift, Objective-C). In
 most cases, the API design reflects a preference for performance over ease of
 use. TensorFlow Lite is designed for fast inference on small devices so it
 should be no surprise that the APIs try to avoid unnecessary copies at the
-expense of convenience. Similarly, consistency with TensorFlow APIs was not an explicit goal and some variance is to be expected.
+expense of convenience. Similarly, consistency with TensorFlow APIs was not an
+explicit goal and some variance is to be expected.
 
-There is also a [Python API for TensorFlow Lite](./convert/python_api.md).
+There is also a [Python API for TensorFlow Lite](../convert/python_api.md).
 
 ### Loading a Model
 
@@ -128,7 +130,7 @@ In both cases a valid TensorFlow Lite model must be provided or an
 initialize an Interpreter, it should remain unchanged for the whole lifetime of
 the `Interpreter`.
 
-### Running a Model
+### Running a Model {#running_a_model}
 
 #### C++
 Running a model involves a few simple steps:
@@ -202,9 +204,10 @@ interpreter.runForMultipleInputsOutputs(inputs, map_of_indices_to_outputs);
 where each entry in `inputs` corresponds to an input tensor and
 `map_of_indices_to_outputs` maps indices of output tensors to the corresponding
 output data. In both cases the tensor indices should correspond to the values
-given to the [TensorFlow Lite Optimized Converter](convert/cmdline_examples.md)
-when the model was created. Be aware that the order of tensors in `input` must
-match the order given to the `TensorFlow Lite Optimized Converter`.
+given to the
+[TensorFlow Lite Optimized Converter](../convert/cmdline_examples.md) when the
+model was created. Be aware that the order of tensors in `input` must match the
+order given to the `TensorFlow Lite Optimized Converter`.
 
 The Java API also provides convenient functions for app developers to get the
 index of any model input or output using a tensor name:

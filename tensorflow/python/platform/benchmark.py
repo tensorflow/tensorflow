@@ -46,6 +46,10 @@ GLOBAL_BENCHMARK_REGISTRY = set()
 # See also tensorflow/core/util/reporter.h TestReporter::kTestReporterEnv.
 TEST_REPORTER_TEST_ENV = "TEST_REPORT_FILE_PREFIX"
 
+# Environment variable that lets the TensorFlow runtime allocate a new
+# threadpool for each benchmark.
+OVERRIDE_GLOBAL_THREADPOOL = "TF_OVERRIDE_GLOBAL_THREADPOOL"
+
 
 def _global_report_benchmark(
     name, iters=None, cpu_time=None, wall_time=None,
@@ -200,6 +204,12 @@ def benchmark_config():
 @tf_export("test.Benchmark")
 class TensorFlowBenchmark(Benchmark):
   """Abstract class that provides helpers for TensorFlow benchmarks."""
+
+  def __init__(self):
+    # Allow TensorFlow runtime to allocate a new threadpool with different
+    # number of threads for each new benchmark.
+    os.environ[OVERRIDE_GLOBAL_THREADPOOL] = "1"
+    super(TensorFlowBenchmark, self).__init__()
 
   @classmethod
   def is_abstract(cls):

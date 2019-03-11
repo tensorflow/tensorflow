@@ -167,7 +167,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
     // merged that aren't covered by an index in indices.  What should we do?
     if (first_dim_size > 0) {
       // because the collision requirements, we have to deal with
-      // collion first before send data to gpu kernel.
+      // collision first before send data to gpu kernel.
       // TODO(ekelsen): Instead of doing a serial scan on the CPU to pick the
       // last of duplicated indices, it could instead be done of the GPU
       // implicitly using atomics to make sure the last index is the final
