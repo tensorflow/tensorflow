@@ -24,9 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/bias_op_gpu.h"
@@ -242,7 +241,6 @@ class BiasGradOp : public OpKernel {
       data_format_ = FORMAT_NHWC;
     }
   }
-
   void Compute(OpKernelContext* context) override {
     const Tensor& output_backprop = context->input(0);
 
@@ -269,7 +267,6 @@ class BiasGradOp : public OpKernel {
       // Eigen often crashes by design on empty tensors, but setZero is safe
       output->template flat<T>().setZero();
     } else {
-      // Modified for performance tune :: begin here
       //******************************************************************************
       //  Divide the input tensor into several blocks.
       //  As we don't know anything about the detail shape of incoming input
@@ -277,13 +274,12 @@ class BiasGradOp : public OpKernel {
       //  separately, so we just evenly distribute total workloads to each
       //  block.
       //******************************************************************************
-
       // Init the output to zero
       output->template flat<T>().setZero();
       // Get the location of input/output data.
       const T* input_ptr = output_backprop.template flat<T>().data();
-      T* result_ptr = output->template flat<T>().data();
 
+      // Get the format of input/output data.
       const bool format_is_nhwc = (data_format_ == FORMAT_NHWC);
 
       // Get the intra-thread pool handle.
@@ -294,6 +290,7 @@ class BiasGradOp : public OpKernel {
 
       // Get the workload parameters.
       const int reduce_dims = batch * height * width * depth;
+      const int hwd_size = height * width * depth;
       const int total_workload = reduce_dims * channel;
 
       // For small workloads, large block number will waste
@@ -306,9 +303,9 @@ class BiasGradOp : public OpKernel {
       // For NHWC format, we use each channel layer as a scheduling unit,
       // while for NCHW format, we use each FLOP as a scheduling unit.
       int parallel_cell_size = 1;
-      if ((format_is_nhwc) ||
-          ((!format_is_nhwc) && (height * width * depth == 1)))
+      if ((format_is_nhwc) || ((!format_is_nhwc) && (hwd_size == 1))) {
         parallel_cell_size = channel;
+      }
       const int max_parallelism = total_workload / parallel_cell_size;
       const int min_block_size =
           (min_block_workloads + parallel_cell_size - 1) / parallel_cell_size;
@@ -327,13 +324,16 @@ class BiasGradOp : public OpKernel {
       T* block_results_buffer_ptr =
           block_results_buffer.template flat<T>().data();
 
+      using Shell = Eigen::TensorMap<Eigen::Tensor<T, 1>>;
+      using ConstShell = Eigen::TensorMap<Eigen::Tensor<const T, 1>>;
+
       //******************************************************************************
       //  Job func for each thread
       //******************************************************************************
-      auto BiasGradWorker = [this, input_ptr, format_is_nhwc, total_workload,
-                             num_blocks, block_results_buffer_ptr, height,
-                             width, depth, channel](int64 my_job_begin,
-                                                    int64 my_job_end) -> void {
+      auto BiasGradWorker = [this, &total_workload, &num_blocks,
+                             &format_is_nhwc, &input_ptr,
+                             &block_results_buffer_ptr, &hwd_size, &channel](
+          int my_job_begin, int my_job_end) mutable -> void {
         // We generate a cover of [0,total_workload), which is comprised of
         // num_blocks non-overlapping divisions of [0,total_workload)
         // EXP: If we get 22 elements in input tensor, which are divided
@@ -346,62 +346,73 @@ class BiasGradOp : public OpKernel {
         // Elements: $$$$$ | $$$$$* |  $$$$$  |  $$$$$*
         // Range   : [0,5) | [5,11) | [11,16) | [16,22)
         //     22*0/4=0 22*1/4=5 22*2/4=11 22*3/4=16 22*4/4=22
-        const int64 block_begin = total_workload * my_job_begin / num_blocks;
-        const int64 block_end = total_workload * my_job_end / num_blocks;
+        const int block_begin = total_workload * my_job_begin / num_blocks;
+        const int block_end = total_workload * my_job_end / num_blocks;
 
-        // Get buffer pointer.
-        T* block_result_ptr = &block_results_buffer_ptr[my_job_begin * channel];
+        T* buffer_ptr = &block_results_buffer_ptr[my_job_begin * channel];
+        Shell my_buffer(buffer_ptr, channel);
 
-        if ((format_is_nhwc) ||
-            ((!format_is_nhwc) && (height * width * depth == 1))) {
-          // Align the calculation by inner most dim.
-          const int64 align_begin = (block_begin / channel) * channel;
-          const int64 align_end = (block_end / channel) * channel;
+        if ((format_is_nhwc) || ((!format_is_nhwc) && (hwd_size == 1))) {
+          // For NHWC, it is easy to divide workload, because the parallelism
+          // mainly comes from layers outside channel (N*H*W).
+          // So we just divide NHW layers.
+          // Align the calculation by inner most layer (channel).
+          const int align_begin = (block_begin / channel) * channel;
+          const int align_end = (block_end / channel) * channel;
           // Apply the calculation.
-          for (int64 i = align_begin; i < align_end; i += channel) {
-            InplaceVecAdd(block_result_ptr, &input_ptr[i], channel);
+          for (int i = align_begin; i < align_end; i += channel) {
+            my_buffer += ConstShell(&input_ptr[i], channel);
           }
         } else {  // For NCHW format
           // A straight forward impl for NCHW could be like:
-          //  for(int64 i=block_begin;i<block_end;i++) {
-          //    block_result_ptr[(i/(height*width*depth))%channel] +=
+          //  for(int i=block_begin;i<block_end;i++) {
+          //    my_buffer_ptr[(i/hwd_size)%channel] +=
           //    input_ptr[i];
           //  }
-          // There is much more calculations than NHWC.
-          // So it is necessary to align the calculation by inner most dim.
-          // It is unnecessary to align by channel here, instead we can
-          // simply maintain channel id to know which channel we are
-          // dealing with.
-          const int64 stride = height * width * depth;
-          const int64 align_begin =
-              ((block_begin + stride - 1) / stride) * stride;
-          const int64 align_end = (block_end / stride) * stride;
-          int64 channel_id = block_begin / stride % channel;
+          // It is more complex than NHWC for there are calculations
+          // both inside and outside channel layer.
+          // There are two extreme situations:
+          //   1. N is large and H*W is small;
+          //   2. H*W is large and N is small.
+          // The first one is more similar to NHWC, which easy to divid
+          // workload. While for the second situation, the workload could
+          // be heavy, because of the large H*W, while there is not enough
+          // dimensions outside channel to divide (small N).
+          // We divide the workload basing on total.
+          const int align_begin =
+              ((block_begin + hwd_size - 1) / hwd_size) * hwd_size;
+          const int align_end = (block_end / hwd_size) * hwd_size;
+
           // Dealing with front residual.
-          block_result_ptr[channel_id] +=
-              VecSumReduce(&input_ptr[block_begin], align_begin - block_begin);
+          int channel_id = block_begin / hwd_size % channel;
+          Eigen::Tensor<T, 0> sum =
+              ConstShell(&input_ptr[block_begin], align_begin - block_begin)
+                  .sum();
+          my_buffer(channel_id) += sum(0);
+
           // Init channel_id to avoid the error when align_begin == block_begin.
-          channel_id = align_begin / stride % channel;
-          // Apply the reduction
-          for (int64 i = align_begin; i < align_end; i += stride) {
+          channel_id = align_begin / hwd_size % channel;
+
+          for (int i = align_begin; i < align_end; i += hwd_size) {
+            // Apply the reduction
             if (channel_id < channel) {
               // When channel_id is in channel,
               // just add the sum of inside dim to block buffer.
-              block_result_ptr[channel_id] +=
-                  VecSumReduce(&input_ptr[i], stride);
+              sum = ConstShell(&input_ptr[i], hwd_size).sum();
+              my_buffer(channel_id) += sum(0);
               channel_id++;
             } else {
               // When channel_id exceed the range of channel,
               // go back to the beginning of block buffer.
               channel_id = channel_id - channel;
-              block_result_ptr[channel_id] +=
-                  VecSumReduce(&input_ptr[i], stride);
+              sum = ConstShell(&input_ptr[i], hwd_size).sum();
+              my_buffer(channel_id) += sum(0);
               channel_id++;
             }
           }
           // Dealing with back residual.
-          block_result_ptr[channel_id] +=
-              VecSumReduce(&input_ptr[align_end], block_end - align_end);
+          sum = ConstShell(&input_ptr[align_end], block_end - align_end).sum();
+          my_buffer(channel_id) += sum(0);
         }
       };
       // Run multi-threads
@@ -416,37 +427,17 @@ class BiasGradOp : public OpKernel {
           max_parallelism);
 
       //******************************************************************************
-      //  Sum block results up
+      //  Now sum block results up
       //******************************************************************************
-      for (int64 i = 0; i < num_blocks; i++) {
-        InplaceVecAdd(result_ptr, &block_results_buffer_ptr[i * channel],
-                      channel);
+      for (int i = 0; i < num_blocks; i++) {
+        Shell buffer_i(&block_results_buffer_ptr[channel * i], channel);
+        output->template flat<T>() += buffer_i;
       }
-      // Modified for performance tune :: end here
     }
   }
 
  private:
   TensorFormat data_format_;
-
-  // Modified for performance tune :: new funcs
-  // Apply X[0:length-1] = X[0:length-1] + Y[0:length-1];
-  inline void InplaceVecAdd(T* X, const T* Y, const int64 length) {
-    //#pragma simd
-    for (int64 i = 0; i < length; i++) {
-      X[i] = X[i] + Y[i];
-    }
-  }
-  // Return sum(X[0:length-1])
-  inline T VecSumReduce(const T* X, const int64 length) {
-    T result = (T)0;
-    //#pragma simd
-    for (int64 i = 0; i < length; i++) {
-      result += X[i];
-    }
-    return result;
-  }
-  // Modified for performance tune :: end here
 };
 
 // Registration of the GPU implementations.
