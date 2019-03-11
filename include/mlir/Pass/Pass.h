@@ -181,6 +181,12 @@ namespace detail {
 /// pass execution and handles all of the necessary polymorphic API.
 template <typename IRUnitT, typename PassT, typename BasePassT>
 class PassModel : public BasePassT {
+public:
+  /// Support isa/dyn_cast functionality for the derived pass class.
+  static bool classof(const Pass *pass) {
+    return pass->getPassID() == PassID::getID<PassT>();
+  }
+
 protected:
   PassModel() : BasePassT(PassID::getID<PassT>()) {}
 
