@@ -95,7 +95,7 @@ TfLiteRegistration GetMyDelegateNodeRegistration() {
   kernel_registration.free = [](TfLiteContext* context, void* buffer) -> void {
     delete reinterpret_cast<MyDelegate*>(buffer);
   };
-  delegate_registration.init = [](TfLiteContext* context, const char* buffer,
+  kernel_registration.init = [](TfLiteContext* context, const char* buffer,
                                    size_t) -> void* {
     // In the node init phase, initialize MyDelegate instance
     const TfLiteDelegateParams* delegate_params =
