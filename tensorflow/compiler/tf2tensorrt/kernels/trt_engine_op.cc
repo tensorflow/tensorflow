@@ -633,6 +633,9 @@ EngineContext* TRTEngineOp::GetEngine(
       }
       LOG(WARNING) << "Engine creation for batch size " << batch_size
                    << " failed " << status;
+      // Store an empty engine here so we don't try to build the same engine
+      // again.
+      cache.emplace(engine_input_shapes, empty_context);
       return &empty_context;
     }
     VLOG(1) << "Conversion is done";
