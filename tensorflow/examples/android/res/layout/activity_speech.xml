@@ -28,7 +28,7 @@
         android:id="@+id/textView"
         android:textAlignment="center"
         android:layout_gravity="top"
-        android:textSize="24sp"
+        android:textSize="24dp"
         android:layout_marginTop="10dp"
         android:layout_marginLeft="10dp"
         />
