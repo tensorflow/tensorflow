@@ -764,7 +764,7 @@ void DeviceTracerImpl::CollectMemcpyRecord(StepStatsCollector *collector,
   auto srcKind = static_cast<CUpti_ActivityMemoryKind>(rec.srcKind);
   auto dstKind = static_cast<CUpti_ActivityMemoryKind>(rec.dstKind);
   const string details = strings::Printf(
-      "[%llu] %s from %s to %s", rec.bytes, name.c_str(),
+      "[%lluB] %s from %s to %s", rec.bytes, name.c_str(),
       src_device.c_str(), dst_device.c_str());
   ns->set_node_name(
       strings::StrCat(name, ":MEMCPY", getMemcpyKindString(copyKind)));
