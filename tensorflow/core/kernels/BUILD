@@ -742,6 +742,15 @@ cc_library(
 )
 
 cc_library(
+    name = "redux_functor",
+    hdrs = ["redux_functor.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "eigen_helpers",
     hdrs = [
         "eigen_activations.h",
@@ -3894,7 +3903,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS + if_cuda([
+    deps = NN_DEPS + [":redux_functor"] + if_cuda([
         ":reduction_ops",
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
@@ -5504,6 +5513,7 @@ filegroup(
         "ops_util.h",
         "pack_op.cc",
         "pooling_ops_common.h",
+        "redux_functor.h",
         "reshape_op.cc",
         "reshape_op.h",
         "reverse_sequence_op.cc",
