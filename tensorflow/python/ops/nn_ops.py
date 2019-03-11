@@ -2755,7 +2755,7 @@ def leaky_relu(features, alpha=0.2, name=None):
   with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
     if features.dtype.is_integer:
-      features = math_ops.to_float(features)
+      features = math_ops.cast(features, dtypes.float32)
     if compat.forward_compatible(2018, 11, 1):
       if isinstance(alpha, np.ndarray):
         alpha = alpha.item()
