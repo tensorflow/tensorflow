@@ -8,14 +8,6 @@ func @test_subi_zero(%arg0: i32) -> i32 {
   return %y: i32
 }
 
-// CHECK-LABEL: func @test_subi_zero_cfg(%arg0: i32)
-func @test_subi_zero_cfg(%arg0: i32) -> i32 {
-  // CHECK-NEXT: %c0_i32 = constant 0 : i32
-  // CHECK-NEXT: return %c0
-  %y = subi %arg0, %arg0 : i32
-  return %y: i32
-}
-
 // CHECK-LABEL: func @dim
 func @dim(%arg0: tensor<8x4xf32>) -> index {
 
