@@ -355,11 +355,6 @@ static void AllocateFlags() {
           "If specified, dumps HLO before and after optimization passes which "
           "match this regular expression, in addition to dumping at the very "
           "beginning and end of compilation."),
-      tensorflow::Flag("xla_dump_ir",
-                       bool_setter_for(&DebugOptions::set_xla_dump_ir),
-                       flag_values->xla_dump_ir(),
-                       "If specified, dumps intermediate results (e.g. LLVM "
-                       "IR) to the directory specified by --xla_dump_to."),
       tensorflow::Flag(
           "xla_hlo_graph_addresses",
           bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),

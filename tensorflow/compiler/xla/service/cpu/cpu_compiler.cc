@@ -441,7 +441,7 @@ Status InitializeModuleHooks(
   //
   //  * Calls the user supplied module hook.
   //  * Writes out the IR to a file in the output directory designated by
-  //    --xla_dump_ir
+  //    --xla_dump_to
   const HloModule* hlo_module_ptr = &hlo_module;
   auto hook = [user_pre_optimization_hook, user_post_optimization_hook,
                hlo_module_ptr](bool optimized,
@@ -474,7 +474,7 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
       << "Invalid LLVM IR before optimizations:\n"
       << err_stream.str()
       << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-         "Rerun with --xla_dump_ir to get the IR. ";
+         "Rerun with --xla_dump_to to get the IR. ";
   return Status::OK();
 }
 
