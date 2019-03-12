@@ -16,6 +16,7 @@ py_library(
       "python/autoshard_cnn.py",
       "python/ipu_compiler.py",
       "python/ipu_infeed_queue.py",
+      "python/ipu_outfeed_queue.py",
       "python/loops.py",
       "python/ops.py",
       "python/popnn_normalization.py",

@@ -235,7 +235,13 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
   auto* xfeed_manager = GetXfeedManager(device_ordinal);
   for (const auto& outfeed_info : outfeed_infos) {
     if (outfeed_info->outfeed_config() == "get_last") {
-      xfeed_manager->outfeed()->set_size(1);
+      const auto& outfeed_shape = outfeed_info->outfeed_shape();
+      if (outfeed_shape.IsTuple()) {
+        const auto num_elements = ShapeUtil::TupleElementCount(outfeed_shape);
+        xfeed_manager->outfeed()->set_size(num_elements);
+      } else {
+        xfeed_manager->outfeed()->set_size(1);
+      }
     } else if (outfeed_info->outfeed_config() == "all") {
       xfeed_manager->outfeed()->set_size(
           PoplarXfeedQueueManager::DEFAULT_QUEUE_SIZE);

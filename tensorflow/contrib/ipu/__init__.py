@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.contrib.ipu.python import autoshard_cnn
 from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import ipu_infeed_queue
+from tensorflow.contrib.ipu.python import ipu_outfeed_queue
 from tensorflow.contrib.ipu.python import loops
 from tensorflow.contrib.ipu.python import ops
 from tensorflow.contrib.ipu.python import popnn_normalization

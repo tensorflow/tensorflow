@@ -276,7 +276,7 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
       shapes_sizes.emplace_back(std::make_pair(operand_shape, size));
     }
 
-    const bool pop_if_full = outfeed_info->outfeed_config() == "get_last";
+    const bool clear_if_full = outfeed_info->outfeed_config() == "get_last";
 
     for (unsigned j = 0; j < shapes_sizes.size(); ++j) {
       const Shape shape = std::get<0>(shapes_sizes[j]);
@@ -284,7 +284,7 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
 
       current_engine_->connectStreamToCallback(
           GetOutfeedCopyHandle(outfeed_info->name(), j),
-          [&, shape, byte_size, pop_if_full](void* src) {
+          [this, shape, byte_size, clear_if_full](void* src) {
             auto* xfeed_manager = GetXfeedManager(ordinal_);
 
             // TODO(T7218): create buffer pool and pass pointer to
@@ -295,7 +295,7 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
             void* dest = buffer->data();
             std::memcpy(dest, src, byte_size);
             auto* outfeed = xfeed_manager->outfeed();
-            outfeed->EnqueueBufferAtomically(buffer, pop_if_full);
+            outfeed->EnqueueBufferAtomically(buffer, clear_if_full);
           });
     }
   }
@@ -1375,7 +1375,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
     // Outfeeds add empty tuples as output shape, no need to get an output
     // buffer in this case
-    if (!ShapeUtil::IsEmptyTuple(output_shape)) {
+    if (ShapeUtil::IsEmptyTuple(output_shape)) {
+      outputs_map_.clear();
+    } else {
       retbuf = GetOutputBuffer(executable, allocator, BufferOutputAllocation(),
                                output_shape, args, input_output_aliasing_map);
 
