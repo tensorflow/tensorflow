@@ -33,6 +33,7 @@ tf_kernel_library(
         "diag_op.cc",
         "dynamic_slice_ops.cc",
         "dynamic_stitch_op.cc",
+        "einsum_op.cc",
         "elu_op.cc",
         "empty_op.cc",
         "extract_image_patches_op.cc",
