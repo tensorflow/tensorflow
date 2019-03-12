@@ -1042,7 +1042,302 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int input_width_micro_repeats =
+        function_params->input_width_micro_repeats;
+    const int block_height = function_params->inbound_block_height;
+    const int residual_width = function_params->residual_width;
+    const int input_height_stride = function_params->input_height_stride;
+
+    const int padding_left = function_params->padding_left;
+    const int padding_right = function_params->padding_right;
+    const int padding_top = function_params->padding_top;
+    const int padding_bottom = function_params->padding_bottom;
+
+    constexpr int kSymmetricZeroPoint = 128;
+
+    TFLITE_DCHECK_GE(workspace_height_stride, 4 * width_overall_micro_repeats);
+
+    const bool leading_width_padding =
+        padding_left > 0 && width_block_number == 0;
+    const bool trailing_width_padding =
+        padding_right > 0 &&
+        width_block_number == (function_params->width_macro_count - 1);
+    const bool leading_height_padding =
+        padding_top > 0 && height_block_number < 0;
+    const bool trailing_height_padding =
+        padding_bottom > 0 &&
+        height_block_number == (function_params->height_macro_count - 1);
+
+    const int32 input_offset = function_params->input_offset;
+    const int32 input_offset_difference = input_offset + kSymmetricZeroPoint;
+
+    // Work through one slice, by row, at a time.
+    int8* scratch_data_base = scratch_block_data;
+
+    int copy_block_height = block_height;
+    if (leading_height_padding) {
+      copy_block_height -= 1;
+      memset(scratch_data_base, -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
+      scratch_data_base += workspace_height_stride;
+      input_block_data += input_height_stride;
+    }
+    if (trailing_height_padding) {
+      copy_block_height -= 1;
+    }
+
+    int adjusted_residual_width =
+        input_width_micro_repeats < width_overall_micro_repeats ? residual_width
+                                                                : 4;
+
+    if (trailing_width_padding) {
+      adjusted_residual_width -= 1;
+    }
+    int start_width = 0;
+    if (leading_width_padding) {
+      start_width = 1;
+      input_block_data += 1;
+    }
+
+    const int copy_size = (width_overall_micro_repeats - 1) * 4 +
+                          adjusted_residual_width - start_width;
+    // Adjusted so that later conditionals are simplified.
+    const int copy_size_adjusted =
+        trailing_width_padding ? copy_size + 1 : copy_size;
+
+    TFLITE_DCHECK_LE(
+        copy_size,
+        input_height_stride - width_block_number * input_width_micro_repeats);
+    // We may drop up to stride-1 of trailing input.
+    TFLITE_DCHECK_GE(copy_size, input_height_stride - 1);
+
+    // This is used to simulate what should happen in registers.
+    int8 tmp_data[16];
+
+    int scratch_data_offset = 0;
+    int input_block_offset = 0;
+
+    if (copy_size >= 16) {
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Work through one slice, by row, at a time.
+        int8* scratch_data = scratch_data_base + scratch_data_offset;
+
+        int copy_done = 0;
+
+        // The surrounding condition ensures that we always need at least one
+        // iteration of the main copy loop. In the case of leading width
+        // padding, we unroll this specially.
+        if (leading_width_padding) {
+          memcpy(tmp_data + 1, input_block_data + input_block_offset, 15);
+          for (int i = 0; i < 16; ++i) {
+            tmp_data[i] += -kSymmetricZeroPoint;
+          }
+          tmp_data[0] = -input_offset_difference;
+          memcpy(scratch_data, tmp_data, 16);
+          copy_done += 15;
+        }
+
+        // Main copy loop.
+        for (; (copy_done + 16) <= copy_size; copy_done += 16) {
+          memcpy(tmp_data, input_block_data + input_block_offset + copy_done,
+                 16);
+          for (int i = 0; i < 16; ++i) {
+            tmp_data[i] += -kSymmetricZeroPoint;
+          }
+          TFLITE_DCHECK_EQ((start_width + copy_done) % 16, 0);
+          memcpy(&scratch_data[start_width + copy_done], tmp_data, 16);
+        }
+
+        const int copy_remaining = copy_size - copy_done;
+        // Total amount
+        // = copy_size - copy_done + 4 - adjusted_residual_width
+        // = width_overall_micro_repeats * 4 - start_width - copy_done.
+        // Undone micro blocks
+        // = width_overall_micro_repeats - (start_width + copy_done) / 4.
+
+        // Conditional is (copy_remaining > 0 || trailing_width_padding).
+        if (copy_done < copy_size_adjusted) {
+          // Employ overlapping-load strategy in order to load full register,
+          // but use only part.
+          memcpy(tmp_data,
+                 input_block_data + input_block_offset + copy_done -
+                     (16 - copy_remaining),
+                 16);
+          // Shift to select the part that we need.
+          for (int i = 0; i < copy_remaining; ++i) {
+            tmp_data[i] = tmp_data[(16 - copy_remaining) + i];
+          }
+          for (int i = 0; i < 16; ++i) {
+            tmp_data[i] += -kSymmetricZeroPoint;
+          }
+          // Apply padding to remainder, some unnecessary but costless in regs.
+          for (int i = copy_remaining; i < 16; ++i) {
+            tmp_data[i] = -input_offset_difference;
+          }
+          const int final_repeats =
+              width_overall_micro_repeats - (start_width + copy_done) / 4;
+          for (int i = 0; i < final_repeats; ++i) {
+            memcpy(&scratch_data[start_width + copy_done], tmp_data + 4 * i, 4);
+            copy_done += 4;
+          }
+        }
+        memset(scratch_data + start_width + copy_done, -input_offset_difference,
+               kWorkspaceExtension);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else if (copy_size >= 4) {
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Work through one slice, by row, at a time.
+        int8* scratch_data = scratch_data_base + scratch_data_offset;
+
+        int copy_done = 0;
+
+        // The surrounding condition ensures that we always need at least one
+        // iteration of the main copy loop. In the case of leading width
+        // padding, we unroll this specially.
+        if (leading_width_padding) {
+          memcpy(tmp_data + 1, input_block_data + input_block_offset, 3);
+          for (int i = 0; i < 4; ++i) {
+            tmp_data[i] += -kSymmetricZeroPoint;
+          }
+          tmp_data[0] = -input_offset_difference;
+          memcpy(scratch_data, tmp_data, 4);
+          copy_done += 3;
+        }
+
+        for (; (copy_done + 4) <= copy_size; copy_done += 4) {
+          memcpy(tmp_data, input_block_data + input_block_offset + copy_done,
+                 4);
+          for (int i = 0; i < 4; ++i) {
+            tmp_data[i] += -kSymmetricZeroPoint;
+          }
+          // Perform as 4 int32 stores, because that is our alignment.
+          memcpy(&scratch_data[start_width + copy_done], tmp_data, 4);
+        }
+
+        // Total amount
+        // = copy_size - copy_done + 4 - adjusted_residual_width
+        // = width_overall_micro_repeats * 4 - start_width - copy_done.
+        // Undone micro blocks
+        // = width_overall_micro_repeats - (start_width + copy_done) / 4.
+        const int copy_remaining = copy_size - copy_done;
+        // Conditional is (copy_remaining > 0 || trailing_width_padding).
+        if (copy_done < copy_size_adjusted) {
+          TFLITE_DCHECK_LT(copy_remaining, 4);
+          // Employ overlapping-load strategy in order to load full register,
+          // but use only part.
+          memcpy(tmp_data,
+                 input_block_data + input_block_offset + copy_done -
+                     (4 - copy_remaining),
+                 4);
+          // Shift to select the part that we need.
+          for (int i = 0; i < copy_remaining; ++i) {
+            tmp_data[i] = tmp_data[(4 - copy_remaining) + i];
+          }
+          for (int i = 0; i < 4; ++i) {
+            tmp_data[i] += -kSymmetricZeroPoint;
+          }
+          // Apply padding to remainder, some unnecessary but costless in regs.
+          for (int i = copy_remaining; i < 4; ++i) {
+            tmp_data[i] = -input_offset_difference;
+          }
+          memcpy(&scratch_data[start_width + copy_done], tmp_data, 4);
+          copy_done += 4;
+        }
+        memset(scratch_data + start_width + copy_done, -input_offset_difference,
+               kWorkspaceExtension);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else if (width_overall_micro_repeats == 2) {
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Apply padding by quick fill of whole reg.
+        for (int i = 0; i < 8; ++i) {
+          tmp_data[i] = -input_offset;
+        }
+        for (int i = 0; i < copy_size; ++i) {
+          // Apply shift-left insert, tmp_data as both operands.
+          // The zero-index byte is left unchanged.
+          for (int i = 7; i > 0; --i) {
+            tmp_data[i] = tmp_data[i - 1];
+          }
+          tmp_data[1] =
+              input_block_data[input_block_offset + (copy_size - 1 - i)];
+        }
+        if (!leading_width_padding) {
+          // Remove leading padding, junking trailing byte, OK because max size
+          // is less than 8.
+          TFLITE_DCHECK_LT(copy_size_adjusted + start_width, 8);
+          for (int i = 0; i < 7; ++i) {
+            tmp_data[i] = tmp_data[i + 1];
+          }
+        }
+        for (int i = 0; i < 8; ++i) {
+          tmp_data[i] += -kSymmetricZeroPoint;
+        }
+        memcpy(scratch_data_base + scratch_data_offset, tmp_data, 8);
+        memset(scratch_data_base + scratch_data_offset + 8,
+               -input_offset_difference, kWorkspaceExtension);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else {
+      TFLITE_DCHECK_EQ(width_overall_micro_repeats, 1);
+      // This path is basically the same as the preceding, 2-micro-block one,
+      // but here we simply store fewer bytes.
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Apply padding by quick fill of whole reg.
+        for (int i = 0; i < 8; ++i) {
+          tmp_data[i] = -input_offset;
+        }
+        for (int i = 0; i < copy_size; ++i) {
+          // Apply shift-left insert, tmp_data as both operands.
+          // The zero-index byte is left unchanged.
+          for (int i = 7; i > 0; --i) {
+            tmp_data[i] = tmp_data[i - 1];
+          }
+          tmp_data[1] =
+              input_block_data[input_block_offset + (copy_size - 1 - i)];
+        }
+        if (!leading_width_padding) {
+          // Remove leading padding, junking trailing byte, OK because max size
+          // is less than 8.
+          TFLITE_DCHECK_LT(copy_size_adjusted + start_width, 8);
+          for (int i = 0; i < 7; ++i) {
+            tmp_data[i] = tmp_data[i + 1];
+          }
+        }
+        for (int i = 0; i < 8; ++i) {
+          tmp_data[i] += -kSymmetricZeroPoint;
+        }
+        memcpy(scratch_data_base + scratch_data_offset, tmp_data, 4);
+        memset(scratch_data_base + scratch_data_offset + 4,
+               -input_offset_difference, kWorkspaceExtension);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    }
+
+    scratch_data_base += copy_block_height * workspace_height_stride;
+
+    if (trailing_height_padding) {
+      memset(scratch_data_base, -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
+      scratch_data_base += workspace_height_stride;
+    }
+
+    TFLITE_DCHECK_EQ(
+        scratch_data_base,
+        scratch_block_data + block_height * workspace_height_stride);
   }
 };
 // The preceding section is only compiled when kUseUnwound3x3DotProduct versions
@@ -2668,6 +2963,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
     }
   }
 };
+
 template <int32 stride>
 struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
                         DepthwiseConvDepthMultiplication::kUnitInputDepth,
@@ -2676,7 +2972,160 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
                          const int8* filter_workspace, const int32* bias_data,
                          uint8* output_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int output_width_micro_repeats =
+        function_params->output_width_micro_repeats;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int output_depth = function_params->output_depth;
+    const int stride_val = function_params->stride;
+    const int four_over_stride = function_params->four_over_stride;
+
+    const int output_width_overall_micro_repeats =
+        function_params->output_width_overall_micro_repeats;
+    const int block_height = function_params->outbound_block_height;
+    const int residual_width = function_params->output_residual_width;
+    const int output_height_stride = function_params->output_height_stride;
+    const int bias_increment = function_params->bias_increment;
+
+    const int32 output_activation_min =
+        function_params->quantized_activation_min;
+    const int32 output_activation_max =
+        function_params->quantized_activation_max;
+    const int32 output_multiplier = function_params->output_multiplier;
+    const int32 output_shift = function_params->output_shift;
+    const int32 output_offset = function_params->output_offset;
+
+    TFLITE_DCHECK(depth_micro_repeats > 0);
+
+    TFLITE_DCHECK_EQ(bias_increment, 4);
+
+    constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
+
+    // Simulate NEON-register transposition of subset of filter.
+    int8 filter_bank_a_0[4][4];  // Depth 4, width 4.
+    int8 filter_bank_a_1[4][4];
+    int8 filter_bank_a_2[4][4];
+    int8 filter_bank_b_0[4][4];
+    int8 filter_bank_b_1[4][4];
+    int8 filter_bank_b_2[4][4];
+    // Simulate NEON-register input data concatenation + sub-selection.
+    // Also sub-block, height 3, depth 4, width 4.
+
+    int8 input_bank_0[8];
+    int8 input_bank_1[8];
+    int8 input_bank_2[8];
+
+    TFLITE_DCHECK_GE(depth_micro_repeats, 1);
+
+    uint8 output_values[2][4];  // Sub-block, depth 4.
+
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
+      memcpy(filter_bank_a_0, filter_workspace, 16);
+      memcpy(filter_bank_b_0, filter_workspace + 16, 16);
+      memcpy(filter_bank_a_1, filter_workspace + 32, 16);
+      memcpy(filter_bank_b_1, filter_workspace + 48, 16);
+      memcpy(filter_bank_a_2, filter_workspace + 64, 16);
+      memcpy(filter_bank_b_2, filter_workspace + 80, 16);
+
+      // Work through one slice, by row, at a time.
+      for (int k_height = 0; k_height < block_height; ++k_height) {
+        const int8* scratch_data =
+            scratch_block_data +
+            workspace_height_stride * k_height * stride_val;
+        uint8* output_data =
+            output_block_data + output_height_stride * k_height + 8 * j_depth;
+
+        memcpy(input_bank_0, scratch_data, 4);
+        memcpy(input_bank_1, scratch_data + workspace_height_stride, 4);
+        memcpy(input_bank_2, scratch_data + 2 * workspace_height_stride, 4);
+
+        for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+             ++i_width) {
+          const int output_width = i_width == output_width_micro_repeats
+                                       ? residual_width
+                                       : four_over_stride;
+
+          TFLITE_DCHECK_LE(output_width * stride_val, 4);
+          const int8* input_data = scratch_data + 4 * i_width;
+
+          memcpy(input_bank_0 + 4, input_data + 4, 4);
+          memcpy(input_bank_1 + 4, input_data + workspace_height_stride + 4, 4);
+          memcpy(input_bank_2 + 4, input_data + 2 * workspace_height_stride + 4,
+                 4);
+
+          // Iterate over input width shifts within 4x4 blocks.
+          for (int w = 0; w < output_width; ++w) {
+            constexpr int offset =
+                0;  // Shift input instead of offset in multiply-accumulate.
+
+            {
+              const int s = 0;
+              for (int d = 0; d < 4; ++d) {
+                int32 acc = bias_data[s * 4 + d];
+                for (int x = 0; x < 4; ++x) {
+                  int32 input_val_0 = input_bank_0[offset + x];
+                  int32 filter_val_0 = filter_bank_a_0[d][x];
+                  acc += filter_val_0 * input_val_0;
+                  int32 input_val_1 = input_bank_1[offset + x];
+                  int32 filter_val_1 = filter_bank_a_1[d][x];
+                  acc += filter_val_1 * input_val_1;
+                  int32 input_val_2 = input_bank_2[offset + x];
+                  int32 filter_val_2 = filter_bank_a_2[d][x];
+                  acc += filter_val_2 * input_val_2;
+                }
+                acc = reference_ops::depthwise_conv::DepthwiseConvRound<
+                    DepthwiseConvOutputRounding::kUpward>(
+                    acc, output_multiplier, output_shift);
+                acc += output_offset;
+                acc = std::max(acc, output_activation_min);
+                acc = std::min(acc, output_activation_max);
+                output_values[s][d] = static_cast<uint8>(acc);
+
+                output_data[s * 4 + d] = output_values[s][d];
+              }
+            }
+            {
+              const int s = 1;
+              for (int d = 0; d < 4; ++d) {
+                int32 acc = bias_data[s * 4 + d];
+                for (int x = 0; x < 4; ++x) {
+                  int32 input_val_0 = input_bank_0[offset + x];
+                  int32 filter_val_0 = filter_bank_b_0[d][x];
+                  acc += filter_val_0 * input_val_0;
+                  int32 input_val_1 = input_bank_1[offset + x];
+                  int32 filter_val_1 = filter_bank_b_1[d][x];
+                  acc += filter_val_1 * input_val_1;
+                  int32 input_val_2 = input_bank_2[offset + x];
+                  int32 filter_val_2 = filter_bank_b_2[d][x];
+                  acc += filter_val_2 * input_val_2;
+                }
+                acc = reference_ops::depthwise_conv::DepthwiseConvRound<
+                    DepthwiseConvOutputRounding::kUpward>(
+                    acc, output_multiplier, output_shift);
+                acc += output_offset;
+                acc = std::max(acc, output_activation_min);
+                acc = std::min(acc, output_activation_max);
+                output_values[s][d] = static_cast<uint8>(acc);
+
+                output_data[s * 4 + d] = output_values[s][d];
+              }
+            }
+
+            // Simulate register shifts.
+            for (int i = 0; i < (8 - stride_val); ++i) {
+              input_bank_0[i] = input_bank_0[i + stride_val];
+              input_bank_1[i] = input_bank_1[i + stride_val];
+              input_bank_2[i] = input_bank_2[i + stride_val];
+            }
+
+            output_data += output_depth;
+          }
+        }
+      }
+      bias_data += 2 * bias_increment;
+      filter_workspace += shuffled_filter_increment;
+    }
   }
 };
 // The preceding section is only compiled when kUseUnwound3x3DotProduct versions
