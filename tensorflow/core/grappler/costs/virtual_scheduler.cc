@@ -34,40 +34,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
 namespace {
-
-Costs CombineCosts(const Costs& left, const Costs& right) {
-  CHECK_NE(left.max_memory, kMemoryUnknown);
-  CHECK_NE(left.max_per_op_buffers, kMemoryUnknown);
-  CHECK_NE(left.max_per_op_streaming, kMemoryUnknown);
-
-  Costs result = left;
-  result.execution_time += right.execution_time;
-  result.compute_time += right.compute_time;
-  result.memory_time += right.memory_time;
-  result.intermediate_memory_time += right.intermediate_memory_time;
-
-  result.num_ops_total += right.num_ops_total;
-  if (right.inaccurate) result.inaccurate = true;
-  result.num_ops_with_unknown_shapes += right.num_ops_with_unknown_shapes;
-
-  if (right.max_memory != kMemoryUnknown) {
-    result.max_memory += right.max_memory;
-  }
-  if (right.max_per_op_buffers != kMemoryUnknown) {
-    result.max_per_op_buffers =
-        std::max(left.max_per_op_buffers, right.max_per_op_buffers);
-  }
-  if (right.max_per_op_streaming != kMemoryUnknown) {
-    result.max_per_op_streaming =
-        std::max(left.max_per_op_streaming, right.max_per_op_streaming);
-  }
-  VLOG(4) << "costs execution_time=" << result.execution_time.count()
-          << " max_memory=" << result.max_memory
-          << " max_per_op_buffers=" << result.max_per_op_buffers
-          << " max_per_op_streaming=" << result.max_per_op_streaming;
-  return result;
-}
 
 // Key to the cached _Recv ops map, and its hash and predicate structures.
 struct RecvNodeDescriptor {
