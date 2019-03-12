@@ -301,7 +301,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   // arguments. To make sure that the output producing nodes have assigned
   // devices, we assign them to arguments first.
   for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (node->IsArg()) {
       const AttrValue* attr_value;
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int64 index = attr_value->i();
@@ -310,7 +310,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   }
 
   for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == FunctionLibraryDefinition::kRetOp) {
+    if (node->IsRetval()) {
       if (output_devices.empty()) {
         // If output_devices are empty, the node producing retval
         // must have explicitly assigned device or a colocation constraint
