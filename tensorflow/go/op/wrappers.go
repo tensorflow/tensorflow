@@ -7680,6 +7680,80 @@ func DeserializeIterator(scope *Scope, resource_handle tf.Output, serialized tf.
 	return scope.AddOperation(opspec)
 }
 
+// Gather slices from `params` axis `axis` according to `indices`.
+//
+// `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
+// Produces an output tensor with shape `params.shape[:axis] + indices.shape +
+// params.shape[axis + 1:]` where:
+//
+// ```python
+//     # Scalar indices (output is rank(params) - 1).
+//     output[a_0, ..., a_n, b_0, ..., b_n] =
+//       params[a_0, ..., a_n, indices, b_0, ..., b_n]
+//
+//     # Vector indices (output is rank(params)).
+//     output[a_0, ..., a_n, i, b_0, ..., b_n] =
+//       params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
+//
+//     # Higher rank indices (output is rank(params) + rank(indices) - 1).
+//     output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
+//       params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
+// ```
+//
+// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
+// <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
+// </div>
+//
+// Note that on CPU, if an out of bound index is found, an error is returned.
+// On GPU, if an out of bound index is found, a 0 is stored in the
+// corresponding output value.
+//
+// See also `tf.batch_gather` and `tf.gather_nd`.
+//
+// Arguments:
+//	params: The tensor from which to gather values. Must be at least rank
+// `axis + 1`.
+//	indices: Index tensor. Must be in range `[0, params.shape[axis])`.
+//	axis: The axis in `params` to gather `indices` from. Defaults to the first
+// dimension. Supports negative indexes.
+//
+// Returns Values from `params` gathered from indices given by `indices`, with
+// shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.
+func GatherV2(scope *Scope, params tf.Output, indices tf.Output, axis tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "GatherV2",
+		Input: []tf.Input{
+			params, indices, axis,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Converts the given `resource_handle` representing an iterator to a variant tensor.
+//
+// Arguments:
+//	resource_handle: A handle to an iterator resource.
+//
+// Returns A variant tensor storing the state of the iterator contained in the
+// resource.
+func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SerializeIterator",
+		Input: []tf.Input{
+			resource_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Outputs a tensor containing the reduction across all input tensors.
 //
 // Outputs a tensor containing the reduction across all input tensors passed to ops
@@ -13376,24 +13450,6 @@ func SparseConcat(scope *Scope, indices []tf.Output, values []tf.Output, shapes 
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Elementwise computes the bitwise AND of `x` and `y`.
-//
-// The result will have those bits set, that are set in both `x` and `y`. The
-// computation is performed on the underlying representations of `x` and `y`.
-func BitwiseAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "BitwiseAnd",
-		Input: []tf.Input{
-			x, y,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
 
 // Deserialize and concatenate `SparseTensors` from a serialized minibatch.
@@ -24314,6 +24370,46 @@ func TakeManySparseFromTensorsMap(scope *Scope, sparse_handles tf.Output, dtype 
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// NonDeterministicIntsAttr is an optional argument to NonDeterministicInts.
+type NonDeterministicIntsAttr func(optionalAttr)
+
+// NonDeterministicIntsDtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_INT64
+func NonDeterministicIntsDtype(value tf.DataType) NonDeterministicIntsAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Non-deterministically generates some integers.
+//
+// This op may use some OS-provided source of non-determinism (e.g. an RNG), so each execution will give different results.
+//
+// Arguments:
+//	shape: The shape of the output tensor.
+//
+// Returns Non-deterministic integer values with specified shape.
+func NonDeterministicInts(scope *Scope, shape tf.Output, optional ...NonDeterministicIntsAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "NonDeterministicInts",
+		Input: []tf.Input{
+			shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // ResourceSparseApplyKerasMomentumAttr is an optional argument to ResourceSparseApplyKerasMomentum.
 type ResourceSparseApplyKerasMomentumAttr func(optionalAttr)
 
@@ -29187,6 +29283,24 @@ func TensorListConcat(scope *Scope, input_handle tf.Output, element_dtype tf.Dat
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Elementwise computes the bitwise AND of `x` and `y`.
+//
+// The result will have those bits set, that are set in both `x` and `y`. The
+// computation is performed on the underlying representations of `x` and `y`.
+func BitwiseAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "BitwiseAnd",
+		Input: []tf.Input{
+			x, y,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ResizeAreaAttr is an optional argument to ResizeArea.
@@ -39061,80 +39175,6 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 			string_handle,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Gather slices from `params` axis `axis` according to `indices`.
-//
-// `indices` must be an integer tensor of any dimension (usually 0-D or 1-D).
-// Produces an output tensor with shape `params.shape[:axis] + indices.shape +
-// params.shape[axis + 1:]` where:
-//
-// ```python
-//     # Scalar indices (output is rank(params) - 1).
-//     output[a_0, ..., a_n, b_0, ..., b_n] =
-//       params[a_0, ..., a_n, indices, b_0, ..., b_n]
-//
-//     # Vector indices (output is rank(params)).
-//     output[a_0, ..., a_n, i, b_0, ..., b_n] =
-//       params[a_0, ..., a_n, indices[i], b_0, ..., b_n]
-//
-//     # Higher rank indices (output is rank(params) + rank(indices) - 1).
-//     output[a_0, ..., a_n, i, ..., j, b_0, ... b_n] =
-//       params[a_0, ..., a_n, indices[i, ..., j], b_0, ..., b_n]
-// ```
-//
-// <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
-// <img style="width:100%" src="https://www.tensorflow.org/images/Gather.png" alt>
-// </div>
-//
-// Note that on CPU, if an out of bound index is found, an error is returned.
-// On GPU, if an out of bound index is found, a 0 is stored in the
-// corresponding output value.
-//
-// See also `tf.batch_gather` and `tf.gather_nd`.
-//
-// Arguments:
-//	params: The tensor from which to gather values. Must be at least rank
-// `axis + 1`.
-//	indices: Index tensor. Must be in range `[0, params.shape[axis])`.
-//	axis: The axis in `params` to gather `indices` from. Defaults to the first
-// dimension. Supports negative indexes.
-//
-// Returns Values from `params` gathered from indices given by `indices`, with
-// shape `params.shape[:axis] + indices.shape + params.shape[axis + 1:]`.
-func GatherV2(scope *Scope, params tf.Output, indices tf.Output, axis tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "GatherV2",
-		Input: []tf.Input{
-			params, indices, axis,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Converts the given `resource_handle` representing an iterator to a variant tensor.
-//
-// Arguments:
-//	resource_handle: A handle to an iterator resource.
-//
-// Returns A variant tensor storing the state of the iterator contained in the
-// resource.
-func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SerializeIterator",
-		Input: []tf.Input{
-			resource_handle,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
