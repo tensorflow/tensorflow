@@ -63,7 +63,15 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
+package_group(
+    name = "dependency_whitelist",
+    packages = [
+        "//learning/freud/topic_models/tensorflow/...",
+    ],
+)
+
 package(default_visibility = [
+    ":dependency_whitelist",
     "//tensorflow:internal",
     "//tensorflow_models:__subpackages__",
 ])
