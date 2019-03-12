@@ -45,8 +45,7 @@ def softmax(x, axis=-1):
   """The softmax activation function transforms the outputs so that all values are in 
   range (0, 1) and sum to 1. It is often used as the activation for the last layer of a 
   classification network because the result could be interpreted as a probability 
-  distribution. To calculate the softmax, all inputs `x` become exp(x) divided by the sum 
-  of all exponential values.
+  distribution. The softmax of x is calculated by exp(x)/tf.reduce_sum(exp(x)).
 
   Arguments:
       x : Input tensor.
