@@ -40,8 +40,8 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 }
 
 /// A utility function to check if a value is defined at the top level of a
-/// function.
-static bool isDefinedAtTopLevel(const Value *value) {
+/// function. A value defined at the top level is always a valid symbol.
+bool mlir::isTopLevelSymbol(const Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
     return arg->getOwner()->getParent()->getContainingFunction();
   return value->getDefiningInst()->getParentInst() == nullptr;
@@ -65,7 +65,7 @@ bool mlir::isValidDim(const Value *value) {
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
     if (auto dimOp = inst->dyn_cast<DimOp>())
-      return isDefinedAtTopLevel(dimOp->getOperand());
+      return isTopLevelSymbol(dimOp->getOperand());
     return false;
   }
   // This value is a block argument (which also includes 'for' loop IVs).
@@ -90,7 +90,7 @@ bool mlir::isValidSymbol(const Value *value) {
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
     if (auto dimOp = inst->dyn_cast<DimOp>())
-      return isDefinedAtTopLevel(dimOp->getOperand());
+      return isTopLevelSymbol(dimOp->getOperand());
     return false;
   }
   // Otherwise, the only valid symbol is a top level block argument.

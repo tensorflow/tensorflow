@@ -33,6 +33,10 @@ class AffineValueMap;
 class FlatAffineConstraints;
 class FuncBuilder;
 
+/// A utility function to check if a value is defined at the top level of a
+/// function. A value defined at the top level is always a valid symbol.
+bool isTopLevelSymbol(const Value *value);
+
 class AffineOpsDialect : public Dialect {
 public:
   AffineOpsDialect(MLIRContext *context);

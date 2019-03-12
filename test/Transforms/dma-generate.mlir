@@ -487,6 +487,38 @@ func @relative_loop_bounds(%arg0: memref<1027xf32>) {
 
 // ----
 
+// This should create a buffer of size 2 for %arg2.
+
+#map_lb = (d0) -> (d0)
+#map_ub = (d0) -> (d0 + 3)
+#map_acc = (d0) -> (d0 floordiv 8)
+// CHECK-LABEL: func @test_analysis_util
+func @test_analysis_util(%arg0: memref<4x4x16x1xf32>, %arg1: memref<144x9xf32>, %arg2: memref<2xf32>) -> (memref<144x9xf32>, memref<2xf32>) {
+  %c0 = constant 0 : index
+  %0 = alloc() : memref<64x1xf32>
+  %1 = alloc() : memref<144x4xf32>
+  %2 =  constant 0.0 : f32
+  for %i8 = 0 to 9 step 3 {
+    for %i9 = #map_lb(%i8) to #map_ub(%i8) {
+      for %i17 = 0 to 64 {
+        %23 = affine.apply #map_acc(%i9)
+        %25 = load %arg2[%23] : memref<2xf32>
+        %26 = affine.apply #map_lb(%i17)
+        %27 = load %0[%26, %c0] : memref<64x1xf32>
+        store %27, %arg2[%23] : memref<2xf32>
+      }
+    }
+  }
+  return %arg1, %arg2 : memref<144x9xf32>, memref<2xf32>
+}
+// CHECK:       for %i0 = 0 to 9 step 3 {
+// CHECK:         [[BUF:%[0-9]+]] = alloc() : memref<2xf32, 2>
+// CHECK:         dma_start %arg2[%4], [[BUF]]
+// CHECK:         dma_wait %6[%c0], %c2_0 : memref<1xi32>
+// CHECK:         for %i1 =
+
+// -----
+
 // Since the fast memory size is 4 KB, DMA generation will happen right under
 // %i0.
 
@@ -515,7 +547,7 @@ func @load_store_same_memref(%arg0: memref<256x1024xf32>) {
   return
 }
 
-// ----
+// -----
 
 // This a 3-d loop nest tiled by 4 x 4 x 4. Under %i, %j, %k, the size of a
 // tile of arg0, arg1, and arg2 accessed is 4 KB (each), i.e., 12 KB in total.
@@ -557,9 +589,9 @@ func @simple_matmul(%arg0: memref<8x8xvector<64xf32>>, %arg1: memref<8x8xvector<
 // FAST-MEM-16KB:       dma_wait
 // FAST-MEM-16KB:       dma_start %arg1
 // FAST-MEM-16KB:       dma_wait
-// FAST-MEM-16KB:       for %i3 = #map2(%i0) to #map3(%i0) {
-// FAST-MEM-16KB-NEXT:    for %i4 = #map2(%i1) to #map3(%i1) {
-// FAST-MEM-16KB-NEXT:      for %i5 = #map2(%i2) to #map3(%i2) {
+// FAST-MEM-16KB:       for %i3 = #map{{[0-9]+}}(%i0) to #map{{[0-9]+}}(%i0) {
+// FAST-MEM-16KB-NEXT:    for %i4 = #map{{[0-9]+}}(%i1) to #map{{[0-9]+}}(%i1) {
+// FAST-MEM-16KB-NEXT:      for %i5 = #map{{[0-9]+}}(%i2) to #map{{[0-9]+}}(%i2) {
 // FAST-MEM-16KB:           }
 // FAST-MEM-16KB:         }
 // FAST-MEM-16KB:       }

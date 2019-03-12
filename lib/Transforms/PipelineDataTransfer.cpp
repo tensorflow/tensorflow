@@ -105,8 +105,6 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
   }
 
   // Create and place the alloc right before the 'for' instruction.
-  // TODO(mlir-team): we are assuming scoped allocation here, and aren't
-  // inserting a dealloc -- this isn't the right thing.
   Value *newMemRef =
       bOuter.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
 

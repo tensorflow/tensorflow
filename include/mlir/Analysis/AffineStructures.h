@@ -464,11 +464,12 @@ public:
   void addId(IdKind kind, unsigned pos, Value *id = nullptr);
 
   /// Add the specified values as a dim or symbol id depending on its nature, if
-  /// it already doesn't exist in the system. The identifier is added to the end
-  /// of the existing dims or symbols. Additional information on the identifier
-  /// is extracted from the IR (if it's a loop IV or a symbol, and added to the
-  /// constraint system).
-  void addDimOrSymbolId(Value *id);
+  /// it already doesn't exist in the system. `id' has to be either a terminal
+  /// symbol or a loop IV, i.e., it cannot be the result affine.apply of any
+  /// symbols or loop IVs. The identifier is added to the end of the existing
+  /// dims or symbols. Additional information on the identifier is extracted
+  /// from the IR and added to the constraint system.
+  void addInductionVarOrTerminalSymbol(Value *id);
 
   /// Composes the affine value map with this FlatAffineConstrains, adding the
   /// results of the map as dimensions at the front [0, vMap->getNumResults())
@@ -619,7 +620,8 @@ public:
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
                             SmallVectorImpl<int64_t> *lb = nullptr,
-                            int64_t *lbFloorDivisor = nullptr) const;
+                            int64_t *lbFloorDivisor = nullptr,
+                            SmallVectorImpl<int64_t> *ub = nullptr) const;
 
   /// Returns the constant lower bound for the pos^th identifier if there is
   /// one; None otherwise.

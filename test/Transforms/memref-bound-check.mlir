@@ -266,3 +266,22 @@ func @test_floordiv_bound() {
   }
   return
 }
+
+// -----
+
+// This should not give an out of bounds error. The result of the affine.apply
+// is composed into the bound map during analysis.
+
+#map_lb = (d0) -> (d0)
+#map_ub = (d0) -> (d0 + 4)
+
+// CHECK-LABEL: func @non_composed_bound_operand
+func @non_composed_bound_operand(%arg0: memref<1024xf32>) {
+  for %i0 = 4 to 1028 step 4 {
+    %i1 = affine.apply (d0) -> (d0 - 4) (%i0)
+    for %i2 = #map_lb(%i1) to #map_ub(%i1) {
+        %0 = load %arg0[%i2] : memref<1024xf32>
+    }
+  }
+  return
+}

@@ -709,24 +709,27 @@ void FlatAffineConstraints::convertLoopIVSymbolsToDims() {
   }
 }
 
-void FlatAffineConstraints::addDimOrSymbolId(Value *id) {
+void FlatAffineConstraints::addInductionVarOrTerminalSymbol(Value *id) {
   if (containsId(*id))
     return;
-  if (isValidSymbol(id)) {
-    addSymbolId(getNumSymbolIds(), id);
-    // Check if the symbol is a constant.
-    if (auto *opInst = id->getDefiningInst()) {
-      if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-        setIdToConstant(*id, constOp->getValue());
-      }
-    }
-  } else {
+
+  // Caller is expected to fully compose map/operands if necessary.
+  assert((isTopLevelSymbol(id) || isForInductionVar(id)) &&
+         "non-terminal symbol / loop IV expected");
+  // Outer loop IVs could be used in forOp's bounds.
+  if (auto loop = getForInductionVarOwner(id)) {
     addDimId(getNumDimIds(), id);
-    if (auto loop = getForInductionVarOwner(id)) {
-      // Outer loop IVs could be used in forOp's bounds.
-      if (failed(this->addAffineForOpDomain(loop)))
-        LLVM_DEBUG(loop->emitWarning(
-            "failed to add domain info to constraint system"));
+    if (failed(this->addAffineForOpDomain(loop)))
+      LLVM_DEBUG(
+          loop->emitWarning("failed to add domain info to constraint system"));
+    return;
+  }
+  // Add top level symbol.
+  addSymbolId(getNumSymbolIds(), id);
+  // Check if the symbol is a constant.
+  if (auto *opInst = id->getDefiningInst()) {
+    if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
+      setIdToConstant(*id, constOp->getValue());
     }
   }
 }
@@ -740,11 +743,30 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
     return failure();
   }
 
-  if (forOp->getStep() != 1)
-    LLVM_DEBUG(
-        forOp->emitWarning("Domain conservative: non-unit stride not handled"));
-
   int64_t step = forOp->getStep();
+  if (step != 1) {
+    if (!forOp->hasConstantLowerBound())
+      forOp->emitWarning("domain conservatively approximated");
+    else {
+      // Add constraints for the stride.
+      // (iv - lb) % step = 0 can be written as:
+      // (iv - lb) - step * q = 0 where q = (iv - lb) / step.
+      // Add local variable 'q' and add the above equality.
+      // The first constraint is q = (iv - lb) floordiv step
+      SmallVector<int64_t, 8> dividend(getNumCols(), 0);
+      int64_t lb = forOp->getConstantLowerBound();
+      dividend[pos] = 1;
+      dividend.back() -= lb;
+      addLocalFloorDiv(dividend, step);
+      // Second constraint: (iv - lb) - step * q = 0.
+      SmallVector<int64_t, 8> eq(getNumCols(), 0);
+      eq[pos] = 1;
+      eq.back() -= lb;
+      // For the local var just added above.
+      eq[getNumCols() - 2] = -step;
+      addEquality(eq);
+    }
+  }
 
   if (forOp->hasConstantLowerBound()) {
     addConstantLowerBound(pos, forOp->getConstantLowerBound());
@@ -760,7 +782,7 @@ FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
   }
 
   if (forOp->hasConstantUpperBound()) {
-    addConstantUpperBound(pos, forOp->getConstantUpperBound() - step);
+    addConstantUpperBound(pos, forOp->getConstantUpperBound() - 1);
     return success();
   }
   // Non-constant upper bound case.
@@ -1617,8 +1639,8 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
 
 LogicalResult
 FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
-                                            ArrayRef<Value *> operands, bool eq,
-                                            bool lower) {
+                                            ArrayRef<Value *> boundOperands,
+                                            bool eq, bool lower) {
   assert(pos < getNumDimAndSymbolIds() && "invalid position");
   // Equality follows the logic of lower bound except that we add an equality
   // instead of an inequality.
@@ -1626,12 +1648,19 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
   if (eq)
     lower = true;
 
+  // Fully commpose map and operands; canonicalize and simplify so that we
+  // transitively get to terminal symbols or loop IVs.
+  auto map = boundMap;
+  SmallVector<Value *, 4> operands(boundOperands.begin(), boundOperands.end());
+  fullyComposeAffineMapAndOperands(&map, &operands);
+  map = simplifyAffineMap(map);
+  canonicalizeMapAndOperands(&map, &operands);
   for (auto *operand : operands)
-    addDimOrSymbolId(operand);
+    addInductionVarOrTerminalSymbol(operand);
 
   FlatAffineConstraints localVarCst;
   std::vector<SmallVector<int64_t, 8>> flatExprs;
-  if (failed(getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst))) {
+  if (failed(getFlattenedAffineExprs(map, &flatExprs, &localVarCst))) {
     LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
     return failure();
   }
@@ -1671,7 +1700,7 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
     SmallVector<int64_t, 4> ineq(getNumCols(), 0);
     ineq[pos] = lower ? 1 : -1;
     // Dims and symbols.
-    for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
+    for (unsigned j = 0, e = map.getNumInputs(); j < e; j++) {
       ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
     }
     // Copy over the local id coefficients.
@@ -1961,7 +1990,8 @@ void FlatAffineConstraints::constantFoldIdRange(unsigned pos, unsigned num) {
 //       s0 - 7 <= 8*j <= s0 returns 1 with lb = s0, lbDivisor = 8 (since lb =
 //       ceil(s0 - 7 / 8) = floor(s0 / 8)).
 Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
-    unsigned pos, SmallVectorImpl<int64_t> *lb, int64_t *lbFloorDivisor) const {
+    unsigned pos, SmallVectorImpl<int64_t> *lb, int64_t *lbFloorDivisor,
+    SmallVectorImpl<int64_t> *ub) const {
   assert(pos < getNumDimIds() && "Invalid identifier position");
   assert(getNumLocalIds() == 0);
 
@@ -1977,12 +2007,17 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     if (lb) {
       // Set lb to the symbolic value.
       lb->resize(getNumSymbolIds() + 1);
+      if (ub)
+        ub->resize(getNumSymbolIds() + 1);
       for (unsigned c = 0, f = getNumSymbolIds() + 1; c < f; c++) {
         int64_t v = atEq(eqRow, pos);
         // atEq(eqRow, pos) is either -1 or 1.
         assert(v * v == 1);
         (*lb)[c] = v < 0 ? atEq(eqRow, getNumDimIds() + c) / -v
                          : -atEq(eqRow, getNumDimIds() + c) / v;
+        // Since this is an equality, ub = lb.
+        if (ub)
+          (*ub)[c] = (*lb)[c];
       }
       assert(lbFloorDivisor &&
              "both lb and divisor or none should be provided");
@@ -2028,7 +2063,7 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
   // powerful. Not needed for hyper-rectangular iteration spaces.
 
   Optional<int64_t> minDiff = None;
-  unsigned minLbPosition;
+  unsigned minLbPosition, minUbPosition;
   for (auto ubPos : ubIndices) {
     for (auto lbPos : lbIndices) {
       // Look for a lower bound and an upper bound that only differ by a
@@ -2044,28 +2079,38 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
         }
       if (j < getNumCols() - 1)
         continue;
-      int64_t diff = floorDiv(atIneq(ubPos, getNumCols() - 1) +
-                                  atIneq(lbPos, getNumCols() - 1) + 1,
-                              atIneq(lbPos, pos));
+      int64_t diff = ceilDiv(atIneq(ubPos, getNumCols() - 1) +
+                                 atIneq(lbPos, getNumCols() - 1) + 1,
+                             atIneq(lbPos, pos));
       if (minDiff == None || diff < minDiff) {
         minDiff = diff;
         minLbPosition = lbPos;
+        minUbPosition = ubPos;
       }
     }
   }
   if (lb && minDiff.hasValue()) {
     // Set lb to the symbolic lower bound.
     lb->resize(getNumSymbolIds() + 1);
+    if (ub)
+      ub->resize(getNumSymbolIds() + 1);
     // The lower bound is the ceildiv of the lb constraint over the coefficient
     // of the variable at 'pos'. We express the ceildiv equivalently as a floor
     // for uniformity. For eg., if the lower bound constraint was: 32*d0 - N +
     // 31 >= 0, the lower bound for d0 is ceil(N - 31, 32), i.e., floor(N, 32).
     *lbFloorDivisor = atIneq(minLbPosition, pos);
+    assert(*lbFloorDivisor == -atIneq(minUbPosition, pos));
     for (unsigned c = 0, e = getNumSymbolIds() + 1; c < e; c++) {
       (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c);
     }
-    // ceildiv (val / d) = floordiv (val + d - 1 / d); hence, the addition of
-    // 'atIneq(minLbPosition, pos) - 1' to the constant term.
+    if (ub) {
+      for (unsigned c = 0, e = getNumSymbolIds() + 1; c < e; c++)
+        (*ub)[c] = atIneq(minUbPosition, getNumDimIds() + c);
+    }
+    // The lower bound leads to a ceildiv while the upper bound is a floordiv
+    // whenever the cofficient at pos != 1. ceildiv (val / d) = floordiv (val +
+    // d - 1 / d); hence, the addition of 'atIneq(minLbPosition, pos) - 1' to
+    // the constant term for the lower bound.
     (*lb)[getNumSymbolIds()] += atIneq(minLbPosition, pos) - 1;
   }
   return minDiff;
@@ -2664,28 +2709,33 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
   // To compute final new lower and upper bounds for the union.
   SmallVector<int64_t, 8> newLb(getNumCols()), newUb(getNumCols());
 
-  int64_t lbDivisor, otherLbDivisor;
+  int64_t lbFloorDivisor, otherLbFloorDivisor;
   for (unsigned d = 0, e = getNumDimIds(); d < e; ++d) {
-    auto extent = getConstantBoundOnDimSize(d, &lb, &lbDivisor);
+    auto extent = getConstantBoundOnDimSize(d, &lb, &lbFloorDivisor, &ub);
     if (!extent.hasValue())
       // TODO(bondhugula): symbolic extents when necessary.
       // TODO(bondhugula): handle union if a dimension is unbounded.
       return failure();
 
-    auto otherExtent =
-        other.getConstantBoundOnDimSize(d, &otherLb, &otherLbDivisor);
-    if (!otherExtent.hasValue() || lbDivisor != otherLbDivisor)
+    auto otherExtent = other.getConstantBoundOnDimSize(
+        d, &otherLb, &otherLbFloorDivisor, &otherUb);
+    if (!otherExtent.hasValue() || lbFloorDivisor != otherLbFloorDivisor)
       // TODO(bondhugula): symbolic extents when necessary.
       return failure();
 
-    assert(lbDivisor > 0 && "divisor always expected to be positive");
+    assert(lbFloorDivisor > 0 && "divisor always expected to be positive");
 
     auto res = compareBounds(lb, otherLb);
     // Identify min.
     if (res == BoundCmpResult::Less || res == BoundCmpResult::Equal) {
       minLb = lb;
+      // Since the divisor is for a floordiv, we need to convert to ceildiv,
+      // i.e., i >= expr floordiv div <=> i >= (expr - div + 1) ceildiv div <=>
+      // div * i >= expr - div + 1.
+      minLb.back() -= lbFloorDivisor - 1;
     } else if (res == BoundCmpResult::Greater) {
       minLb = otherLb;
+      minLb.back() -= otherLbFloorDivisor - 1;
     } else {
       // Uncomparable - check for constant lower/upper bounds.
       auto constLb = getConstantLowerBound(d);
@@ -2696,13 +2746,7 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
       minLb.back() = std::min(constLb.getValue(), constOtherLb.getValue());
     }
 
-    // Do the same for ub's but max of upper bounds.
-    ub = lb;
-    otherUb = otherLb;
-    ub.back() += extent.getValue() - 1;
-    otherUb.back() += otherExtent.getValue() - 1;
-
-    // Identify max.
+    // Do the same for ub's but max of upper bounds. Identify max.
     auto uRes = compareBounds(ub, otherUb);
     if (uRes == BoundCmpResult::Greater || uRes == BoundCmpResult::Equal) {
       maxUb = ub;
@@ -2723,8 +2767,8 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
 
     // The divisor for lb, ub, otherLb, otherUb at this point is lbDivisor,
     // and so it's the divisor for newLb and newUb as well.
-    newLb[d] = lbDivisor;
-    newUb[d] = -lbDivisor;
+    newLb[d] = lbFloorDivisor;
+    newUb[d] = -lbFloorDivisor;
     // Copy over the symbolic part + constant term.
     std::copy(minLb.begin(), minLb.end(), newLb.begin() + getNumDimIds());
     std::transform(newLb.begin() + getNumDimIds(), newLb.end(),
@@ -2741,6 +2785,9 @@ FlatAffineConstraints::unionBoundingBox(const FlatAffineConstraints &otherCst) {
     addInequality(boundingLbs[d]);
     addInequality(boundingUbs[d]);
   }
+  // TODO(mlir-team): copy over pure symbolic constraints from this and 'other'
+  // over to the union (since the above are just the union along dimensions); we
+  // shouldn't be discarding any other constraints on the symbols.
 
   return success();
 }
