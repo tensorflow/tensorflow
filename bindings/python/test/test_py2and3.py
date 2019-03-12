@@ -69,6 +69,157 @@ class EdscTest(unittest.TestCase):
         '          %2 = "affine.apply"(%i0, %i1, %i2, %i3) {map: (d0, d1, d2, d3) -> (d0 + d1 + d2 + d3)} : (index, index, index, index) -> index',
         code)
 
+  def testBlockContext(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      cst = E.IdxCst(42)
+      with E.BlockContext():
+        cst + cst
+    code = str(fun)
+    # Find positions of instructions and make sure they are in the block we
+    # put them by comparing those positions.
+    # TODO(zinenko,ntv): this (and tests below) should use FileCheck instead.
+    c42pos = code.find("%c42 = constant 42 : index")
+    bb1pos = code.find("^bb1:")
+    c84pos = code.find('%0 = "affine.apply"() {map: () -> (84)} : () -> index')
+    self.assertNotEqual(c42pos, -1)
+    self.assertNotEqual(bb1pos, -1)
+    self.assertNotEqual(c84pos, -1)
+    self.assertGreater(bb1pos, c42pos)
+    self.assertLess(bb1pos, c84pos)
+
+  def testBlockContextAppend(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      E.IdxCst(41)
+      with E.BlockContext() as b:
+        blk = b  # save block handle for later
+        E.IdxCst(0)
+      E.IdxCst(42)
+      with E.BlockContext(E.appendTo(blk)):
+        E.IdxCst(1)
+    code = str(fun)
+    # Find positions of instructions and make sure they are in the block we put
+    # them by comparing those positions.
+    c41pos = code.find("%c41 = constant 41 : index")
+    c42pos = code.find("%c42 = constant 42 : index")
+    bb1pos = code.find("^bb1:")
+    c0pos = code.find("%c0 = constant 0 : index")
+    c1pos = code.find("%c1 = constant 1 : index")
+    self.assertNotEqual(c41pos, -1)
+    self.assertNotEqual(c42pos, -1)
+    self.assertNotEqual(bb1pos, -1)
+    self.assertNotEqual(c0pos, -1)
+    self.assertNotEqual(c1pos, -1)
+    self.assertGreater(bb1pos, c41pos)
+    self.assertGreater(bb1pos, c42pos)
+    self.assertLess(bb1pos, c0pos)
+    self.assertLess(bb1pos, c1pos)
+
+  def testBlockContextStandalone(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      blk1 = E.BlockContext()
+      blk2 = E.BlockContext()
+      with blk1:
+        E.IdxCst(0)
+      with blk2:
+        E.IdxCst(56)
+        E.IdxCst(57)
+      E.IdxCst(41)
+      with blk1:
+        E.IdxCst(1)
+      E.IdxCst(42)
+    code = str(fun)
+    # Find positions of instructions and make sure they are in the block we put
+    # them by comparing those positions.
+    c41pos = code.find("  %c41 = constant 41 : index")
+    c42pos = code.find("  %c42 = constant 42 : index")
+    bb1pos = code.find("^bb1:")
+    c0pos = code.find("  %c0 = constant 0 : index")
+    c1pos = code.find("  %c1 = constant 1 : index")
+    bb2pos = code.find("^bb2:")
+    c56pos = code.find("  %c56 = constant 56 : index")
+    c57pos = code.find("  %c57 = constant 57 : index")
+    self.assertNotEqual(c41pos, -1)
+    self.assertNotEqual(c42pos, -1)
+    self.assertNotEqual(bb1pos, -1)
+    self.assertNotEqual(c0pos, -1)
+    self.assertNotEqual(c1pos, -1)
+    self.assertNotEqual(bb2pos, -1)
+    self.assertNotEqual(c56pos, -1)
+    self.assertNotEqual(c57pos, -1)
+    self.assertGreater(bb1pos, c41pos)
+    self.assertGreater(bb1pos, c42pos)
+    self.assertLess(bb1pos, c0pos)
+    self.assertLess(bb1pos, c1pos)
+    self.assertGreater(bb2pos, c0pos)
+    self.assertGreater(bb2pos, c1pos)
+    self.assertGreater(bb2pos, bb1pos)
+    self.assertLess(bb2pos, c56pos)
+    self.assertLess(bb2pos, c57pos)
+
+
+  def testBlockArguments(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      E.IdxCst(42)
+      with E.BlockContext([self.f32Type, self.f32Type]) as b:
+        b.arg(0) + b.arg(1)
+    code = str(fun)
+    self.assertIn("%c42 = constant 42 : index", code)
+    self.assertIn("^bb1(%0: f32, %1: f32):", code)
+    self.assertIn("  %2 = addf %0, %1 : f32", code)
+
+  def testBr(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      with E.BlockContext() as b:
+        blk = b
+        E.ret()
+      E.br(blk)
+    code = str(fun)
+    self.assertIn("  br ^bb1", code)
+    self.assertIn("^bb1:", code)
+    self.assertIn("  return", code)
+
+  def testBrDeclaration(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      blk = E.BlockContext()
+      E.br(blk.handle())
+      with blk:
+        E.ret()
+    code = str(fun)
+    self.assertIn("  br ^bb1", code)
+    self.assertIn("^bb1:", code)
+    self.assertIn("  return", code)
+
+  def testBrArgs(self):
+    fun = self.module.make_function("foo", [], [])
+    with E.FunctionContext(fun):
+      # Create an infinite loop.
+      with E.BlockContext([self.indexType, self.indexType]) as b:
+        E.br(b, [b.arg(1), b.arg(0)])
+      E.br(b, [E.IdxCst(0), E.IdxCst(1)])
+    code = str(fun)
+    self.assertIn("  %c0 = constant 0 : index", code)
+    self.assertIn("  %c1 = constant 1 : index", code)
+    self.assertIn("  br ^bb1(%c0, %c1 : index, index)", code)
+    self.assertIn("^bb1(%0: index, %1: index):", code)
+    self.assertIn("  br ^bb1(%1, %0 : index, index)", code)
+
+  def testRet(self):
+    fun = self.module.make_function("foo", [], [self.indexType, self.indexType])
+    with E.FunctionContext(fun):
+      c42 = E.IdxCst(42)
+      c0 = E.IdxCst(0)
+      E.ret([c42, c0])
+    code = str(fun)
+    self.assertIn("  %c42 = constant 42 : index", code)
+    self.assertIn("  %c0 = constant 0 : index", code)
+    self.assertIn("  return %c42, %c0 : index, index", code)
+
 
   def testBindables(self):
     with E.ContextManager():

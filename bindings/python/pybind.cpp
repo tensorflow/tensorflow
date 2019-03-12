@@ -8,6 +8,7 @@
 
 #include "mlir-c/Core.h"
 #include "mlir/EDSC/Builders.h"
+#include "mlir/EDSC/Intrinsics.h"
 #include "mlir/EDSC/MLIREmitter.h"
 #include "mlir/EDSC/Types.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
@@ -223,6 +224,25 @@ struct PythonValueHandle {
   mlir::edsc::ValueHandle value;
 };
 
+struct PythonBlockHandle {
+  PythonBlockHandle() : value(nullptr) {}
+  PythonBlockHandle(const PythonBlockHandle &other) = default;
+  PythonBlockHandle(const mlir::edsc::BlockHandle &other) : value(other) {}
+  operator mlir::edsc::BlockHandle() const { return value; }
+
+  PythonValueHandle arg(int index) { return arguments[index]; }
+
+  std::string str() {
+    std::string s;
+    llvm::raw_string_ostream os(s);
+    value.getBlock()->print(os);
+    return os.str();
+  }
+
+  mlir::edsc::BlockHandle value;
+  std::vector<mlir::edsc::ValueHandle> arguments;
+};
+
 struct PythonLoopContext {
   PythonLoopContext(PythonValueHandle lb, PythonValueHandle ub, int64_t step)
       : lb(lb), ub(ub), step(step) {}
@@ -294,6 +314,76 @@ struct PythonLoopNestContext {
   LoopNestBuilder *builder = nullptr;
 };
 
+struct PythonBlockAppender {
+  PythonBlockAppender(const PythonBlockHandle &handle) : handle(handle) {}
+  PythonBlockHandle handle;
+};
+
+struct PythonBlockContext {
+public:
+  PythonBlockContext() {
+    createBlockBuilder();
+    clearBuilder();
+  }
+  PythonBlockContext(const std::vector<PythonType> &argTypes) {
+    handle.arguments.reserve(argTypes.size());
+    for (const auto &t : argTypes) {
+      auto type =
+          Type::getFromOpaquePointer(reinterpret_cast<const void *>(t.type));
+      handle.arguments.emplace_back(type);
+    }
+    createBlockBuilder();
+    clearBuilder();
+  }
+  PythonBlockContext(const PythonBlockAppender &a) : handle(a.handle) {}
+  PythonBlockContext(const PythonBlockContext &) = delete;
+  PythonBlockContext(PythonBlockContext &&) = default;
+  PythonBlockContext &operator=(const PythonBlockContext &) = delete;
+  PythonBlockContext &operator=(PythonBlockContext &&) = default;
+  ~PythonBlockContext() {
+    assert(!builder && "did not exit from the block context");
+  }
+
+  // EDSC maintain an implicit stack of builders (mostly for keeping track of
+  // insretion points); every operation gets inserted using the top-of-the-stack
+  // builder.  Creating a new EDSC Builder automatically puts it on the stack,
+  // effectively entering the block for it.
+  void createBlockBuilder() {
+    if (handle.value.getBlock()) {
+      builder = new BlockBuilder(handle.value, mlir::edsc::Append());
+    } else {
+      std::vector<ValueHandle *> args;
+      args.reserve(handle.arguments.size());
+      for (auto &a : handle.arguments)
+        args.push_back(&a);
+      builder = new BlockBuilder(&handle.value, args);
+    }
+  }
+
+  PythonBlockHandle enter() {
+    createBlockBuilder();
+    return handle;
+  }
+
+  void exit(py::object, py::object, py::object) { clearBuilder(); }
+
+  PythonBlockHandle getHandle() { return handle; }
+
+  // EDSC maintain an implicit stack of builders (mostly for keeping track of
+  // insretion points); every operation gets inserted using the top-of-the-stack
+  // builder.  Calling operator() on a builder pops the builder from the stack,
+  // effectively resetting the insertion point to its position before we entered
+  // the block.
+  void clearBuilder() {
+    (*builder)({}); // exit from the builder's scope.
+    delete builder;
+    builder = nullptr;
+  }
+
+  PythonBlockHandle handle;
+  BlockBuilder *builder = nullptr;
+};
+
 struct PythonBindable : public PythonExpr {
   explicit PythonBindable(const PythonType &type)
       : PythonExpr(edsc_expr_t{makeBindable(type.type)}) {}
@@ -331,17 +421,6 @@ struct PythonBlock {
   PythonBlock set(const py::list &stmts);
 
   edsc_block_t blk;
-};
-
-struct PythonBlockHandle {
-  PythonBlockHandle() : value(nullptr) {}
-  PythonBlockHandle(const PythonBlockHandle &other) = default;
-  PythonBlockHandle(const mlir::edsc::BlockHandle &other) : value(other) {}
-  operator mlir::edsc::BlockHandle() const { return value; }
-
-  std::string str() const { return "^block"; }
-
-  mlir::edsc::BlockHandle value;
 };
 
 struct PythonAttribute {
@@ -785,6 +864,26 @@ PYBIND11_MODULE(pybind, m) {
   m.def("IdxCst", [](int64_t val) -> PythonValueHandle {
     return ValueHandle(index_t(val));
   });
+  m.def("appendTo", [](const PythonBlockHandle &handle) {
+    return PythonBlockAppender(handle);
+  });
+  m.def(
+      "ret",
+      [](const std::vector<PythonValueHandle> &args) {
+        std::vector<ValueHandle> values(args.begin(), args.end());
+        intrinsics::RETURN(values);
+        return PythonValueHandle(nullptr);
+      },
+      py::arg("args") = std::vector<PythonValueHandle>());
+  m.def(
+      "br",
+      [](const PythonBlockHandle &dest,
+         const std::vector<PythonValueHandle> &args) {
+        std::vector<ValueHandle> values(args.begin(), args.end());
+        intrinsics::BR(dest, values);
+        return PythonValueHandle(nullptr);
+      },
+      py::arg("dest"), py::arg("args") = std::vector<PythonValueHandle>());
 
   m.def("Max", [](const py::list &args) {
     SmallVector<edsc_expr_t, 8> owning;
@@ -985,6 +1084,25 @@ PYBIND11_MODULE(pybind, m) {
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value % rhs.value; });
   }
+
+  py::class_<PythonBlockAppender>(
+      m, "BlockAppender",
+      "A dummy class signaling BlockContext to append IR to the given block "
+      "instead of creating a new block")
+      .def(py::init<const PythonBlockHandle &>());
+  py::class_<PythonBlockHandle>(m, "BlockHandle",
+                                "A wrapper around mlir::edsc::BlockHandle")
+      .def(py::init<PythonBlockHandle>())
+      .def("arg", &PythonBlockHandle::arg);
+
+  py::class_<PythonBlockContext>(m, "BlockContext",
+                                 "A wrapper around mlir::edsc::BlockBuilder")
+      .def(py::init<>())
+      .def(py::init<const std::vector<PythonType> &>())
+      .def(py::init<const PythonBlockAppender &>())
+      .def("__enter__", &PythonBlockContext::enter)
+      .def("__exit__", &PythonBlockContext::exit)
+      .def("handle", &PythonBlockContext::getHandle);
 
   py::class_<MLIRFunctionEmitter>(
       m, "MLIRFunctionEmitter",
