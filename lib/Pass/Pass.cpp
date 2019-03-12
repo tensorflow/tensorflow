@@ -169,9 +169,16 @@ class ModuleVerifier : public ModulePass<ModuleVerifier> {
 } // end anonymous namespace
 
 PassManager::PassManager(bool verifyPasses)
-    : mpe(new ModulePassExecutor()), verifyPasses(verifyPasses) {}
+    : mpe(new ModulePassExecutor()), verifyPasses(verifyPasses),
+      passTiming(false) {}
 
 PassManager::~PassManager() {}
+
+/// Run the passes within this manager on the provided module.
+LogicalResult PassManager::run(Module *module) {
+  ModuleAnalysisManager mam(module, instrumentor.get());
+  return mpe->run(module, mam);
+}
 
 /// Add an opaque pass pointer to the current manager. This takes ownership
 /// over the provided pass pointer.
@@ -218,12 +225,6 @@ void PassManager::addPass(FunctionPassBase *pass) {
   // Add a verifier run if requested.
   if (verifyPasses)
     fpe->addPass(new FunctionVerifier());
-}
-
-/// Run the passes within this manager on the provided module.
-LogicalResult PassManager::run(Module *module) {
-  ModuleAnalysisManager mam(module, instrumentor.get());
-  return mpe->run(module, mam);
 }
 
 /// Add the provided instrumentation to the pass manager. This takes ownership

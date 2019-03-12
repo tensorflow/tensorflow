@@ -402,10 +402,11 @@ available to all users of the MLIR pass framework.
 The PassTiming instrumentation provides timing information about the execution
 of passes and computation of analyses. This provides a quick glimpse into what
 passes are taking the most time to execute, as well as how much of an effect
-your pass has on the total execution time of the pipeline. This instrumentation
-is made available in mlir-opt via the `-pass-timing` and `-pass-timing-display`
-flags. `-pass-timing-display` allows for toggling between the different display
-modes for the timing results. The available display modes are described below:
+your pass has on the total execution time of the pipeline. Users can enable this
+instrumentation directly on the PassManager via `enableTiming`. This
+instrumentation is also made available in mlir-opt via the `-pass-timing` flag.
+The PassTiming instrumentation provides several different display modes for the
+timing results, each of which is described below:
 
 ##### List Display Mode
 
@@ -439,11 +440,10 @@ In this mode, the results are displayed in a nested pipeline view that mirrors
 the internal pass pipeline that is being executed in the pass manager. This view
 is useful for understanding specifically which parts of the pipeline are taking
 the most time, and can also be used to identify when analyses are being
-invalidated and recomputed. This display mode is available in mlir-opt via
-`-pass-timing-display=pipeline`.
+invalidated and recomputed. This is the default display mode.
 
 ```shell
-$ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing -pass-timing-display=pipeline
+$ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing
 
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...

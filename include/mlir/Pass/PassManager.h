@@ -34,12 +34,33 @@ class PassExecutor;
 class ModulePassExecutor;
 } // end namespace detail
 
+/// An enum describing the different display modes for the pass timing
+/// information within the pass manager.
+enum class PassTimingDisplayMode {
+  // In this mode the results are displayed in a list sorted by total time,
+  // with each pass/analysis instance aggregated into one unique result.
+  List,
+
+  // In this mode the results are displayed in a nested pipeline view that
+  // mirrors the internal pass pipeline that is being executed in the pass
+  // manager.
+  Pipeline,
+};
+
 /// The main pass manager and pipeline builder.
 class PassManager {
 public:
   // If verifyPasses is true, the verifier is run after each pass.
   PassManager(bool verifyPasses = true);
   ~PassManager();
+
+  /// Run the passes within this manager on the provided module.
+  LLVM_NODISCARD
+  LogicalResult run(Module *module);
+
+  //===--------------------------------------------------------------------===//
+  // Pipeline Building
+  //===--------------------------------------------------------------------===//
 
   /// Add an opaque pass pointer to the current manager. This takes ownership
   /// over the provided pass pointer.
@@ -54,13 +75,21 @@ public:
   /// executor if necessary.
   void addPass(FunctionPassBase *pass);
 
-  /// Run the passes within this manager on the provided module.
-  LLVM_NODISCARD
-  LogicalResult run(Module *module);
+  //===--------------------------------------------------------------------===//
+  // Instrumentations
+  //===--------------------------------------------------------------------===//
 
   /// Add the provided instrumentation to the pass manager. This takes ownership
   /// over the given pointer.
   void addInstrumentation(PassInstrumentation *pi);
+
+  /// Add an instrumentation to time the execution of passes and the computation
+  /// of analyses.
+  /// Note: Timing should be enabled after all other instrumentations to avoid
+  /// any potential "ghost" timing from other instrumentations being
+  /// unintentionally included in the timing results.
+  void enableTiming(
+      PassTimingDisplayMode displayMode = PassTimingDisplayMode::Pipeline);
 
 private:
   /// A stack of nested pass executors on sub-module IR units, e.g. function.
@@ -70,7 +99,10 @@ private:
   std::unique_ptr<detail::ModulePassExecutor> mpe;
 
   /// Flag that specifies if the IR should be verified after each pass has run.
-  bool verifyPasses;
+  bool verifyPasses : 1;
+
+  /// Flag that specifies if pass timing is enabled.
+  bool passTiming : 1;
 
   /// A manager for pass instrumentations.
   std::unique_ptr<PassInstrumentor> instrumentor;

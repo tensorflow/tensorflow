@@ -15,8 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Pass/PassTiming.h"
 #include "PassDetail.h"
+#include "mlir/Pass/PassManager.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Format.h"
@@ -36,9 +37,65 @@ static bool isAdaptorPass(Pass *pass) {
   return isa<ModuleToFunctionPassAdaptor>(pass);
 }
 
-PassTiming::PassTiming(DisplayMode displayMode) : displayMode(displayMode) {}
+namespace {
+struct PassTiming : public PassInstrumentation {
+  PassTiming(PassTimingDisplayMode displayMode) : displayMode(displayMode) {}
+  ~PassTiming() { print(); }
 
-PassTiming::~PassTiming() { print(); }
+  /// Setup the instrumentation hooks.
+  void runBeforePass(Pass *pass, const llvm::Any &) override {
+    startPassTimer(pass);
+  }
+  void runAfterPass(Pass *pass, const llvm::Any &) override {
+    stopPassTimer(pass);
+  }
+  void runAfterPassFailed(Pass *pass, const llvm::Any &) override {
+    stopPassTimer(pass);
+  }
+  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
+                         const llvm::Any &) override {
+    startAnalysisTimer(name, id);
+  }
+  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
+                        const llvm::Any &) override {
+    stopAnalysisTimer(name, id);
+  }
+
+  /// Print and clear the timing results.
+  void print();
+
+  /// Start a new timer for the given pass.
+  void startPassTimer(Pass *pass);
+
+  /// Stop a timer for the given pass.
+  void stopPassTimer(Pass *pass);
+
+  /// Start a new timer for the given analysis.
+  void startAnalysisTimer(llvm::StringRef name, AnalysisID *id);
+
+  /// Stop a timer for the given analysis.
+  void stopAnalysisTimer(llvm::StringRef name, AnalysisID *id);
+
+  /// Print the timing result in list mode.
+  void printResultsAsList(llvm::raw_ostream &os);
+
+  /// Print the timing result in pipeline mode.
+  void printResultsAsPipeline(llvm::raw_ostream &os);
+
+  /// Mapping between pass and a respective timer.
+  llvm::MapVector<Pass *, std::unique_ptr<llvm::Timer>> passTimers;
+
+  /// Mapping between [analysis id, pass] and a respective timer.
+  llvm::DenseMap<std::pair<AnalysisID *, Pass *>, std::unique_ptr<llvm::Timer>>
+      analysisTimers;
+
+  /// A pointer to the currently active pass, or null.
+  Pass *activePass = nullptr;
+
+  /// The display mode to use when printing the timing results.
+  PassTimingDisplayMode displayMode;
+};
+} // end anonymous namespace
 
 /// Print out the current timing information.
 void PassTiming::print() {
@@ -47,10 +104,10 @@ void PassTiming::print() {
     return;
 
   switch (displayMode) {
-  case DisplayMode::List:
+  case PassTimingDisplayMode::List:
     printResultsAsList(*llvm::CreateInfoOutputFile());
     break;
-  case DisplayMode::Pipeline:
+  case PassTimingDisplayMode::Pipeline:
     printResultsAsPipeline(*llvm::CreateInfoOutputFile());
     break;
   }
@@ -231,4 +288,18 @@ void PassTiming::printResultsAsPipeline(llvm::raw_ostream &os) {
 
   printTimer("Total\n", pipelineTotal);
   os.flush();
+}
+
+//===----------------------------------------------------------------------===//
+// PassManager
+//===----------------------------------------------------------------------===//
+
+/// Add an instrumentation to time the execution of passes and the computation
+/// of analyses.
+void PassManager::enableTiming(PassTimingDisplayMode displayMode) {
+  // Check if pass timing is already enabled.
+  if (passTiming)
+    return;
+  addInstrumentation(new PassTiming(displayMode));
+  passTiming = true;
 }

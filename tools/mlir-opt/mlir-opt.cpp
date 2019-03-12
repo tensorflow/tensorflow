@@ -30,7 +30,6 @@
 #include "mlir/Parser.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
-#include "mlir/Pass/PassTiming.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
 #include "mlir/TensorFlow/Passes.h"
@@ -78,12 +77,12 @@ static cl::opt<bool>
     passTiming("pass-timing",
                cl::desc("Display the execution times of each pass"));
 
-static cl::opt<PassTiming::DisplayMode> passTimingDisplayMode(
+static cl::opt<PassTimingDisplayMode> passTimingDisplayMode(
     "pass-timing-display", cl::desc("Display method for pass timing data"),
-    cl::init(PassTiming::DisplayMode::List),
-    cl::values(clEnumValN(PassTiming::DisplayMode::List, "list",
+    cl::init(PassTimingDisplayMode::Pipeline),
+    cl::values(clEnumValN(PassTimingDisplayMode::List, "list",
                           "display the results in a list sorted by total time"),
-               clEnumValN(PassTiming::DisplayMode::Pipeline, "pipeline",
+               clEnumValN(PassTimingDisplayMode::Pipeline, "pipeline",
                           "display the results with a nested pipeline view")));
 
 static std::vector<const mlir::PassRegistryEntry *> *passList;
@@ -153,7 +152,7 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
   // potential "ghost" timing from other instrumentations being unintentionally
   // included in the timing results.
   if (passTiming)
-    pm.addInstrumentation(new PassTiming(passTimingDisplayMode));
+    pm.enableTiming(passTimingDisplayMode);
 
   if (failed(pm.run(module.get())))
     return OptFailure;
