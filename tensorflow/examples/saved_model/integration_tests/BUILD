@@ -110,6 +110,7 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_cuda_on_cpu_tap",  # forge input size exceeded
         "noasan",  # forge input size exceeded
         "nomsan",  # forge input size exceeded
         "notsan",  # forge input size exceeded
