@@ -78,7 +78,7 @@ struct CanonicalDebugOptions {
         return RE2::PartialMatch(string(module_name), pattern);
       };
     } else if (!opts.xla_dump_hlo_pass_re().empty() ||
-               output_format_specified) {
+               !opts.xla_dump_to().empty() || output_format_specified) {
       should_dump_module = [](string_view) { return true; };
     } else {
       should_dump_module = [](string_view) { return false; };
