@@ -766,7 +766,7 @@ INSTANTIATE_TEST_SUITE_P(
                    kUseIntrinsics3x3DotProduct),       // forced_invocation
         Values(1000),                                  // tests_to_run
         Values(false),                                 // test_stride
-        Values(false),                                 // test_pad
+        Bool(),                                        // test_pad
         Values(true),                                  // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
         Values(kLooseIntrinsicsTolerance)              // loose_tolerance
