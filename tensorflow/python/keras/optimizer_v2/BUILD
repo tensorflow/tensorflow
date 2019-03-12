@@ -196,6 +196,8 @@ py_test(
     tags = [
         "no_gpu",  # b/127001953
         "no_windows",
+        # TODO(b/127092862): Re-enable this test in Kokoro.
+        "no_oss",
     ],
     deps = [
         ":optimizer_v2",
@@ -234,6 +236,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",

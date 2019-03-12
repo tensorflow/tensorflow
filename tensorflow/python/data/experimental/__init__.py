@@ -48,7 +48,6 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@copy_to_device
 @@dense_to_sparse_batch
 @@enumerate_dataset
-@@filter_for_shard
 @@get_next_as_optional
 @@get_single_element
 @@group_by_reducer
@@ -92,7 +91,6 @@ from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNO
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
-from tensorflow.python.data.experimental.ops.filter_for_shard_ops import filter_for_shard
 from tensorflow.python.data.experimental.ops.get_single_element import get_single_element
 from tensorflow.python.data.experimental.ops.grouping import bucket_by_sequence_length
 from tensorflow.python.data.experimental.ops.grouping import group_by_reducer

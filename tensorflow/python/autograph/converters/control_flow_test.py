@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
@@ -28,10 +30,12 @@ from tensorflow.python.platform import test
 
 class ControlFlowTest(converter_testing.TestCase):
 
-  def assertTransformedResult(self, test_fn, inputs, expected):
+  def assertTransformedResult(self, test_fn, inputs, expected, symbols=None):
     if not isinstance(inputs, tuple):
       inputs = (inputs,)
-    with self.converted(test_fn, control_flow, {},
+    if not symbols:
+      symbols = {}
+    with self.converted(test_fn, control_flow, symbols,
                         constant_op.constant) as result:
       self.assertEqual(self.evaluate(result.test_fn(*inputs)), expected)
 
@@ -76,6 +80,63 @@ class ControlFlowTest(converter_testing.TestCase):
       return n
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
+
+  def test_while_local_composite(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = constant_op.constant(3)
+
+    def test_fn(n):
+      while n > 0:
+        tc = TestClass()
+        tc.x = tc.x
+        n -= 1
+      return n
+
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+
+  # TODO(b/127642077): Add tests for x.y.z = 2*x.y.z and x.y[z] = 2*x.y[z].
+  def test_while_local_composite_complex_nestable(self):
+
+    # This class is ok to be in a tf.while_loop's state.
+    class TestClass(collections.namedtuple('TestClass', ('x'))):
+      pass
+
+    def test_fn(n):
+      tc = TestClass([constant_op.constant(0)])
+      while n > 0:
+        tc = TestClass([constant_op.constant(3)])
+        tc.x[0] = tc.x[0] + 1
+        n -= 1
+      return tc.x[0]
+
+    ns = {'TestClass': TestClass, 'constant_op': constant_op}
+    self.assertTransformedResult(
+        test_fn, constant_op.constant(5), 4, symbols=ns)
+
+  def test_while_local_composite_complex_illegal(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.x = [constant_op.constant(3)]
+
+    def test_fn(n):
+      while n > 0:
+        tc = TestClass()
+        tc.x[0] = tc.x[0] + 1
+        n -= 1
+      return tc.x[0]
+
+    with self.converted(
+        test_fn, control_flow, {'TestClass': TestClass}) as result:
+      # The tested function would require `tc` to become part of the while loop
+      # state, but TensorFlow doesn't support classes at the moment.
+      with self.assertRaisesRegexp(ValueError, 'must.*initialize.*Tensor.*tc'):
+        result.test_fn(constant_op.constant(5))
 
   @test_util.run_deprecated_v1
   def test_while_dispatches_by_cond_only(self):
@@ -188,6 +249,52 @@ class ControlFlowTest(converter_testing.TestCase):
     # but that will be pruned at execution.
     self.assertTransformedResult(test_fn, constant_op.constant(1), 1)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
+
+  @test_util.run_deprecated_v1
+  def test_if_unbalanced_multiple_composites(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+        self.c = 3
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        x.c = 11
+        z = 13
+
+      return x.b, x.c, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 11, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 3, 5))
+
+  @test_util.run_deprecated_v1
+  def test_if_unbalanced_composite(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        z = 13
+
+      return x.b, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 5))
 
   @test_util.run_deprecated_v1
   def test_simple_for(self):

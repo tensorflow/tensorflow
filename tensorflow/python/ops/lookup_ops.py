@@ -939,7 +939,7 @@ class IdTableWithHashBuckets(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
-      values = math_ops.to_int64(values)
+      values = math_ops.cast(values, dtypes.int64)
 
     if self._num_oov_buckets == 0:
       ids = self._table.lookup(values, name=name)
@@ -1118,7 +1118,7 @@ class StaticVocabularyTable(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
-      values = math_ops.to_int64(values)
+      values = math_ops.cast(values, dtypes.int64)
 
     # TODO(yleon): Consider moving this functionality to its own kernel.
     with ops.name_scope(name, "%s_Lookup" % self.name):
@@ -1344,10 +1344,11 @@ def index_table_from_tensor(vocabulary_list,
     if (not dtype.is_integer) and (keys.dtype.base_dtype != dtype):
       raise ValueError("Expected %s, got %s." % (dtype, keys.dtype))
     num_elements = array_ops.size(keys)
-    values = math_ops.to_int64(math_ops.range(num_elements))
+    values = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
 
     with ops.name_scope(None, "hash_table"):
-      table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
+      table_keys = math_ops.cast(
+          keys, dtypes.int64) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,
           values,
@@ -1507,7 +1508,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   with ops.name_scope(name, "index_to_string"):
     vocabulary_list = ops.convert_to_tensor(vocabulary_list, dtypes.string)
     num_elements = array_ops.size(vocabulary_list)
-    keys = math_ops.to_int64(math_ops.range(num_elements))
+    keys = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
 
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")

@@ -33,13 +33,12 @@ tf_cuda_library(
         "//tensorflow:android": [],
         "//conditions:default": ["."],
     }),
-    deps = [
-        "//tensorflow/c:c_api",
-    ] + select({
+    deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib",
         ],
         "//conditions:default": [
+            "//tensorflow/c:c_api",
             "//tensorflow/core:all_kernels",
             "//tensorflow/core:direct_session",
             "//tensorflow/core:ops",

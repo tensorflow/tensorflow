@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -60,6 +60,13 @@ cc_library(
     deps = [
         "//tensorflow/lite/kernels:op_macros",
     ],
+)
+
+config_setting(
+    name = "aarch64",
+    values = {
+        "cpu": "aarch64",
+    },
 )
 
 config_setting(
@@ -244,6 +251,7 @@ cc_library(
         ":optimized_base",
         ":tensor",
         ":types",
+        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite/c:c_api_internal",
         "//third_party/eigen3",
     ],
@@ -499,6 +507,9 @@ cc_library(
         "//tensorflow/lite/kernels:op_macros",
         "@gemmlowp",
     ] + select({
+        ":aarch64": [
+            ":neon_tensor_utils",
+        ],
         ":arm": [
             ":neon_tensor_utils",
         ],
@@ -557,9 +568,7 @@ cc_library(
     ],
 )
 
-# TODO(b/122597976): Eliminate TF dependency from lite/kernels:test_util,
-# in turn eliminating the need to use tf_cc_test for any dependent tests.
-tf_cc_test(
+cc_test(
     name = "tensor_utils_test",
     srcs = ["tensor_utils_test.cc"],
     linkopts = select({

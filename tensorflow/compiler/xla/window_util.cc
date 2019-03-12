@@ -204,6 +204,14 @@ bool IsInactiveWindowDimension(const Window& window, int64 logical_dim) {
          window_dim.padding_low() == 0 && window_dim.padding_high() == 0;
 }
 
+bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
+  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
+         window_dimension.padding_low() == 0 &&
+         window_dimension.padding_high() == 0 &&
+         window_dimension.window_dilation() == 1 &&
+         window_dimension.base_dilation() == 1;
+}
+
 int64 DilatedBound(int64 bound, int64 dilation) {
   CHECK_GE(bound, 0);
   CHECK_GE(dilation, 1);
