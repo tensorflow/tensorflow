@@ -1423,6 +1423,7 @@ def _py_wrap_cc_impl(ctx):
     inputs += ctx.files._swiglib
     inputs += ctx.files.toolchain_deps
     swig_include_dirs = depset(_get_repository_roots(ctx, inputs))
+    swig_include_dirs += sorted([f.dirname for f in ctx.files._swiglib])
     args = [
         "-c++",
         "-python",
