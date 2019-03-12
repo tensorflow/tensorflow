@@ -61,7 +61,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent)
-    : device_mgr_(device_mgr),
+    : env_(env),
+      device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
       next_handle_(0),
@@ -86,7 +87,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     CustomKernelCreator custom_kernel_creator,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent)
-    : device_mgr_(device_mgr),
+    : env_(env),
+      device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
       next_handle_(0),
@@ -512,7 +514,17 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   VLOG(1) << "Instantiating MultiDevice function \"" << function_name
-          << "\" on default device " << options.target;
+          << "\" on default device \"" << options.target << "\"";
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Requested input devices:";
+    for (const string& device : options.input_devices) {
+      VLOG(3) << "    " << device;
+    }
+    VLOG(3) << "Requested output devices:";
+    for (const string& device : options.output_devices) {
+      VLOG(3) << "    " << device;
+    }
+  }
 
   const FunctionLibraryDefinition* lib_def =
       options.overlay_lib == nullptr ? lib_def_ : options.overlay_lib;
@@ -548,17 +560,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(PinArgsAndRets(
       options.input_devices, options.output_devices, device_set, graph.get()));
 
-  // Make the FunctionLibraryRuntime's device the default device if
-  // nothing else is hard coded. This allows the same function definition
-  // to be specialized to different devices depending on the
-  // PartitionedCallOp's device.
-  FunctionLibraryRuntime* flr = GetFLR(options.target);
-  if (flr == nullptr) {
-    return errors::InvalidArgument(
-        "Cannot instantiate multi-device function with target device ",
-        options.target);
-  }
-
   std::unique_ptr<MultiDeviceFunctionData> data =
       MakeUnique<MultiDeviceFunctionData>(function_name, function_key,
                                           ret_node_names.size(),
@@ -567,7 +568,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
-  session_options.env = flr->env();
+  session_options.env = env_;
   session_options.config = options.config_proto;
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
@@ -579,9 +580,24 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   DumpGraph("Before calling Placer", graph.get());
+  // Make the FunctionLibraryRuntime's device the default device if
+  // nothing else is hard coded. This allows the same function definition
+  // to be specialized to different devices depending on the
+  // PartitionedCallOp's device.
+  Device* default_device = nullptr;
+  if (!options.target.empty()) {
+    FunctionLibraryRuntime* flr = GetFLR(options.target);
+    if (flr == nullptr) {
+      return errors::InvalidArgument(
+          "Cannot instantiate multi-device function with target device ",
+          options.target);
+    }
+    default_device = flr->device();
+  }
+
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  Placer placer(graph.get(), &device_set, flr->device() /* Default device */,
+  Placer placer(graph.get(), &device_set, default_device,
                 options.config_proto.allow_soft_placement(),
                 options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
