@@ -227,7 +227,11 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
     pipeline.AddPass<CudnnConvRewriter>();
-    pipeline.AddPass<CudnnFusedConvRewriter>();
+    // FIXME(rocm):
+    // Disable the fusion optimization for now, since we do not have underlying
+    // support for it. (ROCm fusion support in non-XLA mode is different than
+    // what is needed here)
+    // pipeline.AddPass<CudnnFusedConvRewriter>();
     pipeline.AddPass<CudnnConvPaddingLegalization>();
 
     pipeline.AddPass<HloConstantFolding>();
