@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <gtest/gtest.h>
 #include <initializer_list>
+#include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -105,12 +105,12 @@ void Check(int axis, std::initializer_list<int> input_shape,
 
 TEST(SplitVOpTest, TwoDimensional) {
   // Input shape: {4, 3}
-  // size_splits: {1, 1, 3}
+  // size_splits: {1, 1, 2}
   // axis: 0
   // We should have 3 outpus with shapes respectively:
-  //  output 0 : {1, 3}
   //  output 1 : {1, 3}
-  //  output 1 : {2, 3}
+  //  output 2 : {1, 3}
+  //  output 3 : {2, 3}
   Check<float, TensorType_FLOAT32>(
       /*axis=*/0, {4, 3}, {3}, {{1, 3}, {1, 3}, {2, 3}},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {1, 1, 2},
@@ -174,12 +174,12 @@ TEST(SplitVOpTest, NegativeAxis) {
 
 TEST(SplitVOpTest, TwoDimensionalUint8) {
   // Input shape: {4, 3}
-  // size_splits: {1, 1, 3}
+  // size_splits: {1, 1, 2}
   // axis: 0
   // We should have 3 outpus with shapes respectively:
-  //  output 0 : {1, 3}
   //  output 1 : {1, 3}
-  //  output 1 : {2, 3}-t
+  //  output 2 : {1, 3}
+  //  output 3 : {2, 3}
   Check<uint8_t, TensorType_UINT8>(
       /*axis=*/0, {4, 3}, {3}, {{1, 3}, {1, 3}, {2, 3}},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {1, 1, 2},
@@ -188,12 +188,12 @@ TEST(SplitVOpTest, TwoDimensionalUint8) {
 
 TEST(SplitVOpTest, TwoDimensionalInt16) {
   // Input shape: {4, 3}
-  // size_splits: {1, 1, 3}
+  // size_splits: {1, 1, 2}
   // axis: 0
   // We should have 3 outpus with shapes respectively:
-  //  output 0 : {1, 3}
   //  output 1 : {1, 3}
-  //  output 1 : {2, 3}-t
+  //  output 2 : {1, 3}
+  //  output 3 : {2, 3}
   Check<int16_t, TensorType_INT16>(
       /*axis=*/0, {4, 3}, {3}, {{1, 3}, {1, 3}, {2, 3}},
       {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}, {1, 1, 2},
