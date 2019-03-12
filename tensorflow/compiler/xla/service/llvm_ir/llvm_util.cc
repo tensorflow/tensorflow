@@ -584,7 +584,7 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
 void DumpIrIfEnabled(const HloModule& hlo_module,
                      const llvm::Module& llvm_module, bool optimized) {
   const auto& debug_opts = hlo_module.config().debug_options();
-  if (!debug_opts.xla_dump_ir() || !DumpingEnabledForHloModule(hlo_module)) {
+  if (!DumpingEnabledForHloModule(hlo_module)) {
     return;
   }
   // We can end up compiling different modules with the same name when using

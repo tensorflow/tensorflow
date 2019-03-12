@@ -717,7 +717,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_ir to get the IR. ";
+           "Rerun with --xla_dump_to to get the IR. ";
   }
 
   string libdevice_dir;
@@ -756,8 +756,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
   }
   // Write PTX to IR dump directory, if IR dumping was requested.
-  const auto& debug_opts = module->config().debug_options();
-  if (DumpingEnabledForHloModule(*module) && debug_opts.xla_dump_ir()) {
+  if (DumpingEnabledForHloModule(*module)) {
     DumpToFileInDirOrStdout(*module, "ptx", ptx);
   }
 
