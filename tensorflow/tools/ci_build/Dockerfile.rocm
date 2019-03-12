@@ -87,25 +87,35 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
+# Grab pre-built deb pkgs and install them (in the interest of saving our CI build times)
+#  - hipblas-0.12.2.0-Linux.deb
+#  - MIOpen-HIP-1.7.1-6054829-Linux.deb
+#  - miopengemm-1.1.5-30eade0-Linux.deb
+#  - rocblas-2.0.1.0-Linux.deb
+#  - rocfft-0.8.9.0-Linux.deb
+#  - rocrand-1.8.2-Linux.deb
+RUN cd $HOME && wget https://www.dropbox.com/s/e6yh6glemrkoo91/tf-pr318-deb-pkgs.tar.gz && \
+    tar xzf tf-pr318-deb-pkgs.tar.gz && dpkg -i ./tf-pr318-deb-pkgs/*.deb
+
 # Build rocBLAS from source
-RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
-RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/hipBLAS.git && cd hipBLAS && ./install.sh -id
+#RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
+#RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/hipBLAS.git && cd hipBLAS && ./install.sh -id
 
 # Build rocFFT from source
-RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id
+#RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocFFT.git && cd rocFFT && ./install.sh -id
 
 # Build rocRAND from source
-RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
+#RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocRAND.git && mkdir rocRAND/build && cd rocRAND/build && HIP_PLATFORM=hcc CXX=hcc cmake .. && make package -j $(nproc) && dpkg -i ./rocrand*.deb
 
 # Build MIOpen from source
-RUN cd $HOME && git clone -b master https://github.com/RadeonOpenCompute/rocm-cmake.git && cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
-RUN cd $HOME && git clone -b 0.4.0  https://github.com/RadeonOpenCompute/clang-ocl.git && cd $HOME/clang-ocl && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-clang-ocl*.deb
-RUN cd $HOME && git clone -b 1.1.5  https://github.com/ROCmSoftwarePlatform/MIOpenGEMM.git && cd $HOME/MIOpenGEMM && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./miopengemm*.deb
-RUN cd $HOME && git clone -b 1.7.1  https://github.com/ROCmSoftwarePlatform/MIOpen.git
-RUN cd $HOME/MIOpen && cmake -P install_deps.cmake && \
-    mkdir -p build && cd build && \
-    CXX=/opt/rocm/hcc/bin/hcc cmake -DMIOPEN_BACKEND=HIP -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" -D#CMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" .. -DMIOPEN_MAKE_BOOST_PUBLIC=ON && \
-    make -j $(nproc) && make package && dpkg -i ./MIOpen*.deb
+#RUN cd $HOME && git clone -b master https://github.com/RadeonOpenCompute/rocm-cmake.git && cd $HOME/rocm-cmake && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-cmake*.deb
+#RUN cd $HOME && git clone -b 0.4.0  https://github.com/RadeonOpenCompute/clang-ocl.git && cd $HOME/clang-ocl && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./rocm-clang-ocl*.deb
+#RUN cd $HOME && git clone -b 1.1.5  https://github.com/ROCmSoftwarePlatform/MIOpenGEMM.git && cd $HOME/MIOpenGEMM && mkdir -p build && cd build && cmake .. && make package -j$(nproc) && dpkg -i ./miopengemm*.deb
+#RUN cd $HOME && git clone -b 1.7.1  https://github.com/ROCmSoftwarePlatform/MIOpen.git
+#RUN cd $HOME/MIOpen && cmake -P install_deps.cmake && \
+#    mkdir -p build && cd build && \
+#    CXX=/opt/rocm/hcc/bin/hcc cmake -DMIOPEN_BACKEND=HIP -DCMAKE_PREFIX_PATH="/opt/rocm/hcc;/opt/rocm/hip" -D#CMAKE_CXX_FLAGS="-isystem /usr/include/x86_64-linux-gnu/" .. -DMIOPEN_MAKE_BOOST_PUBLIC=ON && \
+#    make -j $(nproc) && make package && dpkg -i ./MIOpen*.deb
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
