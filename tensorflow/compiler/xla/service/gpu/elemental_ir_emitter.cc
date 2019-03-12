@@ -287,6 +287,8 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
   return EmitLibdeviceMathCall("__ocml_atan2", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                        llvm::Value* value) {
