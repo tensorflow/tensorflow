@@ -313,6 +313,119 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct> {
   }
 };
 
+template <>
+struct ProcessPerDepth<DepthwiseConvImplementation::kUseUnwound3x3DotProduct> {
+  static inline void Run(const uint8* filter_data, const int32* bias_data,
+                         int8* shuffled_filter_data, int32* adjusted_bias_data,
+                         const DepthwiseConvDotProdParams* function_params) {
+    const int depth = function_params->output_depth;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int bias_increment = function_params->bias_increment;
+
+    // Simulate NEON-register transposition of subset of filter.
+    int8 filter_bank_a_0[4][4];  // Depth 4, width 4.
+    int8 filter_bank_a_1[4][4];
+    int8 filter_bank_a_2[4][4];
+    int8 filter_bank_b_0[4][4];
+    int8 filter_bank_b_1[4][4];
+    int8 filter_bank_b_2[4][4];
+
+    // Load filter data in, essentially dropping the [depth/8] dimension, which
+    // is equivalent to loading just the depth needed for one micro-block.
+    //
+    // loaded_filter has dimensions height 3, width 4, sub-block 0 or 1,
+    // depth 4.
+    uint8 loaded_filter_0[4][2][4];
+    uint8 loaded_filter_1[4][2][4];
+    uint8 loaded_filter_2[4][2][4];
+
+    constexpr int kSymmetricZeroPoint = 128;
+    const int32 input_offset = function_params->input_offset;
+    TFLITE_DCHECK_GE(input_offset, -255);
+    TFLITE_DCHECK_LE(input_offset, 0);
+    const int32 input_offset_difference = input_offset + kSymmetricZeroPoint;
+
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
+      const uint8* filter_block = filter_data + 8 * j_depth;
+
+      // Filter data is provided as filter_block[3][3][depth/8][2][4].
+      // height 3, width 3, micro-blocks, sub-block 0 or 1, depth 4.
+      // filter_bank[3][2][4][4]; Sub-block, height 3, depth 4, width 4.
+      for (int x = 0; x < 3; ++x) {
+        memcpy(loaded_filter_0[x][0], &filter_block[3 * 0 * depth + x * depth],
+               8);
+        memcpy(loaded_filter_1[x][0], &filter_block[3 * 1 * depth + x * depth],
+               8);
+        memcpy(loaded_filter_2[x][0], &filter_block[3 * 2 * depth + x * depth],
+               8);
+      }
+      // Pad the filter with -filter_offset, so that the values become 0 when
+      // the filter_offset is later added, and so the filter tap is effectively
+      // disregarded.
+      memset(loaded_filter_0[3][0], kSymmetricZeroPoint, 8);
+      memset(loaded_filter_1[3][0], kSymmetricZeroPoint, 8);
+      memset(loaded_filter_2[3][0], kSymmetricZeroPoint, 8);
+
+      for (int z = 0; z < 4; ++z) {
+        for (int x = 0; x < 4; ++x) {
+          filter_bank_a_0[z][x] =
+              loaded_filter_0[x][0][z] - kSymmetricZeroPoint;
+          filter_bank_b_0[z][x] =
+              loaded_filter_0[x][1][z] - kSymmetricZeroPoint;
+          filter_bank_a_1[z][x] =
+              loaded_filter_1[x][0][z] - kSymmetricZeroPoint;
+          filter_bank_b_1[z][x] =
+              loaded_filter_1[x][1][z] - kSymmetricZeroPoint;
+          filter_bank_a_2[z][x] =
+              loaded_filter_2[x][0][z] - kSymmetricZeroPoint;
+          filter_bank_b_2[z][x] =
+              loaded_filter_2[x][1][z] - kSymmetricZeroPoint;
+        }
+      }
+
+      memcpy(shuffled_filter_data, filter_bank_a_0, 16);
+      shuffled_filter_data += 16;
+      memcpy(shuffled_filter_data, filter_bank_b_0, 16);
+      shuffled_filter_data += 16;
+      memcpy(shuffled_filter_data, filter_bank_a_1, 16);
+      shuffled_filter_data += 16;
+      memcpy(shuffled_filter_data, filter_bank_b_1, 16);
+      shuffled_filter_data += 16;
+      memcpy(shuffled_filter_data, filter_bank_a_2, 16);
+      shuffled_filter_data += 16;
+      memcpy(shuffled_filter_data, filter_bank_b_2, 16);
+      shuffled_filter_data += 16;
+
+      int32 adjusted_bias_data_0[4];
+      int32 adjusted_bias_data_1[4];
+      // For instance, if input_offset == 128, no adjustment is needed.
+      for (int z = 0; z < 4; ++z) {
+        adjusted_bias_data_0[z] = bias_data[z];
+        adjusted_bias_data_1[z] = bias_data[4 + z];
+        for (int x = 0; x < 4; ++x) {
+          adjusted_bias_data_0[z] +=
+              input_offset_difference * filter_bank_a_0[z][x];
+          adjusted_bias_data_0[z] +=
+              input_offset_difference * filter_bank_a_1[z][x];
+          adjusted_bias_data_0[z] +=
+              input_offset_difference * filter_bank_a_2[z][x];
+          adjusted_bias_data_1[z] +=
+              input_offset_difference * filter_bank_b_0[z][x];
+          adjusted_bias_data_1[z] +=
+              input_offset_difference * filter_bank_b_1[z][x];
+          adjusted_bias_data_1[z] +=
+              input_offset_difference * filter_bank_b_2[z][x];
+
+          adjusted_bias_data[z] = adjusted_bias_data_0[z];
+          adjusted_bias_data[4 + z] = adjusted_bias_data_1[z];
+        }
+      }
+      bias_data += 2 * bias_increment;
+      adjusted_bias_data += 8;
+    }
+  }
+};
+
 #if defined(USE_NEON)
 template <>
 struct ProcessPerDepth<
@@ -748,6 +861,194 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
     }
   }
 };
+
+// Beginning of code section containing intermediate code transformation.
+//
+// This section is only compiled when kUseUnwound3x3DotProduct versions of
+// templated functions are selected.
+template <>
+struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                      DepthwiseConvDepthMultiplication::kNoMultiplication,
+                      /*max_padding=*/0> {
+  static inline void Run(int32 height_block_number, int32 width_block_number,
+                         const uint8* input_block_data,
+                         int8* scratch_block_data,
+                         const DepthwiseConvDotProdParams* function_params) {
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int input_width_micro_repeats =
+        function_params->input_width_micro_repeats;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int block_height = function_params->inbound_block_height;
+    const int residual_width = function_params->residual_width;
+    const int input_height_stride = function_params->input_height_stride;
+    const int input_depth = function_params->input_depth;
+
+    TFLITE_DCHECK_GE(depth_micro_repeats, 0);
+    constexpr int kSymmetricZeroPoint = 128;
+    const int micro_block_size = 4 * 8;
+    const int depth_advance = width_overall_micro_repeats * micro_block_size;
+    const int width_advance =
+        micro_block_size *
+        (1 - depth_micro_repeats * width_overall_micro_repeats);
+    const int height_advance = workspace_height_stride -
+                               width_overall_micro_repeats * micro_block_size;
+    const int input_depth_skip = 4 * input_depth - 8 * depth_micro_repeats;
+
+    // Transpositions are 4x4, but doing 2 at a time is more efficient in the
+    // NEON code we are simulating. Note the blocks of 4x4 are still interleaved
+    // down the depth.
+    int8 tmp_load[4][2][4];
+    int8 tmp_transposed[4][2][4];
+    int8 tmp_interleaved[2][4][4];
+
+    // Work through one slice, by row, at a time.
+    int8* scratch_data = scratch_block_data;
+    for (int k_height = 0; k_height < block_height; ++k_height) {
+      const uint8* input_data = input_block_data;
+      input_block_data += input_height_stride;
+
+      // Traverse the width one point at a time, but the depth in (micro) blocks
+      // of size 8.
+      //
+      // The depth and width margins, which are filled with "zeros", may be
+      // larger than is strictly needed to calculate output. This is because the
+      // conv calculation is performed across complete micro blocks.
+      for (int j_width = 0; j_width < input_width_micro_repeats; ++j_width) {
+        // Load, then zero.
+        for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
+          // A. Simulate register loading.
+          for (int x = 0; x < 4; ++x) {
+            for (int s = 0; s < 2; ++s) {
+              for (int d = 0; d < 4; ++d) {
+                tmp_load[x][s][d] = input_data[x * input_depth + 4 * s + d] -
+                                    kSymmetricZeroPoint;
+              }
+            }
+          }
+          // B. Simulate between-register transposition.
+          for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+              tmp_transposed[x][0][y] = tmp_load[y][0][x];
+              tmp_transposed[x][1][y] = tmp_load[y][1][x];
+            }
+          }
+
+          // C and D are to be performed together as 4-byte stores in NEON code.
+          // C. Simulate between-register interleaving.
+          for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+              tmp_interleaved[0][x][y] = tmp_transposed[x][0][y];
+              tmp_interleaved[1][x][y] = tmp_transposed[x][1][y];
+            }
+          }
+          // D. Simulate mangled storage arrangement.
+          memcpy(&scratch_data[0], tmp_interleaved[0][0], 8);
+          memcpy(&scratch_data[8], tmp_interleaved[0][2], 8);
+          memcpy(&scratch_data[16], tmp_interleaved[1][0], 8);
+          memcpy(&scratch_data[24], tmp_interleaved[1][2], 8);
+
+          scratch_data += depth_advance;
+          input_data += 8;
+        }
+        scratch_data += width_advance;
+        input_data += input_depth_skip;
+      }
+      if (width_overall_micro_repeats > input_width_micro_repeats) {
+        TFLITE_DCHECK_EQ(width_overall_micro_repeats,
+                         input_width_micro_repeats + 1);
+        TFLITE_DCHECK_GT(residual_width, 0);
+        // Figure out division of work (available input vs zero-ed).
+        const int adjusted_residual_width = residual_width;
+        // Load, then zero.
+        for (int i_depth = 0; i_depth < depth_micro_repeats; ++i_depth) {
+          // A. Simulate register loading.
+          for (int x = 0; x < adjusted_residual_width; ++x) {
+            for (int s = 0; s < 2; ++s) {
+              for (int d = 0; d < 4; ++d) {
+                tmp_load[x][s][d] = input_data[x * input_depth + 4 * s + d] -
+                                    kSymmetricZeroPoint;
+              }
+            }
+          }
+          for (int x = adjusted_residual_width; x < 4; ++x) {
+            for (int s = 0; s < 2; ++s) {
+              for (int d = 0; d < 4; ++d) {
+                tmp_load[x][s][d] = 0;
+              }
+            }
+          }
+          // B. Simulate between-register transposition.
+          for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+              tmp_transposed[x][0][y] = tmp_load[y][0][x];
+              tmp_transposed[x][1][y] = tmp_load[y][1][x];
+            }
+          }
+
+          // C and D are to be performed together as 4-byte stores in NEON code.
+          // C. Simulate between-register interleaving.
+          for (int x = 0; x < 4; ++x) {
+            for (int y = 0; y < 4; ++y) {
+              tmp_interleaved[0][x][y] = tmp_transposed[x][0][y];
+              tmp_interleaved[1][x][y] = tmp_transposed[x][1][y];
+            }
+          }
+          // D. Simulate mangled storage arrangement.
+          memcpy(&scratch_data[0], tmp_interleaved[0][0], 8);
+          memcpy(&scratch_data[8], tmp_interleaved[0][2], 8);
+          memcpy(&scratch_data[16], tmp_interleaved[1][0], 8);
+          memcpy(&scratch_data[24], tmp_interleaved[1][2], 8);
+
+          scratch_data += depth_advance;
+          input_data += 8;
+        }
+        scratch_data += width_advance;
+        input_data += input_depth_skip;
+      }
+      scratch_data += height_advance;
+    }
+
+    TFLITE_DCHECK_EQ(scratch_data, scratch_block_data +
+                                       block_height * workspace_height_stride);
+  }
+};
+
+template <>
+struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                      DepthwiseConvDepthMultiplication::kNoMultiplication,
+                      /*max_padding=*/1> {
+  static inline void Run(int32 height_block_number, int32 width_block_number,
+                         const uint8* input_block_data,
+                         int8* scratch_block_data,
+                         const DepthwiseConvDotProdParams* function_params) {
+    // Just use C model code for case of padding. Optimized versions merge the
+    // modifications therein to handle padding.
+    PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
+                   DepthwiseConvDepthMultiplication::kNoMultiplication,
+                   /*max_padding=*/1>::Run(height_block_number,
+                                           width_block_number, input_block_data,
+                                           scratch_block_data, function_params);
+  }
+};
+
+template <int32 max_padding>
+struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                      DepthwiseConvDepthMultiplication::kUnitInputDepth,
+                      max_padding> {
+  static inline void Run(int32 height_block_number, int32 width_block_number,
+                         const uint8* input_block_data,
+                         int8* scratch_block_data,
+                         const DepthwiseConvDotProdParams* function_params) {
+    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+  }
+};
+// The preceding section is only compiled when kUseUnwound3x3DotProduct versions
+// of templated functions are selected.
+//
+// End of code section containing intermediate code transformation.
 
 #if defined(USE_NEON)
 #if defined(__aarch64__)
@@ -2150,17 +2451,245 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
   }
 };
 
+// Beginning of code section containing intermediate code transformation.
+//
+// This section is only compiled when kUseUnwound3x3DotProduct versions of
+// templated functions are selected.
+template <int32 stride>
+struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                        DepthwiseConvDepthMultiplication::kNoMultiplication,
+                        stride> {
+  static inline void Run(const int8* scratch_block_data,
+                         const int8* filter_workspace, const int32* bias_data,
+                         uint8* output_block_data,
+                         const DepthwiseConvDotProdParams* function_params) {
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int input_width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int output_width_micro_repeats =
+        function_params->output_width_micro_repeats;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int depth = function_params->input_depth;
+    const int stride_val = function_params->stride;
+    const int four_over_stride = function_params->four_over_stride;
+
+    const int output_width_overall_micro_repeats =
+        function_params->output_width_overall_micro_repeats;
+    const int block_height = function_params->outbound_block_height;
+    const int residual_width = function_params->output_residual_width;
+    const int output_height_stride = function_params->output_height_stride;
+    const int bias_increment = function_params->bias_increment;
+
+    TFLITE_DCHECK(depth_micro_repeats > 0);
+    const int width_micro_stride = 4 * 8;
+    const int depth_micro_stride =
+        width_micro_stride * input_width_overall_micro_repeats;
+
+    const int32 output_activation_min =
+        function_params->quantized_activation_min;
+    const int32 output_activation_max =
+        function_params->quantized_activation_max;
+    const int32 output_multiplier = function_params->output_multiplier;
+    const int32 output_shift = function_params->output_shift;
+    const int32 output_offset = function_params->output_offset;
+
+    // Simulate NEON-register transposition of subset of filter.
+    int8 filter_bank_a_0[4][4];  // Depth 4, width 4.
+    int8 filter_bank_a_1[4][4];
+    int8 filter_bank_a_2[4][4];
+    int8 filter_bank_b_0[4][4];
+    int8 filter_bank_b_1[4][4];
+    int8 filter_bank_b_2[4][4];
+    // Simulate NEON-register input data concatenation + sub-selection.
+    // Also sub-block, height 3, depth 4, width 4.
+    uint8 output_values[4];  // Sub-block, depth 4.
+    // selected_data has format Depth 4, width 4.
+    int8 left_bank_0[4][4];
+    int8 left_bank_1[4][4];
+    int8 left_bank_2[4][4];
+    int8 right_bank_0[4][4];
+    int8 right_bank_1[4][4];
+    int8 right_bank_2[4][4];
+    memset(right_bank_0[0], 0, 16);
+    memset(right_bank_1[0], 0, 16);
+    memset(right_bank_2[0], 0, 16);
+
+    constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
+
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
+      const int8* filter_block =
+          filter_workspace + shuffled_filter_increment * j_depth;
+
+      memcpy(filter_bank_a_0, filter_block, 16);
+      memcpy(filter_bank_b_0, filter_block + 16, 16);
+      memcpy(filter_bank_a_1, filter_block + 32, 16);
+      memcpy(filter_bank_b_1, filter_block + 48, 16);
+      memcpy(filter_bank_a_2, filter_block + 64, 16);
+      memcpy(filter_bank_b_2, filter_block + 80, 16);
+
+      for (int s = 0; s < 2; ++s) {
+        // Work through one slice, by row, at a time.
+        for (int k_height = 0; k_height < block_height; ++k_height) {
+          const int8* scratch_data =
+              scratch_block_data +
+              workspace_height_stride * k_height * stride_val +
+              depth_micro_stride * j_depth;
+          uint8* output_data =
+              output_block_data + output_height_stride * k_height + 8 * j_depth;
+          const int8* input_data_0 = scratch_data + s * 2 * 8;
+
+          // Load first sub-micro block of data into operational banks.
+          memcpy(left_bank_0[0], input_data_0, 16);
+          memcpy(left_bank_1[0], input_data_0 + workspace_height_stride, 16);
+          memcpy(left_bank_2[0], input_data_0 + 2 * workspace_height_stride,
+                 16);
+
+          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+               ++i_width) {
+            const int output_width = i_width == output_width_micro_repeats
+                                         ? residual_width
+                                         : four_over_stride;
+            TFLITE_DCHECK_LE(output_width * stride_val, 4);
+            const int8* input_data =
+                input_data_0 + width_micro_stride * i_width;
+            const bool no_right_block = (output_width - 1) * stride_val < 2;
+
+            // Load next sub-micro block of data.
+            if (!no_right_block) {
+              memcpy(right_bank_0[0], input_data + width_micro_stride, 16);
+              memcpy(right_bank_1[0],
+                     input_data + workspace_height_stride + width_micro_stride,
+                     16);
+              memcpy(
+                  right_bank_2[0],
+                  input_data + 2 * workspace_height_stride + width_micro_stride,
+                  16);
+            }
+
+            // Iterate over input width shifts within 4x4 blocks.
+            for (int x = 0; x < output_width; ++x) {
+              // Operate on depth of 4 in batches.
+              for (int d = 0; d < 4; ++d) {
+                int32 acc = 0;
+                for (int x = 0; x < 4; ++x) {
+                  int32 input_val = left_bank_0[d][x];
+                  int32 filter_val = filter_bank_a_0[d][x];
+                  acc += filter_val * input_val;
+                }
+                for (int x = 0; x < 4; ++x) {
+                  int32 input_val = left_bank_1[d][x];
+                  int32 filter_val = filter_bank_a_1[d][x];
+                  acc += filter_val * input_val;
+                }
+                for (int x = 0; x < 4; ++x) {
+                  int32 input_val = left_bank_2[d][x];
+                  int32 filter_val = filter_bank_a_2[d][x];
+                  acc += filter_val * input_val;
+                }
+                acc += bias_data[d];
+                acc = reference_ops::depthwise_conv::DepthwiseConvRound<
+                    DepthwiseConvOutputRounding::kUpward>(
+                    acc, output_multiplier, output_shift);
+                acc += output_offset;
+                acc = std::max(acc, output_activation_min);
+                acc = std::min(acc, output_activation_max);
+                output_values[d] = static_cast<uint8>(acc);
+              }
+
+              for (int d = 0; d < 4; ++d) {
+                output_data[depth * (four_over_stride * i_width + x) + 4 * s +
+                            d] = output_values[d];
+              }
+
+              // Simulate shifting instructions.
+              if (stride_val == 1) {
+                for (int depth_index = 0; depth_index < 4; ++depth_index) {
+                  for (int z = 0; z < 3; ++z) {
+                    left_bank_0[depth_index][z] =
+                        left_bank_0[depth_index][z + 1];
+                    left_bank_1[depth_index][z] =
+                        left_bank_1[depth_index][z + 1];
+                    left_bank_2[depth_index][z] =
+                        left_bank_2[depth_index][z + 1];
+                  }
+                  left_bank_0[depth_index][3] = right_bank_0[depth_index][0];
+                  left_bank_1[depth_index][3] = right_bank_1[depth_index][0];
+                  left_bank_2[depth_index][3] = right_bank_2[depth_index][0];
+                  for (int z = 0; z < 3; ++z) {
+                    right_bank_0[depth_index][z] =
+                        right_bank_0[depth_index][z + 1];
+                    right_bank_1[depth_index][z] =
+                        right_bank_1[depth_index][z + 1];
+                    right_bank_2[depth_index][z] =
+                        right_bank_2[depth_index][z + 1];
+                  }
+                }
+              } else {
+                for (int depth_index = 0; depth_index < 4; ++depth_index) {
+                  for (int z = 0; z < 2; ++z) {
+                    left_bank_0[depth_index][z] =
+                        left_bank_0[depth_index][z + 2];
+                    left_bank_1[depth_index][z] =
+                        left_bank_1[depth_index][z + 2];
+                    left_bank_2[depth_index][z] =
+                        left_bank_2[depth_index][z + 2];
+                  }
+                  left_bank_0[depth_index][2] = right_bank_0[depth_index][0];
+                  left_bank_1[depth_index][2] = right_bank_1[depth_index][0];
+                  left_bank_2[depth_index][2] = right_bank_2[depth_index][0];
+                  left_bank_0[depth_index][3] = right_bank_0[depth_index][1];
+                  left_bank_1[depth_index][3] = right_bank_1[depth_index][1];
+                  left_bank_2[depth_index][3] = right_bank_2[depth_index][1];
+                  for (int z = 0; z < 2; ++z) {
+                    right_bank_0[depth_index][z] =
+                        right_bank_0[depth_index][z + 2];
+                    right_bank_1[depth_index][z] =
+                        right_bank_1[depth_index][z + 2];
+                    right_bank_2[depth_index][z] =
+                        right_bank_2[depth_index][z + 2];
+                  }
+                }
+              }
+            }
+          }
+        }
+        bias_data += bias_increment;
+
+        // Move filter for second sub-block into operational filter.
+        for (int z = 0; z < 4; ++z) {
+          for (int x = 0; x < 4; ++x) {
+            filter_bank_a_0[z][x] = filter_bank_b_0[z][x];
+            filter_bank_a_1[z][x] = filter_bank_b_1[z][x];
+            filter_bank_a_2[z][x] = filter_bank_b_2[z][x];
+          }
+        }
+      }
+    }
+  }
+};
+template <int32 stride>
+struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
+                        DepthwiseConvDepthMultiplication::kUnitInputDepth,
+                        stride> {
+  static inline void Run(const int8* scratch_block_data,
+                         const int8* filter_workspace, const int32* bias_data,
+                         uint8* output_block_data,
+                         const DepthwiseConvDotProdParams* function_params) {
+    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+  }
+};
+// The preceding section is only compiled when kUseUnwound3x3DotProduct versions
+// of templated functions are selected.
+//
+// End of code section containing intermediate code transformation.
+
 #if defined(USE_NEON)
 template <>
 struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
     DepthwiseConvDepthMultiplication::kNoMultiplication,
     /*stride=*/1> {
-  // Apply filter to macro block of input data and store results.
-  //
-  // Parameters for repeats and residual sizes are in terms of outputs.
-  //
-  // Requirement: depth_micro_repeats > 0 || residual_depth > 0.
   static inline void KernelMacroBlockIntrinsics(
       const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
@@ -3764,8 +4293,7 @@ struct KernelMacroBlock<
   static inline void KernelMacroBlockIntrinsics(
       const int8* scratch_block_data, const int8* filter_workspace,
       const int32* bias_data, uint8* output_block_data,
-      const DepthwiseConvDotProdParams* function_params)
-      __attribute__((noinline)) {
+      const DepthwiseConvDotProdParams* function_params) {
     const int workspace_height_stride =
         function_params->workspace_height_stride;
     const int output_width_micro_repeats =
