@@ -256,11 +256,10 @@ def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
     "floating-point-like">;
 
 //===----------------------------------------------------------------------===//
-// Attributes
+// Attribute definitions
 //===----------------------------------------------------------------------===//
 
-// A constraint on attributes. This can be used to check the validity of
-// instruction attributes.
+// Attribute constraint. It can be used to check the validity of attributes.
 class AttrConstraint<Pred condition, string descr> {
   // The predicates that this attribute satisfies.
   // Format: {0} will be expanded to the attribute.
@@ -276,21 +275,23 @@ class Attr<Pred condition, string descr = ""> :
   code storageType = ?; // The backing mlir::Attribute type
   code returnType = ?;  // The underlying C++ value type
 
-  // Define converter method to convert from the storage type to the return
+  // The call expression to convert from the storage type to the return
   // type. For example, an enum can be stored as an int but returned as an
   // enum class.
   //
-  // Format: {0} will be expanded to the attribute. So
-  // '{0}.getValue().convertToFloat()' for 'FloatAttr val' will expand to
-  // 'getAttrOfType<FloatAttr>("val").getValue().convertToFloat()'.
+  // Format: {0} will be expanded to the attribute.
+  //
+  // For example, `{0}.getValue().getSExtValue()` for `IntegerAttr val` will
+  // expand to `getAttrOfType<IntegerAttr>("val").getValue().getSExtValue()`.
   code convertFromStorage = "{0}.getValue()";
 
-  // The call expression that builds an attribute from a constant value.
+  // The call expression to build an attribute from a constant value.
   //
-  // Format: {0} will be expanded to an instance of mlir::Builder, {1} will be
-  // expanded to the constant value of the attribute.  For example,
-  // '{0}.getStringAttr("{1}")' for 'StringAttr:"foo"' will expand to
-  // 'builder.getStringAttr("foo")'.
+  // Format: {0} will be expanded to an instance of mlir::Builder,
+  //         {1} will be expanded to the constant value of the attribute.
+  //
+  // For example, `{0}.getStringAttr("{1}")` for `StringAttr:"foo"` will expand
+  // to `builder.getStringAttr("foo")`.
   code constBuilderCall = ?;
 
   // Default value for attribute.
@@ -301,14 +302,6 @@ class Attr<Pred condition, string descr = ""> :
   // convertFromStorage method to handle the case where the attribute is
   // not present.
   bit isOptional = 0b0;
-}
-
-// Any attribute.
-def AnyAttr : Attr<CPred<"true">, "any"> {
-  let storageType = "Attribute";
-  let returnType = "Attribute";
-  let convertFromStorage = "{0}";
-  let constBuilderCall = "{1}";
 }
 
 // Decorates an attribute to have an (unvalidated) default value if not present.
@@ -326,14 +319,13 @@ class DefaultValuedAttr<Attr attr, string val> :
 
 // Decorates an attribute as optional. The return type of the generated
 // attribute accessor method will be Optional<>.
-class OptionalAttr<Attr attr> :
-    Attr<attr.predicate, attr.description> {
+class OptionalAttr<Attr attr> : Attr<attr.predicate, attr.description> {
   // Rewrite the attribute to be optional.
   // Note: this has to be kept up to date with Attr above.
   let storageType = attr.storageType;
   let returnType = "Optional<" # attr.returnType #">";
-  let convertFromStorage = "{0} ? " # returnType # "({0}.getValue())" #
-      " : (llvm::None)";
+  let convertFromStorage = "{0} ? " # returnType # "({0}.getValue())"
+                           " : (llvm::None)";
   let isOptional = 0b1;
 }
 
@@ -346,18 +338,18 @@ class TypeBasedAttr<BuildableType t, string attrName, string descr> :
   let storageType = attrName;
 }
 
-// An attribute backed by a string type.
-class StringBasedAttr<Pred condition, string descr> :
-    Attr<condition, descr> {
-  let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
-  let storageType = [{ StringAttr }];
-  let returnType = [{ StringRef }];
+// Any attribute.
+def AnyAttr : Attr<CPred<"true">, "any"> {
+  let storageType = "Attribute";
+  let returnType = "Attribute";
+  let convertFromStorage = "{0}";
+  let constBuilderCall = "{1}";
 }
 
-// Base class for instantiating float attributes of fixed width.
-class FloatAttrBase<BuildableType t, string descr> :
-    TypeBasedAttr<t, "FloatAttr", descr> {
-  let returnType = [{ APFloat }];
+def BoolAttr : Attr<CPred<"true">, "bool"> {
+  let storageType = [{ BoolAttr }];
+  let returnType = [{ bool }];
+  let constBuilderCall = [{ {0}.getBoolAttr({1}) }];
 }
 
 // Base class for instantiating integer attributes of fixed width.
@@ -366,32 +358,45 @@ class IntegerAttrBase<BuildableType t, string descr> :
   let returnType = [{ APInt }];
 }
 
-def BoolAttr : Attr<CPred<"true">, "bool"> {
-  let storageType = [{ BoolAttr }];
-  let returnType = [{ bool }];
-  let constBuilderCall = [{ {0}.getBoolAttr({1}) }];
+def I32Attr : IntegerAttrBase<I32, "32-bit integer">;
+def I64Attr : IntegerAttrBase<I64, "64-bit integer">;
+
+// Base class for instantiating float attributes of fixed width.
+class FloatAttrBase<BuildableType t, string descr> :
+    TypeBasedAttr<t, "FloatAttr", descr> {
+  let returnType = [{ APFloat }];
 }
-def ArrayAttr : Attr<CPred<"true">, "array"> {
-  let storageType = [{ ArrayAttr }];
-  let returnType = [{ ArrayAttr }];
-  code convertFromStorage = "{0}";
+
+def F32Attr : FloatAttrBase<F32, "32-bit float">;
+def F64Attr : FloatAttrBase<F64, "64-bit float">;
+
+// An attribute backed by a string type.
+class StringBasedAttr<Pred condition, string descr> :
+    Attr<condition, descr> {
+  let constBuilderCall = [{ {0}.getStringAttr("{1}") }];
+  let storageType = [{ StringAttr }];
+  let returnType = [{ StringRef }];
 }
+
+def StrAttr : StringBasedAttr<CPred<"true">, "string">;
+
 class ElementsAttrBase<Pred condition, string description> :
     Attr<condition, description> {
   let storageType = [{ ElementsAttr }];
   let returnType = [{ ElementsAttr }];
   let convertFromStorage = "{0}";
 }
+
 def ElementsAttr: ElementsAttrBase<CPred<"true">, "constant vector/tensor">;
-def F32Attr : FloatAttrBase<F32, "32-bit float">;
-def F64Attr : FloatAttrBase<F64, "64-bit float">;
-def I32Attr : IntegerAttrBase<I32, "32-bit integer">;
-def I64Attr : IntegerAttrBase<I64, "64-bit integer">;
-def StrAttr : StringBasedAttr<CPred<"true">, "string">;
+
+def ArrayAttr : Attr<CPred<"true">, "array"> {
+  let storageType = [{ ArrayAttr }];
+  let returnType = [{ ArrayAttr }];
+  code convertFromStorage = "{0}";
+}
 
 // Attributes containing functions.
-def FunctionAttr
-    : Attr<CPred<"{0}.isa<FunctionAttr>()">, "function"> {
+def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">, "function"> {
   let storageType = [{ FunctionAttr }];
   let returnType = [{ Function * }];
   let convertFromStorage = [{ {0}.getValue() }];
