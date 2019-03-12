@@ -455,6 +455,16 @@ def convert_to_generator_like(data,
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
       inputs.
   """
+  if hasattr(data, '__next__'):
+    def _gen(data):
+      """Make generator compatible."""
+      for batch in data:
+        if len(batch) > 1:
+          yield batch[0], batch[1]
+        else:
+          yield batch[0]
+    return _gen(data), steps_per_epoch
+
   if isinstance(data, tuple):
     # Scrub `Nones` that might have been passed for `targets`, `sample_weights`.
     data = tuple(
