@@ -1011,7 +1011,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "config_test",
     size = "small",
     srcs = ["framework/config_test.py"],
