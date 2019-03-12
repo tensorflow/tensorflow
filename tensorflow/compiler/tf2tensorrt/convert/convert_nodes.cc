@@ -313,31 +313,31 @@ Status Converter::GetTrtBroadcastShape(
   }
 
   const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
-  auto compute_output_dims =
-      [](const TRT_TensorOrWeights& input, int broadcast_num_dims,
-         int* output_dims_array, nvinfer1::Dims* output_dims) {
-        const nvinfer1::Dims input_dims = input.GetTrtDims();
-        std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
-        std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
-                  output_dims_array + broadcast_num_dims - input_dims.nbDims);
-        if (input.is_tensor()) {
-          const int true_input_dims = input_dims.nbDims + 1;
-          if (true_input_dims < broadcast_num_dims) {
-            return errors::InvalidArgument(
-                "Broadcasting beyond batch dimension is not supported ",
-                "(tensor #dims ", true_input_dims, " vs broadcast #dims ",
-                broadcast_num_dims, ")");
-          }
-          // Set the batch dimension to -1, since batch size is not supposed to
-          // be broadcasted.
-          output_dims_array[0] = -1;
-        }
-        // Copy to output dimensions (stripping the batch dimension).
-        output_dims->nbDims = broadcast_num_dims - 1;
-        std::copy(output_dims_array + 1, output_dims_array + broadcast_num_dims,
-                  output_dims->d);
-        return Status::OK();
-      };
+  auto compute_output_dims = [](const TRT_TensorOrWeights& input,
+                                int broadcast_num_dims, int* output_dims_array,
+                                nvinfer1::Dims* output_dims) {
+    const nvinfer1::Dims input_dims = input.GetTrtDims();
+    std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
+    std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
+              output_dims_array + broadcast_num_dims - input_dims.nbDims);
+    if (input.is_tensor()) {
+      const int true_input_dims = input_dims.nbDims + 1;
+      if (true_input_dims < broadcast_num_dims) {
+        return errors::InvalidArgument(
+            "Broadcasting beyond batch dimension is not supported ",
+            "(tensor #dims ", true_input_dims, " vs broadcast #dims ",
+            broadcast_num_dims, ")");
+      }
+      // Set the batch dimension to -1, since batch size is not supposed to
+      // be broadcasted.
+      output_dims_array[0] = -1;
+    }
+    // Copy to output dimensions (stripping the batch dimension).
+    output_dims->nbDims = broadcast_num_dims - 1;
+    std::copy(output_dims_array + 1, output_dims_array + broadcast_num_dims,
+              output_dims->d);
+    return Status::OK();
+  };
 
   // Compute the output dimensions.
   const int broadcast_num_dims =
@@ -4028,12 +4028,12 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
         "TensorRT BatchedNMS Plugin score_threshold must be 0-D ",
         node_def.name());
   }
-  // TF op CombinedNonMaxSuppression doesn't have the option of
-  // not normalizing coordinates.
-  bool isNormalized = true;
 
   if (params->validation_only) return Status::OK();
 
+  // TF op CombinedNonMaxSuppression doesn't have the option of
+  // not normalizing coordinates.
+  const bool is_normalized = true;
   // Set plugin fields and the field collection
   TFAttrs attrs(node_def);
   bool share_location = (boxes_dims.d[1] == 1);
@@ -4063,7 +4063,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
       nvinfer1::PluginField{"iouThreshold", &iou_thresh,
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
-      nvinfer1::PluginField{"isNormalized", &isNormalized,
+      nvinfer1::PluginField{"isNormalized", &is_normalized,
                             nvinfer1::PluginFieldType::kINT32, 1},
   };
   nvinfer1::PluginFieldCollection fc{8, fields};
@@ -4124,7 +4124,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif // CombinedNonMaxSuppression
+#endif  // CombinedNonMaxSuppression
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
