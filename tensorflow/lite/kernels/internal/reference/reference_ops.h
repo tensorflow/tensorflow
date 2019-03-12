@@ -24,6 +24,7 @@ limitations under the License.
 #include <limits>
 #include <memory>
 #include <type_traits>
+#include <fenv.h>
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
@@ -2801,13 +2802,18 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
 inline void Round(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-
+  auto save_round = std::fegetround();
+  if (save_round < 0) {
+    save_round = FE_TONEAREST;
+  }
+  std::fesetround(FE_TONEAREST);
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
     // Note that this implementation matches that of tensorFlow tf.round
     // and corresponds to the bankers rounding method.
     output_data[offset] = std::lrint(input_data[offset]);
   }
+  std::fesetround(save_round);
 }
 
 template <typename T, typename CoordsT = int32>
