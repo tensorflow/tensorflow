@@ -4148,7 +4148,7 @@ Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,  // In topological order
     std::vector<EngineConnection>* connections, GraphDef* segment_def,
-    string* common_scope) {
+    string* scope_name) {
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
@@ -4281,9 +4281,7 @@ Status ConvertSegmentToGraphDef(
       snode->mutable_input()->RemoveLast();
     }
   }
-  *common_scope = local_scope;
-  VLOG(1) << "Converted TensorRT candidate segment @scope '" << local_scope
-          << "' to a GraphDef";
+  *scope_name = local_scope;
   return Status::OK();
 }
 
