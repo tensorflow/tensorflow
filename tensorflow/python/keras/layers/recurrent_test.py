@@ -35,6 +35,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.layers import recurrent as rnn_v1
+from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -730,8 +732,8 @@ class RNNTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
       *test_util.generate_combinations_with_testcase_name(
-          layer=[keras.layers.SimpleRNN, keras.layers.GRU, keras.layers.LSTM,
-                 keras.layers.UnifiedGRU, keras.layers.UnifiedLSTM],
+          layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
+                 rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
   def test_rnn_dropout(self, layer, unroll):
     rnn_layer = layer(3, dropout=0.1, recurrent_dropout=0.1, unroll=unroll)
