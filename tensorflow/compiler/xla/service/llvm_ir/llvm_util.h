@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
@@ -105,6 +106,15 @@ string SanitizeFunctionName(string function_name);
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+
+// Emits a call to the specified target intrinsic with the given operands. Overloaded
+// intrinsics (for example, "minnum") must include a type in overloaded_types
+// for each overloaded type. Typically, overloaded intrinsics have only a single
+// overloaded type.
+llvm::CallInst* EmitCallToTargetIntrinsic(
+    TargetIntrinsicEnum intrinsic_enum, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types,
+    LLVMTargetIRBuilder& llvm_target_IR_Builder);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
 // fcmp+select otherwise

@@ -13,23 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/gpu/tests/ptx_codegen_test.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_executable.h"
+#include "tensorflow/compiler/xla/tests/filecheck.h"
 
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<HloModule> GpuCodegenTest::CreateNewUnverifiedModuleWithFTZ(
-    bool ftz) {
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_ftz(ftz);
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
-  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
-  debug_options.add_xla_disable_hlo_passes("constant_folding");
-  config.set_debug_options(debug_options);
-
-  return absl::make_unique<HloModule>(TestName(), config);
+void PtxCodegenTest::CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
+                                         const string& pattern) {
+  std::unique_ptr<Executable> executable =
+      std::move(CompileToExecutable(std::move(hlo_module)).ValueOrDie());
+  string ptx_str(static_cast<GpuExecutable*>(executable.get())->ptx());
+  StatusOr<bool> filecheck_result = RunFileCheck(ptx_str, pattern);
+  ASSERT_TRUE(filecheck_result.ok());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
 }  // namespace gpu

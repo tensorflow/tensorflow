@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+#
+# prerequisites: install python3
+# sudo apt-get install python3-numpy python3-dev python3-pip python3-wheel
+#
+# configure with python3
+# PYTHON_BIN_PATH=/usr/bin/python3 ./configure
+#
+# press enter all the way
+#
+
+# Explicitly delete the old whl packages in the /tmp/tensorflow_pkg dir
+# Doing so comes in handy when the TF version number changes, because
+# it will cause the last line in this script (pip3 install ...) to fail.
+# Not deleting the old whl packages results in the last line installing
+# TF from the previous whl pakcage (if present) and not the current one
+# that was just built by this script. Since this error is not apparent, it
+# can lead to a lot of frustation and lost time trying to figure why the
+# changes made in the current build are not working!
+TF_PKG_LOC=/tmp/tensorflow_pkg
+rm -f $TF_PKG_LOC/tensorflow*.whl
+
+
+yes "" | TF_NEED_ROCM=1 TF_ENABLE_XLA=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
+pip3 uninstall -y tensorflow || true
+bazel build --config=opt --config=rocm --action_env=HIP_PLATFORM=hcc //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
+bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC &&
+pip3 install $TF_PKG_LOC/tensorflow*.whl

@@ -690,8 +690,12 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
                                       &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
+
+  llvm_ir::NVPTXMachineFeatures llvm_target_features = 
+           llvm_ir::NVPTXMachineFeatures::Singleton(); 
+
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
-                               &ir_emitter_context);
+                               &ir_emitter_context, &llvm_target_machine_features);
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 

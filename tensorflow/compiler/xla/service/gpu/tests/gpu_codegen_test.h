@@ -30,10 +30,6 @@ class GpuCodegenTest : public LlvmIrGenTestBase {
   // the ftz option.
   std::unique_ptr<HloModule> CreateNewUnverifiedModuleWithFTZ(bool ftz);
 
-  // Compiles the given HLO module to PTX and verifies the PTX matches the given
-  // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
-  void CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
-                           const string& pattern);
 };
 
 }  // namespace gpu

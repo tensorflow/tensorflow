@@ -13,24 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_PTX_CODEGEN_TEST_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_PTX_CODEGEN_TEST_H_
+
+#include <string>
+
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/debug_options_flags.h"
 
 namespace xla {
 namespace gpu {
 
-std::unique_ptr<HloModule> GpuCodegenTest::CreateNewUnverifiedModuleWithFTZ(
-    bool ftz) {
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_ftz(ftz);
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
-  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
-  debug_options.add_xla_disable_hlo_passes("constant_folding");
-  config.set_debug_options(debug_options);
-
-  return absl::make_unique<HloModule>(TestName(), config);
-}
+// Tests that verify IR or PTX emitted by the GPU backend is as expected.
+class PtxCodegenTest : public GpuCodegenTest {
+ protected:
+  // Compiles the given HLO module to PTX and verifies the PTX matches the given
+  // FileCheck pattern.  (See http://llvm.org/docs/CommandGuide/FileCheck.html).
+  void CompileAndVerifyPtx(std::unique_ptr<HloModule> hlo_module,
+                           const string& pattern);
+};
 
 }  // namespace gpu
 }  // namespace xla
+
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_GPU_TESTS_PTX_CODEGEN_TEST_H_

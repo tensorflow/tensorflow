@@ -93,6 +93,20 @@ llvm::CallInst* EmitCallToIntrinsic(
   return b->CreateCall(intrinsic, AsArrayRef(operands));
 }
 
+llvm::CallInst* EmitCallToTargetIntrinsic(
+    TargetIntrinsicEnum intrinsic_en, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types,
+    LLVMTargetIRBuilder& llvm_target_ir_builder) {
+  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
+  llvm::Module* module = ModuleFromIRBuilder(b);
+  llvm::Intrinsic::ID intrinsic_id =
+      llvm_target_ir_builder.GetTargetMachineFeatures()->GetIntrinsicID(
+          intrinsic_en);
+  llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
+      module, intrinsic_id, AsArrayRef(overloaded_types));
+  return b->CreateCall(intrinsic, AsArrayRef(operands));
+}
+
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
   if (b->getFastMathFlags().noNaNs()) {

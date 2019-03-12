@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
@@ -38,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -70,15 +73,17 @@ using llvm_ir::SetToFirstInsertPoint;
 namespace gpu {
 
 IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context, bool is_nested)
+                     IrEmitterContext* ir_emitter_context, bool is_nested,
+                     llvm_ir::LLVMTargetFeatures* llvm_target_features)
     : ir_emitter_context_(ir_emitter_context),
       module_(ir_emitter_context->llvm_module()),
       b_(module_->getContext()),
       bindings_(ir_emitter_context->hlo_module(),
                 &ir_emitter_context->buffer_assignment(), &b_, module_,
                 is_nested),
-      hlo_module_config_(hlo_module_config) {
-}
+      hlo_module_config_(hlo_module_config),
+      llvm_target_ir_builder_(std::unique_ptr<llvm_ir::LLVMTargetIRBuilder>(
+          new llvm_ir::LLVMTargetIRBuilder(&b_, llvm_target_features))) {}
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
@@ -374,12 +379,13 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
     atomic_memory_address = And(atomic_memory_address, mask);
     atomic_memory_address =
         IntToPtr(atomic_memory_address, atomic_address_type);
-    binop_output_address =
-        BitCast(cas_new_output_address, element_address_type);
+    binop_output_address = PointerBitCastOrAddrSpaceCast(cas_new_output_address,
+                                                         element_address_type);
   } else {
-    atomic_memory_address = BitCast(output_address, atomic_address_type);
-    binop_output_address =
-        BitCast(cas_new_output_address, element_address_type);
+    atomic_memory_address =
+        PointerBitCastOrAddrSpaceCast(output_address, atomic_address_type);
+    binop_output_address = PointerBitCastOrAddrSpaceCast(cas_new_output_address,
+                                                         element_address_type);
   }
 
   // Use the value from the memory that atomicCAS operates on to initialize
@@ -574,7 +580,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   }
 
   // Create the reduction loop which does the sum of products reduction.
-  std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
+  std::shared_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
       /*start_index=*/0,
       /*end_index=*/lhs_shape.dimensions(lhs_reduction_dimension),
       /*suffix=*/"reduction");

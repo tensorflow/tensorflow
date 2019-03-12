@@ -38,7 +38,8 @@ namespace gpu {
 IrEmitterNested::IrEmitterNested(const HloModuleConfig& hlo_module_config,
                                  const HloComputation& nested_computation,
                                  IrEmitterContext* ir_emitter_context)
-    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true) {
+    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/true,
+                nullptr) {
   std::vector<const HloInstruction*> io_hlos;
   emitted_function_ =
       EmitBasePointersForNestedComputation(nested_computation, &io_hlos);

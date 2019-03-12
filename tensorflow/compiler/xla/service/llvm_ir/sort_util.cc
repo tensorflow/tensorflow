@@ -147,10 +147,11 @@ Status EmitTiledCompareLoop(
     const std::vector<IrArray>& params,
     const std::vector<llvm::Value*>& param_shmem_buffers, int64 tile_size,
     const EmitCallToNestedComputationCallback& emit_compare_callback,
-    llvm::IRBuilder<>* b) {
+    LLVMTargetIRBuilder& llvm_target_ir_builder) {
+  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
   KernelSupportLibrary ksl(b);
-  llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b);
+  llvm::Value* thread_id = llvm_ir::EmitCallToTargetIntrinsic(
+                kTHREAD_ID_X, {}, {}, llvm_target_ir_builder);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
                             llvm::cast<llvm::Instruction>(thread_id));
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
@@ -199,7 +200,8 @@ Status EmitTiledCompareLoop(
     });
   }
   // Wait until all reads have happened.
-  llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, b);
+  llvm_ir::EmitCallToTargetIntrinsic(kBARRIER_ID, {}, {},
+          llvm_target_ir_builder);
 
   // Now emit the bodies of the comparison loops.
   auto element_address = [&](int64 operand, llvm::Value* index) {
@@ -260,7 +262,8 @@ Status EmitTiledCompareLoop(
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
-    llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, b);
+    llvm_ir::EmitCallToTargetIntrinsic(kBARRIER_ID, {}, {},
+            llvm_target_ir_builder);
   }
 
   // Copy the operand tiles back from shared memory to the operand buffers.
@@ -288,9 +291,10 @@ Status EmitTiledCompareLoop(
 Status EmitSortInPlace(
     int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64> xor_masks,
-    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    const gpu::LaunchDimensions& launch_dimensions,
     int64 num_iterations_in_sort_dim, const int64 tile_size,
-    const EmitCallToNestedComputationCallback& emit_compare_callback) {
+    const EmitCallToNestedComputationCallback& emit_compare_callback,
+    LLVMTargetIRBuilder& llvm_target_ir_builder) {
   // Iterate through the keys shape in physical order, but skip the dimension to
   // sort and make it the innermost loop which is the loop where the comparisons
   // happen. In the dimension to sort, if we use tiling, we iterate through it
@@ -300,6 +304,7 @@ Status EmitSortInPlace(
   // within those 64 elements and are therefore independent of the other
   // comparisons).
 
+  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
   const Shape& keys_shape = values_arrays[0].GetShape();
   int64 rank = keys_shape.rank();
   int64 dimension_to_sort_bound = keys_shape.dimensions(dimension_to_sort);
@@ -356,7 +361,7 @@ Status EmitSortInPlace(
       TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
           keys_index, dimension_to_sort, dimension_to_sort_bound, xor_masks,
           values_arrays, param_shmem_buffers, tile_size, emit_compare_callback,
-          b));
+          llvm_target_ir_builder));
     } else {
       auto element_address = [&](int64 operand, llvm::Value* index) {
         keys_index[dimension_to_sort] = index;

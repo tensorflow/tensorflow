@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -156,9 +158,10 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
                           unnormalized_shape, b_);
 }
 
-IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
-  llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x, {}, {}, b_);
+IrArray::Index KernelMappingScheme::EmitBlockIndex(
+    llvm::Type* index_ty, LLVMTargetIRBuilder& llvm_target_ir_builder) {
+  llvm::Value* block_id = llvm_ir::EmitCallToTargetIntrinsic(
+      kBLOCK_ID_X, {}, {}, llvm_target_ir_builder);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
                             llvm::cast<llvm::Instruction>(block_id));
   llvm::Value* linear_block_id =
@@ -215,11 +218,12 @@ llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
 }
 
 std::tuple<llvm::Value*, llvm::Value*>
-KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
+KernelMappingScheme::EmitThreadYXCoordinate(
+    llvm::Type* index_ty, LLVMTargetIRBuilder& llvm_target_ir_builder) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
-  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b_);
+  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToTargetIntrinsic(
+      kTHREAD_ID_X, {}, {}, llvm_target_ir_builder);
   llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,

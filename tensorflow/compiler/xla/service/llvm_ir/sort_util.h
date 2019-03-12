@@ -21,8 +21,10 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
 #include "llvm/IR/Value.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -31,15 +33,19 @@ namespace llvm_ir {
 using EmitCallToNestedComputationCallback =
     std::function<Status(absl::Span<llvm::Value* const>, llvm::Value*)>;
 // Emits llvm IR to do pairwise comparisons/swaps in the 'dimension_to_sort'
-// dimension of each array in 'values_arrays'. All other dimensions are kept
-// as-is. This implements the inner loop of BitonicSort. It is assumed that
-// 'xor_masks' contains only powers of 2, or values 2^k - 1 (k > 0).
+// dimension of 'keys_array'. All other dimensions are kept as-is. This
+// implements the inner loop of BitonicSort. It is assumed that 'xor_masks'
+// contains only powers of 2, or values 2^k - 1 (k > 0). If
+// 'iota_values_parameter_index' is >= 0, it points at a 'values_arrays' operand
+// that is a iota and can be used to make the sorting stable.
 Status EmitSortInPlace(
     int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64> xor_masks,
-    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    const gpu::LaunchDimensions& launch_dimensions,
     int64 num_iterations_in_sort_dim, int64 tile_size,
-    const EmitCallToNestedComputationCallback& emit_compare_callback);
+    const EmitCallToNestedComputationCallback& emit_compare_callback,
+    LLVMTargetIRBuilder& llvm_target_ir_builder);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

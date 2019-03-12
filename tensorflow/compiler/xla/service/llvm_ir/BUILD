@@ -27,6 +27,20 @@ load(
 )
 
 cc_library(
+    name = "llvm_target_features",
+    srcs = [
+        "llvm_target_features.cc",
+    ],
+    hdrs = ["llvm_target_features.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@llvm//:support",
+        "@llvm//:core",
+    ],
+)
+
+
+cc_library(
     name = "alias_analysis",
     srcs = ["alias_analysis.cc"],
     hdrs = ["alias_analysis.h"],
@@ -60,8 +74,10 @@ tf_cc_test(
 cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
-    hdrs = ["llvm_util.h"],
+    hdrs = ["llvm_util.h",
+            "llvm_target_ir_builder.h",],
     deps = [
+        ":llvm_target_features",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
@@ -138,10 +154,12 @@ cc_library(
 cc_library(
     name = "kernel_tiling",
     srcs = ["kernel_tiling.cc"],
-    hdrs = ["kernel_tiling.h"],
+    hdrs = ["kernel_tiling.h", 
+            "llvm_target_ir_builder.h",],
     deps = [
         ":ir_array",
         ":llvm_util",
+        ":llvm_target_features",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -202,6 +220,7 @@ cc_library(
         ":llvm_loop",
         ":llvm_util",
         ":loop_emitter",
+        ":llvm_target_features",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",

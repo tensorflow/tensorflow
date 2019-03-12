@@ -58,9 +58,8 @@ class RandomUniformOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformOp);
 };
 
-// XXX
-//REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstantInput("shape"),
-//                RandomUniformOp);
+REGISTER_XLA_OP(Name("RandomUniform").CompileTimeConstantInput("shape"),
+                RandomUniformOp);
 
 class RandomShuffleOp : public XlaOpKernel {
  public:
@@ -204,8 +203,7 @@ class RandomShuffleOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomShuffleOp);
 };
 
-// XXX
-//REGISTER_XLA_OP(Name("RandomShuffle"), RandomShuffleOp);
+REGISTER_XLA_OP(Name("RandomShuffle"), RandomShuffleOp);
 
 class RandomUniformIntOp : public XlaOpKernel {
  public:
@@ -236,9 +234,8 @@ class RandomUniformIntOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(RandomUniformIntOp);
 };
 
-// XXX
-//REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstantInput("shape"),
-//                RandomUniformIntOp);
+REGISTER_XLA_OP(Name("RandomUniformInt").CompileTimeConstantInput("shape"),
+                RandomUniformIntOp);
 
 class RandomStandardNormalOp : public XlaOpKernel {
  public:
@@ -291,11 +288,10 @@ class TruncatedNormalOp : public XlaOpKernel {
   }
 };
 
-// XXX
-//REGISTER_XLA_OP(Name("TruncatedNormal")
-//                    .CompileTimeConstantInput("shape")
-//                    .TypeConstraint("dtype", DT_FLOAT),
-//                TruncatedNormalOp);
+REGISTER_XLA_OP(Name("TruncatedNormal")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", DT_FLOAT),
+                TruncatedNormalOp);
 
 }  // namespace
 }  // namespace tensorflow

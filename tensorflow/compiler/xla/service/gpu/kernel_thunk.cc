@@ -45,11 +45,6 @@ Status KernelThunk::Initialize(const GpuExecutable& executable,
     // Convert tensorflow::StringPiece to se::port::StringPiece because
     // StreamExecutor uses the latter.
 
-    if (!executable.text().empty()) {
-      loader_spec_->AddCudaPtxInMemory(
-          se::port::StringPiece(text.data(), text.size()), kernel_name_);
-    }
-
     if (!executable.binary().empty()) {
       loader_spec_->AddCudaCubinInMemory(
           reinterpret_cast<const char*>(executable.binary().data()),

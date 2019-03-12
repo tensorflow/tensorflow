@@ -13,24 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
-#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 
 namespace xla {
-namespace gpu {
-
-std::unique_ptr<HloModule> GpuCodegenTest::CreateNewUnverifiedModuleWithFTZ(
-    bool ftz) {
-  HloModuleConfig config;
-  auto debug_options = GetDebugOptionsFromFlags();
-  debug_options.set_xla_gpu_ftz(ftz);
-  debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
-  // TODO(b/38354253): Change tests to use Parameters instead of Constants.
-  debug_options.add_xla_disable_hlo_passes("constant_folding");
-  config.set_debug_options(debug_options);
-
-  return absl::make_unique<HloModule>(TestName(), config);
-}
-
-}  // namespace gpu
+namespace llvm_ir {
+// AMDGPU llvm Intrinsics 
+const constexpr llvm::Intrinsic::ID AMDGPUMachineFeatures::amdgpu_intrins[];
+// NVIDIA PTX llvm  Intrinsics 
+const constexpr llvm::Intrinsic::ID NVPTXMachineFeatures::nvptx_intrins[];
+}  // namespace llvm_ir 
 }  // namespace xla

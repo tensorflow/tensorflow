@@ -150,10 +150,13 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
 
 }  // namespace
 
-IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                                     const HloComputation* hlo_computation,
-                                     IrEmitterContext* ir_emitter_context)
-    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false),
+IrEmitterUnnested::IrEmitterUnnested(
+    const HloModuleConfig& hlo_module_config,
+    const HloComputation* hlo_computation, IrEmitterContext* ir_emitter_context,
+    llvm_ir::LLVMTargetFeatures* llvm_target_features)
+
+    : IrEmitter(hlo_module_config, ir_emitter_context, /*is_nested=*/false,
+                llvm_target_features),
       hlo_computation_(hlo_computation) {
   // Initialize thunk_sequence_ to an empty list of thunks.
   thunk_sequence_.reset(new ThunkSequence());
@@ -184,6 +187,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
                              kernel_name.c_str(), module);
 
   kernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+  kernel->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
 
   // Add dereferenceable and alignment information to each of the kernel's
   // parameters.
@@ -1250,15 +1254,16 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
       values_arrays.push_back(GetIrArray(*sort, *sort, shape_index));
     }
     return llvm_ir::EmitSortInPlace(
-        dimension_to_sort, values_arrays, IrName(sort), xor_masks, &b_,
+        dimension_to_sort, values_arrays, IrName(sort), xor_masks,
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        kTileSize,
+        kTileSize, 
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
           return EmitCallToNestedComputation(*sort->to_apply(), operands,
                                              output);
-        });
+        },
+        GetTargetIRBuilder());
   };
   std::vector<int64> xor_masks;
   for (int64 stage = 0; stage < num_stages; ++stage) {
@@ -1555,7 +1560,7 @@ std::unique_ptr<KernelThunk> IrEmitterUnnested::BuildKernelThunk(
     llvm::Type* int8_double_pointer =
         llvm::PointerType::get(b_.getInt8PtrTy(), /*AddressSpace=*/0);
     for (int64 idx : gte_index) {
-      loc = BitCast(loc, int8_double_pointer);
+      loc = PointerBitCastOrAddrSpaceCast(loc, int8_double_pointer);
       loc = Load(InBoundsGEP(loc, {b_.getInt64(idx)}));
     }
 
@@ -2001,14 +2006,16 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
 
   // Generate thunk sequence for while 'condition'.
   HloComputation* condition = hlo->while_condition();
-  IrEmitterUnnested ir_emitter_condition(hlo_module_config_, condition,
-                                         ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_condition(
+      hlo_module_config_, condition, ir_emitter_context_,
+      GetTargetIRBuilder().GetTargetMachineFeatures());
   TF_CHECK_OK(condition->Accept(&ir_emitter_condition));
 
   // Generate thunk sequence for while 'body'.
   HloComputation* body = hlo->while_body();
-  IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
-                                    ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_body(
+      hlo_module_config_, body, ir_emitter_context_,
+      GetTargetIRBuilder().GetTargetMachineFeatures());
   TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return absl::make_unique<WhileThunk>(
@@ -2025,8 +2032,9 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
 
   // Generate thunk sequence for while 'body' (will be used a For loop body).
   HloComputation* body = hlo->while_body();
-  IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
-                                    ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_body(
+      hlo_module_config_, body, ir_emitter_context_,
+      GetTargetIRBuilder().GetTargetMachineFeatures());
   TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return absl::make_unique<ForThunk>(
@@ -2041,13 +2049,18 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
       hlo, ir_emitter_context_->buffer_assignment()));
 
   HloComputation* true_computation = hlo->true_computation();
-  IrEmitterUnnested ir_emitter_true(hlo_module_config_, true_computation,
-                                    ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_true(
+      hlo_module_config_, true_computation,
+      ir_emitter_context_,
+      GetTargetIRBuilder().GetTargetMachineFeatures());
   TF_CHECK_OK(true_computation->Accept(&ir_emitter_true));
 
   HloComputation* false_computation = hlo->false_computation();
-  IrEmitterUnnested ir_emitter_false(hlo_module_config_, false_computation,
-                                     ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_false(
+         hlo_module_config_, 
+         false_computation,
+         ir_emitter_context_,
+          GetTargetIRBuilder().GetTargetMachineFeatures());
   TF_CHECK_OK(false_computation->Accept(&ir_emitter_false));
 
   return absl::make_unique<ConditionalThunk>(
@@ -2087,7 +2100,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   // pressure, since we touch threadIdx.x and blockIdx.x at the beginning of the
   // kernel *anyway*.
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
-  KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+  KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(GetTargetIRBuilder()), [&] {
     llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
   });
 
@@ -2648,12 +2661,14 @@ void IrEmitterUnnested::EmitFullWarpShuffleDownLoopForAllReduces(
       llvm::Type* shuffled_value_type =
           element_type->isStructTy() ? b_.getIntNTy(bit_width) : element_type;
       auto convert_pointer_for_shuffle = [&](llvm::Value* ptr) {
-        return BitCast(ptr, shuffled_value_type->getPointerTo());
+        return PointerBitCastOrAddrSpaceCast(
+            ptr, shuffled_value_type->getPointerTo());
       };
       llvm::Value* partial_result =
           Load(convert_pointer_for_shuffle(partial_result_addresses[i]),
                "partial_reduction_result");
-      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), &b_),
+    llvm::Module* module = ir_emitter_context_->llvm_module();
+      Store(EmitFullWarpShuffleDown(partial_result, b_.getInt32(distance), GetTargetIRBuilder(), module),
             convert_pointer_for_shuffle(result_from_other_lane));
       TF_CHECK_OK(EmitCallToNestedComputation(
           *reducers[i], {partial_result_addresses[i], result_from_other_lane},
@@ -2911,7 +2926,7 @@ void IrEmitterUnnested::EmitBlock(const TileGenerator& emit_one_tile,
   };
 
   const IrArray::Index starting_block =
-      mapping_scheme->EmitBlockIndex(index_ty);
+      mapping_scheme->EmitBlockIndex(index_ty, GetTargetIRBuilder());
   const IrArray::Index starting_tile_for_dim_z =
       mapping_scheme->GetTileIndexForBlockOrigin(starting_block);
 
@@ -2988,7 +3003,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   // since we touch threadIdx.x and blockIdx.x at the beginning of the kernel
   // *anyway*.
   if (!reduction_info && unnested_hlo->IsMultiOutputFusion()) {
-    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
+    KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(GetTargetIRBuilder()), [&] {
       llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
                          ConstructIrArrayForOutputs(*unnested_hlo), &b_,
                          module_);
@@ -3010,7 +3025,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   // thread, (y, x) from thread_id.
   llvm::Value* x;
   llvm::Value* y;
-  std::tie(y, x) = mapping_scheme->EmitThreadYXCoordinate(index_ty);
+  std::tie(y, x) = mapping_scheme->EmitThreadYXCoordinate(index_ty, GetTargetIRBuilder());
 
   kernel_info->SetLaneId(
       mapping_scheme->GetNumberOfThreadsForDimensionX() == kWarpSize ? x
@@ -3061,7 +3076,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
           });
 
       // Wait for all threads to reach this point using `__syncthreads` in CUDA.
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, &b_);
+      llvm_ir::EmitCallToTargetIntrinsic(llvm_ir::kBARRIER_ID, {}, {}, GetTargetIRBuilder());
     }
 
     llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers, y, x);
@@ -3083,7 +3098,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     // buffer for the current tile before we move on to process the next tile
     // and overwrite the shared memory buffers.
     if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, &b_);
+      llvm_ir::EmitCallToTargetIntrinsic(llvm_ir::kBARRIER_ID, {}, {}, GetTargetIRBuilder());
     }
   };
 
