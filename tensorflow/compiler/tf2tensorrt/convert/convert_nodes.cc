@@ -1923,6 +1923,7 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
       {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
       {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
       {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
+      {"Pow", nvinfer1::ElementWiseOperation::kPOW},
   };
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end()) {
@@ -4005,7 +4006,7 @@ static void RegisterValidatableOpConverters(
     (*registration)[quantization_op_type] = ConvertQuantize;
   }
   for (auto binary_op_type :
-       {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum"}) {
+       {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum", "Pow"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
   for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
