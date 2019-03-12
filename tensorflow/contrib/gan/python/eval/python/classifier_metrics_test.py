@@ -365,7 +365,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
     unused_image = array_ops.zeros([2, 299, 299, 3])
     incscore = _run_with_mock(classifier_metrics.inception_score, unused_image)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.cached_session(use_gpu=True) as sess:
       incscore_np = sess.run(incscore, {'concat:0': logits})
 
     self.assertAllClose(_expected_inception_score(logits), incscore_np)
@@ -473,7 +473,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
         classifier_fn=lambda x: x,
         max_block_size=600)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       actual_kid, actual_std = sess.run(kid_op)
 
     expected_kid, expected_std = _expected_kid_and_std(test_pool_real_a,
@@ -500,7 +500,7 @@ class ClassifierMetricsTest(test.TestCase, parameterized.TestCase):
         max_block_size=max_block_size)
 
     for block_size in [50, 512, 1000]:
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         actual_kid, actual_std = sess.run(kid_op, {max_block_size: block_size})
 
       expected_kid, expected_std = _expected_kid_and_std(

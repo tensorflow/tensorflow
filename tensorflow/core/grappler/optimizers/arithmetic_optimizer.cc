@@ -1775,6 +1775,63 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   }
 };
 
+// Performs the conversion:
+// Square(Sub(x, y)) => Identity(SquaredDifference(x, y))
+class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
+ public:
+  explicit FuseSquaredDiffStage(const GraphOptimizerContext& ctx,
+                                const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("FuseSquaredDiffStage", ctx, ctx_ext) {}
+  ~FuseSquaredDiffStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override {
+    return IsSquare(*node);
+  }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* b;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &b));
+    // Optimize only if base is a Sub whose output is not being consumed
+    // elsewhere.
+    if (IsSub(*b) && !IsInPreserveSet(*b) &&
+        (NumNonControlOutputs(*b, *ctx().node_map) == 1)) {
+      node->set_op("Identity");
+      b->set_op("SquaredDifference");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(b);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Log(Softmax(x)) => LogSoftmax(x)
+class LogSoftmaxStage : public ArithmeticOptimizerStage {
+ public:
+  explicit LogSoftmaxStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("LogSoftmaxStage", ctx, ctx_ext) {}
+  ~LogSoftmaxStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override { return IsLog(*node); }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* x;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    // Optimize only if arg is a Softmax whose output is not being consumed
+    // elsewhere.
+    if (IsSoftmax(*x) && !IsInPreserveSet(*x) &&
+        (NumNonControlOutputs(*x, *ctx().node_map) == 1)) {
+      // Log(Softmax(x)) => LogSoftmax(Identity(x))
+      node->set_op("LogSoftmax");
+      x->set_op("Identity");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
+    }
+    return Status::OK();
+  }
+};
+
 // Bypass redundant reshape nodes:
 //
 //   Reshape                    Reshape  <-+
@@ -2722,8 +2779,8 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
   ~OptimizeMaxOrMinOfMonotonicStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyMax(*node) || IsAnyMin(*node) || IsArgMax(*node) ||
-           IsArgMin(*node);
+    return IsAnyMax(*node) || IsAnyMin(*node) || IsAnyMaxPool(*node) ||
+           IsArgMax(*node) || IsArgMin(*node);
   }
 
   Status TrySimplify(NodeDef* reduction_node,
@@ -2737,10 +2794,13 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
+    // 3. is monotonic increasing if reduction_node is a pooling operation
+    //    since we don't have MinPool operations.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
-        ctx().node_map->GetOutputs(inner_function->name()).size() == 1) {
+        ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -3520,6 +3580,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.convert_log_softmax)
+    pipeline.AddStage<LogSoftmaxStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
   if (options_.convert_expm1)
@@ -3528,6 +3590,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
     pipeline.AddStage<UnaryOpsComposition>(ctx, ctx_ext);
   if (options_.remove_stack_strided_slice_same_axis)
     pipeline.AddStage<RemoveStackStridedSliceSameAxis>(ctx, ctx_ext);
+  if (options_.fuse_squared_diff)
+    pipeline.AddStage<FuseSquaredDiffStage>(ctx, ctx_ext);
 
   VLOG(1) << "Run " << pipeline.NumStages() << " arithmetic optimizer stages: "
           << str_util::Join(pipeline.StageNames(), ", ");

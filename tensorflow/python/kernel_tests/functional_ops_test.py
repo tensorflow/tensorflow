@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -32,6 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -56,7 +58,6 @@ def simple_scoped_fn(a, x):
 
 
 @test_util.with_control_flow_v2
-@test_util.disable_all_xla("This test never passed for XLA")
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -474,6 +475,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, [6])
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -498,6 +500,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -522,6 +525,7 @@ class FunctionalOpsTest(test.TestCase):
       mul = self.evaluate(remote_op)
       self.assertEqual(mul, 9.0)
 
+  @test_util.run_deprecated_v1
   def testRemoteFunctionGPUCPUStrings(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -660,8 +664,7 @@ class FunctionalOpsTest(test.TestCase):
     self.assertAllEqual(Run(100., True), 5050.)
 
   @test_util.run_v1_only("b/120545219")
-  @test_util.disable_xla(
-      "This test never passed for XLA")  # Different error message
+  @test_util.disable_xla("b/123337890")  # Different error message
   def testWhileError(self):
     for use_gpu in (True, False):
       with ops.Graph().as_default() as g:
@@ -751,7 +754,7 @@ class FunctionalOpsTest(test.TestCase):
 
           def TestCondCapture(n, *args):
             del args
-            return math_ops.to_float(n) + v < 10
+            return math_ops.cast(n, dtypes.float32) + v < 10
 
           with self.assertRaises(ValueError):
             _ = functional_ops.While(
@@ -767,7 +770,7 @@ class FunctionalOpsTest(test.TestCase):
 
         @function.Defun(dtypes.int32, dtypes.float32)
         def Body(n, x):
-          return x + math_ops.to_float(n)
+          return x + math_ops.cast(n, dtypes.float32)
 
         xs = [
             # 1 + 2  + ... + 20
@@ -796,7 +799,7 @@ class FunctionalOpsTest(test.TestCase):
 
       @function.Defun(dtypes.int32, dtypes.float32, func_name="TestBody")
       def TestBody(n, x):
-        return x + math_ops.to_float(n)
+        return x + math_ops.cast(n, dtypes.float32)
 
       _ = functional_ops.For(
           1, 21, 1, [0.], TestBody, rewrite_with_while=True)[0]
@@ -814,15 +817,15 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32)
     def TestNullary(n):
-      v + math_ops.to_float(n)  # pylint: disable=expression-not-assigned
+      v + math_ops.cast(n, dtypes.float32)  # pylint: disable=expression-not-assigned
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def TestUnary(n, x):
-      return x + math_ops.to_float(n) + v
+      return x + math_ops.cast(n, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32, dtypes.float32)
     def TestBinary(n, x, x2):
-      return x + math_ops.to_float(n) + v, x2 + v
+      return x + math_ops.cast(n, dtypes.float32) + v, x2 + v
 
     for rewrite_with_while in (True, False):
       use_gpu = not rewrite_with_while
@@ -896,7 +899,7 @@ class FunctionalOpsTest(test.TestCase):
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def Foo(i, v):
-      return math_ops.to_float(i) + v
+      return math_ops.cast(i, dtypes.float32) + v
 
     @function.Defun(dtypes.int32, dtypes.float32)
     def ReturnsTooManyArgs(unused_i, v):
@@ -938,7 +941,6 @@ class FunctionalOpsTest(test.TestCase):
 
 # TODO(akshayka): Replace `function.Defun` with tf.contrib.eager.defun` in the
 # below test cases.
-@test_util.disable_all_xla("This test never passed for XLA")
 class PartitionedCallTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -982,6 +984,7 @@ class PartitionedCallTest(test.TestCase):
                 constant_op.constant(2.)], f=Body)
       self.assertEqual(output.eval(), 12.)
 
+  @test_util.run_deprecated_v1
   def testBasicMultiDeviceGPU(self):
     if not test_util.is_gpu_available():
       return
@@ -1062,6 +1065,7 @@ class PartitionedCallTest(test.TestCase):
     value = self.evaluate(v.read_value())
     self.assertEqual(value, 2.0)
 
+  @test_util.run_deprecated_v1
   def testFunctionWithResourcesOnDifferentDevices(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPUs available.")
@@ -1111,6 +1115,37 @@ class PartitionedCallTest(test.TestCase):
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  "NON_EXISTENT_EXECUTOR"):
       self.evaluate(op)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
+class FunctionalOpsCaseTest(test.TestCase):
+
+  def testCase(self):
+    @eager_function.defun
+    def two(x):
+      return x * 2
+
+    @eager_function.defun
+    def three(x):
+      return x * 3
+
+    @eager_function.defun
+    def four(x):
+      return x * 4
+
+    def f(branch, x):
+      tmpl = array_ops.zeros_like(x)
+      return array_ops.identity(gen_functional_ops.case(
+          branch, input=[x], Tout=[dtypes.float32],
+          branches=[f.get_concrete_function(tmpl)
+                    for f in (two, three, four)])[0])
+    one = array_ops.ones([])
+    self.assertAllEqual(np.float32(2), self.evaluate(f(0, one)))
+    self.assertAllEqual(np.float32(3), self.evaluate(f(1, one)))
+    self.assertAllEqual(np.float32(4), self.evaluate(f(2, one)))
+    self.assertAllEqual(np.float32(4), self.evaluate(f(-1, one)))  # <0 default
+    self.assertAllEqual(np.float32(4), self.evaluate(f(6, one)))  # >=N default
 
 
 if __name__ == "__main__":

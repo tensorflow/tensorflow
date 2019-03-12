@@ -19,11 +19,12 @@ from __future__ import print_function
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
 class ShardTest(test_base.DatasetTestBase):
 
   def testSimpleCase(self):
@@ -41,20 +42,24 @@ class ShardTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(dataset, expected_output=[0, 5])
 
   def testOffsetGreaterNumShards(self):
-    with self.assertRaises(ValueError):
-      dataset_ops.Dataset.range(10).shard(5, 7)
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).shard(5, 7)
+      self.evaluate(self.getNext(dataset)())
 
   def testNegativeOffset(self):
-    with self.assertRaises(ValueError):
-      dataset_ops.Dataset.range(10).shard(5, -3)
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).shard(5, -3)
+      self.evaluate(self.getNext(dataset)())
 
   def testNegativeNumShards(self):
-    with self.assertRaises(ValueError):
-      dataset_ops.Dataset.range(10).shard(-3, 1)
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).shard(-3, 1)
+      self.evaluate(self.getNext(dataset)())
 
   def testZeroNumShards(self):
-    with self.assertRaises(ValueError):
-      dataset_ops.Dataset.range(10).shard(0, 1)
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = dataset_ops.Dataset.range(10).shard(0, 1)
+      self.evaluate(self.getNext(dataset)())
 
   def testIteratorEndsBeforeFirstElem(self):
     dataset = dataset_ops.Dataset.range(1).shard(5, 2)
@@ -71,6 +76,11 @@ class ShardTest(test_base.DatasetTestBase):
   def testIndexEqualsNumShards2(self):
     dataset = dataset_ops.Dataset.range(10).shard(4, 3)
     self.assertDatasetProduces(dataset, expected_output=[3, 7])
+
+  def testNumShardsLargerThanDataset(self):
+    dataset = dataset_ops.Dataset.range(10).shard(20, 5)
+    self.assertDatasetProduces(dataset, expected_output=[5])
+
 
 if __name__ == "__main__":
   test.main()

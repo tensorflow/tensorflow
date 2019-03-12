@@ -167,6 +167,12 @@ class HloModule {
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }
 
+  // Returns the mutable computation for the given index.
+  HloComputation* mutable_computation(int64 idx) {
+    CHECK(idx >= 0 && idx < computations_.size());
+    return computations_[idx].get();
+  }
+
   // Gets the number of instructions in this module.
   int64 instruction_count() const;
 
@@ -187,6 +193,7 @@ class HloModule {
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
   const HloModuleConfig& config() const { return config_; }
+  void set_config(HloModuleConfig& config) { config_ = config; }
 
   // Return a string representation of the module.
   //
@@ -263,6 +270,18 @@ class HloModule {
   // Returns the schedue of the module. CHECK fails if no schedule is set.
   const HloSchedule& schedule() const { return *schedule_; }
   HloSchedule& schedule() { return *schedule_; }
+
+  HloComputation* AddComputationAndUnifyNamesAndIds(
+      std::unique_ptr<HloComputation> computation, bool is_entry) {
+    computation->ClearUniqueIdInternal();
+    for (auto* instruction : computation->instructions()) {
+      instruction->ClearUniqueIdInternal();
+    }
+    return AddComputationInternal(std::move(computation), is_entry,
+                                  /*uniquify_identifiers=*/true);
+  }
+
+  Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
 
  private:
   HloComputation* AddComputationInternal(

@@ -17,6 +17,15 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("ExperimentalAutoShardDataset")
+    .Input("input_dataset: variant")
+    .Input("num_workers: int64")
+    .Input("index: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalBytesProducedStatsDataset")
     .Input("input_dataset: variant")
     .Input("tag: string")
@@ -42,7 +51,7 @@ REGISTER_OP("ExperimentalCSVDataset")
     .Output("handle: variant")
     .Attr("output_types: list({float,double,int32,int64,string}) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -76,10 +85,15 @@ REGISTER_OP("ExperimentalDatasetCardinality")
     .Output("cardinality: int64")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(b/124308596): Instead of conservatively marking this op as stateful,
+// implement a mechanism to determine whether `dataset` has a side-effect
+// and use it to decide whether to use a stateless or stateful version of this
+// op.
 REGISTER_OP("ExperimentalDatasetToTFRecord")
     .Input("input_dataset: variant")
     .Input("filename: string")
     .Input("compression_type: string")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("ExperimentalDenseToSparseBatchDataset")
@@ -213,7 +227,7 @@ REGISTER_OP("ExperimentalMapDataset")
 REGISTER_OP("ExperimentalMatchingFilesDataset")
     .Input("patterns: string")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -267,7 +281,7 @@ REGISTER_OP("ExperimentalRandomDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -338,7 +352,7 @@ REGISTER_OP("ExperimentalSqlDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -467,7 +481,7 @@ REGISTER_OP("ExperimentalLMDBDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 

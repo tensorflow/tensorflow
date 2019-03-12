@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
 import gast
+import six
 import termcolor
 
 
@@ -56,6 +58,15 @@ class PrettyPrinter(gast.NodeVisitor):
     self.result += '\n'
 
   def generic_visit(self, node, name=None):
+    # In very rare instances, a list can contain something other than a Node.
+    # e.g. Global contains a list of strings.
+    if isinstance(node, str):
+      if name:
+        self._print('%s%s="%s"' % (self._indent(), name, node))
+      else:
+        self._print('%s"%s"' % (self._indent(), node))
+      return
+
     if node._fields:
       cont = ':'
     else:
@@ -97,9 +108,12 @@ class PrettyPrinter(gast.NodeVisitor):
           self._print('%s%s=()' % (self._indent(), self._field(f)))
       elif isinstance(v, gast.AST):
         self.generic_visit(v, f)
-      elif isinstance(v, str):
+      elif isinstance(v, six.binary_type):
         self._print('%s%s=%s' % (self._indent(), self._field(f),
-                                 self._value('"%s"' % v)))
+                                 self._value('b"%s"' % v)))
+      elif isinstance(v, six.text_type):
+        self._print('%s%s=%s' % (self._indent(), self._field(f),
+                                 self._value('u"%s"' % v)))
       else:
         self._print('%s%s=%s' % (self._indent(), self._field(f),
                                  self._value(v)))

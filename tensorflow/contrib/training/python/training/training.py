@@ -432,7 +432,7 @@ def create_train_op(total_loss,
   else:
     # Make sure that variables_to_train are in tf.trainable_variables()
     for v in variables_to_train:
-      assert v in tf_variables.trainable_variables()
+      assert v.trainable or v in tf_variables.trainable_variables()
 
   assert variables_to_train
 

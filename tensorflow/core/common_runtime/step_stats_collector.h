@@ -175,6 +175,10 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   void Save(const string& device, NodeExecStats* node_stats_pb);
   void Save(const string& device, NodeExecStatsWrapper* node_stats);
 
+  // Saves thread name.
+  void SaveThreadName(const string& device, const uint32 thread_id,
+                      const string& thread_name);
+
   NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override;
   string ReportAllocsOnResourceExhausted(const string& err) override;
 
@@ -191,12 +195,14 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   static const uint64 kMaxCollectedNodes = 1 << 20;
 
   typedef std::vector<std::unique_ptr<NodeExecStatsWrapper>> NodeStatsVector;
+  typedef std::unordered_map<uint32, string> ThreadNamesMap;
 
   void FinalizeInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   bool finalized_ GUARDED_BY(mu_);
   std::unordered_map<string, NodeStatsVector> dev_stats_ GUARDED_BY(mu_);
+  std::unordered_map<string, ThreadNamesMap> thread_names_ GUARDED_BY(mu_);
   StepStats* step_stats_ GUARDED_BY(mu_);
   uint64 collected_nodes_ GUARDED_BY(mu_) = 0;
 };

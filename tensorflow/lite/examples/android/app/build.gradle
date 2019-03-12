@@ -10,7 +10,7 @@ apply from: "download-models.gradle"
 
 android {
     compileSdkVersion 26
-    buildToolsVersion '27.0.3'
+    buildToolsVersion '28.0.3'
     defaultConfig {
         applicationId "org.tensorflow.lite.demo"
         minSdkVersion 15

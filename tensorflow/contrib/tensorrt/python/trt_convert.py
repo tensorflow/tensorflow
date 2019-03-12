@@ -21,20 +21,21 @@ from __future__ import print_function
 from tensorflow.python.compiler.tensorrt import trt_convert
 
 
-def create_inference_graph(input_graph_def,
-                           outputs,
-                           max_batch_size=1,
-                           max_workspace_size_bytes=2 << 20,
-                           precision_mode=trt_convert.TrtPrecisionMode.FP32,
-                           minimum_segment_size=3,
-                           is_dynamic_op=False,
-                           maximum_cached_engines=1,
-                           cached_engine_batches=None,
-                           use_calibration=True,
-                           input_saved_model_dir=None,
-                           input_saved_model_tags=None,
-                           output_saved_model_dir=None,
-                           session_config=None):
+def create_inference_graph(
+    input_graph_def,
+    outputs,
+    max_batch_size=1,
+    max_workspace_size_bytes=trt_convert.DEFAULT_TRT_MAX_WORKSPACE_SIZE_BYTES,
+    precision_mode=trt_convert.TrtPrecisionMode.FP32,
+    minimum_segment_size=3,
+    is_dynamic_op=False,
+    maximum_cached_engines=1,
+    cached_engine_batches=None,
+    use_calibration=True,
+    input_saved_model_dir=None,
+    input_saved_model_tags=None,
+    output_saved_model_dir=None,
+    session_config=None):
   return trt_convert.create_inference_graph(
       input_graph_def=input_graph_def,
       outputs=outputs,

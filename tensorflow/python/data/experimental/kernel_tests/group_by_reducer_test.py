@@ -120,8 +120,9 @@ class GroupByReducerTest(test_base.DatasetTestBase):
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.from_tensors(np.int64(0)).repeat(i).apply(
           grouping.group_by_reducer(lambda x: x, reducer))
-      self.assertEqual([None], dataset.output_shapes[0].as_list())
-      self.assertIs(None, dataset.output_shapes[1].ndims)
+      dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+      self.assertEqual([None], dataset_output_shapes[0].as_list())
+      self.assertIs(None, dataset_output_shapes[1].ndims)
       get_next = self.getNext(dataset)
       x, y = self.evaluate(get_next())
       self.assertAllEqual([0] * (2**i), x)

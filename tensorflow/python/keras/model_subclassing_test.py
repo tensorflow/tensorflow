@@ -35,7 +35,7 @@ from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.tracking import data_structures
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top

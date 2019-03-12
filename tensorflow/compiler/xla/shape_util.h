@@ -398,7 +398,9 @@ class ShapeUtil {
   // Returns a value shape such that shape.has_layout().
   static Shape MakeShapeWithLayout(PrimitiveType element_type,
                                    absl::Span<const int64> dimensions,
-                                   absl::Span<const int64> minor_to_major);
+                                   absl::Span<const int64> minor_to_major,
+                                   absl::Span<const Tile> tiles = {},
+                                   int64 element_size_in_bits = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,

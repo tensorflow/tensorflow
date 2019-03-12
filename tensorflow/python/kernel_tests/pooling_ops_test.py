@@ -21,9 +21,11 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -35,6 +37,15 @@ from tensorflow.python.ops import variables
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
+
+
+def GetDeviceScope(self, use_gpu=False):
+  if context.executing_eagerly():
+    if use_gpu and test.is_gpu_available():
+      return ops.device("GPU:0")
+    return ops.device("CPU:0")
+  else:
+    return self.session(use_gpu=use_gpu)
 
 
 def GetTestConfigs(include_nchw_vect_c=False):
@@ -730,7 +741,7 @@ class PoolingTest(test.TestCase):
         t = nn_ops.max_pool(
             t, ksize=ksize, strides=strides, padding="SAME").eval()
 
-  @test_util.disable_xla("b/123338077")
+  @test_util.disable_xla("b/123338077")  # Passes with XLA
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 2, 2, 2], [1, 1, 1, 2],
@@ -743,7 +754,7 @@ class PoolingTest(test.TestCase):
     if test.is_gpu_available():
       with self.session(use_gpu=True):
         t = variables.Variable(np.ones([1, 2, 2, 4]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         with self.assertRaisesOpError("for CPU devices"):
           nn_ops.max_pool(
               t, ksize=[1, 1, 1, 2], strides=[1, 1, 1, 2],
@@ -800,7 +811,7 @@ class PoolingTest(test.TestCase):
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
-      with self.cached_session(use_gpu=True):
+      with self.cached_session(use_gpu=False):
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         argmax = self.evaluate(argmax_op)
@@ -824,62 +835,90 @@ class PoolingTest(test.TestCase):
           cpu_val, gpu_val, half_rtol=0.01, half_atol=0.01)
 
   def testMaxPoolingWithArgmax(self):
-    tensor_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    with self.session(use_gpu=True) as sess:
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
-      out_op, argmax_op = nn_ops.max_pool_with_argmax(
-          t,
-          ksize=[1, 2, 2, 1],
-          strides=[1, 1, 1, 1],
-          Targmax=dtypes.int64,
-          padding="VALID")
-      out, argmax = self.evaluate([out_op, argmax_op])
-      self.assertShapeEqual(out, out_op)
-      self.assertShapeEqual(argmax, argmax_op)
-      self.assertAllClose(out.ravel(), [1.0, 1.0, 1.0, 1.0])
-      self.assertAllEqual(argmax.ravel(), [0, 1, 3, 5])
+    tensor_input = [
+        1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 1.0
+    ]
+    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
+               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
+               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
+
+    for use_gpu, include_batch_in_index, argmax_exp in configs:
+      with GetDeviceScope(self, use_gpu=use_gpu):
+        t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
+        out_op, argmax_op = nn_ops.max_pool_with_argmax(
+            t,
+            ksize=[1, 2, 2, 1],
+            strides=[1, 1, 1, 1],
+            Targmax=dtypes.int64,
+            padding="VALID",
+            include_batch_in_index=include_batch_in_index)
+        out, argmax = self.evaluate([out_op, argmax_op])
+        self.assertShapeEqual(out, out_op)
+        self.assertShapeEqual(argmax, argmax_op)
+        self.assertAllClose(out.ravel(),
+                            [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+        self.assertAllEqual(argmax.ravel(), argmax_exp)
 
   def testMaxPoolingGradWithArgmax(self):
-    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    tensor_input = [11.0, 12.0, 13.0, 14.0]
-    tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
-    with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[1, 2, 2, 1])
-      argmax = constant_op.constant(
-          tensor_argmax, shape=[1, 2, 2, 1], dtype=dtypes.int64)
-      out_op = gen_nn_ops.max_pool_grad_with_argmax(
-          orig_in,
-          t,
-          argmax,
-          ksize=[1, 2, 2, 1],
-          strides=[1, 1, 1, 1],
-          padding="VALID")
-      out = self.evaluate(out_op).flatten()
-      self.assertAllClose(out,
-                          [11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0])
+    orig_input = [
+        1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 1.0
+    ]
+    tensor_input = [11.0, 12.0, 13.0, 14.0, 21.0, 22.0, 23.0, 24.0]
+
+    configs = [[False, False, [0, 1, 3, 5, 0, 2, 6, 8]],
+               [False, True, [0, 1, 3, 5, 9, 11, 15, 17]],
+               [True, False, [0, 1, 3, 5, 0, 2, 6, 8]]]
+
+    for use_gpu, include_batch_in_index, argmax in configs:
+      with GetDeviceScope(self, use_gpu):
+        orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+        t = constant_op.constant(tensor_input, shape=[2, 2, 2, 1])
+        argmax_t = constant_op.constant(
+            argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
+        out_op = gen_nn_ops.max_pool_grad_with_argmax(
+            orig_in,
+            t,
+            argmax_t,
+            ksize=[1, 2, 2, 1],
+            strides=[1, 1, 1, 1],
+            padding="VALID",
+            include_batch_in_index=include_batch_in_index)
+        out = self.evaluate(out_op).flatten()
+        self.assertAllClose(out, [
+            11.0, 12.0, 0.0, 13.0, 0.0, 14.0, 0.0, 0.0, 0.0, 21.0, 0.0, 22.0,
+            0.0, 0.0, 0.0, 23.0, 0.0, 24.0
+        ])
 
   def testMaxPoolingGradGradWithArgmax(self):
     # MaxPoolWithArgMax is implemented only on CUDA.
     if not test.is_gpu_available(cuda_only=True):
       return
-    orig_input = [1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0]
-    tensor_input = [11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0]
-    tensor_argmax = list(np.array([0, 1, 3, 5], dtype=np.int64))
+    orig_input = [
+        1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0,
+        0.0, 1.0, 0.0, 1.0
+    ]
+    tensor_input = [
+        11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0, 19.0, 21.0, 22.0, 23.0,
+        24.0, 25.0, 26.0, 27.0, 28.0, 29.0
+    ]
+    tensor_argmax = list(np.array([0, 1, 3, 5, 0, 2, 6, 8], dtype=np.int64))
     with self.session(use_gpu=True):
-      orig_in = constant_op.constant(orig_input, shape=[1, 3, 3, 1])
-      t = constant_op.constant(tensor_input, shape=[1, 3, 3, 1])
+      orig_in = constant_op.constant(orig_input, shape=[2, 3, 3, 1])
+      t = constant_op.constant(tensor_input, shape=[2, 3, 3, 1])
       argmax = constant_op.constant(
-          tensor_argmax, shape=[1, 2, 2, 1], dtype=dtypes.int64)
+          tensor_argmax, shape=[2, 2, 2, 1], dtype=dtypes.int64)
       out_op = gen_nn_ops.max_pool_grad_grad_with_argmax(
           orig_in,
           t,
           argmax,
           ksize=[1, 2, 2, 1],
           strides=[1, 1, 1, 1],
-          padding="VALID")
+          padding="VALID",
+          include_batch_in_index=False)
       out = self.evaluate(out_op).flatten()
-      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
+      self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0, 21.0, 23.0, 27.0, 29.0])
 
   def _ConstructAndTestGradient(self,
                                 pool_func,
@@ -1211,7 +1250,6 @@ class PoolingTest(test.TestCase):
                      [1, window_rows, window_cols, 1],
                      [1, row_stride, col_stride, 1], padding)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def _testMaxPoolGradDirect(self, input_data, output_backprop,
                              expected_input_backprop, input_sizes, output_sizes,
                              window_rows, window_cols, row_stride, col_stride,
@@ -1220,7 +1258,7 @@ class PoolingTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       input_tensor = variables.Variable(
           np.array(input_data, dtype=np.float32).reshape(input_sizes))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       output_tensor = pool_func(input_tensor, [1, window_rows, window_cols, 1],
                                 [1, row_stride, col_stride, 1], padding)
       output_backprop_tensor = constant_op.constant(
@@ -1353,6 +1391,7 @@ class PoolingTest(test.TestCase):
             use_gpu=use_gpu,
             v2=v2)
 
+  @test_util.disable_xla("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_1(self):
     input_data = [float("nan")] * 16
     output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
@@ -1427,6 +1466,7 @@ class PoolingTest(test.TestCase):
     else:
       del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
+  @test_util.disable_xla("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
     output_backprop = [
@@ -1627,7 +1667,6 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testMaxPoolGradGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradGradValidPadding1_1(data_format, use_gpu)
@@ -1662,7 +1701,6 @@ class PoolingTest(test.TestCase):
         [1, row_stride, col_stride, 1], padding)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1822,7 +1860,7 @@ class PoolingTest(test.TestCase):
             padding="SAME")
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testOpEdgeCases(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
@@ -1898,17 +1936,9 @@ if __name__ == "__main__":
        padding_) in GetShrunkInceptionMaxPoolShapes():
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
-    if name_ == "maxpool5":
-      setattr(
-          PoolingTest, "testMaxPoolGrad_" + name_,
-          test_util.disable_xla("maxpool5 fails while all others pass")(
-              GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
-                                 stride_, padding_)))
-    else:
-      setattr(
-          PoolingTest, "testMaxPoolGrad_" + name_,
-          GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
-                             padding_))
+    setattr(PoolingTest, "testMaxPoolGrad_" + name_,
+            GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
+                               padding_))
     setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
             GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
                                    stride_, padding_))

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -350,9 +349,7 @@ TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {
                              error_spec_);
 }
 
-// TODO(b/119692968): This test runs OOM on the GPU and CPU backend.
-XLA_TEST_F(ArrayElementwiseOpTest,
-           DISABLED_ON_GPU(DISABLED_ON_CPU(DeeplyNestedAddWithSlices))) {
+XLA_TEST_F(ArrayElementwiseOpTest, DeeplyNestedAddWithSlices) {
   XlaBuilder builder(TestName());
   std::vector<float> values(30, 0.0);
   auto a_literal = LiteralUtil::CreateR1<float>(values);

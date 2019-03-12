@@ -12,13 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for checkpointable object SavedModel loading."""
+"""Tests for trackable object SavedModel loading."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import os
 import tempfile
 
@@ -38,9 +39,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import monitored_session
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
+from tensorflow.python.util import tf_inspect
 
 
 @parameterized.named_parameters(
@@ -61,17 +64,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     return loaded
 
   def test_structure_import(self, cycles):
-    root = tracking.AutoCheckpointable()
-    root.dep_one = tracking.AutoCheckpointable()
-    root.dep_two = tracking.AutoCheckpointable()
-    root.dep_two.dep = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    root.dep_one = tracking.AutoTrackable()
+    root.dep_two = tracking.AutoTrackable()
+    root.dep_two.dep = tracking.AutoTrackable()
     root.dep_three = root.dep_two.dep
     imported = self.cycle(root, cycles)
     self.assertIs(imported.dep_three, imported.dep_two.dep)
     self.assertIsNot(imported.dep_one, imported.dep_two)
 
   def test_variables(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1., trainable=True)
     root.v2 = variables.Variable(2., trainable=False)
     imported = self.cycle(root, cycles)
@@ -81,7 +84,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertFalse(imported.v2.trainable)
 
   def test_capture_variables(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.weights = variables.Variable(2.)
     root.f = def_function.function(
         lambda x: root.weights * x,
@@ -101,7 +104,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     file1 = self._make_asset("contents 1")
     file2 = self._make_asset("contents 2")
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.asset1 = tracking.TrackableAsset(file1)
     root.asset2 = tracking.TrackableAsset(file2)
 
@@ -120,21 +123,44 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       self.assertEqual("contents 2", f.read())
 
   def test_capture_assets(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
     root.f = def_function.function(
         lambda: root.vocab.asset_path,
         input_signature=[])
     imported = self.cycle(root, cycles)
-    origin_output = root.f().numpy()
+    original_output = root.f().numpy()
     imported_output = imported.f().numpy()
-    self.assertNotEqual(origin_output, imported_output)
+    self.assertNotEqual(original_output, imported_output)
     with open(imported_output, "r") as f:
       self.assertEqual("contents", f.read())
 
+  def test_capture_assets_in_graph(self, cycles):
+    root = tracking.AutoTrackable()
+    root.vocab = tracking.TrackableAsset(self._make_asset("contents"))
+    root.f = def_function.function(
+        lambda: root.vocab.asset_path,
+        input_signature=[])
+
+    original_output = root.f().numpy()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      imported_tensor = imported.f()
+      with monitored_session.MonitoredSession() as sess:
+        imported_output = sess.run(imported_tensor)
+        self.assertNotEqual(original_output, imported_output)
+        with open(imported_output, "r") as f:
+          self.assertEqual("contents", f.read())
+
   def test_dedup_assets(self, cycles):
     vocab = self._make_asset("contents")
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.asset1 = tracking.TrackableAsset(vocab)
     root.asset2 = tracking.TrackableAsset(vocab)
     imported = self.cycle(root, cycles)
@@ -146,7 +172,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func
 
     # Add two traces.
@@ -164,7 +190,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func
 
     imported = self.cycle(root, cycles)
@@ -175,7 +201,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func
 
     imported = self.cycle(
@@ -194,7 +220,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda x: f(x) + 1.0,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.g = g
     imported = self.cycle(root, cycles)
     imported.g(constant_op.constant([1.0]))
@@ -207,7 +233,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(func)
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
@@ -227,7 +253,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return array_ops.zeros(shape=x.shape, dtype=dtypes.float32)
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(func)
 
     self.assertAllEqual([0.0, 0.0, 0.0],
@@ -261,17 +287,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_function_no_return(self, cycles):
 
-    class CheckpointableWithOneVariable(tracking.AutoCheckpointable):
+    class TrackableWithOneVariable(tracking.AutoTrackable):
 
       def __init__(self, initial_value=0.0):
-        super(CheckpointableWithOneVariable, self).__init__()
+        super(TrackableWithOneVariable, self).__init__()
         self.variable = variables.Variable(initial_value)
 
       @def_function.function
       def increase(self, by=1.0):
         self.variable.assign_add(by)
 
-    obj = CheckpointableWithOneVariable(5.0)
+    obj = TrackableWithOneVariable(5.0)
 
     obj.increase(constant_op.constant(10.0))
     self.assertEqual(15.0, obj.variable.numpy())
@@ -295,7 +321,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(func)
 
     x = constant_op.constant(10)
@@ -311,8 +337,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(AssertionError,
-                                 "Could not find matching function to call.*"):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function to call"):
       imported.f(input2)
 
     self.assertEqual(31, imported.f(input1).numpy())
@@ -327,7 +353,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       named_tuple = named_tuple_type(a=input1 + input2, b=input1 * input2)
       return [named_tuple, input2, {"x": 0.5}]
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(func)
 
     result = root.f(constant_op.constant(2), constant_op.constant(3))
@@ -357,7 +383,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(func)
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
@@ -379,7 +405,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       else:
         return 7
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(func)
 
     x = constant_op.constant(10)
@@ -387,17 +413,17 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(AssertionError,
+    with self.assertRaisesRegexp(ValueError,
                                  "Could not find matching function to call.*"):
       imported.f(x, learning_rate=0.5, epochs=4)
 
     self.assertEqual(7, imported.f(x, learning_rate=0.5, epochs=3).numpy())
 
   def test_member_function(self, cycles):
-    class CheckpointableWithMember(tracking.AutoCheckpointable):
+    class TrackableWithMember(tracking.AutoTrackable):
 
       def __init__(self):
-        super(CheckpointableWithMember, self).__init__()
+        super(TrackableWithMember, self).__init__()
         self._some_value = 20
 
       @def_function.function
@@ -407,7 +433,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         else:
           return 7 + self._some_value
 
-    root = CheckpointableWithMember()
+    root = TrackableWithMember()
 
     self.assertEqual(20, root.f(constant_op.constant(10), True).numpy())
     self.assertEqual(27, root.f(constant_op.constant(1)).numpy())
@@ -419,7 +445,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(27, imported.f(constant_op.constant(2)).numpy())
 
   def test_side_effect_listing(self, cycles):
-    class M(tracking.AutoCheckpointable):
+    class M(tracking.AutoTrackable):
 
       def __init__(self):
         super(M, self).__init__()
@@ -443,7 +469,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         lambda x: x*weight + bias,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.weight = weight
     root.bias = bias
     root.g = g
@@ -483,7 +509,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def h(x):
       return g(x) + bias,
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.weight = weight
     root.bias = bias
     root.g = h
@@ -496,16 +522,16 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(grad, [3.5, 2.0])
 
   def test_callable(self, cycles):
-    class M1(tracking.AutoCheckpointable):
+    class M1(tracking.AutoTrackable):
 
       @def_function.function(
           input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
       def __call__(self, x):
         return x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.m1 = M1()
-    root.m2 = tracking.AutoCheckpointable()
+    root.m2 = tracking.AutoTrackable()
     root.m2.__call__ = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
@@ -528,9 +554,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     func = def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])(
             lambda x: x*3.0)
-    root = tracking.AutoCheckpointable()
-    root.__call__ = tracking.AutoCheckpointable()
-    root.__call__.__call__ = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    root.__call__ = tracking.AutoTrackable()
+    root.__call__.__call__ = tracking.AutoTrackable()
     root.__call__.__call__.__call__ = func
 
     imported = self.cycle(root, cycles)
@@ -539,7 +565,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(imported(x).numpy(), 3.0)
 
   def test_load_in_graph_mode(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(
@@ -560,7 +586,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         self.assertEqual(4.0, sess.run(output))
 
   def test_load_in_func_graph(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.v1 = variables.Variable(1.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(
@@ -572,7 +598,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())
     save.save(root, path)
 
-    closure = tracking.AutoCheckpointable()
+    closure = tracking.AutoTrackable()
     @def_function.function
     def func(x):
       if not hasattr(closure, "model"):
@@ -589,7 +615,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -600,9 +626,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(ValueError, "Cannot canonicalize"):
+    with self.assertRaisesRegexp(ValueError, "Python inputs incompatible"):
       # We cannot call the function with a constant of shape ().
-      self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+      imported.f(constant_op.constant(2)).numpy()
 
     # TODO(vbardiovsky): When classes are revived with input_signatures, we
     # should also check that the calls below are not generating any more
@@ -612,6 +638,36 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 4, 6],
                         imported.f(constant_op.constant([1, 2, 3])).numpy())
 
+  def test_get_concrete_function(self, cycles):
+
+    @def_function.function
+    def func(x, training=False):
+      if training:
+        return 2 * x
+      else:
+        return 3 * x
+
+    func.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32), True)
+    func.get_concrete_function(tensor_spec.TensorSpec([None], dtypes.float32))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    imported = self.cycle(root, cycles)
+
+    concrete = imported.f.get_concrete_function(
+        training=True, x=tensor_spec.TensorSpec([None], dtypes.int32))
+
+    self.assertAllEqual([2, 4, 6, 8],
+                        concrete(x=constant_op.constant([1, 2, 3, 4])).numpy())
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function to call"):
+      imported.f.get_concrete_function(
+          tensor_spec.TensorSpec([None], dtypes.int32))
+    imported.f.get_concrete_function(
+        tensor_spec.TensorSpec([None], dtypes.int32), True)
+
   def test_concrete_function(self, cycles):
 
     @def_function.function(
@@ -619,7 +675,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function()
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -640,7 +696,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function()
 
     self.assertAllEqual([2], root.f(constant_op.constant([1])).numpy())
@@ -656,7 +712,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(x):
       return 2 * x
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function(constant_op.constant([1]))
     self.assertAllEqual([4], root.f(constant_op.constant([2])).numpy())
     # TODO(andresp): Fix exporting of loaded concrete functions as signatures.
@@ -669,7 +725,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         input_signature=[tensor_spec.TensorSpec([None], dtypes.float32)])
     def func(x):
       return x ** 2.
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function()
 
     def _compute_gradient(function):
@@ -689,7 +745,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     @def_function.function
     def func(x, y):
       return x * (y + 1.)
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function(
         tensor_spec.TensorSpec([], dtypes.float32),
         tensor_spec.TensorSpec([], dtypes.float32))
@@ -706,7 +762,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(*args):
       x, y = args
       return x * (y + 1.)
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function(
         tensor_spec.TensorSpec([], dtypes.float32, name="x"),
         tensor_spec.TensorSpec([], dtypes.float32, name="y"))
@@ -727,7 +783,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       capture.assign_sub(1)
 
     vsave = variables.Variable(1)
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = func.get_concrete_function(vsave)
     root.capture = capture
     self.assertEqual(1, vsave.numpy())
@@ -750,7 +806,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     def func(v):
       return v + 1
 
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.func = func
     root.concrete_func = func.get_concrete_function(
         tensor_spec.TensorSpec(None, dtypes.int32))
@@ -762,7 +818,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(2, imported.concrete_func(one).numpy())
 
   def test_dict(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.variables = dict(a=variables.Variable(1.))
     root.variables["b"] = variables.Variable(2.)
     root.variables["c"] = 1
@@ -777,7 +833,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(100., imported.funcs["conc"]().numpy())
 
   def test_list(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.variables = [variables.Variable(1.)]
     root.variables.append(1)
     root.variables.append(variables.Variable(3.))
@@ -788,7 +844,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(3, len(imported.variables))
 
   def test_functions_list(self, cycles):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     v1 = variables.Variable(1.)
     root.losses = [def_function.function(lambda: math_ops.reduce_sum(v1 ** 2))]
     root.variables = [v1]
@@ -810,7 +866,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
   def test_captured_constant(self, cycles):
     const = array_ops.zeros([100])
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(lambda: const + 1.)
     root.g = def_function.function(lambda: const + 2.)
     self.assertAllClose(array_ops.ones([100]), root.f())
@@ -828,25 +884,264 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIs(f_concrete.captured_inputs[0],
                   g_concrete.captured_inputs[0])
 
-  def test_table(self, cycles):
-    # TODO(b/123408779): Handle generic TrackableResources and enable this test
-    self.skipTest("Need to handle generic TrackableResources")
-    vocab_path = self._make_asset("alpha\nbeta\ngamma\n")
-    initializer = lookup_ops.TextFileInitializer(
-        vocab_path,
-        key_dtype=dtypes.string,
-        key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
-        value_dtype=dtypes.int64,
-        value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
-    root = util.Checkpoint(table=lookup_ops.HashTable(
-        initializer, default_value=-1))
-    root.table_user = def_function.function(
-        root.table.lookup,
-        input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])
-    self.assertEqual(2, root.table_user(constant_op.constant("gamma")).numpy())
-    imported = self.cycle(root, cycles)
+  def test_functions_accessed_once(self, cycles):
+
+    class Exported(tracking.AutoTrackable):
+
+      def __init__(self):
+        self._counter = 0
+
+      @property
+      def make_func(self):
+        @def_function.function
+        def f():
+          return constant_op.constant(self._counter)
+        f.get_concrete_function()  # force a trace
+        self._counter += 1
+        return f
+
+    exported = Exported()
+    imported = self.cycle(exported, cycles)
+    self.assertEqual(0, imported.make_func().numpy())
+    self.assertEqual(1, exported.make_func().numpy())
+
+  def test_overwritten_signatures_error(self, cycles):
+    exported = tracking.AutoTrackable()
+    exported.f = def_function.function(lambda: constant_op.constant(1.))
+    imported = self.cycle(
+        exported, cycles,
+        signatures={"key": exported.f.get_concrete_function()})
+    self.assertEqual(1., imported.signatures["key"]()["output_0"].numpy())
+    imported.signatures = {"key1": imported.signatures["key"]}
+    with self.assertRaisesRegexp(ValueError, "signatures"):
+      save.save(imported, tempfile.mkdtemp(prefix=self.get_temp_dir()))
+
+  def test_signature_loading(self, cycles):
+
+    class Exported(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = variables.Variable(3.)
+
+      @def_function.function
+      def do(self, x):
+        return self.v * x
+
+    exported = Exported()
+    imported = self.cycle(
+        exported,
+        signatures=exported.do.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32)))
+    for _ in range(cycles - 1):
+      imported = self.cycle(imported, signatures=imported.signatures)
+    self.assertEqual(["serving_default"], list(imported.signatures.keys()))
+    imported_function = imported.signatures["serving_default"]
+    two = constant_op.constant(2.)
+    self.assertEqual(6., imported_function(x=two)["output_0"].numpy())
+    imported.v.assign(4.)
+    self.assertEqual(8., imported_function(x=two)["output_0"].numpy())
+    self.assertEqual(8., imported_function(two)["output_0"].numpy())
+    with self.assertRaises(TypeError):
+      # The signatures mapping is immutable
+      imported.signatures["random_key"] = 3
+
+  def test_multiple_argument_signatures_no_positional(self, cycles):
+
+    class Exported(tracking.AutoTrackable):
+
+      @def_function.function
+      def do(self, x, y):
+        return x + y
+
+    exported = Exported()
+    imported = self.cycle(
+        exported, signatures=exported.do.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.float32)))
+    for _ in range(cycles - 1):
+      imported = self.cycle(imported, signatures=imported.signatures)
+    with self.assertRaises(TypeError):
+      imported.signatures["serving_default"](
+          constant_op.constant(1.),
+          y=constant_op.constant(2.))
     self.assertEqual(
-        2, imported.table_user(constant_op.constant("gamma")).numpy())
+        {"output_0": 3.},
+        self.evaluate(imported.signatures["serving_default"](
+            x=constant_op.constant(1.),
+            y=constant_op.constant(2.))))
+
+  def _make_model_with_tables(self):
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table1_initializer = lookup_ops.KeyValueTensorInitializer(keys, values)
+    table1 = lookup_ops.HashTable(table1_initializer, default_val)
+
+    table2_file = self._make_asset("test\nfoo\nbrain\n")
+    table2_initializer = lookup_ops.TextFileIdTableInitializer(table2_file)
+    table2 = lookup_ops.HashTable(table2_initializer, default_val)
+
+    def _make_lookup_function(table):
+      signature = [tensor_spec.TensorSpec(None, dtypes.string)]
+      return def_function.function(input_signature=signature)(
+          lambda x: table.lookup(x))  # pylint: disable=unnecessary-lambda
+
+    root = tracking.AutoTrackable()
+    root.table1 = table1
+    root.lookup1 = _make_lookup_function(table1)
+    root.table2 = table2
+    root.lookup2 = _make_lookup_function(table2)
+    return root
+
+  def test_table(self, cycles):
+    root = self._make_model_with_tables()
+    imported = self.cycle(root, cycles, signatures={})
+    keys = constant_op.constant(["brain", "test", "foo", "surgery"])
+    self.assertAllEqual([0, -1, -1, 2], imported.lookup1(keys).numpy())
+    self.assertAllEqual([2, 0, 1, -1], imported.lookup2(keys).numpy())
+
+  def test_table_in_graph(self, cycles):
+    root = self._make_model_with_tables()
+
+    if cycles > 1:
+      root = self.cycle(root, cycles - 1)
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    imported = self.cycle(root, 1)
+
+    with ops.Graph().as_default():
+      imported = load.load(path)
+      keys = constant_op.constant(["brain", "test", "foo", "surgery"])
+      output1 = imported.lookup1(keys)
+      output2 = imported.lookup2(keys)
+      with monitored_session.MonitoredSession() as sess:
+        self.assertAllEqual([0, -1, -1, 2], sess.run(output1))
+        self.assertAllEqual([2, 0, 1, -1], sess.run(output2))
+
+  def test_perserve_argspec(self, cycles):
+    def f(a, b, c):  # pylint: disable=unused-argument
+      return None
+
+    original_fullargspec = tf_inspect.getfullargspec(f)
+
+    root = tracking.AutoTrackable()
+    root.f = def_function.function(f)
+    imported = self.cycle(root, cycles)
+
+    restored_fullargspec = tf_inspect.getfullargspec(imported.f)
+    self.assertEqual(original_fullargspec, restored_fullargspec)
+
+  def test_canonicalize_inputs(self, cycles):
+    @def_function.function(autograph=False)
+    def func(a=1, b=2, c=3, training=True):
+      if training:
+        return [a, b, c, training]
+      else:
+        return [c, b, a, training]
+
+    # TODO(b/123501567): Work-around to trigger generic traces of a function
+    # with extra non tensor args.
+    signature = 3*[tensor_spec.TensorSpec(None, dtypes.float32)]
+    @def_function.function(input_signature=signature)
+    def trigger(a, b, c):
+      func(a, b, c, True)
+      func(a, b, c, False)
+
+    trigger.get_concrete_function()
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
+    self.assertAllEqual(root.f(-1.0, training=False), [3.0, 2.0, -1.0, False])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function"):
+      root.f(["hello", 1.0])
+
+  def test_prefer_specific_trace(self, cycles):
+    @def_function.function(autograph=False)
+    def func(a):
+      if isinstance(a, int):
+        return a
+      else:
+        return a + 1
+
+    self.assertAllEqual(2, func(2).numpy())
+    self.assertAllEqual(3, func(constant_op.constant(2)).numpy())
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(2, root.f(2).numpy())
+    self.assertAllEqual(4, root.f(3).numpy())
+    self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
+    self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
+
+  def test_partial(self, cycles):
+    # TODO(vbardiovsky): Figure out the story for FunctionSpec vs partial vs
+    # input_signature.
+    self.skipTest("Partial does not work for serialization.")
+
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(), [0.0])
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(), [0.0])
+
+  def test_convert_to_input_signature(self, cycles):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return x
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    root = self.cycle(root, cycles)
+
+    self.assertEqual([2], root.f([2]).numpy())
+
+
+class SingleCycleTests(test.TestCase, parameterized.TestCase):
+
+  def test_load_with_tags(self):
+    root = tracking.AutoTrackable()
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    save.save(root, path)
+    with self.assertRaises(ValueError):
+      load.load(path, tags=[tag_constants.EVAL])
+    load.load(path, tags=[tag_constants.SERVING])
+    load.load(path, tags=tag_constants.SERVING)
+    load.load(path, tags=set([tag_constants.SERVING]))
+
+  def test_docstring_examples(self):
+    path = tempfile.mkdtemp(prefix=self.get_temp_dir())
+    exported = util.Checkpoint(v=variables.Variable(3.))
+    exported.f = def_function.function(
+        lambda x: exported.v * x,
+        input_signature=[
+            tensor_spec.TensorSpec(shape=None, dtype=dtypes.float32)])
+    save.save(exported, path)
+    imported = load.load(path)
+    self.assertEqual(3., imported.v.numpy())
+    self.assertEqual(6., imported.f(x=constant_op.constant(2.)).numpy())
+
+    save.save(exported, path, exported.f.get_concrete_function())
+    imported = load.load(path)
+    f = imported.signatures["serving_default"]
+    self.assertAllEqual(
+        [[-3.]],
+        f(x=constant_op.constant([[-1.]]))["output_0"].numpy())
+
 
 if __name__ == "__main__":
   test.main()

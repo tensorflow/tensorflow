@@ -530,19 +530,13 @@ def tf_additional_proto_hdrs():
     return [
         "platform/default/integral_types.h",
         "platform/default/logging.h",
-        "platform/default/protobuf.h",
     ] + if_windows([
         "platform/windows/integral_types.h",
     ])
 
-def tf_additional_proto_compiler_hdrs():
-    return [
-        "platform/default/protobuf_compiler.h",
-    ]
-
 def tf_additional_proto_srcs():
     return [
-        "platform/default/protobuf.cc",
+        "platform/protobuf.cc",
     ]
 
 def tf_additional_human_readable_json_deps():
@@ -552,13 +546,26 @@ def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
 def tf_protos_all_impl():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return [
+        "//tensorflow/core:autotuning_proto_cc_impl",
+        "//tensorflow/core:conv_autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+    ]
 
 def tf_protos_all():
     return if_static(
         extra_deps = tf_protos_all_impl(),
         otherwise = ["//tensorflow/core:protos_all_cc"],
     )
+
+def tf_profiler_all_protos():
+    return ["//tensorflow/core/profiler:protos_all"]
+
+def tf_grpc_service_all():
+    return [
+        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
+        "//tensorflow/core/profiler:profiler_service_proto_cc",
+    ]
 
 def tf_protos_grappler_impl():
     return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
@@ -579,7 +586,10 @@ def tf_additional_device_tracer_cuda_deps():
     return []
 
 def tf_additional_device_tracer_deps():
-    return []
+    return [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ]
 
 def tf_additional_device_tracer_test_flags():
     return []
@@ -719,6 +729,12 @@ def tf_additional_gdr_lib_defines():
         "//conditions:default": [],
     })
 
+def tf_additional_numa_lib_defines():
+    return select({
+        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "//conditions:default": [],
+    })
+
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 
@@ -751,3 +767,26 @@ def tf_additional_binary_deps():
             "//third_party/mkl:intel_binary_blob",
         ],
     )
+
+def tf_additional_numa_deps():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [
+            "@hwloc",
+        ],
+    })
+
+def tf_additional_numa_copts():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:macos": [],
+        "//conditions:default": [
+            "-Ithird_party/hwloc/hwloc-master/include",
+            "-DTENSORFLOW_USE_NUMA",
+        ],
+    })

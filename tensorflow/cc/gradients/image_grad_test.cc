@@ -27,6 +27,7 @@ namespace tensorflow {
 namespace {
 
 using ops::Const;
+using ops::CropAndResize;
 using ops::ResizeBicubic;
 using ops::ResizeBilinear;
 using ops::ResizeNearestNeighbor;
@@ -51,7 +52,8 @@ class ImageGradTest : public ::testing::Test {
 
   template <typename T>
   void MakeOp(const OpType op_type, const Tensor& x_data, const Input& y_shape,
-              const bool align_corners, Output* x, Output* y) {
+              const bool align_corners, const bool half_pixel_centers,
+              Output* x, Output* y) {
     *x = Const<T>(scope_, x_data);
     switch (op_type) {
       case RESIZE_NEAREST:
@@ -61,22 +63,26 @@ class ImageGradTest : public ::testing::Test {
         return;
       case RESIZE_BILINEAR:
         *y = ResizeBilinear(scope_, *x, y_shape,
-                            ResizeBilinear::AlignCorners(align_corners));
+                            ResizeBilinear::AlignCorners(align_corners)
+                                .HalfPixelCenters(half_pixel_centers));
         return;
       case RESIZE_BICUBIC:
         *y = ResizeBicubic(scope_, *x, y_shape,
-                           ResizeBicubic::AlignCorners(align_corners));
+                           ResizeBicubic::AlignCorners(align_corners)
+                               .HalfPixelCenters(half_pixel_centers));
         return;
     }
     assert(false);
   }
 
   template <typename T>
-  void TestResizedShapeForType(const OpType op_type, const bool align_corners) {
+  void TestResizedShapeForType(const OpType op_type, const bool align_corners,
+                               const bool half_pixel_centers) {
     TensorShape x_shape({1, 2, 2, 1});
     Tensor x_data = MakeData<T>(x_shape);
     Output x, y;
-    MakeOp<T>(op_type, x_data, {4, 6}, align_corners, &x, &y);
+    MakeOp<T>(op_type, x_data, {4, 6}, align_corners, half_pixel_centers, &x,
+              &y);
 
     ClientSession session(scope_);
     std::vector<Tensor> outputs;
@@ -86,44 +92,64 @@ class ImageGradTest : public ::testing::Test {
   }
 
   void TestResizedShape(OpType op_type) {
-    for (const bool align_corners : {true, false}) {
-      TestResizedShapeForType<Eigen::half>(op_type, align_corners);
-      TestResizedShapeForType<float>(op_type, align_corners);
-      TestResizedShapeForType<double>(op_type, align_corners);
+    for (const bool half_pixel_centers : {true, false}) {
+      for (const bool align_corners : {true, false}) {
+        if (half_pixel_centers && align_corners) {
+          continue;
+        }
+        TestResizedShapeForType<Eigen::half>(op_type, align_corners,
+                                             half_pixel_centers);
+        TestResizedShapeForType<float>(op_type, align_corners,
+                                       half_pixel_centers);
+        TestResizedShapeForType<double>(op_type, align_corners,
+                                        half_pixel_centers);
+      }
     }
   }
 
   template <typename X_T, typename Y_T, typename JAC_T>
   void TestResizeToSmallerAndAlign(const OpType op_type,
-                                   const bool align_corners) {
+                                   const bool align_corners,
+                                   const bool half_pixel_centers) {
     TensorShape x_shape({1, 4, 6, 1});
     Tensor x_data = MakeData<X_T>(x_shape);
     Output x, y;
-    MakeOp<X_T>(op_type, x_data, {2, 3}, align_corners, &x, &y);
+    MakeOp<X_T>(op_type, x_data, {2, 3}, align_corners, half_pixel_centers, &x,
+                &y);
     JAC_T max_error;
     TF_ASSERT_OK((ComputeGradientError<X_T, Y_T, JAC_T>(
         scope_, x, x_data, y, {1, 2, 3, 1}, &max_error)));
-    EXPECT_LT(max_error, 1e-3);
+    EXPECT_LT(max_error, 1.5e-3);
   }
 
   template <typename X_T, typename Y_T, typename JAC_T>
   void TestResizeToLargerAndAlign(const OpType op_type,
-                                  const bool align_corners) {
+                                  const bool align_corners,
+                                  const bool half_pixel_centers) {
     TensorShape x_shape({1, 2, 3, 1});
     Tensor x_data = MakeData<X_T>(x_shape);
     Output x, y;
-    MakeOp<X_T>(op_type, x_data, {4, 6}, align_corners, &x, &y);
+    MakeOp<X_T>(op_type, x_data, {4, 6}, align_corners, half_pixel_centers, &x,
+                &y);
     JAC_T max_error;
     TF_ASSERT_OK((ComputeGradientError<X_T, Y_T, JAC_T>(
         scope_, x, x_data, y, {1, 4, 6, 1}, &max_error)));
-    EXPECT_LT(max_error, 1e-3);
+    EXPECT_LT(max_error, 1.5e-3);
   }
 
   template <typename X_T, typename Y_T, typename JAC_T>
   void TestResize(OpType op_type) {
-    for (const bool align_corners : {true, false}) {
-      TestResizeToSmallerAndAlign<X_T, Y_T, JAC_T>(op_type, align_corners);
-      TestResizeToLargerAndAlign<X_T, Y_T, JAC_T>(op_type, align_corners);
+    for (const bool half_pixel_centers : {true, false}) {
+      for (const bool align_corners : {true, false}) {
+        // if (!half_pixel_centers) continue;
+        if (half_pixel_centers && align_corners) {
+          continue;
+        }
+        TestResizeToSmallerAndAlign<X_T, Y_T, JAC_T>(op_type, align_corners,
+                                                     half_pixel_centers);
+        TestResizeToLargerAndAlign<X_T, Y_T, JAC_T>(op_type, align_corners,
+                                                    half_pixel_centers);
+      }
     }
   }
 
@@ -193,6 +219,51 @@ class ScaleAndTranslateGradTest : public ::testing::Test {
 };
 
 TEST_F(ScaleAndTranslateGradTest, Works) { TestResize<float, float, float>(); }
+
+class CropAndResizeGradTest : public ::testing::Test {
+ protected:
+  CropAndResizeGradTest() : scope_(Scope::NewRootScope()) {}
+
+  template <typename T>
+  Tensor MakeData(const TensorShape& data_shape) {
+    DataType data_type = DataTypeToEnum<T>::v();
+    Tensor data(data_type, data_shape);
+    auto data_flat = data.flat<T>();
+    for (int i = 0; i < data_flat.size(); ++i) {
+      data_flat(i) = T(i);
+    }
+    return data;
+  }
+
+  template <typename T>
+  void MakeOp(const Tensor& x_data, const Input& boxes, const Input& box_ind,
+              const Input& crop_szie, Output* x, Output* y) {
+    *x = Const<T>(scope_, x_data);
+    *y = CropAndResize(scope_, *x, boxes, box_ind, crop_szie,
+                       CropAndResize::Method("bilinear"));
+    TF_ASSERT_OK(scope_.status());
+  }
+
+  template <typename X_T, typename Y_T, typename JAC_T>
+  void TestCropAndResize() {
+    TensorShape x_shape({1, 4, 2, 1});
+    Tensor x_data = MakeData<X_T>(x_shape);
+    TensorShape box_shape({1, 4});
+    Tensor boxes = MakeData<X_T>(box_shape);
+    Output x, y;
+    MakeOp<X_T>(x_data, boxes, {0}, {1, 1}, &x, &y);
+    JAC_T max_error;
+    TF_ASSERT_OK((ComputeGradientError<X_T, Y_T, JAC_T>(
+        scope_, x, x_data, y, {1, 1, 1, 1}, &max_error)));
+    EXPECT_LT(max_error, 1e-3);
+  }
+
+  Scope scope_;
+};
+
+TEST_F(CropAndResizeGradTest, TestCrop) {
+  TestCropAndResize<float, float, float>();
+}
 
 }  // namespace
 }  // namespace tensorflow

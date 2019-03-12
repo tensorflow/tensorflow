@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/gemm_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -40,9 +41,8 @@ namespace fully_connected {
 // This file has four implementations of FullyConnected
 enum KernelType {
   kReference,
-  kGenericOptimized,  // Neon-free
-  kNeonOptimized,
-  kPie,  // Used by the PIE team
+  kGenericOptimized,
+  kLegacyPie,  // Legacy path used by the PIE team and related clients.
 };
 
 struct OpData {
@@ -212,7 +212,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context,
                  filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8);
-  TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  if (bias) {
+    TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  }
   TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
 
   int total_input_size = 1;
@@ -286,6 +288,27 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     macro_name(target_namespace, kRelu6);                            \
   }
 
+namespace {
+void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
+                        const TfLiteTensor* filter, const TfLiteTensor* bias,
+                        TfLiteTensor* output,
+                        gemmlowp::GemmContext* gemm_context) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+  reference_integer_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(filter), GetTensorData<int8_t>(filter),
+      GetTensorShape(bias), GetTensorData<int32_t>(bias),
+      GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+}
+}  // namespace
+
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteFullyConnectedParams* params, OpData* data,
@@ -314,10 +337,19 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(output), GetTensorData<output_data_type>(output), \
         gemm_context);                                                   \
   }
-  if (kernel_type == kReference) {
+  // Only the Pie path supports quantized models and float inputs/outputs.
+  if (input->type == kTfLiteFloat32) {
+    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
+    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/1);
+    return EvalHybrid(context, node, params, data, input, filter, bias,
+                      input_quantized, scaling_factors, output);
+  } else if (kernel_type == kReference) {
     switch (output->type) {
       case kTfLiteUInt8:
         TF_LITE_FULLY_CONNECTED(reference_ops, uint8_t);
+        break;
+      case kTfLiteInt8:
+        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
         break;
       case kTfLiteInt16:
         TF_LITE_FULLY_CONNECTED(reference_ops, int16_t);
@@ -328,16 +360,13 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
             "Quantized FullyConnected expects output data type uint8 or int16");
         return kTfLiteError;
     }
-  } else if (kernel_type == kPie && input->type == kTfLiteFloat32) {
-    // Pie currently only supports quantized models and float inputs/outputs.
-    TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
-    TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/1);
-    return EvalHybrid(context, node, params, data, input, filter, bias,
-                      input_quantized, scaling_factors, output);
   } else {
     switch (output->type) {
       case kTfLiteUInt8:
         TF_LITE_FULLY_CONNECTED(optimized_ops, uint8_t);
+        break;
+      case kTfLiteInt8:
+        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
         break;
       case kTfLiteInt16:
         TF_LITE_FULLY_CONNECTED(optimized_ops, int16_t);
@@ -418,7 +447,7 @@ TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
   }
   if (kernel_type == kReference) {
     TF_LITE_FULLY_CONNECTED(reference_ops);
-  } else if (kernel_type == kPie) {
+  } else if (kernel_type == kLegacyPie) {
     return EvalPie(context, node, params, data, input, filter, bias, output);
   } else {
     TF_LITE_FULLY_CONNECTED(optimized_ops);
@@ -488,13 +517,6 @@ TfLiteRegistration* Register_FULLY_CONNECTED_REF() {
   return &r;
 }
 
-TfLiteRegistration* Register_FULLY_CONNECTED_NEON_OPT() {
-  static TfLiteRegistration r = {
-      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
-      fully_connected::Eval<fully_connected::kNeonOptimized>};
-  return &r;
-}
-
 TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
   static TfLiteRegistration r = {
       fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
@@ -502,24 +524,16 @@ TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT() {
   return &r;
 }
 
+// Legacy path for PIE clients.
 TfLiteRegistration* Register_FULLY_CONNECTED_PIE() {
-  static TfLiteRegistration r = {fully_connected::Init, fully_connected::Free,
-                                 fully_connected::Prepare,
-                                 fully_connected::Eval<fully_connected::kPie>};
+  static TfLiteRegistration r = {
+      fully_connected::Init, fully_connected::Free, fully_connected::Prepare,
+      fully_connected::Eval<fully_connected::kLegacyPie>};
   return &r;
 }
 
 TfLiteRegistration* Register_FULLY_CONNECTED() {
-  // TODO(ahentz): We don't have a dedicated quantized version of the PIE
-  // kernel. For now, the quantized version just defer to the corresponding
-  // optimized MINI kernel. At some point we will allow different libraries to
-  // be built with different kernels, but for now we have to pick one here.
-  return Register_FULLY_CONNECTED_PIE();
-#ifdef USE_NEON
-  return Register_FULLY_CONNECTED_NEON_OPT();
-#else
   return Register_FULLY_CONNECTED_GENERIC_OPT();
-#endif
 }
 
 }  // namespace builtin

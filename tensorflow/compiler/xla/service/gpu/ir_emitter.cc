@@ -492,8 +492,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       result = llvm::ConstantAggregateZero::get(lhs_array.GetElementLlvmType());
       result = InsertValue(result, value.first, {0});
       result = InsertValue(result, value.second, {1});
-    } else {
+    } else if (ShapeUtil::ElementIsFloating(lhs_shape)) {
       result = FMul(lhs_value, rhs_value);
+    } else {
+      TF_RET_CHECK(ShapeUtil::ElementIsIntegral(lhs_shape));
+      result = Mul(lhs_value, rhs_value);
     }
     target_array.EmitWriteArrayElement(/*index=*/element_index, result, &b_);
     return Status::OK();
@@ -583,9 +586,13 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     llvm::Value* accum_imag = Imag(accum, &b_);
     llvm::Value* imag_sum = FAdd(accum_imag, value.second);
     updated_accum = InsertValue(updated_accum, imag_sum, {1});
-  } else {
+  } else if (ShapeUtil::ElementIsFloating(lhs_shape)) {
     llvm::Value* product = FMul(lhs_element, rhs_element);
     updated_accum = FAdd(accum, product);
+  } else {
+    TF_RET_CHECK(ShapeUtil::ElementIsIntegral(lhs_shape));
+    llvm::Value* product = Mul(lhs_element, rhs_element);
+    updated_accum = Add(accum, product);
   }
   Store(updated_accum, accum_address);
 
@@ -593,20 +600,22 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   // address. The index into the target address is the concatenation of the rhs
   // and lhs indexes with the reduction dimensions removed. The terms from the
   // rhs index are the lower dimensions in the index so we add them first.
-  llvm_ir::IrArray::Index target_index(index_type);
+  std::vector<llvm::Value*> target_multi_index;
   for (size_t dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
-      target_index.push_back(lhs_index[dimension]);
+      target_multi_index.push_back(lhs_index[dimension]);
     }
   }
   // Skip over the batch dimensions to not have them in the index twice.
   for (size_t dimension = dnums.lhs_batch_dimensions_size();
        dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
-      target_index.push_back(rhs_index[dimension]);
+      target_multi_index.push_back(rhs_index[dimension]);
     }
   }
   SetToFirstInsertPoint(reduction_loop->GetExitBasicBlock(), &b_);
+  llvm_ir::IrArray::Index target_index(target_multi_index, /*linear=*/nullptr,
+                                       target_array.GetShape(), index_type);
   target_array.EmitWriteArrayElement(
       target_index,
       Load(accum_address),  // The value written to the target array.
@@ -647,7 +656,7 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
 }
 
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
-  // TODO(b/112040122): Support variadic reduce.
+  // TODO(b/118332391): Support variadic reduce.
   if (!reduce->shape().IsArray()) {
     return Unimplemented("Variadic reduce is not supported on GPU");
   }

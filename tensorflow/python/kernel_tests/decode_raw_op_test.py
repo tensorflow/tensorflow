@@ -90,6 +90,32 @@ class DecodeRawOpTest(test.TestCase):
       self.assertAllEqual(expected_result, result)
 
   @test_util.run_deprecated_v1
+  def testToComplex64(self):
+    with self.cached_session():
+      in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+      decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.complex64)
+      self.assertEqual([None, None], decode.get_shape().as_list())
+
+      expected_result = np.matrix([[1 + 1j, 2 - 2j, -3 + 3j, -4 - 4j]],
+                                  dtype="<c8")
+      result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
+
+      self.assertAllEqual(expected_result, result)
+
+  @test_util.run_deprecated_v1
+  def testToComplex128(self):
+    with self.cached_session():
+      in_bytes = array_ops.placeholder(dtypes.string, shape=[None])
+      decode = parsing_ops.decode_raw(in_bytes, out_type=dtypes.complex128)
+      self.assertEqual([None, None], decode.get_shape().as_list())
+
+      expected_result = np.matrix([[1 + 1j, 2 - 2j, -3 + 3j, -4 - 4j]],
+                                  dtype="<c16")
+      result = decode.eval(feed_dict={in_bytes: [expected_result.tostring()]})
+
+      self.assertAllEqual(expected_result, result)
+
+  @test_util.run_deprecated_v1
   def testEmptyStringInput(self):
     with self.cached_session():
       in_bytes = array_ops.placeholder(dtypes.string, shape=[None])

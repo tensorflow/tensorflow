@@ -173,9 +173,10 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
   cc_ctx->CtxFailure(s);
 }
 
-#define DEFINE_TF_GETATTR_(struct_name, func, c_type, cc_type)                 \
-  void struct_name##_GetAttr##func(struct_name* ctx, const char* attr_name,    \
-                                   c_type* val, TF_Status* status) {           \
+#define DEFINE_TF_GETATTR(func, c_type, cc_type)                               \
+  void TF_OpKernelConstruction_GetAttr##func(TF_OpKernelConstruction* ctx,     \
+                                             const char* attr_name,            \
+                                             c_type* val, TF_Status* status) { \
     TF_SetStatus(status, TF_OK, "");                                           \
     cc_type v;                                                                 \
     auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelConstruction*>(ctx); \
@@ -185,10 +186,6 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
       *val = static_cast<c_type>(v);                                           \
     }                                                                          \
   }
-
-#define DEFINE_TF_GETATTR(func, c_type, cc_type)                     \
-  DEFINE_TF_GETATTR_(TF_OpKernelConstruction, func, c_type, cc_type) \
-  DEFINE_TF_GETATTR_(TF_OpKernelContext, func, c_type, cc_type)
 
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType)
 

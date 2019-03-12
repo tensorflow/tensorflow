@@ -363,5 +363,58 @@ TEST(PropagateConstIntoFunctionalNodes, WhileLoopWithResourceInput) {
   TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &fld));
 }
 
+TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
+  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  {
+    // Cond graph & body graph.
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto pred = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
+    auto input = ops::_Arg(scope.WithOpName("arg1"), DT_BOOL, 1);
+    auto duplicate_name = ops::NoOp(scope.WithOpName("duplicate_name"));
+    auto ret = ops::_Retval(scope.WithOpName("ret"), pred, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef cond_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "cond", &cond_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(cond_fdef));
+    FunctionDef body_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "body", &body_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(body_fdef));
+  }
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto pred =
+      ops::Const(scope.WithOpName("duplicate_name"), false, TensorShape({}));
+  auto input = ops::Const(scope.WithOpName("input"), false, TensorShape({}));
+  NameAttrList cond_fn, body_fn;
+  cond_fn.set_name("cond");
+  body_fn.set_name("body");
+  auto while_op =
+      ops::While(scope.WithOpName("while"),
+                 std::initializer_list<Input>{pred, input}, cond_fn, body_fn);
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &fld));
+
+  // Check that in rewritten body function, the NoOp node still has name
+  // "duplicate_name", and the copied Const node has name "duplicate_name/_0".
+  auto node_name_index = graph.BuildNodeNameIndex();
+  Node* while_node = node_name_index["while"];
+  ASSERT_NE(while_node, nullptr);
+  TF_ASSERT_OK(GetNodeAttr(while_node->def(), "body", &body_fn));
+  const FunctionDef* rewritten_body_fn = fld.Find(body_fn.name());
+  ASSERT_NE(rewritten_body_fn, nullptr);
+  std::unordered_map<string, NodeDef> nodes;
+  for (const NodeDef& node_def : rewritten_body_fn->node_def()) {
+    nodes[node_def.name()] = node_def;
+  }
+  auto noop_def = nodes.find("duplicate_name");
+  ASSERT_NE(noop_def, nodes.end());
+  EXPECT_EQ(noop_def->second.op(), "NoOp");
+  auto const_def = nodes.find("duplicate_name/_0");
+  ASSERT_NE(const_def, nodes.end());
+  EXPECT_EQ(const_def->second.op(), "Const");
+}
+
 }  // namespace
 }  // namespace tensorflow

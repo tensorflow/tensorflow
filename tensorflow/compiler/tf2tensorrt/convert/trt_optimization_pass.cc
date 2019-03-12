@@ -34,13 +34,13 @@ namespace convert {
 // TODO(sami): Remove VLOG messages once the code matures
 using absl::StrAppend;
 using absl::StrCat;
-using tensorflow::str_util::Uppercase;
+using str_util::Uppercase;
 
-tensorflow::Status TRTOptimizationPass::Init(
-    const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
+Status TRTOptimizationPass::Init(
+    const RewriterConfig_CustomGraphOptimizer* config) {
   VLOG(1) << "Called INIT for " << name_ << " with config = " << config;
   if (config == nullptr) {
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
   const auto params = config->parameter_map();
   if (params.count("minimum_segment_size")) {
@@ -72,12 +72,14 @@ tensorflow::Status TRTOptimizationPass::Init(
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();
   }
-  return tensorflow::Status::OK();
+  if (params.count("use_function_backup")) {
+    use_function_backup_ = params.at("use_function_backup").b();
+  }
+  return Status::OK();
 }
 
-void TRTOptimizationPass::PrintDebugInfo(
-    tensorflow::grappler::Cluster* cluster,
-    const tensorflow::grappler::GrapplerItem& item) {
+void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
+                                         const grappler::GrapplerItem& item) {
   LOG(INFO) << "Cluster = " << cluster;
   string offset("  ");
   string offset2 = StrCat(offset, offset);
@@ -87,7 +89,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     LOG(INFO) << offset << "type             = " << cluster->type();
     LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
     const auto dev_names = cluster->GetDeviceNames();
-    if (dev_names.size()) {
+    if (!dev_names.empty()) {
       LOG(INFO) << offset << " Device names:";
       for (const auto s : dev_names) {
         LOG(INFO) << offset2 << s;
@@ -95,7 +97,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     }
     std::unordered_map<string, uint64> peak_mem;
     auto status = cluster->GetPeakMemoryUsage(&peak_mem);
-    if (status == tensorflow::Status::OK()) {
+    if (status == Status::OK()) {
       LOG(INFO) << offset << "Peak Memory Usage :";
       for (auto s : peak_mem) {
         LOG(INFO) << offset2 << s.first << " = " << s.second;
@@ -103,7 +105,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     }
 
     const auto dev_props = cluster->GetDevices();
-    if (dev_props.size()) {
+    if (!dev_props.empty()) {
       LOG(INFO) << offset << "Device properties:";
       for (auto k : dev_props) {
         LOG(INFO) << offset2 << k.first;
@@ -131,7 +133,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     }
   }
   LOG(INFO) << "item: " << item.id;
-  if (item.feed.size()) {
+  if (!item.feed.empty()) {
     LOG(INFO) << offset << "Feeds  :";
     for (const auto& f : item.feed) {
       const auto& shape = f.second.shape();
@@ -140,7 +142,7 @@ void TRTOptimizationPass::PrintDebugInfo(
   } else {
     LOG(INFO) << offset << "No Feeds";
   }
-  if (item.fetch.size()) {
+  if (!item.fetch.empty()) {
     LOG(INFO) << offset << "Fetches  :";
     for (const auto& f : item.fetch) {
       LOG(INFO) << offset2 << f;
@@ -149,7 +151,7 @@ void TRTOptimizationPass::PrintDebugInfo(
     LOG(INFO) << offset << "No Fetches";
   }
 
-  if (item.init_ops.size()) {
+  if (!item.init_ops.empty()) {
     LOG(INFO) << offset << "init ops  :";
     for (const auto& f : item.init_ops) {
       LOG(INFO) << offset2 << f;
@@ -160,7 +162,7 @@ void TRTOptimizationPass::PrintDebugInfo(
   LOG(INFO) << "Save Op = " << item.save_op;
   LOG(INFO) << "Restore Op = " << item.restore_op;
   LOG(INFO) << "save_restore_loc_tensor = " << item.save_restore_loc_tensor;
-  if (item.keep_ops.size()) {
+  if (!item.keep_ops.empty()) {
     LOG(INFO) << offset << "keep ops  :";
     for (const auto& f : item.keep_ops) {
       LOG(INFO) << offset2 << f;
@@ -177,9 +179,9 @@ void TRTOptimizationPass::PrintDebugInfo(
   }
 }
 
-tensorflow::Status TRTOptimizationPass::Optimize(
-    tensorflow::grappler::Cluster* cluster,
-    const tensorflow::grappler::GrapplerItem& item, GraphDef* optimized_graph) {
+Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
+                                     const grappler::GrapplerItem& item,
+                                     GraphDef* optimized_graph) {
   VLOG(1) << "Called TRTOptimization Pass " << name_;
   // This is a hack to workaround optimizer issue. MetaOptimizer calls
   // optimization passes on function objects as well, we should not modify
@@ -190,14 +192,14 @@ tensorflow::Status TRTOptimizationPass::Optimize(
                  << " is probably called on funcdef! This optimizer must *NOT* "
                     "be called on function objects.";
     *optimized_graph = item.graph;
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
   if (VLOG_IS_ON(3)) {
     LOG(INFO) << CurrentStackTrace();
     PrintDebugInfo(cluster, item);
   }
   int max_dim = -1;
-  if (item.feed.size()) {
+  if (!item.feed.empty()) {
     for (const auto& f : item.feed) {
       const auto& shape = f.second.shape();
       if (shape.dims() > 0) {
@@ -223,9 +225,9 @@ tensorflow::Status TRTOptimizationPass::Optimize(
                    << " adjusting maximum batch size to match input batch size";
     }
   }
-  tensorflow::grappler::GraphProperties static_graph_properties(item);
+  grappler::GraphProperties static_graph_properties(item);
   TF_RETURN_IF_ERROR(static_graph_properties.InferStatically(true));
-  tensorflow::tensorrt::convert::ConversionParams cp;
+  ConversionParams cp;
 
   if (use_calibration_ && precision_mode_ != TrtPrecisionMode::INT8) {
     VLOG(1) << "Calibration with FP32 or FP16 is not implemented. "
@@ -263,27 +265,24 @@ tensorflow::Status TRTOptimizationPass::Optimize(
   cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
-  auto status = tensorflow::tensorrt::convert::ConvertAfterShapes(cp);
+  cp.use_function_backup = use_function_backup_;
+  auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;
 }
 
-void TRTOptimizationPass::Feedback(
-    tensorflow::grappler::Cluster* cluster,
-    const tensorflow::grappler::GrapplerItem& item,
-    const GraphDef& optimized_graph, double result) {}
-
-}  // namespace convert
-}  // namespace tensorrt
-}  // namespace tensorflow
+void TRTOptimizationPass::Feedback(grappler::Cluster* cluster,
+                                   const grappler::GrapplerItem& item,
+                                   const GraphDef& optimized_graph,
+                                   double result) {}
 
 class VerboseCustomGraphOptimizerRegistrar
-    : public tensorflow::grappler::CustomGraphOptimizerRegistrar {
+    : public grappler::CustomGraphOptimizerRegistrar {
  public:
   VerboseCustomGraphOptimizerRegistrar(
-      const tensorflow::grappler::CustomGraphOptimizerRegistry::Creator& cr,
-      const tensorflow::string& name)
-      : tensorflow::grappler::CustomGraphOptimizerRegistrar(cr, name) {
+      const grappler::CustomGraphOptimizerRegistry::Creator& cr,
+      const string& name)
+      : grappler::CustomGraphOptimizerRegistrar(cr, name) {
     VLOG(1) << "Constructing a CustomOptimizationPass registration object for "
             << name;
   }
@@ -293,10 +292,13 @@ static VerboseCustomGraphOptimizerRegistrar TRTOptimizationPass_Registrar(
     []() {
       VLOG(1)
           << "Instantiating CustomOptimizationPass object TensorRTOptimizer";
-      return new tensorflow::tensorrt::convert::TRTOptimizationPass(
-          "TensorRTOptimizer");
+      return new TRTOptimizationPass("TensorRTOptimizer");
     },
     ("TensorRTOptimizer"));
+
+}  // namespace convert
+}  // namespace tensorrt
+}  // namespace tensorflow
 
 #endif
 #endif

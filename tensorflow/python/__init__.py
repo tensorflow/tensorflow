@@ -62,6 +62,7 @@ from tensorflow.core.util.event_pb2 import *
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
+from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 
@@ -84,6 +85,7 @@ from tensorflow.python.feature_column import feature_column_lib as feature_colum
 from tensorflow.python.layers import layers
 from tensorflow.python.module import module
 from tensorflow.python.ops import bitwise_ops as bitwise
+from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import image_ops as image
 from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics

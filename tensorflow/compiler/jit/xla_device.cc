@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_compile_on_demand_op.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_device_ops.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
@@ -51,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/ptr_util.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
@@ -102,7 +102,8 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      absl::make_unique<XlaDeviceAllocator>();
+      absl::make_unique<XlaDeviceAllocator>(
+          backend->stream_executors()[device_ordinal]);
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
   return alloc_ptr;
@@ -428,7 +429,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
   // This achieves a device-wide sync.
   stream->ThenEnqueueOnBackgroundThread(
-      [this, stream, done](se::StreamExecutor*) {
+      [stream, done](se::StreamExecutor*) {
         tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
                                          /*is_expensive=*/true);
         done(stream->ok() ? Status::OK()
@@ -479,6 +480,23 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
+void XlaDevice::SetHandleDeviceErrorCallback(std::function<Status()> callback) {
+  mutex_lock lock(mu_);
+  device_error_callback_ = callback;
+}
+
+Status XlaDevice::HandleDeviceError() {
+  std::function<Status()> local_device_error_callback;
+  {
+    mutex_lock lock(mu_);
+    local_device_error_callback = device_error_callback_;
+  }
+  if (local_device_error_callback != nullptr) {
+    return local_device_error_callback();
+  }
+  return Status::OK();
+}
+
 Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
@@ -488,8 +506,14 @@ Status XlaDevice::RefreshStatus() {
   if (!stream) {
     return Status::OK();
   }
-  // Stream status is XlaDevice status, no extra operations needed.
-  return stream->RefreshStatus();
+  Status status = stream->RefreshStatus();
+  if (!status.ok()) {
+    // Ignore errors from HandleDeviceError, since by definition the status is
+    // already non-ok, so there's nothing extra to report if HandleDeviceError
+    // itself returns an error.
+    HandleDeviceError().IgnoreError();
+  }
+  return status;
 }
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,

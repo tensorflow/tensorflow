@@ -31,17 +31,15 @@ uint64 NewActivityId() {
 /* static */ uint64 TraceMe::ActivityStartImpl(
     absl::string_view activity_name) {
   uint64 activity_id = NewActivityId();
-  TraceMeRecorder::Record(
-      {activity_id, string(activity_name),
-       /*start_time=*/static_cast<uint64>(absl::GetCurrentTimeNanos()),
-       /*end_time=*/0});
+  TraceMeRecorder::Record({activity_id, string(activity_name),
+                           /*start_time=*/Env::Default()->NowNanos(),
+                           /*end_time=*/0});
   return activity_id;
 }
 
 /* static */ void TraceMe::ActivityEndImpl(uint64 activity_id) {
-  TraceMeRecorder::Record(
-      {activity_id, /*name=*/"", /*start_time=*/0,
-       /*end_time=*/static_cast<uint64>(absl::GetCurrentTimeNanos())});
+  TraceMeRecorder::Record({activity_id, /*name=*/"", /*start_time=*/0,
+                           /*end_time=*/Env::Default()->NowNanos()});
 }
 
 }  // namespace profiler

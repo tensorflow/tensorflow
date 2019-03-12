@@ -23,7 +23,6 @@ import os
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import iterator_ops as contrib_iterator_ops
-from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
@@ -78,7 +77,6 @@ class DatasetSerializationTestBase(test.TestCase):
     # NOTE: We disable all default optimizations in serialization tests in order
     # to test the actual dataset in question.
     options = dataset_ops.Options()
-    options.experimental_optimization = OptimizationOptions()
     options.experimental_optimization.apply_default_optimizations = False
 
     def ds_fn1_no_opt():
@@ -670,15 +668,15 @@ class DatasetSerializationTestBase(test.TestCase):
 
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_types
+      return dataset_ops.get_legacy_output_types(ds_fn())
 
   def _get_output_shapes(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_shapes
+      return dataset_ops.get_legacy_output_shapes(ds_fn())
 
   def _get_output_classes(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_classes
+      return dataset_ops.get_legacy_output_classes(ds_fn())
 
   def _ckpt_path(self):
     return os.path.join(self.get_temp_dir(), "iterator")

@@ -44,5 +44,5 @@ def report_internal_error(entity, exception):
   raise AutoGraphError(
       'Unexpected error transforming %s. If you believe this is due to a bug,'
       ' please set the verbosity to 10 (on Linux, `export '
-      'AUTOGRAPH_VERBOSITY=1`) and attach the full output when filing the bug '
-      'report. Caused by %s' % (entity, exception))
+      'AUTOGRAPH_VERBOSITY=10`) and attach the full output when filing the bug '
+      'report. Caused by: %s' % (entity, exception))

@@ -16,6 +16,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/platform/logging.h"
 
+#include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
@@ -25,14 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_types.h"
 
 namespace toco {
-
-#if PY_MAJOR_VERSION >= 3
-#define TOCO_PY_TO_CPPSTRING PyBytes_AsStringAndSize
-#define TOCO_FROM_CPPSTRING_TO_PY PyBytes_FromStringAndSize
-#else
-#define TOCO_PY_TO_CPPSTRING PyString_AsStringAndSize
-#define TOCO_FROM_CPPSTRING_TO_PY PyString_FromStringAndSize
-#endif
 
 // NOTE(aselle): We are using raw PyObject's here because we want to make
 // sure we input and output bytes rather than unicode strings for Python3.
@@ -44,7 +37,7 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
   auto ConvertArg = [&](PyObject* obj, bool* error) {
     char* buf;
     Py_ssize_t len;
-    if (TOCO_PY_TO_CPPSTRING(obj, &buf, &len) == -1) {
+    if (::tflite::python_utils::ConvertFromPyString(obj, &buf, &len) == -1) {
       *error = true;
       return std::string();
     } else {
@@ -96,15 +89,15 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
     PyObject* dict = PyDict_New();
     PyDict_SetItemString(
         dict, "flatbuffer",
-        TOCO_FROM_CPPSTRING_TO_PY(output_file_contents_txt.data(),
-                                  output_file_contents_txt.size()));
+        ::tflite::python_utils::ConvertToPyString(
+            output_file_contents_txt.data(), output_file_contents_txt.size()));
     PyDict_SetItemString(dict, "arithmetic_ops",
                          PyLong_FromLong(model->ArithmeticOpsCount()));
     return dict;
   }
   // Convert arguments back to byte (py3) or str (py2)
-  return TOCO_FROM_CPPSTRING_TO_PY(output_file_contents_txt.data(),
-                                   output_file_contents_txt.size());
+  return ::tflite::python_utils::ConvertToPyString(
+      output_file_contents_txt.data(), output_file_contents_txt.size());
 }
 
 }  // namespace toco

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -58,7 +57,8 @@ Status GenericTransferManager::WriteSingleTupleIndexTable(
 
 void GenericTransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer,
-    MutableBorrowingLiteral literal, std::function<void(Status)> done) {
+    MutableBorrowingLiteral literal, std::function<void(Status)> done,
+    const TransferMetadata* /*transfer_metadata*/) {
   Status status = stream->BlockHostUntilDone();
   if (!status.ok()) {
     return done(status);
@@ -98,7 +98,8 @@ Status GenericTransferManager::TransferLiteralFromDeviceInternal(
 
 Status GenericTransferManager::TransferLiteralToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
-    const ShapedBuffer& device_buffer) {
+    const ShapedBuffer& device_buffer,
+    const TransferMetadata* /*transfer_metadata*/) {
   const Shape& shape = literal.shape();
   VLOG(2) << "transferring literal shape to device: "
           << ShapeUtil::HumanString(shape)

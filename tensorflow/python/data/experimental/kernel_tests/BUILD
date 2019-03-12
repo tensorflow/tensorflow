@@ -114,6 +114,24 @@ py_test(
 )
 
 py_test(
+    name = "auto_shard_dataset_test",
+    size = "medium",
+    srcs = ["auto_shard_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":reader_dataset_ops_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "enumerate_dataset_test",
     size = "small",
     srcs = ["enumerate_dataset_test.py"],
@@ -322,6 +340,8 @@ py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:map_defun",
         "//tensorflow/python/data/kernel_tests:test_base",
     ],
@@ -445,15 +465,10 @@ cuda_py_test(
 
 py_library(
     name = "reader_dataset_ops_test_base",
-    testonly = 1,
     srcs = [
         "reader_dataset_ops_test_base.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//tensorflow/python/data/experimental/kernel_tests:__pkg__",
-        "//tensorflow/python/data/experimental/kernel_tests/serialization:__pkg__",
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -481,6 +496,7 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -603,7 +619,7 @@ py_library(
 
 py_test(
     name = "sql_dataset_test",
-    size = "small",
+    size = "medium",
     srcs = ["sql_dataset_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

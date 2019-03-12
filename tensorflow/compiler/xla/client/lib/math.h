@@ -28,15 +28,14 @@ XlaOp IsNegInf(XlaOp operand);
 XlaOp IsInf(XlaOp operand);
 XlaOp IsNan(XlaOp operand);
 
+// Determines whether operand is equal to -0.
+//
+// Raises an error for integral or complex values.
+XlaOp IsNegZero(XlaOp operand);
+
 // Returns the next number after 'from' in the direction of 'to' the same way
 // std::nextafter(from, to) would.
 XlaOp NextAfter(XlaOp from, XlaOp to);
-
-// Computes the square root of 'operand'.
-XlaOp Sqrt(XlaOp operand);
-
-// Computes the reciprocal of the square root of 'operand'.
-XlaOp Rsqrt(XlaOp operand);
 
 // Computes the square of 'operand'.
 XlaOp Square(XlaOp operand);

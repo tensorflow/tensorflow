@@ -68,7 +68,7 @@ class Conv1DTest(test.TestCase):
       f = constant_op.constant(
           1.0, shape=f_shape, name="filter", dtype=dtypes.float32)
       output = nn_ops.conv1d_transpose(
-          x, f, y_shape, stride=stride, padding="VALID")
+          x, f, y_shape, strides=stride, padding="VALID")
       value = self.evaluate(output)
 
       cache_values = np.zeros(y_shape, dtype=np.float32)

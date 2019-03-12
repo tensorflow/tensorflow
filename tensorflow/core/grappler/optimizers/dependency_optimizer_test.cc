@@ -41,7 +41,7 @@ void VerifyGraphsEqual(const GraphDef& original_graph,
     const NodeDef& optimized = optimized_graph.node(i);
     EXPECT_EQ(original.name(), optimized.name()) << func;
     EXPECT_EQ(original.op(), optimized.op()) << func;
-    ASSERT_EQ(original.input_size(), optimized.input_size()) << func;
+    EXPECT_EQ(original.input_size(), optimized.input_size()) << func;
     for (int j = 0; j < original.input_size(); ++j) {
       EXPECT_EQ(original.input(j), optimized.input(j)) << func;
     }
@@ -89,12 +89,12 @@ TEST_F(DependencyOptimizerTest, DependenciesDrivenByConstants) {
   TF_EXPECT_OK(status);
 
   // The 'z' node should have been optimized away leaving only 5 nodes.
-  EXPECT_EQ(output.node_size(), 5);
+  EXPECT_EQ(5, output.node_size());
 
-  for (const NodeDef& node : output.node()) {
+  for (const NodeDef& node : item.graph.node()) {
     if (node.name() == "id1" || node.name() == "id2") {
-      ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "add");
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("add", node.input(0));
     }
   }
 }
@@ -123,30 +123,30 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
-  for (int i = 0; i < output.node_size(); ++i) {
-    const NodeDef& node = output.node(i);
+  for (int i = 0; i < item.graph.node_size(); ++i) {
+    const NodeDef& node = item.graph.node(i);
     // "add" should get turned into a NoOp and removed.
-    EXPECT_NE(node.name(), "add");
+    EXPECT_NE("add", node.name());
     if (node.name() == "id1") {
-      EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "x");
-      EXPECT_EQ(node.input(1), "^y");
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
       ++found;
     } else if (node.name() == "id2") {
-      EXPECT_EQ(node.op(), "Identity");
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "y");
-      EXPECT_EQ(node.input(1), "^x");
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
       ++found;
     }
   }
-  EXPECT_EQ(found, 2);
+  EXPECT_EQ(2, found);
 }
 
-TEST_F(DependencyOptimizerTest, ChangeToNoopRepeatedInput) {
+TEST_F(DependencyOptimizerTest, ChangeToNoop_RepeatedInput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
   Output add = ops::Add(s.WithOpName("add"), x, x);
@@ -164,24 +164,25 @@ TEST_F(DependencyOptimizerTest, ChangeToNoopRepeatedInput) {
   item.graph.Swap(&output);
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
+  LOG(INFO) << output.DebugString();
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
   for (int i = 0; i < item.graph.node_size(); ++i) {
     const NodeDef& node = item.graph.node(i);
     // "add" should get turned into a NoOp and removed.
-    EXPECT_NE(node.name(), "add");
+    EXPECT_NE("add", node.name());
     if (node.name() == "id1") {
-      EXPECT_EQ(node.op(), "Identity");
-      EXPECT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "x");
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
       ++found;
     }
   }
-  EXPECT_EQ(found, 1);
+  EXPECT_EQ(1, found);
 }
 
-TEST_F(DependencyOptimizerTest, ChangeToNoopSwitchIdentity) {
+TEST_F(DependencyOptimizerTest, ChangeToNoop_SwitchIdentity) {
   // This tests that we don't try to repeatedly add Identity nodes
   // with names like "ConstantFoldingCtrl/foo/bar/switch_$port" when
   // multiple nodes reading the same output of a Switch node get
@@ -219,23 +220,23 @@ TEST_F(DependencyOptimizerTest, ChangeToNoopSwitchIdentity) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size() - 1);
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
     // "neg" should be eliminated.
-    EXPECT_NE(node.name(), "neg");
+    EXPECT_NE("neg", node.name());
     // A control dep from "^ConstantFoldingCtrl/switch_1"
     // should be attached to "c1".
     if (node.name() == "c1") {
-      EXPECT_EQ(node.op(), "Const");
-      ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "^ConstantFoldingCtrl/switch_1");
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_1", node.input(0));
     }
   }
 }
 
 // TODO(rmlarsen): Add test to make sure we skip Switch and Merge.
-TEST_F(DependencyOptimizerTest, ChangeToNoopNoFetch) {
+TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
   Output y = ops::RandomUniform(s.WithOpName("y"), {1, 2}, DT_FLOAT);
@@ -257,7 +258,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoopNoFetch) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(DependencyOptimizerTest, RemoveNoOpsEmptyInputOrOutput) {
+TEST_F(DependencyOptimizerTest, RemoveNoOps_EmptyInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s, {1, 2}, DT_FLOAT);
   auto noop1 = ops::NoOp(s);
@@ -277,18 +278,18 @@ TEST_F(DependencyOptimizerTest, RemoveNoOpsEmptyInputOrOutput) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
   for (const NodeDef& node : output.node()) {
     if (node.name() == "NoOp" || node.name() == "NoOp_1") {
       EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "Identity") {
-      ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "RandomUniform");
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("RandomUniform", node.input(0));
     }
   }
 }
 
-TEST_F(DependencyOptimizerTest, RemoveNoOpsDeviceBoundaries) {
+TEST_F(DependencyOptimizerTest, RemoveNoOps_DeviceBoundaries) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
                                 DT_FLOAT);
@@ -323,7 +324,7 @@ TEST_F(DependencyOptimizerTest, RemoveNoOpsDeviceBoundaries) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(DependencyOptimizerTest, RemoveIdentityOpsDeviceBoundaries) {
+TEST_F(DependencyOptimizerTest, RemoveIdentityOps_DeviceBoundaries) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
                                 DT_FLOAT);
@@ -355,7 +356,7 @@ TEST_F(DependencyOptimizerTest, RemoveIdentityOpsDeviceBoundaries) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(DependencyOptimizerTest, RemoveIdentityOpsIdenticalDevices) {
+TEST_F(DependencyOptimizerTest, RemoveIdentityOps_IdenticalDevices) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
                                 DT_FLOAT);
@@ -372,17 +373,16 @@ TEST_F(DependencyOptimizerTest, RemoveIdentityOpsIdenticalDevices) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size() - 1);
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
   for (const NodeDef& node : output.node()) {
     EXPECT_NE(node.name(), "id_a");
     if (node.name() == "Identity") {
-      ASSERT_EQ(node.input_size(), 1);
       EXPECT_EQ(node.input(0), "x");
     }
   }
 }
 
-TEST_F(DependencyOptimizerTest, RemoveNoOpsSingleInputOrOutput) {
+TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
   Output y = ops::RandomUniform(s.WithOpName("y"), {1, 2}, DT_FLOAT);
@@ -409,17 +409,15 @@ TEST_F(DependencyOptimizerTest, RemoveNoOpsSingleInputOrOutput) {
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size());
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
   for (const NodeDef& node : output.node()) {
     if (node.name() == "NoOp" || node.name() == "NoOp_1") {
-      EXPECT_EQ(node.input_size(), 0);
+      EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "Identity") {
-      ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "x");
+      EXPECT_EQ("x", node.input(0));
     } else if (node.name() == "Identity_1") {
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "y");
-      EXPECT_EQ(node.input(1), "^x");
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
     }
   }
 }
@@ -464,48 +462,48 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size() - 3);
+  EXPECT_EQ(item.graph.node_size() - 3, output.node_size());
   int found = 0;
   for (const NodeDef& node : output.node()) {
-    EXPECT_NE(node.name(), "id_a");
-    EXPECT_NE(node.name(), "id_b");
-    EXPECT_NE(node.name(), "id_c");
+    EXPECT_NE("id_a", node.name());
+    EXPECT_NE("id_b", node.name());
+    EXPECT_NE("id_c", node.name());
     if (node.name() == "a_a" || node.name() == "a_b") {
-      ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "x");
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
       ++found;
     }
     if (node.name() == "a_c" || node.name() == "a_d") {
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "z");
-      EXPECT_EQ(node.input(1), "^x");
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("z", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
       ++found;
     }
     if (node.name() == "b_a") {
-      ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "x");
-      EXPECT_EQ(node.input(1), "^y");
-      EXPECT_EQ(node.input(2), "^z");
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
+      EXPECT_EQ("^z", node.input(2));
       ++found;
     }
     if (node.name() == "c_a") {
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "x");
-      EXPECT_EQ(node.input(1), "^y");
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
       ++found;
     }
     if (node.name() == "c_b") {
-      ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "z");
-      EXPECT_EQ(node.input(1), "^x");
-      EXPECT_EQ(node.input(2), "^y");
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("z", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
+      EXPECT_EQ("^y", node.input(2));
       ++found;
     }
   }
   EXPECT_EQ(found, 7);
 }
 
-TEST_F(DependencyOptimizerTest, RemoveIdentityRepeatedInputs) {
+TEST_F(DependencyOptimizerTest, RemoveIdentity_RepeatedInputs) {
   // Corner cases with repeated inputs.
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   ops::Variable x(scope.WithOpName("x"), {}, DT_BOOL);
@@ -531,35 +529,35 @@ TEST_F(DependencyOptimizerTest, RemoveIdentityRepeatedInputs) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size() - 1);
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
   int found = 0;
   for (const NodeDef& node : output.node()) {
-    EXPECT_NE(node.name(), "id0");
+    EXPECT_NE("id0", node.name());
     if (node.name() == "or0") {
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "switch:1");
-      EXPECT_EQ(node.input(1), "switch:1");
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("switch:1", node.input(0));
+      EXPECT_EQ("switch:1", node.input(1));
       ++found;
     }
     if (node.name() == "or1") {
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "switch:1");
-      EXPECT_EQ(node.input(1), "y");
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("switch:1", node.input(0));
+      EXPECT_EQ("y", node.input(1));
       ++found;
     }
     if (node.name() == "or2") {
       // or1 should be unchanged.
-      ASSERT_EQ(node.input_size(), 3);
-      EXPECT_EQ(node.input(0), "y");
-      EXPECT_EQ(node.input(1), "y");
-      EXPECT_EQ(node.input(2), "^id1");
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^id1", node.input(2));
       ++found;
     }
   }
   EXPECT_EQ(found, 3);
 }
 
-TEST_F(DependencyOptimizerTest, TransitiveReductionSimple) {
+TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
   Output x = ops::Square(s.WithOpName("x"), c);
@@ -574,13 +572,13 @@ TEST_F(DependencyOptimizerTest, TransitiveReductionSimple) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  ASSERT_EQ(output.node_size(), 4);
-  EXPECT_EQ(output.node(3).name(), "neg2");
-  ASSERT_EQ(output.node(3).input_size(), 1);
-  EXPECT_EQ(output.node(3).input(0), "neg1");
+  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ("neg2", output.node(3).name());
+  EXPECT_EQ(1, output.node(3).input_size());
+  EXPECT_EQ("neg1", output.node(3).input(0));
 }
 
-TEST_F(DependencyOptimizerTest, ChangeToNoopIdentity) {
+TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
   Output id_after_var = ops::Identity(scope.WithOpName("id_after_var"), v_in);
@@ -611,18 +609,18 @@ TEST_F(DependencyOptimizerTest, ChangeToNoopIdentity) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), item.graph.node_size() - 2);
+  EXPECT_EQ(item.graph.node_size() - 2, output.node_size());
   bool found = false;
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
     // "id0" and "id1" but neither "ConstantFoldingCtrl/switch_1",
     // "id_after_var, nor "id2"" should be eliminated.
-    EXPECT_NE(node.name(), "id0");
-    EXPECT_NE(node.name(), "id1");
+    EXPECT_NE("id0", node.name());
+    EXPECT_NE("id1", node.name());
     if (node.name() == "c1") {
-      EXPECT_EQ(node.op(), "Const");
-      ASSERT_EQ(node.input_size(), 1);
-      EXPECT_EQ(node.input(0), "^ConstantFoldingCtrl/switch_1");
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_1", node.input(0));
       found = true;
     }
   }
@@ -652,17 +650,17 @@ TEST_F(DependencyOptimizerTest, IdentityInputs) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  ASSERT_EQ(output.node_size(), 6);
-  EXPECT_EQ(output.node(4).name(), "out2");
-  ASSERT_EQ(output.node(4).input_size(), 1);
-  EXPECT_EQ(output.node(4).input(0), "s:1");
+  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ("out1", output.node(4).name());
+  EXPECT_EQ(1, output.node(4).input_size());
+  EXPECT_EQ("s", output.node(4).input(0));
 
-  EXPECT_EQ(output.node(5).name(), "out1");
-  ASSERT_EQ(output.node(5).input_size(), 1);
-  EXPECT_EQ(output.node(5).input(0), "s");
+  EXPECT_EQ("out2", output.node(5).name());
+  EXPECT_EQ(1, output.node(5).input_size());
+  EXPECT_EQ("s:1", output.node(5).input(0));
 }
 
-TEST_F(DependencyOptimizerTest, RemoveIdentityNSwitchInput) {
+TEST_F(DependencyOptimizerTest, RemoveIdentityN_SwitchInput) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output b = ops::Placeholder(scope.WithOpName("b"), DT_BOOL);
   Output x = ops::RandomUniform(scope.WithOpName("x"), {1, 2}, DT_FLOAT);
@@ -689,27 +687,27 @@ TEST_F(DependencyOptimizerTest, RemoveIdentityNSwitchInput) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  ASSERT_EQ(output.node_size(), 8);
+  EXPECT_EQ(8, output.node_size());
 
   auto out1_node = output.node(7);
-  EXPECT_EQ(out1_node.name(), "out1");
-  ASSERT_EQ(out1_node.input_size(), 1);
-  EXPECT_EQ(out1_node.input(0), "s");
+  EXPECT_EQ("out1", out1_node.name());
+  EXPECT_EQ(1, out1_node.input_size());
+  EXPECT_EQ("s", out1_node.input(0));
 
-  auto out2_node = output.node(6);
-  EXPECT_EQ(out2_node.name(), "out2");
-  ASSERT_EQ(out2_node.input_size(), 1);
-  EXPECT_EQ(out2_node.input(0), "s:1");
+  auto out2_node = output.node(4);
+  EXPECT_EQ("out2", out2_node.name());
+  EXPECT_EQ(1, out2_node.input_size());
+  EXPECT_EQ("s:1", out2_node.input(0));
 
   auto out3_node = output.node(5);
-  EXPECT_EQ(out3_node.name(), "out3");
-  ASSERT_EQ(out3_node.input_size(), 1);
-  EXPECT_EQ(out3_node.input(0), "s");
+  EXPECT_EQ("out3", out3_node.name());
+  EXPECT_EQ(1, out3_node.input_size());
+  EXPECT_EQ("s", out3_node.input(0));
 
-  auto out4_node = output.node(4);
-  EXPECT_EQ(out4_node.name(), "out4");
-  ASSERT_EQ(out4_node.input_size(), 1);
-  EXPECT_EQ(out4_node.input(0), "s:1");
+  auto out4_node = output.node(6);
+  EXPECT_EQ("out4", out4_node.name());
+  EXPECT_EQ(1, out4_node.input_size());
+  EXPECT_EQ("s:1", out4_node.input(0));
 }
 
 TEST_F(DependencyOptimizerTest, DoNotRemoveIdentityNWithControlDependency) {
@@ -732,11 +730,11 @@ TEST_F(DependencyOptimizerTest, DoNotRemoveIdentityNWithControlDependency) {
   Status status = optimizer.Optimize(nullptr, item, &optimized_graph_def);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(optimized_graph_def.node_size(), 6);
+  EXPECT_EQ(6, optimized_graph_def.node_size());
 }
 
 TEST_F(DependencyOptimizerTest,
-       IdentityDeviceCrossingConsumerOnDifferentDevice) {
+       Identity_DeviceCrossing_ConsumerOnDifferentDevice) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x_on_1 =
       ops::Const(s.WithOpName("x_on_1").WithDevice("/gpu:1"), {1.0f}, {});
@@ -758,7 +756,7 @@ TEST_F(DependencyOptimizerTest,
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
-TEST_F(DependencyOptimizerTest, IdentityDeviceCrossingConsumerOnSameDevice) {
+TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x_on_1 =
       ops::Const(s.WithOpName("x_on_1").WithDevice("/gpu:1"), {1.0f}, {});
@@ -776,15 +774,12 @@ TEST_F(DependencyOptimizerTest, IdentityDeviceCrossingConsumerOnSameDevice) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-
-  EXPECT_EQ(output.node_size(), 3);
+  LOG(INFO) << output.DebugString();
+  EXPECT_EQ(3, output.node_size());
   for (const auto& node : output.node()) {
-    EXPECT_NE(node.name(), "x_on_2");
+    EXPECT_NE("x_on_2", node.name());
     if (node.name() == "result") {
-      LOG(INFO) << node.DebugString();
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "x_on_1");
-      EXPECT_EQ(node.input(1), "one_on_2");
+      EXPECT_EQ("x_on_1", node.input(0));
     }
   }
 }
@@ -812,25 +807,25 @@ TEST_F(DependencyOptimizerTest, RemoveGreaterEqualWithNoOp) {
   for (const NodeDef& node : output.node()) {
     if (node.name() == "x") {
       count++;
-      EXPECT_EQ(node.op(), "Placeholder");
-      EXPECT_EQ(node.input_size(), 0);
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "y") {
       count++;
-      EXPECT_EQ(node.op(), "Placeholder");
-      EXPECT_EQ(node.input_size(), 0);
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(0, node.input_size());
     } else if (node.name() == "GreaterEqual") {
       count++;
     } else if (node.name() == "NoOp") {
       count++;
     } else if (node.name() == "z") {
       count++;
-      EXPECT_EQ(node.op(), "Add");
-      ASSERT_EQ(node.input_size(), 2);
-      EXPECT_EQ(node.input(0), "x");
-      EXPECT_EQ(node.input(1), "y");
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
     }
   }
-  EXPECT_EQ(count, 3);
+  EXPECT_EQ(3, count);
 }
 
 TEST_F(DependencyOptimizerTest, GroupCrossDeviceControlDeps) {

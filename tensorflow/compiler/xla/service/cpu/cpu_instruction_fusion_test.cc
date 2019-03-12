@@ -623,63 +623,8 @@ TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
       module.get(),
       {HloOpcode::kDynamicSlice, HloOpcode::kDynamicSlice,
        HloOpcode::kDynamicUpdateSlice, HloOpcode::kReshape,
-       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kConstant, HloOpcode::kParameter, HloOpcode::kParameter,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
-}
-
-// Tests that we do not fuse instructions in cases where instructions in the
-// fusion would reuse elements from its operand due to an implicit broadcast.
-TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastUnary) {
-  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
-  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
-
-  HloComputation::Builder builder(TestName());
-
-  HloInstruction* small_param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/0, small_shape, "param"));
-  HloInstruction* small_exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
-  builder.AddInstruction(
-      HloInstruction::CreateUnary(large_shape, HloOpcode::kExp, small_exp));
-
-  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
-  module->AddEntryComputation(builder.Build());
-
-  auto did_fusion = CpuInstructionFusion().Run(module.get());
-  ASSERT_TRUE(did_fusion.ok());
-  EXPECT_FALSE(did_fusion.ValueOrDie());
-  ASSERT_THAT(module->entry_computation()->root_instruction(),
-              Not(op::Fusion()));
-}
-
-// Like ReuseViaImplicitBroadcastUnary but with a binary operation.
-TEST_F(OpcodeFusionTest, ReuseViaImplicitBroadcastBinary) {
-  Shape small_shape = ShapeUtil::MakeShape(F32, {1, 4});
-  Shape large_shape = ShapeUtil::MakeShape(F32, {3, 4});
-
-  HloComputation::Builder builder(TestName());
-
-  HloInstruction* small_param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/0, small_shape, "param"));
-  HloInstruction* large_param =
-      builder.AddInstruction(HloInstruction::CreateParameter(
-          /*parameter_number=*/1, large_shape, "param"));
-  HloInstruction* small_exp = builder.AddInstruction(
-      HloInstruction::CreateUnary(small_shape, HloOpcode::kExp, small_param));
-
-  builder.AddInstruction(HloInstruction::CreateBinary(
-      large_shape, HloOpcode::kAdd, small_exp, large_param));
-
-  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
-  module->AddEntryComputation(builder.Build());
-
-  auto did_fusion = CpuInstructionFusion().Run(module.get());
-  ASSERT_TRUE(did_fusion.ok());
-  EXPECT_FALSE(did_fusion.ValueOrDie());
-  ASSERT_THAT(module->entry_computation()->root_instruction(),
-              Not(op::Fusion()));
 }
 
 void CreateComputationForDotAddOutputFusionTest(const string& test_name,
@@ -811,7 +756,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
       {HloOpcode::kGather, HloOpcode::kAdd, HloOpcode::kBroadcast,
-       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+       HloOpcode::kConstant, HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
 std::vector<GatherLoopFusionTestSpec> GetGatherLoopFusionTestSpecs() {

@@ -28,6 +28,7 @@ from tensorflow.python.ops import image_ops
 from tensorflow.python.platform import test
 
 
+@test_util.disable_all_xla('align_corners=False not supported by XLA')
 class ResizeNearestNeighborOpTest(test.TestCase):
 
   TYPES = [np.float32, np.float64]
@@ -155,7 +156,12 @@ class ResizeBilinearOpTest(test.TestCase):
 
     size = np.prod(in_shape)
     x = 1.0 / size * np.arange(0, size).reshape(in_shape).astype(np.float32)
-    for align_corners in [True, False]:
+
+    # Align corners will be deprecated for tf2.0 and the false version is not
+    # supported by XLA.
+    align_corner_options = [True
+                           ] if test_util.is_xla_enabled() else [True, False]
+    for align_corners in align_corner_options:
       grad = {}
       for use_gpu in [False, True]:
         with self.cached_session(use_gpu=use_gpu):

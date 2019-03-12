@@ -25,7 +25,6 @@ import functools
 
 import six
 
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.distribute import values as distributed_values
@@ -44,7 +43,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -71,7 +70,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 @six.add_metaclass(abc.ABCMeta)
 @keras_export("keras.optimizers.Optimizer")
-class OptimizerV2(checkpointable.Checkpointable):
+class OptimizerV2(trackable.Trackable):
   """Updated base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -126,7 +125,26 @@ class OptimizerV2(checkpointable.Checkpointable):
   opt.apply_gradients(capped_grads_and_vars)
   ```
 
+  ### Use with `tf.distribute.Strategy`.
+
+  This optimizer class is `tf.distribute.Strategy` aware, which means it
+  automatically sums gradients across all replicas. To average gradients,
+  you divide your loss by the global batch size, which is done automatically
+  if you use a member of `tf.keras.losses` or `tf.losses`. See the
+  `reduction` argument of your loss which should be set to
+  `tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE` for averaging or
+  `tf.keras.losses.Reduction.SUM` for not.
+
+  If you are not using these and you want to average gradients, you should use
+  `tf.math.reduce_sum` to add up your per-example losses and then divide by the
+  global batch size. Note that when using `tf.distribute.Strategy`, the first
+  component of a tensor's shape is the *replica-local* batch size, which is off
+  by a factor equal to the number of replicas being used to compute a single
+  step. As a result, using `tf.math.reduce_mean` will give the wrong answer,
+  resulting in gradients that can be many times too big.
+
   ### Variable Constraint
+
   All Keras optimizers respect variable constraints. If constraint function is
   passed to any variable, the constraint will be applied to the variable after
   the gradient has been applied to the variable.
@@ -174,15 +192,13 @@ class OptimizerV2(checkpointable.Checkpointable):
   ```
 
   ### Write a customized optimizer.
+  If you intend to create your own optimization algorithm, simply inherit from
+  this class and override the following methods:
 
-  This optimizer class updates variables from gradients and is
-  tf.distribute.Strategy aware. If you intend to create your own optimization
-  algorithm, simply inherit from this class and override the following methods:
     - resource_apply_dense (update variable given gradient tensor is dense)
     - resource_apply_sparse (update variable given gradient tensor is sparse)
     - create_slots (if your optimizer algorithm requires additional variables)
     - get_config (serialization of the optimizer, include all hyper parameters)
-
   """
 
   def __init__(self, name, **kwargs):
@@ -228,9 +244,9 @@ class OptimizerV2(checkpointable.Checkpointable):
     self._weights = []
     self._iterations = None
 
-    # For implementing Checkpointable. Stores information about how to restore
+    # For implementing Trackable. Stores information about how to restore
     # slot variables which have not yet been created
-    # (checkpointable._CheckpointPosition objects).
+    # (trackable._CheckpointPosition objects).
     #  {slot_name :
     #      {_var_key(variable_to_train): [checkpoint_position, ... ], ... },
     #   ... }
@@ -310,7 +326,6 @@ class OptimizerV2(checkpointable.Checkpointable):
     with backprop.GradientTape() as tape:
       tape.watch(var_list)
       loss_value = loss()
-      loss_value = self._scale_loss(loss_value)
     grads = tape.gradient(loss_value, var_list, grad_loss)
 
     if hasattr(self, "clipnorm"):
@@ -329,14 +344,6 @@ class OptimizerV2(checkpointable.Checkpointable):
 
     return grads_and_vars
 
-  @staticmethod
-  def _scale_loss(loss_value):
-    if distribute_lib.get_loss_reduction() == ds_reduce_util.ReduceOp.MEAN:
-      num_replicas = distribute_ctx.get_strategy().num_replicas_in_sync
-      if num_replicas > 1:
-        loss_value *= (1. / num_replicas)
-    return loss_value
-
   def get_gradients(self, loss, params):
     """Returns gradients of `loss` with respect to `params`.
 
@@ -351,8 +358,8 @@ class OptimizerV2(checkpointable.Checkpointable):
       ValueError: In case any gradient cannot be computed (e.g. if gradient
         function not implemented).
     """
-    loss = self._scale_loss(loss)
-    grads = gradients.gradients(loss, params)
+    with backend.get_graph().as_default():
+      grads = gradients.gradients(loss, params)
     if None in grads:
       raise ValueError("An operation has `None` for gradient. "
                        "Please make sure that all of your ops have a "
@@ -390,6 +397,8 @@ class OptimizerV2(checkpointable.Checkpointable):
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
+    # Create iteration if necessary.
+    _ = self.iterations
     self._create_hypers()
     with ops.init_scope():
       self._create_slots(var_list)
@@ -518,11 +527,13 @@ class OptimizerV2(checkpointable.Checkpointable):
             initializer, shape=var.shape, dtype=var.dtype)
       else:
         initial_value = initializer
-      weight = tf_variables.Variable(
-          name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-          dtype=var.dtype,
-          trainable=False,
-          initial_value=initial_value)
+      strategy = distribute_ctx.get_strategy()
+      with strategy.colocate_vars_with(var):
+        weight = tf_variables.Variable(
+            name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
+            dtype=var.dtype,
+            trainable=False,
+            initial_value=initial_value)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(
@@ -542,18 +553,10 @@ class OptimizerV2(checkpointable.Checkpointable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    if self._iterations is None:
-      with ops.device("cpu:0"):
-        self._iterations = self.add_weight(
-            "iter",
-            shape=[],
-            dtype=dtypes.int64,
-            trainable=False,
-            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._iterations)
-    for name, value in self._hyper.items():
+    # Iterate hyper values deterministically.
+    for name, value in sorted(self._hyper.items()):
       if isinstance(value, ops.Tensor) or callable(value):
-        pass
+        continue
       else:
         self._hyper[name] = self.add_weight(
             name,
@@ -566,13 +569,19 @@ class OptimizerV2(checkpointable.Checkpointable):
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
-    if not self._hypers_created:
-      self._create_hypers()
+    if self._iterations is None:
+      self._iterations = self.add_weight(
+          "iter",
+          shape=[],
+          dtype=dtypes.int64,
+          trainable=False,
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self._weights.append(self._iterations)
     return self._iterations
 
   @iterations.setter
   def iterations(self, variable):
-    if self._hypers_created:
+    if self._iterations is not None:
       raise RuntimeError("Cannot set `iterations` to a new Variable after"
                          "the Optimizer weights have been created")
     self._iterations = variable
@@ -642,7 +651,8 @@ class OptimizerV2(checkpointable.Checkpointable):
     if callable(value):
       return value()
     if isinstance(value, (ops.Tensor, tf_variables.Variable,
-                          distributed_values.TPUMirroredVariable)):
+                          distributed_values.TPUMirroredVariable,
+                          distributed_values.DistributedVariable)):
       return backend.get_value(value)
     return value
 
@@ -822,7 +832,7 @@ class OptimizerV2(checkpointable.Checkpointable):
       return x.value()
 
   # ---------------
-  # For implementing the checkpointable interface
+  # For implementing the trackable interface
   # ---------------
 
   def _restore_slot_variable(self, slot_name, variable, slot_variable):
@@ -853,8 +863,8 @@ class OptimizerV2(checkpointable.Checkpointable):
     slot variable needs to be restored).
 
     Args:
-      slot_variable_position: A `checkpointable._CheckpointPosition` object
-        indicating the slot variable `Checkpointable` object to be restored.
+      slot_variable_position: A `trackable._CheckpointPosition` object
+        indicating the slot variable `Trackable` object to be restored.
       slot_name: The name of this `Optimizer`'s slot to restore into.
       variable: The variable object this slot is being created for.
     """
@@ -872,7 +882,7 @@ class OptimizerV2(checkpointable.Checkpointable):
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = checkpointable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self.add_slot(
           var=variable,

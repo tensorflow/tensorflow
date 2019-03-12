@@ -42,12 +42,14 @@ class GpuExecutable;
 class Thunk {
  public:
   enum Kind {
+    kCholesky,
     kConditional,
     kConvolution,
     kCopy,
     kCudnnBatchNormBackward,
     kCudnnBatchNormForwardInference,
     kCudnnBatchNormForwardTraining,
+    kNcclAllReduce,
     kFft,
     kGemm,
     kInfeed,
@@ -56,6 +58,7 @@ class Thunk {
     kMemzero,
     kOutfeed,
     kSequential,
+    kTriangularSolve,
     kTuple,
     kWhile,
   };

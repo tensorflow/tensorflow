@@ -36,7 +36,9 @@ class LayoutUtil {
  public:
   // Creates a layout with the given minor-to-major dimension order. (This is a
   // convenience function for protobuf construction.)
-  static Layout MakeLayout(absl::Span<const int64> minor_to_major);
+  static Layout MakeLayout(absl::Span<const int64> minor_to_major,
+                           absl::Span<const Tile> tiles = {},
+                           int64 element_size_in_bits = 0);
 
   // Similar to MakeLayout, but take indices in reverse order.
   static Layout MakeLayoutFromMajorToMinor(

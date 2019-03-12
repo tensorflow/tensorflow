@@ -515,10 +515,13 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
           ". (Check whether your GraphDef-interpreting binary is up to date "
           "with your GraphDef-generating binary.).");
     }
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        ValidateAttrValue(attr.second, *iter->second),
-        "; NodeDef: ", FormatNodeDefForError(node_def), "; ",
-        SummarizeOpDef(op_def));
+    // If attr value is placeholder, do not check it.
+    if (attr.second.placeholder().empty()) {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          ValidateAttrValue(attr.second, *iter->second),
+          "; NodeDef: ", FormatNodeDefForError(node_def), "; ",
+          SummarizeOpDef(op_def));
+    }
     // Keep track of which attr names have (not) been found in the NodeDef.
     op_attrs.erase(iter);
   }

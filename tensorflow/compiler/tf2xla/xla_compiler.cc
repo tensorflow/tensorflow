@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -43,9 +42,12 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -183,9 +185,10 @@ Status BuildComputation(
   std::vector<xla::XlaOp> elems;
   elems.reserve(retvals.size());
 
-  // Keeps track of which retvals have layout to update. The first element is
-  // the output index, second element is the new layout.
-  std::vector<std::pair<int64, xla::Layout>> retval_to_update_layout;
+  // Keeps track of the layout of each retval. If a retval is not in this list,
+  // a descending layout is used. The first element is the output index, second
+  // element is the new layout.
+  std::vector<std::pair<int64, xla::Layout>> retval_index_and_layout;
   for (int i = 0; i < retvals.size(); ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
@@ -214,7 +217,7 @@ Status BuildComputation(
           TF_ASSIGN_OR_RETURN(xla::Shape shape, shape_representation_fn(
                                                     output.shape, output.type));
           value = xla::Reshape(value, xla::AsInt64Slice(shape.dimensions()));
-          retval_to_update_layout.emplace_back(elems.size(), shape.layout());
+          retval_index_and_layout.emplace_back(elems.size(), shape.layout());
         } else if (it != retval_cores.end()) {
           // Apply the sharding to the output, if there is a core assignment.
           value = identity_op(value);
@@ -287,6 +290,11 @@ Status BuildComputation(
       // Ensures the correct sharding is applied to the output.
       handle = identity_op(handle);
 
+      // Set layout of the retval to device representation layout.
+      if (resource->representation_shape().has_value()) {
+        retval_index_and_layout.emplace_back(
+            elems.size(), resource->representation_shape()->layout());
+      }
       elems.push_back(handle);
     }
   }
@@ -316,15 +324,15 @@ Status BuildComputation(
                       computation->GetProgramShape());
   *output_shape = program_shape.result();
   // Update the output layout to the layout of retval.
-  for (auto& update : retval_to_update_layout) {
+  for (auto& index_and_layout : retval_index_and_layout) {
     if (!always_return_tuple && elems.size() == 1) {
-      *output_shape->mutable_layout() = update.second;
+      *output_shape->mutable_layout() = index_and_layout.second;
       continue;
     }
 
-    xla::Shape* output_sub_shape =
-        xla::ShapeUtil::GetMutableSubshape(output_shape, {update.first});
-    *output_sub_shape->mutable_layout() = update.second;
+    xla::Shape* output_sub_shape = xla::ShapeUtil::GetMutableSubshape(
+        output_shape, {index_and_layout.first});
+    *output_sub_shape->mutable_layout() = index_and_layout.second;
   }
   return Status::OK();
 }
@@ -589,13 +597,13 @@ Status XlaCompiler::CompileFunction(
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
-            << dump_graph::DumpGraphToFile(
+            << DumpGraphToFile(
                    absl::StrCat("xla_compile_function_", function_id), *graph);
   }
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, result));
+      CompileGraph(options, function_id, std::move(graph), args, {}, result));
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -928,7 +936,8 @@ Status XlaCompiler::CompileSingleOp(
   }
   FixupSourceAndSinkEdges(graph.get());
 
-  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
+  return CompileGraph(options, node_def.name(), std::move(graph), args, {},
+                      result);
 }
 
 namespace {
@@ -944,6 +953,28 @@ Status ValidateFunctionDef(const FunctionDef* fdef,
     const OpDef* op_def;
     TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(op, &op_def));
   }
+  return Status::OK();
+}
+
+// If node is PartitionedCall or StatefulPartitionedCall, returns the
+// name from the "f" attr, else returns node.def().op().
+// Returned pointer points to the internal string either in node's attributes
+// or in its NodeDef. This pointer is valid as long as the node has not been
+// modified.
+Status GetPotentialFunctionName(const Node& node, const string** name) {
+  if (node.IsPartitionedCall()) {
+    const AttrValue* attr_value;
+    TF_RETURN_IF_ERROR(
+        node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
+    if (!attr_value->has_func()) {
+      return errors::InvalidArgument(
+          "The attribute value for attribute 'f' in node ", node.DebugString(),
+          " does not have 'func' field set");
+    }
+    *name = &attr_value->func().name();
+    return Status::OK();
+  }
+  *name = &node.type_string();
   return Status::OK();
 }
 
@@ -966,7 +997,9 @@ Status ValidateGraph(const Graph* graph,
     if (node->type_string() == FunctionLibraryDefinition::kGradientOp) {
       continue;
     }
-    const FunctionDef* fdef = flib_def.Find(node->def().op());
+    const string* function_name;
+    TF_RETURN_IF_ERROR(GetPotentialFunctionName(*node, &function_name));
+    const FunctionDef* fdef = flib_def.Find(*function_name);
     Status s;
     if (fdef) {
       s = ValidateFunctionDef(fdef, flib_def);
@@ -1011,20 +1044,19 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 
 }  // namespace
 
-Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
-                                 string const& name,
-                                 std::unique_ptr<Graph> graph,
-                                 absl::Span<const XlaCompiler::Argument> args,
-                                 CompilationResult* result) {
+Status XlaCompiler::CompileGraph(
+    const XlaCompiler::CompileOptions& options, string const& name,
+    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
+    CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
       graph.get(), options_.flib_def, local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
-            << dump_graph::DumpGraphToFile(
-                   absl::StrCat("xla_compile_graph_", name), *graph,
-                   flib_runtime_->GetFunctionLibraryDefinition());
+            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
+                               flib_runtime_->GetFunctionLibraryDefinition());
   }
 
   // Report the error here if initialization failed.
@@ -1062,6 +1094,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       &arg_expressions, &result->input_mapping, &result->xla_input_shapes,
       options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
+
+  // Propagate any aliases given to us by the user.
+  for (const xla::XlaBuilder::InputOutputAlias& alias : user_aliases) {
+    builder.SetUpAlias(alias.output_index, alias.param_number,
+                       alias.param_index);
+  }
 
   PushNodeTokenMapping();
   // Use std::set instead of std::unordered_set to ensure determinism.
@@ -1108,8 +1146,17 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
   if (options.resolve_compile_time_constants) {
-    TF_RETURN_IF_ERROR(ResolveConstantExpressionsToConstants(
-        client(), absl::Span<XlaExpression>(retvals)));
+    Status status = ResolveConstantExpressionsToConstants(
+        client(), absl::Span<XlaExpression>(retvals));
+
+    // If the HloEvaluator has not implemented an expression, just evaluate it
+    // at runtime.
+    if (status.code() == error::UNIMPLEMENTED) {
+      ConvertConstantsToExpressions(&builder,
+                                    absl::Span<XlaExpression>(retvals));
+    } else {
+      TF_RETURN_IF_ERROR(status);
+    }
   } else {
     ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
   }

@@ -86,6 +86,28 @@ TEST(ArgMaxOpTest, GetMaxArgFloat) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
 }
 
+TEST(ArgMaxOpTest, GetMaxArgUInt8) {
+  ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_UINT8, TensorType_INT32,
+                               TensorType_INT32);
+  model.PopulateTensor<uint8_t>(model.input(), {1, 9, 7, 3});
+  model.PopulateTensor<int>(model.axis(), {3});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
+TEST(ArgMaxOpTest, GetMaxArgInt8) {
+  ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_INT8, TensorType_INT32,
+                               TensorType_INT32);
+  model.PopulateTensor<int8_t>(model.input(), {-1, -9, 7, 3});
+  model.PopulateTensor<int>(model.axis(), {3});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({2}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1}));
+}
+
 TEST(ArgMaxOpTest, GetMaxArgInt) {
   ArgMaxOpModel<int32_t> model({1, 1, 1, 4}, TensorType_INT32, TensorType_INT32,
                                TensorType_INT32);

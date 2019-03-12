@@ -58,6 +58,24 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "comparison_util",
+    srcs = [
+        "comparison_util.cc",
+    ],
+    hdrs = [
+        "comparison_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":statusor",
+        ":types",
+        ":util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "execution_options_util",
     srcs = [
         "execution_options_util.cc",
@@ -150,8 +168,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor/lib",
     ],
 )
@@ -194,7 +210,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -830,10 +846,10 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
+            ":status",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
             "@com_google_absl//absl/strings",
         ],
 )

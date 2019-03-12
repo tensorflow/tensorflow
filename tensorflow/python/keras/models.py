@@ -313,15 +313,15 @@ def _in_place_subclassed_model_reset(model):
       continue
     if isinstance(value, Layer):
       attributes_cache[name] = value
-      assert value in model._layers
-      if hasattr(value, '_layers') and value._layers:
+      assert value in model.layers
+      if hasattr(value, 'layers') and value.layers:
         raise ValueError('We do not support the use of nested layers '
                          'in `model_to_estimator` at this time. Found nested '
                          'layer: %s' % value)
     elif isinstance(
-        value,
-        (list, tuple)) and name not in ('layers', '_layers', 'metrics',
-                                        '_compile_stateful_metric_functions'):
+        value, (list, tuple)) and name not in ('layers', '_layers', 'metrics',
+                                               '_compile_metric_functions',
+                                               '_output_loss_metrics'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
@@ -367,8 +367,6 @@ def _in_place_subclassed_model_reset(model):
           'total_loss',
           'sample_weights',
           '_feed_sample_weights',
-          '_fit_function',
-          '_eval_function',
           'train_function',
           'test_function',
           'predict_function',
@@ -461,7 +459,7 @@ def clone_and_build_model(
       or functions.
     compile_clone: Boolean, whether to compile model clone (default `True`).
     in_place_reset: Boolean, whether to reset the model in place. Only used if
-      the model is not a graph network. If the model is a subclassed model, then
+      the model is a subclassed model. In the case of a subclassed model,
       this argument must be set to `True` (default `False`). To restore the
       original model, use the function
       `in_place_subclassed_model_state_restoration(model)`.
@@ -504,8 +502,8 @@ def clone_and_build_model(
   else:
     if not in_place_reset:
       raise ValueError(
-          'Model is not a graph network (usually means that it is a subclassed '
-          'model). The model cannot be cloned, but there is a workaround where '
+          'This model is a subclassed model. '
+          'Such a model cannot be cloned, but there is a workaround where '
           'the model is reset in-place. To use this, please set the argument '
           '`in_place_reset` to `True`. This will reset the attributes in the '
           'original model. To restore the attributes, call '

@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -74,8 +73,8 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
 
     // Split the preheader to create an exit basic block. The exit basic block
     // will contain all instructions at or after insert_point.
-    exit_bb_ = preheader_bb_->splitBasicBlock(
-        insert_point, AsStringRef(GetQualifiedName("loop_exit")));
+    exit_bb_ = preheader_bb_->splitBasicBlock(insert_point,
+                                              GetQualifiedName("loop_exit"));
 
     // splitBasicBlock adds an unconditional branch between the split basic
     // blocks. Remove it. An unconditional branch will be added below from the
@@ -95,9 +94,8 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   llvm::Function* func = preheader_bb_->getParent();
   b->SetInsertPoint(&func->getEntryBlock(),
                     func->getEntryBlock().getFirstInsertionPt());
-  llvm::Value* indvar_address =
-      b->CreateAlloca(start_index_->getType(), nullptr,
-                      AsStringRef(GetQualifiedName("invar_address")));
+  llvm::Value* indvar_address = b->CreateAlloca(
+      start_index_->getType(), nullptr, GetQualifiedName("invar_address"));
 
   // Preheader basic block.
   // Initialize induction variable starting index. Create branch to the header.
@@ -111,8 +109,7 @@ void ForLoop::Emit(llvm::IRBuilder<>* b) {
   // Emit the loop conditional branch. Load and compare indvar with ending
   // index and jump to loop exit if equal. Jump to body otherwise.
   b->SetInsertPoint(header_bb_);
-  indvar_ =
-      b->CreateLoad(indvar_address, AsStringRef(GetQualifiedName("indvar")));
+  indvar_ = b->CreateLoad(indvar_address, GetQualifiedName("indvar"));
   llvm::Value* exit_cond = b->CreateICmpUGE(indvar_, end_index_);
   b->CreateCondBr(/*Cond=*/exit_cond,
                   /*True=*/exit_bb_, /*False=*/body_bb_);

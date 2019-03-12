@@ -337,6 +337,11 @@ bool RegisterKnownJITSymbols() {
                      reinterpret_cast<void*>(memset_pattern16));
 #endif
 
+#ifdef MEMORY_SANITIZER
+  registry->Register("__msan_unpoison",
+                     reinterpret_cast<void*>(__msan_unpoison));
+#endif
+
   return true;
 }
 

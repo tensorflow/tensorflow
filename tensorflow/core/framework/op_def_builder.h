@@ -28,6 +28,8 @@ limitations under the License.
 
 namespace tensorflow {
 
+class FunctionDefHelper;
+
 namespace shape_inference {
 class InferenceContext;
 }
@@ -150,12 +152,20 @@ class OpDefBuilder {
   Status Finalize(OpRegistrationData* op_reg_data) const;
 
  private:
+  friend class FunctionDefHelper;
+
+  // Adds control output to this OpDefBuilder (and returns *this).
+  // The <name> must be a valid node name (matches regexp
+  // [a-zA-Z][a-zA-Z0-9_]*). Named control output can only exist for functions.
+  OpDefBuilder& ControlOutput(string name);
+
   OpDef* op_def() { return &op_reg_data_.op_def; }
 
   OpRegistrationData op_reg_data_;
   std::vector<string> attrs_;
   std::vector<string> inputs_;
   std::vector<string> outputs_;
+  std::vector<string> control_outputs_;
   string doc_;
   std::vector<string> errors_;
 };

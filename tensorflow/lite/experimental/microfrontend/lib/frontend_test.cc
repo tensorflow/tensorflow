@@ -15,8 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace {
 
@@ -29,9 +28,9 @@ const int16_t kFakeAudioData[] = {
     0, 32767, 0, -32768, 0, 32767, 0, -32768, 0, 32767, 0, -32768};
 
 // Test end-to-end frontend behaviors.
-class FrontendTest : public ::testing::Test {
- protected:
-  FrontendTest() {
+class FrontendTestConfig {
+ public:
+  FrontendTestConfig() {
     config_.window.size_ms = 25;
     config_.window.step_size_ms = 10;
     config_.noise_reduction.smoothing_bits = 10;
@@ -53,9 +52,15 @@ class FrontendTest : public ::testing::Test {
   struct FrontendConfig config_;
 };
 
-TEST_F(FrontendTest, CheckOutputValues) {
+}  // namespace
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(FrontendTest_CheckOutputValues) {
+  FrontendTestConfig config;
   struct FrontendState state;
-  ASSERT_TRUE(FrontendPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      FrontendPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
   struct FrontendOutput output = FrontendProcessSamples(
@@ -63,18 +68,20 @@ TEST_F(FrontendTest, CheckOutputValues) {
       sizeof(kFakeAudioData) / sizeof(kFakeAudioData[0]), &num_samples_read);
 
   const uint16_t expected[] = {479, 425};
-  ASSERT_EQ(output.size, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(output.size, sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < output.size; ++i) {
-    EXPECT_EQ(output.values[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(output.values[i], expected[i]);
   }
 
   FrontendFreeStateContents(&state);
 }
 
-TEST_F(FrontendTest, CheckConsecutiveWindow) {
+TF_LITE_MICRO_TEST(FrontendTest_CheckConsecutiveWindow) {
+  FrontendTestConfig config;
   struct FrontendState state;
-  ASSERT_TRUE(FrontendPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      FrontendPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
   FrontendProcessSamples(&state, kFakeAudioData,
@@ -86,18 +93,20 @@ TEST_F(FrontendTest, CheckConsecutiveWindow) {
       &num_samples_read);
 
   const int16_t expected[] = {436, 378};
-  ASSERT_EQ(output.size, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(output.size, sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < output.size; ++i) {
-    EXPECT_EQ(output.values[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(output.values[i], expected[i]);
   }
 
   FrontendFreeStateContents(&state);
 }
 
-TEST_F(FrontendTest, CheckNotEnoughSamples) {
+TF_LITE_MICRO_TEST(FrontendTest_CheckNotEnoughSamples) {
+  FrontendTestConfig config;
   struct FrontendState state;
-  ASSERT_TRUE(FrontendPopulateState(&config_, &state, kSampleRate));
+  TF_LITE_MICRO_EXPECT(
+      FrontendPopulateState(&config.config_, &state, kSampleRate));
   size_t num_samples_read;
 
   FrontendProcessSamples(&state, kFakeAudioData,
@@ -113,10 +122,10 @@ TEST_F(FrontendTest, CheckNotEnoughSamples) {
           kStepSamples,
       &num_samples_read);
 
-  EXPECT_EQ(output.size, 0);
-  EXPECT_EQ(output.values, nullptr);
+  TF_LITE_MICRO_EXPECT_EQ(output.size, 0);
+  TF_LITE_MICRO_EXPECT_EQ(output.values, nullptr);
 
   FrontendFreeStateContents(&state);
 }
 
-}  // namespace
+TF_LITE_MICRO_TESTS_END

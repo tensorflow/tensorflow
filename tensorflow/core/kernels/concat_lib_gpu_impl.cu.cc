@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/concat_lib_gpu.h"
 #include "tensorflow/core/kernels/cuda_device_array_gpu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
@@ -203,6 +204,7 @@ TF_CALL_complex64(REGISTER_GPUCONCAT32);
 TF_CALL_complex128(REGISTER_GPUCONCAT32);
 TF_CALL_int32(REGISTER_GPUCONCAT32);  // Needed for TensorLists.
 TF_CALL_int64(REGISTER_GPUCONCAT32);
+TF_CALL_int16(REGISTER_GPUCONCAT32);
 TF_CALL_uint8(REGISTER_GPUCONCAT32);
 REGISTER_GPUCONCAT32(bfloat16);
 REGISTER_GPUCONCAT32(bool);
@@ -212,6 +214,7 @@ TF_CALL_complex64(REGISTER_GPUCONCAT64);
 TF_CALL_complex128(REGISTER_GPUCONCAT64);
 TF_CALL_int32(REGISTER_GPUCONCAT64);  // Needed for TensorLists.
 TF_CALL_int64(REGISTER_GPUCONCAT64);
+TF_CALL_int16(REGISTER_GPUCONCAT64);
 TF_CALL_uint8(REGISTER_GPUCONCAT64);
 REGISTER_GPUCONCAT64(bfloat16);
 REGISTER_GPUCONCAT64(bool);
@@ -221,6 +224,7 @@ TF_CALL_complex64(REGISTER_GPU32);
 TF_CALL_complex128(REGISTER_GPU32);
 TF_CALL_int32(REGISTER_GPU32);  // Needed for TensorLists.
 TF_CALL_int64(REGISTER_GPU32);
+TF_CALL_int16(REGISTER_GPU32);
 TF_CALL_uint8(REGISTER_GPU32);
 REGISTER_GPU32(bfloat16);
 REGISTER_GPU32(bool);
@@ -230,6 +234,7 @@ TF_CALL_complex64(REGISTER_GPU64);
 TF_CALL_complex128(REGISTER_GPU64);
 TF_CALL_int32(REGISTER_GPU64);  // Needed for TensorLists.
 TF_CALL_int64(REGISTER_GPU64);
+TF_CALL_int16(REGISTER_GPU64);
 TF_CALL_uint8(REGISTER_GPU64);
 REGISTER_GPU64(bfloat16);
 REGISTER_GPU64(bool);

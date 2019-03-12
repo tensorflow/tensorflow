@@ -20,19 +20,22 @@ from __future__ import print_function
 
 import os
 
-# pylint: disable=unused-import
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-# pylint: enable=unused-import
+from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
@@ -42,15 +45,24 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
+from tensorflow.python.training.tracking import tracking
 
 
 class TrtConvertTest(test_util.TensorFlowTestCase):
   """Class to test Tensorflow-TensorRT integration python API."""
 
+  # Use a small max_workspace_size for tests so they don't consume too much GPU
+  # memory.
+  _TRT_MAX_WORKSPACE_SIZE_BYTES = 2 << 20
+
   def testGetTensorrtRewriterConfig(self):
-    """Test case for trt_convert.get_tensorrt_rewriter_config()."""
-    rewriter_cfg = trt_convert.get_tensorrt_rewriter_config(
-        rewriter_config=None,
+    """Test case for TrtGraphConverter.get_tensorrt_rewriter_config()."""
+    if not is_tensorrt_enabled():
+      return
+    rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
+        rewriter_config_template=None,
         max_batch_size=128,
         max_workspace_size_bytes=1234,
         precision_mode="INT8",
@@ -94,12 +106,26 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
 
   def _GetGraph(self):
     """Get the graph for testing."""
+    # The graph computes (input+1)^2, it looks like:
+    #
+    # input (Placeholder)  v1 (Variable)
+    #               |   \ /
+    #                \   +
+    #                 \ / \
+    #                  *   |
+    #                   \ /
+    #                    +
+    #                    |
+    #                 output (Identity)
     g = ops.Graph()
     with g.as_default():
       with g.device("/GPU:0"):
         inp = array_ops.placeholder(
             dtype=dtypes.float32, shape=[None, 1, 1], name="input")
-        var = variables.VariableV1([[[1.0]]], dtype=dtypes.float32, name="v1")
+        var = variables.VariableV1([[[1.0]]],
+                                   dtype=dtypes.float32,
+                                   name="v1",
+                                   use_resource=False)
         add = inp + var.value()
         mul = inp * add
         add = mul + add
@@ -140,67 +166,197 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
           signature_def_map={"mypredict": signature_def})
     saved_model_builder.save()
 
-  def _TestCreateInferenceGraph(self,
-                                input_saved_model_dir=None,
-                                output_saved_model_dir=None):
-    """General method to test trt_convert.create_inference_graph()."""
-    input_graph_def = None if input_saved_model_dir else self._GetGraphDef()
-    output_graph_def = trt_convert.create_inference_graph(
-        input_graph_def, ["output"],
+  def _ConvertGraph(self,
+                    input_saved_model_dir=None,
+                    output_saved_model_dir=None,
+                    need_calibration=False,
+                    max_batch_size=1,
+                    minimum_segment_size=3,
+                    is_dynamic_op=False,
+                    maximum_cached_engines=1,
+                    use_function_backup=False):
+    """Helper method to convert a GraphDef or SavedModel using TF-TRT."""
+    converter = trt_convert.TrtGraphConverter(
+        input_saved_model_dir=input_saved_model_dir,
+        input_saved_model_signature_key="mypredict",
+        input_graph_def=None if input_saved_model_dir else self._GetGraphDef(),
+        nodes_blacklist=["output"],
+        session_config=self._GetConfigProto(),
+        max_batch_size=max_batch_size,
+        max_workspace_size_bytes=TrtConvertTest._TRT_MAX_WORKSPACE_SIZE_BYTES,
+        precision_mode=(trt_convert.TrtPrecisionMode.INT8 if need_calibration
+                        else trt_convert.TrtPrecisionMode.FP32),
+        minimum_segment_size=minimum_segment_size,
+        is_dynamic_op=is_dynamic_op,
+        maximum_cached_engines=maximum_cached_engines,
+        use_function_backup=use_function_backup)
+    conversion_result = converter.convert()
+
+    if context.executing_eagerly():
+      output_graph_def = conversion_result.graph.as_graph_def()
+    else:
+      output_graph_def = conversion_result
+
+      if need_calibration:
+
+        class CalibrationData(object):
+
+          def __init__(self):
+            self._data = 0
+
+          def next(self):
+            self._data += 1
+            return {"input:0": [[[self._data]]]}
+
+        output_graph_def = converter.calibrate(
+            fetch_names=["output:0"],
+            num_runs=10,
+            feed_dict_fn=CalibrationData().next)
+
+    if output_saved_model_dir is not None:
+      converter.save(output_saved_model_dir=output_saved_model_dir)
+    return output_graph_def
+
+  def _TestTrtGraphConverter(self,
+                             input_saved_model_dir=None,
+                             output_saved_model_dir=None,
+                             need_calibration=False,
+                             is_dynamic_op=False):
+    """General method to test trt_convert.TrtGraphConverter()."""
+    output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
-        session_config=self._GetConfigProto())
+        need_calibration=need_calibration,
+        is_dynamic_op=is_dynamic_op,
+        use_function_backup=need_calibration)
     graph_defs_to_verify = [output_graph_def]
-    if output_saved_model_dir is not None:
-      saved_model_graph_def = saved_model_utils.get_meta_graph_def(
-          output_saved_model_dir, tag_constants.SERVING).graph_def
+
+    if output_saved_model_dir:
+      if context.executing_eagerly():
+        root = load.load(output_saved_model_dir)
+        saved_model_graph_def = root.signatures[
+            signature_constants
+            .DEFAULT_SERVING_SIGNATURE_DEF_KEY].graph.as_graph_def()
+      else:
+        saved_model_graph_def = saved_model_utils.get_meta_graph_def(
+            output_saved_model_dir, tag_constants.SERVING).graph_def
       self.assertTrue(isinstance(saved_model_graph_def, graph_pb2.GraphDef))
       graph_defs_to_verify.append(saved_model_graph_def)
 
     for graph_def in graph_defs_to_verify:
       node_name_to_op = {node.name: node.op for node in graph_def.node}
-      self.assertEqual({
-          "input": "Placeholder",
-          "TRTEngineOp_0": "TRTEngineOp",
-          "output": "Identity"
-      }, node_name_to_op)
+      if context.executing_eagerly():
+        # In V2 the actual graph could be inside a function.
+        for func in graph_def.library.function:
+          node_name_to_op.update({node.name: node.op for node in func.node_def})
+        self.assertIn("TRTEngineOp_0", node_name_to_op)
+        self.assertEqual("TRTEngineOp", node_name_to_op["TRTEngineOp_0"])
+      else:
+        self.assertEqual({
+            "input": "Placeholder",
+            "TRTEngineOp_0": "TRTEngineOp",
+            "output": "Identity"
+        }, node_name_to_op)
 
-  def testCreateInferenceGraph_BasicConversion(self):
-    """Test case for trt_convert.create_inference_graph()."""
-    if not trt_convert.is_tensorrt_enabled():
+      if need_calibration:
+        trt_engine_nodes = [
+            node for node in graph_def.node if node.op == "TRTEngineOp"
+        ]
+        self.assertNotEmpty(trt_engine_nodes)
+        for node in trt_engine_nodes:
+          self.assertTrue(len(node.attr["calibration_data"].s))
+        # Run the calibrated graph.
+        # TODO(laigd): consider having some input where the answer is different.
+        with ops.Graph().as_default():
+          importer.import_graph_def(graph_def, name="")
+          with self.session(config=self._GetConfigProto()) as sess:
+            for test_data in range(10):
+              self.assertEqual((test_data + 1.0)**2,
+                               sess.run(
+                                   "output:0",
+                                   feed_dict={"input:0": [[[test_data]]]}))
+
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_BasicConversion(self):
+    """Test case for trt_convert.TrtGraphConverter()."""
+    if not is_tensorrt_enabled():
       return
 
-    # Use GraphDef as input.
-    self._TestCreateInferenceGraph()
-
-    # Use SavedModel as input.
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir1")
-    output_saved_model_dir = os.path.join(tmp_dir, "out_dir1")
     self._WriteInputSavedModel(input_saved_model_dir)
-    self._TestCreateInferenceGraph(input_saved_model_dir,
-                                   output_saved_model_dir)
 
-  def _TestRun(self, sess, batch_size, expect_engine_is_run):
-    trt_convert.clear_test_values("")
-    result = sess.run("output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
-    self.assertAllEqual([[[4.0]]] * batch_size, result)
-    execute_engine_test_value = ("done" if expect_engine_is_run else "")
-    execute_native_segment_test_value = ("" if expect_engine_is_run else "done")
-    self.assertEqual(
-        execute_engine_test_value,
-        trt_convert.get_test_value("TRTEngineOp_0:ExecuteTrtEngine"))
-    self.assertEqual(
-        execute_native_segment_test_value,
-        trt_convert.get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
+    for need_calibration in [False, True]:
+      # Use GraphDef as input.
+      self._TestTrtGraphConverter()
 
-  def testCreateInferenceGraph_MinimumSegmentSize(self):
-    if not trt_convert.is_tensorrt_enabled():
+      # Use SavedModel as input.
+      output_saved_model_dir = os.path.join(
+          tmp_dir, "out_dir1%s" % ("_int8" if need_calibration else ""))
+      self._TestTrtGraphConverter(
+          input_saved_model_dir=input_saved_model_dir,
+          output_saved_model_dir=output_saved_model_dir,
+          need_calibration=need_calibration)
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_BasicConversion_v2(self):
+    """Test case for trt_convert.TrtGraphConverter()."""
+    if not is_tensorrt_enabled():
       return
-    output_graph_def = trt_convert.create_inference_graph(
-        self._GetGraphDef(), ["output"],
-        minimum_segment_size=5,
-        is_dynamic_op=False)
+
+    # TODO(laigd): we need to use ops like conv2d so Grappler can infer the
+    # shapes (at least rank) of the tensors, so we're able to build an TRT
+    # engine in dynamic mode. Currently shape information is not propagate from
+    # ConcreteFunction to GraphDef, need to investigate and fix it.
+    class SimpleModel(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = None
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, 24, 24, 2], dtype=dtypes.float32)
+      ])
+      def run(self, inp):
+        if self.v is None:
+          self.v = variables.Variable([[[[1., 0.5, 4., 6., 0.5, 1.],
+                                         [1., 0.5, 1., 1., 0.5, 1.]]]])
+        conv = gen_nn_ops.conv2d(
+            input=inp, filter=self.v, strides=[1, 2, 2, 1], padding="SAME")
+        identity = array_ops.identity(conv)
+        return identity
+
+    tmp_dir = self.get_temp_dir()
+    input_saved_model_dir = os.path.join(tmp_dir, "in_dir1_v2")
+    root = SimpleModel()
+    save.save(root, input_saved_model_dir)
+
+    # Convert the SavedModel and verify the result.
+    output_saved_model_dir = os.path.join(tmp_dir, "out_dir1_v2")
+    self._TestTrtGraphConverter(
+        input_saved_model_dir=input_saved_model_dir,
+        output_saved_model_dir=output_saved_model_dir,
+        is_dynamic_op=True)
+
+  def _TestRun(self,
+               sess,
+               batch_size,
+               use_function_backup=False,
+               expect_engine_is_run=True):
+    try:
+      result = sess.run(
+          "output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
+      self.assertAllEqual([[[4.0]]] * batch_size, result)
+    except errors.OpError as e:
+      # This should happen only when fallback path is disabled and TRT engine
+      # fails to run.
+      self.assertTrue(not use_function_backup and not expect_engine_is_run)
+      self.assertIn("Fallback path is disabled, for TRTEngineOp_0", str(e))
+
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_MinimumSegmentSize(self):
+    if not is_tensorrt_enabled():
+      return
+    output_graph_def = self._ConvertGraph(minimum_segment_size=5)
     node_name_to_op = {node.name: node.op for node in output_graph_def.node}
     self.assertEqual({
         "v1/read": "Const",
@@ -211,88 +367,105 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         "output": "Identity"
     }, node_name_to_op)
 
-  def testCreateInferenceGraph_DynamicOp(self):
-    if not trt_convert.is_tensorrt_enabled():
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_DynamicOp(self):
+    if not is_tensorrt_enabled():
       return
-    trt_convert.enable_test_value()
 
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir2")
     output_saved_model_dir = os.path.join(tmp_dir, "out_dir2")
     self._WriteInputSavedModel(input_saved_model_dir)
-    output_graph_def = trt_convert.create_inference_graph(
-        None,
-        None,
-        is_dynamic_op=True,
-        maximum_cached_engines=2,
+    output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
-        session_config=self._GetConfigProto())
+        is_dynamic_op=True,
+        maximum_cached_engines=2,
+        use_function_backup=False)  # Disallow fallback.
 
     # Test the output GraphDef.
     with ops.Graph().as_default():
       importer.import_graph_def(output_graph_def, name="")
-      with self.test_session(config=self._GetConfigProto()) as sess:
+      with self.session(config=self._GetConfigProto()) as sess:
         # Run with batch size 1, a new engine is created and cached.
-        self._TestRun(sess, 1, True)
+        self._TestRun(sess, 1)
         # Run with batch size 2, a new engine is created and cached.
-        self._TestRun(sess, 2, True)
+        self._TestRun(sess, 2)
         # Run with batch size 3, since the number of cached engines has reached
         # the max, it should evict an old engine and create a new one.
-        self._TestRun(sess, 3, True)
+        self._TestRun(sess, 3)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
-      with self.test_session(config=self._GetConfigProto()) as sess:
+      with self.session(config=self._GetConfigProto()) as sess:
         loader.load(sess, [tag_constants.SERVING], output_saved_model_dir)
         # Run with batch size 1, a new engine is created and cached.
-        self._TestRun(sess, 1, True)
+        self._TestRun(sess, 1)
         # Run with batch size 2, a new engine is created and cached.
-        self._TestRun(sess, 2, True)
+        self._TestRun(sess, 2)
         # Run with batch size 3, since the number of cached engines has reached
         # the max, it should evict an old engine and create a new one.
-        self._TestRun(sess, 3, True)
+        self._TestRun(sess, 3)
 
-  def testCreateInferenceGraph_StaticOp(self):
-    if not trt_convert.is_tensorrt_enabled():
+  def _TestStaticOp(self, use_function_backup):
+    if not is_tensorrt_enabled():
       return
-    trt_convert.enable_test_value()
 
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir3")
     output_saved_model_dir = os.path.join(tmp_dir, "out_dir3")
     self._WriteInputSavedModel(input_saved_model_dir)
-    output_graph_def = trt_convert.create_inference_graph(
-        None,
-        None,
-        max_batch_size=1,
-        is_dynamic_op=False,
-        maximum_cached_engines=2,  # This is noop, added just for testing.
+    output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
-        session_config=self._GetConfigProto())
+        maximum_cached_engines=2,  # This is noop, added just for testing.
+        use_function_backup=use_function_backup)
 
     # Test the output GraphDef.
     with ops.Graph().as_default():
       importer.import_graph_def(output_graph_def, name="")
-      with self.test_session(config=self._GetConfigProto()) as sess:
+      with self.session(config=self._GetConfigProto()) as sess:
         # Run with batch size 1, the default engine embedded in the graphdef
         # will be used.
-        self._TestRun(sess, 1, True)
-        # Run with batch size 2, which exceed the max_batch_size, it should fall
-        # back to TF function.
-        self._TestRun(sess, 2, False)
+        self._TestRun(
+            sess,
+            1,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=True)
+        # Run with batch size 2, which exceed the max_batch_size, it should try
+        # to fall back to TF function.
+        self._TestRun(
+            sess,
+            2,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=False)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
-      with self.test_session(config=self._GetConfigProto()) as sess:
+      with self.session(config=self._GetConfigProto()) as sess:
         loader.load(sess, [tag_constants.SERVING], output_saved_model_dir)
         # Run with batch size 1, the default engine embedded in the graphdef
         # will be used.
-        self._TestRun(sess, 1, True)
-        # Run with batch size 2, which exceed the max_batch_size, it should fall
-        # back to TF function.
-        self._TestRun(sess, 2, False)
+        self._TestRun(
+            sess,
+            1,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=True)
+        # Run with batch size 2, which exceed the max_batch_size, it should try
+        # to fall back to TF function.
+        self._TestRun(
+            sess,
+            2,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=False)
+
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_StaticOp_NoFallback(self):
+    self._TestStaticOp(use_function_backup=False)
+
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_StaticOp_WithFallback(self):
+    self._TestStaticOp(use_function_backup=True)
 
 
 if __name__ == "__main__":

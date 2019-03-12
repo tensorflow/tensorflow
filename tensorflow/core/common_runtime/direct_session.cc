@@ -501,7 +501,8 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
       std::unique_ptr<DeviceResolverInterface> drl(
           new DeviceResolverLocal(device_mgr_.get()));
       std::unique_ptr<ParamResolverInterface> cprl(
-          new CollectiveParamResolverLocal(device_mgr_.get(), drl.get(),
+          new CollectiveParamResolverLocal(options_.config, device_mgr_.get(),
+                                           drl.get(),
                                            "/job:localhost/replica:0/task:0"));
       collective_executor_mgr_.reset(new CollectiveExecutorMgr(
           options_.config, device_mgr_.get(), std::move(drl), std::move(cprl)));
@@ -1194,6 +1195,8 @@ Status DirectSession::CreateExecutors(
   if (options_.config.experimental()
           .collective_deterministic_sequential_execution()) {
     options.collective_order = GraphCollectiveOrder::kEdges;
+  } else if (options_.config.experimental().collective_nccl()) {
+    options.collective_order = GraphCollectiveOrder::kAttrs;
   }
 
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);

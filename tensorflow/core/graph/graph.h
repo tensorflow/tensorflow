@@ -63,8 +63,8 @@ struct OutputTensor;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;    // Declared below
-class NodeIter;        // Declared below
+class NeighborIter;     // Declared below
+class NodeIter;         // Declared below
 struct NodeProperties;  // Defined in .cc
 
 class Node {
@@ -173,8 +173,7 @@ class Node {
 
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
-
-  bool IsDataset() const { return class_ == NC_DATASET; }
+  bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -256,7 +255,7 @@ class Node {
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
-    NC_DATASET,
+    NC_PARTITIONED_CALL,
     NC_OTHER  // Not a special kind of node
   };
 

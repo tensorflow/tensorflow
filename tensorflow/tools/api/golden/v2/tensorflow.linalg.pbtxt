@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorAdjoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorBlockDiag"
     mtype: "<type \'type\'>"
   }
@@ -199,5 +203,9 @@ tf_module {
   member_method {
     name: "triangular_solve"
     argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "tridiagonal_solve"
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\'], "
   }
 }

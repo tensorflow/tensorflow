@@ -13,48 +13,77 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 cc_library(
-    name = "lookup_table_interface",
-    hdrs = ["lookup_table_interface.h"],
+    name = "resource_interface_templates",
+    hdrs = ["resource_interface_templates.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+cc_library(
+    name = "op_kernel_templates",
+    hdrs = ["op_kernel_templates.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:tensor_flag_utils",
+        "//third_party/eigen3",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/types:span",
     ],
 )
 
-cc_library(
-    name = "table_resource_utils",
-    hdrs = ["table_resource_utils.h"],
-    deps = [
-        ":lookup_table_interface",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+tf_kernel_library(
+    name = "fingerprint64_map_op_kernels",
+    srcs = [
+        "fingerprint64_map_op_kernels.cc",
     ],
-)
-
-cc_library(
-    name = "table_op_utils",
-    hdrs = ["table_op_utils.h"],
     deps = [
+        ":op_kernel_templates",
+        ":resource_interface_templates",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/strings",
     ],
 )
 
 tf_kernel_library(
-    name = "fingerprint64_map_ops",
+    name = "flat_hash_map_op_kernels",
     srcs = [
-        "fingerprint64_map_ops.cc",
+        "flat_hash_map_op_kernels.cc",
     ],
     deps = [
-        ":table_op_utils",
-        ":table_resource_utils",
+        ":op_kernel_templates",
+        ":resource_interface_templates",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:tensor_flag_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_kernel_library(
+    name = "generic_table_op_kernels",
+    srcs = [
+        "generic_table_op_kernels.cc",
+    ],
+    deps = [
+        ":op_kernel_templates",
+        ":resource_interface_templates",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:string_view_variant_wrapper",
         "@com_google_absl//absl/strings",
     ],
 )

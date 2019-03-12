@@ -443,7 +443,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   return data
 
 
-@_tf_export("lite.toco_convert")
+@_tf_export(v1=["lite.toco_convert"])
 @deprecation.deprecated(None, "Use `lite.TFLiteConverter` instead.")
 def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   """Convert a model using TOCO.

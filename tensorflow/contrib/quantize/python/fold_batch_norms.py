@@ -454,7 +454,7 @@ def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor,
         strides=layer_op.get_attr('strides'),
         padding=layer_op.get_attr('padding'),
         use_cudnn_on_gpu=layer_op.get_attr('use_cudnn_on_gpu'),
-        data_format=layer_op.get_attr('data_format'),
+        data_format=layer_op.get_attr('data_format').decode(),
         name=new_layer_name)
   elif layer_op.type == 'MatMul':
     return math_ops.matmul(
@@ -867,7 +867,7 @@ class _OpCloner(object):
         strides=op.get_attr('strides'),
         padding=op.get_attr('padding'),
         use_cudnn_on_gpu=op.get_attr('use_cudnn_on_gpu'),
-        data_format=op.get_attr('data_format'),
+        data_format=op.get_attr('data_format').decode(),
         name=new_name).op
 
   def _CloneDepthwiseConv2d(self, op, inputs, new_name):

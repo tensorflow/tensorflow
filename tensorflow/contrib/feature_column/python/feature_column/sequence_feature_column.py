@@ -23,6 +23,7 @@ import collections
 
 
 from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import utils as fc_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -506,7 +507,7 @@ class _SequenceNumericColumn(
     # sequence length is not affected.
     num_elements = (self._variable_shape.num_elements()
                     if sp_tensor.shape.ndims == 2 else 1)
-    seq_length = fc._sequence_length_from_sparse_tensor(
+    seq_length = fc_utils.sequence_length_from_sparse_tensor(
         sp_tensor, num_elements=num_elements)
 
     return fc._SequenceDenseColumn.TensorSequenceLengthPair(

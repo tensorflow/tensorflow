@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
@@ -73,7 +74,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TraceMeRecorder::Active(level)) {
       new (&no_init_.name) string(activity_name);
-      start_time_ = absl::GetCurrentTimeNanos();
+      start_time_ = Env::Default()->NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -88,7 +89,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TraceMeRecorder::Active(level)) {
       new (&no_init_.name) string(std::move(activity_name));
-      start_time_ = absl::GetCurrentTimeNanos();
+      start_time_ = Env::Default()->NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -118,7 +119,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TraceMeRecorder::Active(level)) {
       new (&no_init_.name) string(name_generator());
-      start_time_ = absl::GetCurrentTimeNanos();
+      start_time_ = Env::Default()->NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -135,9 +136,8 @@ class TraceMe {
     //   start/stop session timestamp (recorded in XprofResponse).
     if (start_time_ != kUntracedActivity) {
       if (TraceMeRecorder::Active()) {
-        TraceMeRecorder::Record(
-            {kCompleteActivity, std::move(no_init_.name), start_time_,
-             static_cast<uint64>(absl::GetCurrentTimeNanos())});
+        TraceMeRecorder::Record({kCompleteActivity, std::move(no_init_.name),
+                                 start_time_, Env::Default()->NowNanos()});
       }
       no_init_.name.~string();
     }

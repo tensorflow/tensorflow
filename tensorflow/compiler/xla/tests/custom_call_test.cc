@@ -172,8 +172,10 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
 
   const Shape& r2f32_dim0_major =
       ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
-  b.AddInstruction(HloInstruction::CreateCustomCall(
+  auto custom_call = b.AddInstruction(HloInstruction::CreateCustomCall(
       r2f32_dim0_major, {input}, "Add1ToValues", {r2f32_dim0_major}));
+  b.AddInstruction(
+      custom_call->CloneWithNewOperands(r2f32_dim0_major, {custom_call}));
 
   module->AddEntryComputation(b.Build());
   ForceParameterLayout(module.get(), 0, LayoutUtil::MakeLayout({1, 0}));
@@ -182,7 +184,7 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
   Literal argument = LiteralUtil::CreateR2<float>({{1.f, 2.f}, {3.f, 4.f}});
 
   Literal result = ExecuteAndTransfer(std::move(module), {&argument});
-  LiteralTestUtil::ExpectR2Equal<float>({{2.f, 3.f}, {4.f, 5.f}}, result);
+  LiteralTestUtil::ExpectR2Equal<float>({{3.f, 4.f}, {5.f, 6.f}}, result);
 }
 
 XLA_TEST_F(CustomCallTest, TupleOutput) {

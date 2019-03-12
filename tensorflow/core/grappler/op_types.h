@@ -29,6 +29,7 @@ bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
 bool IsAnyMax(const NodeDef& node);
+bool IsAnyMaxPool(const NodeDef& node);
 bool IsAnyMin(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
 bool IsArgMax(const NodeDef& node);
@@ -76,6 +77,7 @@ bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
 bool IsHistogramSummary(const NodeDef& node);
+bool IsHostConstant(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
 bool IsIdentityNSingleInput(const NodeDef& node);
@@ -104,10 +106,12 @@ bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
+bool IsOnesLike(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPartitionedCall(const NodeDef& node);
+bool IsQuantizedMatMul(const NodeDef& node);
 bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
@@ -144,6 +148,7 @@ bool IsShapeN(const NodeDef& node);
 bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
 bool IsSnapshot(const NodeDef& node);
+bool IsSoftmax(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
@@ -174,6 +179,7 @@ bool IsTruncateMod(const NodeDef& node);
 bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
 bool IsWhile(const NodeDef& node);
+bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).
@@ -238,6 +244,10 @@ bool HasOpDef(const NodeDef& node);
 // Returns true if the op changes the scalar type of its first input elements
 // and preserves the number of elements.
 bool IsCastLike(const NodeDef& node);
+
+// Returns true if this op never forwards any of its inputs, i.e. always
+// allocates buffers for its inputs.
+bool NeverForwardsInputs(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -291,6 +291,17 @@ def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
       name=name)
 
 
+def self_adjoint_eig(a, lower, max_iter, epsilon):
+  return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
+
+
+def svd(a, max_iter, epsilon, precision_config=None):
+  precision_config_proto = ""
+  if precision_config:
+    precision_config_proto = precision_config.SerializeToString()
+  return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
+
+
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
 

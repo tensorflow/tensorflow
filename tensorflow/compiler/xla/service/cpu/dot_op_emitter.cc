@@ -532,18 +532,21 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // the rhs and lhs indexes with the reduction dimensions removed. The terms
   // from the rhs index are the lower dimensions in the index so we add them
   // first.
-  llvm_ir::IrArray::Index target_index(lhs_index.GetType());
+  std::vector<llvm::Value*> target_multi_index;
   for (int dimension = 0; dimension < lhs_index.size(); ++dimension) {
     if (dimension != lhs_reduction_dimension) {
-      target_index.push_back(lhs_index[dimension]);
+      target_multi_index.push_back(lhs_index[dimension]);
     }
   }
   for (int dimension = 0; dimension < rhs_index.size(); ++dimension) {
     if (dimension != rhs_reduction_dimension) {
-      target_index.push_back(rhs_index[dimension]);
+      target_multi_index.push_back(rhs_index[dimension]);
     }
   }
 
+  llvm_ir::IrArray::Index target_index(target_multi_index, /*linear=*/nullptr,
+                                       target_array_.GetShape(),
+                                       lhs_index.GetType());
   target_array_.EmitWriteArrayElement(target_index, result, b_);
 
   // Set the IR builder insert point to the exit basic block of the outer most
@@ -921,11 +924,12 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
 
   Shape inner_shape = DropFirstDim(outer_array.GetShape());
-  llvm_ir::IrArray::Index slice_index(b->getInt64Ty());
-  slice_index.push_back(batch_index);
-  slice_index.InsertAt(
-      /*index=*/1, outer_array.GetShape().dimensions_size() - 1,
-      b->getInt64(0));
+  std::vector<llvm::Value*> multidim_index(inner_shape.rank() + 1,
+                                           b->getInt64(0));
+  multidim_index[0] = batch_index;
+  llvm_ir::IrArray::Index slice_index(multidim_index,
+                                      /*linear=*/nullptr,
+                                      outer_array.GetShape());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
   llvm::Type* slice_ptr_type =
       llvm_ir::ShapeToIrType(inner_shape, module)->getPointerTo();
@@ -963,8 +967,8 @@ Status EmitBatchDotOperation(
   KernelSupportLibrary ksl(b);
 
   return ksl.ForWithStatus(
-      "bdot", /*start=*/0, /*end=*/batch_count, /*step=*/1,
-      [&](llvm::Value* indvar) {
+      llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
+      /*step=*/1, [&](llvm::Value* indvar) {
         DotDimensionNumbers adjusted_dim_numbers = dot.dot_dimension_numbers();
         adjusted_dim_numbers.clear_lhs_batch_dimensions();
         adjusted_dim_numbers.clear_rhs_batch_dimensions();

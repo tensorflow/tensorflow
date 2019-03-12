@@ -134,6 +134,8 @@ struct Costs {
 
   // Intermediate memory access cost of running the graph
   Duration intermediate_memory_time;
+  Duration intermediate_memory_read_time;   // Intermediate memory read cost.
+  Duration intermediate_memory_write_time;  // Intermediate memory write cost.
 
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations

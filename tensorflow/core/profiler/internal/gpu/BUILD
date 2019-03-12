@@ -21,6 +21,5 @@ tf_cuda_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:device_tracer",
         "//tensorflow/core/profiler/internal:profiler_interface",
-        "//tensorflow/core/profiler/internal/runtime:eager_profiler",
     ],
 )

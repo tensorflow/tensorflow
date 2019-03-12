@@ -27,7 +27,6 @@ namespace tensorflow {
 namespace grappler {
 
 constexpr int kOpsPerMac = 2;
-constexpr char kConst[] = "Const";
 constexpr char kGuaranteeConst[] = "GuaranteeConst";
 constexpr char kConv2d[] = "Conv2D";
 constexpr char kConv2dBackpropFilter[] = "Conv2DBackpropFilter";
@@ -50,8 +49,6 @@ constexpr char kSqueeze[] = "Squeeze";
 constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
-constexpr char kVariable[] = "Variable";
-constexpr char kVariableV2[] = "VariableV2";
 constexpr char kRank[] = "Rank";
 constexpr char kShape[] = "Shape";
 constexpr char kShapeN[] = "ShapeN";
@@ -67,7 +64,15 @@ constexpr char kAvgPool[] = "AvgPool";
 constexpr char kAvgPoolGrad[] = "AvgPoolGrad";
 constexpr char kFusedBatchNorm[] = "FusedBatchNorm";
 constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
+constexpr char kQuantizedMatMul[] = "QuantizedMatMul";
 constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
+// Persistent ops.
+constexpr char kConst[] = "Const";
+constexpr char kVariable[] = "Variable";
+constexpr char kVariableV2[] = "VariableV2";
+constexpr char kAutoReloadVariable[] = "AutoReloadVariable";
+constexpr char kVarHandleOp[] = "VarHandleOp";
+constexpr char kReadVariableOp[] = "ReadVariableOp";
 
 static const Costs::Duration kMinComputeTime(1);
 
@@ -228,7 +233,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kFusedConv2dBiasActivation,
        wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation)},
-      // reuse Conv2D for DepthwiseConv2dNative because the caculation is the
+      // reuse Conv2D for DepthwiseConv2dNative because the calculation is the
       // same although the actual meaning of the parameters are different. See
       // comments in PredictConv2D and related functions
       {kDepthwiseConv2dNative, wrap(&OpLevelCostEstimator::PredictConv2D)},
@@ -239,6 +244,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
+      {kQuantizedMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kQuantizedMatMulV2, wrap(&OpLevelCostEstimator::PredictMatMul)},
 
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
@@ -259,10 +265,6 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kRecv, wrap(&OpLevelCostEstimator::PredictIdentity)},
       {kSend, wrap(&OpLevelCostEstimator::PredictIdentity)},
 
-      {kConst, wrap(&OpLevelCostEstimator::PredictVariable)},
-      {kVariable, wrap(&OpLevelCostEstimator::PredictVariable)},
-      {kVariableV2, wrap(&OpLevelCostEstimator::PredictVariable)},
-
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShapeN, wrap(&OpLevelCostEstimator::PredictMetadata)},
@@ -274,6 +276,11 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kFusedBatchNorm, wrap(&OpLevelCostEstimator::PredictFusedBatchNorm)},
       {kFusedBatchNormGrad,
        wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad)},
+  };
+
+  persistent_ops_ = {
+      kConst,       kVariable,       kVariableV2, kAutoReloadVariable,
+      kVarHandleOp, kReadVariableOp,
   };
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
@@ -363,21 +370,25 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
 Costs OpLevelCostEstimator::PredictCosts(const OpContext& op_context) const {
   const auto& op_info = op_context.op_info;
   auto it = device_cost_impl_.find(op_info.op());
-  if (it == device_cost_impl_.end()) {
-    if (elementwise_ops_.find(op_info.op()) != elementwise_ops_.end()) {
-      return PredictCwiseOp(op_context);
-    }
-
-    VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
-
-    return PredictCostOfAnUnknownOp(op_context);
+  if (it != device_cost_impl_.end()) {
+    std::function<Costs(const OpContext&)> estimator = it->second;
+    Costs costs = estimator(op_context);
+    VLOG(1) << "Operation " << op_info.op() << " takes "
+            << costs.execution_time.count() << " ns.";
+    return costs;
   }
 
-  std::function<Costs(const OpContext&)> estimator = it->second;
-  Costs costs = estimator(op_context);
-  VLOG(1) << "Operation " << op_info.op() << " takes "
-          << costs.execution_time.count() << " ns.";
-  return costs;
+  if (persistent_ops_.find(op_info.op()) != persistent_ops_.end()) {
+    return PredictVariable(op_context);
+  }
+
+  if (elementwise_ops_.find(op_info.op()) != elementwise_ops_.end()) {
+    return PredictCwiseOp(op_context);
+  }
+
+  VLOG(1) << "Missing accurate estimator for op: " << op_info.op();
+
+  return PredictCostOfAnUnknownOp(op_context);
 }
 
 DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
@@ -438,7 +449,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   // of any input. We use the count for the largest input here to be more robust
   // in case that the shape is unknown or partially known for other input.
   int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
-  // If output shape is available, try use the element count calcuated from
+  // If output shape is available, try use the element count calculated from
   // that.
   if (op_info.outputs_size() > 0) {
     op_count = std::max(
@@ -540,6 +551,10 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
   costs.intermediate_memory_time = intermediate_memory_cost;
+  costs.intermediate_memory_read_time =
+      Costs::NanoSeconds(intermediate_read_time);
+  costs.intermediate_memory_write_time =
+      Costs::NanoSeconds(intermediate_write_time);
   CombineCostsAndUpdateExecutionTime(&costs);
   return costs;
 }
@@ -1240,7 +1255,7 @@ Costs OpLevelCostEstimator::PredictVariable(const OpContext& op_context) const {
   result.num_ops_with_unknown_shapes = result.inaccurate;
 
   result.compute_time = kMinComputeTime;
-  result.execution_time = result.execution_time;
+  result.execution_time = result.compute_time;
   return result;
 }
 

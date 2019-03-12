@@ -646,6 +646,38 @@ TEST_F(FunctionsTest, FromFunctionDefWithSideEffectfulOps) {
   EXPECT_FALSE(opts.allow_pruning_stateful_and_dataset_ops);
 }
 
+TEST_F(FunctionsTest, FromFunctionDefWithControlOutputs) {
+  const Tensor kOne = test::AsScalar<float>(1.0);
+  FunctionDef func = FunctionDefHelper::Create(
+      "WithControlOutputs", /*in_def=*/{"x: Ref(float)"}, /*out_def=*/{}, {},
+      {
+          {{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_FLOAT}}},
+          {{"update"}, "AssignAdd", {"x", "one:output:0"}, {{"T", DT_FLOAT}}},
+      },
+      {}, {{"side_effects", "update"}});
+
+  protobuf::Map<string, AttrValue> func_instantiation_attr;
+  FunctionLibraryDefinition flib(OpRegistry::Global(), FunctionDefLibrary());
+
+  GrapplerFunctionItem item;
+  TF_EXPECT_OK(MakeGrapplerFunctionItem(func,
+                                        AttrSlice(&func_instantiation_attr),
+                                        flib, TF_GRAPH_DEF_VERSION, &item));
+
+  EXPECT_EQ("WithControlOutputs", item.id);
+  EXPECT_EQ(3, item.function_body().node_size());
+  EXPECT_EQ(1, item.input_size());
+  EXPECT_EQ(0, item.output_size());
+
+  ASSERT_EQ(1, item.keep_ops.size());
+  EXPECT_EQ("update", item.keep_ops[0]);
+
+  ASSERT_EQ(1, item.control_output_size());
+  const ControlOutput &ctrl = item.control_outputs()[0];
+  EXPECT_EQ("side_effects", ctrl.output_name);
+  EXPECT_EQ("update", ctrl.node_name);
+}
+
 TEST_F(FunctionsTest, MakeFunctionDef) {
   const Tensor kTwo = test::AsScalar<int64>(2);
   FunctionDef func = FunctionDefHelper::Define(
@@ -827,17 +859,14 @@ TEST_F(FunctionsTest, SwapFunctionBodyAndMakeFunctionDef) {
 }
 
 TEST_F(FunctionsTest, FunctionDefGrapplerFunctionItemRoundTrip) {
-  FunctionDef func = FunctionDefHelper::Define(
-      // Name
-      "DoNothing",
-      // Args
-      {"i: int32"},
-      // Return values
-      {"o: int32"},
-      // Attr def
-      {},
-      // Nodes
-      {{{"o"}, "Identity", {"i"}, {{"T", DT_INT32}}}});
+  FunctionDef func = FunctionDefHelper::Create(
+      "DoNothing", /*in_def=*/{"i: int32"}, /*out_def*/ {"o: int32"},
+      /*attr_def*/ {},
+      {
+          {{"id"}, "Identity", {"i"}, {{"T", DT_INT32}}},
+      },
+      /*ret_def=*/{{"o", "id:output:0"}},
+      /*control_ret_def=*/{{"must_execute", "id"}});
 
   constexpr char description[] = "This is a helpful description.";
   func.mutable_signature()->set_description(description);

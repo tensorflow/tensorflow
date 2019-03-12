@@ -153,6 +153,8 @@ TokKind HloLexer::LexToken() {
         return LexPercent();
       case ':':
         return TokKind::kColon;
+      case '*':
+        return TokKind::kAsterisk;
       case '[':
         return TokKind::kLsquare;
       case ']':
@@ -464,6 +466,8 @@ string TokKindToString(TokKind kind) {
       return "kComma";
     case TokKind::kColon:
       return "kColon";
+    case TokKind::kAsterisk:
+      return "kAsterisk";
     case TokKind::kLsquare:
       return "kLsquare";
     case TokKind::kRsquare:

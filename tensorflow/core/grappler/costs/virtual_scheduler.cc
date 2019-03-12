@@ -36,12 +36,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-// Optional attribute name for Switch op as a vector of int that tells
-// which branch the Switch output is taken on every round of execution.
-// We use this side information, if provided, for scheduling ops after Switch
-// correctly (e.g., While loop).
-constexpr char kOutputSlots[] = "_output_slot_vector";
-
 Costs CombineCosts(const Costs& left, const Costs& right) {
   CHECK_NE(left.max_memory, kMemoryUnknown);
   CHECK_NE(left.max_per_op_buffers, kMemoryUnknown);
@@ -292,22 +286,6 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
   }
   LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
   return nullptr;
-}
-
-// TODO(pcma): Delete this deprecated API after power_analyzer.cc is modeified
-// to use the new factory API
-ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
-    const string& ready_node_manager) {
-  if (ready_node_manager == "FIFO") {
-    return new FIFOManager();
-  } else if (ready_node_manager == "LIFO") {
-    return new LIFOManager();
-  } else if (ready_node_manager == "FirstReady") {
-    return new FirstReadyManager();
-  } else if (ready_node_manager == "Composite") {
-    return new CompositeNodeManager();
-  }
-  LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
 }
 
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,

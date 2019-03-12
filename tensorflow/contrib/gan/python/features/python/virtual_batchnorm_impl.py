@@ -224,7 +224,8 @@ class VBN(object):
       # statistics and the reference batch statistics.
       ref_batch_size = _static_or_dynamic_batch_size(
           self._reference_batch, self._batch_axis)
-      self._example_weight = 1. / (math_ops.to_float(ref_batch_size) + 1.)
+      self._example_weight = 1. / (
+          math_ops.cast(ref_batch_size, dtypes.float32) + 1.)
       self._ref_weight = 1. - self._example_weight
 
       # Make the variables, if necessary.

@@ -102,8 +102,9 @@ StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
     argument_layouts.push_back(Shape(param));
     argument_layout_ptrs.push_back(&argument_layouts.back());
   }
-  return client->Compile(computation, argument_layout_ptrs,
-                         ExecutableBuildOptions());
+  ExecutableBuildOptions exec_build_options;
+  *exec_build_options.mutable_debug_options() = GetDebugOptionsFromFlags();
+  return client->Compile(computation, argument_layout_ptrs, exec_build_options);
 }
 
 absl::optional<Shape> GetXfeedShape(bool is_infeed,
@@ -328,7 +329,10 @@ StatusOr<HloSnapshot> ParseInputFile(const string& filename,
   fprintf(stderr, "%s: is not HloProto. Trying HLO text.\n", filename.c_str());
   string contents;
   TF_RETURN_IF_ERROR(tensorflow::ReadFileToString(env, filename, &contents));
-  StatusOr<std::unique_ptr<HloModule>> module = ParseHloString(contents);
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  StatusOr<std::unique_ptr<HloModule>> module =
+      ParseHloString(contents, config);
   if (module.ok()) {
     *snapshot.mutable_hlo()->mutable_hlo_module() =
         module.ValueOrDie()->ToProto();

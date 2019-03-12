@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#    http://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -24,8 +24,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import test
-
-# TODO(tucker): Make these ops work in eager mode. b/79776476
 
 
 class CollectiveOpTest(test.TestCase):
@@ -113,6 +111,42 @@ class CollectiveOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testCollectiveBroadcast(self):
     self._testCollectiveBroadcast([0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1])
+
+  def _testCollectiveGather(self, t0, t1, expected, set_graph_key):
+    group_key = 1
+    instance_key = 1
+    with self.session(
+        config=config_pb2.ConfigProto(device_count={'CPU': 2})) as sess:
+      with ops.device('/CPU:0'):
+        in0 = constant_op.constant(t0)
+        colred0 = collective_ops.all_gather(in0, 2, group_key, instance_key)
+      with ops.device('/CPU:1'):
+        in1 = constant_op.constant(t1)
+        colred1 = collective_ops.all_gather(in1, 2, group_key, instance_key)
+      run_options = config_pb2.RunOptions()
+      if set_graph_key:
+        run_options.experimental.collective_graph_key = 1
+      results = sess.run([colred0, colred1], options=run_options)
+    self.assertAllClose(results[0], expected, rtol=1e-5, atol=1e-5)
+    self.assertAllClose(results[1], expected, rtol=1e-5, atol=1e-5)
+
+  @test_util.run_deprecated_v1
+  def testCollectiveGather(self):
+    self._testCollectiveGather([0, 1, 2, 3, 4, 5, 6, 7],
+                               [10, 11, 12, 13, 14, 15, 16, 17],
+                               [0, 1, 2, 3, 4, 5, 6, 7,
+                                10, 11, 12, 13, 14, 15, 16, 17],
+                               True)
+    self._testCollectiveGather([[0, 1, 2, 3], [4, 5, 6, 7]],
+                               [[10, 11, 12, 13], [14, 15, 16, 17]],
+                               [[0, 1, 2, 3], [4, 5, 6, 7],
+                                [10, 11, 12, 13], [14, 15, 16, 17]],
+                               True)
+    self._testCollectiveGather([[[0, 1], [2, 3]], [[4, 5], [6, 7]]],
+                               [[[10, 11], [12, 13]], [[14, 15], [16, 17]]],
+                               [[[0, 1], [2, 3]], [[4, 5], [6, 7]],
+                                [[10, 11], [12, 13]], [[14, 15], [16, 17]]],
+                               True)
 
 
 if __name__ == '__main__':
