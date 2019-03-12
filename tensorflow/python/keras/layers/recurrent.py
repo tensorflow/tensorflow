@@ -193,7 +193,6 @@ class StackedRNNCells(Layer):
     return cls(cells, **config)
 
 
-
 @keras_export('keras.layers.RNN')
 class RNN(Layer):
   """Base class for recurrent layers.
@@ -250,17 +249,6 @@ class RNN(Layer):
       Unrolling can speed-up a RNN,
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
-    input_dim: dimensionality of the input (integer or tuple of integers).
-      This argument (or alternatively, the keyword argument `input_shape`)
-      is required when using this layer as the first layer in a model.
-    input_length: Length of input sequences, to be specified
-      when it is constant.
-      This argument is required if you are going to connect
-      `Flatten` then `Dense` layers upstream
-      (without it, the shape of the dense outputs cannot be computed).
-      Note that if the recurrent layer is not the first layer
-      in your model, you would need to specify the input length
-      at the level of the first layer (e.g. via the `input_shape` argument).
     time_major: The shape format of the `inputs` and `outputs` tensors.
         If True, the inputs and outputs will be in shape
         `(timesteps, batch, ...)`, whereas in the False case, it will be
@@ -410,6 +398,13 @@ class RNN(Layer):
     # If True, the output for masked timestep will be zeros, whereas in the
     # False case, output from previous timestep is returned for masked timestep.
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
+
+    if 'input_shape' not in kwargs and (
+        'input_dim' in kwargs or 'input_length' in kwargs):
+      input_shape = (kwargs.pop('input_length', None),
+                     kwargs.pop('input_dim', None))
+      kwargs['input_shape'] = input_shape
+
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
     self.return_sequences = return_sequences
