@@ -181,6 +181,7 @@ inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
   int32x4_t sum = vpaddq_s32(sum0, sum1);
   return vaddq_s32(acc, sum);
 }
+
 #endif  // !DOTPROD
 #endif  // ARM NEON
 
@@ -1227,11 +1228,377 @@ template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
                       /*max_padding=*/1> {
+  static inline void PackMacroBlockIntrinsics(
+      int32 height_block_number, int32 width_block_number,
+      const uint8* input_block_data, int8* scratch_block_data,
+      const DepthwiseConvDotProdParams* function_params) {
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int input_width_micro_repeats =
+        function_params->input_width_micro_repeats;
+    const int block_height = function_params->inbound_block_height;
+    const int residual_width = function_params->residual_width;
+    const int input_height_stride = function_params->input_height_stride;
+
+    const int padding_left = function_params->padding_left;
+    const int padding_right = function_params->padding_right;
+    const int padding_top = function_params->padding_top;
+    const int padding_bottom = function_params->padding_bottom;
+
+    constexpr int kSymmetricZeroPoint = 128;
+
+    TFLITE_DCHECK_GE(workspace_height_stride, 4 * width_overall_micro_repeats);
+
+    const bool leading_width_padding =
+        padding_left > 0 && width_block_number == 0;
+    const bool trailing_width_padding =
+        padding_right > 0 &&
+        width_block_number == (function_params->width_macro_count - 1);
+    const bool leading_height_padding =
+        padding_top > 0 && height_block_number < 0;
+    const bool trailing_height_padding =
+        padding_bottom > 0 &&
+        height_block_number == (function_params->height_macro_count - 1);
+
+    const int32 input_offset = function_params->input_offset;
+    const int32 input_offset_difference = input_offset + kSymmetricZeroPoint;
+
+    // Work through one slice, by row, at a time.
+    int8* scratch_data_base = scratch_block_data;
+
+    int copy_block_height = block_height;
+    if (leading_height_padding) {
+      copy_block_height -= 1;
+      memset(scratch_data_base, -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
+      scratch_data_base += workspace_height_stride;
+      input_block_data += input_height_stride;
+    }
+    if (trailing_height_padding) {
+      copy_block_height -= 1;
+    }
+
+    int adjusted_residual_width =
+        input_width_micro_repeats < width_overall_micro_repeats ? residual_width
+                                                                : 4;
+
+    if (trailing_width_padding) {
+      adjusted_residual_width -= 1;
+    }
+    int start_width = 0;
+    if (leading_width_padding) {
+      start_width = 1;
+      input_block_data += 1;
+    }
+
+    const int copy_size = (width_overall_micro_repeats - 1) * 4 +
+                          adjusted_residual_width - start_width;
+    // Adjusted so that later conditionals are simplified.
+    const int copy_size_adjusted =
+        trailing_width_padding ? copy_size + 1 : copy_size;
+
+    TFLITE_DCHECK_LE(
+        copy_size,
+        input_height_stride - width_block_number * input_width_micro_repeats);
+    // We may drop up to stride-1 of trailing input.
+    TFLITE_DCHECK_GE(copy_size, input_height_stride - 1);
+
+    int scratch_data_offset = 0;
+    int input_block_offset = 0;
+
+    constexpr uint8 kSignBit = 0x80;
+
+    // Transpositions are 4x4, but doing 2 at a time is more efficient in NEON
+    // code. Note the blocks of 4x4 are still interleaved down the depth.
+    int8x16_t work_reg;
+    int8x8_t half_work_reg;
+    int8x8_t padding_mask;
+
+    // Effect subtraction of zero-point = 128 by XOR of sign bit.
+    const uint8x16_t sign_bit = vdupq_n_u8(kSignBit);
+    const uint8x16_t padding_reg = vdupq_n_u8(-input_offset);
+    padding_mask = vdup_n_s8(-1);
+    half_work_reg = vdup_n_s8(0);
+
+    if (copy_size >= 16) {
+      const int copy_remaining = (copy_size + start_width) & 0x7;
+      padding_mask = vshl_u64(padding_mask, vdup_n_s64(8 * copy_remaining));
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Work through one slice, by row, at a time.
+        int8* scratch_data = scratch_data_base + scratch_data_offset;
+
+        int copy_done = 0;
+
+        // The surrounding condition ensures that we always need at least one
+        // iteration of the main copy loop. In the case of leading width
+        // padding, we unroll this specially.
+        if (leading_width_padding) {
+          work_reg = vld1q_u8(input_block_data + input_block_offset);
+          work_reg = vextq_s8(padding_reg, work_reg, 15);
+          work_reg = veorq_s8(work_reg, sign_bit);
+          vst1q_s8(scratch_data, work_reg);
+          copy_done += 15;
+        }
+
+        // Main copy loop.
+        for (; (copy_done + 16) <= copy_size; copy_done += 16) {
+          work_reg =
+              vld1q_u8(input_block_data + input_block_offset + copy_done);
+          work_reg = veorq_s8(work_reg, sign_bit);
+          TFLITE_DCHECK_EQ((start_width + copy_done) % 16, 0);
+          vst1q_s8(scratch_data + start_width + copy_done, work_reg);
+        }
+
+        if (copy_done + 8 <= copy_size) {
+          half_work_reg =
+              vld1_u8(input_block_data + input_block_offset + copy_done);
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ((start_width + copy_done) % 8, 0);
+          vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
+          copy_done += 8;
+        }
+
+        TFLITE_DCHECK_EQ(copy_remaining, copy_size - copy_done);
+        // Total amount
+        // = copy_size - copy_done + 4 - adjusted_residual_width
+        // = width_overall_micro_repeats * 4 - start_width - copy_done.
+        // Undone micro blocks
+        // = width_overall_micro_repeats - (start_width + copy_done) / 4.
+
+        // Conditional is (copy_remaining > 0 || trailing_width_padding).
+        if (copy_done < copy_size_adjusted) {
+          // Employ overlapping-load strategy in order to load full register,
+          // but use only part.
+          // This has the advantage of resulting in zeros after shifting.
+          half_work_reg =
+              vld1_u8(input_block_data + input_block_offset + copy_size - 8);
+
+          half_work_reg =
+              vshl_u64(half_work_reg, vdup_n_s64(-8 * (8 - copy_remaining)));
+          half_work_reg =
+              vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ((start_width + copy_done) % 8, 0);
+          vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
+        }
+
+        // Trailing guard.
+        vst1_s8(scratch_data + start_width + copy_done, half_work_reg);
+        vst1_s8(scratch_data + start_width + copy_done + 8, half_work_reg);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else if (copy_size >= 4) {
+      const int copy_remaining = (copy_size + start_width) & 0x3;
+      padding_mask = vshl_u64(padding_mask, vdup_n_s64(8 * copy_remaining));
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        // Work through one slice, by row, at a time.
+        int8* scratch_data = scratch_data_base + scratch_data_offset;
+
+        int copy_done = 0;
+
+        // The surrounding condition ensures that we always need at least one
+        // iteration of the main copy loop. In the case of leading width
+        // padding, we unroll this specially.
+        if (leading_width_padding) {
+          half_work_reg =
+              vld1_lane_s32(reinterpret_cast<const int32*>(input_block_data +
+                                                           input_block_offset),
+                            half_work_reg, 0);
+          half_work_reg = vext_s8(vget_low_s8(padding_reg), half_work_reg, 7);
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          vst1_lane_s32(reinterpret_cast<int32*>(scratch_data), half_work_reg,
+                        0);
+          copy_done += 3;
+        }
+
+        // Main copy loop.
+        for (; (copy_done + 4) <= copy_size; copy_done += 4) {
+          // Important! Most compilation configurations will compile and run
+          // without the reinterpret_cast. Sanitizers may fail silently on
+          // lane-loading, with a obscure bug or mis-feature probably in
+          // unhygienic macro expansion.
+          half_work_reg = vld1_lane_s32(
+              reinterpret_cast<const int32*>(input_block_data +
+                                             input_block_offset + copy_done),
+              half_work_reg, 0);
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ((start_width + copy_done) % 4, 0);
+          vst1_lane_s32(
+              reinterpret_cast<int32*>(scratch_data + start_width + copy_done),
+              half_work_reg, 0);
+        }
+
+        TFLITE_DCHECK_EQ(copy_remaining, copy_size - copy_done);
+        // Total amount
+        // = copy_size - copy_done + 4 - adjusted_residual_width
+        // = width_overall_micro_repeats * 4 - start_width - copy_done.
+        // Undone micro blocks
+        // = width_overall_micro_repeats - (start_width + copy_done) / 4.
+
+        // Conditional is (copy_remaining > 0 || trailing_width_padding).
+        if (copy_done < copy_size_adjusted) {
+          TFLITE_DCHECK_LT(copy_remaining, 4);
+          // Employ overlapping-load strategy in order to load full register,
+          // but use only part.
+          // This has the advantage of resulting in zeros after shifting.
+          half_work_reg = vld1_lane_s32(
+              reinterpret_cast<const int32*>(
+                  input_block_data + input_block_offset + copy_size - 4),
+              half_work_reg, 0);
+
+          half_work_reg =
+              vshl_u64(half_work_reg, vdup_n_s64(-8 * (4 - copy_remaining)));
+          half_work_reg =
+              vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+
+          half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+          TFLITE_DCHECK_EQ((start_width + copy_done) % 4, 0);
+          vst1_lane_s32(
+              reinterpret_cast<int32*>(scratch_data + start_width + copy_done),
+              half_work_reg, 0);
+          copy_done += 4;
+        }
+        // Trailing guard.
+        vst1_lane_s32(
+            reinterpret_cast<int32*>(scratch_data + start_width + copy_done),
+            half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + start_width +
+                                               copy_done + 4),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + start_width +
+                                               copy_done + 8),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data + start_width +
+                                               copy_done + 12),
+                      half_work_reg, 0);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else if (width_overall_micro_repeats == 2) {
+      // Special case of 1 + 3 + 1, padding + copy + padding.
+      // This is rarely executed in practice.
+      TFLITE_DCHECK_EQ(copy_size, 3);
+      TFLITE_DCHECK_EQ(start_width, 1);
+      TFLITE_DCHECK(leading_width_padding);
+      TFLITE_DCHECK(trailing_width_padding);
+      // ASM should use MOVI 64-bit set.
+      padding_mask = vcreate_u64(~0xffffff00L);
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        half_work_reg = vld1_lane_s8(reinterpret_cast<const int8*>(
+                                         input_block_data + input_block_offset),
+                                     half_work_reg, 1);
+        half_work_reg =
+            vld1_lane_s8(reinterpret_cast<const int8*>(input_block_data +
+                                                       input_block_offset + 1),
+                         half_work_reg, 2);
+        half_work_reg =
+            vld1_lane_s8(reinterpret_cast<const int8*>(input_block_data +
+                                                       input_block_offset + 2),
+                         half_work_reg, 3);
+        half_work_reg =
+            vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+
+        half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        TFLITE_DCHECK_EQ(scratch_data_offset % 8, 0);
+        vst1_s8(scratch_data_base + scratch_data_offset, half_work_reg);
+
+        // Trailing guard.
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 4),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 8),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 12),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 16),
+                      half_work_reg, 0);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    } else {
+      TFLITE_DCHECK_EQ(width_overall_micro_repeats, 1);
+      const int copy_remaining = (copy_size + start_width) & 0x3;
+      padding_mask = vshl_u64(padding_mask, vdup_n_s64(8 * copy_remaining));
+      if (leading_width_padding) {
+        padding_mask = vset_lane_u8(255, padding_mask, 0);
+      }
+
+      for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+        for (int i = 0; i < copy_size; ++i) {
+          half_work_reg = vshl_n_u64(half_work_reg, 8);
+          half_work_reg = vld1_lane_s8(
+              reinterpret_cast<const int8*>(
+                  input_block_data + input_block_offset + copy_size - 1 - i),
+              half_work_reg, 0);
+        }
+        if (leading_width_padding) {
+          half_work_reg = vshl_n_s64(half_work_reg, 8);
+        }
+        half_work_reg =
+            vbsl_s8(padding_mask, vget_low_s8(padding_reg), half_work_reg);
+
+        half_work_reg = veor_s8(half_work_reg, vget_low_s8(sign_bit));
+        TFLITE_DCHECK_EQ(scratch_data_offset % 4, 0);
+        vst1_lane_s32(
+            reinterpret_cast<int32*>(scratch_data_base + scratch_data_offset),
+            half_work_reg, 0);
+
+        // Trailing guard.
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 4),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 8),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 12),
+                      half_work_reg, 0);
+        vst1_lane_s32(reinterpret_cast<int32*>(scratch_data_base +
+                                               scratch_data_offset + 16),
+                      half_work_reg, 0);
+
+        scratch_data_offset += workspace_height_stride;
+        input_block_offset += input_height_stride;
+      }
+    }
+
+    scratch_data_base += copy_block_height * workspace_height_stride;
+
+    if (trailing_height_padding) {
+      memset(scratch_data_base, -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
+      scratch_data_base += workspace_height_stride;
+    }
+
+    TFLITE_DCHECK_EQ(
+        scratch_data_base,
+        scratch_block_data + block_height * workspace_height_stride);
+  }
+
   static inline void Run(int32 height_block_number, int32 width_block_number,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_CHECK(false);  // TODO(b/127805639): Not yet implemented.
+#if defined(__aarch64__)
+    PreloadInputBlock(input_block_data, function_params);
+#endif
+
+    PackMacroBlockIntrinsics(height_block_number, width_block_number,
+                             input_block_data, scratch_block_data,
+                             function_params);
   }
 };
 
@@ -3420,9 +3787,7 @@ struct KernelMacroBlock<
                 acc_u8_0_0 =
                     vmin_u8(acc_u8_0_0, vget_low_u8(output_activation_max_vec));
 
-                // if (x==1) {
                 vst1_lane_u8x4(output_data, acc_u8_0_0, 0);
-                // }
 
                 input_bank_a_reg = vshrq_n_u64(input_bank_a_reg, 8);
                 input_bank_b_reg = vshrq_n_u64(input_bank_b_reg, 8);
