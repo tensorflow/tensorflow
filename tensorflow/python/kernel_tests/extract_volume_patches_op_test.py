@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -46,14 +45,13 @@ class ExtractVolumePatches(test.TestCase):
     ksizes = [1] + ksizes + [1]
     strides = [1] + strides + [1]
 
-    with test_util.use_gpu():
-      out_tensor = array_ops.extract_volume_patches(
-          constant_op.constant(image),
-          ksizes=ksizes,
-          strides=strides,
-          padding=padding,
-          name="im2col_3d")
-      self.assertAllClose(patches, self.evaluate(out_tensor))
+    out_tensor = array_ops.extract_volume_patches(
+        constant_op.constant(image),
+        ksizes=ksizes,
+        strides=strides,
+        padding=padding,
+        name="im2col_3d")
+    self.assertAllClose(patches, self.evaluate(out_tensor))
 
   # pylint: disable=bad-whitespace
   def testKsize1x1x1Stride1x1x1(self):

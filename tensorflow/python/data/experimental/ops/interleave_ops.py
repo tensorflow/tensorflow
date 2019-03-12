@@ -19,16 +19,67 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops import random_ops
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import readers
+from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
+
+
+class _ParallelInterleaveDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that maps a function over its input and flattens the result."""
+
+  def __init__(self, input_dataset, map_func, cycle_length, block_length,
+               sloppy, buffer_output_elements, prefetch_input_elements):
+    """See `tf.data.experimental.parallel_interleave()` for details."""
+    self._input_dataset = input_dataset
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
+        map_func, self._transformation_name(), dataset=input_dataset)
+    if not isinstance(self._map_func.output_structure,
+                      dataset_ops.DatasetStructure):
+      raise TypeError("`map_func` must return a `Dataset` object.")
+    self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
+    self._cycle_length = ops.convert_to_tensor(
+        cycle_length, dtype=dtypes.int64, name="cycle_length")
+    self._block_length = ops.convert_to_tensor(
+        block_length, dtype=dtypes.int64, name="block_length")
+    self._sloppy = ops.convert_to_tensor(
+        sloppy, dtype=dtypes.bool, name="sloppy")
+    self._buffer_output_elements = convert.optional_param_to_tensor(
+        "buffer_output_elements",
+        buffer_output_elements,
+        argument_default=2 * block_length)
+    self._prefetch_input_elements = convert.optional_param_to_tensor(
+        "prefetch_input_elements",
+        prefetch_input_elements,
+        argument_default=2 * cycle_length)
+    variant_tensor = ged_ops.experimental_parallel_interleave_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        self._cycle_length,
+        self._block_length,
+        self._sloppy,
+        self._buffer_output_elements,
+        self._prefetch_input_elements,
+        f=self._map_func.function,
+        **dataset_ops.flat_structure(self))
+    super(_ParallelInterleaveDataset, self).__init__(input_dataset,
+                                                     variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
+
+  @property
+  def _element_structure(self):
+    return self._structure
+
+  def _transformation_name(self):
+    return "tf.data.experimental.parallel_interleave()"
 
 
 @tf_export("data.experimental.parallel_interleave")
@@ -82,7 +133,7 @@ def parallel_interleave(map_func,
     `tf.data.Dataset.apply`.
   """
   def _apply_fn(dataset):
-    return readers.ParallelInterleaveDataset(
+    return _ParallelInterleaveDataset(
         dataset, map_func, cycle_length, block_length, sloppy,
         buffer_output_elements, prefetch_input_elements)
 
@@ -119,11 +170,10 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
-    return (
-        gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
-            self._selector_input._variant_tensor,
-            [data_input._variant_tensor for data_input in self._data_inputs],
-            **dataset_ops.flat_structure(self)))
+    return (ged_ops.experimental_directed_interleave_dataset(
+        self._selector_input._variant_tensor,
+        [data_input._variant_tensor for data_input in self._data_inputs],
+        **dataset_ops.flat_structure(self)))
     # pylint: enable=protected-access
 
   def _inputs(self):

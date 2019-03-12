@@ -493,8 +493,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           worker_threads_.reserve(dataset()->num_threads());
           for (size_t i = 0; i < dataset()->num_threads(); ++i) {
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
+            worker_threads_.emplace_back(ctx->StartThread(
+                strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           }
         }
@@ -592,8 +592,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             }
             workers_[i].SetInputs(s, std::move(args));
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
+            worker_threads_.push_back(ctx->StartThread(
+                strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
             if (i < dataset()->cycle_length_) {
               interleave_indices_.push_back(i);

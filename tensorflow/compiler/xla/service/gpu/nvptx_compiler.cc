@@ -38,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
@@ -46,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cusolver_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
@@ -87,6 +89,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_trip_count_annotator.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -247,15 +250,27 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
         TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
+
+    // Run WhileLoopTripCountAnnotator at the end of the simplification
+    // pipeline, before layout assignment and fusion.  This pass does some
+    // pattern-matching on while bodies/conditions, and this is where the HLO is
+    // "nicest".
+    //
+    // It's important that we don't make semantic changes (e.g. unrolling) to
+    // any `while` loops after this point, because otherwise the trip-count
+    // annotations added by this pass may not be correct after the
+    // modifications.
+    pipeline.AddPass<WhileLoopTripCountAnnotator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
   {
     // Convert convolutions into CustomCalls to cudnn, then canonicalize them
-    // (CudnnConvPaddingLegalization).
+    // (CudnnConvPaddingLegalization). Also expand cuSolver calls.
     HloPassPipeline pipeline("conv_canonicalization");
     pipeline.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                               /*allow_mixed_precision=*/false);
+    pipeline.AddPass<CusolverRewriter>(stream_exec, device_allocator);
     pipeline.AddPass<CudnnConvRewriter>();
     pipeline.AddPass<CudnnFusedConvRewriter>();
     pipeline.AddPass<CudnnConvPaddingLegalization>();
@@ -328,6 +343,7 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     // wouldn't be able to simplify away the new_tuple bits.
     pipeline.AddPass<CudnnConvAlgorithmPicker>(stream_exec, device_allocator,
                                                compiler);
+
     // Clean up new_tuple described above.
     pipeline.AddPass<TupleSimplifier>();
 
@@ -665,13 +681,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
   VLOG(3) << "*** HLO After Optimization";
   XLA_VLOG_LINES(3, module->ToString());
-  const string xla_dump_optimized_hlo_proto_to =
-      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
-  if (!xla_dump_optimized_hlo_proto_to.empty()) {
-    HloProto proto = MakeHloProto(*module, *buffer_assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, xla_dump_optimized_hlo_proto_to, module->name()));
-  }
+  DumpHloModuleIfEnabled(*module, *buffer_assignment, "after_optimizations");
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
@@ -700,15 +710,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
     XLA_VLOG_LINES(3, ir_module_string_before_opt);
   }
 
-  const string& ir_dump_directory =
-      module->config().debug_options().xla_dump_ir_to();
-
-  if (!ir_dump_directory.empty()) {
-    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
-        /*directory_name=*/ir_dump_directory,
-        /*hlo_module_name=*/module->name(), llvm_module,
-        /*optimized=*/false));
-  }
+  llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/false);
 
   {
     XLA_SCOPED_LOGGING_TIMER(
@@ -722,7 +724,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
         << "Invalid LLVM IR before optimizations:\n"
         << err_stream.str()
         << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-           "Rerun with --xla_dump_ir_to to get the IR. ";
+           "Rerun with --xla_dump_ir to get the IR. ";
   }
 
   string libdevice_dir;
@@ -755,12 +757,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
                                           module->config(), libdevice_dir));
   }
 
-  if (!ir_dump_directory.empty()) {
-    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
-        /*directory_name=*/ir_dump_directory,
-        /*hlo_module_name=*/module->name(), llvm_module,
-        /*optimized=*/true));
-  }
+  llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/true);
 
   if (user_post_optimization_hook_) {
     TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
@@ -771,19 +768,9 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   XLA_VLOG_LINES(3, ptx);
 
   // Write PTX to IR dump directory, if IR dumping was requested.
-  if (!ir_dump_directory.empty()) {
-    const string ptx_outfile = tensorflow::io::JoinPath(
-        ir_dump_directory, absl::StrCat(module->name(), ".ptx"));
-    auto status = [&] {
-      auto* env = tensorflow::Env::Default();
-      TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(ir_dump_directory));
-      TF_RETURN_IF_ERROR(tensorflow::WriteStringToFile(env, ptx_outfile, ptx));
-      return Status::OK();
-    }();
-    if (!status.ok()) {
-      LOG(WARNING) << "Couldn't dump PTX for module " << module->name()
-                   << " to " << ptx_outfile << ": " << status;
-    }
+  const auto& debug_opts = module->config().debug_options();
+  if (DumpingEnabledForHloModule(*module) && debug_opts.xla_dump_ir()) {
+    DumpToFileInDirOrStdout(*module, "ptx", ptx);
   }
 
   const std::vector<uint8> cubin =

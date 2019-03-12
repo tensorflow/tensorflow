@@ -65,7 +65,7 @@ class _Loader(object):
 
     for node in self._nodes:
       if isinstance(node, tracking.TrackableResource):
-        init_op = node.initialize()
+        init_op = node._initialize()  # pylint: disable=protected-access
         ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
 
   def _setup_functions_structures(self):
@@ -242,10 +242,10 @@ class _Loader(object):
 class _RestoredResource(tracking.TrackableResource):
   """Restored SavedResource."""
 
-  def create_resource(self):
+  def _create_resource(self):
     raise RuntimeError()
 
-  def initialize(self):
+  def _initialize(self):
     raise RuntimeError()
 
   def _list_functions_for_serialization(self):
@@ -253,8 +253,8 @@ class _RestoredResource(tracking.TrackableResource):
     # base class to re-wrap the polymorphic functions into
     # another layer of `tf.function`.
     return {
-        "create_resource": self.create_resource,
-        "initialize": self.initialize,
+        "_create_resource": self._create_resource,
+        "_initialize": self._initialize,
     }
 
 
@@ -303,8 +303,9 @@ def load(export_dir, tags=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  if tags is not None:
-    # Supports e.g. tags=SERVING and tags=[SERVING]
+  if tags is not None and not isinstance(tags, set):
+    # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
+    # sequences for nest.flatten, so we put those through as-is.
     tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
   if (len(saved_model_proto.meta_graphs) == 1

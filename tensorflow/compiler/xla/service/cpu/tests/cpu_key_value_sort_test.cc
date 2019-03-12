@@ -29,7 +29,7 @@ HloModule KeyValueSort
 compare {
   p.0.lhs = f32[] parameter(0)
   p.0.rhs = f32[] parameter(1)
-  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
 }
 
 ENTRY main {

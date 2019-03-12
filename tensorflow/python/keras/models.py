@@ -319,10 +319,9 @@ def _in_place_subclassed_model_reset(model):
                          'in `model_to_estimator` at this time. Found nested '
                          'layer: %s' % value)
     elif isinstance(
-        value,
-        (list, tuple)) and name not in ('layers', '_layers', 'metrics',
-                                        '_compile_stateful_metric_functions',
-                                        '_output_loss_metrics'):
+        value, (list, tuple)) and name not in ('layers', '_layers', 'metrics',
+                                               '_compile_metric_functions',
+                                               '_output_loss_metrics'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
@@ -368,8 +367,6 @@ def _in_place_subclassed_model_reset(model):
           'total_loss',
           'sample_weights',
           '_feed_sample_weights',
-          '_fit_function',
-          '_eval_function',
           'train_function',
           'test_function',
           'predict_function',

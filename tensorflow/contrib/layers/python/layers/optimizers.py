@@ -21,6 +21,7 @@ from __future__ import print_function
 import six
 
 from tensorflow.contrib import framework as contrib_framework
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -325,7 +326,7 @@ def _adaptive_max_norm(norm, std_factor, decay, global_step, epsilon, name):
 
     # quicker adaptation at the beginning
     if global_step is not None:
-      n = math_ops.to_float(global_step)
+      n = math_ops.cast(global_step, dtypes.float32)
       decay = math_ops.minimum(decay, n / (n + 1.))
 
     # update averages

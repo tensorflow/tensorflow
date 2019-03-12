@@ -419,10 +419,6 @@ class TPUClusterResolver(ClusterResolver):
         raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
                            (compat.as_text(self._tpu), response['state']))
 
-      if 'health' in response and response['health'] != 'HEALTHY':
-        raise RuntimeError('TPU "%s" is unhealthy: "%s"' %
-                           (compat.as_text(self._tpu), response['health']))
-
       if 'networkEndpoints' in response:
         worker_list = [
             '%s:%s' % (endpoint['ipAddress'], endpoint['port'])

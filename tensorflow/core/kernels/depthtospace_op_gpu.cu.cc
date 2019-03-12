@@ -162,11 +162,11 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NHWC> {
       return;
     }
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
-    CudaLaunchKernel(D2S_NHWC<T>, config.block_count, config.thread_per_block,
-                     0, d.stream(), config.virtual_thread_count, input.data(),
-                     block_size, batch_size, input_height, input_width,
-                     input_depth, output_height, output_width, output_depth,
-                     output.data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        D2S_NHWC<T>, config.block_count, config.thread_per_block, 0, d.stream(),
+        config.virtual_thread_count, input.data(), block_size, batch_size,
+        input_height, input_width, input_depth, output_height, output_width,
+        output_depth, output.data()));
   }
   void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output) {
@@ -198,23 +198,26 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
       switch (block_size) {
         case 2:
-          return CudaLaunchKernel(D2S_NCHW_LOOP<T, 2>, config.block_count,
-                                  config.thread_per_block, 0, d.stream(),
-                                  total_count, input.data(), input_width,
-                                  output_width, output_depth_by_input_area,
-                                  input_depth_by_input_area, output.data());
+          TF_CHECK_OK(CudaLaunchKernel(
+              D2S_NCHW_LOOP<T, 2>, config.block_count, config.thread_per_block,
+              0, d.stream(), total_count, input.data(), input_width,
+              output_width, output_depth_by_input_area,
+              input_depth_by_input_area, output.data()));
+          return;
         case 3:
-          return CudaLaunchKernel(D2S_NCHW_LOOP<T, 3>, config.block_count,
-                                  config.thread_per_block, 0, d.stream(),
-                                  total_count, input.data(), input_width,
-                                  output_width, output_depth_by_input_area,
-                                  input_depth_by_input_area, output.data());
+          TF_CHECK_OK(CudaLaunchKernel(
+              D2S_NCHW_LOOP<T, 3>, config.block_count, config.thread_per_block,
+              0, d.stream(), total_count, input.data(), input_width,
+              output_width, output_depth_by_input_area,
+              input_depth_by_input_area, output.data()));
+          return;
         case 4:
-          return CudaLaunchKernel(D2S_NCHW_LOOP<T, 4>, config.block_count,
-                                  config.thread_per_block, 0, d.stream(),
-                                  total_count, input.data(), input_width,
-                                  output_width, output_depth_by_input_area,
-                                  input_depth_by_input_area, output.data());
+          TF_CHECK_OK(CudaLaunchKernel(
+              D2S_NCHW_LOOP<T, 4>, config.block_count, config.thread_per_block,
+              0, d.stream(), total_count, input.data(), input_width,
+              output_width, output_depth_by_input_area,
+              input_depth_by_input_area, output.data()));
+          return;
       }
     }
 
@@ -224,10 +227,10 @@ struct DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> {
       return;
     }
     auto config = GetCudaLaunchConfig(total_count, d);
-    CudaLaunchKernel(D2S_NCHW<T>, config.block_count, config.thread_per_block,
-                     0, d.stream(), config.virtual_thread_count, input.data(),
-                     block_size, input_width, output_depth * input_height,
-                     output.data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        D2S_NCHW<T>, config.block_count, config.thread_per_block, 0, d.stream(),
+        config.virtual_thread_count, input.data(), block_size, input_width,
+        output_depth * input_height, output.data()));
   }
   void operator()(const GPUDevice& d, typename TTypes<T, 5>::ConstTensor input,
                   int block_size, typename TTypes<T, 5>::Tensor output) {

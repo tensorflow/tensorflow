@@ -80,7 +80,7 @@ class DrawBoundingBoxOpTest(test.TestCase):
       test_drawn_image = self._fillBorder(image, color)
       bboxes = np.asarray([0, 0, 1, 1])
       bboxes = np.vstack([bboxes for _ in range(num_boxes)])
-      bboxes = math_ops.to_float(bboxes)
+      bboxes = math_ops.cast(bboxes, dtypes.float32)
       bboxes = array_ops.expand_dims(bboxes, 0)
       image = ops.convert_to_tensor(image)
       image = image_ops_impl.convert_image_dtype(image, dtypes.float32)

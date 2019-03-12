@@ -560,7 +560,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
     def calibration_gen():
       for _ in range(10):
-        yield np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
 
     sess = session.Session()
 
@@ -741,7 +741,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
   # TODO(nupurgarg): Test model loading in open source.
   def _initObjectDetectionArgs(self):
     # Initializes the arguments required for the object detection model.
-    # Looks for the model file which is saved in a different location interally
+    # Looks for the model file which is saved in a different location internally
     # and externally.
     filename = resource_loader.get_path_to_datafile('testdata/tflite_graph.pb')
     if not os.path.exists(filename):

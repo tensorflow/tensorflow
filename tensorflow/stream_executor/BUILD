@@ -464,15 +464,6 @@ tf_proto_library(
     provide_cc_alias = True,
 )
 
-tf_proto_library(
-    name = "logging_proto",
-    srcs = ["logging.proto"],
-    cc_api_version = 2,
-    protodeps = [":dnn_proto"],
-    provide_cc_alias = True,
-    visibility = [":friends"],
-)
-
 cc_library(
     name = "dnn",
     srcs = ["dnn.cc"],

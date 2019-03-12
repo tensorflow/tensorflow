@@ -22,8 +22,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_runner.h"
 #include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -41,10 +43,7 @@ class DynamicPadderTest : public HloTestBase {
   DynamicPadderTest() : HloTestBase() { module_ = CreateNewVerifiedModule(); }
 
   StatusOr<bool> RunPadder() {
-    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before padder");
-
     DynamicPadder padder;
-
     return padder.Run(module_.get());
   }
 
@@ -133,11 +132,6 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
 
   module_->AddEntryComputation(builder.Build());
 
-  // Set up dynamic parameter binding for non-contracting dimension.
-  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
-      DynamicParameterBinding::DynamicParameter{2, {}},
-      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
-
   // Set up binding for contracting dimensions.
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{2, {}},
@@ -146,6 +140,76 @@ TEST_F(DynamicPadderTest, ConvolutionTest) {
   TF_ASSERT_OK(RunPadder().status());
 
   ExpectPadded(conv->operand(0));
+}
+
+TEST_F(DynamicPadderTest, ConvolutionNoPad) {
+  auto builder = HloComputation::Builder(TestName());
+  constexpr int xdim = 3;
+  constexpr int ydim = 2;
+  constexpr int zdim = 1;
+  auto xy_shape = ShapeUtil::MakeShape(F32, {xdim, ydim});
+  auto yz_shape = ShapeUtil::MakeShape(F32, {ydim, zdim});
+  auto zx_shape = ShapeUtil::MakeShape(F32, {zdim, xdim});
+
+  auto* a_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/0, xy_shape, "A"));
+  auto* b_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/1, yz_shape, "B"));
+  builder.AddInstruction(HloInstruction::CreateParameter(
+      /*parameter_number=*/2, scalar_shape_, "size_param"));
+
+  auto dnums = XlaBuilder::CreateDefaultConvDimensionNumbers(0);
+
+  dnums.set_kernel_input_feature_dimension(0);
+  dnums.set_kernel_output_feature_dimension(1);
+  dnums.set_input_batch_dimension(0);
+  dnums.set_output_batch_dimension(1);
+  dnums.set_output_feature_dimension(0);
+
+  Window window;
+
+  auto* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
+      zx_shape, a_param, b_param, /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums,
+      HloTestBase::DefaultPrecisionConfig(2)));
+
+  module_->AddEntryComputation(builder.Build());
+
+  // Set up dynamic parameter binding for non-contracting dimension.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{2, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 0}));
+
+  TF_ASSERT_OK(RunPadder().status());
+
+  EXPECT_THAT(conv->operand(0), op::Parameter());
+}
+
+TEST_F(DynamicPadderTest, ReduceWindowNoPadForTrivialWindow) {
+  auto builder = HloComputation::Builder(TestName());
+  auto input_shape = ShapeUtil::MakeShape(F32, {4, 5});
+  auto reduce_shape = ShapeUtil::MakeShape(F32, {3, 5});
+
+  auto input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "input"));
+  builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+  auto init = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0.0)));
+  TF_ASSERT_OK_AND_ASSIGN(Window window, ParseWindow("size=2x1 pad=0_0x0_0"));
+  auto output = builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      reduce_shape, input, init, window, GetScalarAddComputation()));
+
+  module_->AddEntryComputation(builder.Build());
+
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+
+  TF_ASSERT_OK(RunPadder().status());
+
+  EXPECT_THAT(output->operand(0), op::Parameter());
 }
 
 }  // namespace

@@ -114,6 +114,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     r = add(x, v2)
     self.assertEqual(3.0, self.evaluate(r))
 
+  def testExternalControlDependency(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+
+      op = v.assign_add(1.0)
+
+      @function.defun
+      def f():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      self.evaluate(f())
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
@@ -194,19 +209,30 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
         fn(array_ops.ones((3, 4)))
 
-  def testWastedAdd(self):
+  def testNestedShapeFunctionRelaxation(self):
 
-    @def_function.function()
-    def add(x, y):
-      _ = x * y
-      return x + y
+    got_shape = [None]
 
-    # The default config allows all rewrites.
-    config_proto = config_pb2.ConfigProto()
+    # The inner function will go through shape relaxation because the shapes it
+    # receives will be [1], [2], [3], ...
+    @def_function.function
+    def bar(x_shape):
+      got_shape[0] = x_shape._shape_tuple()
+      return x_shape
 
-    with context.function_config_proto(config_proto):
-      t = constant_op.constant(1.0)
-      self.assertAllEqual(add(t, t).numpy(), 2.0)
+    # The outer function will not go through shape relaxation because the shapes
+    # it receives will be [1], [[1]], [[[1]]], ...
+    @def_function.function
+    def foo(ones):
+      return bar(array_ops.shape(ones))
+
+    for rank in range(1, 6):
+      x_shape = self.evaluate(foo(array_ops.ones([1] * rank)))
+      self.assertAllEqual(x_shape, [1] * rank)
+      if rank < 3:
+        self.assertEqual(got_shape[0], (rank,))
+      else:
+        self.assertEqual(got_shape[0], (None,))
 
   def testNoHash(self):
 
@@ -1831,6 +1857,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
 
+  def testFunctionWithNestedFunctionCallAndSideEffects(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(1.0)
+
+    @def_function.function
+    def add_one(a):
+      a.assign_add(1.0)
+
+    # Grappler will inline calls to `add_one` into the function body, we check
+    # that all side-effects were executed.
+    @def_function.function
+    def side_effecting_function(a, b):
+      add_one(a)
+      add_one(b)
+      return a + b
+
+    result = side_effecting_function(v1, v2)
+    self.assertEqual(result.numpy(), 4.0)
+
   def testFunctionWithExtraAttributes(self):
     @function.defun_with_attributes(attributes={'experimental_1': 'value1',
                                                 'experimental_2': 2})
@@ -2475,6 +2520,41 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with ops.device('GPU:0'):
       x = func()
       self.assertRegexpMatches(x.device, 'GPU')
+
+  @test_util.run_in_graph_and_eager_modes
+  def testShapeCaching(self):
+
+    @function.defun
+    def func(x):
+      return array_ops.shape(x)
+
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec([None, None], dtypes.float32)])
+    def calls_func(x):
+      return func(x)
+
+    self.assertAllEqual([1, 1], self.evaluate(func(array_ops.zeros([1, 1]))))
+    self.assertAllEqual([2, 2], self.evaluate(func(array_ops.zeros([2, 2]))))
+    self.assertAllEqual(
+        [3, 3],
+        self.evaluate(calls_func(array_ops.zeros([3, 3]))))
+
+  def testLimitedRetracing(self):
+    trace_count = [0]
+    @function.defun
+    def func(x):
+      trace_count[0] += 1
+      return x
+
+    for _ in range(50):
+      func(constant_op.constant(3.))
+      func(constant_op.constant(4.))
+      func(constant_op.constant([[1., 2.]]))
+      func(constant_op.constant([[]]))
+      func(constant_op.constant([[3., 4.], [5., 6.]]))
+      func(constant_op.constant([[3., 4.], [5., 6.], [7., 8.]]))
+    # Tracing more than twice per input doesn't make sense.
+    self.assertLess(trace_count[0], 13)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

@@ -29,12 +29,13 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+
 import "tensorflow/compiler/xla/xla_data.proto";
 
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 62
+// Next ID: 64
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -145,6 +146,9 @@ message HloInstructionProto {
   // FFT length.
   repeated int64 fft_length = 32;
 
+  // Comparison direction only used for kCompare.
+  string comparison_direction = 63;
+
   // Gather dimension numbers.
   xla.GatherDimensionNumbers gather_dimension_numbers = 33;
   repeated int64 gather_slice_sizes = 34;
@@ -199,6 +203,9 @@ message HloInstructionProto {
 
   // Options for TriangularSolve
   xla.TriangularSolveOptions triangular_solve_options = 59;
+
+  // Options for Cholesky
+  xla.CholeskyOptions cholesky_options = 62;
 
   // Describes how parameters behave with regards to replicas.
   xla.ParameterReplication parameter_replication = 61;

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import functools
+import os
 import pdb
 import sys
 
@@ -28,6 +29,7 @@ from enum import Enum
 
 # pylint:disable=g-bad-import-order
 import numpy as np
+import six
 # pylint:enable=g-bad-import-order
 
 
@@ -45,6 +47,11 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+
+def is_autograph_strict_conversion_mode():
+  return int(os.environ.get('AUTOGRAPH_STRICT_CONVERSION', '0')) > 0
+
 
 # TODO(mdan): Properly document the type hints.
 # TODO(mdan): Reduce the type hint information to (module, type).
@@ -167,32 +174,38 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 
 def _call_unconverted(f, args, kwargs):
-  """Calls the original function without converting with AutoGraph.
-
-  Args typically include `self`, as required by the conversion process.
-  When conversion is skipped, `self` is not necessary, because the
-  original bound method is being executed. This code removes it.
-
-  Args:
-    f: the original function for which conversion was requested.
-    args: positional arguments for f May or may not include self.
-    kwargs: keyword arguments for f
-
-  Returns:
-    The return value of f(*args, **kwargs).
-  """
-  # TODO(mdan): This may be inconsistent in certain situations.
-  # If the function had already been annotated with @tf.function, it
-  # may be bound to the incorrect object. It's unclear if those situations
-  # are possible, but if they happen, we need to check if f is bound
-  # to a shim like WeakrefSelf and unpack it.
-
-  if tf_inspect.ismethod(f) and args:
-    f_self = inspect_utils.getmethodself(f)
-    if args[0] is f_self:
-      args = args[1:]
+  """Calls the original function without converting with AutoGraph."""
+  if inspect_utils.istfmethodtarget(f):
+    return f.__self__.call(args, kwargs)
 
   return f(*args, **kwargs)
+
+
+def _is_known_loaded_type(f, module_name, entity_name):
+  """Tests whether the function or method is an instance of a known type."""
+  if (module_name not in sys.modules or
+      not hasattr(sys.modules[module_name], entity_name)):
+    return False
+  type_entity = getattr(sys.modules[module_name], entity_name)
+  if isinstance(f, type_entity):
+    # The method if of this type. Example:
+    #
+    # o = ClassType()
+    # function(o.method)()
+    return True
+  if tf_inspect.ismethod(f):
+    f = six.get_unbound_function(f)
+    # The the unbound method if of this type. Example:
+    #
+    # class ClassType:
+    #   @function
+    #   def method(self):
+    #     ...
+    # o = ClassType()
+    # o.method()
+    if isinstance(f, type_entity):
+      return True
+  return False
 
 
 def converted_call(f, owner, options, args, kwargs):
@@ -218,14 +231,17 @@ def converted_call(f, owner, options, args, kwargs):
   if inspect_utils.isbuiltin(f):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
+  if _is_known_loaded_type(f, 'weakref', 'ref'):
+    logging.log(2, 'Permanently whitelisted: %s: weakref', f)
+    return _call_unconverted(f, args, kwargs)
+
   # TODO(b/122265385): Remove this bypass.
-  if ('wrapt' in sys.modules and
-      hasattr(sys.modules['wrapt'], 'FunctionWrapper') and
-      isinstance(f, sys.modules['wrapt'].FunctionWrapper)):
+  if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
+      _is_known_loaded_type(f, 'wrapt', 'BoundFunctionWrapper')):
     logging.warn(
         'Entity {} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will be called without transformation.'
-        ' You may however apply AutoGraph before the decorator.'.format(f), 1)
+        ' You may however apply AutoGraph before the decorator.'.format(f))
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return _call_unconverted(f, args, kwargs)
 
@@ -276,24 +292,7 @@ def converted_call(f, owner, options, args, kwargs):
 
       # TODO(b/119246461): This may be more elegantly handled using __get__?
       if f_self is not None:
-        # If this is a method call, it may or may not include self.
-        #
-        # Example when self is included:
-        #   converted_call(to_graph(foo.bar), foo)
-        #
-        # Example when self is not included:
-        #   super(...).foo(args)
-        #
-        if owner is not None and (not args or args[0] is not owner):
-          effective_args = (owner,) + args
-        else:
-          # When the owner is not specified, use the result of
-          # inspect_utils.getmethodclass.
-          # TODO(b/119246461): Make sure an owner is always specified.
-          if not args or args[0] is not f_self:
-            effective_args = (f_self,) + args
-          else:
-            effective_args = (f_self,) + args[1:]
+        effective_args = (f_self,) + args
         partial_types = (f_self,)
       else:
         effective_args = args
@@ -317,6 +316,7 @@ def converted_call(f, owner, options, args, kwargs):
       partial_types = (f.__class__,)
 
     else:
+      target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
     arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
@@ -361,7 +361,12 @@ def converted_call(f, owner, options, args, kwargs):
   except (errors.AutoGraphError, AssertionError, AttributeError, IndexError,
           KeyError, NameError, NotImplementedError, SyntaxError, TypeError,
           ValueError, IOError) as e:
+
     logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
+
+    if is_autograph_strict_conversion_mode():
+      raise
+
     logging.warn(
         'Entity %s could not be transformed and will be staged without change.'
         ' Error details can be found in the logs when running with the env'

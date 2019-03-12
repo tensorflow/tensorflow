@@ -55,6 +55,21 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "auto_shard_dataset_op",
+    srcs = ["auto_shard_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/optimizers/data:auto_shard",
+        "//tensorflow/core/kernels/data:graph_rewrite_dataset",
+    ],
+)
+
+tf_kernel_library(
     name = "group_by_reducer_dataset_op",
     srcs = ["group_by_reducer_dataset_op.cc"],
     deps = [
@@ -129,6 +144,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
 
@@ -205,6 +221,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core/kernels/data:parallel_map_iterator",
+        "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
 
@@ -358,6 +375,7 @@ tf_kernel_library(
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core/kernels/data:dataset_utils",
         "//third_party/eigen3",
     ],
 )
@@ -388,6 +406,7 @@ tf_kernel_library(
     name = "dataset_kernels",
     deps = [
         ":assert_next_dataset_op",
+        ":auto_shard_dataset_op",
         ":choose_fastest_dataset_op",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",

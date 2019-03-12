@@ -242,34 +242,40 @@ void LaunchScan(const GPUDevice& d, typename TTypes<T, 3>::ConstTensor in,
   // Launch on the smallest power of 2 block size that we can.
   if (ideal_block_size >= 1024 && std::is_same<T, float>::value) {
     const int block_size = 1024;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                         num_blocks, block_size, 0, d.stream(), in.data(),
+                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 512) {
     const int block_size = 512;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                         num_blocks, block_size, 0, d.stream(), in.data(),
+                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 256) {
     const int block_size = 256;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                         num_blocks, block_size, 0, d.stream(), in.data(),
+                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 128) {
     const int block_size = 128;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                         num_blocks, block_size, 0, d.stream(), in.data(),
+                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else if (ideal_block_size >= 64) {
     const int block_size = 64;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                         num_blocks, block_size, 0, d.stream(), in.data(),
+                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   } else {
     const int block_size = 32;
-    CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
-                     num_blocks, block_size, 0, d.stream(), in.data(),
-                     out.data(), dimx, dimy, dimz, exclusive, reverse, op);
+    TF_CHECK_OK(
+        CudaLaunchKernel(scan_kernel<T, Op, block_size, items_per_thread>,
+                         num_blocks, block_size, 0, d.stream(), in.data(),
+                         out.data(), dimx, dimy, dimz, exclusive, reverse, op));
   }
 }
 

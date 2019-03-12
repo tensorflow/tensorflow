@@ -149,12 +149,12 @@ def rewrap(decorator_func, previous_target, new_target):
   innermost_decorator = None
   target = None
   while hasattr(cur, '_tf_decorator'):
-    assert cur is not None
     innermost_decorator = cur
     target = getattr(cur, '_tf_decorator')
     if target.decorated_target is previous_target:
       break
     cur = target.decorated_target
+    assert cur is not None
 
   # If decorator_func is not a decorator, new_target replaces it directly.
   if innermost_decorator is None:

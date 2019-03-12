@@ -13,11 +13,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "broadcast"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'communication\'], varargs=None, keywords=None, defaults=[\'CollectiveCommunication.AUTO\'], "
   }
   member_method {
     name: "colocate_vars_with"
@@ -34,6 +30,10 @@ tf_class {
   member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "experimental_run_v2"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
   }
   member_method {
     name: "group"

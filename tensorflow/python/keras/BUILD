@@ -63,7 +63,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
@@ -171,6 +171,8 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -221,7 +223,6 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
-        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -323,6 +324,7 @@ py_library(
         "layers/convolutional_recurrent.py",
         "layers/core.py",
         "layers/cudnn_recurrent.py",
+        "layers/dense_attention.py",
         "layers/embeddings.py",
         "layers/kernelized.py",
         "layers/local.py",
@@ -536,6 +538,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
+    tags = [
+        "no_windows",  # TODO(b/127888631)
+        "no_windows_gpu",  # TODO(b/127881287)
+    ],
 )
 
 tf_py_test(
@@ -563,7 +569,7 @@ tf_py_test(
 
 tf_py_test(
     name = "convolutional_recurrent_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/convolutional_recurrent_test.py"],
     additional_deps = [
         ":keras",
@@ -571,7 +577,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -585,11 +591,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = [
-        "manual",  # b/124471597
-        "notap",  # b/124471597
-    ],
-    xla_enable_strict_auto_jit = True,
+    # TODO(b/128025959): Re-enable.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -631,6 +634,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    # TODO(b/127881287): Re-enable.
+    tags = [
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(
@@ -644,6 +651,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 3,
+)
+
+tf_py_test(
+    name = "dense_attention_test",
+    size = "medium",
+    srcs = ["layers/dense_attention_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 cuda_py_test(
@@ -763,7 +782,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 4,
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -854,6 +873,21 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "noasan",  # http://b/78599823
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "time_distributed_learning_phase_test",
+    size = "small",
+    srcs = ["layers/time_distributed_learning_phase_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "noasan",  # http://b/78599823
         "notsan",
@@ -1221,7 +1255,7 @@ tf_py_test(
 
 tf_py_test(
     name = "base_layer_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/base_layer_test.py"],
     additional_deps = [
         ":keras",
@@ -1229,6 +1263,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
     tags = ["no_rocm"],
 )
 
@@ -1283,6 +1318,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(

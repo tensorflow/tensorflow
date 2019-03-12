@@ -22,8 +22,11 @@ import os
 
 from tensorflow.lite.python import lite
 from tensorflow.lite.python.interpreter import Interpreter
+from tensorflow.python import keras
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -174,6 +177,36 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
 
     # Check values from converted model.
     expected_value = root.add(input_data)
+    actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testKerasModel(self):
+    input_data = constant_op.constant(1., shape=[1, 1])
+
+    # Create a simple Keras model.
+    x = [-1, 0, 1, 2, 3, 4]
+    y = [-3, -1, 1, 3, 5, 7]
+
+    model = keras.models.Sequential(
+        [keras.layers.Dense(units=1, input_shape=[1])])
+    model.compile(optimizer='sgd', loss='mean_squared_error')
+    model.fit(x, y, epochs=1)
+
+    # Get the concrete function from the Keras model.
+    @def_function.function
+    def to_save(x):
+      return model(x)
+
+    concrete_func = to_save.get_concrete_function(
+        tensor_spec.TensorSpec([None, 1], dtypes.float32))
+
+    # Convert model and ensure model is not None.
+    converter = lite.TFLiteConverterV2.from_concrete_function(concrete_func)
+    tflite_model = converter.convert()
+
+    # Check values from converted model.
+    expected_value = to_save(input_data)
     actual_value = self._evaluateTFLiteModel(tflite_model, [input_data])
     self.assertEqual(expected_value.numpy(), actual_value)
 

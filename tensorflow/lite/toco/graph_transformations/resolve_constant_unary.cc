@@ -30,7 +30,7 @@ namespace toco {
 namespace {
 
 // Using the function reducer, reduce input along all axes in axes.
-// Put the reduced data in output, which should aleady be appropriately sized.
+// Put the reduced data in output, which should already be appropriately sized.
 // check_output_shape is set to what this code computes the final shape
 // to be, so it can be cross checked with the shape computation logic.
 void ReduceGeneric(bool keep_dims, const std::vector<int>& axes,
@@ -54,7 +54,7 @@ void ReduceGeneric(bool keep_dims, const std::vector<int>& axes,
   // Reduction mask will be elementwise multiplied against the input
   // indices to figure out the output index for the element.
   std::vector<int> reduction_mask(input_shape.dimensions_count(), 1);
-  for (int axis : axes) {
+  for (const auto& axis : axes) {
     CHECK_GE(axis, 0);
     CHECK_LT(axis, input_shape.dimensions_count());
     reduction_mask[axis] = 0;

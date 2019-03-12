@@ -2551,6 +2551,12 @@ class Operation(object):
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
 
+  def _clear_attr(self, attr_name):
+    """Private method used to clear an attribute in the node_def."""
+    # pylint: disable=protected-access
+    c_api.ClearAttr(self._graph._c_graph, self._c_op, attr_name)
+    # pylint: enable=protected-access
+
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
 
@@ -5717,7 +5723,7 @@ def disable_eager_execution():
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
-    c._eager_context.is_eager = False  # pylint: disable=protected-access
+    c._thread_local_data.is_eager = False  # pylint: disable=protected-access
 
 
 def enable_eager_execution_internal(config=None,
@@ -6236,7 +6242,7 @@ name_scope_cache = {}
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-@tf_export("name_scope")
+@tf_export(v1=["name_scope"])
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
@@ -6355,6 +6361,47 @@ class name_scope(object):  # pylint: disable=invalid-name
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
       self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
+
+
+@tf_export("name_scope", v1=[])
+class name_scope_v2(name_scope):
+  """A context manager for use when defining a Python op.
+
+  This context manager pushes a name scope, which will make the name of all
+  operations added within it have a prefix.
+
+  For example, to define a new Python op called `my_op`:
+
+  ```python
+  def my_op(a, b, c, name=None):
+    with tf.name_scope("MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      b = tf.convert_to_tensor(b, name="b")
+      c = tf.convert_to_tensor(c, name="c")
+      # Define some computation that uses `a`, `b`, and `c`.
+      return foo_op(..., name=scope)
+  ```
+
+  When executed, the Tensors `a`, `b`, `c`, will have names `MyOp/a`, `MyOp/b`,
+  and `MyOp/c`.
+
+  If the scope name already exists, the name will be made unique by appending
+  `_n`. For example, calling `my_op` the second time will generate `MyOp_1/a`,
+  etc.
+  """
+
+  def __init__(self, name):
+    """Initialize the context manager.
+
+    Args:
+      name: The prefix to use on all names created within the name scope.
+
+    Raises:
+      ValueError: If name is None, or not a string.
+    """
+    if name is None or not isinstance(name, six.string_types):
+      raise ValueError("name for name_scope must be a string.")
+    super(name_scope_v2, self).__init__(name=None, default_name=name)
 
 
 def strip_name_scope(name, export_scope):
