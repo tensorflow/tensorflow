@@ -97,7 +97,7 @@ void mlir::buildTripCountMapAndOperands(
     tripCountExprs[i] =
         (b.getAffineDimExpr(1 + i) - b.getAffineDimExpr(0)).ceilDiv(step);
   *map = b.getAffineMap(1 + ubs.size(), 0, tripCountExprs, {});
-  forOp->getInstruction()->getFunction()->dump();
+
   fullyComposeAffineMapAndOperands(map, tripCountOperands);
   *map = simplifyAffineMap(*map);
   canonicalizeMapAndOperands(map, tripCountOperands);
