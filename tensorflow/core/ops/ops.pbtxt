@@ -29782,6 +29782,13 @@ op {
     type_attr: "dtype"
   }
   attr {
+    name: "batch_dims"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "validate_indices"
     type: "bool"
     default_value {

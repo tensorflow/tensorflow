@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -956,14 +957,6 @@ class CopyRemover {
   absl::flat_hash_map<const HloInstruction*, CopyNodes> copy_map_;
 };
 
-void MaybeDumpModule(const string& message, const HloModule& module) {
-  if (VLOG_IS_ON(3)) {
-    VLOG(3) << message;
-    XLA_VLOG_LINES(3, module.ToString());
-    hlo_graph_dumper::MaybeDumpHloModule(module, message);
-  }
-}
-
 }  // namespace
 
 // Add kCopy instructions to the given module to guarantee there is no
@@ -1105,8 +1098,6 @@ Status CopyInsertion::VerifyNoLiveRangeInterference(const HloOrdering& ordering,
 
 Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
                                               HloModule* module) {
-  MaybeDumpModule("after adding copies to resolve interference", *module);
-
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> alias_analysis,
                       HloAliasAnalysis::Run(module, fusion_can_share_buffer_));
 
@@ -1130,8 +1121,6 @@ Status CopyInsertion::RemoveUnnecessaryCopies(const HloOrdering& ordering,
       }
     }
   }
-  MaybeDumpModule("after removing unnecessary copies", *module);
-
   return Status::OK();
 }
 
@@ -1160,8 +1149,6 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   // interference. If all copies were added in step (1) then copy removal would
   // also have to reason about things like constants and parameters live out of
   // the computation.
-  MaybeDumpModule("before copy insertion", *module);
-
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   if (!call_graph->IsFlattened()) {
     return FailedPrecondition(
@@ -1190,22 +1177,24 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
   HloDCE dce;
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
+  DumpHloModuleDuringPassIfEnabled(
+      name(), "after adding copies to resolve interference", *module);
 
   DependencyHloOrdering dep_ordering(module);
   TF_DCHECK_OK(VerifyNoLiveRangeInterference(dep_ordering, module));
 
   TF_RETURN_IF_ERROR(RemoveUnnecessaryCopies(dep_ordering, module));
+  DumpHloModuleDuringPassIfEnabled(name(), "after removing unnecessary copies",
+                                   *module);
 
   TF_RETURN_IF_ERROR(AddSpecialCaseCopies(*call_graph, module));
-
-  MaybeDumpModule("after adding special-case copies", *module);
+  DumpHloModuleDuringPassIfEnabled(name(), "after adding special-case copies",
+                                   *module);
 
   TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
   TF_RETURN_IF_ERROR(dce.Run(module).status());
   TF_DCHECK_OK(
       VerifyNoLiveRangeInterference(DependencyHloOrdering(module), module));
-
-  MaybeDumpModule("after copy insertion", *module);
 
   if (VLOG_IS_ON(1)) {
     int64 num_total_copies = 0;

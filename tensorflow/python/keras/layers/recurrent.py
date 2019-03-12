@@ -833,10 +833,14 @@ class RNN(Layer):
   def reset_states(self, states=None):
     if not self.stateful:
       raise AttributeError('Layer must be stateful.')
-    if self.time_major:
-      batch_size = self.input_spec[0].shape[1]
+    spec_shape = None if self.input_spec is None else self.input_spec[0].shape
+    if spec_shape is None:
+      # It is possible to have spec shape to be None, eg when construct a RNN
+      # with a custom cell, or standard RNN layers (LSTM/GRU) which we only know
+      # it has 3 dim input, but not its full shape spec before build().
+      batch_size = None
     else:
-      batch_size = self.input_spec[0].shape[0]
+      batch_size = spec_shape[1] if self.time_major else spec_shape[0]
     if not batch_size:
       raise ValueError('If a RNN is stateful, it needs to know '
                        'its batch size. Specify the batch size '

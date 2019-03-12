@@ -308,10 +308,11 @@ def _cross_replica_concat(tensor, core_id, num_cores, name):
                     '{}.'.format(input_dtype, name))
 
   batch_size = tensor.shape[0]
-  mask = math_ops.to_float(
-      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id))
+  mask = math_ops.cast(
+      math_ops.equal(np.arange(num_cores, dtype=np.int32), core_id),
+      dtypes.float32)
   mask = array_ops.reshape(mask, [num_cores] + [1] * tensor.shape.ndims)
-  result = mask * math_ops.to_float(tensor)
+  result = mask * math_ops.cast(tensor, dtypes.float32)
   local_tensor_with_holes = array_ops.reshape(result,
                                               [-1] + result.shape.as_list()[2:])
   concat_tensor = tpu_ops.cross_replica_sum(local_tensor_with_holes)

@@ -143,6 +143,9 @@ class MirroredTwoDeviceDistributionTest(
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
 
+  def testRun(self, distribution):
+    self._test_run(distribution)
+
   def testAllReduceSum(self, distribution):
     self._test_all_reduce_sum(distribution)
 
@@ -189,6 +192,9 @@ class MirroredOneDeviceDistributionTest(
 
   def testCallAndMergeExceptions(self, distribution):
     self._test_call_and_merge_exceptions(distribution)
+
+  def testRun(self, distribution):
+    self._test_run(distribution)
 
   def testAllReduceSum(self, distribution):
     self._test_all_reduce_sum(distribution)
