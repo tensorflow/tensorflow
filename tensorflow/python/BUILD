@@ -1185,6 +1185,9 @@ py_library(
     name = "framework_test_lib",
     srcs = ["framework/test_util.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow_estimator/python/estimator:__subpackages__",
+    ],
     deps = [
         ":array_ops",
         ":client",
