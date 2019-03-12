@@ -85,7 +85,8 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
 template <typename T>
 TfLiteStatus GetIndicesVector(TfLiteContext* context,
                               const TfLiteTensor* indices,
-                              const int num_indices, T* indices_vector) {
+                              const int num_indices,
+                              std::unique_ptr<T[]>& indices_vector) {
   switch (NumDimensions(indices)) {
     case 0:
     case 1: {
@@ -193,7 +194,7 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
   const int true_dim =
       NumDimensions(indices) == 2 ? SizeOfDimension(indices, 1) : 1;
   const bool value_is_scalar = NumDimensions(values) == 0;
-  TI* indices_vector = (TI*)malloc(num_indices * true_dim * sizeof(TI));
+  auto indices_vector = std::unique_ptr<TI[]>(new TI[num_indices * true_dim]);
   TF_LITE_ENSURE_OK(context, GetIndicesVector<TI>(context, indices, num_indices,
                                                   indices_vector));
   reference_ops::SparseToDense(
@@ -201,7 +202,6 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
       *GetTensorData<T>(default_value), value_is_scalar, GetTensorShape(output),
       GetTensorData<T>(output));
 
-  free(indices_vector);
   return kTfLiteOk;
 }
 

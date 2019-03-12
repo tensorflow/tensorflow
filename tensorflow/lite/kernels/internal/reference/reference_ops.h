@@ -4400,7 +4400,7 @@ void SelectTrueCoords(const RuntimeShape& input_condition_shape,
 }
 
 template <typename T, typename TI>
-inline void SparseToDense(const TI* indices, const int num_indices,
+inline void SparseToDense(std::unique_ptr<TI[]>& indices, const int num_indices,
                           const int true_dim, const T* values, T default_value,
                           bool value_is_scalar,
                           const RuntimeShape& unextended_output_shape,
