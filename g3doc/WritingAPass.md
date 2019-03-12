@@ -231,7 +231,7 @@ void MyPass::runOn*() {
 }
 ```
 
-## Pass Manager
+## Pass Manager {#pass-manager}
 
 Above we introduced the different types of passes and their constraints. Now
 that we have our pass we need to be able to run it over a specific module. This
@@ -337,4 +337,128 @@ specifializations for existing passes:
 ```c++
 static PassPipelineRegistration foo10(
     "foo-10", "Foo Pass 10", [] { return new FooPass(10); } );
+```
+
+## Pass Instrumentation
+
+MLIR provides a customizable framework to instrument pass execution and analysis
+computation. This is provided via the `PassInstrumentation` class. This class
+provides hooks into the PassManager that observe various pass events:
+
+*   `runBeforePass`
+    *   This callback is run just before a pass is executed.
+*   `runAfterPass`
+    *   This callback is run right after a pass has been successfully executed.
+        If this hook is executed, runAfterPassFailed will not be.
+*   `runAfterPassFailed`
+    *   This callback is run right after a pass execution fails. If this hook is
+        executed, runAfterPass will not be.
+*   `runBeforeAnalysis`
+    *   This callback is run just before an analysis is computed.
+*   `runAfterAnalysis`
+    *   This callback is run right after an analysis is computed.
+
+PassInstrumentation objects can be registered directly with a
+[PassManager](#pass-manager) instance via the `addInstrumentation` method.
+Instrumentations added to the PassManager are run in a stack like fashion, i.e.
+the last instrumentation to execute a `runBefore*` hook will be the first to
+execute the respective `runAfter*` hook. Below in an example instrumentation
+that counts the number of times DominanceInfo is computed:
+
+```c++
+struct DominanceCounterInstrumentation : public PassInstrumentation {
+  std::atomic<int> &count;
+
+  DominanceCounterInstrumentation(std::atomic<int> &count) : count(count) {}
+  void runAfterAnalysis(llvm::StringRef, AnalysisID *id,
+                        const llvm::Any &) override {
+    if (id == AnalysisID::getID<DominanceInfo>())
+      ++count;
+  }
+};
+
+PassManager pm;
+
+// Add the instrumentation to the pass manager.
+std::atomic<int> domInfoCount;
+pm.addInstrumentation(new DominanceCounterInstrumentation(domInfoCount));
+
+// Run the pass manager on a module.
+Module *m = ...;
+if (failed(pm.run(m)))
+    ...
+
+llvm::errs() << "DominanceInfo was computed " << domInfoCount << " times!\n";
+```
+
+### Standard Instrumentations
+
+MLIR utilizes the pass instrumentation framework to provide a few useful
+developer tools and utilites. Each of these instrumentations are immediately
+available to all users of the MLIR pass framework.
+
+#### Pass Timing
+
+The PassTiming instrumentation provides timing information about the execution
+of passes and computation of analyses. This provides a quick glimpse into what
+passes are taking the most time to execute, as well as how much of an effect
+your pass has on the total execution time of the pipeline. This instrumentation
+is made available in mlir-opt via the `-pass-timing` and `-pass-timing-display`
+flags. `-pass-timing-display` allows for toggling between the different display
+modes for the timing results. The available display modes are described below:
+
+##### List Display Mode
+
+In this mode, the results are displayed in a list sorted by total time with each
+pass/analysis instance aggregated into one unique result. This view is useful
+for getting an overview of what analyses/passes are taking the most time in a
+pipeline. This display mode is available in mlir-opt via
+`-pass-timing-display=list`.
+
+```shell
+$ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing -pass-timing-display=list
+
+===-------------------------------------------------------------------------===
+                      ... Pass execution timing report ...
+===-------------------------------------------------------------------------===
+  Total Execution Time: 0.0269 seconds (0.0269 wall clock)
+
+   ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
+   0.0102 ( 42.6%)   0.0017 ( 60.2%)   0.0119 ( 44.4%)   0.0120 ( 44.5%)  Canonicalizer
+   0.0043 ( 17.9%)   0.0000 (  0.0%)   0.0043 ( 16.0%)   0.0043 ( 16.0%)  LLVMLowering
+   0.0036 ( 14.9%)   0.0006 ( 22.8%)   0.0042 ( 15.8%)   0.0042 ( 15.7%)  FunctionVerifier
+   0.0038 ( 15.6%)   0.0000 (  0.0%)   0.0038 ( 14.0%)   0.0038 ( 14.0%)  ModuleVerifier
+   0.0013 (  5.5%)   0.0003 ( 10.4%)   0.0016 (  6.1%)   0.0016 (  6.1%)  CSE
+   0.0008 (  3.4%)   0.0002 (  6.6%)   0.0010 (  3.7%)   0.0010 (  3.7%)  DominanceInfo
+   0.0240 (100.0%)   0.0028 (100.0%)   0.0269 (100.0%)   0.0269 (100.0%)  Total
+```
+
+##### Pipeline Display Mode
+
+In this mode, the results are displayed in a nested pipeline view that mirrors
+the internal pass pipeline that is being executed in the pass manager. This view
+is useful for understanding specifically which parts of the pipeline are taking
+the most time, and can also be used to identify when analyses are being
+invalidated and recomputed. This display mode is available in mlir-opt via
+`-pass-timing-display=pipeline`.
+
+```shell
+$ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing -pass-timing-display=pipeline
+
+===-------------------------------------------------------------------------===
+                      ... Pass execution timing report ...
+===-------------------------------------------------------------------------===
+  Total Execution Time: 0.0272 seconds (0.0272 wall clock)
+
+   ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
+   0.0119 ( 59.8%)   0.0066 ( 91.1%)   0.0185 ( 68.2%)   0.0185 ( 68.2%)  Function Pipeline
+   0.0010 (  5.3%)   0.0006 (  8.3%)   0.0017 (  6.1%)   0.0016 (  6.1%)    CSE
+   0.0006 (  3.2%)   0.0004 (  5.4%)   0.0010 (  3.8%)   0.0010 (  3.8%)      (A) DominanceInfo
+   0.0013 (  6.4%)   0.0008 ( 10.4%)   0.0020 (  7.4%)   0.0020 (  7.4%)    FunctionVerifier
+   0.0075 ( 37.9%)   0.0041 ( 55.9%)   0.0116 ( 42.7%)   0.0116 ( 42.8%)    Canonicalizer
+   0.0014 (  7.0%)   0.0008 ( 11.2%)   0.0022 (  8.1%)   0.0022 (  8.1%)    FunctionVerifier
+   0.0017 (  8.7%)   0.0000 (  0.0%)   0.0017 (  6.4%)   0.0017 (  6.4%)  ModuleVerifier
+   0.0047 ( 23.5%)   0.0000 (  0.0%)   0.0047 ( 17.2%)   0.0047 ( 17.2%)  LLVMLowering
+   0.0016 (  7.9%)   0.0006 (  8.9%)   0.0022 (  8.2%)   0.0022 (  8.2%)  ModuleVerifier
+   0.0199 (100.0%)   0.0073 (100.0%)   0.0272 (100.0%)   0.0272 (100.0%)  Total
 ```
