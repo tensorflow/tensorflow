@@ -91,6 +91,40 @@ v: The column v[..., :, i] is the normalized eigenvector corresponding to the
   eigenvalue w[..., i].
 )doc");
 
+REGISTER_OP("XlaSvd")
+    .Input("a: T")
+    .Attr("max_iter: int")
+    .Attr("epsilon: float")
+    .Attr("precision_config: string")
+    .Output("s: T")
+    .Output("u: T")
+    .Output("v: T")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Computes the eigen decomposition of a batch of self-adjoint matrices
+(Note: Only real inputs are supported).
+
+Computes the eigenvalues and eigenvectors of the innermost M-by-N matrices in
+tensor such that tensor[...,:,:] = u[..., :, :] * Diag(s[..., :]) * Transpose(v[...,:,:]).
+
+a: the input tensor.
+
+max_iter: maximum number of sweep update, i.e., the whole lower triangular
+  part or upper triangular part based on parameter lower. Heuristically, it has
+  been argued that approximatly log(min (M, N)) sweeps are needed in practice
+  (Ref: Golub & van Loan "Matrix Computation").
+
+epsilon: the tolerance ratio.
+
+precision_config: a serialized xla::PrecisionConfig proto.
+
+s: Singular values. The values are sorted in reverse order of magnitude, so
+  s[..., 0] is the largest value, s[..., 1] is the second largest, etc.
+u: Left singular vectors.
+v: Right singular vectors.
+)doc");
+
 REGISTER_OP("XlaConv")
     .Input("lhs: T")
     .Input("rhs: T")

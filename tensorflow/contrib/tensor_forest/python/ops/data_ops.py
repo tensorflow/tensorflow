@@ -44,7 +44,7 @@ def CastToFloat(tensor):
   if tensor.dtype == dtypes.string:
     return tensor_forest_ops.reinterpret_string_to_float(tensor)
   elif tensor.dtype.is_integer:
-    return math_ops.to_float(tensor)
+    return math_ops.cast(tensor, dtypes.float32)
   else:
     return tensor
 
@@ -195,7 +195,7 @@ def ParseLabelTensorOrDict(labels):
     A 2-D tensor for labels/outputs.
   """
   if isinstance(labels, dict):
-    return math_ops.to_float(
+    return math_ops.cast(
         array_ops.concat(
             [
                 sparse_ops.sparse_tensor_to_dense(
@@ -203,10 +203,12 @@ def ParseLabelTensorOrDict(labels):
                         labels, sparse_tensor.SparseTensor) else labels[k]
                 for k in sorted(labels.keys())
             ],
-            1))
+            1),
+        dtypes.float32)
   else:
     if isinstance(labels, sparse_tensor.SparseTensor):
-      return math_ops.to_float(sparse_ops.sparse_tensor_to_dense(
-          labels, default_value=-1))
+      return math_ops.cast(
+          sparse_ops.sparse_tensor_to_dense(labels, default_value=-1),
+          dtypes.float32)
     else:
-      return math_ops.to_float(labels)
+      return math_ops.cast(labels, dtypes.float32)

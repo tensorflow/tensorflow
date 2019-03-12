@@ -85,6 +85,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
@@ -94,7 +95,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
-    "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
 COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [

@@ -172,6 +172,15 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     output_shape = l.compute_output_shape([(10, 10), (10, 20)])
     self.assertAllEqual([(10, 10), (10, 20)], output_shape)
 
+  def test_lambda_output_shape_nested(self):
+
+    def lambda_fn(inputs):
+      return (inputs[1]['a'], {'b': inputs[0]})
+
+    l = keras.layers.Lambda(lambda_fn)
+    output_shape = l.compute_output_shape(((10, 20), {'a': (10, 5)}))
+    self.assertAllEqual(((10, 5), {'b': (10, 20)}), output_shape)
+
   def test_lambda_config_serialization(self):
     # Test serialization with output_shape and output_shape_type
     layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))

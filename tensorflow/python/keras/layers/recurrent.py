@@ -694,10 +694,12 @@ class RNN(Layer):
       full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
                         ] + additional_specs
       # Perform the call with temporarily replaced input_spec
-      original_input_spec = self.input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)
-      self.input_spec = original_input_spec
+      # Remove the additional_specs from input spec and keep the rest. It is
+      # important to keep since the input spec was populated by build(), and
+      # will be reused in the stateful=True.
+      self.input_spec = self.input_spec[:-len(additional_specs)]
       return output
     else:
       if initial_state is not None:
@@ -831,10 +833,14 @@ class RNN(Layer):
   def reset_states(self, states=None):
     if not self.stateful:
       raise AttributeError('Layer must be stateful.')
-    if self.time_major:
-      batch_size = self.input_spec[0].shape[1]
+    spec_shape = None if self.input_spec is None else self.input_spec[0].shape
+    if spec_shape is None:
+      # It is possible to have spec shape to be None, eg when construct a RNN
+      # with a custom cell, or standard RNN layers (LSTM/GRU) which we only know
+      # it has 3 dim input, but not its full shape spec before build().
+      batch_size = None
     else:
-      batch_size = self.input_spec[0].shape[0]
+      batch_size = spec_shape[1] if self.time_major else spec_shape[0]
     if not batch_size:
       raise ValueError('If a RNN is stateful, it needs to know '
                        'its batch size. Specify the batch size '
@@ -2629,15 +2635,19 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
         inputs_f = inputs
         inputs_c = inputs
         inputs_o = inputs
-      x_i = K.dot(inputs_i, self.kernel[:, :self.units])
-      x_f = K.dot(inputs_f, self.kernel[:, self.units:self.units * 2])
-      x_c = K.dot(inputs_c, self.kernel[:, self.units * 2:self.units * 3])
-      x_o = K.dot(inputs_o, self.kernel[:, self.units * 3:])
+      k_i, k_f, k_c, k_o = array_ops.split(
+          self.kernel, num_or_size_splits=4, axis=1)
+      x_i = K.dot(inputs_i, k_i)
+      x_f = K.dot(inputs_f, k_f)
+      x_c = K.dot(inputs_c, k_c)
+      x_o = K.dot(inputs_o, k_o)
       if self.use_bias:
-        x_i = K.bias_add(x_i, self.bias[:self.units])
-        x_f = K.bias_add(x_f, self.bias[self.units:self.units * 2])
-        x_c = K.bias_add(x_c, self.bias[self.units * 2:self.units * 3])
-        x_o = K.bias_add(x_o, self.bias[self.units * 3:])
+        b_i, b_f, b_c, b_o = array_ops.split(
+            self.bias, num_or_size_splits=4, axis=0)
+        x_i = K.bias_add(x_i, b_i)
+        x_f = K.bias_add(x_f, b_f)
+        x_c = K.bias_add(x_c, b_c)
+        x_o = K.bias_add(x_o, b_o)
 
       if 0 < self.recurrent_dropout < 1.:
         h_tm1_i = h_tm1 * rec_dp_mask[0]
@@ -2662,12 +2672,7 @@ class LSTMCell(DropoutRNNCellMixin, Layer):
       if self.use_bias:
         z = K.bias_add(z, self.bias)
 
-      z0 = z[:, :self.units]
-      z1 = z[:, self.units:2 * self.units]
-      z2 = z[:, 2 * self.units:3 * self.units]
-      z3 = z[:, 3 * self.units:]
-
-      z = (z0, z1, z2, z3)
+      z = array_ops.split(z, num_or_size_splits=4, axis=1)
       c, o = self._compute_carry_and_output_fused(z, c_tm1)
 
     h = o * self.activation(c)

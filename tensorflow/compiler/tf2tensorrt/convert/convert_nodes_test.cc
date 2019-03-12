@@ -3400,14 +3400,23 @@ void TestConvertGather(OpConverterTest* test) {
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
   const int kGatherOKCases = 5;
+  const std::vector<CType> params_input = {CType(1), CType(2), CType(3),
+                                           CType(4), CType(5), CType(6)};
   TestParams ok_params[kGatherOKCases] = {
-      // Vector indices (output is rank(params)).
-      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1}, {1, 4}},
-      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1}, {2, 5}},
-      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1}, {3, 6}},
-      TestParams{{1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 3}, {3, 1, 2, 6, 4, 5}},
-      // Higher rank indices (output is rank(params) + rank(indices) - 1).
-      TestParams{{1, 2, 3}, {1, 1}, {0}, 2, {1, 1, 1, 3}, {1, 2, 3}},
+      // Indices are always of rank>1, and output rank is
+      // rank(params) + rank(indices) - 1.
+      // TODO(laigd): do we support 0-rank ITensor as indices?
+      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1, 1}, {1, 4}},
+      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1, 1}, {2, 5}},
+      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1, 1}, {3, 6}},
+      TestParams{
+          {1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 1, 3}, {3, 1, 2, 6, 4, 5}},
+      TestParams{{3, 2},
+                 {2, 2},
+                 {0, 0, 1, 0},
+                 2,
+                 {3, 1, 2, 2},
+                 {1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5}},
   };
 
   // Ok.
@@ -3426,14 +3435,12 @@ void TestConvertGather(OpConverterTest* test) {
                              output.tensor()->getDimensions());
 
     // Create input in CType and convert expected output to CType.
-    std::vector<CType> inputs = {CType(1), CType(2), CType(3),
-                                 CType(4), CType(5), CType(6)};
     std::vector<CType> converted_expected_output(
         ok_params[i].expected_output.begin(),
         ok_params[i].expected_output.end());
 
     const DataVec input_data{
-        {"params", test::AsTensor<CType>(inputs)},
+        {"params", test::AsTensor<CType>(params_input)},
         {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
     DataVec output_data{
         {"my_gather",

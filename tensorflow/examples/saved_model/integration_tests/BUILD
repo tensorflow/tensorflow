@@ -92,20 +92,42 @@ py_binary(
     ],
 )
 
+# NOTE: Split SavedModelTest due to Forge input size limit.
+
 py_test(
-    name = "saved_model_test",
+    name = "saved_model_part1_test",
     srcs = [
-        "saved_model_test.py",
+        "saved_model_part1_test.py",
     ],
     data = [
-        ":export_mnist_cnn",
         ":export_rnn_cell",
         ":export_simple_text_embedding",
         ":export_text_rnn_model",
-        ":use_mnist_cnn",
         ":use_model_in_sequential_keras",
         ":use_rnn_cell",
         ":use_text_rnn_model",
+    ],
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_cuda_on_cpu_tap",  # forge input size exceeded
+        "noasan",  # forge input size exceeded
+        "nomsan",  # forge input size exceeded
+        "notsan",  # forge input size exceeded
+    ],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+py_test(
+    name = "saved_model_part2_test",
+    srcs = [
+        "saved_model_part2_test.py",
+    ],
+    data = [
+        ":export_mnist_cnn",
+        ":use_mnist_cnn",
     ],
     shard_count = 4,
     srcs_version = "PY2AND3",

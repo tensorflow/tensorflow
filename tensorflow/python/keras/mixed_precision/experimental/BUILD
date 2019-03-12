@@ -25,6 +25,16 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
+    name = "mixed_precision_experimental",
+    srcs = ["__init__.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loss_scale_optimizer",
+        ":policy",
+    ],
+)
+
+py_library(
     name = "policy",
     srcs = [
         "policy.py",
@@ -78,11 +88,45 @@ py_test(
     ],
 )
 
+py_library(
+    name = "loss_scale_optimizer",
+    srcs = ["loss_scale_optimizer.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "loss_scale_optimizer_test",
+    size = "medium",
+    srcs = ["loss_scale_optimizer_test.py"],
+    deps = [
+        ":loss_scale_optimizer",
+        ":test_util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "test_util",
+    srcs = ["test_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+    ],
+)
+
 py_test(
     name = "keras_test",
     size = "medium",
     srcs = ["keras_test.py"],
     deps = [
+        ":test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",

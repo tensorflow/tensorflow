@@ -37,9 +37,9 @@
 #                        input tags for `--test_filter_tags` flag.
 #                          e.g. TF_TEST_FILTER_TAGS="no_pip,-nomac,no_oss"
 #   TF_TEST_TARGETS:     Bazel test targets.
-#                          e.g. TF_TEST_TARGETS="//tensorflow/contrib/... \
-#                               //tensorflow/... \
-#                               //tensorflow/python/..."
+#                          e.g. TF_TEST_TARGETS="//tensorflow/... \
+#                               -//tensorflow/contrib/... \
+#                               -//tensorflow/python/..."
 #   TF_PIP_TESTS:        PIP tests to run. If NOT specified, skips all tests.
 #                          e.g. TF_PIP_TESTS="test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_clean \
@@ -169,7 +169,7 @@ check_python_pip_version() {
   # Retrieve only the version numbers of the python & pip in use currently.
   PYTHON_VER_IN_USE=$(python --version 2>&1)
   PYTHON_VER_IN_USE=${PYTHON_VER_IN_USE:7:3}
-  PIP_VER_IN_USE=$(pip --version)
+  PIP_VER_IN_USE=$(${PIP_BIN_PATH} --version)
   PIP_VER_IN_USE=${PIP_VER_IN_USE:${#PIP_VER_IN_USE}-4:3}
 
   # If only major versions are applied, drop minor versions.
@@ -663,11 +663,12 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
-      pip show auditwheel
-      # If in virtualenv, re-pin auditwheel to version 1.5.0
-      if [ $(python -c 'import sys; print ("1" if hasattr(sys, "real_prefix") else "0")') == "1" ]; then
-        pip install auditwheel==1.5.0
-      fi
+
+      pip3 show auditwheel
+      set +e
+      pip3 install auditwheel==1.5.0
+      sudo pip3 install auditwheel==1.5.0
+      set -e
       auditwheel --version
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 

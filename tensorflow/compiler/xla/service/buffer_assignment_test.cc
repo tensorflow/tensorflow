@@ -190,8 +190,9 @@ class BufferAssignmentTest : public HloTestBase {
         HloInstruction::CreateParameter(0, t_s32_f32v4_, "x"));
     auto index = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(const4->shape(), param, 0));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, index, const4));
+    builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), index,
+                                      const4, ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -1863,8 +1864,8 @@ class WhileBufferAssignmentTest : public HloTestBase {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(0)));
     auto ten = builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(10)));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, zero, ten));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), zero, ten, ComparisonDirection::kLt));
     return builder.Build();
   }
 
@@ -2135,8 +2136,9 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
     auto param =
         builder.AddInstruction(HloInstruction::CreateParameter(0, r0s32, "x"));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param, const4));
+    builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param,
+                                      const4, ComparisonDirection::kLt));
     return builder.Build();
   };
 
@@ -2530,7 +2532,7 @@ while_condition {
   state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
   get-tuple-element = s32[] get-tuple-element(state), index=0
   get-tuple-element.1 = s32[] constant(3)
-  ROOT less-than.339.338 = pred[] less-than(get-tuple-element, get-tuple-element.1)
+  ROOT less-than.339.338 = pred[] compare(get-tuple-element, get-tuple-element.1), direction=LT
 }
 
 ENTRY entry_computation {

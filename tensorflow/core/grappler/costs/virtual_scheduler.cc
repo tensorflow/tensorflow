@@ -288,22 +288,6 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
   return nullptr;
 }
 
-// TODO(pcma): Delete this deprecated API after power_analyzer.cc is modeified
-// to use the new factory API
-ReadyNodeManager* VirtualScheduler::ReadyNodeManagerFactory(
-    const string& ready_node_manager) {
-  if (ready_node_manager == "FIFO") {
-    return new FIFOManager();
-  } else if (ready_node_manager == "LIFO") {
-    return new LIFOManager();
-  } else if (ready_node_manager == "FirstReady") {
-    return new FirstReadyManager();
-  } else if (ready_node_manager == "Composite") {
-    return new CompositeNodeManager();
-  }
-  LOG(FATAL) << "Not a valid ready node manager: " << ready_node_manager;
-}
-
 VirtualScheduler::VirtualScheduler(const bool use_static_shapes,
                                    const bool use_aggressive_shape_inference,
                                    Cluster* cluster,

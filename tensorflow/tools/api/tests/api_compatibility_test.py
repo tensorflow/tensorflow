@@ -295,6 +295,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf.compat.v2, visitor)
 
   def _checkBackwardsCompatibility(self,

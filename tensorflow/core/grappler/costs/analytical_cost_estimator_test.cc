@@ -94,7 +94,8 @@ class AnalyticalCostEstimatorTest : public ::testing::Test {
 TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   GrapplerItem item = CreateMiniGraph();
 
-  AnalyticalCostEstimator estimator(cluster_.get(), true);
+  AnalyticalCostEstimator estimator(cluster_.get(), /*use_static_shapes=*/true,
+                                    /*use_aggressive_shape_inference=*/true);
   TF_ASSERT_OK(estimator.Initialize(item));
 
   RunMetadata run_metadata;

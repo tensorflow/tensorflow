@@ -534,6 +534,7 @@ class PyFuncTest(test.TestCase):
         self.assertIsNone(ret)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_xla("XLA cannot compile functions containing py_func")
   def testEagerPyFuncInDefun(self):
     with test_util.device(use_gpu=True):
       def wrapper():

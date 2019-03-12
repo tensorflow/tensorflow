@@ -54,7 +54,9 @@ void HloReachabilityMap::SetReachabilityToUnionHelper(
   }
   bit_vector->Set(GetIndex(instruction));
   for (const HloInstruction* input : inputs) {
-    bit_vector->OrWith(GetBitVector(input));
+    if (input != instruction) {
+      bit_vector->OrWith(GetBitVector(input));
+    }
   }
 }
 

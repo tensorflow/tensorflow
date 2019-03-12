@@ -39,6 +39,11 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   explicit TakeWhileDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES(
+        ctx, short_circuit_indices_.size() <= 1,
+        errors::InvalidArgument("`predicate` has more than one return value."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -47,14 +52,8 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-    OP_REQUIRES(
-        ctx, indices.size() <= 1,
-        errors::InvalidArgument("`predicate` has more than one return value."));
-
     LoopIteratorPredicate loop_pred;
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       loop_pred = [](IteratorContext* ctx,
                      InstantiatedCapturedFunction* inst_captured_func,
                      const std::vector<Tensor>& args, bool* end_of_sequence) {
@@ -71,11 +70,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       };
     } else {
-      loop_pred = [indices](IteratorContext* ctx,
-                            InstantiatedCapturedFunction* inst_captured_func,
-                            const std::vector<Tensor>& args,
-                            bool* end_of_sequence) {
-        const Tensor& predicate = args[indices[0]];
+      int predicate_index = short_circuit_indices_[0];
+      loop_pred = [predicate_index](
+                      IteratorContext* ctx,
+                      InstantiatedCapturedFunction* inst_captured_func,
+                      const std::vector<Tensor>& args, bool* end_of_sequence) {
+        const Tensor& predicate = args[predicate_index];
         if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
           return errors::InvalidArgument(
               "`predicate` must returns a scalar bool tensor.");
@@ -240,6 +240,7 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   };
 
   NameAttrList func_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ExperimentalTakeWhileDataset").Device(DEVICE_CPU),

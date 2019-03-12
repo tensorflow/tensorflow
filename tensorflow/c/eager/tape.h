@@ -639,7 +639,9 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
       }
     }
   }
-  CHECK(state.op_tape.empty());
+  if (!state.op_tape.empty()) {
+    return tensorflow::errors::Internal("Invalid tape state.");
+  }
   result->reserve(source_tensor_ids.size());
   gtl::FlatSet<int64> used_gradient_ids(source_tensor_ids.size());
   for (auto is : source_tensor_ids) {
