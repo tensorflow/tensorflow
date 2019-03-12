@@ -13,29 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OPS_CUSTOM_OPS_POPLIN_OPS_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OPS_CUSTOM_OPS_POPLIN_OPS_
-
-#include "absl/container/flat_hash_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/poplibs_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
-#include <poplar/exceptions.hpp>
-#include <poputil/exceptions.hpp>
+#include "tensorflow/stream_executor/lib/statusor.h"
+
+#include "absl/container/flat_hash_map.h"
 
 #include <string>
 
-namespace poplar {
-class Graph;
-class Tensor;
-}  // namespace poplar
-
 namespace xla {
-class HloInstruction;
-
 namespace poplarplugin {
-const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPoplinOpInfoMap();
+namespace {
+class TruncatedNormalOp : public PoplibsOpDef {
+  StatusOr<poplar::program::Program> Creator(
+      poplar::Graph& graph, CompilerResources& res, const HloInstruction* inst,
+      const xla::Shape& output_shape, TensorMap& tensor_map,
+      const IPUCustomKernelsUtil::AttributeMap& attribute_map) override {
+    poplar::program::Program prog;
+
+    TF_ASSIGN_OR_RETURN(prog,
+                        TruncatedNormal(res, inst, output_shape, tensor_map));
+
+    poplar::program::Sequence seq;
+    seq.add(prog);
+    return seq;
+  }
+};
+REGISTER_POPLIBS_OP(Poprand, TruncatedNormal, TruncatedNormalOp);
+
+}  // namespace
 }  // namespace poplarplugin
 }  // namespace xla
-
-#endif  // TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_OPS_CUSTOM_OPS_POPLIN_OPS_

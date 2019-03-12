@@ -1,0 +1,24 @@
+message PoplibsOp {
+  enum Lib {
+	  Poplin = 0;
+	  Popnn = 1;
+	  Popops = 2;
+	  Poprand = 3;
+  }
+  required Lib lib = 1;
+
+  enum Op {
+	  AvgPool = 0;
+	  AvgPoolGrad = 1;
+	  GroupNormGrad = 2;
+	  GroupNormInference = 3;
+	  GroupNormStatistics = 4;
+	  GroupNormTraining = 5;
+	  LstmLayerBwd = 6;
+	  LstmLayerFwd = 7;
+	  MaxPool = 8;
+	  MaxPoolGrad = 9;
+	  TruncatedNormal = 10;
+  }
+  required Op op = 2;
+}

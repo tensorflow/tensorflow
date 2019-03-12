@@ -62,7 +62,7 @@ class PopopsTruncatedNormalOp : public XlaOpKernel, IpuOpKernel {
     xla::XlaOp output =
         xla::CustomCall(b,
                         GetPoplibsCustomOpTargetString(
-                            PoplibsLib::Poprand, PoplibsOp::TruncatedNormal),
+                            PoplibsOp::Poprand, PoplibsOp::TruncatedNormal),
                         {}, xla_shape, attribute_map_.Serialise());
 
     ctx->SetOutput(0, output);

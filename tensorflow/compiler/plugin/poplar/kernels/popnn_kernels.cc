@@ -144,7 +144,7 @@ class PopnnLstmLayerOp : public XlaOpKernel, IpuOpKernel {
 
     xla::XlaOp output_tuple =
         xla::CustomCall(&b,
-                        GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
+                        GetPoplibsCustomOpTargetString(PoplibsOp::Popnn,
                                                        PoplibsOp::LstmLayerFwd),
                         args, output_tuple_shape, attribute_map_.Serialise());
 
@@ -226,7 +226,7 @@ class PopnnLstmLayerBackpropOp : public XlaOpKernel, IpuOpKernel {
 
     xla::XlaOp output_tuple =
         xla::CustomCall(&b,
-                        GetPoplibsCustomOpTargetString(PoplibsLib::Popnn,
+                        GetPoplibsCustomOpTargetString(PoplibsOp::Popnn,
                                                        PoplibsOp::LstmLayerBwd),
                         args, output_tuple_shape, attribute_map_.Serialise());
     xla::XlaOp input_backprop = xla::GetTupleElement(output_tuple, 0);
@@ -322,7 +322,7 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
       xla::XlaOp call_output =
           xla::CustomCall(&b,
                           GetPoplibsCustomOpTargetString(
-                              PoplibsLib::Popnn, PoplibsOp::GroupNormInference),
+                              PoplibsOp::Popnn, PoplibsOp::GroupNormInference),
                           args, output_shape, attribute_map_.Serialise());
       ctx->SetOutput(0, call_output);
     } else if (ctx->num_inputs() == 3) {
@@ -336,7 +336,7 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
       xla::XlaOp call_output =
           xla::CustomCall(&b,
                           GetPoplibsCustomOpTargetString(
-                              PoplibsLib::Popnn, PoplibsOp::GroupNormTraining),
+                              PoplibsOp::Popnn, PoplibsOp::GroupNormTraining),
                           args, output_tuple_shape, attribute_map_.Serialise());
       xla::XlaOp output = xla::GetTupleElement(call_output, 0);
       xla::XlaOp mean = xla::GetTupleElement(call_output, 1);
@@ -407,7 +407,7 @@ class PopnnGroupNormGrad : public XlaOpKernel, IpuOpKernel {
     xla::XlaOp call_output =
         xla::CustomCall(&b,
                         GetPoplibsCustomOpTargetString(
-                            PoplibsLib::Popnn, PoplibsOp::GroupNormGrad),
+                            PoplibsOp::Popnn, PoplibsOp::GroupNormGrad),
                         args, output_tuple_shape, attribute_map_.Serialise());
     xla::XlaOp input_backprop = xla::GetTupleElement(call_output, 0);
     xla::XlaOp gamma_backprop = xla::GetTupleElement(call_output, 1);
@@ -474,7 +474,7 @@ class PopnnGroupNormStatistics : public XlaOpKernel, IpuOpKernel {
     xla::XlaOp call_output =
         xla::CustomCall(&b,
                         GetPoplibsCustomOpTargetString(
-                            PoplibsLib::Popnn, PoplibsOp::GroupNormStatistics),
+                            PoplibsOp::Popnn, PoplibsOp::GroupNormStatistics),
                         args, output_tuple_shape, attribute_map_.Serialise());
     xla::XlaOp mean = xla::GetTupleElement(call_output, 0);
     xla::XlaOp inv_std_dev = xla::GetTupleElement(call_output, 1);

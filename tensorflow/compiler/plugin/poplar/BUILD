@@ -38,6 +38,14 @@ xla_proto_library(
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
+tf_proto_library(
+    name = "poplibs_ops",
+    srcs = ["kernels/poplibs_ops.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    j2objc_api_version = 1,
+)
+
 cc_library(
     name = "custom_kernels_util",
     srcs = [
@@ -47,6 +55,7 @@ cc_library(
         "kernels/custom_kernels_util.h",
     ],
     deps = [
+        ":poplibs_ops_cc_impl",
         "//tensorflow/compiler/xla:xla_headers_lib",
         "//tensorflow/compiler/xla/service:hlo",
         "@jsoncpp_git//:jsoncpp",
@@ -164,11 +173,11 @@ cc_library(
         "driver/ops/conv_graph_caching.cc",
         "driver/ops/conv_ops.cc",
         "driver/ops/custom_ops/custom_ops.cc",
-        "driver/ops/custom_ops/poplin_ops.cc",
+        "driver/ops/custom_ops/poplibs_ops.cc",
+        "driver/ops/custom_ops/popnn/lstm.cc",
+        "driver/ops/custom_ops/popnn/norm.cc",
         "driver/ops/custom_ops/popnn/pooling.cc",
-        "driver/ops/custom_ops/popnn_ops.cc",
-        "driver/ops/custom_ops/popops_ops.cc",
-        "driver/ops/custom_ops/poprand_ops.cc",
+        "driver/ops/custom_ops/poprand/random.cc",
         "driver/ops/graph_caching_util.cc",
         "driver/ops/map_ops.cc",
         "driver/ops/maths_ops.cc",
@@ -201,11 +210,6 @@ cc_library(
         "driver/ops/conv_graph_caching.h",
         "driver/ops/custom_ops/custom_ops.h",
         "driver/ops/custom_ops/poplibs_ops.h",
-        "driver/ops/custom_ops/poplin_ops.h",
-        "driver/ops/custom_ops/popnn/pooling.h",
-        "driver/ops/custom_ops/popnn_ops.h",
-        "driver/ops/custom_ops/popops_ops.h",
-        "driver/ops/custom_ops/poprand_ops.h",
         "driver/ops/graph_caching_util.h",
         "driver/ops/norm_graph_caching.h",
         "driver/ops/ops.h",
