@@ -1305,11 +1305,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         all_valid = False
       else:
         ver = float(m.group(0))
-        if ver < 3.5:
-          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+        if ver < 3.0:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.0 '
                 'and higher. Please re-specify the list of compute '
                 'capabilities excluding version %s.' % ver)
           all_valid = False
+        if ver < 3.5:
+          print('WARNING: XLA does not support CUDA compute capabilities '
+                'lower than 3.5. Disable XLA when running on older GPUs.')
 
     if all_valid:
       break
