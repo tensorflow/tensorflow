@@ -234,7 +234,15 @@ class TypedTensor<Type t>
                     "tensor">;
 
 def I1Tensor  : TypedTensor<I1>;
-def F32Tensor : TypedTensor<F32>;
+def I8Tensor  : TypedTensor<I8>;
+def I16Tensor : TypedTensor<I16>;
+def I32Tensor : TypedTensor<I32>;
+def I64Tensor : TypedTensor<I64>;
+
+def BF16Tensor : TypedTensor<BF16>;
+def F16Tensor  : TypedTensor<F16>;
+def F32Tensor  : TypedTensor<F32>;
+def F64Tensor  : TypedTensor<F64>;
 
 // Type constraint for integer-like types: integers, indices, vectors of
 // integers, tensors of integers.
@@ -354,7 +362,9 @@ class FloatAttrBase<BuildableType t, string descr> :
 
 // Base class for instantiating integer attributes of fixed width.
 class IntegerAttrBase<BuildableType t, string descr> :
-  TypeBasedAttr<t, "IntegerAttr", descr>;
+  TypeBasedAttr<t, "IntegerAttr", descr> {
+  let returnType = [{ APInt }];
+}
 
 def BoolAttr : Attr<CPred<"true">, "bool"> {
   let storageType = [{ BoolAttr }];
@@ -375,11 +385,8 @@ class ElementsAttrBase<Pred condition, string description> :
 def ElementsAttr: ElementsAttrBase<CPred<"true">, "constant vector/tensor">;
 def F32Attr : FloatAttrBase<F32, "32-bit float">;
 def F64Attr : FloatAttrBase<F64, "64-bit float">;
-def I32Attr : IntegerAttrBase<I32, "32-bit integer"> {
-  let storageType = [{ IntegerAttr }];
-  let returnType = [{ int }];
-  let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
-}
+def I32Attr : IntegerAttrBase<I32, "32-bit integer">;
+def I64Attr : IntegerAttrBase<I64, "64-bit integer">;
 def StrAttr : StringBasedAttr<CPred<"true">, "string">;
 
 // Attributes containing functions.

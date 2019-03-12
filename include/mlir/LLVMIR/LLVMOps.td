@@ -157,8 +157,9 @@ def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
                   Arguments<(ins I32Attr:$predicate, LLVM_Type:$lhs,
                              LLVM_Type:$rhs)> {
-  let llvmBuilder = [{  $res = builder.CreateICmp(
-       getLLVMCmpPredicate(static_cast<CmpIPredicate>($predicate)), $lhs, $rhs);
+  let llvmBuilder = [{
+    $res = builder.CreateICmp(getLLVMCmpPredicate(
+        static_cast<CmpIPredicate>($predicate.getZExtValue())), $lhs, $rhs);
   }];
 }
 
