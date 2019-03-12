@@ -712,7 +712,9 @@ static Optional<int64_t> getMemoryFootprintBytes(const Block &block,
     if (it == regions.end()) {
       regions[region->memref] = std::move(region);
     } else if (failed(it->second->unionBoundingBox(*region))) {
-      opInst->emitError("Error performing a union on a memory region\n");
+      opInst->emitWarning(
+          "getMemoryFootprintBytes: unable to perform a union on a memory "
+          "region");
       error = true;
       return;
     }
