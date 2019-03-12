@@ -196,7 +196,6 @@ tensorflow::ImportNumpy();
   if ($input == Py_None) {
     $1 = NULL;
   } else {
-    // TODO: phawkins, do you think I should leave these, or remove them?  (Including hlo_profile.)
     if (!HandleStringAttribute($input, "dump_to", [&](string s) {
       build_options.mutable_debug_options()->set_xla_dump_to(std::move(s));
     })) {
@@ -222,21 +221,13 @@ tensorflow::ImportNumpy();
     })) {
       return nullptr;
     }
-
-    PyObject* o = PyObject_GetAttrString($input, "hlo_profile");
-    if (o == NULL) {
-      SWIG_fail;
+    if (!HandleBoolAttribute($input, "hlo_profile", [&](bool b) {
+      build_options.mutable_debug_options()->set_xla_hlo_profile(b);
+    })) {
+      return nullptr;
     }
-    if (o != Py_None) {
-      if (!PyBool_Check(o)) {
-        PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
-        SWIG_fail;
-      }
-      build_options.mutable_debug_options()->set_xla_hlo_profile(o == Py_True);
-    }
-    Py_DECREF(o);
 
-    o = PyObject_GetAttrString($input, "result_shape");
+    PyObject* o = PyObject_GetAttrString($input, "result_shape");
     if (o == nullptr) {
       return nullptr;
     }

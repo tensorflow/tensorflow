@@ -662,9 +662,9 @@ class CompileOptions(object):
     self.xla_dump_to = None
     self.dump_hlo_pass_re = None
     self.dump_hlo_module_re = None
-    self.dump_hlo_as_text = False
-    self.dump_hlo_as_proto = False
-    self.hlo_profile = False
+    self.dump_hlo_as_text = None
+    self.dump_hlo_as_proto = None
+    self.hlo_profile = None
     self.num_replicas = get_replica_count()
 
 
