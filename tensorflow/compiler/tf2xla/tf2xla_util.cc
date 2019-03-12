@@ -114,7 +114,7 @@ Status ReplaceArgUsageWithConstNode(
   // Collect all _Arg nodes.
   std::unordered_map<int, Node*> arg_nodes;
   for (Node* n : g->op_nodes()) {
-    if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       arg_nodes[index] = n;

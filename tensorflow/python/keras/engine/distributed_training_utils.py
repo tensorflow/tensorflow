@@ -595,8 +595,6 @@ def _custom_compile_for_predict(model):
     return
   model._is_compiled = True
   model.total_loss = None
-  model._fit_function = None
-  model._eval_function = None
   model.train_function = None
   model.test_function = None
   model.predict_function = None

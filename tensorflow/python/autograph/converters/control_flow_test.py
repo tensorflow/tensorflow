@@ -98,7 +98,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(
         test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
 
-  # TODO(b/127642077): Add t4ests for x.y.z = 2*x.y.z and x.y[z] = 2*x.y[z].
+  # TODO(b/127642077): Add tests for x.y.z = 2*x.y.z and x.y[z] = 2*x.y[z].
   def test_while_local_composite_complex_nestable(self):
 
     # This class is ok to be in a tf.while_loop's state.
@@ -249,6 +249,52 @@ class ControlFlowTest(converter_testing.TestCase):
     # but that will be pruned at execution.
     self.assertTransformedResult(test_fn, constant_op.constant(1), 1)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
+
+  @test_util.run_deprecated_v1
+  def test_if_unbalanced_multiple_composites(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+        self.c = 3
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        x.c = 11
+        z = 13
+
+      return x.b, x.c, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 11, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 3, 5))
+
+  @test_util.run_deprecated_v1
+  def test_if_unbalanced_composite(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        z = 13
+
+      return x.b, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 5))
 
   @test_util.run_deprecated_v1
   def test_simple_for(self):

@@ -13,28 +13,28 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_CUDA_HOST_ALLOCATOR_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_CUDA_HOST_ALLOCATOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_HOST_ALLOCATOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_HOST_ALLOCATOR_H_
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
-// Allocator for pinned CPU RAM that is made known to CUDA for the
+// Allocator for pinned CPU RAM that is made known to GPU for the
 // purpose of efficient DMA with a GPU.
-class CUDAHostAllocator : public SubAllocator {
+class GpuHostAllocator : public SubAllocator {
  public:
   // Note: stream_exec cannot be null.
-  explicit CUDAHostAllocator(se::StreamExecutor* stream_exec, int numa_node,
-                             const std::vector<Visitor>& alloc_visitors,
-                             const std::vector<Visitor>& free_visitors)
+  explicit GpuHostAllocator(se::StreamExecutor* stream_exec, int numa_node,
+                            const std::vector<Visitor>& alloc_visitors,
+                            const std::vector<Visitor>& free_visitors)
       : SubAllocator(alloc_visitors, free_visitors),
         stream_exec_(stream_exec),
         numa_node_(numa_node) {
     CHECK(stream_exec_ != nullptr);
   }
-  ~CUDAHostAllocator() override {}
+  ~GpuHostAllocator() override {}
 
   void* Alloc(size_t alignment, size_t num_bytes) override {
     void* ptr = nullptr;
@@ -61,8 +61,8 @@ class CUDAHostAllocator : public SubAllocator {
   se::StreamExecutor* stream_exec_;  // not owned, non-null
   const int numa_node_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CUDAHostAllocator);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuHostAllocator);
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_CUDA_HOST_ALLOCATOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_HOST_ALLOCATOR_H_

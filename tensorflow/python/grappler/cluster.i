@@ -153,7 +153,7 @@ static GCluster TF_NewVirtualCluster(
   for (const auto& named_device : named_devices) {
     devices[named_device.name()]= named_device.properties();
   }
-  tensorflow::grappler::Cluster*cluster_ =
+  tensorflow::grappler::Cluster* cluster_ =
       new tensorflow::grappler::VirtualCluster(devices);
   PyGILState_STATE gstate = PyGILState_Ensure();
   tensorflow::Status status = cluster_->Provision();

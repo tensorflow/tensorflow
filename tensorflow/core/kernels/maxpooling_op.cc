@@ -1052,7 +1052,7 @@ class MaxPoolingGradWithArgmaxOp : public OpKernel {
                            params.tensor_in_cols, params.depth});
     Tensor* grad_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {1}, 0, out_shape, &grad_out));
+                                {0}, 0, out_shape, &grad_out));
 
     LaunchMaxPoolingGradWithArgmax<Device, T>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);
@@ -1106,7 +1106,7 @@ class MaxPoolingGradGradWithArgmaxOp : public OpKernel {
 
     Tensor* grad_out = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {1}, 0, out_shape, &grad_out));
+                                {0}, 0, out_shape, &grad_out));
 
     LaunchMaxPoolingGradGradWithArgmax<Device, T>::launch(
         context, params, grad_in, argmax, grad_out, include_batch_in_index_);

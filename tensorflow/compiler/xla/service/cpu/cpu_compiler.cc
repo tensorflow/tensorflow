@@ -70,6 +70,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/simple_orc_jit.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
@@ -436,46 +437,29 @@ Status InitializeModuleHooks(
     const LLVMCompiler::ModuleHook& user_post_optimization_hook,
     LLVMCompiler::ModuleHook* pre_optimization_ir_hook,
     LLVMCompiler::ModuleHook* post_optimization_ir_hook) {
-  const string& ir_dump_directory =
-      hlo_module.config().debug_options().xla_dump_ir_to();
-  if (ir_dump_directory.empty()) {
-    *pre_optimization_ir_hook = user_pre_optimization_hook;
-    *post_optimization_ir_hook = user_post_optimization_hook;
-    return Status::OK();
-  }
-
-  const string& hlo_module_name = hlo_module.name();
-
   // Create the IR hooks. If applicable, each IR hook does the following:
   //
   //  * Calls the user supplied module hook.
   //  * Writes out the IR to a file in the output directory designated by
-  //    --xla_dump_ir_to
-
-  *pre_optimization_ir_hook =
-      [user_pre_optimization_hook, ir_dump_directory,
-       hlo_module_name](const llvm::Module& llvm_module) {
-        if (user_pre_optimization_hook) {
-          TF_RETURN_IF_ERROR(user_pre_optimization_hook(llvm_module));
-        }
-        return llvm_ir::DumpIRToDirectory(/*directory_name=*/ir_dump_directory,
-                                          /*hlo_module_name=*/hlo_module_name,
-                                          llvm_module,
-                                          /*optimized=*/false);
-      };
-
-  *post_optimization_ir_hook =
-      [user_post_optimization_hook, ir_dump_directory,
-       hlo_module_name](const llvm::Module& llvm_module) {
-        if (user_post_optimization_hook) {
-          TF_RETURN_IF_ERROR(user_post_optimization_hook(llvm_module));
-        }
-        return llvm_ir::DumpIRToDirectory(/*directory_name=*/ir_dump_directory,
-                                          /*hlo_module_name=*/hlo_module_name,
-                                          llvm_module,
-                                          /*optimized=*/true);
-      };
-
+  //    --xla_dump_ir
+  const HloModule* hlo_module_ptr = &hlo_module;
+  auto hook = [user_pre_optimization_hook, user_post_optimization_hook,
+               hlo_module_ptr](bool optimized,
+                               const llvm::Module& llvm_module) {
+    const auto& user_hook =
+        !optimized ? user_pre_optimization_hook : user_post_optimization_hook;
+    if (user_hook) {
+      TF_RETURN_IF_ERROR(user_hook(llvm_module));
+    }
+    llvm_ir::DumpIrIfEnabled(*hlo_module_ptr, llvm_module, optimized);
+    return Status::OK();
+  };
+  *pre_optimization_ir_hook = [hook](const llvm::Module& llvm_module) {
+    return hook(/*optimized=*/false, llvm_module);
+  };
+  *post_optimization_ir_hook = [hook](const llvm::Module& llvm_module) {
+    return hook(/*optimized=*/true, llvm_module);
+  };
   return Status::OK();
 }
 
@@ -490,7 +474,7 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
       << "Invalid LLVM IR before optimizations:\n"
       << err_stream.str()
       << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-         "Rerun with --xla_dump_ir_to to get the IR. ";
+         "Rerun with --xla_dump_ir to get the IR. ";
   return Status::OK();
 }
 
@@ -600,8 +584,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string xla_dump_optimized_hlo_proto_to =
-      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
 
   // Select an order for emitting the HLO instructions for each
   // computation. Using this sequence enables tighter buffer liveness analysis
@@ -621,12 +603,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
   XLA_VLOG_LINES(2, assignment->ToString());
-
-  if (!xla_dump_optimized_hlo_proto_to.empty()) {
-    HloProto proto = MakeHloProto(*module, *assignment);
-    TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, xla_dump_optimized_hlo_proto_to, module->name()));
-  }
+  DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
   // Each computation is a single function.  Emit all embedded computations
   // before the entry computation. The order of computations returned from
@@ -729,8 +706,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
   }
   const CpuAotCompilationOptions& options =
       static_cast<const CpuAotCompilationOptions&>(aot_options);
-  llvm::StringRef target_triple = llvm_ir::AsStringRef(options.triple());
-  llvm::Triple triple(llvm::Triple::normalize(target_triple));
+  llvm::Triple triple(llvm::Triple::normalize(options.triple()));
   std::string error;
   const llvm::Target* target =
       llvm::TargetRegistry::lookupTarget(triple.getTriple(), error);
@@ -768,13 +744,12 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       pie_level = llvm::PIELevel::Large;
       break;
   }
-  llvm::StringRef cpu_name = llvm_ir::AsStringRef(options.cpu_name());
-  llvm::StringRef features = llvm_ir::AsStringRef(options.features());
   llvm::CodeGenOpt::Level opt_level = CodeGenOptLevel(modules[0]->config());
-  std::unique_ptr<llvm::TargetMachine> target_machine = absl::WrapUnique(
-      target->createTargetMachine(triple.getTriple(), cpu_name, features,
-                                  CompilerTargetOptions(modules[0]->config()),
-                                  reloc_model, llvm::None, opt_level));
+  std::unique_ptr<llvm::TargetMachine> target_machine =
+      absl::WrapUnique(target->createTargetMachine(
+          triple.getTriple(), options.cpu_name(), options.features(),
+          CompilerTargetOptions(modules[0]->config()), reloc_model, llvm::None,
+          opt_level));
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   llvm::LLVMContext llvm_context;
@@ -817,14 +792,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
-
-    const string xla_dump_optimized_hlo_proto_to =
-        module->config().debug_options().xla_dump_optimized_hlo_proto_to();
-    if (!xla_dump_optimized_hlo_proto_to.empty()) {
-      HloProto proto = MakeHloProto(*module, *assignment);
-      TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_optimized_hlo_proto_to, module->name()));
-    }
+    DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
     std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
@@ -868,7 +836,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                             /*is_top_level_computation=*/true,
                             schedule.sequence(computation).instructions()));
 
-    CHECK(entry_function->getName() == llvm_ir::AsStringRef(entry_point_name));
+    CHECK(entry_function->getName() == entry_point_name);
 
     ModuleHook pre_optimization_ir_dump_hook;
     ModuleHook post_optimization_ir_dump_hook;

@@ -1547,8 +1547,7 @@ Status PlaceInlinedFunctionBody(
     const Device* default_device =
         devices->FindDeviceByName(func_node.device());
 
-    Placer placer(func_body_graph.get(), devices,
-                  nullptr /* No session options */, default_device);
+    Placer placer(func_body_graph.get(), devices, default_device);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 

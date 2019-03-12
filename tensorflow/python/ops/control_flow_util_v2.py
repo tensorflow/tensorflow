@@ -115,8 +115,8 @@ def maybe_set_lowering_attr(op):
     op: An `If` or `While` Operation.
   """
   if (not control_flow_util.GraphOrParentsInXlaContext(op.graph) and
-      context.context().get_function_call_options().executor_type
-      != "SINGLE_THREADED_EXECUTOR"):
+      context.context().function_call_options.executor_type !=
+      "SINGLE_THREADED_EXECUTOR"):
     # pylint: disable=protected-access
     op._set_attr("_lower_using_switch_merge", attr_value_pb2.AttrValue(b=True))
     # pylint: enable=protected-access
