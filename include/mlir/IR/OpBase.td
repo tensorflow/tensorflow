@@ -587,10 +587,20 @@ class mAttrAnyOf<list<AttrConstraint> attrs> :
                        !listconcat(prev, [attr.predicate]))>>;
 
 // Attribute transformation. This is the base class to specify a transformation
-// of a matched attribute. Used on the output attribute of a rewrite rule.
+// of matched attributes. Used on the output attribute of a rewrite rule.
 class tAttr<code transform> {
-  // Code to transform the attribute.
-  // Format: {0} represents the attribute.
+  // Code to transform the attributes.
+  // Format:
+  //   - When it is used as a dag node, {0} represents the builder, {i}
+  //     represents the (i-1)-th attribute argument when i >= 1. For example:
+  //       def attr: tAttr<"{0}.compose({{{1}, {2}})"> for '(attr $a, $b)' will
+  //       expand to '(builder.compose({foo, bar}))'.
+  //   - When it is used as a dag leaf, {0} represents the attribute.
+  //     For example:
+  //       def attr: tAttr<"{0}.cast<FloatAttr>()"> for 'attr:$a' will expand to
+  //       'foo.cast<FloatAttr>()'.
+  //   In both examples, `foo` and `bar` are the C++ bounded attribute variables
+  //   of $a and $b.
   code attrTransform = transform;
 }
 

@@ -42,7 +42,7 @@ bool tblgen::DagLeaf::isOperandMatcher() const {
 bool tblgen::DagLeaf::isAttrMatcher() const {
   if (!def || !isa<llvm::DefInit>(def))
     return false;
-  // Attribute matchers specify a type constraint.
+  // Attribute matchers specify an attribute constraint.
   return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("AttrConstraint");
 }
 
@@ -85,6 +85,21 @@ std::string tblgen::DagLeaf::getConditionTemplate() const {
 std::string tblgen::DagLeaf::getTransformationTemplate() const {
   assert(isAttrTransformer() && "the DAG leaf must be attribute transformer");
   return cast<llvm::DefInit>(def)
+      ->getDef()
+      ->getValueAsString("attrTransform")
+      .str();
+}
+
+bool tblgen::DagNode::isAttrTransformer() const {
+  auto op = node->getOperator();
+  if (!op || !isa<llvm::DefInit>(op))
+    return false;
+  return cast<llvm::DefInit>(op)->getDef()->isSubClassOf("tAttr");
+}
+
+std::string tblgen::DagNode::getTransformationTemplate() const {
+  assert(isAttrTransformer() && "the DAG leaf must be attribute transformer");
+  return cast<llvm::DefInit>(node->getOperator())
       ->getDef()
       ->getValueAsString("attrTransform")
       .str();

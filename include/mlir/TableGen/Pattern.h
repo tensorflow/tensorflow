@@ -93,7 +93,7 @@ public:
   std::string getConditionTemplate() const;
 
   // Returns the transformation template inside this DAG leaf. Assumes the
-  // leaf is an attribute matcher and asserts otherwise.
+  // leaf is an attribute transformation and asserts otherwise.
   std::string getTransformationTemplate() const;
 
 private:
@@ -168,6 +168,13 @@ public:
   // Returns true if this DAG construct is meant to invoke a native code
   // constructor.
   bool isNativeCodeBuilder() const;
+
+  // Returns true if this DAG construct is transforming attributes.
+  bool isAttrTransformer() const;
+
+  // Returns the transformation template inside this DAG construct.
+  // Precondition: isAttrTransformer.
+  std::string getTransformationTemplate() const;
 
 private:
   const llvm::DagInit *node; // nullptr means null DagNode

@@ -40,6 +40,7 @@
 using namespace llvm;
 using namespace mlir;
 
+using mlir::tblgen::DagLeaf;
 using mlir::tblgen::DagNode;
 using mlir::tblgen::NamedAttribute;
 using mlir::tblgen::Operator;
@@ -63,9 +64,6 @@ private:
 
   // Emits the rewrite() method.
   void emitRewriteMethod();
-
-  // Emits the value of constant attribute to `os`.
-  void emitConstantAttr(tblgen::ConstantAttr constAttr);
 
   // Emits C++ statements for matching the op constrained by the given DAG
   // `tree`.
@@ -106,6 +104,16 @@ private:
   // result value name.
   std::string emitOpCreate(DagNode tree, int resultIndex, int depth);
 
+  // Returns the string value of constant attribute as an argument.
+  std::string handleConstantAttr(tblgen::ConstantAttr constAttr);
+
+  // Returns the C++ expression to build an argument from the given DAG `leaf`.
+  // `patArgName` is used to bound the argument to the source pattern.
+  std::string handleOpArgument(DagLeaf leaf, llvm::StringRef patArgName);
+
+  // Returns the C++ expression to build an argument from the given DAG `tree`.
+  std::string handleOpArgument(DagNode tree);
+
 private:
   // Pattern instantiation location followed by the location of multiclass
   // prototypes used. This is intended to be used as a whole to
@@ -126,7 +134,7 @@ PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
     : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper), nextValueId(0),
       os(os) {}
 
-void PatternEmitter::emitConstantAttr(tblgen::ConstantAttr constAttr) {
+std::string PatternEmitter::handleConstantAttr(tblgen::ConstantAttr constAttr) {
   auto attr = constAttr.getAttribute();
 
   if (!attr.isConstBuildable())
@@ -134,8 +142,8 @@ void PatternEmitter::emitConstantAttr(tblgen::ConstantAttr constAttr) {
                              " does not have the 'constBuilderCall' field");
 
   // TODO(jpienaar): Verify the constants here
-  os << formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
-                constAttr.getConstantValue());
+  return formatv(attr.getConstBuilderTemplate().str().c_str(), "rewriter",
+                 constAttr.getConstantValue());
 }
 
 static Twine resultName(const StringRef &name) { return Twine("res_") + name; }
@@ -313,9 +321,10 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     } else if (constraint.isNativeConstraint()) {
       os.indent(4) << "if (!" << constraint.getNativeConstraintFunction()
                    << "(";
-      interleave(constraint.name_begin(), constraint.name_end(),
-                 [&](const std::string &name) { os << deduceName(name); },
-                 [&]() { os << ", "; });
+      interleave(
+          constraint.name_begin(), constraint.name_end(),
+          [&](const std::string &name) { os << deduceName(name); },
+          [&]() { os << ", "; });
       os << ")) return matchFailure();\n";
     } else {
       llvm_unreachable(
@@ -439,6 +448,40 @@ void PatternEmitter::handleVerifyUnusedValue(DagNode tree, int index) {
                << ")->use_empty()) return matchFailure();\n";
 }
 
+std::string PatternEmitter::handleOpArgument(DagLeaf leaf,
+                                             llvm::StringRef argName) {
+  if (leaf.isConstantAttr()) {
+    return handleConstantAttr(leaf.getAsConstantAttr());
+  }
+  pattern.ensureArgBoundInSourcePattern(argName);
+  std::string result = boundArgNameInRewrite(argName).str();
+  if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
+    return result;
+  }
+  if (leaf.isAttrTransformer()) {
+    return formatv(leaf.getTransformationTemplate().c_str(), result);
+  }
+  PrintFatalError(loc, "unhandled case when rewriting op");
+}
+
+std::string PatternEmitter::handleOpArgument(DagNode tree) {
+  if (!tree.isAttrTransformer()) {
+    PrintFatalError(loc, "only tAttr is supported in nested dag attribute");
+  }
+  auto tempStr = tree.getTransformationTemplate();
+  // TODO(fengliuai): replace formatv arguments with the exact specified args.
+  SmallVector<std::string, 8> attrs(8);
+  if (tree.getNumArgs() > 8) {
+    PrintFatalError(loc, "unsupported tAttr argument numbers: " +
+                             Twine(tree.getNumArgs()));
+  }
+  for (unsigned i = 0, e = tree.getNumArgs(); i != e; ++i) {
+    attrs[i] = handleOpArgument(tree.getArgAsLeaf(i), tree.getArgName(i));
+  }
+  return formatv(tempStr.c_str(), "rewriter", attrs[0], attrs[1], attrs[2],
+                 attrs[3], attrs[4], attrs[5], attrs[6], attrs[7]);
+}
+
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
                                          int depth) {
   Operator &resultOp = tree.getDialectOp(opMap);
@@ -538,34 +581,25 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
   for (int e = tree.getNumArgs(); i != e; ++i) {
     // Start each attribute on its own line.
     (os << ",\n").indent(6);
-
-    auto leaf = tree.getArgAsLeaf(i);
-    // The argument in the result DAG pattern.
-    auto patArgName = tree.getArgName(i);
     // The argument in the op definition.
     auto opArgName = resultOp.getArgName(i);
-
-    if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
-      pattern.ensureArgBoundInSourcePattern(patArgName);
-      std::string result = boundArgNameInRewrite(patArgName).str();
-      os << formatv("/*{0}=*/{1}", opArgName, result);
-    } else if (leaf.isAttrTransformer()) {
-      pattern.ensureArgBoundInSourcePattern(patArgName);
-      std::string result = boundArgNameInRewrite(patArgName).str();
-      result = formatv(leaf.getTransformationTemplate().c_str(), result);
-      os << formatv("/*{0}=*/{1}", opArgName, result);
-    } else if (leaf.isConstantAttr()) {
-      // TODO(jpienaar): Refactor out into map to avoid recomputing these.
-      auto argument = resultOp.getArg(i);
-      if (!argument.is<NamedAttribute *>())
-        PrintFatalError(loc, Twine("expected attribute ") + Twine(i));
-
-      if (!patArgName.empty())
-        os << "/*" << patArgName << "=*/";
-      emitConstantAttr(leaf.getAsConstantAttr());
-      // TODO(jpienaar): verify types
+    if (auto subTree = tree.getArgAsNestedDag(i)) {
+      os << formatv("/*{0}=*/{1}", opArgName, handleOpArgument(subTree));
     } else {
-      PrintFatalError(loc, "unhandled case when rewriting op");
+      auto leaf = tree.getArgAsLeaf(i);
+      // The argument in the result DAG pattern.
+      auto patArgName = tree.getArgName(i);
+      if (leaf.isConstantAttr()) {
+        // TODO(jpienaar): Refactor out into map to avoid recomputing these.
+        auto argument = resultOp.getArg(i);
+        if (!argument.is<NamedAttribute *>())
+          PrintFatalError(loc, Twine("expected attribute ") + Twine(i));
+        if (!patArgName.empty())
+          os << "/*" << patArgName << "=*/";
+      } else {
+        os << "/*" << opArgName << "=*/";
+      }
+      os << handleOpArgument(leaf, patArgName);
     }
   }
   os << "\n    );\n";
