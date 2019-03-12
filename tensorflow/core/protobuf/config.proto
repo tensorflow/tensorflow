@@ -236,6 +236,9 @@ message IPUOptions {
       // Set this to acquire a specific IPU hardware configuration.
       int32 cfg_index = 2;
     }
+
+    // Number of replicas (should be a divisor of the number of IPUs
+    int32 num_replicas = 3;
   };
 
   repeated DeviceConfig device_config = 5;
