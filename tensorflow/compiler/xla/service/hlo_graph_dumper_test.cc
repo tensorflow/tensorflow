@@ -38,19 +38,6 @@ string TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
 }
 
-class DotRenderer : public hlo_graph_dumper::GraphRendererInterface {
- public:
-  string RenderGraph(const string& graph, GraphKind graph_kind,
-                     const DebugOptions& debug_options) override {
-    return graph;
-  }
-
- private:
-  string last_graph_;
-};
-
-XLA_REGISTER_GRAPH_RENDERER(DotRenderer);
-
 TEST_F(HloGraphDumperTest, NestedFusion) {
   HloComputation::Builder b("b");
 
@@ -93,8 +80,9 @@ TEST_F(HloGraphDumperTest, NestedFusion) {
           {fused_sums[1], fused_sums[0]}, HloInstruction::FusionKind::kLoop);
 
   // Generate the graph; all nodes should be present.
-  string graph = hlo_graph_dumper::DumpGraph(*root_computation, /*label=*/"",
-                                             DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph, RenderGraph(*root_computation, /*label=*/"", DebugOptions(),
+                                RenderedGraphFormat::kDot));
   for (const HloComputation* computation :
        {root_computation,  //
         inner_fusion->fused_instructions_computation(),
@@ -116,9 +104,10 @@ TEST_F(HloGraphDumperTest, NestedFusion) {
     }
   }
   ASSERT_NE(inner_sum, nullptr);
-  EXPECT_THAT(
-      hlo_graph_dumper::DumpNeighborhoodAround(*inner_sum, /*radius=*/1),
-      HasSubstr(inner_sum->name()));
+  TF_ASSERT_OK_AND_ASSIGN(string neighborhood_graph,
+                          RenderNeighborhoodAround(*inner_sum, /*radius=*/1,
+                                                   RenderedGraphFormat::kDot));
+  EXPECT_THAT(neighborhood_graph, HasSubstr(inner_sum->name()));
 }
 
 TEST_F(HloGraphDumperTest, Constant) {
@@ -129,8 +118,9 @@ TEST_F(HloGraphDumperTest, Constant) {
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build());
-  string graph = hlo_graph_dumper::DumpGraph(
-      *root_computation, /*label=*/"an_empty_graph", DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph, RenderGraph(*root_computation, /*label=*/"an_empty_graph",
+                                DebugOptions(), RenderedGraphFormat::kDot));
   EXPECT_THAT(graph, HasSubstr("an_empty_graph"));
   EXPECT_THAT(graph, Not(HasSubstr("i_am_a_constant_root_instruction")));
 }
@@ -147,8 +137,9 @@ TEST_F(HloGraphDumperTest, TupleConstant) {
   HloModuleConfig config;
   HloModule m(TestName(), config);
   HloComputation* root_computation = m.AddEntryComputation(b.Build(gte));
-  string graph = hlo_graph_dumper::DumpGraph(
-      *root_computation, /*label=*/"tuple_constant", DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph, RenderGraph(*root_computation, /*label=*/"tuple_constant",
+                                DebugOptions(), RenderedGraphFormat::kDot));
   EXPECT_THAT(graph, HasSubstr("tuple_constant"));
   EXPECT_THAT(graph, HasSubstr("constant (f32[3,2], s32[4,5])"));
 }
@@ -164,8 +155,10 @@ TEST_F(HloGraphDumperTest, Compare) {
     })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
-  string graph = hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                             /*label=*/"comp", DebugOptions());
+  TF_ASSERT_OK_AND_ASSIGN(
+      string graph,
+      RenderGraph(*module->entry_computation(), /*label=*/"tuple_constant",
+                  DebugOptions(), RenderedGraphFormat::kDot));
   EXPECT_THAT(graph, HasSubstr("direction=LT"));
 }
 

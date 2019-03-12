@@ -196,23 +196,29 @@ tensorflow::ImportNumpy();
   if ($input == Py_None) {
     $1 = NULL;
   } else {
-    if (!HandleStringAttribute($input, "generate_hlo_graph", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_generate_hlo_graph(std::move(s));
+    // TODO: phawkins, do you think I should leave these, or remove them?  (Including hlo_profile.)
+    if (!HandleStringAttribute($input, "dump_to", [&](string s) {
+      build_options.mutable_debug_options()->set_xla_dump_to(std::move(s));
     })) {
       return nullptr;
     }
-    if (!HandleStringAttribute($input, "dump_optimized_hlo_proto_to", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_dump_optimized_hlo_proto_to(std::move(s));
+    if (!HandleStringAttribute($input, "dump_hlo_pass_re", [&](string s) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_pass_re(std::move(s));
     })) {
       return nullptr;
     }
-    if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_dump_unoptimized_hlo_proto_to(std::move(s));
+    if (!HandleStringAttribute($input, "dump_hlo_module_re", [&](string s) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_module_re(std::move(s));
     })) {
       return nullptr;
     }
-    if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_dump_per_pass_hlo_proto_to(std::move(s));
+    if (!HandleBoolAttribute($input, "dump_hlo_as_text", [&](bool b) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_as_text(b);
+    })) {
+      return nullptr;
+    }
+    if (!HandleBoolAttribute($input, "dump_hlo_as_proto", [&](bool b) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_as_proto(b);
     })) {
       return nullptr;
     }
