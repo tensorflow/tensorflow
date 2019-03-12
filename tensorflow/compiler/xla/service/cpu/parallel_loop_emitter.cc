@@ -34,7 +34,7 @@ ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(absl::string_view loop_name,
                                                    llvm::Type* index_type) {
   CHECK_NE(index_type, nullptr);
 
-  CHECK(!ShapeUtil::IsTuple(shape_));
+  CHECK(!shape_.IsTuple());
   CHECK(!ShapeUtil::IsScalar(shape_));
 
   llvm_ir::ForLoopNest loop_nest(loop_name, b_);

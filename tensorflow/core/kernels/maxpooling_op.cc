@@ -22,13 +22,13 @@ limitations under the License.
 #include <vector>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/eigen_pooling.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -1134,11 +1135,18 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                 errors::InvalidArgument(
                     "qint8 should be used with data_format NCHW_VECT_C."));
 
+#if CUDNN_VERSION >= 7300
+    if (use_dnn_) {
+      DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize_,
+                               stride_, padding_, data_format_, tensor_in,
+                               out_shape, propagate_nans_);
+#else
     // These is_int8x4 checks avoid linker errors for missing qint8 kernels.
     if (!is_int8x4 && use_dnn_ && data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize_,
                                stride_, padding_, data_format_, tensor_in,
                                out_shape, propagate_nans_);
+#endif
     } else {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));

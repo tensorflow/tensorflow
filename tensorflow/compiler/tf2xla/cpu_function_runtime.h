@@ -104,7 +104,7 @@ class BufferInfo {
  private:
   BufferInfo() = default;
 
-  enum class Kind : unsigned {
+  enum class Kind : uint64 {
     kConstant,
     kTempBuffer,
     kEntryParameter,

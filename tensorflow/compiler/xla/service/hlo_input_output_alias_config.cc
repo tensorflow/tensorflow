@@ -17,22 +17,34 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
 namespace xla {
+
+bool HloInputOutputAliasConfig::OutputHasAlias(
+    const ShapeIndex& output_index) const {
+  return alias_.element(output_index).has_value();
+}
+
 Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
                                              int64 param_number,
-                                             const ShapeIndex& param_index) {
+                                             const ShapeIndex& param_index,
+                                             AliasKind kind) {
+  TF_RET_CHECK(kind == AliasKind::kUserAlias || kind == AliasKind::kSystemAlias)
+      << kind;
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
       << absl::StrCat("Tring to set up alias at ", output_index.ToString(),
                       " which is an invalid index for shape ",
                       ShapeUtil::HumanString(alias_.shape()));
+  TF_RET_CHECK(param_number >= 0) << param_number;
+  TF_RET_CHECK(!OutputHasAlias(output_index))
+      << "Output index " << output_index << " already has an alias setup";
   // Output can't be aliased with multiple parameters.
   TF_RET_CHECK(!alias_.element(output_index)) << absl::StrFormat(
       "Trying to set up output alias for param %lld at %s but failed: output "
       "index %s is already aliased with param %lld at %s",
       param_number, param_index.ToString(), output_index.ToString(),
-      alias_.element(output_index)->first,
-      alias_.element(output_index)->second.ToString());
+      alias_.element(output_index)->parameter_number,
+      alias_.element(output_index)->parameter_index.ToString());
   (*alias_.mutable_element(output_index)) =
-      std::make_pair(param_number, param_index);
+      Alias(kind, param_number, param_index);
   VLOG(4) << "Set up alias between output index " << output_index.ToString()
           << " and parameter " << param_index << " at index "
           << param_index.ToString();
@@ -42,15 +54,24 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
 HloInputOutputAliasProto HloInputOutputAliasConfig::ToProto() const {
   HloInputOutputAliasProto result;
   alias_.ForEachElement(
-      [&](const ShapeIndex& index,
-          const absl::optional<std::pair<int64, ShapeIndex>>& data) {
+      [&](const ShapeIndex& index, const absl::optional<Alias>& data) {
         if (data) {
           HloInputOutputAliasProto::AliasEntryProto entry;
+          switch (data->kind) {
+            case AliasKind::kUserAlias:
+              entry.set_kind(HloInputOutputAliasProto::USER_ALIAS);
+              break;
+            case AliasKind::kSystemAlias:
+              entry.set_kind(HloInputOutputAliasProto::SYSTEM_ALIAS);
+              break;
+            default:
+              LOG(FATAL) << "Unknown alias kind " << data->kind;
+          }
           for (int64 i : index) {
             entry.add_output_shape_index(i);
           }
-          entry.set_parameter_number(data->first);
-          for (int64 i : data->second) {
+          entry.set_parameter_number(data->parameter_number);
+          for (int64 i : data->parameter_index) {
             entry.add_parameter_shape_index(i);
           }
           result.add_entries()->Swap(&entry);
@@ -66,14 +87,18 @@ StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
        proto.entries()) {
     ShapeIndex output_index(entry.output_shape_index().begin(),
                             entry.output_shape_index().end());
-
     int64 param_number = entry.parameter_number();
     ShapeIndex param_index(entry.parameter_shape_index().begin(),
                            entry.parameter_shape_index().end());
+    // Handle backward compatibility with existing protos, which only knew of
+    // system aliases.
+    AliasKind kind = AliasKind::kSystemAlias;
+    if (entry.kind() == HloInputOutputAliasProto::USER_ALIAS) {
+      kind = AliasKind::kUserAlias;
+    }
     TF_RETURN_IF_ERROR(
-        result.SetUpAlias(output_index, param_number, param_index));
+        result.SetUpAlias(output_index, param_number, param_index, kind));
   }
-
   return result;
 }
 
@@ -81,45 +106,44 @@ string HloInputOutputAliasConfig::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("HloInputOutputAliasConfig");
 
-  ForEachAlias([&](const ShapeIndex& output_index, int64 param_number,
-                   const ShapeIndex& param_index) {
+  ForEachAlias([&](const ShapeIndex& output_index, const Alias& alias) {
+    const char* kind = alias.kind == AliasKind::kUserAlias ? "USER" : "SYSTEM";
     pieces.push_back(absl::StrFormat(
-        "  OutputIndex %s is aliased with parameter %lld at %s:",
-        output_index.ToString(), param_number, param_index.ToString()));
+        "  OutputIndex %s is aliased (kind=%s) with parameter %lld at %s:",
+        output_index.ToString(), kind, alias.parameter_number,
+        alias.parameter_index.ToString()));
   });
-
   return absl::StrJoin(pieces, "\n");
 }
 
-bool HloInputOutputAliasConfig::ParameterHasAlias(
+HloInputOutputAliasConfig::AliasKind
+HloInputOutputAliasConfig::ParameterAliasKind(
     int64 param_number, const ShapeIndex& param_index) const {
-  bool output = false;
+  AliasKind kind = AliasKind::kNoAlias;
   alias_.ForEachElement(
-      [&](const xla::ShapeIndex&,
-          absl::optional<std::pair<int64, ShapeIndex>> alias) {
-        if (alias && alias->first == param_number &&
-            alias->second == param_index) {
-          output = true;
+      [&](const xla::ShapeIndex&, absl::optional<Alias> alias) {
+        if (alias && alias->parameter_number == param_number &&
+            alias->parameter_index == param_index) {
+          kind = alias->kind;
         }
       });
-  return output;
+  return kind;
 }
 
 absl::optional<ShapeIndex> HloInputOutputAliasConfig::GetAliasedOutput(
     int64 param_number, const ShapeIndex& param_index) const {
   absl::optional<ShapeIndex> output;
   alias_.ForEachElement(
-      [&](const xla::ShapeIndex& output_index,
-          absl::optional<std::pair<int64, ShapeIndex>> alias) {
-        if (alias && alias->first == param_number &&
-            alias->second == param_index) {
+      [&](const xla::ShapeIndex& output_index, absl::optional<Alias> alias) {
+        if (alias && alias->parameter_number == param_number &&
+            alias->parameter_index == param_index) {
           output = output_index;
         }
       });
   return output;
 }
 
-absl::optional<std::pair<int64, ShapeIndex>>
+absl::optional<HloInputOutputAliasConfig::Alias>
 HloInputOutputAliasConfig::GetAliasedParameter(
     const ShapeIndex& output_index) const {
   CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index));
@@ -128,10 +152,9 @@ HloInputOutputAliasConfig::GetAliasedParameter(
 
 void HloInputOutputAliasConfig::ForEachAlias(AliasFn fn) const {
   alias_.ForEachElement(
-      [&](const ShapeIndex& output_index,
-          absl::optional<std::pair<int64, ShapeIndex>> aliased) {
+      [&](const ShapeIndex& output_index, absl::optional<Alias> aliased) {
         if (aliased) {
-          fn(output_index, aliased->first, aliased->second);
+          fn(output_index, *aliased);
         }
       });
 }
@@ -139,10 +162,9 @@ void HloInputOutputAliasConfig::ForEachAlias(AliasFn fn) const {
 Status HloInputOutputAliasConfig::ForEachAliasWithStatus(
     AliasFnWithStatus fn) const {
   return alias_.ForEachElementWithStatus(
-      [&](const ShapeIndex& output_index,
-          absl::optional<std::pair<int64, ShapeIndex>> aliased) {
+      [&](const ShapeIndex& output_index, absl::optional<Alias> aliased) {
         if (aliased) {
-          TF_RETURN_IF_ERROR(fn(output_index, aliased->first, aliased->second));
+          TF_RETURN_IF_ERROR(fn(output_index, *aliased));
         }
         return Status::OK();
       });
@@ -158,20 +180,19 @@ Status HloInputOutputAliasConfig::Verify(
     param_has_seen.emplace_back(param->shape());
   }
   return ForEachAliasWithStatus([&](const ShapeIndex& output_index,
-                                    int64 param_number,
-                                    const ShapeIndex& param_index) -> Status {
+                                    const Alias& alias) -> Status {
     const HloInstruction* root = entry->root_instruction();
 
-    TF_RET_CHECK(0 <= param_number);
-    TF_RET_CHECK(entry->num_parameters() > param_number);
+    TF_RET_CHECK(0 <= alias.parameter_number);
+    TF_RET_CHECK(entry->num_parameters() > alias.parameter_number);
     const Shape& param_shape =
-        entry->parameter_instruction(param_number)->shape();
+        entry->parameter_instruction(alias.parameter_number)->shape();
     const Shape& output_shape = root->shape();
-    TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, param_index));
+    TF_RET_CHECK(ShapeUtil::IndexIsValid(param_shape, alias.parameter_index));
     TF_RET_CHECK(ShapeUtil::IndexIsValid(output_shape, output_index));
 
     const Shape& param_subshape =
-        ShapeUtil::GetSubshape(param_shape, param_index);
+        ShapeUtil::GetSubshape(param_shape, alias.parameter_index);
     const Shape& output_subshape =
         ShapeUtil::GetSubshape(output_shape, output_index);
     TF_RET_CHECK(LayoutUtil::IsDenseArray(param_subshape));
@@ -182,19 +203,20 @@ Status HloInputOutputAliasConfig::Verify(
           "Expected aliased input %lld at index %s and output at index %s to "
           "have the same size. Input sub-shape is %s with size %lld, output "
           "sub-shape is %s with size %lld",
-          param_number, param_index.ToString(), output_index.ToString(),
+          alias.parameter_number, alias.parameter_index.ToString(),
+          output_index.ToString(),
           ShapeUtil::HumanStringWithLayout(param_subshape),
           size_func(param_subshape),
           ShapeUtil::HumanStringWithLayout(output_subshape),
           size_func(output_subshape));
     }
 
-    // Check each param_number and param_index pair only show up once. No
-    // input can be aliased with output buffers.
-    TF_RET_CHECK(param_has_seen[param_number].element(param_index) == false);
-
-    *(param_has_seen[param_number].mutable_element(param_index)) = true;
-
+    // Check each alias.parameter_number and alias.parameter_index pair only
+    // show up once. No input can be aliased with output buffers.
+    TF_RET_CHECK(param_has_seen[alias.parameter_number].element(
+                     alias.parameter_index) == false);
+    *(param_has_seen[alias.parameter_number].mutable_element(
+        alias.parameter_index)) = true;
     return Status::OK();
   });
 }

@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -168,13 +167,13 @@ class GatherOp : public XlaOpKernel {
 
       OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &axis));
       const auto params_dims = input_shape.dims();
+      OP_REQUIRES(
+          context, -params_dims <= axis && axis < params_dims,
+          errors::InvalidArgument("Expected axis in the range [", -params_dims,
+                                  ", ", params_dims, "), but got ", axis));
       if (axis < 0) {
         axis += params_dims;
       }
-      OP_REQUIRES(
-          context, 0 <= axis && axis < params_dims,
-          errors::InvalidArgument("Expected axis in the range [", -params_dims,
-                                  ", ", params_dims, "), but got ", axis));
     }
 
     DataType index_type = input_type(1);

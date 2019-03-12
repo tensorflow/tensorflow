@@ -340,7 +340,7 @@ public final class OperatorProcessor extends AbstractProcessor {
                     + "{@link $T @Operator} is exposed\n"
                     + "by this API or one of its subgroup.\n<p>Example usage:\n<pre>{@code\n"
                     + "try (Graph g = new Graph()) {\n"
-                    + "  Ops ops = new Ops(g);\n"
+                    + "  Ops ops = Ops.create(g);\n"
                     + "  // Operations are typed classes with convenience\n"
                     + "  // builders in Ops.\n"
                     + "  Constant three = ops.constant(3);\n"

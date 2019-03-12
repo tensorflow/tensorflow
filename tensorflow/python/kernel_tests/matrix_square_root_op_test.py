@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -31,12 +32,12 @@ class SquareRootOpTest(test.TestCase):
 
   def _verifySquareRoot(self, matrix, np_type):
     matrix = matrix.astype(np_type)
-    with self.test_session(use_gpu=True):
-      # Verify that matmul(sqrtm(A), sqrtm(A)) = A
-      sqrt = gen_linalg_ops.matrix_square_root(matrix)
-      square = math_ops.matmul(sqrt, sqrt)
-      self.assertShapeEqual(matrix, square)
-      self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
+
+    # Verify that matmul(sqrtm(A), sqrtm(A)) = A
+    sqrt = gen_linalg_ops.matrix_square_root(matrix)
+    square = math_ops.matmul(sqrt, sqrt)
+    self.assertShapeEqual(matrix, square)
+    self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
 
   def _verifySquareRootReal(self, x):
     for np_type in [np.float32, np.float64]:
@@ -89,27 +90,31 @@ class SquareRootOpTest(test.TestCase):
     self._verifySquareRootReal(np.empty([0, 2, 2]))
     self._verifySquareRootReal(np.empty([2, 0, 0]))
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to the square root should be at least a 2-dimensional tensor.
     tensor = constant_op.constant([1., 2.])
     with self.assertRaises(ValueError):
       gen_linalg_ops.matrix_square_root(tensor)
 
+  @test_util.run_v1_only("b/120545219")
   def testNotSquare(self):
-    with self.test_session():
-      with self.assertRaises(ValueError):
-        tensor = constant_op.constant([[1., 0., -1.], [-1., 1., 0.]])
-        gen_linalg_ops.matrix_square_root(tensor).eval()
+    with self.assertRaises(ValueError):
+      tensor = constant_op.constant([[1., 0., -1.], [-1., 1., 0.]])
+      self.evaluate(gen_linalg_ops.matrix_square_root(tensor))
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with test_util.use_gpu():
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
-      sqrt1 = gen_linalg_ops.matrix_square_root(matrix1)
-      sqrt2 = gen_linalg_ops.matrix_square_root(matrix2)
+      square1 = math_ops.matmul(matrix1, matrix1)
+      square2 = math_ops.matmul(matrix2, matrix2)
+      sqrt1 = gen_linalg_ops.matrix_square_root(square1)
+      sqrt2 = gen_linalg_ops.matrix_square_root(square2)
       all_ops = [sqrt1, sqrt2]
-      sqrt = sess.run(all_ops)
-      self.assertAllEqual(sqrt[0], sqrt[1])
+      sqrt = self.evaluate(all_ops)
+      self.assertAllClose(sqrt[0], sqrt[1])
 
 
 if __name__ == "__main__":

@@ -22,25 +22,29 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-
-void DFS(const Graph& g, const std::function<void(Node*)>& enter,
-         const std::function<void(Node*)>& leave,
-         const NodeComparator& stable_comparator,
-         const EdgeFilter& edge_filter) {
+namespace {
+template <typename T>
+void DFSFromHelper(const Graph& g, gtl::ArraySlice<T> start,
+                   const std::function<void(T)>& enter,
+                   const std::function<void(T)>& leave,
+                   const NodeComparator& stable_comparator,
+                   const EdgeFilter& edge_filter) {
   // Stack of work to do.
   struct Work {
-    Node* node;
+    T node;
     bool leave;  // Are we entering or leaving n?
   };
-  std::vector<Work> stack;
-  stack.push_back(Work{g.source_node(), false});
+  std::vector<Work> stack(start.size());
+  for (int i = 0; i < start.size(); ++i) {
+    stack[i] = Work{start[i], false};
+  }
 
   std::vector<bool> visited(g.num_node_ids(), false);
   while (!stack.empty()) {
     Work w = stack.back();
     stack.pop_back();
 
-    Node* n = w.node;
+    T n = w.node;
     if (w.leave) {
       leave(n);
       continue;
@@ -79,6 +83,23 @@ void DFS(const Graph& g, const std::function<void(Node*)>& enter,
       }
     }
   }
+}
+}  // namespace
+
+void DFS(const Graph& g, const std::function<void(Node*)>& enter,
+         const std::function<void(Node*)>& leave,
+         const NodeComparator& stable_comparator,
+         const EdgeFilter& edge_filter) {
+  DFSFromHelper(g, {g.source_node()}, enter, leave, stable_comparator,
+                edge_filter);
+}
+
+void DFSFrom(const Graph& g, gtl::ArraySlice<const Node*> start,
+             const std::function<void(const Node*)>& enter,
+             const std::function<void(const Node*)>& leave,
+             const NodeComparator& stable_comparator,
+             const EdgeFilter& edge_filter) {
+  DFSFromHelper(g, start, enter, leave, stable_comparator, edge_filter);
 }
 
 void ReverseDFS(const Graph& g, const std::function<void(Node*)>& enter,
@@ -222,11 +243,12 @@ bool FixupSourceAndSinkEdges(Graph* g) {
   bool changed = false;
   for (Node* n : g->nodes()) {
     if (!n->IsSource() && n->in_edges().empty()) {
-      g->AddControlEdge(g->source_node(), n);
+      g->AddControlEdge(g->source_node(), n,
+                        true /* skip test for duplicates */);
       changed = true;
     }
     if (!n->IsSink() && n->out_edges().empty()) {
-      g->AddControlEdge(n, g->sink_node());
+      g->AddControlEdge(n, g->sink_node(), true /* skip test for duplicates */);
       changed = true;
     }
   }

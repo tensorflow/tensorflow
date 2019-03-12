@@ -170,6 +170,9 @@ std::pair<string, AttrValue> AttrLiteralHelper(
 
 std::pair<string, AttrValue> AttrLiteralHelper(
     const std::pair<string, absl::Span<const int>>& int_list_attr);
+
+std::pair<string, AttrValue> AttrLiteralHelper(
+    const std::pair<string, absl::Span<const string>>& string_list_attr);
 }  // namespace impl
 
 // -----------------------------------------------------------------------------

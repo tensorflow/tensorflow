@@ -67,13 +67,17 @@ Status VirtualCluster::Run(const GraphDef& graph,
                            const std::vector<string>& fetch,
                            RunMetadata* metadata) {
   // Initialize a virtual scheduler to process the graph. Make sure to use
-  // static shape inference to prevent the schedulrer from calling the Run
-  // method on the cluster, and create an infinite loop.
+  // static shape inference to prevent the scheduler from calling the Run
+  // method on the cluster and creating an infinite loop.
   GrapplerItem item;
   item.graph = graph;
   item.feed = feed;
   item.fetch = fetch;
-  VirtualScheduler scheduler(true, this, node_manager_.get());
+  // Note that we do not use aggressive shape inference to preserve unknown
+  // shapes from the input graph.
+  VirtualScheduler scheduler(/*use_static_shapes=*/true,
+                             /*use_aggressive_shape_inference=*/false, this,
+                             node_manager_.get());
   TF_RETURN_IF_ERROR(scheduler.Init(&item));
 
   if (metadata) {

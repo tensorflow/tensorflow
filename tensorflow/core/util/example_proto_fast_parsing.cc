@@ -16,17 +16,19 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/monitoring/counter.h"
+#include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/util/presized_cuckoo_map.h"
@@ -161,10 +163,30 @@ class Feature {
         if (!stream.ReadVarint32(&packed_length)) return false;
         auto packed_limit = stream.PushLimit(packed_length);
 
-        while (!stream.ExpectAtEnd()) {
-          uint32 buffer32;
-          if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(bit_cast<float>(buffer32));
+        // If the result data type is float and we are on a little endian
+        // machine then we can simply memcpy the data from the proto into the
+        // result vector.
+        constexpr int32 kNumFloatBytes = 4;
+        if (port::kLittleEndian &&
+            sizeof(typename Result::value_type) == kNumFloatBytes) {
+          // Store the initial size to know the offset we have to start writing
+          // data from before resizing the output "vector".
+          const size_t initial_size = float_list->size();
+          float_list->resize(initial_size + packed_length / kNumFloatBytes);
+          // Calculate the length of the buffer available what can be less than
+          // what we requested in resize in case of a LimitedArraySlice.
+          const uint32 bytes_to_copy =
+              std::min(static_cast<uint32>((float_list->size() - initial_size) *
+                                           kNumFloatBytes),
+                       packed_length);
+          if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
+            return false;
+        } else {
+          while (!stream.ExpectAtEnd()) {
+            uint32 buffer32;
+            if (!stream.ReadLittleEndian32(&buffer32)) return false;
+            float_list->push_back(absl::bit_cast<float>(buffer32));
+          }
         }
 
         stream.PopLimit(packed_limit);
@@ -173,7 +195,7 @@ class Feature {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(bit_cast<float>(buffer32));
+          float_list->push_back(absl::bit_cast<float>(buffer32));
         }
       }
     }
@@ -448,8 +470,10 @@ struct SeededHasher {
 template <typename T>
 class LimitedArraySlice {
  public:
+  using value_type = T;
+
   LimitedArraySlice(T* begin, size_t num_elements)
-      : current_(begin), end_(begin + num_elements) {}
+      : current_(begin), begin_(begin), end_(begin + num_elements) {}
 
   // May return negative if there were push_back calls after slice was filled.
   int64 EndDistance() const { return end_ - current_; }
@@ -462,8 +486,21 @@ class LimitedArraySlice {
     ++current_;
   }
 
+  // Returns the number of elements in the slice.
+  size_t size() const { return std::min(current_ - begin_, end_ - begin_); }
+
+  // Attempts to resize the vector to the given size. It does so by advancing
+  // the pointer to the current element, possibly beyond the end of the slice.
+  // As a consequence, calling `size()` after `resize(x)` was called might
+  // return a value less than `x`.
+  void resize(size_t size) { current_ = begin_ + size; }
+
+  // Returns the pointer to the underlying data buffer.
+  T* data() { return begin_; }
+
  private:
   T* current_;
+  T* begin_;
   T* end_;
 };
 
@@ -1600,7 +1637,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
-          *out++ = bit_cast<float>(buffer32);
+          *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
       }
@@ -1613,7 +1650,7 @@ inline int ParseFloatFeature(protobuf::io::CodedInputStream* stream,
           return -1;
         }
         if (out != nullptr) {
-          *out++ = bit_cast<float>(buffer32);
+          *out++ = absl::bit_cast<float>(buffer32);
         }
         num_elements++;
       }
@@ -1727,9 +1764,13 @@ Status FastParseSequenceExample(
   DCHECK(context_result != nullptr);
   DCHECK(feature_list_result != nullptr);
   DCHECK(dense_feature_lengths != nullptr);
-  std::map<StringPiece, bool> context_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  size_t num_context_features =
+      context_config.sparse.size() + context_config.dense.size();
+  absl::flat_hash_map<StringPiece, bool> context_is_sparse;
+  context_is_sparse.reserve(num_context_features);
+  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
       context_feature_type_and_lengths;
+  context_feature_type_and_lengths.reserve(num_context_features);
   if (!example_names.empty() && example_names.size() != num_examples) {
     return errors::InvalidArgument(
         "example_names must be empty or have the correct number of elements");
@@ -1757,11 +1798,14 @@ Status FastParseSequenceExample(
                                        " but expected ", c.shape.DebugString());
       }
     }
-    context_is_sparse[c.feature_name] = false;
   }
-  std::map<StringPiece, bool> sequence_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  size_t num_sequence_features =
+      feature_list_config.sparse.size() + feature_list_config.dense.size();
+  absl::flat_hash_map<StringPiece, bool> sequence_is_sparse;
+  sequence_is_sparse.reserve(num_sequence_features);
+  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
       sequence_feature_type_and_lengths;
+  sequence_feature_type_and_lengths.reserve(num_sequence_features);
   for (auto& c : feature_list_config.sparse) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
     sequence_feature_type_and_lengths[c.feature_name] =
@@ -1776,13 +1820,12 @@ Status FastParseSequenceExample(
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
     sequence_feature_type_and_lengths[c.feature_name] =
         std::make_pair(c.dtype, 0);
-    sequence_is_sparse[c.feature_name] = false;
   }
 
-  std::vector<std::map<StringPiece, StringPiece>> all_context_features(
-      num_examples);
-  std::vector<std::map<StringPiece, StringPiece>> all_sequence_features(
-      num_examples);
+  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
+      all_context_features(num_examples);
+  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
+      all_sequence_features(num_examples);
   const string kUnknown = "<unknown>";
   for (int d = 0; d < num_examples; d++) {
     const string& example = serialized[d];
@@ -1798,9 +1841,9 @@ Status FastParseSequenceExample(
 
     // Extract pointers to all features within this serialized example.
     while (!stream.ExpectAtEnd()) {
-      std::map<StringPiece, StringPiece>* features = nullptr;
-      const std::map<StringPiece, std::pair<DataType, size_t>>* config =
-          nullptr;
+      absl::flat_hash_map<StringPiece, StringPiece>* features = nullptr;
+      const absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>*
+          config = nullptr;
       if (stream.ExpectTag(kDelimitedTag(1))) {
         // Context
         features = context_features;

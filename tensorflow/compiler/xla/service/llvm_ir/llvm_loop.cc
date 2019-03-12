@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -235,7 +234,7 @@ std::unique_ptr<ForLoop> ForLoopNest::AddLoop(int64 start_index,
 
 IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
                                              absl::string_view suffix) {
-  std::vector<int64> dimensions(ShapeUtil::Rank(shape));
+  std::vector<int64> dimensions(shape.rank());
   std::iota(dimensions.begin(), dimensions.end(), 0);
   return AddLoopsForShapeOnDimensions(shape, dimensions, suffix);
 }

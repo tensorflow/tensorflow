@@ -1,11 +1,11 @@
 path: "tensorflow.random_uniform_initializer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.init_ops.RandomUniform\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.RandomUniform\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'minval\', \'maxval\', \'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \'None\', \"<dtype: \'float32\'>\"], "
+    argspec: "args=[\'self\', \'minval\', \'maxval\', \'seed\'], varargs=None, keywords=None, defaults=[\'-0.05\', \'0.05\', \'None\'], "
   }
   member_method {
     name: "from_config"

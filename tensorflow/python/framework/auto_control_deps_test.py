@@ -19,11 +19,15 @@ from __future__ import print_function
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import auto_control_deps as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -38,7 +42,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testBasic(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       with acd.AutomaticControlDependencies() as c:
         v.assign(v + 1)
         v.assign(2 * v)
@@ -46,10 +50,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(), 4.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondMustRun(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -67,10 +72,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 6.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondMustRunSeparateRead(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -90,10 +96,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       one.eval(feed_dict={p: True})
       self.assertAllEqual(v.read_value().eval(), 6.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondNested(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       q = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
@@ -124,10 +131,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: True, q: True}), 7.0)
       self.assertAllEqual(val.eval(feed_dict={p: True, q: False}), 8.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondOneBranch(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -144,10 +152,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 5.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 5.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondOneBranchUpdateBefore(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
         v.assign(v * 2)
@@ -165,10 +174,11 @@ class AutomaticControlDependenciesTest(test.TestCase):
       self.assertAllEqual(val.eval(feed_dict={p: False}), 6.0)
       self.assertAllEqual(val.eval(feed_dict={p: True}), 12.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testCondOneBranchUpdateAfter(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       p = array_ops.placeholder(dtype=dtypes.bool)
       with acd.AutomaticControlDependencies() as c:
 
@@ -204,7 +214,7 @@ class AutomaticControlDependenciesTest(test.TestCase):
   def testDecorator(self):
     with context.graph_mode(), self.cached_session():
       v = resource_variable_ops.ResourceVariable(1.0)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       @acd.automatic_control_dependencies
       def f():
@@ -273,6 +283,44 @@ class AutomaticControlDependenciesTest(test.TestCase):
 
     train()
     self.assertEqual(v.numpy(), -1.0)
+
+  def testRepeatedResourceInput(self):
+    var = resource_variable_ops.ResourceVariable(1.0)
+
+    @def_function.function
+    def inner(var1, var2):
+      return (resource_variable_ops.read_variable_op(var1, dtypes.float32) +
+              resource_variable_ops.read_variable_op(var2, dtypes.float32))
+
+    @def_function.function
+    def outer():
+      return inner(var.handle, var.handle)
+
+    self.assertEqual(self.evaluate(outer()), 2.0)
+
+  def testVariableInitializersCanBeLifted(self):
+    # The initializer is a stateful op, but using it inside a function should
+    # *not* create additional dependencies.  That's what we're testing.
+    layer = keras_core.Dense(1, kernel_initializer="glorot_uniform")
+
+    @def_function.function
+    def fn(x):
+      # Stateful operation
+      control_flow_ops.Assert(x, ["Error"])
+      # Variable initialization should be lifted.  Prior to the change that
+      # added this test, the lifting would crash because of an auto control dep
+      # added on `x`.  Note, the error did not happen if we
+      # manually created a tf.Variable outside of function and used it
+      # here.  Alternatively, creating a tf.Variable inside fn() causes
+      # a different sort of error that is out of scope for this test.
+      return layer(ops.convert_to_tensor([[1.0, 1.0]]))
+
+    true = ops.convert_to_tensor(True)
+
+    concrete = fn.get_concrete_function(
+        tensor_spec.TensorSpec(shape=(), dtype=dtypes.bool))
+    self.evaluate(concrete(true))
+    self.evaluate(fn(True))
 
 
 if __name__ == '__main__':

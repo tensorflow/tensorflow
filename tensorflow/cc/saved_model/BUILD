@@ -81,6 +81,7 @@ cc_library(
     ] + if_not_mobile([
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
     ]) + if_android([
@@ -133,5 +134,6 @@ filegroup(
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
         "testdata/half_plus_two/**",
+        "testdata/half_plus_two_v2/**",
     ]),
 )

@@ -52,6 +52,11 @@ class PosixRandomAccessFile : public RandomAccessFile {
       : filename_(fname), fd_(fd) {}
   ~PosixRandomAccessFile() override { close(fd_); }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {
     Status s;
@@ -115,11 +120,27 @@ class PosixWritableFile : public WritableFile {
     return Status::OK();
   }
 
+  Status Name(StringPiece* result) const override {
+    *result = filename_;
+    return Status::OK();
+  }
+
   Status Sync() override {
     Status s;
     if (fflush(file_) != 0) {
       s = IOError(filename_, errno);
     }
+    return s;
+  }
+
+  Status Tell(int64* position) override {
+    Status s;
+    *position = ftell(file_);
+
+    if (*position == -1) {
+      s = IOError(filename_, errno);
+    }
+
     return s;
   }
 };
@@ -240,11 +261,14 @@ Status PosixFileSystem::DeleteFile(const string& fname) {
 }
 
 Status PosixFileSystem::CreateDir(const string& name) {
-  Status result;
-  if (mkdir(TranslateName(name).c_str(), 0755) != 0) {
-    result = IOError(name, errno);
+  string translated = TranslateName(name);
+  if (translated.empty()) {
+    return errors::AlreadyExists(name);
   }
-  return result;
+  if (mkdir(translated.c_str(), 0755) != 0) {
+    return IOError(name, errno);
+  }
+  return Status::OK();
 }
 
 Status PosixFileSystem::DeleteDir(const string& name) {

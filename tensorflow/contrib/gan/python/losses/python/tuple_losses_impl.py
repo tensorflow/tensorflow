@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN utilities for loss functions that accept GANModel namedtuples.
+"""TF-GAN utilities for loss functions that accept GANModel namedtuples.
 
 The losses and penalties in this file all correspond to losses in
 `losses_impl.py`. Losses in that file take individual arguments, whereas in this

@@ -1,4 +1,4 @@
-FROM nvidia/cuda:9.0-cudnn7-devel-ubuntu16.04
+FROM nvidia/cuda:10.0-cudnn7-devel-ubuntu16.04
 
 LABEL maintainer="Jan Prach <jendap@google.com>"
 
@@ -6,6 +6,12 @@ LABEL maintainer="Jan Prach <jendap@google.com>"
 # /usr/local/cuda
 RUN cp -P /usr/include/cudnn.h /usr/local/cuda/include
 RUN cp -P /usr/lib/x86_64-linux-gnu/libcudnn* /usr/local/cuda/lib64
+
+# Installs TensorRT, which is not included in NVIDIA Docker containers.
+RUN apt-get update \
+        && apt-get install nvinfer-runtime-trt-repo-ubuntu1604-5.0.2-ga-cuda10.0 \
+        && apt-get update \
+        && apt-get install -y --no-install-recommends libnvinfer-dev=5.0.2-1+cuda10.0
 
 # Copy and run the install scripts.
 COPY install/*.sh /install/
@@ -24,7 +30,7 @@ COPY install/.bazelrc /etc/bazel.bazelrc
 ENV LD_LIBRARY_PATH /usr/local/cuda/extras/CUPTI/lib64:$LD_LIBRARY_PATH
 
 # Link NCCL libray and header where the build script expects them.
-RUN mkdir /usr/local/cuda-9.0/lib &&  \
+RUN mkdir /usr/local/cuda/lib &&  \
     ln -s /usr/lib/x86_64-linux-gnu/libnccl.so.2 /usr/local/cuda/lib/libnccl.so.2 && \
     ln -s /usr/include/nccl.h /usr/local/cuda/include/nccl.h
 

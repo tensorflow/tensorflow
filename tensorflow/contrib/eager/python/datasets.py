@@ -52,12 +52,6 @@ class Iterator(iterator_ops.EagerIterator):
       TypeError: If `dataset` is an unsupported type.
       RuntimeError: When invoked without eager execution enabled.
     """
-    if isinstance(dataset, prefetching_ops._PrefetchToDeviceDataset):  # pylint: disable=protected-access
-      raise TypeError(
-          "`tf.data.experimental.prefetch_to_device()` is not compatible with "
-          "`tf.contrib.eager.Iterator`. Use `for ... in dataset:` to iterate "
-          "over the dataset instead.")
-
     if not context.context().device_spec.device_type:
       is_remote_device = False
     else:

@@ -28,12 +28,16 @@ py_library(
 
 cuda_py_test(
     name = "l2hmc_test",
-    size = "large",
+    size = "medium",
     srcs = ["l2hmc_test.py"],
     additional_deps = [
         ":l2hmc",
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/eager/python:tfe",
         "//third_party/py/numpy",
+    ],
+    shard_count = 4,
+    tags = [
+        "oss_serial",
     ],
 )

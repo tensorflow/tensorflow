@@ -35,7 +35,7 @@ using llvm_ir::IrArray;
 Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
   indexed_generators_[hlo] =
       [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
-    if (generated_value_cache_[hlo].count(index.multidim()) > 0) {
+    if (generated_value_cache_[hlo].contains(index.multidim())) {
       llvm::Value* generated_value =
           generated_value_cache_[hlo][index.multidim()];
       llvm::BasicBlock* generated_value_bb = nullptr;
@@ -72,16 +72,19 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
 }
 
 Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
-  const Literal& literal = constant->literal();
-  llvm::Constant* initializer =
-      llvm_ir::ConvertLiteralToIrConstant(literal, module_);
-  llvm::GlobalVariable* global = new llvm::GlobalVariable(
-      *b_->GetInsertBlock()->getModule(), initializer->getType(),
-      /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
-      /*Name=*/"");
-  llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
-      global, llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
   indexed_generators_[constant] = [=](const IrArray::Index& index) {
+    const Literal& literal = constant->literal();
+    llvm::Constant* initializer =
+        llvm_ir::ConvertLiteralToIrConstant(literal, module_);
+    llvm::GlobalVariable* global = new llvm::GlobalVariable(
+        *b_->GetInsertBlock()->getModule(), initializer->getType(),
+        /*isConstant=*/true,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/initializer,
+        /*Name=*/"");
+    llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
+        global,
+        llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());
     return IrArray(shape_constant, constant->shape())
         .EmitReadArrayElement(index, b_);
   };
@@ -105,7 +108,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
             tuple_operand->name());
       }
       tuple_ptr =
-          parameter_arrays_[tuple_operand->parameter_number()].GetBasePointer();
+          GetBasePointerForFusedParameter(tuple_operand->parameter_number());
     }
 
     // Lookup tuple element pointer.
@@ -114,7 +117,7 @@ Status FusedIrEmitter::HandleGetTupleElement(
         /*alignment=*/1, tuple_ptr, b_, module_);
   };
 
-  if (!ShapeUtil::IsTuple(get_tuple_element->shape())) {
+  if (!get_tuple_element->shape().IsTuple()) {
     indexed_generators_[get_tuple_element] =
         [=](const IrArray::Index& index) -> StatusOr<llvm::Value*> {
       // TODO(b/34080002) Add aliasing information to tuple element IrArray.
@@ -148,7 +151,7 @@ Status FusedIrEmitter::HandleParameter(HloInstruction* parameter) {
             "tiled_buffer");
       }
     }
-    return parameter_arrays_[parameter->parameter_number()]
+    return GetIrArrayForFusedParameter(parameter->parameter_number())
         .EmitReadArrayElement(index, b_);
   };
   return Status::OK();

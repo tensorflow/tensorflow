@@ -31,29 +31,27 @@ HloModule RepeatedConstants
 while_body {
   arg_body = f32[2,3,2] parameter(0)
   ROOT const = f32[2,3,2] constant(
-  f32[2,3,2]
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
 }
 
 while_cond {
   arg_cond = f32[2,3,2] parameter(0)
-  token = token[] after-all()
-  infeed = (pred[], token[]) infeed(token)
+  token0 = token[] after-all()
+  infeed = (pred[], token[]) infeed(token0)
   ROOT unknown = pred[] get-tuple-element((pred[], token[]) infeed), index=0
 }
 
 ENTRY main {
   param = f32[2,3,2] parameter(0)
   const_a = f32[2,3,2] constant(
-  f32[2,3,2]
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
   const_b = f32[2,3,2] while(f32[2,3,2] const_a), condition=while_cond, body=while_body
 
-  token = token[] after-all()
-  out0 = token[] outfeed(f32[2,3,2] const_a, token[] token)
-  ROOT out1 = token[] outfeed(f32[2,3,2] const_b, token[] token)
+  token0 = token[] after-all()
+  out0 = token[] outfeed(f32[2,3,2] const_a, token[] token0)
+  ROOT out1 = token[] outfeed(f32[2,3,2] const_b, token[] token0)
 }
 )";
 
@@ -63,7 +61,7 @@ CHECK-NOT: private constant [48 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",
@@ -82,36 +80,36 @@ HloModule RepeatedConstants
 
 while_body {
   arg_body = (f32[2,1]{1,0}, f32[1]{0}) parameter(0)
-  ROOT const = (f32[2,1]{1,0}, f32[1]{0}) constant((f32[2,1], f32[1]) ( f32[2,1] { { 1 }, { 2 } }, {2} ))
+  ROOT const = (f32[2,1]{1,0}, f32[1]{0}) constant(({ { 1 }, { 2 } }, {2} ))
 }
 
 while_cond {
   arg_cond = (f32[2,1]{1,0}, f32[1]{0}) parameter(0)
-  token = token[] after-all()
-  infeed = (pred[], token[]) infeed(token)
+  token0 = token[] after-all()
+  infeed = (pred[], token[]) infeed(token0)
   ROOT unknown = pred[] get-tuple-element((pred[], token[]) infeed), index=0
 }
 
 ENTRY main {
   param = f32[2,3,2] parameter(0)
-  const_a = (f32[2,1]{1,0}, f32[1]{0}) constant((f32[2,1], f32[1]) ( f32[2,1] { { 1 }, { 2 } }, {2} ))
+  const_a = (f32[2,1]{1,0}, f32[1]{0}) constant(( { { 1 }, { 2 } }, {2} ))
   const_b = (f32[2,1]{1,0}, f32[1]{0}) while((f32[2,1]{1,0}, f32[1]{0}) const_a), condition=while_cond, body=while_body
 
-  token = token[] after-all()
-  out0 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_a, token[] token)
-  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_b, token[] token)
+  token0 = token[] after-all()
+  out0 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_a, token[] token0)
+  ROOT out1 = () outfeed((f32[2,1]{1,0}, f32[1]{0}) const_b, token[] token0)
 }
 )";
 
   string filecheck_pattern = R"(
-CHECK: private constant [4 x i8]
-CHECK: private constant [8 x i8]
+CHECK-DAG: private constant [4 x i8]
+CHECK-DAG: private constant [8 x i8]
 CHECK-NOT: private constant [4 x i8]
 CHECK-NOT: private constant [8 x i8]
 )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_text));
+                          ParseAndReturnVerifiedModule(hlo_text));
 
   CpuAotCompilationOptions options{
       /*triple=*/"x86_64-pc-linux", /*cpu_name=*/"", /*features=*/"",

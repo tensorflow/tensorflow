@@ -46,6 +46,7 @@ class LBetaTest(test.TestCase):
           0.5, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual([], special_math_ops.lbeta(x_one).get_shape())
 
+  @test_util.run_deprecated_v1
   def test_one_dimensional_arg_dynamic(self):
     # Should evaluate to 1 and 1/2.
     x_one = [1, 1.]
@@ -57,6 +58,7 @@ class LBetaTest(test.TestCase):
       self.assertAllClose(0.5,
                           beta_ph.eval(feed_dict={ph: x_one_half}))
 
+  @test_util.run_deprecated_v1
   def test_four_dimensional_arg_with_partial_shape_dynamic(self):
     x_ = np.ones((3, 2, 3, 4))
     # Gamma(1) = 0! = 1
@@ -81,6 +83,7 @@ class LBetaTest(test.TestCase):
           self.evaluate(math_ops.exp(special_math_ops.lbeta(x_one_half))))
       self.assertEqual((2,), special_math_ops.lbeta(x_one_half).get_shape())
 
+  @test_util.run_deprecated_v1
   def test_two_dimensional_arg_dynamic(self):
     # Should evaluate to 1/2.
     x_one_half = [[2, 1.], [2, 1.]]
@@ -123,7 +126,9 @@ class LBetaTest(test.TestCase):
     x_b = [0.1]
     with self.session(use_gpu=True):
       self.assertAllClose(
-          1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))))
+          1,
+          self.evaluate(math_ops.exp(special_math_ops.lbeta(x_a))),
+          rtol=3e-6)
       self.assertAllClose(
           1, self.evaluate(math_ops.exp(special_math_ops.lbeta(x_b))))
       self.assertEqual((), special_math_ops.lbeta(x_a).get_shape())
@@ -199,54 +204,18 @@ class BesselTest(test.TestCase):
 class EinsumTest(test.TestCase):
 
   simple_cases = [
-      'ij,jk->ik',
-      'ijk,jklm->il',
-      'ij,jk,kl->il',
-      'ijk->i',
-      'ijk->kji',
-      'ji,kj->ik',
-      'ikl,kji->kl',
-      'klj,lki->ij',
-      'ijk,ilj->kli',
-      'kij,mkb->ijmb',
-      'ijk,ijl,ikl->i',
-      'i,ijk,j->k',
-      'ij,ij,jk,kl->il',
-      'ij,kj,il,jm->ml',
-      'a,ab,abc->abc',
-      'a,b,ab->ab',
-      'ab,ab,c->',
-      'ab,ab,c->c',
-      'ab,ab,cd,cd->',
-      'ab,ab,cd,cd->ac',
-      'ab,ab,cd,cd->cd',
-      'ab,ab,cd,cd,ef,ef->',
-      'ab,cd,ef->abcdef',
-      'ab,cd,ef->acdf',
-      'ab,cd,de->abcde',
-      'ab,cd,de->be',
-      'ab,bcd,cd->abcd',
-      'ab,bcd,cd->abd',
-      'eb,cb,fb->cef',
-      'abcd,ad',
-      'bd,db,eac->ace',
-      'ba,ac,da->bcd',
-      'ab,ab',
-      'ab,ba',
-      'abc,abc',
-      'abc,bac',
-      'abc,cba',
-      'dba,ead,cad->bce',
-      'aef,fbc,dca->bde',
-      'iJ,Jk->ik',
-      'iJ,Ki->JK',
-      'iJk,Jklm->Jk',
-      'ij, jk, kl -> il',
-      'a, ab, abc -> abc',
-      'ab, ab, cd, cd, ef, ef -> ',
-      'abc, bac',
-      'iJ, Ki -> JK',
-      'iJk, Jklm -> Jk'
+      'ij,jk->ik', 'ijk,jklm->il', 'ij,jk,kl->il', 'ijk->i', 'ijk->kji',
+      'ji,kj->ik', 'ikl,kji->kl', 'klj,lki->ij', 'ijk,ilj->kli',
+      'kij,mkb->ijmb', 'ijk,ijl,ikl->i', 'i,ijk,j->k', 'ij,ij,jk,kl->il',
+      'ij,kj,il,jm->ml', 'a,ab,abc->abc', 'a,b,ab->ab', 'ab,ab,c->',
+      'ab,ab,c->c', 'ab,ab,cd,cd->', 'ab,ab,cd,cd->ac', 'ab,ab,cd,cd->cd',
+      'ab,ab,cd,cd,ef,ef->', 'ab,cd,ef->abcdef', 'ab,cd,ef->acdf',
+      'ab,cd,de->abcde', 'ab,cd,de->be', 'ab,bcd,cd->abcd', 'ab,bcd,cd->abd',
+      'eb,cb,fb->cef', 'abcd,ad', 'bd,db,eac->ace', 'ba,ac,da->bcd', 'ab,ab',
+      'ab,ba', 'abc,abc', 'abc,bac', 'abc,cba', 'dba,ead,cad->bce',
+      'aef,fbc,dca->bde', 'iJ,Jk->ik', 'iJ,Ki->JK', 'iJk,Jklm->Jk',
+      'ij, jk, kl -> il', 'a, ab, abc -> abc', 'ab, ab, cd, cd, ef, ef -> ',
+      'abc, bac', 'iJ, Ki -> JK', 'iJk, Jklm -> Jk', 'ii', 'ijji'
   ]
 
   long_cases = [
@@ -288,6 +257,7 @@ class EinsumTest(test.TestCase):
     for case in self.long_cases:
       self.run_test(case)
 
+  @test_util.run_deprecated_v1
   def test_invalid(self):
     for axes in self.invalid_cases:
       inputs = [
@@ -297,6 +267,7 @@ class EinsumTest(test.TestCase):
       with self.assertRaises(ValueError):
         _ = special_math_ops.einsum(axes, *inputs)
 
+  @test_util.run_deprecated_v1
   def test_invalid_keyword_arguments(self):
     m0 = array_ops.placeholder(dtypes.int32, shape=(1, None))
     m1 = array_ops.placeholder(dtypes.int32, shape=(None, 1))
@@ -311,11 +282,13 @@ class EinsumTest(test.TestCase):
           invalid1='value1',
           invalid2='value2')
 
+  @test_util.run_deprecated_v1
   def test_repeated_axis_single_input(self):
     x = array_ops.placeholder(dtypes.float32, shape=[2, 2])
     with self.assertRaises(ValueError):
       _ = special_math_ops.einsum('ii->', x)
 
+  @test_util.run_deprecated_v1
   def test_dim_mismatch(self):
     for axes, input_shapes in self.dim_mismatch_cases:
       inputs = [
@@ -341,10 +314,13 @@ class EinsumTest(test.TestCase):
     with self.session(use_gpu=True):
       output_value = self.evaluate(output_tensor)
 
-    correct_value = np.einsum(axes, *input_vals)
-
+    correct_value = 0
+    if axes == 'ijji':
+      output = math_ops.trace(*input_tensors)
+      correct_value = self.evaluate(output)
+    else:
+      correct_value = np.einsum(axes, *input_vals)
     err = np.abs(correct_value - output_value).max()
-    # print(axes, err)
     self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):

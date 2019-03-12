@@ -22,10 +22,9 @@ limitations under the License.
 namespace {
 
 const char* const kXlaOptimizeForSizeCpuOption = "xla_cpu_optimize_for_size";
-const char* const kXlaDisableVectorizedReduce = "xla_disable_vectorized_reduce";
 const char* const kLlvmIrDotTilingFactor = "xla_llvm_dot_tiling_factor";
-const char* const kXlaEnableExperimentalLlvmIrGemm =
-    "xla_enable_experimental_llvm_ir_gemm";
+const char* const kXlaForceEnableExperimentalLlvmIrGemm =
+    "xla_force_enable_experimental_llvm_ir_gemm";
 const char* const kLlvmIrGemmTileSize = "xla_llvm_ir_gemm_tile_size";
 
 }  // namespace
@@ -58,10 +57,10 @@ absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config) {
   return absl::nullopt;
 }
 
-bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
+bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config) {
   const auto& extra_options_map =
       config.debug_options().xla_backend_extra_options();
-  return extra_options_map.count(kXlaEnableExperimentalLlvmIrGemm) > 0;
+  return extra_options_map.count(kXlaForceEnableExperimentalLlvmIrGemm) > 0;
 }
 
 static absl::string_view RemoveSuffix(absl::string_view str,

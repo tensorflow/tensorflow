@@ -179,20 +179,7 @@ class AddNOp<Device, Variant> : public OpKernel {
               i, " has shape: ", ctx->input(i).shape().DebugString(), "."));
     }
 
-    TensorShape common_shape;
-    OP_REQUIRES_OK(ctx, GetUnaryVariantShape(ctx->input(0), &common_shape));
-    // Step 2: access all variants and ensure shapes match.
-    for (int i = 1; i < num; ++i) {
-      TensorShape check_shape;
-      OP_REQUIRES_OK(ctx, GetUnaryVariantShape(ctx->input(i), &check_shape));
-      OP_REQUIRES(ctx, common_shape == check_shape,
-                  errors::InvalidArgument(
-                      "AddN of Variants of differing shapes; inputs[0] shape: ",
-                      common_shape.DebugString(), ", inputs[", i,
-                      "] shape: ", check_shape.DebugString()));
-    }
-
-    // Step 3: attempt to add using
+    // Step 2: attempt to add using
     //   BinaryOpVariants(ADD_VARIANT_BINARY_OP, ...)
     //   For the output create a default-constructed variant object.
     // TODO(ebrevdo): Perform summation in a tree-structure.

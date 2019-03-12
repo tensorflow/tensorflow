@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_index.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/macros.h"
@@ -44,7 +45,7 @@ class TileOp : public XlaOpKernel {
     const TensorShape multiples_shape = ctx->InputShape("multiples");
 
     OP_REQUIRES(
-        ctx, IsLegacyVector(multiples_shape),
+        ctx, TensorShapeUtils::IsVector(multiples_shape),
         errors::InvalidArgument("Expected multiples to be 1-D, but got shape ",
                                 multiples_shape.DebugString()));
     OP_REQUIRES(ctx, input_shape.dims() == multiples_shape.num_elements(),

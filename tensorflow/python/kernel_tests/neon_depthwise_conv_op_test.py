@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
@@ -142,8 +143,8 @@ class DepthwiseConv2DTest(test.TestCase):
       conv_interface = nn_impl.depthwise_conv2d(
           t1, t2, strides=[1, stride, stride, 1], padding=padding)
 
-      native_result = sess.run(conv_native)
-      interface_result = sess.run(conv_interface)
+      native_result = self.evaluate(conv_native)
+      interface_result = self.evaluate(conv_interface)
 
     print("depthwise conv_2d: ", tensor_in_sizes, "*", filter_in_sizes,
           ", stride:", stride, ", padding: ", padding, ", max diff: ",
@@ -153,6 +154,7 @@ class DepthwiseConv2DTest(test.TestCase):
     self.assertShapeEqual(native_result, conv_native)
     self.assertShapeEqual(native_result, conv_interface)
 
+  @test_util.run_deprecated_v1
   def testDepthwiseConv2D(self):
     for index, (input_size, filter_size, _, stride,
                 padding) in enumerate(ConfigsToTest()):
@@ -211,11 +213,12 @@ class DepthwiseConv2DTest(test.TestCase):
         t2 = constant_op.constant(x2, shape=filter_in_sizes)
         conv = nn_ops.depthwise_conv2d_native(
             t1, t2, strides=[1, stride, stride, 1], padding=padding)
-        value = sess.run(conv)
+        value = self.evaluate(conv)
     print("value = ", value)
     self.assertAllClose(expected, np.ravel(value), 1e-5)
     self.assertShapeEqual(value, conv)
 
+  @test_util.run_deprecated_v1
   def testConv2D2x2Filter(self):
     # The inputs look like this (it's a 3 x 2 matrix, each of depth 2):
     #

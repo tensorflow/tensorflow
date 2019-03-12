@@ -63,216 +63,30 @@ int OpInputPortIdToArgId(const NodeDef& node, const OpDef& op, int port_id) {
   return OpPortIdToArgId(node, op.input_arg(), port_id);
 }
 
-GraphView::GraphView(GraphDef* graph) : graph_(graph) {
-  for (int i = 0; i < graph_->node_size(); i++) {
-    auto node = graph_->mutable_node(i);
-    AddUniqueNodeOrDie(node);
-  }
-
-  for (NodeDef& node : *graph_->mutable_node()) {
-    AddFanouts(&node);
-  }
+bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
+                         int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  return graph_view.GetFanout(output).size() <= 1;
 }
 
-void GraphView::AddUniqueNodeOrDie(NodeDef* node) {
-  auto result = nodes_.emplace(node->name(), node);
-  // Check that the graph doesn't contain multiple nodes with the same name.
-  CHECK(result.second) << "Non unique node name detected: " << node->name();
+bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port) {
+  const auto output = GraphView::OutputPort(node, port);
+  return !graph_view.GetFanout(output).empty();
 }
 
-void GraphView::AddFanouts(NodeDef* node) {
-  for (int i = 0; i < node->input_size(); ++i) {
-    OutputPort fanin;
-    const string fanin_name = ParseNodeName(node->input(i), &fanin.port_id);
-    fanin.node = nodes_[fanin_name];
-
-    InputPort input;
-    input.node = node;
-    if (fanin.port_id < 0) {
-      input.port_id = -1;
-    } else {
-      input.port_id = i;
-      num_regular_outputs_[fanin.node] =
-          std::max(num_regular_outputs_[fanin.node], fanin.port_id);
-    }
-
-    fanouts_[fanin].insert(input);
-  }
+bool HasControlFanin(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::InputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanin(control_port).empty();
 }
 
-NodeDef* GraphView::GetNode(const string& node_name) const {
-  auto it = nodes_.find(node_name);
-  if (it == nodes_.end()) {
-    return nullptr;
-  }
-  return it->second;
+bool HasControlFanout(const GraphView& graph_view, const NodeDef* node) {
+  const auto control_port = GraphView::OutputPort(node, Graph::kControlSlot);
+  return !graph_view.GetFanout(control_port).empty();
 }
 
-GraphView::InputPort GraphView::GetInputPort(const string& node_name,
-                                             int port_id) const {
-  InputPort result;
-  result.node = GetNode(node_name);
-  // TODO(bsteiner): verify that the node has at least port_id input ports
-  result.port_id = port_id;
-  return result;
-}
-
-GraphView::OutputPort GraphView::GetOutputPort(const string& node_name,
-                                               int port_id) const {
-  OutputPort result;
-  result.node = GetNode(node_name);
-  // TODO(bsteiner): verify that the node has at least port_id output ports
-  result.port_id = port_id;
-  return result;
-}
-
-const std::unordered_set<GraphView::InputPort, GraphView::HashPort>&
-GraphView::GetFanout(const GraphView::OutputPort& port) const {
-  auto it = fanouts_.find(port);
-  if (it == fanouts_.end()) {
-    return empty_set_;
-  }
-  return it->second;
-}
-
-std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
-GraphView::GetFanin(const GraphView::InputPort& port) const {
-  std::unordered_set<GraphView::OutputPort, GraphView::HashPort> result;
-  if (port.port_id >= 0) {
-    result.insert(GetRegularFanin(port));
-  } else {
-    for (int i = port.node->input_size() - 1; i >= 0; --i) {
-      OutputPort fanin;
-      string fanin_name = ParseNodeName(port.node->input(i), &fanin.port_id);
-      if (fanin.port_id < 0) {
-        auto it = nodes_.find(fanin_name);
-        if (it != nodes_.end()) {
-          fanin.node = it->second;
-          result.insert(fanin);
-        }
-      } else {
-        break;
-      }
-    }
-  }
-  return result;
-}
-
-const GraphView::OutputPort GraphView::GetRegularFanin(
-    const GraphView::InputPort& port) const {
-  CHECK_LE(0, port.port_id);
-  OutputPort fanin;
-  string fanin_name =
-      ParseNodeName(port.node->input(port.port_id), &fanin.port_id);
-  auto it = nodes_.find(fanin_name);
-  if (it == nodes_.end()) {
-    fanin.node = nullptr;
-  } else {
-    fanin.node = it->second;
-  }
-  return fanin;
-}
-
-std::unordered_set<GraphView::InputPort, GraphView::HashPort>
-GraphView::GetFanouts(const NodeDef& node,
-                      bool include_controlled_nodes) const {
-  std::unordered_set<InputPort, HashPort> result;
-  OutputPort port;
-  port.node = const_cast<NodeDef*>(&node);
-  const int first_port_id = include_controlled_nodes ? -1 : 0;
-  auto it = num_regular_outputs_.find(&node);
-  const int last_port_id = (it != num_regular_outputs_.end()) ? it->second : -1;
-
-  for (int i = first_port_id; i <= last_port_id; ++i) {
-    port.port_id = i;
-    auto it = fanouts_.find(port);
-    if (it != fanouts_.end()) {
-      result.insert(it->second.begin(), it->second.end());
-    }
-  }
-  return result;
-}
-
-std::unordered_set<GraphView::OutputPort, GraphView::HashPort>
-GraphView::GetFanins(const NodeDef& node,
-                     bool include_controlling_nodes) const {
-  std::unordered_set<OutputPort, HashPort> result;
-  for (int i = 0; i < node.input_size(); ++i) {
-    OutputPort fanin;
-    string fanin_name = ParseNodeName(node.input(i), &fanin.port_id);
-    if (fanin.port_id < 0) {
-      if (!include_controlling_nodes) {
-        break;
-      }
-    }
-    auto it = nodes_.find(fanin_name);
-    if (it != nodes_.end()) {
-      fanin.node = it->second;
-      result.insert(fanin);
-    }
-  }
-  return result;
-}
-
-int GraphView::NumFanins(const NodeDef& node,
-                         bool include_controlling_nodes) const {
-  int count = 0;
-  for (const string& input : node.input()) {
-    if (!include_controlling_nodes && IsControlInput(input)) {
-      break;
-    }
-    count += 1;
-  }
-  return count;
-}
-
-std::unordered_set<GraphView::Edge, GraphView::HashEdge>
-GraphView::GetFanoutEdges(const NodeDef& node,
-                          bool include_controlled_edges) const {
-  std::unordered_set<Edge, HashEdge> result;
-  OutputPort port;
-  port.node = const_cast<NodeDef*>(&node);
-  const int first_port_id = include_controlled_edges ? -1 : 0;
-  auto it = num_regular_outputs_.find(&node);
-  const int last_port_id = (it != num_regular_outputs_.end()) ? it->second : -1;
-
-  for (int i = first_port_id; i <= last_port_id; ++i) {
-    port.port_id = i;
-    auto it = fanouts_.find(port);
-    if (it != fanouts_.end()) {
-      Edge fanout;
-      fanout.src.node = const_cast<NodeDef*>(&node);
-      fanout.src.port_id = i;
-      for (auto itr = it->second.begin(); itr != it->second.end(); ++itr) {
-        fanout.tgt = *itr;
-        result.insert(fanout);
-      }
-    }
-  }
-  return result;
-}
-
-std::unordered_set<GraphView::Edge, GraphView::HashEdge>
-GraphView::GetFaninEdges(const NodeDef& node,
-                         bool include_controlling_edges) const {
-  std::unordered_set<Edge, HashEdge> result;
-  for (int i = 0; i < node.input_size(); ++i) {
-    Edge fanin;
-    fanin.tgt.node = const_cast<NodeDef*>(&node);
-    fanin.tgt.port_id = i;
-    string fanin_name = ParseNodeName(node.input(i), &fanin.src.port_id);
-    if (fanin.src.port_id < 0) {
-      if (!include_controlling_edges) {
-        break;
-      }
-    }
-    auto it = nodes_.find(fanin_name);
-    if (it != nodes_.end()) {
-      fanin.src.node = it->second;
-      result.insert(fanin);
-    }
-  }
-  return result;
+bool HasControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node) {
+  return HasControlFanin(graph_view, node) ||
+         HasControlFanout(graph_view, node);
 }
 
 }  // end namespace grappler

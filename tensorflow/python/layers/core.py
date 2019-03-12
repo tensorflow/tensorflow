@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -63,7 +64,7 @@ class Dense(keras_layers.Dense, base.Layer):
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
-    reuse: Boolean, whether to reuse the weights of a previous layer
+    _reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
   Properties:
@@ -109,6 +110,9 @@ class Dense(keras_layers.Dense, base.Layer):
                                 **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.dense instead.')
 @tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
@@ -223,6 +227,9 @@ class Dropout(keras_layers.Dropout, base.Layer):
     return super(Dropout, self).call(inputs, training=training)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.dropout instead.')
 @tf_export(v1=['layers.dropout'])
 def dropout(inputs,
             rate=0.5,
@@ -291,6 +298,9 @@ class Flatten(keras_layers.Flatten, base.Layer):
   pass
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.flatten instead.')
 @tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).

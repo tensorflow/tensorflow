@@ -136,6 +136,7 @@ class TileOp : public OpKernel {
 
     // Invoke macro using TF_CALL_* so type-filtering for platform applies.
     TF_CALL_bool(HANDLE_TYPE_NAME);
+    TF_CALL_bfloat16(HANDLE_TYPE_NAME);
     TF_CALL_float(HANDLE_TYPE_NAME);
     TF_CALL_double(HANDLE_TYPE_NAME);
     TF_CALL_uint8(HANDLE_TYPE_NAME);
@@ -214,6 +215,7 @@ inline void TileOp<Device, Tmultiples>::HandleCase(
 
 TF_CALL_bool(HANDLE_TYPE_NAME_CPU);
 TF_CALL_float(HANDLE_TYPE_NAME_CPU);
+TF_CALL_bfloat16(HANDLE_TYPE_NAME_CPU);
 TF_CALL_double(HANDLE_TYPE_NAME_CPU);
 TF_CALL_uint8(HANDLE_TYPE_NAME_CPU);
 TF_CALL_int32(HANDLE_TYPE_NAME_CPU);
@@ -325,6 +327,7 @@ class TileGradientOp : public OpKernel {
     TF_CALL_int16(HANDLE_TYPE_NAME);
     TF_CALL_int64(HANDLE_TYPE_NAME);
     TF_CALL_half(HANDLE_TYPE_NAME);
+    TF_CALL_bfloat16(HANDLE_TYPE_NAME);
     TF_CALL_complex64(HANDLE_TYPE_NAME);
     TF_CALL_complex128(HANDLE_TYPE_NAME);
 

@@ -39,7 +39,7 @@ class GraphOptimizer {
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
   // on "cluster".
-  // Returns true iff it managed to generate a solution, false otherwise.
+  // Returns an error status if it failed to generate a solution.
   virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) = 0;
 

@@ -35,7 +35,7 @@ class LargeConcatOpTest(test.TestCase):
     with self.session(use_gpu=False):
       # TODO(dga):  Add more depth to this test to validate correctness,
       # not just non-crashingness, once other large tensor fixes have gone in.
-      _ = onezeros.eval()
+      _ = self.evaluate(onezeros)
 
 
 if __name__ == "__main__":

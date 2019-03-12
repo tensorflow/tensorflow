@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
@@ -40,9 +42,10 @@ class LivenessTest(test.TestCase):
         arg_types=None,
         owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     graphs = cfg.build(node)
-    liveness.resolve(node, entity_info, graphs)
+    liveness.resolve(node, ctx, graphs)
     return node
 
   def assertHasLiveOut(self, node, expected):
@@ -241,6 +244,62 @@ class LivenessTest(test.TestCase):
     fn_body = node.body[0].body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'x', 'y'))
+
+  def test_live_in_generator_comprehension(self):
+
+    def test_fn(y):
+      if all(x for x in y):
+        return
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    if six.PY2:
+      self.assertHasLiveIn(fn_body[0], ('all', 'x', 'y'))
+    else:
+      self.assertHasLiveIn(fn_body[0], ('all', 'y'))
+
+  def test_live_in_list_comprehension(self):
+
+    def test_fn(y):
+      if [x for x in y]:
+        return
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    if six.PY2:
+      self.assertHasLiveIn(fn_body[0], ('x', 'y'))
+    else:
+      self.assertHasLiveIn(fn_body[0], ('y',))
+
+  def test_live_in_set_comprehension(self):
+
+    def test_fn(y):
+      if {x for x in y}:
+        return
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    if six.PY2:
+      self.assertHasLiveIn(fn_body[0], ('x', 'y'))
+    else:
+      self.assertHasLiveIn(fn_body[0], ('y',))
+
+  def test_live_in_dict_comprehension(self):
+
+    def test_fn(y):
+      if {k: v for k, v in y}:
+        return
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    if six.PY2:
+      self.assertHasLiveIn(fn_body[0], ('k', 'v', 'y'))
+    else:
+      self.assertHasLiveIn(fn_body[0], ('y',))
 
 
 if __name__ == '__main__':

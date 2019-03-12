@@ -50,13 +50,13 @@ def remote_fused_graph_execute(inputs,
   if default_graph_input_tensor_type_shapes:
     for type_shape in default_graph_input_tensor_type_shapes:
       type_shape_proto = info_proto.default_graph_input_tensor_shape.add()
-      type_shape_proto.dtype = int(dtypes.as_dtype(type_shape[0]))
+      type_shape_proto.dtype = dtypes.as_dtype(type_shape[0]).as_datatype_enum
       for dim in type_shape[1]:
         type_shape_proto.shape.dim.add().size = dim
   if default_graph_output_tensor_type_shapes:
     for type_shape in default_graph_output_tensor_type_shapes:
       type_shape_proto = info_proto.default_graph_output_tensor_shape.add()
-      type_shape_proto.dtype = int(dtypes.as_dtype(type_shape[0]))
+      type_shape_proto.dtype = dtypes.as_dtype(type_shape[0]).as_datatype_enum
       for dim in type_shape[1]:
         type_shape_proto.shape.dim.add().size = dim
 

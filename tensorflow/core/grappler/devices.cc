@@ -47,9 +47,13 @@ int GetNumAvailableGPUs() {
       }
     }
   }
-#endif  // GOOGLE_CUDA
   LOG(INFO) << "Number of eligible GPUs (core count >= 8): "
             << num_eligible_gpus;
+#else
+  LOG(INFO) << "Number of eligible GPUs (core count >= 8): "
+            << num_eligible_gpus
+            << " (Note: TensorFlow was not compiled with CUDA support)";
+#endif  // GOOGLE_CUDA
   return num_eligible_gpus;
 }
 

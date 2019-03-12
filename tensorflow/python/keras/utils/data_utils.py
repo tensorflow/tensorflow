@@ -40,7 +40,7 @@ from six.moves.urllib.request import urlopen
 
 from tensorflow.python.keras.utils.generic_utils import Progbar
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 try:
@@ -144,7 +144,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   return False
 
 
-@tf_export('keras.utils.get_file')
+@keras_export('keras.utils.get_file')
 def get_file(fname,
              origin,
              untar=False,
@@ -246,10 +246,10 @@ def get_file(fname,
     try:
       try:
         urlretrieve(origin, fpath, dl_progress)
-      except URLError as e:
-        raise Exception(error_msg.format(origin, e.errno, e.reason))
       except HTTPError as e:
         raise Exception(error_msg.format(origin, e.code, e.msg))
+      except URLError as e:
+        raise Exception(error_msg.format(origin, e.errno, e.reason))
     except (Exception, KeyboardInterrupt) as e:
       if os.path.exists(fpath):
         os.remove(fpath)
@@ -324,7 +324,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return False
 
 
-@tf_export('keras.utils.Sequence')
+@keras_export('keras.utils.Sequence')
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -445,7 +445,7 @@ def get_index(uid, i):
   return _SHARED_SEQUENCES[uid][i]
 
 
-@tf_export('keras.utils.SequenceEnqueuer')
+@keras_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
 
@@ -570,7 +570,7 @@ class SequenceEnqueuer(object):
     raise NotImplementedError
 
 
-@tf_export('keras.utils.OrderedEnqueuer')
+@keras_export('keras.utils.OrderedEnqueuer')
 class OrderedEnqueuer(SequenceEnqueuer):
   """Builds a Enqueuer from a Sequence.
 
@@ -596,9 +596,9 @@ class OrderedEnqueuer(SequenceEnqueuer):
         Function, a Function to initialize the pool
     """
     def pool_fn(seqs):
-      return multiprocessing.Pool(workers,
-                                  initializer=init_pool_generator,
-                                  initargs=(seqs, self.random_seed))
+      return multiprocessing.Pool(
+          workers, initializer=init_pool_generator, initargs=(seqs, None))
+
     return pool_fn
 
   def _wait_queue(self):
@@ -680,7 +680,7 @@ def next_sample(uid):
   return six.next(_SHARED_SEQUENCES[uid])
 
 
-@tf_export('keras.utils.GeneratorEnqueuer')
+@keras_export('keras.utils.GeneratorEnqueuer')
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 
