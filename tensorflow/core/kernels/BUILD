@@ -765,7 +765,15 @@ cc_library(
     ],
     deps = [
         ":eigen_contraction_kernel",
+        ":eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "eigen_spatial_convolutions-inl",
+    hdrs = [
+        "eigen_spatial_convolutions-inl.h",
     ],
 )
 
@@ -5418,6 +5426,7 @@ filegroup(
         "eigen_pooling.h",
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
+        "eigen_spatial_convolutions-inl.h",
         "eigen_volume_patch.h",
         "fifo_queue.h",
         "maxpooling_op.h",
