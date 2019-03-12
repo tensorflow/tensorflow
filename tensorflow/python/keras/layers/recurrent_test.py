@@ -1326,6 +1326,16 @@ class RNNTest(keras_parameterized.TestCase):
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
 
+  def test_input_dim_length(self):
+    simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
+    self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))
+
+    simple_rnn = keras.layers.SimpleRNN(5, input_dim=8)
+    self.assertEqual(simple_rnn._batch_input_shape, (None, None, 8))
+
+    simple_rnn = keras.layers.SimpleRNN(5, input_length=10)
+    self.assertEqual(simple_rnn._batch_input_shape, (None, 10, None))
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
