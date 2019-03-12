@@ -276,17 +276,19 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
                                                        llvm::Value* value) {
-  return EmitLibdeviceMathCall("__nv_sqrt", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_sqrt", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
                                                         llvm::Value* value) {
-  return EmitLibdeviceMathCall("__nv_rsqrt", {value}, {prim_type}, prim_type);
+  return EmitLibdeviceMathCall("__ocml_rsqrt", {value}, {prim_type}, prim_type);
 }
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
   return EmitLibdeviceMathCall("__ocml_atan2", {lhs, rhs}, {prim_type, prim_type},
+                               prim_type);
+}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                        llvm::Value* value) {
@@ -311,7 +313,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
     // When the llvm.round is fixed, we may still want to use __nv_round here as
     // expanding the non-trivial implementation early while inlining allows
     // better optimizations.
-    return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
+    return EmitLibdeviceMathCall("__ocml_round", {value}, {prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
