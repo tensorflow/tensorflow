@@ -1964,6 +1964,10 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   } else if (node_def.op() == "Maximum") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(3), CType(6), CType(3), CType(6)));
+  } else if (node_def.op() == "Pow") {
+    ExpectArrayNear(
+        std::vector<CType>{CType(9), CType(36), CType(27), CType(216)},
+        GetSpanForData<CType>(output_data[0]));
   } else {
     ASSERT_TRUE(false);
   }
@@ -2037,6 +2041,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpTensor<ops::RealDiv, DT_FLOAT>(this);
   TestBinaryTensorOpTensor<ops::Minimum, DT_FLOAT>(this);
   TestBinaryTensorOpTensor<ops::Maximum, DT_FLOAT>(this);
+  TestBinaryTensorOpTensor<ops::Pow, DT_FLOAT>(this);
 
   TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
@@ -2045,6 +2050,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpTensor<ops::RealDiv, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Minimum, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Maximum, DT_HALF>(this);
+  TestBinaryTensorOpTensor<ops::Pow, DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
