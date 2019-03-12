@@ -151,6 +151,27 @@ releases the handle.
 'literal' is a serialized xla::LiteralProto proto.
 )");
 
+REGISTER_OP("XRTReadToTensor")
+    .Input("handles: int64")
+    .Attr("release_handles: bool = False")
+    .Attr("dtypes: list(type)")
+    .Output("tensors: dtypes")
+    .SetShapeFn(tensorflow::shape_inference::UnknownShape)
+    .Doc(
+        R"(
+Copies allocated values from device memory and returns them as zero or more
+Tensors. If a handle refers to a non-tuple buffer, a single tensor is returned.
+In general, the tensors returned for a handle correspond to an in-order traversal
+of a the tuple-tree value referenced by the handle.
+
+'handles' contains ids returned from Ops that produced on-device allocations.
+At present, only a single (scalar) handle is supported.
+'dtypes' are the expected types for each `Tensor` to be returned. If the
+expected and actual tensor types do not match, an error is returned.
+'release_handles': if True, `handles` are released.
+'tensors' are the output Tensors.
+)");
+
 REGISTER_OP("XRTReleaseAllocationHandle")
     .Input("handle: int64")
     .SetShapeFn(tensorflow::shape_inference::NoOutputs)

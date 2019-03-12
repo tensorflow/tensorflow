@@ -34,7 +34,55 @@ class CallTreesTest(converter_testing.TestCase):
       self.assertEquals(
           result.test_fn(None),
           converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
-      self.assertListEqual(self.dynamic_calls, [()])
+      self.assertListEqual(self.dynamic_calls, [((), {})])
+
+  def test_function_with_kwarg(self):
+
+    def test_fn(f, a, b):
+      return f(a, c=b) + 3
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEquals(
+          result.test_fn(None, 1, 2),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
+      self.assertListEqual(self.dynamic_calls, [((1,), {'c': 2})])
+
+  def test_function_with_kwargs_starargs(self):
+
+    def test_fn(f, a, *args, **kwargs):
+      return f(a, *args, **kwargs) + 5
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEquals(
+          result.test_fn(None, 1, *[2, 3], **{'b': 4, 'c': 5}),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 5)
+      self.assertListEqual(self.dynamic_calls, [((1, 2, 3), {'b': 4, 'c': 5})])
+
+  def test_function_with_kwargs_starargs_only(self):
+
+    def f(*unused_args):  # Will not be called.
+      pass
+
+    def test_fn():
+      args = [1, 2, 3]
+      return f(*args) + 11
+
+    with self.converted(test_fn, call_trees, {'f': f}) as result:
+      self.assertEquals(
+          result.test_fn(),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 11)
+      self.assertListEqual(self.dynamic_calls, [((1, 2, 3), {})])
+
+  def test_function_with_kwargs_keywords(self):
+
+    def test_fn(f, a, b, **kwargs):
+      return f(a, b=b, **kwargs) + 5
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEquals(
+          result.test_fn(None, 1, 2, **{'c': 3}),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 5)
+      self.assertListEqual(self.dynamic_calls, [((1,), {'b': 2, 'c': 3})])
 
   def test_class_method(self):
 
@@ -47,7 +95,7 @@ class CallTreesTest(converter_testing.TestCase):
     with self.converted(TestClass.test_method, call_trees, {}) as result:
       self.assertEquals(converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 1,
                         result.test_method(tc, 1))
-      self.assertListEqual(self.dynamic_calls, [(1,)])
+      self.assertListEqual(self.dynamic_calls, [((1,), {})])
 
   def test_object_method(self):
 
@@ -60,7 +108,7 @@ class CallTreesTest(converter_testing.TestCase):
     with self.converted(tc.test_method, call_trees, {}) as result:
       self.assertEquals(converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 1,
                         result.test_method(tc, 1))
-      self.assertListEqual(self.dynamic_calls, [(1,)])
+      self.assertListEqual(self.dynamic_calls, [((1,), {})])
 
 
 if __name__ == '__main__':

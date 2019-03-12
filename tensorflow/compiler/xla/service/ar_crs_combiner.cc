@@ -32,15 +32,13 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
 namespace m = match;
 
 // Checks if the argument instruction is an AllReduce, followed by a certain
 // sequence of instructions and then a CRS. It must be possible to move
 // the AR past each instruction in the sequence. Returns the CRS, which is the
 // last instruction in the sequence.
-absl::optional<HloInstruction*> MatchesArCrsPattern(
+absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
     HloInstruction* instruction) {
   auto can_ar_move_past_instruction = [](HloInstruction* instruction) -> bool {
     if (instruction->user_count() != 1) {
@@ -77,22 +75,22 @@ absl::optional<HloInstruction*> MatchesArCrsPattern(
     return absl::nullopt;
   }
   auto next = instruction->users()[0];
+  int64 distance = 1;
   while (!next->IsCrossReplicaAllReduce()) {
     if (can_ar_move_past_instruction(next)) {
       next = next->users()[0];
     } else {
       return absl::nullopt;
     }
+    ++distance;
   }
   if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
       computation_is_addition(next->called_computations()[0])) {
-    return absl::optional<HloInstruction*>(next);
+    return absl::optional<ArCrsPair>(ArCrsPair(instruction, next, distance));
   } else {
     return absl::nullopt;
   }
 }
-
-}  // namespace
 
 absl::optional<HloInstruction*> ArCrsCombiner::WhileFromBodyParameter(
     HloInstruction* instruction) {
@@ -235,15 +233,55 @@ bool ArCrsCombiner::InstructionsComputeSameValue(
 }
 
 void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
+  // Say that two or more ARs lead to the same CRS: (AR1, CRS), (AR2, CRS),
+  // ... , (ARn, CRS).
+  // If as we traverse the HLO graph we start tracking the pair (AR2, CRS),
+  // and later find that AR1's distance from the CRS is longer, we discard
+  // AR2 and start tracking AR1. We put the discarded ids in this set, in order
+  // to skip processing of short paths when we encounter the other ARs that
+  // have the same id as AR2.
+  absl::flat_hash_set<int64> discarded_ar_ids;
   for (HloComputation* computation : module->MakeNonfusionComputations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      auto maybe_crs = MatchesArCrsPattern(instruction);
-      if (maybe_crs) {
-        auto crs = *maybe_crs;
+      auto maybe_pair = MatchesArCrsPattern(instruction);
+      if (maybe_pair) {
+        auto pair = *maybe_pair;
         int64 ar_id = *(instruction->all_reduce_id());
-        if (crs_reserved_map_.find(crs) == crs_reserved_map_.end()) {
-          all_reduce_map_[ar_id].push_back(instruction);
-          crs_reserved_map_[crs] = ar_id;
+        if (discarded_ar_ids.find(ar_id) != discarded_ar_ids.end()) {
+          continue;
+        }
+        auto it = crs_reserved_map_.find(pair.crs);
+        if (it != crs_reserved_map_.end()) {
+          auto prev_ar_id = it->second;
+          // Since there is another AR paired with CRS,
+          // all_reduce_map_[prev_ar_id] should exist, but
+          // all_reduce_map_[ar_id] shouldn't.
+          CHECK(all_reduce_map_.find(ar_id) == all_reduce_map_.end());
+          CHECK_NE(prev_ar_id, ar_id);
+          auto prev_pair = all_reduce_map_[prev_ar_id].back();
+          int64 prev_distance = prev_pair.distance;
+          if (prev_distance < pair.distance) {
+            // The current AR's distance to CRS is longer than the previously
+            // tracked AR, so we discard the previous AR.
+            all_reduce_map_.erase(prev_ar_id);
+            discarded_ar_ids.insert(prev_ar_id);
+            all_reduce_map_[ar_id].push_back(pair);
+            crs_reserved_map_[pair.crs] = ar_id;
+          } else {
+            // Discard the current AR id because we are keeping the previously
+            // tracked AR.
+            discarded_ar_ids.insert(ar_id);
+          }
+        } else {
+          if (all_reduce_map_.find(ar_id) != all_reduce_map_.end()) {
+            int64 prev_distance = all_reduce_map_[ar_id].back().distance;
+            CHECK_EQ(prev_distance, pair.distance)
+                << "All ARs with the same AR ID must have the same distance "
+                   "from the corresponding CRSs. Found: "
+                << prev_distance << " and " << pair.distance;
+          }
+          all_reduce_map_[ar_id].push_back(pair);
+          crs_reserved_map_[pair.crs] = ar_id;
         }
       }
     }
@@ -253,11 +291,11 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
 void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
   for (auto it : all_reduce_map_) {
     auto all_reduce_id = it.first;
-    auto instruction_vec = it.second;
-    CHECK_EQ(instruction_vec.size(), num_spatial_partitions_);
-    auto instr_0 = instruction_vec[0];
-    for (int i = 1; i < instruction_vec.size(); ++i) {
-      auto instr_i = instruction_vec[i];
+    auto pairs_vec = it.second;
+    CHECK_EQ(pairs_vec.size(), num_spatial_partitions_);
+    auto instr_0 = pairs_vec[0].ar;
+    for (int i = 1; i < pairs_vec.size(); ++i) {
+      auto instr_i = pairs_vec[i].ar;
       auto next_0 = instr_0->users()[0];
       auto next_i = instr_i->users()[0];
       absl::flat_hash_map<int64, int64> visited_pairs;
@@ -281,8 +319,9 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
     return false;
   }
   for (auto it : all_reduce_map_) {
-    auto instruction_vec = it.second;
-    for (auto all_reduce : instruction_vec) {
+    auto pairs_vec = it.second;
+    for (auto pair : pairs_vec) {
+      auto all_reduce = pair.ar;
       auto parent_computation = all_reduce->parent();
       auto all_reduce_id = all_reduce->all_reduce_id();
       auto prev = all_reduce->mutable_operand(0);
@@ -303,16 +342,23 @@ StatusOr<bool> ArCrsCombiner::RewriteGraph() {
                                      ? next->operands()[1]
                                      : next->operands()[0];
             // To move the AR past the addition/subtraction, we need to divide
-            // other_operand by the number of spatial partitions.
-            auto shape = other_operand->shape();
-            Literal lit(shape);
-            lit.PopulateWithValue<float>(num_spatial_partitions_);
-            auto divisor = parent_computation->AddInstruction(
-                HloInstruction::CreateConstant(lit.Clone()));
-            auto division =
-                parent_computation->AddInstruction(HloInstruction::CreateBinary(
-                    shape, HloOpcode::kDivide, other_operand, divisor));
-            TF_CHECK_OK(other_operand->ReplaceUseWith(next, division));
+            // other_operand by the number of spatial partitions, except if
+            // other_operand is a cross-module AR, which can be eliminated.
+            if (other_operand->IsCrossModuleAllReduce() &&
+                other_operand->user_count() == 1) {
+              TF_CHECK_OK(other_operand->ReplaceAllUsesWith(
+                  other_operand->mutable_operand(0)));
+            } else {
+              auto shape = other_operand->shape();
+              Literal lit(shape);
+              lit.PopulateWithValue<float>(num_spatial_partitions_);
+              auto divisor = parent_computation->AddInstruction(
+                  HloInstruction::CreateConstant(lit.Clone()));
+              auto division = parent_computation->AddInstruction(
+                  HloInstruction::CreateBinary(shape, HloOpcode::kDivide,
+                                               other_operand, divisor));
+              TF_CHECK_OK(other_operand->ReplaceUseWith(next, division));
+            }
             break;
           }
           default:

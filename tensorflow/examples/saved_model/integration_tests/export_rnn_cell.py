@@ -33,7 +33,7 @@ def main(argv):
   del argv
 
   root = tf.train.Checkpoint()
-  # Create a cell and attach to our checkpointable.
+  # Create a cell and attach to our trackable.
   root.rnn_cell = tf.keras.layers.LSTMCell(units=10, recurrent_initializer=None)
 
   # Wrap the rnn_cell.__call__ function and assign to next_state.

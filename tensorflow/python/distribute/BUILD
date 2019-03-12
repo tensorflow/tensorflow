@@ -61,6 +61,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
@@ -112,8 +113,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
+        ":one_device_strategy",
+        "//tensorflow/python/distribute/experimental",
     ],
 )
 
@@ -459,7 +463,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
     ],
 )

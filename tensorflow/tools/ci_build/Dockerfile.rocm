@@ -73,6 +73,10 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
+# Workadround : build HIP from source that has HIP PR 933 + PR 936 merged
+RUN cd $HOME && git clone -b pr_933_936_fixes https://github.com/deven-amd/HIP.git
+RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make package -j$(nproc) && dpkg -i *.deb
+
 # Copy and run the install scripts.
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive

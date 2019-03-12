@@ -67,17 +67,17 @@ struct OpWithBiasTensors {
 
 const OpWithBiasTensors* GetInfoForOpWithBiasTensor(BuiltinOperator op_code) {
   if (op_code == BuiltinOperator_CONV_2D) {
-    static OpWithBiasTensors op_info = {.activation_input_index = 0,
-                                        .weights_input_index = 1,
-                                        .bias_input_index = 2,
-                                        .index_for_channel_in_weights = 0};
+    static OpWithBiasTensors op_info = {/* activation_input_index */ 0,
+                                        /* weights_input_index */ 1,
+                                        /* bias_input_index */ 2,
+                                        /* index_for_channel_in_weights */ 0};
     return &op_info;
   }
   if (op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
-    static OpWithBiasTensors op_info = {.activation_input_index = 0,
-                                        .weights_input_index = 1,
-                                        .bias_input_index = 2,
-                                        .index_for_channel_in_weights = 3};
+    static OpWithBiasTensors op_info = {/* bias_input_index */ 0,
+                                        /* bias_input_index */ 1,
+                                        /* bias_input_index */ 2,
+                                        /* index_for_channel_in_weights */ 3};
     return &op_info;
   }
 

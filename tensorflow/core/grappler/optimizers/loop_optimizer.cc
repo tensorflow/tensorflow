@@ -581,8 +581,19 @@ Status EvaluateBoolOpForConstantOperands(const NodeDef& op_node,
   return Status::OK();
 }
 
+// TODO(lyandy): Consolidate with ConstantFolding implementation.
+bool IsReallyConstant(const NodeDef& node,
+                      const absl::flat_hash_set<string>& feed_nodes) {
+  if (!IsConstant(node)) {
+    return false;
+  }
+  // If the node is fed it's not constant anymore.
+  return feed_nodes.find(node.name()) == feed_nodes.end();
+}
+
 Status CheckForDeadFanout(const MutableGraphView& view,
                           const NodeDef& switch_node, const NodeMap& node_map,
+                          const absl::flat_hash_set<string>& feed_nodes,
                           DeviceBase* cpu_device, ResourceMgr* resource_mgr,
                           bool* has_dead_fanout, int* dead_fanout) {
   *has_dead_fanout = false;
@@ -591,7 +602,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
       view.GetRegularFanin(switch_loopcond_port).node;
 
   // CASE 1: Control is a constant.
-  if (IsConstant(*switch_predicate)) {
+  if (IsReallyConstant(*switch_predicate, feed_nodes)) {
     Tensor selector;
     CHECK(selector.FromProto(switch_predicate->attr().at("value").tensor()));
     *has_dead_fanout = true;
@@ -630,7 +641,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     if (IsMerge(*node)) {
       merge_node = node;
     }
-    if (IsConstant(*node)) {
+    if (IsReallyConstant(*node, feed_nodes)) {
       constant_ctrl_input = node;
       constant_index = i;
     }
@@ -646,7 +657,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     if (IsEnter(*node)) {
       enter_node = node;
     }
-    if (IsConstant(*node)) {
+    if (IsReallyConstant(*node, feed_nodes)) {
       constant_init_node = node;
     }
   }
@@ -654,7 +665,7 @@ Status CheckForDeadFanout(const MutableGraphView& view,
     if (constant_init_node != nullptr) return Status::OK();
     for (const auto& input : enter_node->input()) {
       NodeDef* node = node_map.GetNode(input);
-      if (IsConstant(*node)) {
+      if (IsReallyConstant(*node, feed_nodes)) {
         constant_init_node = node;
       }
     }
@@ -710,8 +721,12 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     // TODO(srjoglekar): Figure out if we can optimize NodeMap creations across
     // optimizer passes.
     NodeMap node_map(optimized_graph);
-    TF_RETURN_IF_ERROR(
-        RemoveDeadBranches(item.NodesToPreserve(), node_map, optimized_graph));
+    absl::flat_hash_set<string> feed_nodes;
+    for (const auto& feed : item.feed) {
+      feed_nodes.insert(NodeName(feed.first));
+    }
+    TF_RETURN_IF_ERROR(RemoveDeadBranches(item.NodesToPreserve(), node_map,
+                                          feed_nodes, optimized_graph));
   }
 
   return Status::OK();
@@ -719,7 +734,8 @@ Status LoopOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
 Status LoopOptimizer::RemoveDeadBranches(
     const std::unordered_set<string>& nodes_to_preserve,
-    const NodeMap& node_map, GraphDef* optimized_graph) {
+    const NodeMap& node_map, const absl::flat_hash_set<string>& feed_nodes,
+    GraphDef* optimized_graph) {
   std::unordered_set<const NodeDef*> dead_nodes;
   std::unordered_map<NodeDef*, std::set<int>> dead_merge_inputs;
   // TODO(bsteiner): also rewrite switches as identity. For now we just record
@@ -737,9 +753,9 @@ Status LoopOptimizer::RemoveDeadBranches(
 
     int dead_fanout;
     bool has_dead_fanout;
-    TF_RETURN_IF_ERROR(CheckForDeadFanout(view, node, node_map, cpu_device_,
-                                          resource_mgr_.get(), &has_dead_fanout,
-                                          &dead_fanout));
+    TF_RETURN_IF_ERROR(CheckForDeadFanout(view, node, node_map, feed_nodes,
+                                          cpu_device_, resource_mgr_.get(),
+                                          &has_dead_fanout, &dead_fanout));
     if (!has_dead_fanout) {
       continue;
     }

@@ -2363,7 +2363,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, &builder, module_.get()));
+      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, /*is_stable=*/false,
+                              &builder, module_.get()));
 
   computation_ = module_->AddEntryComputation(builder.Build());
   RunAnalysis();
@@ -2385,7 +2386,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
-                  {keys, values}, 0, &builder, module_.get()));
+                  {keys, values}, 0, /*is_stable=*/false, &builder,
+                  module_.get()));
 
   computation_ = module_->AddEntryComputation(builder.Build());
   RunAnalysis();

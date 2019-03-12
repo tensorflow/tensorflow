@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
@@ -31,7 +31,8 @@ int main(int argc, char* argv[]) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_tiny_conv_model_data);
+  const tflite::Model* model =
+      ::tflite::GetModel(g_tiny_conv_micro_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
@@ -123,7 +124,8 @@ int main(int argc, char* argv[]) {
       return 1;
     }
     if (is_new_command) {
-      error_reporter->Report("Heard %s (%d)", found_command, score);
+      error_reporter->Report("Heard %s (%d) @%dms", found_command, score,
+                             current_time);
     }
   }
 

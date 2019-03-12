@@ -618,6 +618,8 @@ void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
     } else {
       cp->instance.impl_details.collective_name = "RingReduce";
     }
+  } else if (cp->instance.type == GATHER_COLLECTIVE) {
+    cp->instance.impl_details.collective_name = "RingGather";
   } else {
     cp->instance.impl_details.collective_name = "undef";
   }

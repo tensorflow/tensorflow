@@ -206,7 +206,7 @@ class WrapFunctionTest(test.TestCase):
         fetches=(f_wrapped.graph.get_operation_by_name('increment'),
                  f_wrapped.graph.get_tensor_by_name('other:0')))
     first_output, second_output = increments(constant_op.constant(2))
-    self.assertEqual(['Placeholder:0', 'Placeholder_1:0'],
+    self.assertEqual(['step:0', 'increment/resource:0'],
                      [t.name for t in increments.inputs])
     self.assertIs(None, first_output)
     self.assertEqual(1, second_output.numpy())

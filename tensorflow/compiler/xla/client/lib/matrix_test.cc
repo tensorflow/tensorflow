@@ -53,13 +53,24 @@ void MatrixTest::TestMatrixDiagonal() {
   XlaBuilder builder("GetMatrixDiagonal");
   Array3D<T> input(2, 3, 4);
   input.FillIota(0);
+  std::map<int, Array2D<T>> k_and_expected = {
+      {0, {{0, 5, 10}, {12, 17, 22}}},
+      {1, {{1, 6, 11}, {13, 18, 23}}},
+      {2, {{2, 7}, {14, 19}}},
+      {3, {{3}, {15}}},
+      {4, {{}, {}}},
+      {-1, {{4, 9}, {16, 21}}},
+      {-2, {{8}, {20}}},
+      {-3, {{}, {}}},
+      {-4, {{}, {}}},
+  };
+  for (const auto& kv : k_and_expected) {
+    XlaOp a;
+    auto a_data = CreateR3Parameter<T>(input, 0, "a", &builder, &a);
+    GetMatrixDiagonal(a, kv.first);
 
-  XlaOp a;
-  auto a_data = CreateR3Parameter<T>(input, 0, "a", &builder, &a);
-  GetMatrixDiagonal(a);
-  Array2D<T> expected({{0, 5, 10}, {12, 17, 22}});
-
-  ComputeAndCompareR2<T>(&builder, expected, {a_data.get()});
+    ComputeAndCompareR2<T>(&builder, kv.second, {a_data.get()});
+  }
 }
 
 XLA_TEST_F(MatrixTest, GetMatrixDiagonal_S32) { TestMatrixDiagonal<int32>(); }

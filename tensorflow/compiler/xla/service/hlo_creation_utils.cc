@@ -275,7 +275,7 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
 
 StatusOr<HloInstruction*> MakeSortHlo(
     const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
-    int64 dimension_to_sort, HloComputation::Builder* builder,
+    int64 dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
     HloModule* module) {
   CHECK(!operands.empty()) << "Sort Hlo requires at least one operand.";
   HloComputation* compare_computation;
@@ -293,7 +293,7 @@ StatusOr<HloInstruction*> MakeSortHlo(
   compare_computation =
       module->DeepCloneComputation(new_module->entry_computation(), &context);
   return builder->AddInstruction(HloInstruction::CreateSort(
-      sort_shape, dimension_to_sort, operands, compare_computation));
+      sort_shape, dimension_to_sort, operands, compare_computation, is_stable));
 }
 
 StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {

@@ -26,6 +26,7 @@ import gast
 
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 
@@ -33,16 +34,35 @@ from tensorflow.python.autograph.pyct import templates
 # TODO(mdan): Rename to FunctionCallsTransformer.
 
 
+class _Function(object):
+
+  no_root = True
+
+
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
   def visit_FunctionDef(self, node):
+    self.state[_Function].enter()
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
-    # TODO(mdan): Is this correct for local functions?
-    node.decorator_list = []
+
+    if self.state[_Function].level < 2:
+      # Top-level functions lose their decorator because the conversion is
+      # always just-in-time and by the time it happens the decorators are
+      # already set to be applied.
+      node.decorator_list = []
+    else:
+      # Inner functions are converted already, so we insert a decorator to
+      # prevent double conversion. Double conversion would work too, but this
+      # saves the overhead.
+      node.decorator_list.append(
+          parser.parse_expression('ag__.do_not_convert_internal'))
+
     if node.returns:
       node.returns = self.visit(node.returns)
+
+    self.state[_Function].exit()
     return node
 
   def visit_With(self, node):
@@ -62,9 +82,6 @@ class CallTreeTransformer(converter.Base):
         not self.ctx.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS)):
       return self.generic_visit(node)
 
-    template = """
-      ag__.converted_call(func, owner, options, args)
-    """
     if isinstance(node.func, gast.Attribute):
       func = gast.Str(node.func.attr)
       owner = node.func.value
@@ -72,6 +89,41 @@ class CallTreeTransformer(converter.Base):
       func = node.func
       owner = parser.parse_expression('None')
 
+    starred_arg = None
+    normal_args = []
+    for a in node.args:
+      if isinstance(a, gast.Starred):
+        assert starred_arg is None, 'Multiple *args should be impossible.'
+        starred_arg = a
+      else:
+        normal_args.append(a)
+    if starred_arg is None:
+      args = templates.replace_as_expression('(args,)', args=normal_args)
+    else:
+      args = templates.replace_as_expression(
+          '(args,) + tuple(stararg)',
+          stararg=starred_arg.value,
+          args=normal_args)
+
+    kwargs_arg = None
+    normal_keywords = []
+    for k in node.keywords:
+      if k.arg is None:
+        assert kwargs_arg is None, 'Multiple **kwargs should be impossible.'
+        kwargs_arg = k
+      else:
+        normal_keywords.append(k)
+    if kwargs_arg is None:
+      kwargs = ast_util.keywords_to_dict(normal_keywords)
+    else:
+      kwargs = templates.replace_as_expression(
+          'dict(kwargs, **keywords)',
+          kwargs=kwargs_arg.value,
+          keywords=ast_util.keywords_to_dict(normal_keywords))
+
+    template = """
+      ag__.converted_call(func, owner, options, args, kwargs)
+    """
     new_call = templates.replace_as_expression(
         template,
         func=func,
@@ -79,9 +131,8 @@ class CallTreeTransformer(converter.Base):
         options=self.ctx.program.options.to_ast(
             self.ctx,
             internal_convert_user_code=self.ctx.program.options.recursive),
-        args=node.args)
-    # TODO(mdan): Improve the template mechanism to better support this.
-    new_call.keywords = node.keywords
+        args=args,
+        kwargs=kwargs)
 
     return new_call
 

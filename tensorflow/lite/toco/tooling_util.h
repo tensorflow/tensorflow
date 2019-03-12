@@ -267,7 +267,10 @@ void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
 string CreateInt32Array(Model* model, const string& param_name,
                         const std::vector<int>& value);
 
+bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
+                                int64* result);
 bool EstimateArithmeticOpsCount(const Model& model, int64* result);
+string FormattedNumber(int64 x);
 
 int AxesCount(AxesOrder axes_order);
 

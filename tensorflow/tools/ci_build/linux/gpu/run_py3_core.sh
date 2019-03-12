@@ -40,8 +40,4 @@ bazel test --config=cuda --test_tag_filters=-no_oss,-oss_serial,-no_gpu,-benchma
     --build_tests_only --test_output=errors --local_test_jobs=8 --config=opt \
     --test_size_filters=small,medium \
     --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute -- \
-    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... \
-    -//tensorflow/python/keras:base_layer_test \
-    -//tensorflow/python/training/checkpointable:util_xla_test_cpu \
-    -//tensorflow/python/training/checkpointable:util_xla_test_gpu \
-    -//tensorflow/python/keras:normalization_test \
+    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... 

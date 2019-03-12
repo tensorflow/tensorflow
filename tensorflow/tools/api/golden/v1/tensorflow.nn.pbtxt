@@ -22,11 +22,23 @@ tf_module {
   }
   member_method {
     name: "avg_pool"
-    argspec: "args=[\'value\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'value\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool1d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NWC\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool2d"
+    argspec: "args=[\'value\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\', \'None\'], "
   }
   member_method {
     name: "avg_pool3d"
     argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NDHWC\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool_v2"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "batch_norm_with_global_normalization"
@@ -91,6 +103,10 @@ tf_module {
   member_method {
     name: "conv3d_transpose"
     argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'SAME\', \'NDHWC\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "conv_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "convolution"

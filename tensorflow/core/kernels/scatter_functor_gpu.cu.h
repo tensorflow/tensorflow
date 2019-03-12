@@ -128,9 +128,10 @@ struct ScatterFunctor<GPUDevice, T, Index, op> {
     const Index updates_size = updates.size();
     GpuLaunchConfig config = GetGpuLaunchConfig(updates_size, d);
     GPU_LAUNCH_KERNEL((scatter_op_gpu::ScatterOpCustomKernel<T, Index, op>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        params.data(), updates.data(), indices.data(), first_dim_size,
-        updates_size, indices_size);
+                      dim3(config.block_count), dim3(config.thread_per_block),
+                      0, d.stream(), params.data(), updates.data(),
+                      indices.data(), first_dim_size, updates_size,
+                      indices_size);
     return -1;
   }
 };

@@ -994,9 +994,9 @@ Status LaunchDepthwiseConv2dBackpropInputGPU(OpKernelContext* ctx,
   auto device = ctx->eigen_gpu_device();
   GpuLaunchConfig config =
       GetGpuLaunchConfig(num_in_backprop, device, kernel, 0, 0);
-  GPU_LAUNCH_KERNEL(kernel,
-      dim3(config.block_count), dim3(config.thread_per_block), 0, device.stream(),
-      args, out_backprop, filter, in_backprop, num_in_backprop);
+  GPU_LAUNCH_KERNEL(kernel, dim3(config.block_count),
+                    dim3(config.thread_per_block), 0, device.stream(), args,
+                    out_backprop, filter, in_backprop, num_in_backprop);
   return Status::OK();
 }
 

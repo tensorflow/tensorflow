@@ -73,6 +73,9 @@ class GraphRewriteDataset : public DatasetBase {
   // optimizations to be run by the Grappler Meta Optimizer.
   virtual RewriterConfig CreateGrapplerRewriteConfig() = 0;
 
+  // Option specifying whether we want to optimize the function library as well.
+  virtual bool ShouldOptimizeFunctions() { return true; }
+
   Status ApplyOptimizations(OpKernelContext* ctx, GraphDef* graph_def,
                             string* output_node);
 

@@ -82,15 +82,38 @@ int32 BoostedTreesEnsembleResource::next_node(
   return -1;
 }
 
-float BoostedTreesEnsembleResource::node_value(const int32 tree_id,
-                                               const int32 node_id) const {
+std::vector<float> BoostedTreesEnsembleResource::node_value(
+    const int32 tree_id, const int32 node_id) const {
   DCHECK_LT(tree_id, tree_ensemble_->trees_size());
   DCHECK_LT(node_id, tree_ensemble_->trees(tree_id).nodes_size());
   const auto& node = tree_ensemble_->trees(tree_id).nodes(node_id);
   if (node.node_case() == boosted_trees::Node::kLeaf) {
-    return node.leaf().scalar();
+    // TODO(crawles): only use vector leaf even if # logits=1.
+    if (node.leaf().has_vector()) {
+      std::vector<float> leaf_values;
+      const auto& leaf_value_vector = node.leaf().vector();
+      const int size = leaf_value_vector.value_size();
+      leaf_values.reserve(size);
+      for (int i = 0; i < size; ++i) {
+        leaf_values.push_back(leaf_value_vector.value(i));
+      }
+      return leaf_values;
+    } else {
+      return {node.leaf().scalar()};
+    }
   } else {
-    return node.metadata().original_leaf().scalar();
+    if (node.metadata().original_leaf().has_vector()) {
+      std::vector<float> node_values;
+      const auto& leaf_value_vector = node.metadata().original_leaf().vector();
+      const int size = leaf_value_vector.value_size();
+      node_values.reserve(size);
+      for (int i = 0; i < size; ++i) {
+        node_values.push_back(leaf_value_vector.value(i));
+      }
+      return node_values;
+    } else {
+      return {node.metadata().original_leaf().scalar()};
+    }
   }
 }
 
@@ -452,15 +475,18 @@ void BoostedTreesEnsembleResource::RecursivelyDoPostPrunePreparation(
 
     // Change node back into leaf.
     *node->mutable_leaf() = node_metadata.original_leaf();
-    const float parent_value = node_value(tree_id, node_id);
+    const auto& parent_values = node_value(tree_id, node_id);
+    DCHECK_EQ(parent_values.size(), 1);
+    const float parent_value = parent_values[0];
 
     // Save the old values of weights of children.
     (*nodes_meta)[left_id].first = node_id;
-    (*nodes_meta)[left_id].second = parent_value - node_value(tree_id, left_id);
+    (*nodes_meta)[left_id].second =
+        parent_value - node_value(tree_id, left_id)[0];
 
     (*nodes_meta)[right_id].first = node_id;
     (*nodes_meta)[right_id].second =
-        parent_value - node_value(tree_id, right_id);
+        parent_value - node_value(tree_id, right_id)[0];
 
     // Clear gain for leaf node.
     node->clear_metadata();

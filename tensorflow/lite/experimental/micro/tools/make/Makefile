@@ -126,12 +126,20 @@ third_party/flatbuffers/LICENSE.txt
 
 MAKE_PROJECT_FILES := \
   README_MAKE.md \
-  Makefile
+  Makefile \
+  .vscode/tasks.json
 
 MBED_PROJECT_FILES := \
   README_MBED.md \
   mbed-os.lib \
-  mbed_app.json
+  mbed_app.json \
+  .vscode/tasks.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
+
+ALL_PROJECT_TARGETS :=
 
 KEIL_PROJECT_FILES := \
   README_KEIL.md \
@@ -209,11 +217,21 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
+# snease: Add %.bin rule here since BINDIR is now defined
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+$(BINDIR)%.bin: $(BINDIR)%
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) $< $@ -O binary
+
 # Generate standalone makefile projects for all of the test targets.
 $(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
 test: $(MICROLITE_TEST_TARGETS)
+
+generate_projects: $(ALL_PROJECT_TARGETS)
 
 # Gets rid of all generated files.
 clean:

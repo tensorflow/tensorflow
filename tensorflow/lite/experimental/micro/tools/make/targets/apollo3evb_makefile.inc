@@ -1,13 +1,13 @@
-# Settings for apollo3 evb platforms.
-ifeq ($(TARGET), apollo3evb)
+# Settings for apollo3 evb and SparkFun Edge platforms.
+ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
   # files:
-  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/Apollo3-SDK-2018.08.13
+  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
-  # with the softfp interfaces.
+  # with the hard interfaces.
   GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
   PLATFORM_FLAGS = \
@@ -31,7 +31,7 @@ ifeq ($(TARGET), apollo3evb)
     -mcpu=cortex-m4 \
     -mthumb \
     -mfpu=fpv4-sp-d16 \
-    -mfloat-abi=softfp \
+    -mfloat-abi=hard \
     -std=gnu++11 \
     -Wvla \
     -Wall \
@@ -49,7 +49,7 @@ ifeq ($(TARGET), apollo3evb)
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
-    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp \
+    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
     -nostartfiles -static \
     -Wl,--gc-sections -Wl,--entry,Reset_Handler \
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
@@ -58,10 +58,16 @@ ifeq ($(TARGET), apollo3evb)
     -Wl,-T,$(APOLLO3_SDK)/boards/apollo3_evb/examples/hello_world/gcc_patched/apollo3evb.ld \
     -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref
   BUILD_TYPE := micro
+  ifeq ($(TARGET), apollo3evb)
+    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/apollo3_evb/bsp
+  endif
+  ifeq ($(TARGET), sparkfun_edge)
+    BOARD_BSP_PATH := $(APOLLO3_SDK)/boards/SparkFun_TensorFlow_Apollo3_BSP/bsp
+  endif
   MICROLITE_LIBS := \
-    $(APOLLO3_SDK)/boards/apollo3_evb/bsp/gcc/bin/libam_bsp.a \
+    $(BOARD_BSP_PATH)/gcc/bin/libam_bsp.a \
     $(APOLLO3_SDK)/mcu/apollo3/hal/gcc/bin/libam_hal.a \
-    $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/softfp/crtbegin.o \
+    $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/hard/crtbegin.o \
     -lm
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \
@@ -70,7 +76,7 @@ ifeq ($(TARGET), apollo3evb)
     -I$(GCC_ARM)/arm-none-eabi/ \
     -I$(APOLLO3_SDK)/mcu/apollo3/ \
     -I$(APOLLO3_SDK)/CMSIS/AmbiqMicro/Include/ \
-    -I$(APOLLO3_SDK)/boards/apollo3_evb/bsp/ \
+    -I$(BOARD_BSP_PATH) \
     -I$(APOLLO3_SDK)/devices/ \
     -I$(APOLLO3_SDK)/utils/
 

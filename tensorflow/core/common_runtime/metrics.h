@@ -21,14 +21,20 @@ limitations under the License.
 namespace tensorflow {
 namespace metrics {
 
-// Records that a tf.data dataset op executed by the program used autotuning.
+// Records that a tf.data.Dataset executed by the program used autotuning.
 //
-// The `name` argument identifies the dataset (e.g. "ParallelMap").
+// The `name` argument identifies the Dataset type (e.g. "ParallelMap").
 void RecordTFDataAutotune(const string& name);
 
-// Records the number of elements produced by a tf.data dataset.
+// Records the number of bytes read from the filesystem by a tf.data.Dataset
+// source.
 //
-// The `name` argument identifies the dataset (e.g. "Batch" or "Map").
+// The `name` argument identifies the Dataset type (e.g. "TFRecordDataset").
+void RecordTFDataBytesRead(const string& name, int64 num_bytes);
+
+// Records the number of elements produced by a tf.data.Dataset.
+//
+// The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 void RecordTFDataElements(const string& name, int64 num_elements);
 
 // Records the number of independent graph changes resulting from the applicaton

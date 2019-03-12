@@ -19,7 +19,9 @@ limitations under the License.
 #include <vector>
 
 #include "re2/re2.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tensorrt {

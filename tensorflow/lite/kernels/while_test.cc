@@ -72,7 +72,16 @@ TEST_F(WhileTest, TestPadLoop) {
   interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
   // This is not supported yet. The test ensures thatit doesn't crash and raises
   // an error properly.
-  ASSERT_NE(interpreter_->AllocateTensors(), kTfLiteOk);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[0]), {1});
+  FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {5, 7});
+
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output1 = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output1, {1}, {4});
+  TfLiteTensor* output2 = interpreter_->tensor(interpreter_->outputs()[1]);
+  CheckIntTensor(output2, {11}, {0, 0, 0, 5, 7, 0, 0, 0, 0, 0, 0});
 }
 
 }  // namespace

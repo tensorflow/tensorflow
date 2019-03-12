@@ -43,8 +43,9 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
     get_next = self.getNext(dataset)
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [shape for shape in dataset.output_shapes])
+    self.assertEqual(
+        [c.shape[1:] for c in components],
+        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
 
     for i in range(4):
       results = self.evaluate(get_next())
@@ -68,7 +69,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
 
     self.assertEqual(
         [tensor_shape.TensorShape(c.dense_shape[1:]) for c in components],
-        [shape for shape in dataset.output_shapes])
+        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
 
     expected = [
         (sparse_tensor.SparseTensorValue(
@@ -117,7 +118,7 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     self.assertEqual([
         tensor_shape.TensorShape(c.dense_shape[1:])
         if sparse_tensor.is_sparse(c) else c.shape[1:] for c in components
-    ], [shape for shape in dataset.output_shapes])
+    ], [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
 
     expected = [
         (sparse_tensor.SparseTensorValue(
@@ -161,10 +162,12 @@ class FromTensorSlicesTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.from_tensor_slices(components)
     get_next = self.getNext(dataset)
 
-    self.assertEqual(dtypes.int32, dataset.output_types["foo"])
-    self.assertEqual(dtypes.float32, dataset.output_types["bar"])
-    self.assertEqual((), dataset.output_shapes["foo"])
-    self.assertEqual((1,), dataset.output_shapes["bar"])
+    self.assertEqual(dtypes.int32,
+                     dataset_ops.get_legacy_output_types(dataset)["foo"])
+    self.assertEqual(dtypes.float32,
+                     dataset_ops.get_legacy_output_types(dataset)["bar"])
+    self.assertEqual((), dataset_ops.get_legacy_output_shapes(dataset)["foo"])
+    self.assertEqual((1,), dataset_ops.get_legacy_output_shapes(dataset)["bar"])
 
     for i in range(3):
       results = self.evaluate(get_next())

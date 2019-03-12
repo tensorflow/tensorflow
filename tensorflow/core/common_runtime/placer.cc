@@ -53,16 +53,6 @@ bool IsGeneratorNode(const Node* node) {
          !IsRefType(node->output_type(0));
 }
 
-// While Placer can override requested device on ops processing
-// resources, i.e. node that take (and potentially return) a resource,
-// it must not override requested device on ops generating a resource,
-// e.g. VarHandleOp, _Arg. Such ops are currently no-input, single resource/ref
-// output nodes.
-bool IsResourceGeneratorNode(const Node& node) {
-  return node.num_inputs() == 0 && node.num_outputs() == 1 &&
-         (IsRefType(node.output_type(0)) || node.output_type(0) == DT_RESOURCE);
-}
-
 void LogDeviceAssignment(const Node* node, bool log_device_placement) {
   // Log placement if log_device_placement is set.
   if (log_device_placement) {

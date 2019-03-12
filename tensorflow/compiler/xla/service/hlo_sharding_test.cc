@@ -84,7 +84,7 @@ TEST_F(HloShardingTest, Tile) {
   }
 
   {
-    // Test should fail because of more devices used then `num_device`.
+    // Test should fail because of more devices used than `num_device`.
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
     EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
                                        /*num_devices=*/2));

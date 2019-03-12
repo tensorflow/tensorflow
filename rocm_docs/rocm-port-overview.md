@@ -149,3 +149,24 @@ When ROCm Fusion is enabled, the following env-vars can be used to disable indiv
 - set `TF_ROCM_FUSION_DISABLE_BNA` to `1` to disable to BatchNorm+Activation fusions (forward, backward and inference)
 - set `TF_ROCM_FUSION_DISABLE_ADDRELU` to `1` to disable to Add+Relu fusion
 - set `TF_ROCM_FUSION_DISABLE_ADDNRELUGRAD` to `1` to disable to AddN+ReluGrad fusion
+
+---
+## Verbs Support
+
+This release enables the [community-contributed Verbs module](../tensorflow/contrib/verbs/README.md) for ROCm platforms.  The Verbs module provides a new distributed TensorFlow server protocol for RDMA transfers of Tensors over high-speed infiniband interconnects.  When building TensorFlow from source, you enable the Verbs module by
+
+- adding `--config=verbs` to your bazel build command, and
+- you must have the OFED headers and libraries installed, e.g., verbs.h, libibverbs.so.
+
+To use the Verbs module, you specify the new server protocol when constructing your `tf.train.Server` instances.  For example
+
+```python
+# In task 0:
+cluster = tf.train.ClusterSpec({"local": ["localhost:2222", "localhost:2223"]})
+server = tf.train.Server(cluster, job_name="local", task_index=0, protocol='grpc+verbs')
+```
+
+Additional details for running distributed TensorFlow applications can be found online:
+
+- https://github.com/tensorflow/examples/blob/master/community/en/docs/deploy/distributed.md
+- https://www.tensorflow.org/guide/distribute_strategy

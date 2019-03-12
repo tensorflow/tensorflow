@@ -296,7 +296,7 @@ void ComputeComputationPostOrder(HloComputation* computation,
 }  // namespace
 
 void HloComputation::ComputeInstructionPostOrder(
-    const HloComputation::ChannelDependencyMap& channel_dependency_map,
+    const HloComputation::ChannelDependencyGroup& channel_dependency_group,
     std::vector<HloInstruction*>* post_order, HloInstruction* root,
     absl::flat_hash_map<HloInstruction*, VisitState>* visited) const {
   std::vector<HloInstruction*> dfs_stack;
@@ -320,66 +320,75 @@ void HloComputation::ComputeInstructionPostOrder(
 
     visited->insert({current, kVisiting});
 
-    // Add the operands to the stack in reverse order so the first operand is
-    // processed first. This will produce a more natural ordering and a nicer
-    // result for things like HLO stringification.
-    const auto& operands = current->operands();
-    for (int64 i = operands.size() - 1; i >= 0; --i) {
-      dfs_stack.emplace_back(operands[i]);
-    }
-
-    for (HloInstruction* op : current->control_predecessors()) {
-      dfs_stack.emplace_back(op);
-    }
-
-    // Add inputs for send->recv_done dependencies and all-reduce
-    // dependencies.
-    switch (current->opcode()) {
-      case HloOpcode::kRecvDone: {
-        auto it = channel_dependency_map.find(current->channel_id());
-        if (it != channel_dependency_map.end()) {
-          for (HloInstruction* op : it->second) {
-            dfs_stack.emplace_back(op);
-          }
-        }
-        break;
+    const auto get_channel_id =
+        [](HloInstruction* inst) -> absl::optional<int64> {
+      switch (inst->opcode()) {
+        case HloOpcode::kRecvDone:
+          return inst->channel_id();
+        case HloOpcode::kAllReduce:
+          return inst->all_reduce_id();
+        default:
+          return absl::nullopt;
       }
-      case HloOpcode::kAllReduce: {
-        auto all_reduce_id = current->all_reduce_id();
-        if (all_reduce_id) {
-          auto it = channel_dependency_map.find(all_reduce_id.value());
-          if (it != channel_dependency_map.end()) {
-            for (HloInstruction* op : it->second) {
-              dfs_stack.emplace_back(op);
-            }
-          }
+    };
+
+    // When adding a predecessor to the dfs_stack, we need to also add its
+    // associated channel dependencies.
+    const auto add_dfs_stack = [&](HloInstruction* inst) {
+      auto channel_id = get_channel_id(inst);
+      if (channel_id && channel_dependency_group.count(*channel_id)) {
+        auto it = channel_dependency_group.find(*channel_id);
+        for (HloInstruction* cinst : it->second) {
+          dfs_stack.emplace_back(cinst);
         }
-        break;
+      } else {
+        dfs_stack.emplace_back(inst);
       }
-      default:
-        break;
+    };
+
+    const auto add_predecessors = [&](HloInstruction* inst) {
+      // Add the operands to the stack in reverse order so the first operand is
+      // processed first. This will produce a more natural ordering and a nicer
+      // result for things like HLO stringification.
+      const auto& operands = inst->operands();
+      for (int64 i = operands.size() - 1; i >= 0; --i) {
+        add_dfs_stack(operands[i]);
+      }
+
+      for (HloInstruction* op : inst->control_predecessors()) {
+        add_dfs_stack(op);
+      }
+    };
+
+    // If the current instruction is a channel instruction, add the dependencies
+    // from all associated instructions of the channel.
+    auto channel_id = get_channel_id(current);
+    if (channel_id && channel_dependency_group.count(*channel_id)) {
+      auto it = channel_dependency_group.find(*channel_id);
+      for (HloInstruction* cinst : it->second) {
+        add_predecessors(cinst);
+      }
+    } else {
+      add_predecessors(current);
     }
   }
 }
 
-HloComputation::ChannelDependencyMap
+HloComputation::ChannelDependencyGroup
 HloComputation::ComputeChannelDependencies() const {
-  ChannelDependencyMap channel_dependency_map;
+  ChannelDependencyGroup channel_dependency_group;
   for (const auto& instruction : instructions_) {
     switch (instruction->opcode()) {
-      case HloOpcode::kSend: {
-        channel_dependency_map[instruction->channel_id()].push_back(
+      case HloOpcode::kSend:
+      case HloOpcode::kRecvDone:
+        channel_dependency_group[instruction->channel_id()].push_back(
             instruction.get());
         break;
-      }
       case HloOpcode::kAllReduce: {
         auto all_reduce_id = instruction->all_reduce_id();
         if (all_reduce_id) {
-          auto& dependencies = channel_dependency_map[all_reduce_id.value()];
-          absl::c_copy(instruction->operands(),
-                       std::back_inserter(dependencies));
-          absl::c_copy(instruction->control_predecessors(),
-                       std::back_inserter(dependencies));
+          channel_dependency_group[all_reduce_id.value()].push_back(
+              instruction.get());
         }
         break;
       }
@@ -387,11 +396,11 @@ HloComputation::ComputeChannelDependencies() const {
         break;
     }
   }
-  return channel_dependency_map;
+  return channel_dependency_group;
 }
 
 std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
-  auto channel_dependency_map = ComputeChannelDependencies();
+  auto channel_dependency_group = ComputeChannelDependencies();
   std::vector<HloInstruction*> post_order;
   post_order.reserve(instruction_count());
   std::vector<HloInstruction*> trace_instructions;
@@ -404,7 +413,7 @@ std::vector<HloInstruction*> HloComputation::MakeInstructionPostOrder() const {
       // users).
       trace_instructions.push_back(instruction.get());
     } else if (instruction->users().empty()) {
-      ComputeInstructionPostOrder(channel_dependency_map, &post_order,
+      ComputeInstructionPostOrder(channel_dependency_group, &post_order,
                                   instruction.get(), &visited);
     }
   }

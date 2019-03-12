@@ -76,10 +76,15 @@ REGISTER_OP("ExperimentalDatasetCardinality")
     .Output("cardinality: int64")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(b/124308596): Instead of conservatively marking this op as stateful,
+// implement a mechanism to determine whether `dataset` has a side-effect
+// and use it to decide whether to use a stateless or stateful version of this
+// op.
 REGISTER_OP("ExperimentalDatasetToTFRecord")
     .Input("input_dataset: variant")
     .Input("filename: string")
     .Input("compression_type: string")
+    .SetIsStateful()
     .SetShapeFn(shape_inference::NoOutputs);
 
 REGISTER_OP("ExperimentalDenseToSparseBatchDataset")

@@ -251,8 +251,8 @@ def _hipcc_env(repository_ctx):
                  "HIPPCC_LINK_FLAGS_APPEND", "HCC_AMDGPU_TARGET", \
                  "HIP_PLATFORM"]:
         if name in repository_ctx.os.environ:
-            hipcc_env = hipcc_env + " " + name + "=\"" + \
-                    repository_ctx.os.environ[name].strip() + "\";"
+            hipcc_env = (hipcc_env + " " + name + "=\"" +
+                         repository_ctx.os.environ[name].strip() + "\";")
     return hipcc_env.strip()
 
 def _crosstool_verbose(repository_ctx):
@@ -642,7 +642,6 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
-
     # Set up BUILD file for rocm/
     _tpl(
         repository_ctx,
@@ -694,6 +693,8 @@ def _create_local_rocm_repository(repository_ctx):
             "%{cpu_compiler}": str(cc),
             "%{hipcc_path}": "/opt/rocm/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
+            "%{rocr_runtime_path}": "/opt/rocm/lib",
+            "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_path}": "/opt/rocm/hip/lib",
             "%{hip_runtime_library}": "hip_hcc",
             "%{hcc_runtime_path}": "/opt/rocm/hcc/lib",

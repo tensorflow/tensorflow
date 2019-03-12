@@ -17,7 +17,7 @@
 """Save and restore variables.
 
 Symbols in this file are deprecated. See replacements in
-tensorflow/python/training/checkpointable and tensorflow/python/training/saving.
+tensorflow/python/training/trackable and tensorflow/python/training/saving.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -29,10 +29,9 @@ import time
 import uuid
 
 import numpy as np
-
-from tensorflow.core.protobuf import checkpointable_object_graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saver_pb2
+from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
@@ -51,9 +50,9 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1605,9 +1604,9 @@ def object_graph_key_mapping(checkpoint_path):
   """
   reader = pywrap_tensorflow.NewCheckpointReader(checkpoint_path)
   object_graph_string = reader.get_tensor(
-      checkpointable.OBJECT_GRAPH_PROTO_KEY)
+      trackable.OBJECT_GRAPH_PROTO_KEY)
   object_graph_proto = (
-      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+      trackable_object_graph_pb2.TrackableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
   names_to_keys = {}
   for node in object_graph_proto.nodes:

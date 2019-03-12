@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -242,6 +243,10 @@ struct Conv2DCustomBackpropInputMatMulFunctor<float> {
 
     const float alpha = 1.0;
     const float beta = 0.0;
+
+    // mkldnn_sgemm code can't be instrumented with msan.
+    ANNOTATE_MEMORY_IS_INITIALIZED(
+        im2col_buf, filter_total_size * output_image_size * sizeof(T));
 
     mkldnn_status_t st =
         mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k, &alpha, filter_data,

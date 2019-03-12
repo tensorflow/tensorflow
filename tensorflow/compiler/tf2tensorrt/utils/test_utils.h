@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_TEST_UTILS_H_
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -29,12 +28,11 @@ void ClearTestValues(const string& pattern);
 void AddTestValue(const string& label, const string& value);
 string GetTestValue(const string& label);
 
-#define TRT_RETURN_IF_TEST_VALUE(label, value_to_return)     \
-  do {                                                       \
-    if (::tensorflow::tensorrt::test::GetTestValue(label) == \
-        value_to_return) {                                   \
-      return errors::Internal("Injected manually");          \
-    }                                                        \
+#define TRT_RETURN_IF_TEST_VALUE(label, value_to_return) \
+  do {                                                   \
+    if (test::GetTestValue(label) == value_to_return) {  \
+      return errors::Internal("Injected manually");      \
+    }                                                    \
   } while (0)
 
 }  // namespace test

@@ -165,6 +165,10 @@ tf_module {
     argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
   }
   member_method {
+    name: "load_v2"
+    argspec: "args=[\'export_dir\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "main_op_with_restore"
     argspec: "args=[\'restore_op_name\'], varargs=None, keywords=None, defaults=None"
   }
@@ -179,6 +183,10 @@ tf_module {
   member_method {
     name: "regression_signature_def"
     argspec: "args=[\'examples\', \'predictions\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "simple_save"

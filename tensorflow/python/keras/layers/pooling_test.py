@@ -200,7 +200,11 @@ class Pooling1DTest(test.TestCase):
             kwargs={'strides': stride,
                     'padding': padding},
             input_shape=(3, 5, 4))
-    testing_utils.layer_test(
+        
+    # This part of the test can only run on GPU but doesn't appear
+    # to be properly assigned to a GPU when running in eager mode.
+    if not context.executing_eagerly():
+      testing_utils.layer_test(
         keras.layers.MaxPooling1D,
         kwargs={'data_format': 'channels_first'},
         input_shape=(3, 2, 6))
@@ -215,7 +219,10 @@ class Pooling1DTest(test.TestCase):
                     'padding': padding},
             input_shape=(3, 5, 4))
 
-    testing_utils.layer_test(
+    # This part of the test can only run on GPU but doesn't appear
+    # to be properly assigned to a GPU when running in eager mode.
+    if not context.executing_eagerly():
+      testing_utils.layer_test(
         keras.layers.AveragePooling1D,
         kwargs={'data_format': 'channels_first'},
         input_shape=(3, 2, 6))

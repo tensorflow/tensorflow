@@ -26,55 +26,54 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
-namespace tensorflow {
+    namespace tensorflow {
+  namespace {
 
-namespace {
+  typedef Eigen::GpuDevice GPUDevice;
 
-typedef Eigen::GpuDevice GPUDevice;
+  // A Cuda kernel to check if each element is Inf or Nan. If any exists, the
+  // relevant elements in abnormal_detected will be set
+  template <typename T>
+  __global__ void CheckNumericsKernel(const T* data, int size,
+                                      int abnormal_detected[2]) {
+    const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
+    const int32 total_thread_count = gridDim.x * blockDim.x;
 
-// A Cuda kernel to check if each element is Inf or Nan. If any exists, the
-// relevant elements in abnormal_detected will be set
-template <typename T>
-__global__ void CheckNumericsKernel(const T *data, int size,
-                                    int abnormal_detected[2]) {
-  const int32 thread_id = blockIdx.x * blockDim.x + threadIdx.x;
-  const int32 total_thread_count = gridDim.x * blockDim.x;
+    int32 offset = thread_id;
 
-  int32 offset = thread_id;
-
-  while (offset < size) {
-    if (isnan(data[offset])) {
-      abnormal_detected[0] = 1;
+    while (offset < size) {
+      if (isnan(data[offset])) {
+        abnormal_detected[0] = 1;
+      }
+      if (isinf(data[offset])) {
+        abnormal_detected[1] = 1;
+      }
+      offset += total_thread_count;
     }
-    if (isinf(data[offset])) {
-      abnormal_detected[1] = 1;
+  }
+
+  }  // namespace
+
+  // A simple launch pad to launch the Cuda kernels that checks the numerical
+  // abnormality in the given array
+  template <typename T>
+  struct CheckNumericsLaunch {
+    void Run(const GPUDevice& d, const T* data, int size,
+             int abnormal_detected[2]) {
+      const int32 block_size = d.maxGpuThreadsPerBlock();
+      const int32 num_blocks =
+          (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
+          block_size;
+
+      GPU_LAUNCH_KERNEL(CheckNumericsKernel<T>, dim3(num_blocks),
+                        dim3(block_size), 0, d.stream(), data, size,
+                        abnormal_detected);
     }
-    offset += total_thread_count;
-  }
-}
+  };
 
-}  // namespace
-
-// A simple launch pad to launch the Cuda kernels that checks the numerical
-// abnormality in the given array
-template <typename T>
-struct CheckNumericsLaunch {
-  void Run(const GPUDevice &d, const T *data, int size,
-           int abnormal_detected[2]) {
-    const int32 block_size = d.maxGpuThreadsPerBlock();
-    const int32 num_blocks =
-        (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
-        block_size;
-
-    GPU_LAUNCH_KERNEL(CheckNumericsKernel<T>,
-        dim3(num_blocks), dim3(block_size), 0, d.stream(),
-        data, size, abnormal_detected);
-  }
-};
-
-template struct CheckNumericsLaunch<Eigen::half>;
-template struct CheckNumericsLaunch<float>;
-template struct CheckNumericsLaunch<double>;
+  template struct CheckNumericsLaunch<Eigen::half>;
+  template struct CheckNumericsLaunch<float>;
+  template struct CheckNumericsLaunch<double>;
 
 }  // namespace tensorflow
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

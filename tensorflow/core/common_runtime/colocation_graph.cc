@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -242,7 +241,7 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
 }
 
 void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
-                   Member** new_root, Member** old_root) {
+                   Member** new_root, Member** old_root, bool dry_run) {
   Member& x_root_member = (*tree)[x_root];
   Member& y_root_member = (*tree)[y_root];
 
@@ -255,23 +254,29 @@ void Member::Merge(std::vector<Member>* tree, int x_root, int y_root,
     // The tree rooted at x_root is shallower, so connect it to
     // y_root. The rank of y_root is unchanged because its new
     // child has strictly less rank.
-    x_root_member.parent_ = y_root;
+    if (!dry_run) {
+      x_root_member.parent_ = y_root;
+    }
     new_root_id = y_root;
     old_root_id = x_root;
   } else if (x_root_member.rank_ > y_root_member.rank_) {
     // The tree rooted at y_root is shallower, so connect it to
     // x_root. The rank of x_root is unchanged because its new
     // child has strictly less rank.
-    y_root_member.parent_ = x_root;
+    if (!dry_run) {
+      y_root_member.parent_ = x_root;
+    }
     new_root_id = x_root;
     old_root_id = y_root;
   } else {
-    // Both trees have the same rank, so break the tie by choosing
-    // x_root as the new root.
-    y_root_member.parent_ = x_root;
-    // Increment the rank of the tree rooted at x_root, because it
-    // is now strictly deeper than before.
-    ++x_root_member.rank_;
+    if (!dry_run) {
+      // Both trees have the same rank, so break the tie by choosing
+      // x_root as the new root.
+      y_root_member.parent_ = x_root;
+      // Increment the rank of the tree rooted at x_root, because it
+      // is now strictly deeper than before.
+      ++x_root_member.rank_;
+    }
     new_root_id = x_root;
     old_root_id = y_root;
   }
@@ -298,25 +303,32 @@ int Member::FindRoot(std::vector<Member>* tree, int node_id) {
 Status Member::MergeDeviceNames(const Member& other,
                                 bool allow_soft_placement) {
   // Assuming the "requested is a specialization of assigned" invariant holds
-  // for this and `other`, it will hold after these two merges.
+  // for this and `other`, it will hold after the two merges below.
+  DeviceNameUtils::ParsedName assigned_device_name_copy = assigned_device_name_;
   TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
-      &requested_device_name_, other.requested_device_name_,
+      &assigned_device_name_copy, other.assigned_device_name_));
+
+  DeviceNameUtils::ParsedName requested_device_name_copy =
+      requested_device_name_;
+  TF_RETURN_IF_ERROR(DeviceNameUtils::MergeDevNames(
+      &requested_device_name_copy, other.requested_device_name_,
       allow_soft_placement));
-  return DeviceNameUtils::MergeDevNames(&assigned_device_name_,
-                                        other.assigned_device_name_,
-                                        allow_soft_placement);
+
+  // We checked for all errors, now change the devices.
+  assigned_device_name_ = assigned_device_name_copy;
+  requested_device_name_ = requested_device_name_copy;
+  return Status::OK();
 }
 
 // Updates this to contain the intersection of the device types in
 // this and "other".
-void Member::MergeSupportedDevices(const Member& other) {
-  PrioritizedDeviceTypeVector temp = supported_device_types_;
-  supported_device_types_.clear();
-
+bool Member::MergeSupportedDevices(const Member& other) {
   // Generate intersection with priorities.
+  // Each vector contains the same device types but with different priorities.
+  // The priorities are taken from the corresponding source vector.
   PrioritizedDeviceTypeVector target_intersection;
   PrioritizedDeviceTypeVector other_intersection;
-  for (const auto& prioritized_device_type : temp) {
+  for (const auto& prioritized_device_type : supported_device_types_) {
     bool found = false;
     for (const auto& other_prioritized_device_type :
          other.supported_device_types_) {
@@ -353,39 +365,40 @@ void Member::MergeSupportedDevices(const Member& other) {
             device_sort);
   std::sort(other_intersection.begin(), other_intersection.end(), device_sort);
 
+  PrioritizedDeviceTypeVector result;
+
   bool is_target_prioritized = HasPriorities(target_intersection);
   bool is_other_prioritized = HasPriorities(other_intersection);
-  // If neither are prioritized then we just return the original i.e. target
-  // prioritization.
   if (!is_target_prioritized && !is_other_prioritized) {
-    supported_device_types_ = target_intersection;
-  }
-  // If only one is prioritized, then we respect priorities of that in the
-  // intersection.
-  if (is_target_prioritized && !is_other_prioritized) {
-    supported_device_types_ = target_intersection;
-  }
-  if (!is_target_prioritized && is_other_prioritized) {
-    supported_device_types_ = other_intersection;
-  }
-  // If both have priorities and agree then we go with that. If the
-  // prioritization order is different, then we just fallback to the default
-  // i.e. what the DeviceTypeOrder suggests. In that case, we also set the
-  // merged priorities to 0, so that downstream merges work correctly as well.
-  if (is_target_prioritized && is_other_prioritized) {
-    bool priorities_agree =
-        ArePrioritiesSame(target_intersection, other_intersection);
-    if (priorities_agree) {
-      supported_device_types_ = target_intersection;
+    // If neither are prioritized then we just return the original i.e. target
+    // prioritization.
+    result = target_intersection;
+  } else if (is_target_prioritized && !is_other_prioritized) {
+    // If only one is prioritized, then we respect priorities of that in the
+    // intersection.
+    result = target_intersection;
+  } else if (!is_target_prioritized && is_other_prioritized) {
+    result = other_intersection;
+  } else {
+    // If both have priorities and agree then we go with that. If the
+    // prioritization order is different, then we just fallback to the default
+    // i.e. what the DeviceTypeOrder suggests. In that case, we also set the
+    // merged priorities to 0, so that downstream merges work correctly as well.
+    if (ArePrioritiesSame(target_intersection, other_intersection)) {
+      result = target_intersection;
     } else {
       for (const auto& prioritized_device : target_intersection) {
-        supported_device_types_.push_back(
-            std::make_pair(prioritized_device.first, 0));
+        result.push_back(std::make_pair(prioritized_device.first, 0));
       }
-      std::sort(supported_device_types_.begin(), supported_device_types_.end(),
-                device_sort);
+      std::sort(result.begin(), result.end(), device_sort);
     }
   }
+
+  if (result.empty()) {
+    return false;
+  }
+  supported_device_types_ = result;
+  return true;
 }
 
 Status Member::AssignDevice(const Node& node, bool allow_soft_placement) {
@@ -495,6 +508,9 @@ Status ColocationGraph::ColocateAllNodes() {
       }
     }
 
+    // TODO(iga): Even when the node has a spec, we need to colocate the
+    // node to its "name group" because other nodes can still use
+    // "loc:@<this_node_name>" in their colocation specs.
     if (!found_spec) {
       // If the node does not specify a colocation group, then use the
       // name of this node as the colocation group.
@@ -551,8 +567,9 @@ Status ColocationGraph::ColocateResourceAndRefEdges() {
 
 Status ColocationGraph::Initialize() {
   TF_RETURN_IF_ERROR(InitializeMembers());
+  TF_RETURN_IF_ERROR(ColocateResourceAndRefEdges());
   TF_RETURN_IF_ERROR(ColocateAllNodes());
-  return ColocateResourceAndRefEdges();
+  return Status::OK();
 }
 
 Status ColocationGraph::ColocateNodeToGroup(
@@ -569,7 +586,16 @@ Status ColocationGraph::ColocateNodeToGroup(
     // error, return it.
     Status s = ColocateNodes(*node, *root_node);
     if (!s.ok()) {
-      return AttachDef(s, *node);
+      if (!allow_soft_placement_) {
+        return AttachDef(s, *node);
+      }
+      if (log_device_placement_) {
+        LOG(INFO) << "Ignoring request to colocate node '" << node->name()
+                  << "' with nodes in colocation group '" << colocation_group
+                  << "' because soft placement is on and an attempt at doing "
+                     "so resulted in the following error: "
+                  << AttachDef(s, *node).ToString();
+      }
     }
   }
   return Status::OK();
@@ -596,15 +622,14 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
     return Status::OK();
   }
 
-  DCHECK_EQ(x_root, FindRoot(x.id()));
-  DCHECK_EQ(y_root, FindRoot(y.id()));
-
   Member* new_root_member;
   Member* old_root_member;
-  Member::Merge(&members_, x_root, y_root, &new_root_member, &old_root_member);
+  Member::Merge(&members_, x_root, y_root, &new_root_member, &old_root_member,
+                /*dry_run=*/true);
 
   // Merge the partial device specifications, and ensure that they are
   // compatible. NULL options_ is treated as allowing soft placement.
+  // If there is an error, nothing is modified.
   // TODO(mrry): Consider enriching the error message by pointing
   // out which nodes have the explicit partial device
   // specifications that caused this conflict.
@@ -622,8 +647,7 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
   // type, by computing the intersection of
   // new_root_member.supported_device_types and
   // old_root_member.supported_device_types.
-  new_root_member->MergeSupportedDevices(*old_root_member);
-  if (new_root_member->supported_device_types().empty()) {
+  if (!new_root_member->MergeSupportedDevices(*old_root_member)) {
     return errors::InvalidArgument(
         "Cannot colocate nodes ",
         errors::FormatColocationNodeForError(x.name()), " and ",
@@ -633,6 +657,9 @@ Status ColocationGraph::ColocateNodes(const Node& x, int x_root, const Node& y,
         DebugInfo(x_root), DebugInfo(y_root));
   }
 
+  // All error checks are done, merge the colocation graphs.
+  Member::Merge(&members_, x_root, y_root, &new_root_member, &old_root_member,
+                /*dry_run=*/false);
   return Status::OK();
 }
 
@@ -962,86 +989,6 @@ Status ColocationGraph::InitializeMember(const Node& node, Member* member) {
     }
   }
   return Status::OK();
-}
-
-// Updates target to contain the intersection of the device types in
-// "target" and "other".
-void ColocationGraph::MergeSupportedDevices(
-    PrioritizedDeviceTypeVector* target,
-    const PrioritizedDeviceTypeVector& other) {
-  PrioritizedDeviceTypeVector temp = *target;
-  target->clear();
-
-  // Generate intersection with priorities.
-  PrioritizedDeviceTypeVector target_intersection;
-  PrioritizedDeviceTypeVector other_intersection;
-  for (const auto& prioritized_device_type : temp) {
-    bool found = false;
-    for (const auto& other_prioritized_device_type : other) {
-      if (prioritized_device_type.first ==
-          other_prioritized_device_type.first) {
-        found = true;
-        other_intersection.push_back(other_prioritized_device_type);
-        break;
-      }
-    }
-    if (found) {
-      target_intersection.push_back(prioritized_device_type);
-    }
-  }
-
-  // Sort the devices by priority order.
-  auto device_sort = [](const std::pair<DeviceType, int32>& a,
-                        const std::pair<DeviceType, int32>& b) {
-    // First look at set priorities.
-    if (a.second != b.second) {
-      return a.second > b.second;
-    }
-    // Then fallback to default priorities.
-    auto a_priority = DeviceSet::DeviceTypeOrder(a.first);
-    auto b_priority = DeviceSet::DeviceTypeOrder(b.first);
-    if (a_priority != b_priority) {
-      return a_priority > b_priority;
-    }
-    // Finally just look at the Device type strings.
-    return a.first.type_string() < b.first.type_string();
-  };
-
-  std::sort(target_intersection.begin(), target_intersection.end(),
-            device_sort);
-  std::sort(other_intersection.begin(), other_intersection.end(), device_sort);
-
-  bool is_target_prioritized = HasPriorities(target_intersection);
-  bool is_other_prioritized = HasPriorities(other_intersection);
-  // If neither are prioritized then we just return the original i.e. target
-  // prioritization.
-  if (!is_target_prioritized && !is_other_prioritized) {
-    *target = target_intersection;
-  }
-  // If only one is prioritized, then we respect priorities of that in the
-  // intersection.
-  if (is_target_prioritized && !is_other_prioritized) {
-    *target = target_intersection;
-  }
-  if (!is_target_prioritized && is_other_prioritized) {
-    *target = other_intersection;
-  }
-  // If both have priorities and agree then we go with that. If the
-  // prioritization order is different, then we just fallback to the default
-  // i.e. what the DeviceTypeOrder suggests. In that case, we also set the
-  // merged priorities to 0, so that downstream merges work correctly as well.
-  if (is_target_prioritized && is_other_prioritized) {
-    bool priorities_agree =
-        ArePrioritiesSame(target_intersection, other_intersection);
-    if (priorities_agree) {
-      *target = target_intersection;
-    } else {
-      for (const auto& prioritized_device : target_intersection) {
-        target->push_back(std::make_pair(prioritized_device.first, 0));
-      }
-      std::sort(target->begin(), target->end(), device_sort);
-    }
-  }
 }
 
 }  // namespace tensorflow

@@ -36,7 +36,8 @@ XlaOp TopK(XlaOp input, int64 k) {
     XlaOp sort_result =
         Sort({Neg(input), iota_s32},
              CreateScalarLtComputation({input_shape.element_type(), S32},
-                                       iota_s32.builder()));
+                                       iota_s32.builder()),
+             last_dim, /*is_stable=*/true);
     std::vector<int64> start_indices(input_shape.dimensions_size(), 0);
     std::vector<int64> limit_indices(input_dims.begin(), input_dims.end());
     limit_indices[last_dim] = k;

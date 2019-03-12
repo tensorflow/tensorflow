@@ -82,7 +82,9 @@ int NumTotalCPUs() {
 }
 
 int GetCurrentCPU() {
-#if defined(__linux__) && !defined(__ANDROID__)
+#if defined(__EMSCRIPTEN__)
+  return sched_getcpu();
+#elif defined(__linux__) && !defined(__ANDROID__)
   return sched_getcpu();
   // Attempt to use cpuid on all other platforms.  If that fails, perform a
   // syscall.

@@ -161,7 +161,6 @@ class MathTest(PForTestCase):
         math_ops.divide,
         math_ops.div_no_nan,
         math_ops.equal,
-        math_ops.floor_div,
         math_ops.floor_mod,
         math_ops.greater,
         math_ops.greater_equal,
@@ -182,6 +181,10 @@ class MathTest(PForTestCase):
         safe_polygamma,
         safe_zeta,
     ]
+    # FloorDiv fails on XLA due floor's discontinuities exacerbating small
+    # division differences.
+    if not test_util.is_xla_enabled():
+      float_ops += [math_ops.floor_div]
     for op in logical_ops + float_ops:
       x = random_ops.random_uniform([7, 3, 5])
       y = random_ops.random_uniform([3, 5])

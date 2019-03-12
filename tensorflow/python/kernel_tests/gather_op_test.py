@@ -467,12 +467,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
   def testErrors(self):
 
     with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 2 must be less than ndims\(indices\) = 2"):
+        ValueError, r"batch_dims = 2 must be less than rank\(indices\) = 2"):
       array_ops.gather(
           params=[[1, 2], [3, 4]], indices=[[1, 2], [3, 4]], batch_dims=2)
 
     with self.assertRaisesRegexp(
-        ValueError, r"batch_dims = 1 must be less than ndims\(params\) = 1"):
+        ValueError, r"batch_dims = 1 must be less than rank\(params\) = 1"):
       array_ops.gather(
           params=[1, 2, 3, 4], indices=[[1, 2], [3, 4]], batch_dims=1)
 

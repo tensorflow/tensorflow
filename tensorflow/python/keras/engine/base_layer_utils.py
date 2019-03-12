@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as collections_lib
+import threading
 import enum
 
 from tensorflow.python.framework import dtypes
@@ -28,6 +29,9 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
+
+_call_context = threading.local()
 
 
 class CallConvention(enum.Enum):
@@ -72,7 +76,7 @@ def make_variable(name,
   that has fewer constraints (`variable_scope.variable()`).
 
   In the longer term, it seems like a similar "default variable creator" method
-  should exist in `CheckpointableBase` instead. When this happens, we can get
+  should exist in `Trackable` instead. When this happens, we can get
   rid of this temporary solution.
 
   TODO(fchollet): remove this method when no longer needed.
@@ -119,9 +123,9 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, type(init_ops.Initializer)):
-        initializer = initializer(dtype=dtype)
-      elif isinstance(initializer, type(init_ops_v2.Initializer)):
+      if isinstance(
+          initializer,
+          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
         initializer = initializer()
       init_val = lambda: initializer(shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
@@ -277,7 +281,7 @@ def _create_keras_history_helper(tensors, processed_ops=None):
           # a constant (Variables currently have `Placeholder` op type
           # when originating from an eager context
           # so can't be supported.
-          constants[i] = backend.function([], [op_input])([])
+          constants[i] = backend.function([], op_input)([])
       processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
       name = op.name
       node_def = op.node_def.SerializeToString()
@@ -292,6 +296,11 @@ def _create_keras_history_helper(tensors, processed_ops=None):
 def needs_keras_history(tensors):
   """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
+  This will never return True inside a sublayer, because sublayers
+  do not need to create Keras History. Otherwise, this returns True
+  if one or more of `tensors` originates from a `keras.Input` and
+  does not have `_keras_history` set.
+
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
 
@@ -299,12 +308,17 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if all(
+  if is_in_call_context() or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
     return False
   return uses_keras_history(tensors)
+
+
+def is_in_call_context():
+  """Returns true if inside of a model/layer '__call__'."""
+  return getattr(_call_context, 'in_call', False)
 
 
 def uses_keras_history(tensors):
@@ -362,3 +376,22 @@ def mark_checked(tensors):
     tensor._keras_history_checked = True  # pylint: disable=protected-access
 
   nest.map_structure(_mark_checked, tensors)
+
+
+@tf_contextlib.contextmanager
+def call_context():
+  """Scope that marks when we are currently inside a Layer/Model's `call`."""
+  was_in_call = is_in_call_context()
+  _call_context.in_call = True
+  try:
+    yield
+  finally:
+    _call_context.in_call = was_in_call
+
+
+def training_arg_passed_to_call(argspec, args, kwargs):
+  """Returns whether a user passed the `training` argument in `__call__`."""
+  # `argspec.args` starts with ['self', 'inputs']
+  full_args = dict(zip(argspec.args[2:], args))
+  full_args.update(kwargs)
+  return 'training' in full_args

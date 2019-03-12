@@ -538,7 +538,7 @@ def create_graph_debug_info_def(operations):
       all_file_names.add(trace[0])
 
   # Sets the `files` field in the GraphDebugInfo proto
-  graph_debug_info_def.files.extend(sorted(all_file_names))
+  graph_debug_info_def.files.extend(all_file_names)
 
   # Builds a mapping between file names and index of the `files` field, so we
   # only store the indexes for the nodes in the GraphDebugInfo.
@@ -550,9 +550,10 @@ def create_graph_debug_info_def(operations):
   # save the storage space.
   for node_name, trace in node_to_trace.items():
     trace_def = graph_debug_info_def.traces[node_name]
-    for file_line in trace:
-      file_index = file_to_index[file_line[0]]
-      trace_def.file_line_cols.add(file_index=file_index, line=file_line[1])
+    for file_name, line, func, code in trace:
+      file_index = file_to_index[file_name]
+      trace_def.file_line_cols.add(
+          file_index=file_index, line=line, func=func, code=code)
 
   return graph_debug_info_def
 
@@ -1064,11 +1065,12 @@ def export_scoped_meta_graph(filename=None,
       name, _ = os.path.splitext(filename)
       debug_filename = "{name}{ext}".format(name=name, ext=".debug")
 
-      # Gets the operation from the graph by the name.
-      ops_to_export = {}
+      # Gets the operation from the graph by the name. Exludes variable nodes,
+      # so only the nodes in the frozen models are included.
+      ops_to_export = []
       for node in scoped_meta_graph_def.graph_def.node:
         scoped_op_name = ops.prepend_name_scope(node.name, export_scope)
-        ops_to_export.add(graph.get_operation_by_name(scoped_op_name))
+        ops_to_export.append(graph.get_operation_by_name(scoped_op_name))
 
       graph_debug_info = create_graph_debug_info_def(ops_to_export)
 

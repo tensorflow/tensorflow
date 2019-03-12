@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdarg.h>
 #include <numeric>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -80,13 +81,9 @@ bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
   if (rank != permutation.size()) {
     return false;
   }
-  std::vector<int64> output(permutation.size(), -1);
-  for (auto index : permutation) {
-    CHECK_GE(index, 0);
-    CHECK_LT(index, rank);
-    output[index] = 0;
-  }
-  return !absl::c_linear_search(output, -1);
+  absl::InlinedVector<int64, 8> trivial_permutation(rank);
+  absl::c_iota(trivial_permutation, 0);
+  return absl::c_is_permutation(permutation, trivial_permutation);
 }
 
 std::vector<int64> InversePermutation(

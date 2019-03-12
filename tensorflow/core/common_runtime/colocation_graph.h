@@ -54,8 +54,10 @@ class Member {
     return supported_device_types_;
   }
 
+  // If `dry_run` is true, just sets `new_root` and `old_root` and does not
+  // actually modify anything in the `tree`.
   static void Merge(std::vector<Member>* tree, int x_root, int y_root,
-                    Member** new_root, Member** old_root);
+                    Member** new_root, Member** old_root, bool dry_run);
 
   // tree is non-const because we can change some `parent` pointers in some
   // members for more efficient future lookups. The vector itself is not
@@ -65,8 +67,9 @@ class Member {
   Status MergeDeviceNames(const Member& other, bool allow_soft_placement);
 
   // Updates this to contain the intersection of the device types in
-  // this and "other".
-  void MergeSupportedDevices(const Member& other);
+  // this and "other". If the intersection is empty, returns false and does
+  // not update this. Else returns true and updates this.
+  bool MergeSupportedDevices(const Member& other);
 
   Status AssignDevice(const Node& node, bool allow_soft_placement);
 
@@ -192,13 +195,13 @@ class ColocationGraph {
   // "y". Returns OK if the all nodes in the union of these sets can
   // be placed on the same device type.
   //
-  // NOTE: If this method returns an error, *this is left in an undefined
-  // state.
+  // If this method returns an error, *this is unchanged.
   Status ColocateNodes(const Node& x, const Node& y);
 
   // This overload of ColocateNodes() allows a caller to provide the root node
   // ids for the two nodes. For large graphs, this noticeably reduces the
   // graph load time.
+  // If this method returns an error, *this is unchanged.
   Status ColocateNodes(const Node& x, int x_root, const Node& y, int y_root);
 
   // Limits the possible devices of `node`'s colocation group to the device
@@ -231,11 +234,6 @@ class ColocationGraph {
                                             Member* member);
 
   Status InitializeMember(const Node& node, Member* member);
-
-  // Updates target to contain the intersection of the device types in
-  // "target" and "other".
-  static void MergeSupportedDevices(PrioritizedDeviceTypeVector* target,
-                                    const PrioritizedDeviceTypeVector& other);
 
   // Returns the root node of the disjoint tree to which the node with the
   // given id is connected.

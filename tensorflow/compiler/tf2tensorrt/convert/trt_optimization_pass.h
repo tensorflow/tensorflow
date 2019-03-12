@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
+class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
  public:
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
       : name_(name),
@@ -46,19 +46,18 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
 
   string name() const override { return name_; };
 
-  tensorflow::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
-                              config = nullptr) override;
+  Status Init(
+      const RewriterConfig_CustomGraphOptimizer* config = nullptr) override;
 
-  tensorflow::Status Optimize(tensorflow::grappler::Cluster* cluster,
-                              const tensorflow::grappler::GrapplerItem& item,
-                              GraphDef* optimized_graph) override;
+  Status Optimize(grappler::Cluster* cluster,
+                  const grappler::GrapplerItem& item,
+                  GraphDef* optimized_graph) override;
 
-  void Feedback(tensorflow::grappler::Cluster* cluster,
-                const tensorflow::grappler::GrapplerItem& item,
+  void Feedback(grappler::Cluster* cluster, const grappler::GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
 
-  void PrintDebugInfo(tensorflow::grappler::Cluster* cluster,
-                      const tensorflow::grappler::GrapplerItem& item);
+  void PrintDebugInfo(grappler::Cluster* cluster,
+                      const grappler::GrapplerItem& item);
 
  private:
   const string name_;

@@ -520,6 +520,25 @@ message RunMetadata {
 
   // Graphs of the partitions executed by executors.
   repeated GraphDef partition_graphs = 3;
+
+  message FunctionGraphs {
+    // TODO(nareshmodi): Include some sort of function/cache-key identifier?
+    repeated GraphDef partition_graphs = 1;
+
+    GraphDef pre_optimization_graph = 2;
+    GraphDef post_optimization_graph = 3;
+  }
+  // This is only populated for graphs that are run as functions in TensorFlow
+  // V2. There will be an entry below for each function that is traced.
+  // The main use cases of the post_optimization_graph and the partition_graphs
+  // is to give the caller insight into the graphs that were actually run by the
+  // runtime. Additional information (such as those in step_stats) will match
+  // these graphs.
+  // We also include the pre_optimization_graph since it is usually easier to
+  // read, and is helpful in situations where the caller wants to get a high
+  // level idea of what the built graph looks like (since the various graph
+  // optimization passes might change the structure of the graph significantly).
+  repeated FunctionGraphs function_graphs = 4;
 }
 
 // Defines a connection between two tensors in a `GraphDef`.

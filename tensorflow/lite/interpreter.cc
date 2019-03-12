@@ -223,8 +223,6 @@ void Interpreter::SetCancellationFunction(void* data,
 }
 
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
-  // TODO(ycling): It seems Flex delegate doesn't work on non-primary subgraphs.
-  // Need to investigate.
   for (auto& subgraph : subgraphs_) {
     TF_LITE_ENSURE_OK(context_, subgraph->ModifyGraphWithDelegate(delegate));
   }

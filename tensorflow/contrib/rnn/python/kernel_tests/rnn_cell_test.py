@@ -22,6 +22,7 @@ import itertools
 
 import numpy as np
 
+from tensorflow.contrib.rnn.python.ops import core_rnn_cell as legacy_rnn_cell
 from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -52,6 +53,294 @@ from tensorflow.python.util import nest
 
 
 class RNNCellTest(test.TestCase):
+
+  def testIndRNNCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        cell = contrib_rnn_cell.IndRNNCell(2)
+        g, _ = cell(x, m)
+        self.assertEqual([
+            "root/ind_rnn_cell/%s_w:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/ind_rnn_cell/%s_u:0" % rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+            "root/ind_rnn_cell/%s:0" % rnn_cell_impl._BIAS_VARIABLE_NAME
+        ], [v.name for v in cell.trainable_variables])
+        self.assertFalse(cell.non_trainable_variables)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        self.assertEqual(res[0].shape, (1, 2))
+
+  def testIndyGRUCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        g, _ = contrib_rnn_cell.IndyGRUCell(2)(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.185265, 0.17704]])
+      with variable_scope.variable_scope(
+          "other", initializer=init_ops.constant_initializer(0.5)):
+        # Test IndyGRUCell with input_size != num_units.
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 2])
+        g, _ = contrib_rnn_cell.IndyGRUCell(2)(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.155127, 0.157328]])
+
+  def testIndyLSTMCell(self):
+    for dtype in [dtypes.float16, dtypes.float32]:
+      np_dtype = dtype.as_numpy_dtype
+      with self.session(graph=ops.Graph()) as sess:
+        with variable_scope.variable_scope(
+            "root", initializer=init_ops.constant_initializer(0.5)):
+          x = array_ops.zeros([1, 2], dtype=dtype)
+          state_0 = (array_ops.zeros([1, 2], dtype=dtype),) * 2
+          state_1 = (array_ops.zeros([1, 2], dtype=dtype),) * 2
+          cell = rnn_cell_impl.MultiRNNCell(
+              [contrib_rnn_cell.IndyLSTMCell(2) for _ in range(2)])
+          self.assertEqual(cell.dtype, None)
+          self.assertEqual("cell-0", cell._checkpoint_dependencies[0].name)
+          self.assertEqual("cell-1", cell._checkpoint_dependencies[1].name)
+          cell.get_config()  # Should not throw an error
+          g, (out_state_0, out_state_1) = cell(x, (state_0, state_1))
+          # Layer infers the input type.
+          self.assertEqual(cell.dtype, dtype.name)
+          expected_variable_names = [
+              "root/multi_rnn_cell/cell_0/indy_lstm_cell/%s_w:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_0/indy_lstm_cell/%s_u:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_0/indy_lstm_cell/%s:0" %
+              rnn_cell_impl._BIAS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/indy_lstm_cell/%s_w:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/indy_lstm_cell/%s_u:0" %
+              rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
+              "root/multi_rnn_cell/cell_1/indy_lstm_cell/%s:0" %
+              rnn_cell_impl._BIAS_VARIABLE_NAME
+          ]
+          self.assertEqual(expected_variable_names,
+                           [v.name for v in cell.trainable_variables])
+          self.assertFalse(cell.non_trainable_variables)
+          sess.run([variables.global_variables_initializer()])
+          res = sess.run(
+              [g, out_state_0, out_state_1], {
+                  x.name: np.array([[1., 1.]]),
+                  state_0[0].name: 0.1 * np.ones([1, 2]),
+                  state_0[1].name: 0.1 * np.ones([1, 2]),
+                  state_1[0].name: 0.1 * np.ones([1, 2]),
+                  state_1[1].name: 0.1 * np.ones([1, 2]),
+              })
+          self.assertEqual(len(res), 3)
+          global_variables = variables.global_variables()
+          self.assertEqual(expected_variable_names,
+                           [v.name for v in global_variables])
+          # Only check the range of outputs as this is just a smoke test.
+          self.assertAllInRange(res[0], -1.0, 1.0)
+          self.assertAllInRange(res[1], -1.0, 1.0)
+          self.assertAllInRange(res[2], -1.0, 1.0)
+        with variable_scope.variable_scope(
+            "other", initializer=init_ops.constant_initializer(0.5)):
+          # Test IndyLSTMCell with input_size != num_units.
+          x = array_ops.zeros([1, 3], dtype=dtype)
+          state = (array_ops.zeros([1, 2], dtype=dtype),) * 2
+          g, out_state = contrib_rnn_cell.IndyLSTMCell(2)(x, state)
+          sess.run([variables.global_variables_initializer()])
+          res = sess.run(
+              [g, out_state], {
+                  x.name: np.array([[1., 1., 1.]], dtype=np_dtype),
+                  state[0].name: 0.1 * np.ones([1, 2], dtype=np_dtype),
+                  state[1].name: 0.1 * np.ones([1, 2], dtype=np_dtype),
+              })
+          self.assertEqual(len(res), 2)
+
+  def testLSTMCellLayerNorm(self):
+    with self.cached_session() as sess:
+      num_units = 2
+      num_proj = 3
+      batch_size = 1
+      input_size = 4
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([batch_size, input_size])
+        c = array_ops.zeros([batch_size, num_units])
+        h = array_ops.zeros([batch_size, num_proj])
+        state = rnn_cell_impl.LSTMStateTuple(c, h)
+        cell = contrib_rnn_cell.LayerNormLSTMCell(
+            num_units=num_units,
+            num_proj=num_proj,
+            forget_bias=1.0,
+            layer_norm=True,
+            norm_gain=1.0,
+            norm_shift=0.0)
+        g, out_m = cell(x, state)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run(
+            [g, out_m], {
+                x.name: np.ones((batch_size, input_size)),
+                c.name: 0.1 * np.ones((batch_size, num_units)),
+                h.name: 0.1 * np.ones((batch_size, num_proj))
+            })
+        self.assertEqual(len(res), 2)
+        # The numbers in results were not calculated, this is mostly just a
+        # smoke test.
+        self.assertEqual(res[0].shape, (batch_size, num_proj))
+        self.assertEqual(res[1][0].shape, (batch_size, num_units))
+        self.assertEqual(res[1][1].shape, (batch_size, num_proj))
+        # Different inputs so different outputs and states
+        for i in range(1, batch_size):
+          self.assertTrue(
+              float(np.linalg.norm((res[0][0, :] - res[0][i, :]))) < 1e-6)
+          self.assertTrue(
+              float(np.linalg.norm((res[1][0, :] - res[1][i, :]))) < 1e-6)
+
+  def testOutputProjectionWrapper(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 3])
+        cell = legacy_rnn_cell.OutputProjectionWrapper(
+            rnn_cell_impl.GRUCell(3), 2)
+        g, new_m = cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, new_m], {
+            x.name: np.array([[1., 1., 1.]]),
+            m.name: np.array([[0.1, 0.1, 0.1]])
+        })
+        self.assertEqual(res[1].shape, (1, 3))
+        # The numbers in results were not calculated, this is just a smoke test.
+        self.assertAllClose(res[0], [[0.231907, 0.231907]])
+
+  def testInputProjectionWrapper(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 3])
+        cell = legacy_rnn_cell.InputProjectionWrapper(
+            rnn_cell_impl.GRUCell(3), num_proj=3)
+        g, new_m = cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, new_m], {
+            x.name: np.array([[1., 1.]]),
+            m.name: np.array([[0.1, 0.1, 0.1]])
+        })
+        self.assertEqual(res[1].shape, (1, 3))
+        # The numbers in results were not calculated, this is just a smoke test.
+        self.assertAllClose(res[0], [[0.154605, 0.154605, 0.154605]])
+
+  def testEmbeddingWrapper(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 1], dtype=dtypes.int32)
+        m = array_ops.zeros([1, 2])
+        embedding_cell = legacy_rnn_cell.EmbeddingWrapper(
+            rnn_cell_impl.GRUCell(2), embedding_classes=3, embedding_size=2)
+        self.assertEqual(embedding_cell.output_size, 2)
+        g, new_m = embedding_cell(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g, new_m], {
+            x.name: np.array([[1]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        self.assertEqual(res[1].shape, (1, 2))
+        # The numbers in results were not calculated, this is just a smoke test.
+        self.assertAllClose(res[0], [[0.17139, 0.17139]])
+
+  def testEmbeddingWrapperWithDynamicRnn(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope("root"):
+        inputs = ops.convert_to_tensor([[[0], [0]]], dtype=dtypes.int64)
+        input_lengths = ops.convert_to_tensor([2], dtype=dtypes.int64)
+        embedding_cell = legacy_rnn_cell.EmbeddingWrapper(
+            rnn_cell_impl.BasicLSTMCell(1, state_is_tuple=True),
+            embedding_classes=1,
+            embedding_size=2)
+        outputs, _ = rnn.dynamic_rnn(
+            cell=embedding_cell,
+            inputs=inputs,
+            sequence_length=input_lengths,
+            dtype=dtypes.float32)
+        sess.run([variables.global_variables_initializer()])
+        # This will fail if output's dtype is inferred from input's.
+        sess.run(outputs)
+
+  def testSRUCell(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 2])
+        m = array_ops.zeros([1, 2])
+        g, _ = contrib_rnn_cell.SRUCell(2)(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.509682, 0.509682]])
+
+  def testSRUCellKerasRNN(self):
+    """Tests that SRUCell works with keras RNN layer."""
+    cell = contrib_rnn_cell.SRUCell(10)
+    seq_input = ops.convert_to_tensor(
+        np.random.rand(2, 3, 5), name="seq_input", dtype=dtypes.float32)
+    rnn_layer = keras_layers.RNN(cell=cell)
+    rnn_outputs_keras = rnn_layer(seq_input)
+    with self.cached_session() as sess:
+      sess.run([variables.global_variables_initializer()])
+      self.assertEqual(sess.run(rnn_outputs_keras).shape, (2, 10))
+
+  def testSRUCellBiasType(self):
+    """Tests that the bias' dtype is properly set."""
+    cell = contrib_rnn_cell.SRUCell(10)
+    cell.build((2, 3, 5))
+    self.assertEqual(cell._bias.dtype, dtypes.float32_ref)
+
+    cell = contrib_rnn_cell.SRUCell(10, dtype=dtypes.int32)
+    cell.build((2, 3, 5))
+    self.assertEqual(cell._bias.dtype, dtypes.int32_ref)
+
+    cell_input = ops.convert_to_tensor(
+        np.random.rand(2, 5), name="cell_input", dtype=dtypes.float16)
+    cell_state = ops.convert_to_tensor(
+        np.random.rand(2, 10), name="cell_state", dtype=dtypes.float16)
+    cell = contrib_rnn_cell.SRUCell(10)
+    cell(cell_input, [cell_state])
+    self.assertEqual(cell._bias.dtype, dtypes.float16_ref)
+
+  def testSRUCellWithDiffSize(self):
+    with self.cached_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 2])
+        g, _ = contrib_rnn_cell.SRUCell(2)(x, m)
+        sess.run([variables.global_variables_initializer()])
+        res = sess.run([g], {
+            x.name: np.array([[1., 1., 1.]]),
+            m.name: np.array([[0.1, 0.1]])
+        })
+        # Smoke test
+        self.assertAllClose(res[0], [[0.55255556, 0.55255556]])
 
   def testCoupledInputForgetGateLSTMCell(self):
     with self.cached_session() as sess:

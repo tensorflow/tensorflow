@@ -43,6 +43,20 @@ XlaOp DynamicSliceInMinorDims(XlaOp x, absl::Span<const XlaOp> starts,
 XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
                                     absl::Span<const XlaOp> starts);
 
+// Gathers values along an axis specified by dim.
+//
+// For a 3-D tensor the output is specified by:
+//
+// out[i][j][k] = input[index[i][j][k]][j][k]  # if dim == 0
+// out[i][j][k] = input[i][index[i][j][k]][k]  # if dim == 1
+// out[i][j][k] = input[i][j][index[i][j][k]]  # if dim == 2
+//
+// If `input` is an n-dimensional tensor with size
+// [X0,X1,X2,..XN] and dim = i `index` must be an n-dimensional tensor with size
+// [X0,X1,...Y,Xi+1,...,X[N] where y >= 1 and `out` will have the same sizes as
+// `index`.
+XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SLICING_H_

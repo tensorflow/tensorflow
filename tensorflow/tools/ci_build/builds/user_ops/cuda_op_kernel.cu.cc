@@ -15,6 +15,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
+#include "tensorflow/core/util/cuda_launch_config.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 __global__ void AddOneKernel(const int* in, const int N, int* out) {
@@ -25,7 +26,8 @@ __global__ void AddOneKernel(const int* in, const int N, int* out) {
 }
 
 void AddOneKernelLauncher(const int* in, const int N, int* out) {
-  AddOneKernel<<<32, 256>>>(in, N, out);
+  TF_CHECK_OK(::tensorflow::CudaLaunchKernel(AddOneKernel, 32, 256, 0, nullptr,
+                                             in, N, out));
 }
 
 #endif

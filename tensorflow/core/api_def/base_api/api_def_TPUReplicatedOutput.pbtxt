@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "TPUReplicatedOutput"
+  summary: "Connects outputs of an N-way replicated computation to N outputs."
+}

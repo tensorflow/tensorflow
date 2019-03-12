@@ -156,7 +156,6 @@ class Backend {
   Status ResetDevices();
 
  private:
-  struct EigenThreadPoolWrapper;
   Backend(se::Platform* platform, Compiler* compiler,
           absl::Span<se::StreamExecutor* const> stream_executors,
           TransferManager* transfer_manager,
@@ -183,7 +182,8 @@ class Backend {
   std::unique_ptr<StreamExecutorMemoryAllocator> memory_allocator_;
 
   // For the CPU backend, an Eigen threadpool device for use by Eigen code.
-  std::unique_ptr<EigenThreadPoolWrapper> intra_op_thread_pool_wrapper_;
+  struct IntraOpThreadPool;
+  std::unique_ptr<IntraOpThreadPool> intra_op_thread_pool_;
 };
 
 }  // namespace xla

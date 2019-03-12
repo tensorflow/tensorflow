@@ -18,13 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import
-from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-# pylint: enable=unused-import
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import data
 from tensorflow.python import keras
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
+from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.python.estimator.estimator import Estimator
 from tensorflow.python.estimator.model_fn import EstimatorSpec
 from tensorflow.python.estimator.model_fn import ModeKeys
@@ -139,9 +138,9 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
     if use_trt:
       logging.info('Number of nodes before TF-TRT conversion: %d',
                    len(graph_def.node))
-      graph_def = trt_convert.create_inference_graph(
-          graph_def,
-          outputs=[OUTPUT_NODE_NAME],
+      converter = trt_convert.TrtGraphConverter(
+          input_graph_def=graph_def,
+          nodes_blacklist=[OUTPUT_NODE_NAME],
           max_batch_size=max_batch_size,
           precision_mode='INT8',
           # There is a 2GB GPU memory limit for each test, so we set
@@ -151,6 +150,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
           minimum_segment_size=2,
           use_calibration=False,
       )
+      graph_def = converter.convert()
       logging.info('Number of nodes after TF-TRT conversion: %d',
                    len(graph_def.node))
       num_engines = len(
@@ -263,7 +263,7 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
   #     num_epochs=100,
   #     model_dir=model_dir)
   def testEval(self):
-    if not trt_convert.is_tensorrt_enabled():
+    if not is_tensorrt_enabled():
       return
     model_dir = test.test_src_dir_path('python/compiler/tensorrt/test/testdata')
 
@@ -274,9 +274,9 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
         num_epochs=None,
         model_dir=model_dir)['accuracy']
     logging.info('accuracy_tf_native: %f', accuracy_tf_native)
-    self.assertAllClose(0.9662, accuracy_tf_native, rtol=1e-3, atol=1e-3)
+    self.assertAllClose(0.9662, accuracy_tf_native, rtol=3e-3, atol=3e-3)
 
-    if trt_convert.get_linked_tensorrt_version()[0] < 5:
+    if get_linked_tensorrt_version()[0] < 5:
       return
 
     accuracy_tf_trt = self._Run(

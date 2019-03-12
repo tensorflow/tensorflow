@@ -689,7 +689,7 @@ class Conv2DTranspose(Conv2D):
       - [A guide to convolution arithmetic for deep
         learning](https://arxiv.org/abs/1603.07285v1)
       - [Deconvolutional
-        Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf)
+        Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf)
   """
 
   def __init__(self,
@@ -972,7 +972,7 @@ class Conv3DTranspose(Conv3D):
       - [A guide to convolution arithmetic for deep
         learning](https://arxiv.org/abs/1603.07285v1)
       - [Deconvolutional
-        Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf)
+        Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf)
   """
 
   def __init__(self,

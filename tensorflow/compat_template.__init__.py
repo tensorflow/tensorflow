@@ -22,11 +22,16 @@ import os as _os
 import sys as _sys
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 # API IMPORTS PLACEHOLDER
 
 from tensorflow.python.tools import component_api_helper as _component_api_helper
+_component_api_helper.package_hook(
+    parent_package_str=__name__,
+    child_package_str=('tensorboard.summary._tf.summary'),
+    error_msg=(
+        "Limited tf.compat.v2.summary API due to missing TensorBoard "
+        "installation"))
 _component_api_helper.package_hook(
     parent_package_str=__name__,
     child_package_str=(
@@ -49,3 +54,4 @@ if hasattr(_current_module, 'keras'):
   losses = keras.losses
   metrics = keras.metrics
   optimizers = keras.optimizers
+  initializers = keras.initializers

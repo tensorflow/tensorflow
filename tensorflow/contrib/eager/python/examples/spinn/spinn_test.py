@@ -37,7 +37,7 @@ from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 # pylint: enable=g-bad-import-order
 
 
@@ -421,7 +421,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
 
     # 5. Verify that checkpoints exist and contains all the expected variables.
     self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
-    object_graph = checkpointable_utils.object_metadata(
+    object_graph = trackable_utils.object_metadata(
         checkpoint_management.latest_checkpoint(config.logdir))
     ckpt_variable_names = set()
     for node in object_graph.nodes:

@@ -1590,7 +1590,21 @@ class Session(BaseSession):
     self._default_session_context_manager = None
     self._default_graph_context_manager = None
 
-    self.close()
+    # If we are closing due to an exception, set a time limit on our Close() to
+    # avoid blocking forever.
+    # TODO(b/120204635) remove this when deadlock is fixed.
+    if exec_type:
+      close_thread = threading.Thread(
+          name='SessionCloseThread', target=self.close)
+      close_thread.daemon = True
+      close_thread.start()
+      close_thread.join(30.0)
+      if close_thread.is_alive():
+        logging.error(
+            'Session failed to close after 30 seconds. Continuing after this '
+            'point may leave your program in an undefined state.')
+    else:
+      self.close()
 
   @staticmethod
   def reset(target, containers=None, config=None):

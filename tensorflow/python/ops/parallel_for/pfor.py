@@ -1903,7 +1903,7 @@ def _convert_cumfoo(pfor_input, _, op_func):
 def _convert_biasadd(pfor_input):
   t, t_stacked, _ = pfor_input.input(0)
   bias, bias_stacked, _ = pfor_input.input(1)
-  data_format = pfor_input.get_attr("data_format")
+  data_format = pfor_input.get_attr("data_format").decode()
   if bias_stacked:
     # BiasAdd only supports 1-D biases, so cast bias to match value and use Add.
     pfor_input.expanddim_inputs_for_broadcast()
@@ -1921,7 +1921,7 @@ def _convert_biasadd(pfor_input):
       shape = array_ops.shape(t)
       flattened_shape = array_ops.concat([[-1], shape[2:]], axis=0)
       t = array_ops.reshape(t, flattened_shape)
-      t = nn_ops.bias_add(t, bias, data_format=b"NCHW")
+      t = nn_ops.bias_add(t, bias, data_format="NCHW")
       t = array_ops.reshape(t, shape)
       return wrap(t, True)
     return wrap(nn_ops.bias_add(t, bias, data_format=data_format), True)

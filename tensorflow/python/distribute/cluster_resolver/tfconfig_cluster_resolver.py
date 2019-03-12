@@ -77,17 +77,17 @@ class TFConfigClusterResolver(ClusterResolver):
   def task_type(self):
     if self._task_type is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
-      return task_info['type'] if 'type' in task_info else None
+      return str(task_info['type']) if 'type' in task_info else None
     else:
-      return self._task_type
+      return str(self._task_type)
 
   @property
   def task_id(self):
     if self._task_type is None:
       task_info = _get_value_in_tfconfig(_TASK_KEY, {})
-      return task_info['index'] if 'index' in task_info else None
+      return int(task_info['index']) if 'index' in task_info else None
     else:
-      return self._task_id
+      return int(self._task_id)
 
   @task_type.setter
   def task_type(self, task_type):

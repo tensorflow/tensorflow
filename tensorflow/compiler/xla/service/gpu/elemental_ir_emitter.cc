@@ -19,6 +19,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "llvm/IR/DerivedTypes.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Attributes.gen.inc"
@@ -273,11 +274,19 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(
                                prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_sqrt", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
+                                                        llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_rsqrt", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(
     PrimitiveType prim_type, llvm::Value* lhs, llvm::Value* rhs) {
   return EmitLibdeviceMathCall("__ocml_atan2", {lhs, rhs}, {prim_type, prim_type},
-                               prim_type);
-}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
                                                        llvm::Value* value) {
@@ -293,6 +302,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   llvm::Value* input = FPCast(value, type);
   llvm::Value* fast_tanh = llvm_ir::EmitFastTanh(b_, input);
   return FPCast(fast_tanh, value->getType());
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
+    PrimitiveType prim_type, llvm::Value* value) {
+    // Use libdevice __nv_round instead of llvm.round. This is to workaround a
+    // bug in the PTX backend, which implements llvm.round with PTX cvt.rni.
+    // When the llvm.round is fixed, we may still want to use __nv_round here as
+    // expanding the non-trivial implementation early while inlining allows
+    // better optimizations.
+    return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(

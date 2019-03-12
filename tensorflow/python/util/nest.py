@@ -79,7 +79,7 @@ def _get_attrs_items(obj):
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(_six.iterkeys(dict_))
+    return sorted(dict_)
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 
@@ -124,7 +124,7 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
+    return type(instance)((key, result[key]) for key in instance)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
@@ -182,6 +182,20 @@ is_sequence = _pywrap_tensorflow.IsSequence
 
 # See the swig file (util.i) for documentation.
 is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
+
+
+@tf_export("nest.is_nested")
+def is_nested(seq):
+  """Returns true if its input is a collections.Sequence (except strings).
+
+  Args:
+    seq: an input sequence.
+
+  Returns:
+    True if the sequence is a not a string and is a collections.Sequence or a
+    dict.
+  """
+  return is_sequence(seq)
 
 
 @tf_export("nest.flatten")
@@ -258,7 +272,7 @@ def assert_same_structure(nest1, nest2, check_types=True,
         size. Note that namedtuples with identical name and fields are always
         considered to have the same shallow structure. Two types will also be
         considered the same if they are both list subtypes (which allows "list"
-        and "_ListWrapper" from checkpointable dependency tracking to compare
+        and "_ListWrapper" from trackable dependency tracking to compare
         equal).
     expand_composites: If true, then composite tensors such as `tf.SparseTensor`
         and `tf.RaggedTensor` are expanded into their component tensors.
@@ -626,7 +640,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
   The following code will not raise an exception:
   ```python
     shallow_tree = ["a", "b"]
-    input_tree = ["c", ["d", "e"]]
+    input_tree = ["c", ["d", "e"], "f"]
     assert_shallow_structure(shallow_tree, input_tree)
   ```
 
@@ -874,6 +888,14 @@ def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
   `shallow_tree`.
 
   Examples:
+
+  ```python
+  shallow_tree = [None, None]
+  inp_val = [1, 2, 3]
+  out = map_structure_up_to(shallow_tree, lambda x: 2 * x, inp_val)
+
+  # Output is: [2, 4]
+  ```
 
   ```python
   ab_tuple = collections.namedtuple("ab_tuple", "a, b")

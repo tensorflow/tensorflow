@@ -57,6 +57,9 @@ class ProfilerSession {
   std::vector<std::unique_ptr<tensorflow::profiler::ProfilerInterface>>
       profilers_ GUARDED_BY(mutex_);
 
+  // True if the session is active.
+  bool active_ GUARDED_BY(mutex_);
+
   tensorflow::Status status_ GUARDED_BY(mutex_);
   const uint64 start_time_micros_;
   mutex mutex_;

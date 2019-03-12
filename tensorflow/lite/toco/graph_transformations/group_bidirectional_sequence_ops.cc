@@ -56,6 +56,29 @@ bool MatchTwoUnpackOps(const Operator& op, const Model& model,
   return true;
 }
 
+bool MatchDynamicBidirectionalSequenceOutputs(Operator* op, const Model& model,
+                                              Operator** fw_output,
+                                              Operator** bw_output) {
+  if (op->inputs.size() != 2) {
+    return false;
+  }
+
+  // The concat op is already the fw_rnn_output.
+  *fw_output = op;
+  auto* reverse_output = GetOpWithOutput(model, op->inputs[1]);
+  if (*fw_output == nullptr || reverse_output == nullptr) {
+    return false;
+  }
+
+  if (reverse_output->type != OperatorType::kReverseV2) {
+    return false;
+  }
+
+  *bw_output = reverse_output;
+
+  return true;
+}
+
 bool FindUnidirectionalSequenceOp(const Model& model, const Operator& output_op,
                                   OperatorType operator_type,
                                   std::stack<Operator*>* sequence_ops,
@@ -68,7 +91,7 @@ bool FindUnidirectionalSequenceOp(const Model& model, const Operator& output_op,
 
   while (op_it->type == operator_type) {
     sequence_ops->push(op_it);
-    // Check the first input of the unidirectional squence lstm op.
+    // Check the first input of the unidirectional sequence op.
     op_it = GetOpWithOutput(model, op_it->inputs[0]);
     if (op_it == nullptr) {
       return false;
@@ -80,34 +103,51 @@ bool FindUnidirectionalSequenceOp(const Model& model, const Operator& output_op,
 }
 
 bool CheckTwoUnidirectionalSequenceOpsAreValid(
+    const Model& model,
     const std::stack<Operator*>& fw_unidirectional_sequence_ops,
     const std::stack<Operator*>& bw_unidirectional_sequence_ops,
     const Operator* first_fw_sequence_op_input,
-    const Operator* first_bw_sequence_op_input) {
+    const Operator* first_bw_sequence_op_input, bool is_dynamic_rnn) {
   if (fw_unidirectional_sequence_ops.size() !=
           bw_unidirectional_sequence_ops.size() ||
       fw_unidirectional_sequence_ops.empty()) {
     return false;
   }
 
-  // For static bidirectional sequence lstm, we should have two pack ops.
-  if (first_fw_sequence_op_input->type != OperatorType::kPack ||
-      first_bw_sequence_op_input->type != OperatorType::kPack) {
-    return false;
-  }
-
-  // fw_lstm & bw_lstm should point to the same input, but reversed sequence.
-  for (int i = 0; i < first_fw_sequence_op_input->inputs.size(); ++i) {
-    if (first_fw_sequence_op_input->inputs[i] !=
-        first_bw_sequence_op_input
-            ->inputs[first_fw_sequence_op_input->inputs.size() - i - 1]) {
+  if (is_dynamic_rnn) {
+    // For dynamic bidirectional sequence ops, bw_sequence will have a reverse
+    // op.
+    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2) {
       return false;
     }
+
+    const auto* bw_real_input_op =
+        GetOpWithOutput(model, first_bw_sequence_op_input->inputs[0]);
+    if (first_fw_sequence_op_input != bw_real_input_op) {
+      return false;
+    }
+
+  } else {
+    // For static bidirectional sequence ops, we should have two pack ops.
+    if (first_fw_sequence_op_input->type != OperatorType::kPack ||
+        first_bw_sequence_op_input->type != OperatorType::kPack) {
+      return false;
+    }
+
+    // fw_lstm & bw_lstm should point to the same input, but reversed sequence.
+    for (int i = 0; i < first_fw_sequence_op_input->inputs.size(); ++i) {
+      if (first_fw_sequence_op_input->inputs[i] !=
+          first_bw_sequence_op_input
+              ->inputs[first_fw_sequence_op_input->inputs.size() - i - 1]) {
+        return false;
+      }
+    }
   }
+
   return true;
 }
 
-bool ConstructBidirectionalSequenceOp(
+void ConstructBidirectionalSequenceOp(
     const Operator& fw_lstm_op, const Operator& bw_lstm_op, Model* model,
     BidirectionalSequenceLstmOperator** bi_op) {
   // TODO(renjieliu): Check the shapes & configurations are equal.
@@ -170,10 +210,9 @@ bool ConstructBidirectionalSequenceOp(
   (*bi_op)->outputs.push_back(fw_output_array_name);
   (*bi_op)->outputs.push_back(bw_output_array_name);
   (*bi_op)->merge_outputs = false;
-  return true;
 }
 
-bool ConstructBidirectionalSequenceOp(
+void ConstructBidirectionalSequenceOp(
     const Operator& fw_rnn_op, const Operator& bw_rnn_op, Model* model,
     BidirectionalSequenceRnnOperator** bi_op) {
   // TODO(renjieliu): Check the shapes & configurations are equal.
@@ -219,27 +258,23 @@ bool ConstructBidirectionalSequenceOp(
   (*bi_op)->outputs.push_back(fw_output_array_name);
   (*bi_op)->outputs.push_back(bw_output_array_name);
   (*bi_op)->merge_outputs = false;
-  return true;
 }
 
 template <typename T>
-bool GroupFwBwSequenceOps(Model* model, std::stack<Operator*> fw_sequence_ops,
+void GroupFwBwSequenceOps(Model* model, std::stack<Operator*> fw_sequence_ops,
                           std::stack<Operator*> bw_sequence_ops,
                           std::vector<T*>* bidirectional_sequence_ops) {
   while (!fw_sequence_ops.empty()) {
     Operator* fw_sequence_op = fw_sequence_ops.top();
     Operator* bw_sequence_op = bw_sequence_ops.top();
     T* bidirectional_sequence_op = new T;
-    if (!ConstructBidirectionalSequenceOp(*fw_sequence_op, *bw_sequence_op,
-                                          model, &bidirectional_sequence_op)) {
-      return false;
-    }
+    ConstructBidirectionalSequenceOp(*fw_sequence_op, *bw_sequence_op, model,
+                                     &bidirectional_sequence_op);
 
     bidirectional_sequence_ops->push_back(bidirectional_sequence_op);
     fw_sequence_ops.pop();
     bw_sequence_ops.pop();
   }
-  return true;
 }
 
 template <typename T>
@@ -331,16 +366,96 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   }
 }
 
+template <typename T>
+::tensorflow::Status GroupDynamicSequenceOps(Model* model, std::size_t op_index,
+                                             OperatorType operator_type,
+                                             bool* modified) {
+  *modified = false;
+
+  // We assume there's a concatenation right after the bidirectional sequence
+  // ops, it may not be the case.
+  auto op_it = model->operators.begin() + op_index;
+  Operator* final_concat_op = op_it->get();
+  if (final_concat_op->type != OperatorType::kConcatenation &&
+      final_concat_op->type != OperatorType::kConcat &&
+      final_concat_op->type != OperatorType::kConcatV2) {
+    return ::tensorflow::Status::OK();
+  }
+
+  // for bw, there will be a reverse op at the end.
+  Operator *fw_sequence_output, *bw_sequence_output;
+  if (!MatchDynamicBidirectionalSequenceOutputs(
+          final_concat_op, *model, &fw_sequence_output, &bw_sequence_output)) {
+    return ::tensorflow::Status::OK();
+  }
+
+  // Find all upstream unidirectional sequence ops.
+  std::stack<Operator*> fw_unidirectional_sequence_ops,
+      bw_unidirectional_sequence_ops;
+  OperatorType unidirectional_op_type;
+  if (operator_type == OperatorType::kBidirectionalSequenceLstm) {
+    unidirectional_op_type = OperatorType::kUnidirectionalSequenceLstm;
+  } else {
+    unidirectional_op_type = OperatorType::kUnidirectionalSequenceRnn;
+  }
+  Operator *first_fw_sequence_input, *first_bw_sequence_input;
+  if (!FindUnidirectionalSequenceOp(
+          *model, *fw_sequence_output, unidirectional_op_type,
+          &fw_unidirectional_sequence_ops, &first_fw_sequence_input) ||
+      !FindUnidirectionalSequenceOp(
+          *model, *bw_sequence_output, unidirectional_op_type,
+          &bw_unidirectional_sequence_ops, &first_bw_sequence_input)) {
+    return ::tensorflow::Status::OK();
+  }
+
+  if (!CheckTwoUnidirectionalSequenceOpsAreValid(
+          *model, fw_unidirectional_sequence_ops,
+          bw_unidirectional_sequence_ops, first_fw_sequence_input,
+          first_bw_sequence_input, /*is_dynamic_rnn=*/true)) {
+    return ::tensorflow::Status::OK();
+  }
+
+  // TODO(b/125143808): Before really group the fw & bw sequence ops and
+  // modified the model, we should check both the fw & bw sequence ops have the
+  // same data_type, inputs_shapes, output_shapes etc.
+  std::vector<T> bidirectional_sequence_ops;
+  GroupFwBwSequenceOps(model, fw_unidirectional_sequence_ops,
+                       bw_unidirectional_sequence_ops,
+                       &bidirectional_sequence_ops);
+
+  // Rewire the inputs & outputs.
+  string current_input = first_fw_sequence_input->outputs[0];
+  RewireBidirectionalSequenceSequenceOpsConnections(
+      operator_type, current_input, bidirectional_sequence_ops, &op_it, model);
+
+  // Change last bidirectional sequence rnn output to the concat output.
+  bidirectional_sequence_ops[bidirectional_sequence_ops.size() - 1]
+      ->outputs[0] = final_concat_op->outputs[0];
+
+  // Delete unused ops.
+  RemoveUnidirectionalSequenceOps(fw_unidirectional_sequence_ops, model);
+  RemoveUnidirectionalSequenceOps(bw_unidirectional_sequence_ops, model);
+
+  DeleteArrayIfUnused(final_concat_op->inputs[0], model);
+  DeleteArrayIfUnused(final_concat_op->inputs[1], model);
+  model->operators.erase(FindOperator(model, *final_concat_op));
+
+  // Only keep the fw lstm's input.
+  DeleteArrayIfUnused(first_bw_sequence_input->outputs[0], model);
+  model->operators.erase(FindOperator(model, *first_bw_sequence_input));
+  *modified = true;
+  return ::tensorflow::Status::OK();
+}
+
 }  // namespace
 
-// TODO(renjieliu): Support graph generated by dynamic rnn as well.
 ::tensorflow::Status GroupBidirectionalSequenceLstm::Run(Model* model,
                                                          std::size_t op_index,
                                                          bool* modified) {
   *modified = false;
   // Bidirectional sequence lstm will generate two separate unidirectional
   // sequence lstm ops, for static bidirectional sequence lstm, there will be
-  // a concatenation op at very end; for dynamic bidirectional squence lstm,
+  // a concatenation op at very end; for dynamic bidirectional sequence lstm,
   // it is not guaranteed, but currently we do not support that.
   auto op_it = model->operators.begin() + op_index;
   Operator* final_concat_op = op_it->get();
@@ -372,19 +487,20 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   }
 
   if (!CheckTwoUnidirectionalSequenceOpsAreValid(
-          fw_unidirectional_sequence_lstm_ops,
+          *model, fw_unidirectional_sequence_lstm_ops,
           bw_unidirectional_sequence_lstm_ops, first_fw_lstm_input,
-          first_bw_lstm_input)) {
+          first_bw_lstm_input, /*is_dynamic_rnn=*/false)) {
     return ::tensorflow::Status::OK();
   }
 
+  // TODO(b/125143808): Before really group the fw & bw sequence ops and
+  // modified the model, we should check both the fw & bw sequence ops have the
+  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<BidirectionalSequenceLstmOperator*>
       bidirectional_sequence_lstm_ops;
-  if (!GroupFwBwSequenceOps(model, fw_unidirectional_sequence_lstm_ops,
-                            bw_unidirectional_sequence_lstm_ops,
-                            &bidirectional_sequence_lstm_ops)) {
-    return ::tensorflow::Status::OK();
-  }
+  GroupFwBwSequenceOps(model, fw_unidirectional_sequence_lstm_ops,
+                       bw_unidirectional_sequence_lstm_ops,
+                       &bidirectional_sequence_lstm_ops);
 
   // Rewire the inputs & outputs.
   string current_input = first_fw_lstm_input->outputs[0];
@@ -414,14 +530,13 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   return ::tensorflow::Status::OK();
 }
 
-// TODO(renjieliu): Support graph generated by dynamic rnn as well.
 ::tensorflow::Status GroupBidirectionalSequenceRnn::Run(Model* model,
                                                         std::size_t op_index,
                                                         bool* modified) {
   *modified = false;
   // Bidirectional sequence rnn will generate two separate unidirectional
   // sequence rnn ops, for static bidirectional sequence rnn, there will be
-  // a concatenation op at very end; for dynamic bidirectional squence rnn,
+  // a concatenation op at very end; for dynamic bidirectional sequence rnn,
   // it is not guaranteed, but currently we do not support that.
   auto op_it = model->operators.begin() + op_index;
   Operator* final_concat_op = op_it->get();
@@ -453,18 +568,19 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   }
 
   if (!CheckTwoUnidirectionalSequenceOpsAreValid(
-          fw_unidirectional_sequence_rnn_ops,
+          *model, fw_unidirectional_sequence_rnn_ops,
           bw_unidirectional_sequence_rnn_ops, first_fw_rnn_input,
-          first_bw_rnn_input)) {
+          first_bw_rnn_input, /*is_dynamic_rnn=*/false)) {
     return ::tensorflow::Status::OK();
   }
 
+  // TODO(b/125143808): Before really group the fw & bw sequence ops and
+  // modified the model, we should check both the fw & bw sequence ops have the
+  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<BidirectionalSequenceRnnOperator*> bidirectional_sequence_rnn_ops;
-  if (!GroupFwBwSequenceOps(model, fw_unidirectional_sequence_rnn_ops,
-                            bw_unidirectional_sequence_rnn_ops,
-                            &bidirectional_sequence_rnn_ops)) {
-    return ::tensorflow::Status::OK();
-  }
+  GroupFwBwSequenceOps(model, fw_unidirectional_sequence_rnn_ops,
+                       bw_unidirectional_sequence_rnn_ops,
+                       &bidirectional_sequence_rnn_ops);
 
   // Rewire the inputs & outputs.
   string current_input = first_fw_rnn_input->outputs[0];
@@ -492,4 +608,17 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   *modified = true;
   return ::tensorflow::Status::OK();
 }
+
+::tensorflow::Status GroupDynamicBidirectionalSequenceRnn::Run(
+    Model* model, std::size_t op_index, bool* modified) {
+  return GroupDynamicSequenceOps<BidirectionalSequenceRnnOperator*>(
+      model, op_index, OperatorType::kBidirectionalSequenceRnn, modified);
+}
+
+::tensorflow::Status GroupDynamicBidirectionalSequenceLstm::Run(
+    Model* model, std::size_t op_index, bool* modified) {
+  return GroupDynamicSequenceOps<BidirectionalSequenceLstmOperator*>(
+      model, op_index, OperatorType::kBidirectionalSequenceLstm, modified);
+}
+
 }  // namespace toco

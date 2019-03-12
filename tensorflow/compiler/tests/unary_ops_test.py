@@ -72,6 +72,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
         output = op(pinp)
       result = session.run(output, {pinp: inp})
       if equality_test is None:
+        self.assertEqual(output.dtype, expected.dtype)
         self.assertAllCloseAccordingToType(
             result, expected, rtol=rtol, atol=atol, bfloat16_rtol=0.03)
       else:
@@ -260,7 +261,8 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           math_ops.log1p,
           np.array([[1e-14, 1e-15, 0.6]], dtype=dtype),
-          expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]], dtype=dtype)),
+          expected=np.log1p(np.array([[1e-14, 1e-15, 0.6]],
+                                     dtype=dtype)).astype(dtype),
           rtol=1e-4,
           atol=1e-6)
 
@@ -710,7 +712,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           math_ops.abs,
           np.array([[2, -1]], dtype=dtype),
-          expected=np.array([[2, 1]], dtype=dtype))
+          expected=np.array([[2, 1]], dtype=np.real(dtype(0)).dtype))
 
       self._assertOpOutputMatchesExpected(
           math_ops.negative,
@@ -880,6 +882,17 @@ class UnaryOpsTest(xla_test.XLATestCase):
           np.array([[-1], [1], [4]], dtype=dtype),
           expected=np.int32(3))
 
+  def testSizeWithInt64OutType(self):
+
+    def size_op(x):
+      return array_ops.size_internal(x, optimize=False, out_type=np.int64)
+
+    for dtype in self.numeric_types:
+      self._assertOpOutputMatchesExpected(
+          size_op,
+          np.array([[-1], [1], [4]], dtype=dtype),
+          expected=np.int64(3))
+
   def testUnpack(self):
     self._assertOpOutputMatchesExpected(
         array_ops.unstack,
@@ -989,7 +1002,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
   def _assertSoftplusMatchesExpected(self, features, dtype):
     features = np.array(features, dtype=dtype)
     zero = np.asarray(0).astype(dtype)
-    expected = np.logaddexp(zero, features)
+    expected = np.logaddexp(zero, features).astype(dtype)
     self._assertOpOutputMatchesExpected(
         nn_ops.softplus, features, expected=expected, rtol=1e-6, atol=9.1e-6)
 

@@ -407,15 +407,13 @@ tflite_cc_shared_object(
     name = "libtensorflowlite.so",
     linkopts = select({
         "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow/lite:tflite_exported_symbols.lds)",
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflowlite.so",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow/lite:tflite_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow/lite:tflite_version_script.lds)",
         ],
     }),
     deps = [

@@ -1092,11 +1092,14 @@ tensorflow::Status ConvertBatchMatMulOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
-  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
-  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
-  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
-
   auto* batch_matmul = new BatchMatMulOperator;
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  if (HasAttr(node, "adj_x")) {
+    batch_matmul->adj_x = GetBoolAttr(node, "adj_x");
+  }
+  if (HasAttr(node, "adj_y")) {
+    batch_matmul->adj_y = GetBoolAttr(node, "adj_y");
+  }
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
 
@@ -1346,7 +1349,7 @@ tensorflow::Status ConvertUnsupportedOperator(
   }
 
   // Parse outputs. Name them after the node's name, plus an ordinal suffix.
-  // Note that some outputs are to be multipled by a named attribute.
+  // Note that some outputs are to be multiplied by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     GetOutputNamesFromNodeDef(node, *op_def, op);
@@ -1480,7 +1483,7 @@ tensorflow::Status ConvertPlaceholderOperator(
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    // TODO(b/62716978): This logic needs to be revisted.  During dims
+    // TODO(b/62716978): This logic needs to be revisited.  During dims
     // refactoring it is an interim fix.
     if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
@@ -1567,6 +1570,21 @@ tensorflow::Status ConvertGatherOperator(
     // Gather form that assumes axis=0.
     op->axis = {0};
   }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertGatherNdOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "GatherNd");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  const auto indices_data_type = GetDataTypeAttr(node, "Tindices");
+  CHECK(indices_data_type == DT_INT32 || indices_data_type == DT_INT64);
+  auto* op = new GatherNdOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
@@ -2007,6 +2025,27 @@ tensorflow::Status ConvertShapeOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertReverseSequenceOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ReverseSequence");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto op = absl::make_unique<ReverseSequenceOperator>();
+  if (HasAttr(node, "seq_dim")) {
+    op->seq_dim = GetIntAttr(node, "seq_dim");
+  }
+  // In tf.reverse_sequence, batch_dim defaults to 0.
+  op->batch_dim =
+      HasAttr(node, "batch_dim") ? GetIntAttr(node, "batch_dim") : 0;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.push_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
 void StripCaretFromArrayNames(Model* model) {
   for (auto& op : model->operators) {
     for (auto& input : op->inputs) {
@@ -2396,12 +2435,14 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Const", ConvertConstOperator},
       {"Conv2D", ConvertConvOperator},
       {"Conv2DBackpropInput", ConvertTransposeConvOperator},
+      {"Cos", ConvertSimpleOperator<CosOperator, 1, 1>},
       {"CTCBeamSearchDecoder", ConvertCTCBeamSearchDecoderOperator},
       {"DepthToSpace", ConvertDepthToSpaceOperator},
       {"DepthwiseConv2dNative", ConvertDepthwiseConvOperator},
       {"Div", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"DynamicPartition", ConvertDynamicPartitionOperator},
       {"DynamicStitch", ConvertDynamicStitchOperator},
+      {"Elu", ConvertSimpleOperator<EluOperator, 1, 1>},
       {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2, 1>},
       {"Exp", ConvertSimpleOperator<ExpOperator, 1, 1>},
       {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2, 1>},
@@ -2414,6 +2455,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"FusedBatchNorm", ConvertFusedBatchNormOperator},
       {"Gather", ConvertGatherOperator},
       {"GatherV2", ConvertGatherOperator},
+      {"GatherNd", ConvertGatherNdOperator},
       {"Greater", ConvertSimpleOperator<TensorFlowGreaterOperator, 2, 1>},
       {"GreaterEqual",
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2, 1>},
@@ -2452,13 +2494,14 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
-      {"Rank", ConvertSimpleOperator<RankOperator, 1, 1>},
+      {"Rank", ConvertSimpleOperator<TensorFlowRankOperator, 1, 1>},
       {"RealDiv", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"Relu", ConvertSimpleOperator<ReluOperator, 1, 1>},
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1, 1>},
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2, 1>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
+      {"ReverseSequence", ConvertReverseSequenceOperator},
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},
@@ -2494,6 +2537,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
+      {"Where", ConvertSimpleOperator<WhereOperator, 1, 1>},
   });
 }
 

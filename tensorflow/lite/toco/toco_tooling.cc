@@ -330,6 +330,10 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   bidirectional_transformations.Add(new RemoveUnusedOp);
   bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceLstm);
   bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceRnn);
+  bidirectional_transformations.Add(
+      new toco::GroupDynamicBidirectionalSequenceRnn);
+  bidirectional_transformations.Add(
+      new toco::GroupDynamicBidirectionalSequenceLstm);
   TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
       model, "Group bidirectional sequence lstm/rnn",
       bidirectional_transformations));
@@ -454,7 +458,7 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       return status;
     } break;
     case GRAPHVIZ_DOT:
-      DumpGraphviz(model, output_file_contents);
+      DumpGraphviz(model, output_file_contents, "Computation Graph");
       break;
     default:
       LOG(FATAL) << "Unhandled output_format='"

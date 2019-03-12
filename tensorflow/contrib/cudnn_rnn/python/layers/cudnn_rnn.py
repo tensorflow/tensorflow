@@ -104,7 +104,7 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for unidirectional RNN on, e.g., CPU or mobile.
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
 
     # NOTE: Even if there's only one layer, the cell needs to be wrapped in
     # MultiRNNCell.
@@ -124,7 +124,7 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for bidirectional RNN
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
     cells_fw = [single_cell() for _ in range(num_layers)]
     cells_bw = [single_cell() for _ in range(num_layers)]
 
@@ -518,8 +518,8 @@ class _CudnnRNN(base_layer.Layer):
         direction=self.direction,
         scope=vs.get_variable_scope(),
         name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
-    self._saveable._add_checkpointable_dependencies(  # pylint: disable=protected-access
-        checkpointable=self, dtype=self._plain_dtype)
+    self._saveable._add_trackable_dependencies(  # pylint: disable=protected-access
+        trackable=self, dtype=self._plain_dtype)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -35,7 +36,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 bool FLAGS_gpuexec_rocm_driver_inject_init_error = false;
 bool FLAGS_gpuexec_rocm_sync_around_driver_calls = false;
@@ -178,7 +178,8 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* context) {
           << tls->current_device_ordinal << " to " << context->device_ordinal();
 
   // Set the device and update thread local.
-  CHECK_EQ(hipSuccess, hipSetDevice(context->device_ordinal()));
+  CHECK_EQ(hipSuccess,
+           hipSetDevice(context->device_ordinal()));
   tls->current_device_ordinal = context->device_ordinal();
 }
 
@@ -472,7 +473,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                     hipDeviceptr_t location,
                                                     uint8 value, size_t size) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemset(location, value, size);
+  hipError_t res = hipMemsetD8(location, value, size);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -486,15 +487,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                      size_t uint32_count) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  unsigned char valueC = static_cast<unsigned char>(value);
-  uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC);
-  if (value32 != value) {
-    //  mismatch indicates case where hipMemsetAsyc can't emulate hipMemSetD32
-    LOG(ERROR) << "failed to memset memory";
-    return false;
-  }
-  hipError_t res =
-      hipMemset(pointer, static_cast<int>(value), uint32_count * 4);
+  hipError_t res = hipMemsetD32(pointer, value, uint32_count);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -524,16 +517,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                       GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-
-  // FIXME - need to set a 32-bit value here
-  unsigned char valueC = static_cast<unsigned char>(value);
-  uint32_t value32 = (valueC << 24) | (valueC << 16) | (valueC << 8) | (valueC);
-  if (value32 != value) {
-    // mismatch indicates case where hipMemsetAsyc can't emulate hipMemSetD32
-    LOG(ERROR) << "failed to memset memory";
-    return false;
-  }
-  hipError_t res = hipMemsetAsync(pointer, value, uint32_count * 4, stream);
+  hipError_t res = hipMemsetD32Async(pointer, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;

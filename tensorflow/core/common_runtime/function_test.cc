@@ -945,6 +945,48 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   EXPECT_EQ(expected_node_names, executed_node_names);
 }
 
+TEST_F(FunctionLibraryRuntimeTest, DoNotPruneControlOutputsFromBody) {
+  // `add` node is not required to compute regular output `o`, but it must
+  // execute because it is in `control_ret`.
+  const FunctionDef func =
+      FDH::Create("FunctionWithControlOutputs", {"i: float"}, {"o: float"}, {},
+                  {
+                      {{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+                      {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}},
+                  },
+                  /*ret_def=*/{{"o", "ret:z:0"}},
+                  /*control_ret_def=*/{{"must_execute", "add"}});
+
+  Init({func});
+
+  auto x = test::AsTensor<float>({1.25});
+  Tensor z;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr1_, "FunctionWithControlOutputs", {}, &handle));
+
+  StepStats stats;
+  StepStatsCollector stats_collector(&stats);
+  FunctionLibraryRuntime::Options opts;
+  opts.stats_collector = &stats_collector;
+  TF_CHECK_OK(Run(flr1_, handle, opts, {x}, {&z}));
+  TF_CHECK_OK(flr1_->ReleaseHandle(handle));
+
+  TF_CHECK_OK(
+      InstantiateAndRun(flr1_, "FunctionWithControlOutputs", {}, {x}, {&z}));
+  test::ExpectTensorEqual<float>(z, test::AsTensor<float>({1.25 * 1.25}));
+
+  stats_collector.FinalizeAndSwap(&stats);
+
+  std::set<string> expected_node_names(
+      {"_SOURCE", "i", "add", "ret", "o_RetVal"});
+  std::set<string> executed_node_names;
+  for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
+    executed_node_names.insert(node_stats.node_name());
+  }
+  EXPECT_EQ(expected_node_names, executed_node_names);
+}
+
 // Constant folding generates names using a global counter.
 // This function invokes constant folding and parses the counter
 // from the generated node name.

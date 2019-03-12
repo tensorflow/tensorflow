@@ -304,7 +304,7 @@ class TraverseTreeV4Op : public OpKernel {
     auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
     int num_threads = worker_threads->num_threads;
     const int64 costPerTraverse = 500;
-    auto traverse = [this, &set_leaf_ids, &data_set, decision_tree_resource,
+    auto traverse = [&set_leaf_ids, &data_set, decision_tree_resource,
                      num_data](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_data);

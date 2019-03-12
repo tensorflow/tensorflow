@@ -65,6 +65,6 @@ class CollectiveAllReduceExtended(
         cluster_spec=tfconfig.cluster_spec(),
         task_type=tfconfig.task_type,
         task_id=tfconfig.task_id,
-        num_accelerators=num_gpus_per_worker)
+        num_accelerators={"GPU": num_gpus_per_worker})
     super(CollectiveAllReduceExtended, self).__init__(
         container_strategy, cluster_resolver=cluster_resolver)
