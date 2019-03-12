@@ -36,10 +36,17 @@ class Instruction;
 class MemRefType;
 class Value;
 
-/// Returns the trip count of the loop as an affine expression if the latter is
-/// expressible as an affine expression, and nullptr otherwise. The trip count
-/// expression is simplified before returning.
-AffineExpr getTripCountExpr(ConstOpPointer<AffineForOp> forOp);
+/// Returns the trip count of the loop as an affine map with its corresponding
+/// operands if the latter is expressible as an affine expression, and nullptr
+/// otherwise. This method always succeeds as long as the lower bound is not a
+/// multi-result map. The trip count expression is simplified before returning.
+/// This method only utilizes map composition to construct lower and upper
+/// bounds before computing the trip count expressions
+// TODO(mlir-team): this should be moved into 'Transforms/' and be replaced by a
+// pure analysis method relying on FlatAffineConstraints
+void buildTripCountMapAndOperands(ConstOpPointer<AffineForOp> forOp,
+                                  AffineMap *map,
+                                  SmallVectorImpl<Value *> *operands);
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count

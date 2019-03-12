@@ -34,6 +34,7 @@ template <typename T> class ConstOpPointer;
 class Function;
 class FuncBuilder;
 template <typename T> class OpPointer;
+class Value;
 
 /// Unrolls this for instruction completely if the trip count is known to be
 /// constant. Returns failure otherwise.
@@ -66,16 +67,15 @@ LogicalResult promoteIfSingleIteration(OpPointer<AffineForOp> forOp);
 /// their body into the containing Block.
 void promoteSingleIterationLoops(Function *f);
 
-/// Returns the lower bound of the cleanup loop when unrolling a loop
-/// with the specified unroll factor.
-AffineMap getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
-                                   unsigned unrollFactor, FuncBuilder *builder);
-
-/// Returns the upper bound of an unrolled loop when unrolling with
-/// the specified trip count, stride, and unroll factor.
-AffineMap getUnrolledLoopUpperBound(ConstOpPointer<AffineForOp> forOp,
-                                    unsigned unrollFactor,
-                                    FuncBuilder *builder);
+/// Computes the cleanup loop lower bound of the loop being unrolled with
+/// the specified unroll factor; this bound will also be upper bound of the main
+/// part of the unrolled loop. Computes the bound as an AffineMap with its
+/// operands or a null map when the trip count can't be expressed as an affine
+/// expression.
+void getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
+                              unsigned unrollFactor, AffineMap *map,
+                              SmallVectorImpl<Value *> *operands,
+                              FuncBuilder *builder);
 
 /// Skew the instructions in the body of a 'for' instruction with the specified
 /// instruction-wise shifts. The shifts are with respect to the original

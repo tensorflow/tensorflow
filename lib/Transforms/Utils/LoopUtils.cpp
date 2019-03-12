@@ -38,54 +38,78 @@
 
 using namespace mlir;
 
-/// Returns the upper bound of an unrolled loop with lower bound 'lb' and with
-/// the specified trip count, stride, and unroll factor. Returns nullptr when
-/// the trip count can't be expressed as an affine expression.
-AffineMap mlir::getUnrolledLoopUpperBound(ConstOpPointer<AffineForOp> forOp,
-                                          unsigned unrollFactor,
-                                          FuncBuilder *builder) {
+/// Computes the cleanup loop lower bound of the loop being unrolled with
+/// the specified unroll factor; this bound will also be upper bound of the main
+/// part of the unrolled loop. Computes the bound as an AffineMap with its
+/// operands or a null map when the trip count can't be expressed as an affine
+/// expression.
+void mlir::getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
+                                    unsigned unrollFactor, AffineMap *map,
+                                    SmallVectorImpl<Value *> *operands,
+                                    FuncBuilder *b) {
   auto lbMap = forOp->getLowerBoundMap();
 
   // Single result lower bound map only.
-  if (lbMap.getNumResults() != 1)
-    return AffineMap();
+  if (lbMap.getNumResults() != 1) {
+    *map = AffineMap();
+    return;
+  }
 
-  // Sometimes, the trip count cannot be expressed as an affine expression.
-  auto tripCount = getTripCountExpr(forOp);
-  if (!tripCount)
-    return AffineMap();
-
-  AffineExpr lb(lbMap.getResult(0));
-  unsigned step = forOp->getStep();
-  auto newUb = lb + (tripCount - tripCount % unrollFactor - 1) * step;
-
-  return builder->getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(),
-                               {newUb}, {});
-}
-
-/// Returns the lower bound of the cleanup loop when unrolling a loop with lower
-/// bound 'lb' and with the specified trip count, stride, and unroll factor.
-/// Returns an AffinMap with nullptr storage (that evaluates to false)
-/// when the trip count can't be expressed as an affine expression.
-AffineMap mlir::getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
-                                         unsigned unrollFactor,
-                                         FuncBuilder *builder) {
-  auto lbMap = forOp->getLowerBoundMap();
-
-  // Single result lower bound map only.
-  if (lbMap.getNumResults() != 1)
-    return AffineMap();
+  AffineMap tripCountMap;
+  SmallVector<Value *, 4> tripCountOperands;
+  buildTripCountMapAndOperands(forOp, &tripCountMap, &tripCountOperands);
 
   // Sometimes the trip count cannot be expressed as an affine expression.
-  AffineExpr tripCount(getTripCountExpr(forOp));
-  if (!tripCount)
-    return AffineMap();
+  if (!tripCountMap) {
+    *map = AffineMap();
+    return;
+  }
 
-  AffineExpr lb(lbMap.getResult(0));
   unsigned step = forOp->getStep();
-  auto newLb = lb + (tripCount - tripCount % unrollFactor) * step;
-  return builder->getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(),
-                               {newLb}, {});
+
+  // We need to get non-const operands; we aren't changing them here.
+  auto ncForOp = *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
+
+  SmallVector<Value *, 4> lbOperands(ncForOp->getLowerBoundOperands());
+  auto lb = b->create<AffineApplyOp>(ncForOp->getLoc(), lbMap, lbOperands);
+
+  // For each upper bound expr, get the range.
+  // Eg: for %i = lb to min (ub1, ub2),
+  // where tripCountExprs yield (tr1, tr2), we create affine.apply's:
+  // lb + tr1 - tr1 % ufactor, lb + tr2 - tr2 % ufactor; the results of all
+  // these affine.apply's make up the cleanup loop lower bound.
+  SmallVector<AffineExpr, 4> bumpExprs(tripCountMap.getNumResults());
+  SmallVector<Value *, 4> bumpValues(tripCountMap.getNumResults());
+  for (unsigned i = 0, e = tripCountMap.getNumResults(); i < e; i++) {
+    auto tripCountExpr = tripCountMap.getResult(i);
+    bumpExprs[i] = (tripCountExpr - tripCountExpr % unrollFactor) * step;
+    auto bumpMap =
+        b->getAffineMap(tripCountMap.getNumDims(), tripCountMap.getNumSymbols(),
+                        bumpExprs[i], {});
+    bumpValues[i] =
+        b->create<AffineApplyOp>(forOp->getLoc(), bumpMap, tripCountOperands);
+  }
+
+  SmallVector<AffineExpr, 4> newUbExprs(tripCountMap.getNumResults());
+  for (unsigned i = 0, e = bumpExprs.size(); i < e; i++)
+    newUbExprs[i] = b->getAffineDimExpr(0) + b->getAffineDimExpr(i + 1);
+
+  operands->clear();
+  operands->push_back(lb);
+  operands->append(bumpValues.begin(), bumpValues.end());
+  *map = b->getAffineMap(1 + tripCountMap.getNumResults(), 0, newUbExprs, {});
+  // Simplify the map + operands.
+  fullyComposeAffineMapAndOperands(map, operands);
+  *map = simplifyAffineMap(*map);
+  canonicalizeMapAndOperands(map, operands);
+  // Remove any affine.apply's that became dead from the simplification above.
+  for (auto *v : bumpValues) {
+    if (v->use_empty()) {
+      v->getDefiningInst()->erase();
+    }
+  }
+  if (lb->use_empty())
+    lb->erase();
 }
 
 /// Promotes the loop body of a forOp to its containing block if the forOp
@@ -369,25 +393,17 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
   if (forOp->getBody()->empty())
     return failure();
 
-  auto lbMap = forOp->getLowerBoundMap();
-  auto ubMap = forOp->getUpperBoundMap();
-
-  // Loops with max/min expressions won't be unrolled here (the output can't be
-  // expressed as a Function in the general case). However, the right way to
-  // do such unrolling for a Function would be to specialize the loop for the
-  // 'hotspot' case and unroll that hotspot.
-  if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
+  // Loops where the lower bound is a max expression isn't supported for
+  // unrolling since the trip count can be expressed as an affine function when
+  // both the lower bound and the upper bound are multi-result maps. However,
+  // one meaningful way to do such unrolling would be to specialize the loop for
+  // the 'hotspot' case and unroll that hotspot.
+  if (forOp->getLowerBoundMap().getNumResults() != 1)
     return failure();
-
-  // Same operand list for lower and upper bound for now.
-  // TODO(bondhugula): handle bounds with different operand lists.
-  if (!forOp->matchingBoundOperandList())
-    return failure();
-
-  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
   // If the trip count is lower than the unroll factor, no unrolled body.
   // TODO(bondhugula): option to specify cleanup loop unrolling.
+  Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() < unrollFactor)
     return failure();
@@ -397,21 +413,20 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
   if (getLargestDivisorOfTripCount(forOp) % unrollFactor != 0) {
     FuncBuilder builder(forInst->getBlock(), ++Block::iterator(forInst));
     auto cleanupForInst = builder.clone(*forInst)->cast<AffineForOp>();
-    auto clLbMap = getCleanupLoopLowerBound(forOp, unrollFactor, &builder);
-    assert(clLbMap &&
-           "cleanup loop lower bound map for single result bound maps can "
-           "always be determined");
-    cleanupForInst->setLowerBoundMap(clLbMap);
+    AffineMap cleanupMap;
+    SmallVector<Value *, 4> cleanupOperands;
+    getCleanupLoopLowerBound(forOp, unrollFactor, &cleanupMap, &cleanupOperands,
+                             &builder);
+    assert(cleanupMap &&
+           "cleanup loop lower bound map for single result lower bound maps "
+           "can always be determined");
+    cleanupForInst->setLowerBound(cleanupOperands, cleanupMap);
     // Promote the loop body up if this has turned into a single iteration loop.
     promoteIfSingleIteration(cleanupForInst);
 
-    // Adjust upper bound.
-    auto unrolledUbMap =
-        getUnrolledLoopUpperBound(forOp, unrollFactor, &builder);
-    assert(unrolledUbMap &&
-           "upper bound map can alwayys be determined for an unrolled loop "
-           "with single result bounds");
-    forOp->setUpperBoundMap(unrolledUbMap);
+    // Adjust upper bound of the original loop; this is the same as the lower
+    // bound of the cleanup loop.
+    forOp->setUpperBound(cleanupOperands, cleanupMap);
   }
 
   // Scale the step of loop being unrolled by unroll factor.

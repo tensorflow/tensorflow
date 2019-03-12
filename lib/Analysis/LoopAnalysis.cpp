@@ -26,6 +26,7 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/StandardOps/Ops.h"
@@ -41,88 +42,141 @@ using namespace mlir;
 
 /// Returns the trip count of the loop as an affine expression if the latter is
 /// expressible as an affine expression, and nullptr otherwise. The trip count
-/// expression is simplified before returning.
-AffineExpr mlir::getTripCountExpr(ConstOpPointer<AffineForOp> forOp) {
-  // upper_bound - lower_bound
+/// expression is simplified before returning. This method only utilizes map
+/// composition to construct lower and upper bounds before computing the trip
+/// count expressions.
+// TODO(mlir-team): this should be moved into 'Transforms/' and be replaced by a
+// pure analysis method relying on FlatAffineConstraints; the latter will also
+// be more powerful (since both inequalities and equalities will be considered).
+void mlir::buildTripCountMapAndOperands(
+    ConstOpPointer<AffineForOp> forOp, AffineMap *map,
+    SmallVectorImpl<Value *> *tripCountOperands) {
   int64_t loopSpan;
 
   int64_t step = forOp->getStep();
-  auto *context = forOp->getInstruction()->getContext();
+
+  // We need to get operands; we aren't changing them here.
+  auto ncForOp = *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
+
+  FuncBuilder b(ncForOp->getInstruction());
 
   if (forOp->hasConstantBounds()) {
     int64_t lb = forOp->getConstantLowerBound();
     int64_t ub = forOp->getConstantUpperBound();
     loopSpan = ub - lb;
-  } else {
-    auto lbMap = forOp->getLowerBoundMap();
-    auto ubMap = forOp->getUpperBoundMap();
-    // TODO(bondhugula): handle max/min of multiple expressions.
-    if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
-      return nullptr;
-
-    // TODO(bondhugula): handle bounds with different operands.
-    // Bounds have different operands, unhandled for now.
-    if (!forOp->matchingBoundOperandList())
-      return nullptr;
-
-    // ub_expr - lb_expr
-    AffineExpr lbExpr(lbMap.getResult(0));
-    AffineExpr ubExpr(ubMap.getResult(0));
-    auto loopSpanExpr = simplifyAffineExpr(
-        ubExpr - lbExpr, std::max(lbMap.getNumDims(), ubMap.getNumDims()),
-        std::max(lbMap.getNumSymbols(), ubMap.getNumSymbols()));
-    auto cExpr = loopSpanExpr.dyn_cast<AffineConstantExpr>();
-    if (!cExpr)
-      return loopSpanExpr.ceilDiv(step);
-    loopSpan = cExpr.getValue();
+    if (loopSpan < 0)
+      loopSpan = 0;
+    *map = b.getConstantAffineMap(ceilDiv(loopSpan, step));
+    tripCountOperands->clear();
+    return;
   }
+  auto lbMap = forOp->getLowerBoundMap();
+  auto ubMap = forOp->getUpperBoundMap();
+  if (lbMap.getNumResults() != 1) {
+    *map = AffineMap();
+    return;
+  }
+  SmallVector<Value *, 4> lbOperands(ncForOp->getLowerBoundOperands());
+  SmallVector<Value *, 4> ubOperands(ncForOp->getUpperBoundOperands());
+  auto lb = b.create<AffineApplyOp>(forOp->getLoc(), lbMap, lbOperands);
+  SmallVector<Value *, 4> ubs;
+  ubs.reserve(ubMap.getNumResults());
+  for (auto ubExpr : ubMap.getResults())
+    ubs.push_back(b.create<AffineApplyOp>(
+        forOp->getLoc(),
+        b.getAffineMap(ubMap.getNumDims(), ubMap.getNumSymbols(), {ubExpr}, {}),
+        ubOperands));
 
-  // 0 iteration loops.
-  if (loopSpan < 0)
-    return 0;
+  tripCountOperands->clear();
+  tripCountOperands->reserve(1 + ubs.size());
+  tripCountOperands->push_back(lb);
+  tripCountOperands->append(ubs.begin(), ubs.end());
 
-  return getAffineConstantExpr(static_cast<uint64_t>(ceilDiv(loopSpan, step)),
-                               context);
+  SmallVector<AffineExpr, 4> tripCountExprs(ubs.size());
+  for (unsigned i = 0, e = ubs.size(); i < e; i++)
+    tripCountExprs[i] =
+        (b.getAffineDimExpr(1 + i) - b.getAffineDimExpr(0)).ceilDiv(step);
+  *map = b.getAffineMap(1 + ubs.size(), 0, tripCountExprs, {});
+  forOp->getInstruction()->getFunction()->dump();
+  fullyComposeAffineMapAndOperands(map, tripCountOperands);
+  *map = simplifyAffineMap(*map);
+  canonicalizeMapAndOperands(map, tripCountOperands);
+  // Remove any affine.apply's that became dead as a result of composition,
+  // simplification, and canonicalization above.
+  for (auto *v : ubs)
+    if (v->use_empty())
+      v->getDefiningInst()->erase();
+  if (lb->use_empty())
+    lb->erase();
 }
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// method uses affine expression analysis (in turn using getTripCount) and is
 /// able to determine constant trip count in non-trivial cases.
+// FIXME(mlir-team): this is really relying on buildTripCountMapAndOperands;
+// being an analysis utility, it shouldn't. Replace with a version that just
+// works with analysis structures (FlatAffineConstraints) and thus doesn't
+// update the IR.
 llvm::Optional<uint64_t>
 mlir::getConstantTripCount(ConstOpPointer<AffineForOp> forOp) {
-  auto tripCountExpr = getTripCountExpr(forOp);
+  SmallVector<Value *, 4> operands;
+  AffineMap map;
+  buildTripCountMapAndOperands(forOp, &map, &operands);
 
-  if (!tripCountExpr)
+  if (!map)
     return None;
 
-  if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExpr>())
-    return constExpr.getValue();
-
-  return None;
+  // Take the min if all trip counts are constant.
+  Optional<uint64_t> tripCount;
+  for (auto resultExpr : map.getResults()) {
+    if (auto constExpr = resultExpr.dyn_cast<AffineConstantExpr>()) {
+      if (tripCount.hasValue())
+        tripCount = std::min(tripCount.getValue(),
+                             static_cast<uint64_t>(constExpr.getValue()));
+      else
+        tripCount = constExpr.getValue();
+    } else
+      return None;
+  }
+  return tripCount;
 }
 
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
 uint64_t mlir::getLargestDivisorOfTripCount(ConstOpPointer<AffineForOp> forOp) {
-  auto tripCountExpr = getTripCountExpr(forOp);
+  SmallVector<Value *, 4> operands;
+  AffineMap map;
+  buildTripCountMapAndOperands(forOp, &map, &operands);
 
-  if (!tripCountExpr)
+  if (!map)
     return 1;
 
-  if (auto constExpr = tripCountExpr.dyn_cast<AffineConstantExpr>()) {
-    uint64_t tripCount = constExpr.getValue();
-
-    // 0 iteration loops (greatest divisor is 2^64 - 1).
-    if (tripCount == 0)
-      return ULONG_MAX;
-
-    // The greatest divisor is the trip count.
-    return tripCount;
+  // The largest divisor of the trip count is the GCD of the individual largest
+  // divisors.
+  assert(map.getNumResults() >= 1 && "expected one or more results");
+  Optional<uint64_t> gcd;
+  for (auto resultExpr : map.getResults()) {
+    uint64_t thisGcd;
+    if (auto constExpr = resultExpr.dyn_cast<AffineConstantExpr>()) {
+      uint64_t tripCount = constExpr.getValue();
+      // 0 iteration loops (greatest divisor is 2^64 - 1).
+      if (tripCount == 0)
+        thisGcd = std::numeric_limits<uint64_t>::max();
+      else
+        // The greatest divisor is the trip count.
+        thisGcd = tripCount;
+    } else {
+      // Trip count is not a known constant; return its largest known divisor.
+      thisGcd = resultExpr.getLargestKnownDivisor();
+    }
+    if (gcd.hasValue())
+      gcd = llvm::GreatestCommonDivisor64(gcd.getValue(), thisGcd);
+    else
+      gcd = thisGcd;
   }
-
-  // Trip count is not a known constant; return its largest known divisor.
-  return tripCountExpr.getLargestKnownDivisor();
+  assert(gcd.hasValue() && "value expected per above logic");
+  return gcd.getValue();
 }
 
 bool mlir::isAccessInvariant(const Value &iv, const Value &index) {

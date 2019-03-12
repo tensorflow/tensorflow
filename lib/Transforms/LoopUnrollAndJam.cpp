@@ -152,32 +152,23 @@ LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
 
   assert(unrollJamFactor >= 1 && "unroll jam factor should be >= 1");
 
-  if (unrollJamFactor == 1 || forOp->getBody()->empty())
+  if (unrollJamFactor == 1)
+    return promoteIfSingleIteration(forOp);
+
+  if (forOp->getBody()->empty())
+    return failure();
+
+  // Loops where both lower and upper bounds are multi-result maps won't be
+  // unrolled (since the trip can't be expressed as an affine function in
+  // general).
+  // TODO(mlir-team): this may not be common, but we could support the case
+  // where the lower bound is a multi-result map and the ub is a single result
+  // one.
+  if (forOp->getLowerBoundMap().getNumResults() != 1)
     return failure();
 
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
-
-  if (!mayBeConstantTripCount.hasValue() &&
-      getLargestDivisorOfTripCount(forOp) % unrollJamFactor != 0)
-    return failure();
-
-  auto lbMap = forOp->getLowerBoundMap();
-  auto ubMap = forOp->getUpperBoundMap();
-
-  // Loops with max/min expressions won't be unrolled here (the output can't be
-  // expressed as a Function in the general case). However, the right way to
-  // do such unrolling for a Function would be to specialize the loop for the
-  // 'hotspot' case and unroll that hotspot.
-  if (lbMap.getNumResults() != 1 || ubMap.getNumResults() != 1)
-    return failure();
-
-  // Same operand list for lower and upper bound for now.
-  // TODO(bondhugula): handle bounds with different sets of operands.
-  if (!forOp->matchingBoundOperandList())
-    return failure();
-
   // If the trip count is lower than the unroll jam factor, no unroll jam.
-  // TODO(bondhugula): option to specify cleanup loop unrolling.
   if (mayBeConstantTripCount.hasValue() &&
       mayBeConstantTripCount.getValue() < unrollJamFactor)
     return failure();
@@ -191,21 +182,25 @@ LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
 
   // Generate the cleanup loop if trip count isn't a multiple of
   // unrollJamFactor.
-  if (mayBeConstantTripCount.hasValue() &&
-      mayBeConstantTripCount.getValue() % unrollJamFactor != 0) {
+  if (getLargestDivisorOfTripCount(forOp) % unrollJamFactor != 0) {
     // Insert the cleanup loop right after 'forOp'.
     FuncBuilder builder(forInst->getBlock(),
                         std::next(Block::iterator(forInst)));
     auto cleanupAffineForOp = builder.clone(*forInst)->cast<AffineForOp>();
-    cleanupAffineForOp->setLowerBoundMap(
-        getCleanupLoopLowerBound(forOp, unrollJamFactor, &builder));
+    // Adjust the lower bound of the cleanup loop; its upper bound is the same
+    // as the original loop's upper bound.
+    AffineMap cleanupMap;
+    SmallVector<Value *, 4> cleanupOperands;
+    getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
+                             &cleanupOperands, &builder);
+    cleanupAffineForOp->setLowerBound(cleanupOperands, cleanupMap);
 
-    // The upper bound needs to be adjusted.
-    forOp->setUpperBoundMap(
-        getUnrolledLoopUpperBound(forOp, unrollJamFactor, &builder));
-
-    // Promote the loop body up if this has turned into a single iteration loop.
+    // Promote the cleanup loop if it has turned into a single iteration loop.
     promoteIfSingleIteration(cleanupAffineForOp);
+
+    // Adjust the upper bound of the original loop - it will be the same as the
+    // cleanup loop's lower bound. Its lower bound remains unchanged.
+    forOp->setUpperBound(cleanupOperands, cleanupMap);
   }
 
   // Scale the step of loop being unroll-jammed by the unroll-jam factor.
