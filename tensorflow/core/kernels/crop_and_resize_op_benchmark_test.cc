@@ -21,11 +21,13 @@ limitations under the License.
 
 namespace tensorflow {
 
+template <typename T>
 static Graph* BM_CropAndResize(int batches, int width, int height, int depth,
                                int crop_height, int crop_width) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor in(DT_FLOAT, TensorShape({batches, height, width, depth}));
-  in.flat<float>().setRandom();
+  Tensor in(DataTypeToEnum<T>::v(),
+            TensorShape({batches, height, width, depth}));
+  in.flat<T>().setRandom();
   Tensor boxes(DT_FLOAT, TensorShape({batches, 4}));
   auto boxes_tensor = boxes.matrix<float>();
   Tensor box_ind(DT_INT32, TensorShape({batches}));
@@ -51,13 +53,17 @@ static Graph* BM_CropAndResize(int batches, int width, int height, int depth,
   return g;
 }
 
-#define BM_CropAndResizeDev(DEVICE, B, W, H, D, CH, CW)                        \
-  static void BM_CropAndResize_##DEVICE##_##B##_##W##_##H##_##D##_##CH##_##CW( \
-      int iters) {                                                             \
-    testing::ItemsProcessed(iters* B* W* H* D);                                \
-    test::Benchmark(#DEVICE, BM_CropAndResize(B, W, H, D, CH, CW)).Run(iters); \
-  }                                                                            \
-  BENCHMARK(BM_CropAndResize_##DEVICE##_##B##_##W##_##H##_##D##_##CH##_##CW);
+#define BM_CropAndResizeDev(DEVICE, DTYPE, B, W, H, D, CH, CW)                   \
+  static void                                                                    \
+      BM_CropAndResize_##DEVICE##_##DTYPE##_##B##_##W##_##H##_##D##_##CH##_##CW( \
+          int iters) {                                                           \
+    testing::ItemsProcessed(iters* B* W* H* D);                                  \
+    test::Benchmark(#DEVICE, BM_CropAndResize<EnumToDataType<DTYPE>::Type>(      \
+                                 B, W, H, D, CH, CW))                            \
+        .Run(iters);                                                             \
+  }                                                                              \
+  BENCHMARK(                                                                     \
+      BM_CropAndResize_##DEVICE##_##DTYPE##_##B##_##W##_##H##_##D##_##CH##_##CW);
 
 // Benchmark results using CPU:Intel Haswell with HyperThreading (6 cores)
 // Benchmark                                Time(ns) CPU(ns)  Iterations
@@ -65,8 +71,14 @@ static Graph* BM_CropAndResize(int batches, int width, int height, int depth,
 // BM_CropAndResize_cpu_1_640_640_1_512_512 3801232 3914692 185  99.784M items/s
 // BM_CropAndResize_cpu_1_80_80_512_7_7      182470  241767 2941  1.372G items/s
 
-BM_CropAndResizeDev(cpu, 1, 640, 640, 3, 512, 512);
-BM_CropAndResizeDev(cpu, 1, 640, 640, 1, 512, 512);
-BM_CropAndResizeDev(cpu, 1, 80, 80, 512, 7, 7);
+BM_CropAndResizeDev(cpu, DT_UINT8, 1, 640, 640, 3, 512, 512);
+BM_CropAndResizeDev(cpu, DT_UINT8, 1, 640, 640, 1, 512, 512);
+
+BM_CropAndResizeDev(cpu, DT_HALF, 1, 640, 640, 3, 512, 512);
+BM_CropAndResizeDev(cpu, DT_HALF, 1, 640, 640, 1, 512, 512);
+
+BM_CropAndResizeDev(cpu, DT_FLOAT, 1, 640, 640, 3, 512, 512);
+BM_CropAndResizeDev(cpu, DT_FLOAT, 1, 640, 640, 1, 512, 512);
+BM_CropAndResizeDev(cpu, DT_FLOAT, 1, 80, 80, 512, 7, 7);
 
 }  // namespace tensorflow
