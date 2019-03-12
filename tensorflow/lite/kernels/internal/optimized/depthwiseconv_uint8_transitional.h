@@ -36,8 +36,7 @@ namespace tflite {
 namespace optimized_ops {
 namespace depthwise_conv {
 
-#if defined(USE_NEON)
-
+#ifdef USE_NEON
 // Lane operations are for clarity and convenience. We want to load and store
 // 4 8-bit lanes together. So these are treated much like 32-bit loads and
 // 32-bit stores. Stores require 32-bit alignment.
@@ -51,167 +50,12 @@ namespace depthwise_conv {
 
 #define vld1q_lane_s8x8(src, reg, lane_num) \
   vld1q_lane_u64(reinterpret_cast<const uint64_t*>(src), reg, lane_num)
-#define vld1q_lane_8x4(src, reg, lane_num) \
-  vld1q_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
 #define vld1_lane_8x4(src, reg, lane_num) \
   vld1_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
+#define vld1q_lane_8x4(src, reg, lane_num) \
+  vld1q_lane_s32(reinterpret_cast<const int32*>(src), reg, lane_num)
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
-
-#ifndef __aarch64__
-inline int8x16_t vqtbl4q_s8(int8x16x4_t a, uint8x16_t b) {
-  const uint8x16_t mask = vtstq_u8(b, vdupq_n_u8(8));
-
-  // Delete bit 3 from the indices.
-  const uint8x16_t high_bits = vshrq_n_u8(b, 4);
-  uint8x16_t deleted_bit_3 = b;
-  deleted_bit_3 = vsliq_n_u8(deleted_bit_3, high_bits, 3);
-
-  int8x8x4_t repacked_data;
-
-  // Calculate for lower indices.
-  repacked_data.val[0] = vget_low_u8(a.val[0]);
-  repacked_data.val[1] = vget_low_u8(a.val[1]);
-  repacked_data.val[2] = vget_low_u8(a.val[2]);
-  repacked_data.val[3] = vget_low_u8(a.val[3]);
-  const int8x16_t output_for_lower =
-      vcombine_u8(vtbl4_s8(repacked_data, vget_low_u8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_u8(deleted_bit_3)));
-
-  // Calculate for high indices.
-  repacked_data.val[0] = vget_high_u8(a.val[0]);
-  repacked_data.val[1] = vget_high_u8(a.val[1]);
-  repacked_data.val[2] = vget_high_u8(a.val[2]);
-  repacked_data.val[3] = vget_high_u8(a.val[3]);
-  const int8x16_t output_for_higher =
-      vcombine_u8(vtbl4_s8(repacked_data, vget_low_u8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_u8(deleted_bit_3)));
-
-  // Merge.
-  int8x16_t output = mask;
-  output = vbslq_u8(output, output_for_higher, output_for_lower);
-  return output;
-}
-#endif  // !__aarch64__
-
-// Convenience-compatibility functions.
-// Compatibility: Intrinsics reflect a mixture of older and newer ARM
-//     instructions. This actually results in ZIP1 / ZIP2 asm instructions, but
-//     one intrinsic is provided. Also older instructions operated in place,
-//     and it seems more defensive to assume that some versions of intrinsics
-//     might reflect this
-// Convenience: Callers in these kernels want both ZIP1 and ZIP2, and we do not
-//     want the calling code to get cluttered with unpacking int8x16x2_t.
-inline void vzipq_s8_in_place(int8x16_t* a, int8x16_t* b) {
-  int8x16x2_t r8x16;
-  r8x16 = vzipq_s8(*a, *b);
-  *a = r8x16.val[0];
-  *b = r8x16.val[1];
-}
-
-inline void vzipq_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
-  int16x8x2_t r16x8;
-  r16x8 = vzipq_s16(vreinterpretq_s16_s8(*a), vreinterpretq_s16_s8(*b));
-  *a = vreinterpretq_s8_s16(r16x8.val[0]);
-  *b = vreinterpretq_s8_s16(r16x8.val[1]);
-}
-
-// Similar rationale to the zip-in_place functions, but callers only actually
-// need the TRN1 asm instruction result.
-inline void vtrn1_s8x2_in_place(int8x16_t* a, int8x16_t* b) {
-  int16x8x2_t r16x8;
-  r16x8 = vtrnq_s16(vreinterpretq_s16_s8(*a), vreinterpretq_s16_s8(*b));
-  *a = vreinterpretq_s8_s16(r16x8.val[0]);
-}
-
-inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
-  *left = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*left), 8));
-  *left = vreinterpretq_s8_u32(vsliq_n_u32(vreinterpretq_u32_s8(*left),
-                                           vreinterpretq_u32_s8(*right), 24));
-  *right = vreinterpretq_s8_u32(vshrq_n_u32(vreinterpretq_u32_s8(*right), 8));
-}
-
-#ifndef __aarch64__
-inline int32x4_t vpaddq_s32(int32x4_t a, int8x16_t b) {
-  int32x4x2_t deinterleaved = vuzpq_s32(a, b);
-  return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
-}
-#endif  // !__aarch64__
-
-#ifdef __ARM_FEATURE_DOTPROD
-// The vdotq_lane_s32 takes int8x8t for the rhs parameter, whereas the actual
-// instruction selects from between 4 32-bit (4x8-bit packed) sub-registers, an
-// unusual interpretation of "lane".
-inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
-                                     int8x16_t rhs, const int lane) {
-  switch (lane) {
-    case 0:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 0);
-    case 1:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_low_s8(rhs)), 1);
-    case 2:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            0);
-    case 3:
-    default:
-      return vdotq_lane_s32(acc, lhs, vreinterpret_s32_s8(vget_high_s8(rhs)),
-                            1);
-  }
-}
-
-#else
-
-inline int32x4_t vdotq_s32(int32x4_t acc, int8x16_t lhs, int8x16_t rhs) {
-  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), vget_low_s8(rhs)));
-  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), vget_high_s8(rhs)));
-  int32x4_t sum = vpaddq_s32(sum0, sum1);
-  return vaddq_s32(acc, sum);
-}
-
-inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
-                                     int8x16_t rhs, int lane) {
-  int8x8_t lane_rhs;
-  if (lane == 0) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 0));
-  } else if (lane == 1) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_low_s8(rhs)), 1));
-  } else if (lane == 2) {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 0));
-  } else {
-    lane_rhs = vreinterpret_s8_s32(
-        vdup_lane_s32(vreinterpret_s32_s8(vget_high_s8(rhs)), 1));
-  }
-  int32x4_t sum0 = vpaddlq_s16(vmull_s8(vget_low_s8(lhs), lane_rhs));
-  int32x4_t sum1 = vpaddlq_s16(vmull_s8(vget_high_s8(lhs), lane_rhs));
-  int32x4_t sum = vpaddq_s32(sum0, sum1);
-  return vaddq_s32(acc, sum);
-}
-
-#endif  // !DOTPROD
-#endif  // ARM NEON
-
-template <DepthwiseConvOutputRounding output_rounding>
-struct DivideByPOT {};
-
-template <>
-struct DivideByPOT<DepthwiseConvOutputRounding::kAwayFromZero> {
-  template <typename IntegerType>
-  static inline IntegerType Run(IntegerType x, int exponent) {
-    return RoundingDivideByPOT(x, exponent);
-  }
-};
-
-#if defined(USE_NEON)
-template <>
-struct DivideByPOT<DepthwiseConvOutputRounding::kUpward> {
-  template <typename IntegerType>
-  static inline IntegerType Run(IntegerType x, int exponent) {
-    return vqrshlq_s32(x, vdupq_n_s32(static_cast<int32>(-exponent)));
-  }
-};
-#endif  // ARM NEON
+#endif  // USE_NEON
 
 template <>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct> {
@@ -426,7 +270,7 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseUnwound3x3DotProduct> {
   }
 };
 
-#if defined(USE_NEON)
+#ifdef USE_NEON
 template <>
 struct ProcessPerDepth<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct> {
@@ -1345,37 +1189,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
 //
 // End of code section containing intermediate code transformation.
 
-#if defined(USE_NEON)
-#if defined(__aarch64__)
-// Experiments suggest that a modest performance improvement is seen, at least
-// on 855 chipset big cores, with cache hints.
-inline void PreloadInputBlock(
-    const uint8* input_block_data,
-    const DepthwiseConvDotProdParams* function_params) {
-  // Preload.
-  const int input_width_micro_repeats =
-      function_params->input_width_micro_repeats;
-  const int block_height = function_params->inbound_block_height;
-  const int residual_width = function_params->residual_width;
-  const int input_height_stride = function_params->input_height_stride;
-  const int input_depth = function_params->input_depth;
-
-  {
-    const int total_width = 4 * input_width_micro_repeats + residual_width;
-    const uint8* row_ptr = input_block_data;
-    for (int k_height = 0; k_height < block_height; ++k_height) {
-      const uint8* ptr = row_ptr;
-      for (int j = 0; j < total_width; ++j) {
-        // Input data is loaded once.
-        asm volatile("prfm pldl1strm, [%[ptr]]\n" ::[ptr] "r"(ptr) :);
-        ptr += input_depth;
-      }
-      row_ptr += input_height_stride;
-    }
-  }
-}
-#endif
-
+#ifdef USE_NEON
 template <>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                       DepthwiseConvDepthMultiplication::kNoMultiplication,
@@ -1557,7 +1371,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-#if defined(__aarch64__)
+#ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
 
@@ -1817,7 +1631,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-#if defined(__aarch64__)
+#ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
 
@@ -2174,7 +1988,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-#if defined(__aarch64__)
+#ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
 
@@ -2399,7 +2213,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-#if defined(__aarch64__)
+#ifdef __aarch64__
     PreloadInputBlock(input_block_data, function_params);
 #endif
 
@@ -3133,7 +2947,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseUnwound3x3DotProduct,
 //
 // End of code section containing intermediate code transformation.
 
-#if defined(USE_NEON)
+#ifdef USE_NEON
 template <>
 struct KernelMacroBlock<
     DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct,
@@ -5178,8 +4992,11 @@ struct KernelMacroBlock<
 #undef vst1_lane_8x4
 #undef vst1q_lane_8x4
 #undef vld1q_lane_s8x8
+#undef vld1_lane_8x4
+#undef vld1q_lane_8x4
+#undef vld1q_dup_s8x4
 
-#endif
+#endif  //  USE_NEON
 
 }  // namespace depthwise_conv
 }  // namespace optimized_ops
