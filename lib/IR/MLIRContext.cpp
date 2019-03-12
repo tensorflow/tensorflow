@@ -37,6 +37,7 @@
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/RWMutex.h"
 #include "llvm/Support/raw_ostream.h"
 #include <memory>
 
@@ -280,6 +281,127 @@ struct FusedLocKeyInfo : DenseMapInfo<FusedLocationStorage *> {
     return lhs == std::make_pair(rhs->getLocations(), rhs->metadata);
   }
 };
+
+/// This is the implementation of the TypeUniquer class.
+struct TypeUniquerImpl {
+  /// A lookup key for derived instances of TypeStorage objects.
+  struct TypeLookupKey {
+    /// The known derived kind for the storage.
+    unsigned kind;
+
+    /// The known hash value of the key.
+    unsigned hashValue;
+
+    /// An equality function for comparing with an existing storage instance.
+    llvm::function_ref<bool(const TypeStorage *)> isEqual;
+  };
+
+  /// A utility wrapper object representing a hashed storage object. This class
+  /// contains a storage object and an existing computed hash value.
+  struct HashedStorageType {
+    unsigned hashValue;
+    TypeStorage *storage;
+  };
+
+  /// Get or create an instance of a complex derived type.
+  TypeStorage *getOrCreate(
+      unsigned kind, unsigned hashValue,
+      llvm::function_ref<bool(const TypeStorage *)> isEqual,
+      std::function<TypeStorage *(TypeStorageAllocator &)> constructorFn) {
+    TypeLookupKey lookupKey{kind, hashValue, isEqual};
+
+    { // Check for an existing instance in read-only mode.
+      llvm::sys::SmartScopedReader<true> typeLock(typeMutex);
+      auto it = storageTypes.find_as(lookupKey);
+      if (it != storageTypes.end())
+        return it->storage;
+    }
+
+    // Aquire a writer-lock so that we can safely create the new type instance.
+    llvm::sys::SmartScopedWriter<true> typeLock(typeMutex);
+
+    // Check for an existing instance again here, because another writer thread
+    // may have already created one.
+    auto existing = storageTypes.insert_as({}, lookupKey);
+    if (!existing.second)
+      return existing.first->storage;
+
+    // Otherwise, construct and initialize the derived storage for this type
+    // instance.
+    TypeStorage *storage = constructorFn(allocator);
+    *existing.first = HashedStorageType{hashValue, storage};
+    return storage;
+  }
+
+  /// Get or create an instance of a simple derived type.
+  TypeStorage *getOrCreate(
+      unsigned kind,
+      std::function<TypeStorage *(TypeStorageAllocator &)> constructorFn) {
+    { // Check if the type already exists in read-only mode.
+      llvm::sys::SmartScopedReader<true> typeLock(typeMutex);
+      auto it = simpleTypes.find(kind);
+      if (it != simpleTypes.end())
+        return it->second;
+    }
+
+    // Aquire the mutex in write mode so that we can safely construct the new
+    // instance.
+    llvm::sys::SmartScopedWriter<true> typeLock(typeMutex);
+
+    // Check for an existing instance again here, because another writer thread
+    // may have already created one.
+    auto *&result = simpleTypes[kind];
+    if (!result)
+      result = constructorFn(allocator);
+    return result;
+  }
+
+  //===--------------------------------------------------------------------===//
+  // Instance Storage
+  //===--------------------------------------------------------------------===//
+
+  /// Storage info for derived TypeStorage objects.
+  struct StorageKeyInfo : DenseMapInfo<HashedStorageType> {
+    static HashedStorageType getEmptyKey() {
+      return HashedStorageType{0, DenseMapInfo<TypeStorage *>::getEmptyKey()};
+    }
+    static HashedStorageType getTombstoneKey() {
+      return HashedStorageType{0,
+                               DenseMapInfo<TypeStorage *>::getTombstoneKey()};
+    }
+
+    static unsigned getHashValue(const HashedStorageType &key) {
+      return key.hashValue;
+    }
+    static unsigned getHashValue(TypeLookupKey key) { return key.hashValue; }
+
+    static bool isEqual(const HashedStorageType &lhs,
+                        const HashedStorageType &rhs) {
+      return lhs.storage == rhs.storage;
+    }
+    static bool isEqual(const TypeLookupKey &lhs,
+                        const HashedStorageType &rhs) {
+      if (isEqual(rhs, getEmptyKey()) || isEqual(rhs, getTombstoneKey()))
+        return false;
+      // If the lookup kind matches the kind of the storage, then invoke the
+      // equality function on the lookup key.
+      return lhs.kind == rhs.storage->getKind() && lhs.isEqual(rhs.storage);
+    }
+  };
+
+  // Unique types with specific hashing or storage constraints.
+  using StorageTypeSet = llvm::DenseSet<HashedStorageType, StorageKeyInfo>;
+  StorageTypeSet storageTypes;
+
+  // Unique types with just the kind.
+  DenseMap<unsigned, TypeStorage *> simpleTypes;
+
+  // Allocator to use when constructing derived type instances.
+  TypeStorageAllocator allocator;
+
+  // A mutex to keep type uniquing thread-safe.
+  llvm::sys::SmartRWMutex<true> typeMutex;
+};
 } // end anonymous namespace.
 
 namespace mlir {
@@ -354,7 +476,7 @@ public:
   DenseMap<int64_t, AffineConstantExprStorage *> constExprs;
 
   /// Type uniquing.
-  TypeUniquer typeUniquer;
+  TypeUniquerImpl typeUniquer;
 
   // Attribute uniquing.
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
@@ -701,14 +823,22 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
 // Type uniquing
 //===----------------------------------------------------------------------===//
 
-/// Get the type uniquer for this context.
-TypeUniquer &MLIRContext::getTypeUniquer() const {
-  return getImpl().typeUniquer;
+/// Implementation for getting/creating an instance of a derived type with
+/// complex storage.
+TypeStorage *TypeUniquer::getImpl(
+    MLIRContext *ctx, unsigned kind, unsigned hashValue,
+    llvm::function_ref<bool(const TypeStorage *)> isEqual,
+    std::function<TypeStorage *(TypeStorageAllocator &)> constructorFn) {
+  return ctx->getImpl().typeUniquer.getOrCreate(kind, hashValue, isEqual,
+                                                constructorFn);
 }
 
-/// Get a reference to the internal allocator.
-llvm::BumpPtrAllocator &TypeStorageAllocator::getAllocator() {
-  return ctx->getImpl().allocator;
+/// Implementation for getting/creating an instance of a derived type with
+/// default storage.
+TypeStorage *TypeUniquer::getImpl(
+    MLIRContext *ctx, unsigned kind,
+    std::function<TypeStorage *(TypeStorageAllocator &)> constructorFn) {
+  return ctx->getImpl().typeUniquer.getOrCreate(kind, constructorFn);
 }
 
 /// Get the dialect that registered the type with the provided typeid.
