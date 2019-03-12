@@ -278,14 +278,14 @@ std::map<int, llvm::MDNode*> MergeMetadata(
     llvm::LLVMContext* context, const std::map<int, llvm::MDNode*>& a,
     const std::map<int, llvm::MDNode*>& b);
 
-// Dumps out `llvm_module` to a file in the directory named `directory_name`,
-// creating the directory if necessary.  A sanitized version of
-// `hlo_module_name` is incorporated into the file name.  If `optimized` is true
-// then a suffix of "-with-opt.ll" is used, else a suffix of "-no-opt.ll" is
-// used.
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized);
+// Dumps out `llvm_module` to the path specified in DebugOptions, if dumping is
+// enabled for the given HLO module.
+//
+// A sanitized version of `hlo_module_name` is incorporated into the file name.
+// If `optimized` is true then a suffix of "-with-opt.ll" is used, else a suffix
+// of "-no-opt.ll" is used.
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized);
 
 llvm::Function* CreateFunction(llvm::FunctionType* function_type,
                                llvm::GlobalValue::LinkageTypes linkage,
