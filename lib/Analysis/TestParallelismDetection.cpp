@@ -29,26 +29,26 @@ using namespace mlir;
 
 namespace {
 
-struct LoopParallelismDetection
-    : public FunctionPass<LoopParallelismDetection> {
+struct TestParallelismDetection
+    : public FunctionPass<TestParallelismDetection> {
   void runOnFunction() override;
 };
 
 } // end anonymous namespace
 
-FunctionPassBase *mlir::createLoopParallelismDetectionPass() {
-  return new LoopParallelismDetection();
+FunctionPassBase *mlir::createParallelismDetectionTestPass() {
+  return new TestParallelismDetection();
 }
 
-// Walks the function and marks all parallel 'for' ops with an attribute.
-void LoopParallelismDetection::runOnFunction() {
+// Walks the function and emits a note for all 'for' ops detected as parallel.
+void TestParallelismDetection::runOnFunction() {
   Function *f = getFunction();
   FuncBuilder b(f);
   f->walk<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
-    forOp->getInstruction()->setAttr("parallel",
-                                     b.getBoolAttr(isLoopParallel(forOp)));
+    if (isLoopParallel(forOp))
+      forOp->emitNote("parallel loop");
   });
 }
 
-static PassRegistration<LoopParallelismDetection> pass("detect-parallel",
-                                                       "Detect parallel loops");
+static PassRegistration<TestParallelismDetection>
+    pass("test-detect-parallel", "Test parallelism detection ");

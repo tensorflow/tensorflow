@@ -35,8 +35,8 @@ FunctionPassBase *createMemRefBoundCheckPass();
 /// Creates a pass to check memref access dependences in an ML Function.
 FunctionPassBase *createMemRefDependenceCheckPass();
 
-/// Creates a pass to test parallelism detection; marks parallel loops.
-FunctionPassBase *createLoopParallelismDetectionPass();
+/// Creates a pass to test parallelism detection; emits note for parallel loops.
+FunctionPassBase *createParallelismDetectionTestPass();
 
 } // end namespace mlir
 
