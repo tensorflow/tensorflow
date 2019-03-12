@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
+Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
                                   const NameAttrList& func,
                                   std::vector<int>* indices) {
   FunctionLibraryRuntime::Handle fn_handle;

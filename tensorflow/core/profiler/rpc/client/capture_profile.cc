@@ -164,9 +164,10 @@ Status NewSession(const string& service_addr,
 }
 
 // Creates an empty event file if not already exists, which indicates that we
-// have a profile/plugin/ directory in the current logdir.
+// have a plugins/profile/ directory in the current logdir.
 Status MaybeCreateEmptyEventFile(const tensorflow::string& logdir) {
-  // Suffix for an empty event file.
+  // Suffix for an empty event file.  it should be kept in sync with
+  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
   constexpr char kProfileEmptySuffix[] = ".profile-empty";
   std::vector<string> children;
   TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));

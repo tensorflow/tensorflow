@@ -111,7 +111,8 @@ bool HasForwardedRefInput(const Node& node) {
   return false;
 }
 
-Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
+xla::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
+                                              GraphCycles* cycles) {
   for (int i = 0; i < graph->num_node_ids(); ++i) {
     // We rely on the node IDs in the cycle detection graph being consecutive
     // integers starting from 0.
@@ -174,9 +175,11 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
       }
 
       if (!cycles->InsertEdge(src, dst)) {
-        return errors::Internal(
-            "Cycle detected when adding ", src_type, "->", dst_type,
-            " edge: ", DescribeCycle(cycles, *graph, src, dst));
+        // TODO(b/127521408): We can probably handle this situation with a more
+        // sophisticated SCC based algorithm, but for now we bail out.
+        VLOG(1) << "Cycle detected when adding " << src_type << "->" << dst_type
+                << " edge: " << DescribeCycle(cycles, *graph, src, dst);
+        return false;
       }
       // Drop the original edge.
       continue;
@@ -194,7 +197,8 @@ Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles) {
           DescribeCycle(cycles, *graph, edge->src()->id(), edge->dst()->id()));
     }
   }
-  return Status::OK();
+
+  return true;
 }
 
 absl::optional<absl::string_view> GetXlaClusterForNode(const Node& node) {

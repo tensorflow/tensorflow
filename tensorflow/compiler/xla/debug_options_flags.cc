@@ -33,7 +33,7 @@ DebugOptions DefaultDebugOptionsIgnoringFlags() {
   opts.set_xla_cpu_multi_thread_eigen(true);
   opts.set_xla_gpu_cuda_data_dir("./cuda_sdk_lib");
   opts.set_xla_eliminate_hlo_implicit_broadcast(true);
-  opts.set_xla_hlo_dump_as_html(false);
+  opts.set_xla_dump_hlo_as_html(false);
 #ifdef INTEL_MKL
   opts.set_xla_cpu_use_mkl_dnn(true);
 #endif  // INTEL_MKL
@@ -84,6 +84,14 @@ static void AllocateFlags() {
     };
   };
 
+  auto string_setter_for =
+      [](void (DebugOptions::*member_setter)(const string& value)) {
+        return [member_setter](const string& value) {
+          (flag_values->*member_setter)(value);
+          return true;
+        };
+      };
+
   // Custom "sub-parser" lambda for xla_disable_hlo_passes.
   auto setter_for_xla_disable_hlo_passes = [](string comma_separated_values) {
     std::vector<string> disabled_passes =
@@ -114,38 +122,6 @@ static void AllocateFlags() {
       };
 
   flag_objects = new std::vector<tensorflow::Flag>({
-      tensorflow::Flag(
-          "xla_generate_hlo_graph",
-          flag_values->mutable_xla_generate_hlo_graph(),
-          "HLO modules matching this regex will be dumped to a .dot file "
-          "throughout various stages in compilation."),
-      tensorflow::Flag(
-          "xla_hlo_graph_addresses",
-          bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
-          flag_values->xla_hlo_graph_addresses(),
-          "With xla_generate_hlo_graph, show addresses of HLO ops in "
-          "graph dump."),
-      tensorflow::Flag(
-          "xla_hlo_graph_path", flag_values->mutable_xla_hlo_graph_path(),
-          "With xla_generate_hlo_graph, dump the graphs into this path."),
-      tensorflow::Flag("xla_hlo_dump_as_html",
-                       bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_html),
-                       flag_values->xla_hlo_dump_as_html(),
-                       "Dump HLO graphs as an HTML (DOT rendered into SVG "
-                       "inlined in HTML)."),
-      tensorflow::Flag(
-          "xla_hlo_graph_sharding_color",
-          bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
-          flag_values->xla_hlo_graph_sharding_color(),
-          "Assign colors based on sharding assignments when generating the "
-          "HLO graphs."),
-      tensorflow::Flag(
-          "xla_log_hlo_text", flag_values->mutable_xla_log_hlo_text(),
-          "HLO modules matching this regex will be dumped to LOG(INFO)."),
-      tensorflow::Flag(
-          "xla_generate_hlo_text_to",
-          flag_values->mutable_xla_generate_hlo_text_to(),
-          "Dump all HLO modules as text into the provided directory path."),
       tensorflow::Flag(
           "xla_cpu_enable_fast_math",
           bool_setter_for(&DebugOptions::set_xla_cpu_enable_fast_math),
@@ -211,9 +187,6 @@ static void AllocateFlags() {
           flag_values->xla_embed_ir_in_executable(),
           "Embed the compiler IR as a string in the executable."),
       tensorflow::Flag(
-          "xla_dump_ir_to", flag_values->mutable_xla_dump_ir_to(),
-          "Dump the compiler IR into this directory as individual files."),
-      tensorflow::Flag(
           "xla_eliminate_hlo_implicit_broadcast",
           bool_setter_for(
               &DebugOptions::set_xla_eliminate_hlo_implicit_broadcast),
@@ -248,20 +221,6 @@ static void AllocateFlags() {
           flag_values->xla_gpu_max_kernel_unroll_factor(),
           "Specify the maximum kernel unroll factor for the GPU backend."),
       tensorflow::Flag(
-          "xla_dump_optimized_hlo_proto_to",
-          flag_values->mutable_xla_dump_optimized_hlo_proto_to(),
-          "Dump Hlo after all hlo passes are executed as proto binary into "
-          "this directory."),
-      tensorflow::Flag(
-          "xla_dump_unoptimized_hlo_proto_to",
-          flag_values->mutable_xla_dump_unoptimized_hlo_proto_to(),
-          "Dump HLO before any hlo passes are executed as proto binary into "
-          "this directory."),
-      tensorflow::Flag("xla_dump_per_pass_hlo_proto_to",
-                       flag_values->mutable_xla_dump_per_pass_hlo_proto_to(),
-                       "Dump HLO after each pass as an HloProto in binary file "
-                       "format into this directory."),
-      tensorflow::Flag(
           "xla_test_all_output_layouts",
           bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
           flag_values->xla_test_all_output_layouts(),
@@ -283,14 +242,6 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_hlo_profile),
           flag_values->xla_hlo_profile(),
           "Instrument the computation to collect per-HLO cycle counts"),
-      tensorflow::Flag("xla_dump_computations_to",
-                       flag_values->mutable_xla_dump_computations_to(),
-                       "Dump computations that XLA executes into the provided "
-                       "directory path"),
-      tensorflow::Flag("xla_dump_executions_to",
-                       flag_values->mutable_xla_dump_executions_to(),
-                       "Dump parameters and results of computations that XLA "
-                       "executes into the provided directory path"),
       tensorflow::Flag("xla_backend_extra_options",
                        setter_for_xla_backend_extra_options, "",
                        "Extra options to pass to a backend; "
@@ -343,6 +294,84 @@ static void AllocateFlags() {
               &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
           flag_values->xla_gpu_disable_ptxas_optimizations(),
           "In XLA:GPU run ptxas in -O0 (default is -O3)."),
+
+      tensorflow::Flag(
+          "xla_dump_to", string_setter_for(&DebugOptions::set_xla_dump_to),
+          flag_values->xla_dump_to(),
+          "Directory into which debugging data is written.  If not specified "
+          "but another dumping flag is passed, data will be written to stdout. "
+          " To explicitly write to stdout, set this to \"-\".  The values "
+          "\"sponge\" and \"test_undeclared_outputs_dir\" have a special "
+          "meaning: They cause us to dump into the directory specified by the "
+          "environment variable TEST_UNDECLARED_OUTPUTS_DIR."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_text",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_text),
+          flag_values->xla_dump_hlo_as_text(),
+          "Dumps HLO modules as text before and after optimizations.  Results "
+          "are written to the --xla_dump_to dir, or, if no dir is specified, "
+          "to stdout."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_proto",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_proto),
+          flag_values->xla_dump_hlo_as_proto(),
+          "Dumps HLO modules as HloProtos to the directory specified by "
+          "--xla_dump_to."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_dot",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_dot),
+          flag_values->xla_dump_hlo_as_dot(),
+          "Dumps HLO modules rendered as dot files to the directory "
+          "specified by --xla_dump_to."),
+      tensorflow::Flag("xla_dump_hlo_as_html",
+                       bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_html),
+                       flag_values->xla_dump_hlo_as_html(),
+                       "Dumps HLO modules rendered as HTML files to the "
+                       "directory specified by --xla_dump_to."),
+      tensorflow::Flag(
+          "xla_dump_hlo_as_url",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_as_url),
+          flag_values->xla_dump_hlo_as_url(),
+          "Tries to dump HLO modules rendered as URLs to stdout (and also to "
+          "the directory specified by --xla_dump_to). This is not implemented "
+          "by default; you need to add a plugin which calls "
+          "RegisterGraphToURLRenderer()."),
+      tensorflow::Flag(
+          "xla_dump_hlo_snapshots",
+          bool_setter_for(&DebugOptions::set_xla_dump_hlo_snapshots),
+          flag_values->xla_dump_hlo_snapshots(),
+          "Every time an HLO module is run, dumps an HloSnapshot to the "
+          "directory specified by --xla_dump_to."),
+      tensorflow::Flag(
+          "xla_dump_hlo_module_re",
+          string_setter_for(&DebugOptions::set_xla_dump_hlo_module_re),
+          flag_values->xla_dump_hlo_module_re(),
+          "Limits dumping only to modules which match this regular expression. "
+          " Default is to dump all modules."),
+      tensorflow::Flag(
+          "xla_dump_hlo_pass_re",
+          string_setter_for(&DebugOptions::set_xla_dump_hlo_pass_re),
+          flag_values->xla_dump_hlo_pass_re(),
+          "If specified, dumps HLO before and after optimization passes which "
+          "match this regular expression, in addition to dumping at the very "
+          "beginning and end of compilation."),
+      tensorflow::Flag("xla_dump_ir",
+                       bool_setter_for(&DebugOptions::set_xla_dump_ir),
+                       flag_values->xla_dump_ir(),
+                       "If specified, dumps intermediate results (e.g. LLVM "
+                       "IR) to the directory specified by --xla_dump_to."),
+      tensorflow::Flag(
+          "xla_hlo_graph_addresses",
+          bool_setter_for(&DebugOptions::set_xla_hlo_graph_addresses),
+          flag_values->xla_hlo_graph_addresses(),
+          "When rendering graphs (--xla_dump_hlo_as_{dot,html,url}), displays "
+          "the address in memory of each HloInstruction object."),
+      tensorflow::Flag(
+          "xla_hlo_graph_sharding_color",
+          bool_setter_for(&DebugOptions::set_xla_hlo_graph_sharding_color),
+          flag_values->xla_hlo_graph_sharding_color(),
+          "Assign colors based on sharding assignments when generating the "
+          "HLO graphs."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

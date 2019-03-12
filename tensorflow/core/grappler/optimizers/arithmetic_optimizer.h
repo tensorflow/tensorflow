@@ -79,6 +79,7 @@ class ArithmeticOptimizer : public GraphOptimizer {
     bool simplify_aggregation = true;
     bool convert_pow = true;
     bool convert_log1p = true;
+    bool convert_log_softmax = true;
     bool convert_expm1 = true;
     bool unary_ops_composition = true;
     bool remove_stack_strided_slice_same_axis = true;

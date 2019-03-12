@@ -13,17 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// See docs in ../ops/array_ops.cc.
+#ifndef TENSORFLOW_CORE_PLATFORM_ROCM_H_
+#define TENSORFLOW_CORE_PLATFORM_ROCM_H_
 
-#ifndef TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
-#define TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/stream_executor/rocm/rocm_activation.h"
 
-#include <string.h>  // for memcpy
-
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/framework/types.h"
-
-#endif  // TENSORFLOW_CORE_KERNELS_BITCAST_OP_H_
+#endif  // TENSORFLOW_CORE_PLATFORM_ROCM_H_

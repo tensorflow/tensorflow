@@ -26,24 +26,10 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 
+#include "tensorflow/core/kernels/concat_lib_gpu.h"
 #include "tensorflow/core/kernels/cuda_device_array.h"
 
 namespace tensorflow {
-
-template <typename T, typename IntType>
-void ConcatGPUSlice(
-    const Eigen::GpuDevice& gpu_device,
-    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
-        inputs_flat,
-    typename TTypes<T, 2>::Matrix* output);
-
-template <typename T, typename IntType>
-void ConcatGPUImpl(const Eigen::GpuDevice& d,
-                   const CudaDeviceArrayStruct<const T*>& input_ptrs,
-                   const CudaDeviceArrayStruct<IntType>& ptr_offsets,
-                   bool same_size, int slice_size,
-                   typename TTypes<T, 2>::Matrix* output);
-
 namespace {
 
 template <typename T, typename IntType>

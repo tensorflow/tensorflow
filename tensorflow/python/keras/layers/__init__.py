@@ -152,10 +152,11 @@ from tensorflow.python.keras.layers.recurrent import GRUCell
 from tensorflow.python.keras.layers.recurrent import LSTMCell
 from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
+
 from tensorflow.python.keras.layers.recurrent import GRU
 from tensorflow.python.keras.layers.recurrent import LSTM
-from tensorflow.python.keras.layers.recurrent import UnifiedGRU
-from tensorflow.python.keras.layers.recurrent import UnifiedLSTM
+from tensorflow.python.keras.layers.recurrent_v2 import GRU as GRU_v2
+from tensorflow.python.keras.layers.recurrent_v2 import LSTM as LSTM_v2
 
 # Convolutional-recurrent layers.
 from tensorflow.python.keras.layers.convolutional_recurrent import ConvLSTM2D

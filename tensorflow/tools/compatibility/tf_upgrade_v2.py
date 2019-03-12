@@ -1472,6 +1472,78 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
         "tf.name_scope": _name_scope_transformer,
+        "tf.estimator.DNNEstimator":
+            functools.partial(
+                _rename_if_arg_found_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNEstimator no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNClassifier no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNRegressor no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.LinearEstimator":
+            functools.partial(
+                _rename_if_arg_found_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.LinearEstimator no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.LinearClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.LinearClassifier no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.LinearRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.LinearRegressor no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNLinearCombinedEstimator":
+            functools.partial(
+                _rename_if_arg_found_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNLinearCombinedEstimator no longer "
+                "takes input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNLinearCombinedClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNLinearCombinedClassifier no longer "
+                "takes input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNLinearCombinedRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNLinearCombinedRegressor no longer "
+                "takes input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -1514,14 +1586,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.summary.histogram": _add_summary_step_transformer,
         "tf.contrib.summary.image": _add_summary_step_transformer,
         "tf.contrib.summary.scalar": _add_summary_step_transformer,
-        "tf.estimator.LinearClassifier": _add_loss_reduction_transformer,
-        "tf.estimator.LinearRegressor": _add_loss_reduction_transformer,
-        "tf.estimator.DNNLinearCombinedClassifier":
-            _add_loss_reduction_transformer,
-        "tf.estimator.DNNLinearCombinedRegressor":
-            _add_loss_reduction_transformer,
-        "tf.estimator.DNNRegressor": _add_loss_reduction_transformer,
-        "tf.estimator.DNNClassifier": _add_loss_reduction_transformer,
         "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
         "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
         "tf.initializers.uniform_unit_scaling":
@@ -1972,6 +2036,45 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
       "SUM_OVER_BATCH_SIZE; inserting old default value %s.\n"
       % (full_name or name, default_value)))
   return node
+
+
+def _rename_if_arg_found_and_add_loss_reduction_transformer(
+    parent,
+    node,
+    full_name,
+    name,
+    logs,
+    arg_name=None,
+    arg_ok_predicate=None,
+    remove_if_ok=False,
+    message=None):
+  """Combination of _rename_if_arg_found and _add_loss_reduction transformers.
+
+  Args:
+    parent: Parent of node.
+    node: ast.Call node to maybe modify.
+    full_name: full name of function to modify
+    name: name of function to modify
+    logs: list of logs to append to
+    arg_name: name of the argument to look for
+    arg_ok_predicate: predicate callable with the ast of the argument value,
+      returns whether the argument value is allowed.
+    remove_if_ok: remove the argument if present and ok as determined by
+      arg_ok_predicate.
+    message: message to print if a non-ok arg is found (and hence, the function
+      is renamed to its compat.v1 version).
+
+  Returns:
+    node, if it was modified, else None.
+  """
+
+  add_loss_node = _add_loss_reduction_transformer(parent, node, full_name, name,
+                                                  logs)
+  rename_node = _rename_if_arg_found_transformer(
+      parent, add_loss_node, full_name, name, logs, arg_name, arg_ok_predicate,
+      remove_if_ok, message)
+
+  return rename_node
 
 
 def _add_uniform_scaling_initializer_transformer(

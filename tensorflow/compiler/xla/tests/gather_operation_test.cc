@@ -598,6 +598,26 @@ ENTRY main {
   RunTest(hlo_text, &operand, &start_indices);
 }
 
+XLA_TEST_F(GatherOperationTest, GatherFromScalar) {
+  const string hlo_text = R"(
+HloModule GatherFromScalar
+
+ENTRY main {
+  operand = f32[] parameter(0)
+  indices = s32[0]{0} parameter(1)
+  ROOT gather = f32[] gather(operand, indices),
+      offset_dims={},
+      collapsed_slice_dims={},
+      start_index_map={},
+      index_vector_dim=0,
+      slice_sizes={}
+}
+)";
+  Literal operand = LiteralUtil::CreateR0<float>(1);
+  Literal start_indices = LiteralUtil::CreateR1<int32>({});
+  RunTest(hlo_text, &operand, &start_indices);
+}
+
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
 // Disabled on interpreter since ExectuteAsyncOnStream is not supported.

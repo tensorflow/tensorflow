@@ -234,20 +234,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       else:
         self.assertEqual(got_shape[0], (None,))
 
-  def testWastedAdd(self):
-
-    @def_function.function()
-    def add(x, y):
-      _ = x * y
-      return x + y
-
-    # The default config allows all rewrites.
-    config_proto = config_pb2.ConfigProto()
-
-    with context.function_config_proto(config_proto):
-      t = constant_op.constant(1.0)
-      self.assertAllEqual(add(t, t).numpy(), 2.0)
-
   def testNoHash(self):
 
     @def_function.function()

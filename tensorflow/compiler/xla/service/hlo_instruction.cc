@@ -64,7 +64,35 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
     const absl::flat_hash_map<int64, HloComputation*>& computation_map) {
   TF_RET_CHECK(!proto.opcode().empty());
-  TF_ASSIGN_OR_RETURN(HloOpcode opcode, StringToHloOpcode(proto.opcode()));
+  HloOpcode opcode;
+  auto opcode_or = StringToHloOpcode(proto.opcode());
+  absl::optional<ComparisonDirection> comparison_direction;
+  if (opcode_or.ok()) {
+    opcode = opcode_or.ConsumeValueOrDie();
+  } else {
+    // Unknown opcode. Try auto-upgrading deprecated "less-than",
+    // "greater-than", etc opcodes, which are now rolled into the kCompare
+    // opcode.
+    if (proto.opcode() == "equal-to") {
+      comparison_direction = ComparisonDirection::kEq;
+    } else if (proto.opcode() == "not-equal-to") {
+      comparison_direction = ComparisonDirection::kNe;
+    } else if (proto.opcode() == "greater-than-or-equal-to") {
+      comparison_direction = ComparisonDirection::kGe;
+    } else if (proto.opcode() == "greater-than") {
+      comparison_direction = ComparisonDirection::kGt;
+    } else if (proto.opcode() == "less-than-or-equal-to") {
+      comparison_direction = ComparisonDirection::kLe;
+    } else if (proto.opcode() == "less-than") {
+      comparison_direction = ComparisonDirection::kLt;
+    }
+    if (comparison_direction) {
+      opcode = HloOpcode::kCompare;
+    } else {
+      return InvalidArgument("Unknown opcode: %s", proto.opcode());
+    }
+  }
+
   TF_RET_CHECK(proto.has_shape());
 
   std::unique_ptr<HloInstruction> instruction;
@@ -134,6 +162,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                     proto.fft_length().end());
       instruction = CreateFft(shape, operands(0), proto.fft_type(),
                               absl::Span<const int64>(fft_length));
+      break;
+    }
+    case HloOpcode::kCompare: {
+      // Auto-upgraded from deprecated opcode skips the following.
+      if (!comparison_direction) {
+        TF_ASSIGN_OR_RETURN(
+            comparison_direction,
+            StringToComparisonDirection(proto.comparison_direction()));
+      }
+      instruction =
+          CreateCompare(shape, operands(0), operands(1), *comparison_direction);
       break;
     }
     case HloOpcode::kTriangularSolve: {
@@ -688,15 +727,9 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kAtan2:
     case HloOpcode::kDivide:
     case HloOpcode::kComplex:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -759,6 +792,12 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     absl::Span<const int64> fft_length) {
   return absl::make_unique<HloFftInstruction>(shape, operand, fft_type,
                                               fft_length);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    ComparisonDirection direction) {
+  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1311,6 +1350,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
+    case HloOpcode::kCompare:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
@@ -1384,12 +1424,6 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDivide:
     case HloOpcode::kMultiply:
     case HloOpcode::kSubtract:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
@@ -1705,26 +1739,20 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLe:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
     case HloOpcode::kAnd:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
@@ -1772,6 +1800,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kFft:
+    case HloOpcode::kCompare:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kRecv:
@@ -2119,17 +2148,12 @@ bool HloInstruction::IsElementwiseImpl(
     // Binary elementwise operations, the same as in IsElementwiseBinary().
     case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kPower:
     case HloOpcode::kRemainder:
     case HloOpcode::kSubtract:
@@ -2472,12 +2496,7 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleGetTupleElement(this);
     case HloOpcode::kParameter:
       return visitor->HandleParameter(this);
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe:
+    case HloOpcode::kCompare:
       return visitor->HandleCompare(this);
     case HloOpcode::kComplex:
       return visitor->HandleComplex(this);
@@ -3517,6 +3536,10 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+ComparisonDirection HloInstruction::comparison_direction() const {
+  return Cast<HloCompareInstruction>(this)->direction();
 }
 
 const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
