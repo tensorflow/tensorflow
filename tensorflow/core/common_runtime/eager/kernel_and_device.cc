@@ -208,6 +208,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
                               GraphCollector* graph_collector) {
+  gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
+  for (size_t i = 0; i < in_attrs.size(); ++i) {
+    in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
+                            tensorflow::HOST_MEMORY);
+  }
   std::vector<AllocatorAttributes> out_attrs(kernel_->num_outputs());
   for (size_t i = 0; i < out_attrs.size(); ++i) {
     out_attrs[i].set_on_host(kernel_->output_memory_types()[i] ==
@@ -229,6 +234,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.inputs = &inputs;
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
+  params.input_alloc_attrs = &in_attrs;
   params.output_attr_array = gtl::vector_as_array(&out_attrs);
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
