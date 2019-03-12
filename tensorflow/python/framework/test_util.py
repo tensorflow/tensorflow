@@ -650,7 +650,7 @@ def _find_reference_cycle(objects, idx):
     return None
 
   # Note: this function is meant to help with diagnostics. Its output is purely
-  # a human readable representation, so you may freely modify it to suit your
+  # a human-readable representation, so you may freely modify it to suit your
   # needs.
   def describe(obj, blacklist, leaves_only=False):
     """Returns a custom human-readable summary of obj.
@@ -1202,7 +1202,7 @@ def run_v2_only(func=None):
 def run_gpu_only(func=None):
   """Execute the decorated test only if a GPU is available.
 
-  This function is intended to be applied to tests that require the precense
+  This function is intended to be applied to tests that require the presence
   of a GPU. If a GPU is absent, it will simply be skipped.
 
   Args:
@@ -1275,7 +1275,7 @@ def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
       CUDA compute capability required, or None if no requirement.
 
   Returns:
-    True iff a gpu device of the requested kind is available.
+    True if a gpu device of the requested kind is available.
   """
 
   def compute_capability_from_device_desc(device_desc):
@@ -1376,7 +1376,7 @@ class FakeEagerSession(object):
 
   Since the feed_dict is empty when not using placeholders we should be able to
   call self.evaluate(), however this requires rewriting the test case.
-  This class shold be considered a stop-gap solution to get tests running with
+  This class should be considered a stop-gap solution to get tests running with
   eager with minimal changes to the actual test.
   """
 
@@ -2177,7 +2177,7 @@ class TensorFlowTestCase(googletest.TestCase):
 
   @py_func_if_in_function
   def assertNotAllClose(self, a, b, **kwargs):
-    """Assert that two numpy arrays, or or Tensors, do not have near values.
+    """Assert that two numpy arrays, or Tensors, do not have near values.
 
     Args:
       a: the first value to compare.
