@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/function_ops.h"
+#include "tensorflow/core/kernels/host_constant_op.h"
 #include "tensorflow/core/kernels/identity_n_op.h"
 #include "tensorflow/core/kernels/identity_op.h"
 #include "tensorflow/core/kernels/no_op.h"
@@ -93,6 +94,8 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Const").Device(DEVICE).TypeConstraint("dtype", TYPES),             \
       ConstantOp);                                                             \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("HostConst").Device(DEVICE).HostMemory("output"), _HostConstantOp); \
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("Identity").Device(DEVICE).TypeConstraint("T", TYPES), IdentityOp); \
   REGISTER_KERNEL_BUILDER(                                                     \
