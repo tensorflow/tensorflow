@@ -35,8 +35,8 @@ MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
     : Allocation(error_reporter)
     , mmapped_buffer_(MAP_FAILED)
-    , file_handle_( nullptr )
-    , file_mapping_( nullptr ) {
+    , file_handle_(nullptr)
+    , file_mapping_(nullptr) {
 
   file_handle_ = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, 0);
   if (file_handle_ == INVALID_HANDLE_VALUE) {
@@ -47,7 +47,7 @@ MMAPAllocation::MMAPAllocation(const char* filename,
   buffer_size_bytes_ = GetFileSize( file_handle_, nullptr );
 
   file_mapping_ = CreateFileMapping(file_handle_, NULL, PAGE_READONLY, 0, 0, NULL);
-  if (file_mapping_ == NULL)
+  if (file_mapping_ == nullptr)
     return;
 
   mmapped_buffer_ = MapViewOfFile(file_mapping_, FILE_MAP_READ, 0, 0, buffer_size_bytes_);
@@ -59,18 +59,17 @@ MMAPAllocation::MMAPAllocation(const char* filename,
 }
 
 MMAPAllocation::~MMAPAllocation() {
-   if (valid()) {
-     UnmapViewOfFile( mmapped_buffer_ );
-   }
+  if (valid()) {
+     UnmapViewOfFile(mmapped_buffer_);
+  }
 
-   if (file_mapping_ != nullptr) {
-    CloseHandle( file_mapping_ );
-   }
+  if (file_mapping_ != nullptr) {
+    CloseHandle(file_mapping_);
+  }
 
-   if (file_handle_ != nullptr){
-    CloseHandle( file_handle_ );
-   }
-
+  if (file_handle_ != nullptr){
+    CloseHandle(file_handle_);
+  }
 }
 
 #else
