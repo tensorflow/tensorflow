@@ -138,6 +138,9 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (post_optimization_hook_) {
+    // TODO(jlebar): If we're going to CHECK these return values, then we might
+    // as well make them return void and move the CHECKs into the hooks
+    // themselves.
     TF_CHECK_OK(post_optimization_hook_(module));
   }
 
@@ -150,17 +153,11 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
       new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
 
-  if (VLOG_IS_ON(2)) {
+  if (post_codegen_hook_) {
     llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
         llvm::object::ObjectFile::createObjectFile(*memory_buffer);
     if (obj_file) {
-      StatusOr<DisassemblerResult> disasm_result =
-          disassembler_->DisassembleObjectFile(*obj_file.get());
-      if (disasm_result.ok()) {
-        XLA_VLOG_LINES(2, disasm_result.ValueOrDie().text);
-      } else {
-        LOG(WARNING) << "Could not disassemble object file!";
-      }
+      post_codegen_hook_(*obj_file.get());
     } else {
       LOG(WARNING) << "Could convert memory buffer to object file!";
     }
