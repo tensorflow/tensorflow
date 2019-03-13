@@ -431,12 +431,10 @@ llvm::CodeGenOpt::Level CodeGenOptLevel(const HloModuleConfig& module_config) {
   }
 }
 
-Status InitializeModuleHooks(
+std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
     const HloModule& hlo_module,
     const LLVMCompiler::ModuleHook& user_pre_optimization_hook,
-    const LLVMCompiler::ModuleHook& user_post_optimization_hook,
-    LLVMCompiler::ModuleHook* pre_optimization_ir_hook,
-    LLVMCompiler::ModuleHook* post_optimization_ir_hook) {
+    const LLVMCompiler::ModuleHook& user_post_optimization_hook) {
   // Create the IR hooks. If applicable, each IR hook does the following:
   //
   //  * Calls the user supplied module hook.
@@ -454,13 +452,12 @@ Status InitializeModuleHooks(
     llvm_ir::DumpIrIfEnabled(*hlo_module_ptr, llvm_module, optimized);
     return Status::OK();
   };
-  *pre_optimization_ir_hook = [hook](const llvm::Module& llvm_module) {
-    return hook(/*optimized=*/false, llvm_module);
-  };
-  *post_optimization_ir_hook = [hook](const llvm::Module& llvm_module) {
-    return hook(/*optimized=*/true, llvm_module);
-  };
-  return Status::OK();
+  return {[hook](const llvm::Module& llvm_module) {
+            return hook(/*optimized=*/false, llvm_module);
+          },
+          [hook](const llvm::Module& llvm_module) {
+            return hook(/*optimized=*/true, llvm_module);
+          }};
 }
 
 Status VerifyLlvmModule(const llvm::Module& llvm_module) {
@@ -528,6 +525,53 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
   return std::move(module);
 }
 
+namespace {
+
+// Post-compilation callback functor for use by SimpleOrcJIT.
+//
+// Dumps disassembled machine code if dumping is enabled for the module.
+struct OrcJITPostCompilationHook {
+  // Gets an std::function that implements this hook.
+  static std::function<void(const llvm::object::ObjectFile& obj_file)> Create(
+      const HloModule* module) {
+    // This struct is not copyable, but std::functions must be.  So to create an
+    // std::function out of this struct, we have to wrap it in a shared_ptr.
+    auto wrapped = std::make_shared<OrcJITPostCompilationHook>(module);
+    return [wrapped](const llvm::object::ObjectFile& obj_file) {
+      (*wrapped)(obj_file);
+    };
+  }
+
+  // Constructor can't be private because we want to call it from
+  // std::make_shared, but users should call Create() instead.
+  explicit OrcJITPostCompilationHook(const HloModule* module)
+      : module(module),
+        target_machine(SimpleOrcJIT::InferTargetMachineForJIT(
+            CompilerTargetOptions(module->config()),
+            CodeGenOptLevel(module->config()))),
+        disassembler(*target_machine) {}
+
+ private:
+  void operator()(const llvm::object::ObjectFile& obj_file) {
+    if (!DumpingEnabledForHloModule(*module)) {
+      return;
+    }
+    StatusOr<DisassemblerResult> disasm_or =
+        disassembler.DisassembleObjectFile(obj_file);
+    string text = disasm_or.ok() ? std::move(disasm_or).ValueOrDie().text
+                                 : absl::StrCat("Error disassembling: ",
+                                                disasm_or.status().ToString());
+    DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
+  }
+
+  const HloModule* module;
+  // disassembler keeps references to data inside of target_machine.
+  std::unique_ptr<llvm::TargetMachine> target_machine;
+  Disassembler disassembler;
+};
+
+}  // namespace
+
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* /*device_allocator*/) {
@@ -541,9 +585,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
-  TF_RETURN_IF_ERROR(InitializeModuleHooks(
-      *module, user_pre_optimization_hook_, user_post_optimization_hook_,
-      &pre_optimization_ir_hook, &post_optimization_ir_hook));
+  std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
+      GetIRModuleHooks(*module, user_pre_optimization_hook_,
+                       user_post_optimization_hook_);
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   auto llvm_context = absl::make_unique<llvm::LLVMContext>();
@@ -556,7 +600,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       options::OptimizeForSizeRequested(module->config()),
       module->config().debug_options().xla_cpu_enable_fast_math(),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
-      pre_optimization_ir_hook, post_optimization_ir_hook);
+      pre_optimization_ir_hook, post_optimization_ir_hook,
+      OrcJITPostCompilationHook::Create(module.get()));
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
 
@@ -830,30 +875,41 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
     CHECK(entry_function->getName() == entry_point_name);
 
-    ModuleHook pre_optimization_ir_dump_hook;
-    ModuleHook post_optimization_ir_dump_hook;
-    TF_RETURN_IF_ERROR(InitializeModuleHooks(
-        *module, user_pre_optimization_hook_, user_post_optimization_hook_,
-        &pre_optimization_ir_dump_hook, &post_optimization_ir_dump_hook));
+    ModuleHook pre_optimization_ir_hook;
+    ModuleHook post_optimization_ir_hook;
+    std::tie(pre_optimization_ir_hook, post_optimization_ir_hook) =
+        GetIRModuleHooks(*module, user_pre_optimization_hook_,
+                         user_post_optimization_hook_);
 
     // Run the LLVM verifier over the unoptimized LLVM IR.  If it fails, run the
     // pre-optimization IR dump hook before returning.
     {
       Status verify_status = VerifyLlvmModule(llvm_module);
-      if (!verify_status.ok() && pre_optimization_ir_dump_hook) {
-        pre_optimization_ir_dump_hook(llvm_module).IgnoreError();
+      if (!verify_status.ok() && pre_optimization_ir_hook) {
+        pre_optimization_ir_hook(llvm_module).IgnoreError();
       }
       TF_RETURN_IF_ERROR(verify_status);
     }
 
+    auto post_codegen_hook = [&](const llvm::object::ObjectFile& obj_file) {
+      if (!DumpingEnabledForHloModule(*module)) {
+        return;
+      }
+      StatusOr<DisassemblerResult> disasm_or =
+          Disassembler(*target_machine).DisassembleObjectFile(obj_file);
+      string text = disasm_or.ok()
+                        ? std::move(disasm_or).ValueOrDie().text
+                        : absl::StrCat("Error disassembling: ",
+                                       disasm_or.status().ToString());
+      DumpToFileInDirOrStdout(*module, /*file_suffix=*/"s", text);
+    };
 
-    Disassembler disassembler(*target_machine);
     CompilerFunctor compiler_functor(
-        target_machine.get(), &disassembler, opt_level,
+        target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_cpu_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
-        pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
+        pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
     std::unique_ptr<llvm::MemoryBuffer> object_file =
         compiler_functor(llvm_module);
     ObjectFileData object_file_data(object_file->getBufferStart(),
