@@ -397,7 +397,7 @@ class _EagerDefinedFunction(object):
           "Arguments and signature arguments do not match: %s %s " %
           (len(args), len(list(self.signature.input_arg))))
 
-    function_call_options = ctx.get_function_call_options()
+    function_call_options = ctx.function_call_options
     if function_call_options.config_proto_serialized is None:
       config = function_utils.get_disabled_rewriter_config()
     else:

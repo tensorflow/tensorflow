@@ -324,6 +324,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
                                         parameterized.TestCase):
 
   def setUp(self):
+    super(TestEstimatorDistributionStrategy, self).setUp()
     self._base_dir = os.path.join(self.get_temp_dir(),
                                   'keras_mirrored_strategy_test')
     gfile.MakeDirs(self._base_dir)
@@ -331,6 +332,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
         tf_random_seed=_RANDOM_SEED, model_dir=self._base_dir)
 
   def tearDown(self):
+    super(TestEstimatorDistributionStrategy, self).tearDown()
     writer_cache.FileWriterCache.clear()
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)

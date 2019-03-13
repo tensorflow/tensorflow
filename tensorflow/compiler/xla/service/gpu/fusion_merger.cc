@@ -96,27 +96,6 @@ double CalculateBytesReadByFusionInstruction(HloInstruction* fusion) {
   return bytes;
 }
 
-// Returns the flops to bytes transferred ratio of instruction 'fusion'.
-double CalculateFlopsToBytesRatio(HloInstruction* fusion) {
-  CHECK_EQ(HloOpcode::kFusion, fusion->opcode());
-  // Calculate total bytes transferred in/out.
-  double bytes = CalculateBytesReadByFusionInstruction(fusion);
-  // Add bytes written to root instructions buffer.
-  if (fusion->IsMultiOutputFusion()) {
-    for (auto& operand : fusion->fused_expression_root()->operands()) {
-      bytes += ShapeUtil::ByteSizeOf(operand->shape());
-    }
-  } else {
-    bytes += ShapeUtil::ByteSizeOf(fusion->fused_expression_root()->shape());
-  }
-  // Calculate flops for all fused instructions. Use a null shape size function
-  // because we don't care about bytes accessed by the ops.
-  HloCostAnalysis analysis([](const Shape& shape) { return 0; });
-  TF_CHECK_OK(fusion->fused_expression_root()->Accept(&analysis));
-  // Return flops / bytes.
-  return bytes > 0.0 ? analysis.flop_count() / bytes : analysis.flop_count();
-}
-
 // Returns bytes transferred by instruction 'fusion', including the bytes
 // that would be read by all users.
 double GetCurrentBytesTransferred(HloInstruction* fusion) {
@@ -170,7 +149,6 @@ class FusionInstructionMerger {
   int num_fail_not_loop_fusion_ = 0;
   int num_fail_merge_all_users_ = 0;
   int num_fail_expensive_fused_instruction_ = 0;
-  int num_fail_flops_to_byte_ratio_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
   int num_fail_inefficient_fusion_emitter_ = 0;
 
@@ -192,7 +170,6 @@ Status FusionInstructionMerger::Run() {
           << " not_loop_fusion: " << num_fail_not_loop_fusion_
           << " merge_all_users: " << num_fail_merge_all_users_
           << " expensive_instruction: " << num_fail_expensive_fused_instruction_
-          << " flops_to_byte_ratio: " << num_fail_flops_to_byte_ratio_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
           << " inefficient_fusion_emitter: "
           << num_fail_inefficient_fusion_emitter_ << " }";
@@ -200,8 +177,6 @@ Status FusionInstructionMerger::Run() {
 }
 
 Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
-  VLOG(3) << "FusionInstructionMerger ENTRY fusion: " << fusion->name()
-          << " flops_to_bytes_ratio: " << CalculateFlopsToBytesRatio(fusion);
   ++total_visited_;
   // Skip 'fusion' instruction if there are no users into which we can merge.
   if (fusion->users().empty()) {
@@ -259,15 +234,6 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     return Status::OK();
   }
 
-  // Skip 'fusion' instruction if its flops to bytes transferred ratio
-  // exceeds the threshold value.
-  if (CalculateFlopsToBytesRatio(fusion) >
-      FusionMerger::GetThresholdFlopsToBytesRatio()) {
-    VLOG(3) << "Not merging " << fusion->name()
-            << ": flops-to-bytes ratio is not favorable.";
-    ++num_fail_flops_to_byte_ratio_;
-    return Status::OK();
-  }
   // Skip 'fusion' instruction if merging it into all users would result in a
   // net increase in bytes transferred (currently allowing the net bytes
   // transferred to be exceeded up to ~10% in exhange for eliminating the
@@ -308,7 +274,6 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   }
   ++total_merged_;
   VLOG(2) << "Merged fusion instruction: " << fusion->name()
-          << " flops_to_bytes_ratio: " << CalculateFlopsToBytesRatio(fusion)
           << " merged_to_current_bytes_ratio: " << merged_to_current_bytes_ratio
           << " into users { "
           << absl::StrJoin(users, ", ",

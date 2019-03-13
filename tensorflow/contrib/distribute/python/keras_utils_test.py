@@ -33,7 +33,7 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import distributed_training_utils
-from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.optimizer_v2 import rmsprop as rms_prop_keras
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
@@ -497,14 +497,14 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
       dataset = keras_test_lib.get_dataset(distribution)
       with distribution.scope():
         model = keras_test_lib.get_model()
-        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.compile(rms_prop_keras.RMSprop(learning_rate=0.01), 'mse')
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp('.h5')
         model.save_weights(weights_file)
 
         model_2 = keras_test_lib.get_model()
-        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.compile(rms_prop_keras.RMSprop(learning_rate=0.01), 'mse')
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)
@@ -512,40 +512,23 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
   @combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
-  def test_save_load_trackable_optimizer_v1(self, distribution):
-    with self.cached_session():
-      dataset = keras_test_lib.get_dataset(distribution)
-      with distribution.scope():
-        model = keras_test_lib.get_model()
-        model.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-        model.fit(dataset, epochs=1, steps_per_epoch=1)
-
-        weights_file = tempfile.mktemp()
-        model.save_weights(weights_file)
-
-        model_2 = keras_test_lib.get_model()
-        model_2.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
-        model_2.load_weights(weights_file)
-        model_2.predict(
-            keras_test_lib.get_predict_dataset(distribution), steps=2)
-        model_2.fit(dataset, epochs=1, steps_per_epoch=1)
-
-  @combinations.generate(
-      keras_test_lib.all_strategy_minus_default_and_tpu_combinations())
-  def test_save_load_trackable_optimizer_v2(self, distribution):
+  def test_save_load_trackable(self, distribution):
     # TODO(b/123533246): Enable the test for TPU once bug is fixed
+    if (isinstance(distribution, tpu_strategy.TPUStrategy) and
+        distribution.extended.steps_per_run > 1):
+      self.skipTest('MultiStep TPU Strategy deadlocks with optimizer restore.')
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
       with distribution.scope():
         model = keras_test_lib.get_model()
-        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.compile(rms_prop_keras.RMSprop(learning_rate=0.01), 'mse')
         model.fit(dataset, epochs=1, steps_per_epoch=1)
 
         weights_file = tempfile.mktemp()
         model.save_weights(weights_file)
 
         model_2 = keras_test_lib.get_model()
-        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model_2.compile(rms_prop_keras.RMSprop(learning_rate=0.01), 'mse')
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)

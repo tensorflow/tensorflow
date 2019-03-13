@@ -77,6 +77,17 @@ def ast_to_source(node, indentation='  '):
   return code
 
 
+def _source_to_module(source, delete_on_exit):
+  with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+    module_name = os.path.basename(f.name[:-3])
+    f.write(source)
+
+  # TODO(mdan): Try flush() and delete=False instead.
+  if delete_on_exit:
+    atexit.register(lambda: os.remove(f.name))
+  return imp.load_source(module_name, f.name), f.name
+
+
 def ast_to_object(nodes,
                   indentation='  ',
                   include_source_map=False,
@@ -98,8 +109,7 @@ def ast_to_object(nodes,
         compilation on exit.
 
   Returns:
-    compiled_nodes: A module object containing the compiled source code.
-    source: The source code of the compiled object
+    (module, source): A compiled module, and the source code of the module.
   Raises:
     ValueError: If ag_source_map__ is already in the namespace of the compiled
     nodes.
@@ -112,33 +122,25 @@ def ast_to_object(nodes,
   if source_prefix:
     source = source_prefix + '\n' + source
 
-  with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
-    module_name = os.path.basename(f.name[:-3])
-    f.write(source)
+  module, filename = _source_to_module(source, delete_on_exit)
 
+  if include_source_map:
     if isinstance(nodes, (list, tuple)):
       indices = range(-len(nodes), 0)
     else:
       indices = (-1,)
 
-    if include_source_map:
-      source_map = origin_info.create_source_map(nodes, source, f.name, indices)
+    source_map = origin_info.create_source_map(nodes, source, filename, indices)
 
-  # TODO(mdan): Try flush() and delete=False instead.
-  if delete_on_exit:
-    atexit.register(lambda: os.remove(f.name))
-  compiled_nodes = imp.load_source(module_name, f.name)
-
-  # TODO(znado): Clean this up so we don't need to attach it to the namespace.
-  # We cannot get the rewritten function name until it is too late so templating
-  # is hard, and this cleanly fixes the issues encountered with nested functions
-  # because this is attached to the outermost one.
-  if include_source_map:
+    # TODO(znado): Clean this up so we don't need to attach it to the namespace.
+    # We cannot get the rewritten function name until it is too late so
+    # templating is hard, and this cleanly fixes the issues encountered with
+    # nested functions because this is attached to the outermost one.
     # TODO(mdan): This name should be decided by the caller.
     source_map_name = 'ag_source_map__'
-    assert source_map_name not in compiled_nodes.__dict__, (
+    assert source_map_name not in module.__dict__, (
         'cannot convert %s because is has namespace attribute "%s", which is '
-        'reserved for AutoGraph.') % (compiled_nodes, source_map_name)
-    compiled_nodes.__dict__[source_map_name] = source_map
+        'reserved for AutoGraph.') % (module, source_map_name)
+    module.__dict__[source_map_name] = source_map
 
-  return compiled_nodes, source
+  return module, source

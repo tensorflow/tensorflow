@@ -333,6 +333,7 @@ py_library(
         "layers/normalization.py",
         "layers/pooling.py",
         "layers/recurrent.py",
+        "layers/recurrent_v2.py",
         "layers/serialization.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
@@ -798,9 +799,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "unified_lstm_test",
+    name = "lstm_v2_test",
     size = "medium",
-    srcs = ["layers/unified_lstm_test.py"],
+    srcs = ["layers/lstm_v2_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -812,9 +813,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "unified_gru_test",
+    name = "gru_v2_test",
     size = "medium",
-    srcs = ["layers/unified_gru_test.py"],
+    srcs = ["layers/gru_v2_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",

@@ -372,7 +372,8 @@ class ApiTest(test.TestCase):
                            (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
 
-    converted_f = api.to_graph(f)
+    converted_f = api.to_graph(
+        f, experimental_optional_features=converter.Feature.ALL)
     x = api.converted_call(converted_f, None, converter.ConversionOptions(),
                            (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))

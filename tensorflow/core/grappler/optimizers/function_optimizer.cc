@@ -1159,8 +1159,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
   FunctionLibraryRuntime* flr = ctx->mutable_function_library_runtime();
 
   // 1. Inline symbolic gradient node.
-  const InlineFunctionBodyOptions default_inline_opts;
-  const bool expanded = ExpandInlineFunctions(flr, &graph, default_inline_opts);
+  const bool expanded = ExpandInlineFunctions(flr, &graph);
   if (!expanded) {
     return errors::Internal("Failed to expand SymbolicGradient op");
   }
@@ -1182,7 +1181,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
   // 2. Recursively inline nested function calls.
   int iteration = 0;
-  while (ExpandInlineFunctions(flr, &graph, default_inline_opts)) {
+  while (ExpandInlineFunctions(flr, &graph)) {
     if (++iteration >= 50) {
       VLOG(2) << "Break symbolic gradient inlining loop at iteration #"
               << iteration;
@@ -1547,8 +1546,7 @@ Status PlaceInlinedFunctionBody(
     const Device* default_device =
         devices->FindDeviceByName(func_node.device());
 
-    Placer placer(func_body_graph.get(), devices,
-                  nullptr /* No session options */, default_device);
+    Placer placer(func_body_graph.get(), devices, default_device);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 

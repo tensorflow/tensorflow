@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/interpreter.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -51,13 +52,25 @@ TfLiteRegistration* Register_NEG();
 }  // namespace ops
 namespace {
 
+using ::testing::IsEmpty;
+
 // Make an interpreter that has no tensors and no nodes
 TEST(BasicInterpreter, ZeroInterpreter) {
+  testing::internal::CaptureStderr();
+
   Interpreter interpreter;
+  EXPECT_THAT(testing::internal::GetCapturedStderr(),
+              testing::HasSubstr("INFO: Initialized TensorFlow Lite runtime"));
+
   interpreter.SetInputs({});
   interpreter.SetOutputs({});
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Creating a new interpreter should not redundantly log runtime init.
+  testing::internal::CaptureStderr();
+  Interpreter interpreter2;
+  EXPECT_THAT(testing::internal::GetCapturedStderr(), IsEmpty());
 }
 
 // Test various error conditions.

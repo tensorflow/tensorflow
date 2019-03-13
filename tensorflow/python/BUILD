@@ -1011,7 +1011,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "config_test",
     size = "small",
     srcs = ["framework/config_test.py"],
@@ -1185,6 +1185,9 @@ py_library(
     name = "framework_test_lib",
     srcs = ["framework/test_util.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow_estimator/python/estimator:__subpackages__",
+    ],
     deps = [
         ":array_ops",
         ":client",
@@ -3711,6 +3714,7 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["no_windows"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

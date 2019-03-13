@@ -4,8 +4,12 @@
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 
-def tf_cuda_tests_tags():
+def tf_gpu_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
+
+# terminology changes: saving tf_cuda_* for compatibility
+def tf_cuda_tests_tags():
+    return tf_gpu_tests_tags()
 
 def tf_sycl_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()

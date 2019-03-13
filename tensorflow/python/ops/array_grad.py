@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -399,7 +400,7 @@ def _GatherGrad(op, grad):
   params = op.inputs[0]
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.to_int32(params_shape)
+    params_shape = math_ops.cast(params_shape, dtypes.int32)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
@@ -422,7 +423,7 @@ def _GatherV2Grad(op, grad):
   params = op.inputs[0]
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.to_int32(params_shape)
+    params_shape = math_ops.cast(params_shape, dtypes.int32)
 
   indices = op.inputs[1]
   indices_size = array_ops.expand_dims(array_ops.size(indices), 0)

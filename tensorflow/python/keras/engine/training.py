@@ -35,12 +35,12 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -54,7 +54,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.models.Model', 'keras.Model')
-class Model(Network):
+class Model(network.Network):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -140,6 +140,15 @@ class Model(Network):
       with self._distribution_strategy.scope():
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
+
+  def load_weights(self, filepath, by_name=False):
+    """Loads all layer weights, either from a TensorFlow or an HDF5 file."""
+    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+      if (self._distribution_strategy.extended.steps_per_run > 1 and
+          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+        raise ValueError('Load weights is not yet supported with TPUStrategy '
+                         'with steps_per_run greater than 1.')
+    return super(Model, self).load_weights(filepath, by_name)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
