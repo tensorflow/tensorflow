@@ -13,8 +13,6 @@
 # limitations under the License.
 # =============================================================================
 
-from tensorflow.python.framework import ops
-
 def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
                        edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
@@ -32,16 +30,3 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   from tensorflow.contrib.ipu.python import autoshard_cnn
   autoshard_cnn.automatic_sharding(num_shards, input_ts, loss_ts, train_ops,
                                    edge_filter)
-
-def dependencies(roots):
-  working = roots
-  op_set = set()
-  while len(working) > 0:
-    o = working[0]
-    if type(o) is ops.Tensor:
-      o = o.op
-    working = working[1:]
-    op_set.add(o)
-    working += [t.op for t in o.inputs if t.op not in op_set]
-    working += [c for c in o.control_inputs if c not in op_set]
-  return op_set

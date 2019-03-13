@@ -25,6 +25,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import while_v2
 
 
 def while_loop(condition, body, inputs=None, infeed_queue=None):
@@ -113,7 +114,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None):
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
 
-  outputs = control_flow_ops.while_loop(
+  outputs = while_v2.while_loop(
       condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
   # Check the infeed queue has been used - this is more of a courtesy to the

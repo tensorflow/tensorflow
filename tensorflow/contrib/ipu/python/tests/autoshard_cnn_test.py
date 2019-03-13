@@ -11,6 +11,7 @@ from tensorflow.contrib.ipu.python import autoshard
 from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import ipu_infeed_queue
 from tensorflow.contrib.ipu.python import sharded_optimizer as so
+from tensorflow.contrib.ipu.python import sharding
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -21,8 +22,11 @@ from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent as gd
+from tensorflow.contrib.ipu import loops
 
-allowed_op_types = ['NoOp', 'Identity', 'XlaClusterOutput']
+allowed_op_types = ['NoOp', 'Identity', 'XlaClusterOutput', 'Enter', 'Exit',
+                    'Switch', 'Merge', 'NextIteration', 'LoopCond',
+                    'VarHandleOp']
 
 def create_increasing_dataset(value, data_shape=[1, 32, 32, 4],
                               label_shape=[1, 8], dtype=np.float32):
@@ -88,7 +92,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       with ops.device("/device:IPU:0"):
         out = ipu_compiler.compile(my_model, inputs=[inp, lab])
 
-      op_set = autoshard.dependencies([out[0]])
+      op_set = sharding.dependencies([out[0]])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
@@ -120,7 +124,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
       autoshard.automatic_sharding(2, inp, l, [t])
 
-      op_set = autoshard.dependencies([l, t])
+      op_set = sharding.dependencies([l, t])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
@@ -155,7 +159,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
       autoshard.automatic_sharding(2, inp, l, [t], edge_filter=filt)
 
-      op_set = autoshard.dependencies([l, t])
+      op_set = sharding.dependencies([l, t])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
@@ -163,38 +167,40 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
 
     def testSimpleXlaCompileTrainingInLoop(self):
-
       dataset = create_increasing_dataset(3)
 
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-      def my_model():
-        inp, lab = infeed_queue.get_next()
+      def my_net():
+        def my_model(loss):
+          with ops.device("/device:IPU:0"):
+            inp, lab = infeed_queue.get_next()
+            x = inp
+            y = lab
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
+                                     use_bias=False)
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv2",
+                                     use_bias=False)
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv3",
+                                     use_bias=False)
+            x = math_ops.reduce_max(x,  axis=[1, 2])
 
-        x = inp
-        y = lab
+            cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+            loss = math_ops.reduce_mean(cross_entropy)
 
-        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
-                                 use_bias=False)
-        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv2",
-                                 use_bias=False)
-        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv3",
-                                 use_bias=False)
-        x = math_ops.reduce_max(x,  axis=[1, 2])
+            optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+            train = optim.minimize(cross_entropy)
 
-        cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
-        loss = math_ops.reduce_mean(cross_entropy)
-        optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
-        train = optim.minimize(cross_entropy)
+            autoshard.automatic_sharding(2, inp, loss, [])
 
-        autoshard.automatic_sharding(2, inp, loss, [train])
+            return [loss, train]
 
-        return [loss, train]
+        loss = 0.0
+        return loops.repeat(10, my_model, [loss], infeed_queue)
 
-      with ops.device("/device:IPU:0"):
-        out = ipu_compiler.compile(my_model, inputs=[])
+      out = ipu_compiler.compile(my_net, inputs=[])
 
-      op_set = autoshard.dependencies([out[0]])
+      op_set = sharding.dependencies([out[0]])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
