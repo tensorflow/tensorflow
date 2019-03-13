@@ -855,8 +855,6 @@ def create_inference_graph(
   Raises:
     ValueError: if the combination of the parameters is invalid.
   """
-  if precision_mode not in [TrtPrecisionMode.FP32, TrtPrecisionMode.FP16]:
-    raise ValueError("Invalid precision mode: {}".format(precision_mode))
   trt_converter = TrtGraphConverter(
       input_saved_model_dir=input_saved_model_dir,
       input_saved_model_tags=input_saved_model_tags,
