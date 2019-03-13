@@ -113,6 +113,13 @@ class BackendUtilsTest(test.TestCase):
   def test_backend(self):
     self.assertEqual(keras.backend.backend(), 'tensorflow')
 
+  def test_cast_to_floatx(self):
+    x = np.array([2.1, 3.8], dtype='float32')
+    self.assertEqual(keras.backend.cast_to_floatx(x).dtype, keras.backend.floatx())
+
+    x = np.array([2, 3], dtype='int64')
+    self.assertEqual(keras.backend.cast_to_floatx(x).dtype, keras.backend.floatx())
+
   def test_get_reset_uids(self):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
     self.assertEqual(keras.backend.get_uid('foo'), 2)
@@ -288,6 +295,12 @@ class BackendVariableTest(test.TestCase):
     self.assertAllClose(val.mean(), 1., atol=1e-1)
     self.assertAllClose(val.std(), 0.5, atol=1e-1)
 
+  def test_identity(self):
+    x = np.random.random((3, 4)).astype('float32')
+    z = keras.backend.identity(x)
+    val = keras.backend.eval(z)
+    self.assertAllClose(val, x)
+
   def test_count_params(self):
     x = keras.backend.zeros((4, 5))
     val = keras.backend.count_params(x)
@@ -341,6 +354,10 @@ class BackendLinearAlgebraTest(test.TestCase):
         (keras.backend.mean, np.mean),
         (keras.backend.argmin, np.argmin),
         (keras.backend.argmax, np.argmax),
+        (keras.backend.cumsum, np.cumsum),
+        (keras.backend.cumprod, np.cumprod),
+        (keras.backend.any, np.any),
+        (keras.backend.all, np.all),
     ]
     for keras_op, np_op in ops_to_test:
       compare_single_input_op_to_numpy(keras_op, np_op, input_shape=(4, 7, 5),
