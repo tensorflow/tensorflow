@@ -637,10 +637,16 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       PartitionFunctionGraph(device_set, std::move(graph), &subgraphs));
 
   for (const auto& pair : subgraphs) {
-    DumpGraph("Before running POST_PARTITIONING passes", pair.second.get());
+    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
+                              pair.first, ")"),
+              pair.second.get());
   }
   optimization_options.graph = nullptr;
+  optimization_options.device_set = nullptr;
   optimization_options.partition_graphs = &subgraphs;
+  // Normally POST_PARTITIONING passes are run by distributed workers.
+  // Distributed workers are currently not supported in this code path, so we
+  // run the passes here.
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
   for (const auto& pair : subgraphs) {
