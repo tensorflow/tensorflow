@@ -323,6 +323,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
+      self.assertEqual(self._get_sort_index(b), 0)
       self.assertEqual(self._get_input_index(c), 0)
       self.assertEqual(self._get_sort_index(c), 1)
 
