@@ -331,6 +331,7 @@ py_library(
         "layers/merge.py",
         "layers/noise.py",
         "layers/normalization.py",
+        "layers/normalization_v2.py",
         "layers/pooling.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
@@ -592,8 +593,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    # TODO(b/128025959): Re-enable.
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -784,6 +784,19 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 10,
+)
+
+cuda_py_test(
+    name = "recurrent_v2_test",
+    size = "medium",
+    srcs = ["layers/recurrent_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
 )
 
 cuda_py_test(

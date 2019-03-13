@@ -215,8 +215,7 @@ def set_tensor_shapes(tensors, shapes):
           tensor.set_shape(shape)
         except ValueError as error:
           message = ("The shape of tensor '{0}' cannot be changed from {1} to "
-                     "{2}. {3}".format(name, tensor.get_shape(), shape,
-                                       str(error)))
+                     "{2}. {3}".format(name, tensor.shape, shape, str(error)))
           raise ValueError(message)
 
 

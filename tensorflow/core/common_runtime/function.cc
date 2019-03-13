@@ -1789,7 +1789,7 @@ bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
-                           const InlineFunctionBodyOptions& options) {
+                           const ExpandInlineFunctionsOptions& options) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
 
   const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
@@ -1818,8 +1818,10 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
 
   bool inlined_any = false;
   for (const auto& p : candidates) {
-    Status inlined =
-        InlineFunctionBody(*fld, graph, p.first, p.second, options);
+    Status inlined = InlineFunctionBody(*fld, graph, p.first, p.second,
+                                        p.first->IsPartitionedCall()
+                                            ? options.multi_device_options
+                                            : options.native_options);
     if (inlined.ok()) {
       inlined_any = true;
     } else {

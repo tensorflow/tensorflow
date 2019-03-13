@@ -1,7 +1,7 @@
 # Converter Python API guide
 
 This page provides examples on how to use the
-[TensorFlow Lite Converter](index.md) using the Python API in TensorFlow 2.0.
+[TensorFlow Lite converter](index.md) using the Python API in TensorFlow 2.0.
 
 [TOC]
 
@@ -10,6 +10,7 @@ This page provides examples on how to use the
 The Python API for converting TensorFlow models to TensorFlow Lite in TensorFlow
 2.0 is
 [`tf.lite.TFLiteConverter.from_concrete_function()`](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/lite/TFLiteConverter).
+Documentation on concrete functions is available [here](concrete_function.md).
 
 This document contains [example usages](#examples) of the API, a detailed list
 of [changes in the API between 1.X and 2.0](#differences), and
@@ -94,8 +95,8 @@ model.compile(optimizer='sgd', loss='mean_squared_error')
 model.fit(x, y, epochs=50)
 
 # Get the concrete function from the Keras model.
-to_save = tf.function(lambda x : model(x))
-concrete_func = to_save.get_concrete_function(
+run_model = tf.function(lambda x : model(x))
+concrete_func = run_model.get_concrete_function(
     tf.TensorSpec([None, 1], tf.float32))
 
 # Convert the model.

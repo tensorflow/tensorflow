@@ -28,13 +28,13 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "values_test",
     srcs = ["values_test.py"],
-    additional_deps = [
+    main = "values_test.py",
+    deps = [
         ":combinations",
         ":mirrored_strategy",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -47,6 +47,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -589,7 +590,6 @@ distribute_py_test(
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -606,7 +606,6 @@ distribute_py_test(
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -625,7 +624,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -669,7 +667,6 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -689,7 +686,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -709,7 +705,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -729,7 +724,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -749,7 +743,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
         "notsan",

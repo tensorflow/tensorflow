@@ -42,22 +42,13 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.util.tf_export import keras_export
 
 if tf2.enabled():
+  from tensorflow.python.keras.layers.normalization_v2 import *  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.layers.recurrent_v2 import *     # pylint: disable=g-import-not-at-top
-
-# TODO(b/124791387): replace mapping with layer attribute.
-# Name conversion between class name and API symbol in config.
-_SERIALIZATION_TABLE = {
-    'BatchNormalizationV1': 'BatchNormalization',
-    'BatchNormalizationV2': 'BatchNormalization',
-}
 
 
 @keras_export('keras.layers.serialize')
 def serialize(layer):
-  layer_class_name = layer.__class__.__name__
-  if layer_class_name in _SERIALIZATION_TABLE:
-    layer_class_name = _SERIALIZATION_TABLE[layer_class_name]
-  return {'class_name': layer_class_name, 'config': layer.get_config()}
+  return {'class_name': layer.__class__.__name__, 'config': layer.get_config()}
 
 
 @keras_export('keras.layers.deserialize')

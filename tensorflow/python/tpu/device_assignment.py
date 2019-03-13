@@ -23,6 +23,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.tpu.topology import Topology
+from tensorflow.python.util.tf_export import tf_export
 
 
 SINGLE_CORE_ASSIGNMENT = [[[0, 0, 0]]]
@@ -53,10 +54,11 @@ def _compute_task_and_cores_to_replicas(core_assignment, topology):
   return task_to_sorted_replica_id
 
 
+@tf_export("tpu.experimental.DeviceAssignment")
 class DeviceAssignment(object):
   """Mapping from logical cores in a computation to the physical TPU topology.
 
-  Prefer to use the `device_assignment()` helper to construct a
+  Prefer to use the `DeviceAssignment.build()` helper to construct a
   `DeviceAssignment`; it is easier if less flexible than constructing a
   `DeviceAssignment` directly.
   """
@@ -162,6 +164,14 @@ class DeviceAssignment(object):
     """Returns the name of the TPU device assigned to a logical core."""
     coordinates = self.coordinates(replica, logical_core)
     return self._topology.tpu_device_name_at_coordinates(coordinates, job=job)
+
+  @staticmethod
+  def build(topology,
+            computation_shape=None,
+            computation_stride=None,
+            num_replicas=1):
+    return device_assignment(topology, computation_shape, computation_stride,
+                             num_replicas)
 
 
 def device_assignment(topology,

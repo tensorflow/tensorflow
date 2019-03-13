@@ -367,11 +367,13 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   if (!layer) return nullptr;
   const nvinfer1::DataType trt_dtype = trt_weights.type;
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+#if !IS_TRT_VERSION_GE(5, 1, 3)
   // TODO(laigd): there is a bug in TensorRT 5.0 library that, if we don't set
   // the data type below, it will always be kFLOAT regardless what the data type
   // of the weights is. Once NVIDIA fixes this bug, we should remove the data
   // type setting logic below and test should still pass.
   trt_tensor->setType(trt_dtype);
+#endif
   return trt_tensor;
 }
 
@@ -574,13 +576,13 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
 
   void setLocation(nvinfer1::TensorLocation location) override {}
 
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0)
   bool setDynamicRange(float min, float max) override { return true; }
 
   float getDynamicRange() const override { return 0; }
 #endif
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   bool dynamicRangeIsSet() const override { return true; }
 
   void resetDynamicRange() override {}
@@ -1281,7 +1283,7 @@ void Converter::MaybeApplyQuantizationRanges() {
   // Infer ranges across marked ops.
   PropagateQuantizationRanges();
   // Apply ranges.
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0)
   for (auto pair : quantization_ranges_) {
     nvinfer1::ITensor* tensor = pair.first;
     const float range = pair.second;
@@ -2297,9 +2299,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   }
 // TRT 5.1 adds a slice layer. For older versions, we attempt to use the
 // padding layer with negative padding.
-#if (NV_TENSORRT_MAJOR > 5 ||                               \
-     (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)) && \
-    0
+#if IS_TRT_VERSION_GE(5, 1, 0) && 0
   // TODO(laigd): TRT 5.1 RC has a bug when ISliceLayer is used along with
   // IConcatenationLayer, so disable ISliceLayer for now until it's fixed.
   // Use ISliceLayer.
@@ -3220,7 +3220,7 @@ UnaryOperationMap() {
             {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
             {"Abs", nvinfer1::UnaryOperation::kABS},
             {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
             {"Sin", nvinfer1::UnaryOperation::kSIN},
             {"Cos", nvinfer1::UnaryOperation::kCOS},
             {"Tan", nvinfer1::UnaryOperation::kTAN},

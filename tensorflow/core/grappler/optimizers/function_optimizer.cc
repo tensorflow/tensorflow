@@ -1159,8 +1159,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
   FunctionLibraryRuntime* flr = ctx->mutable_function_library_runtime();
 
   // 1. Inline symbolic gradient node.
-  const InlineFunctionBodyOptions default_inline_opts;
-  const bool expanded = ExpandInlineFunctions(flr, &graph, default_inline_opts);
+  const bool expanded = ExpandInlineFunctions(flr, &graph);
   if (!expanded) {
     return errors::Internal("Failed to expand SymbolicGradient op");
   }
@@ -1182,7 +1181,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
   // 2. Recursively inline nested function calls.
   int iteration = 0;
-  while (ExpandInlineFunctions(flr, &graph, default_inline_opts)) {
+  while (ExpandInlineFunctions(flr, &graph)) {
     if (++iteration >= 50) {
       VLOG(2) << "Break symbolic gradient inlining loop at iteration #"
               << iteration;

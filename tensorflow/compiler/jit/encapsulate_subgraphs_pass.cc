@@ -2538,12 +2538,25 @@ Status EncapsulateSubgraphsPass::Run(
   // Constant folding below might need to run part of the function to compute
   // constants. Create an FunctionLibraryRuntime with a single CPU device
   // that can run the part of the function.
+  // NOTE: If this turns out to be slow, we can cache the FLRs keyed by
+  // `options`.
   SessionOptions session_options;
   auto* device_count = session_options.config.mutable_device_count();
   device_count->insert({"CPU", 1});
   std::vector<std::unique_ptr<Device>> devices;
-  TF_CHECK_OK(DeviceFactory::AddDevices(
+
+  DeviceFactory* cpu_factory = DeviceFactory::GetFactory("CPU");
+  if (!cpu_factory) {
+    return errors::NotFound(
+        "CPU Factory not registered. Can't run EncapsulateSubgraphsPass");
+  }
+  TF_RETURN_IF_ERROR(cpu_factory->CreateDevices(
       session_options, "/job:localhost/replica:0/task:0", &devices));
+  if (devices.empty()) {
+    return errors::NotFound(
+        "Failed to create a CPU device for EncapsulateSubgraphsPass");
+  }
+
   std::unique_ptr<DeviceMgr> device_mgr =
       absl::make_unique<DeviceMgr>(std::move(devices));
   OptimizerOptions opts;

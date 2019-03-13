@@ -616,6 +616,8 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
         return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
                                parsed.id);
       } else {
+        LOG(WARNING) << "Failed to parse device \"" << n.device() << "\" in "
+                     << n.op() << ":" << n.name();
         return strings::StrCat(DataTypeString(dt), "@",
                                "<FAILED_TO_PARSE_DEVICE>");
       }
