@@ -16,9 +16,33 @@
 """An optimizer wrapper for replicating sharding information from the forward
    pass to the backward pass."""
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.training import optimizer
 from tensorflow.python.framework import ops
-from tensorflow.contrib.ipu.python.sharding import propagate_sharding
+
+_XLA_SHARDING = '_XlaSharding'
+def has_attr(o, attr_name):
+  for i in o.node_def.attr.items():
+    if i[0] == attr_name:
+      return True
+  return False
+
+def propagate_sharding(g):
+  changed = True;
+  while changed == True:
+    changed = False
+
+    op_list = g.get_operations()
+    op_list = filter(lambda o : has_attr(o, '_class'), op_list)
+    op_list = filter(lambda o : not has_attr(o, '_XlaSharding'), op_list)
+    for o in op_list:
+      for c in o.colocation_groups():
+        coloc_op = g.get_operation_by_name(c.decode('utf-8')[5:])
+        if has_attr(coloc_op, _XLA_SHARDING):
+          attr = coloc_op.get_attr(_XLA_SHARDING);
+          o._set_attr(_XLA_SHARDING, attr_value_pb2.AttrValue(s=attr))
+          changed = True
+          break
 
 class ShardedOptimizer(optimizer.Optimizer):
 
@@ -38,6 +62,7 @@ class ShardedOptimizer(optimizer.Optimizer):
     kwargs['colocate_gradients_with_ops'] = True
     ret = self._optimizer.compute_gradients(loss, var_list=var_list,
                                             **kwargs)
+
     propagate_sharding(ops.get_default_graph())
     return ret
 

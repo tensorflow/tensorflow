@@ -17,12 +17,22 @@ import itertools
 import networkx as nx
 import numpy as np
 
-from tensorflow.compiler.xla import xla_data_pb2
-from tensorflow.contrib.ipu.python import sharding
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.compiler.xla import xla_data_pb2
+from tensorflow.contrib.ipu.python import sharded_optimizer as so
+from tensorflow.contrib.ipu.python.autoshard import dependencies
 
 def tensor_memory_use(t):
   return t.shape.num_elements() * t.dtype.size
+
+def get_shard_from_colocation(op):
+  g = op.graph
+  for c in op.colocation_groups():
+    coloc_op = g.get_operation_by_name(c.decode('utf-8')[5:])
+    if so.has_attr(coloc_op, so._XLA_SHARDING):
+      attr = coloc_op.get_attr(so._XLA_SHARDING);
+      return attr
+  return None
 
 def children(op):
   return set(op for out in op.outputs for op in out.consumers())
@@ -69,7 +79,7 @@ def set_ipu_shard(op, index):
     type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=[index])
 
   attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
-  op._set_attr(sharding._XLA_SHARDING, attr_value)
+  op._set_attr(so._XLA_SHARDING, attr_value)
 
 def is_splitting_edge(G_fwd, edge, input_node, output_node):
   G = nx.DiGraph(G_fwd)
@@ -130,8 +140,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   if train_ops:
     roots += train_ops
 
-  all_ops = loss_op.graph.get_operations()
-  op_list = list(filter(lambda o : 'IPU' in o.device, all_ops))
+  op_list = list(filter(lambda o : 'IPU' in o.device, dependencies(roots)))
 
   fwd_ops = []
   bwd_ops = []
@@ -167,6 +176,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
       if loss_op.name in g:
         graph = graph.subgraph(g)
 
+
     fwd_ops = [op for op in fwd_ops if op.name in graph.nodes]
 
   assert nx.number_weakly_connected_components(graph)==1
@@ -199,9 +209,6 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   #       2. variance of memory
   # could use minimum data transfered between IPUs?
   min_max_mem = np.inf
-  best_ind = []
-  best_mem = []
-
   for ind in itertools.combinations(range(len(edges)), num_shards-1):
     ind_pad = [0] + [i+1 for i in ind] + [len(subgraph_mem)]
     mem = [np.sum(subgraph_mem[ind_pad[i]:ind_pad[i+1]])
@@ -244,10 +251,10 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
     assert shard_set, "%s not in any graph split" % op.name
 
   for op in filter(lambda o : o not in fwd_ops, op_list):
-    attr = sharding.get_shard_from_colocation(op)
+    attr = get_shard_from_colocation(op)
     if not attr:
       for child in children(op):
-        attr = sharding.get_shard_from_colocation(child)
+        attr = get_shard_from_colocation(child)
 
     if attr:
-      op._set_attr(sharding._XLA_SHARDING, attr_value_pb2.AttrValue(s=attr))
+      op._set_attr(so._XLA_SHARDING, attr_value_pb2.AttrValue(s=attr))

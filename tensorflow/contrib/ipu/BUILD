@@ -22,7 +22,6 @@ py_library(
       "python/popnn_normalization.py",
       "python/popnn_rnn.py",
       "python/sharded_optimizer.py",
-      "python/sharding.py",
       "python/utils.py",
     ],
     srcs_version = "PY2AND3",
