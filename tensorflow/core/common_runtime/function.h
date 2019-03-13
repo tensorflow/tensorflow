@@ -160,11 +160,26 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 FunctionBody* SymbolicGradient(const FunctionBody& f);
 
 struct InlineFunctionBodyOptions {
+  // All nodes that have incoming control edge *from* the function call node,
+  // will be forwarded to the "output control node". There are two options for
+  // choosing which nodes will have a control edge *to* the "output control
+  // node":
+  //   a) control returns            (`control_ret` field in FunctionDef)
+  //   b) data returns               (`ret` field in FunctionDef)
+  enum class OutputControlSource { kDataOutputs, kControlOutputs };
+
   // Ignore '_noinline' function attribute.
   bool ignore_noinline = false;
   // If 'true' function inlining will override explicitly specified devices
   // inside function body with the caller node device.
   bool override_device = false;
+  // For compatibility with Tensorflow v1 by default we will use data outputs.
+  // Control returns were added to Tensorflow v2 with automatic control
+  // dependencies tracking in Eager mode.
+  OutputControlSource output_control_src = OutputControlSource::kDataOutputs;
+
+  // A human-readable debug string for this options.
+  string DebugString() const;
 };
 
 // Returns 'Status::OK()' iff the function '*fbody' can be inlined at 'node'
