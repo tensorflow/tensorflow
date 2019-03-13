@@ -46,7 +46,6 @@ using ::tensorflow::protobuf::util::MessageToJsonString;
 using ::tensorflow::str_util::EndsWith;
 using ::tensorflow::strings::StrCat;
 
-constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
 constexpr char kJsonOpProfileFileName[] = "op_profile.json";
 constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";

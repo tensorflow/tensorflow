@@ -22,7 +22,6 @@ limitations under the License.
 #include <algorithm>
 #include <numeric>
 #include <vector>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -30,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -134,7 +134,7 @@ struct TopKFunctor<CPUDevice, T> {
       return Status::OK();
     }
 
-    auto SortIndices = [&, context](int start_batch, int limit_batch) {
+    auto SortIndices = [&](int start_batch, int limit_batch) {
       for (int32 b = start_batch; b < limit_batch; ++b) {
         const T* input_data = &input(b, 0);
         const auto stable_comp = [input_data](const int32 a, const int32 b) {
