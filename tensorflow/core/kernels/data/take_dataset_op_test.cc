@@ -68,8 +68,8 @@ struct TestCase {
   std::vector<int> breakpoints;
 };
 
-// Test case 1: take fewer than input size
-TestCase TakeFewerTestCase() {
+// Test case 1: take fewer than input size.
+TestCase TakeLessTestCase() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(
               TensorShape{10, 1}, {0, 1, 2, 3, 4, 5, 6, 7, 8, 9})},
@@ -86,7 +86,7 @@ TestCase TakeFewerTestCase() {
           /*breakpoints*/ {0, 2, 5}};
 }
 
-// Test case 2: take more than input size
+// Test case 2: take more than input size.
 TestCase TakeMoreTestCase() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(
@@ -110,7 +110,7 @@ TestCase TakeMoreTestCase() {
           /*breakpoints*/ {0, 2, 5, 11}};
 }
 
-// Test case 3: take all of input
+// Test case 3: take all of input.
 TestCase TakeAllTestCase() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(
@@ -134,7 +134,7 @@ TestCase TakeAllTestCase() {
           /*breakpoints*/ {0, 2, 5, 11}};
 }
 
-// Test case 4: take nothing
+// Test case 4: take nothing.
 TestCase TakeNothingTestCase() {
   return {/*input_tensors*/
           {DatasetOpsTestBase::CreateTensor<int64>(
@@ -149,11 +149,11 @@ TestCase TakeNothingTestCase() {
           /*breakpoints*/ {0, 2, 5, 11}};
 }
 
-class ParameterizedDatasetTest
+class ParametrizedTakeDatasetOpTest
     : public TakeDatasetOpTest,
       public ::testing::WithParamInterface<TestCase> {};
 
-TEST_P(ParameterizedDatasetTest, GetNext) {
+TEST_P(ParametrizedTakeDatasetOpTest, GetNext) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -208,7 +208,7 @@ TEST_F(TakeDatasetOpTest, DatasetName) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = TakeFewerTestCase();
+  const TestCase &test_case = TakeLessTestCase();
   Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
@@ -234,7 +234,7 @@ TEST_F(TakeDatasetOpTest, DatasetName) {
   EXPECT_EQ(take_dataset->type_string(), kOpName);
 }
 
-TEST_P(ParameterizedDatasetTest, DatasetOutputDtypes) {
+TEST_P(ParametrizedTakeDatasetOpTest, DatasetOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -265,7 +265,7 @@ TEST_P(ParameterizedDatasetTest, DatasetOutputDtypes) {
                                 test_case.expected_output_dtypes));
 }
 
-TEST_P(ParameterizedDatasetTest, DatasetOutputShapes) {
+TEST_P(ParametrizedTakeDatasetOpTest, DatasetOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -296,7 +296,7 @@ TEST_P(ParameterizedDatasetTest, DatasetOutputShapes) {
                                       test_case.expected_output_shapes));
 }
 
-TEST_P(ParameterizedDatasetTest, Cardinality) {
+TEST_P(ParametrizedTakeDatasetOpTest, Cardinality) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -330,7 +330,7 @@ TEST_F(TakeDatasetOpTest, DatasetSave) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-  const TestCase &test_case = TakeFewerTestCase();
+  const TestCase &test_case = TakeLessTestCase();
   Tensor tensor_slice_dataset_tensor(DT_VARIANT, TensorShape({}));
   std::vector<Tensor> inputs_for_tensor_slice_dataset = test_case.input_tensors;
   TF_ASSERT_OK(CreateTensorSliceDatasetTensor(&inputs_for_tensor_slice_dataset,
@@ -361,7 +361,7 @@ TEST_F(TakeDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(writer.Flush());
 }
 
-TEST_P(ParameterizedDatasetTest, IteratorOutputDtypes) {
+TEST_P(ParametrizedTakeDatasetOpTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -399,7 +399,7 @@ TEST_P(ParameterizedDatasetTest, IteratorOutputDtypes) {
                                 test_case.expected_output_dtypes));
 }
 
-TEST_P(ParameterizedDatasetTest, IteratorOutputShapes) {
+TEST_P(ParametrizedTakeDatasetOpTest, IteratorOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -437,7 +437,7 @@ TEST_P(ParameterizedDatasetTest, IteratorOutputShapes) {
                                       test_case.expected_output_shapes));
 }
 
-TEST_P(ParameterizedDatasetTest, IteratorOutputPrefix) {
+TEST_P(ParametrizedTakeDatasetOpTest, IteratorOutputPrefix) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -478,7 +478,7 @@ TEST_P(ParameterizedDatasetTest, IteratorOutputPrefix) {
   }
 }
 
-TEST_P(ParameterizedDatasetTest, Roundtrip) {
+TEST_P(ParametrizedTakeDatasetOpTest, Roundtrip) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -550,9 +550,9 @@ TEST_P(ParameterizedDatasetTest, Roundtrip) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(TakeDatasetOpTest, ParameterizedDatasetTest,
+INSTANTIATE_TEST_SUITE_P(TakeDatasetOpTest, ParametrizedTakeDatasetOpTest,
                          ::testing::ValuesIn(std::vector<TestCase>(
-                             {TakeFewerTestCase(), TakeMoreTestCase(),
+                             {TakeLessTestCase(), TakeMoreTestCase(),
                               TakeAllTestCase(), TakeNothingTestCase()})));
 
 }  // namespace
