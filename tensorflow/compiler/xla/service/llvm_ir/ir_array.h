@@ -133,8 +133,10 @@ class IrArray {
     // selects a value to be placed into index "this". The slice is described
     // by starting indices `starts` and stride values `strides`.
     //
-    // Precondition: "this" is an index into a slice whose shape is `shape`.
-    Index SourceIndexOfSlice(const Shape& shape, absl::Span<const int64> starts,
+    // Precondition: "this" is an index into a slice whose operand shape is
+    // `operand_shape`.
+    Index SourceIndexOfSlice(const Shape& operand_shape,
+                             absl::Span<const int64> starts,
                              absl::Span<const int64> strides,
                              llvm::IRBuilder<>* builder) const;
 

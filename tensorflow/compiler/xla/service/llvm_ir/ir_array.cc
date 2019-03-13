@@ -173,24 +173,25 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfSlice(
-    const Shape& shape, absl::Span<const int64> starts,
+    const Shape& operand_shape, absl::Span<const int64> starts,
     absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
-  Index source_index(index_type_, multidim_.size());
+  std::vector<llvm::Value*> source_multi_index(multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
     int64 stride = strides[i];
     auto type = multidim_[i]->getType();
 
     if (stride != 1) {
-      source_index[i] = builder->CreateAdd(
+      source_multi_index[i] = builder->CreateAdd(
           builder->CreateMul(multidim_[i],
                              llvm::ConstantInt::get(type, stride)),
           llvm::ConstantInt::get(type, starts[i]));
     } else {
-      source_index[i] = builder->CreateAdd(
+      source_multi_index[i] = builder->CreateAdd(
           multidim_[i], llvm::ConstantInt::get(type, starts[i]));
     }
   }
-  return source_index;
+  return Index(source_multi_index, /*linear=*/nullptr, operand_shape,
+               index_type_);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(

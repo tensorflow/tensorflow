@@ -2357,7 +2357,8 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         IrArray::Index sliced_index = index.SourceIndexOfSlice(
-            /*shape=*/hlo->shape(), /*starts=*/hlo->slice_starts(),
+            /*operand_shape=*/hlo->operand(0)->shape(),
+            /*starts=*/hlo->slice_starts(),
             /*strides=*/hlo->slice_strides(), /*builder=*/b_);
         return operand_to_generator.at(hlo->operand(0))(sliced_index);
       };
