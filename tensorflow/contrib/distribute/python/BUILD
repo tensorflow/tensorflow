@@ -28,13 +28,13 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "values_test",
     srcs = ["values_test.py"],
-    additional_deps = [
+    main = "values_test.py",
+    deps = [
         ":combinations",
         ":mirrored_strategy",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -47,6 +47,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
