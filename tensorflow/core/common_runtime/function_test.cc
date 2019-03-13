@@ -801,7 +801,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
 
 // Verifies that control dependencies on the caller are added as control
 // dependencies on any function calls created by inlining.
-TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithInputControlEdges) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour()});
 
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
@@ -878,6 +878,99 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
 
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
+TEST_F(FunctionLibraryRuntimeTest,
+       ExpandInlineFunctionsWithOutputControlEdges) {
+  using test::function::NDef;
+  using FDH = FunctionDefHelper;
+  using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
+
+  // `add` node is not required to compute regular output `o`, but it must
+  // execute because it is in `control_ret`.
+  const FunctionDef func =
+      FDH::Create("FunctionWithControlOutputs", {"i: float"}, {"o: float"}, {},
+                  {
+                      {{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+                      {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}},
+                  },
+                  /*ret_def=*/{{"o", "ret:z:0"}},
+                  /*control_ret_def=*/{{"must_execute", "add"}});
+
+  Init({func});
+
+  // Construct a graph for the function call:
+  //
+  //   a = Arg[dtype=DT_FLOAT]
+  //   b = FunctionWithControlOutputs(a)
+  //   c = NoOp(^b)
+  //   ret = RetVal(b, ^c)
+  const auto init_graph = [this](std::unique_ptr<Graph>* g) -> void {
+    g->reset(new Graph(OpRegistry::Global()));
+
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "FunctionWithControlOutputs", {a});
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto ret = ops::_Retval(s.WithOpName("ret"), b, 0);
+    s.graph()->AddControlEdge(b.node(), c.operation.node());
+    s.graph()->AddControlEdge(c.operation.node(), ret.operation.node());
+    TF_ASSERT_OK(s.ToGraph(g->get()));
+  };
+
+  std::unique_ptr<Graph> g;
+  InlineFunctionBodyOptions inline_opts;
+
+  const string input_node = "Func/b/input/_0";
+  const string output_node = "Func/b/output/_1";
+  const string output_control_node = "Func/b/output_control_node/_2";
+
+  // Use data outputs as output control source.
+  inline_opts.output_control_src = OutputControlSrc::kDataOutputs;
+
+  init_graph(&g);
+  ExpandInlineFunctions(flr0_, g.get(), inline_opts);
+  {
+    GraphDef expected = test::function::GDef(
+        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+         NDef(output_control_node, "NoOp", {"^Func/b/output/_1"}, {}),
+         NDef("c", "NoOp", {"^" + output_control_node}, {}),
+         NDef("ret", "_Retval", {output_node, "^c"},
+              {{"T", DT_FLOAT}, {"index", 0}})},
+        {func});
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Use control outputs as output control source.
+  inline_opts.output_control_src = OutputControlSrc::kControlOutputs;
+
+  init_graph(&g);
+  ExpandInlineFunctions(flr0_, g.get(), inline_opts);
+  {
+    GraphDef expected = test::function::GDef(
+        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+         NDef(output_control_node, "NoOp", {"^b/add"}, {}),
+         NDef("c", "NoOp", {"^" + output_control_node}, {}),
+         NDef("ret", "_Retval", {output_node, "^c"},
+              {{"T", DT_FLOAT}, {"index", 0}})},
+        {func});
 
     GraphDef actual;
     g->ToGraphDef(&actual);
