@@ -364,6 +364,10 @@ struct ApplyAdamNonCuda {
                Eigen::TensorOpCost::AddCost<T>() * 5 +
                Eigen::TensorOpCost::MulCost<T>() * 6 +
                Eigen::TensorOpCost::DivCost<T>();
+      
+    // Eigen device must update 3 variables with 3 different expressions,
+    // which is bad for cache locality on CPU. Here use Shard instead of 
+    // "regular" tensor expressions to get better performance.
     auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
     Shard(worker_threads.num_threads, worker_threads.workers, length, cost,
           shard);
