@@ -925,17 +925,17 @@ TEST_F(FunctionLibraryRuntimeTest,
   };
 
   std::unique_ptr<Graph> g;
-  InlineFunctionBodyOptions inline_opts;
+  ExpandInlineFunctionsOptions opts;
 
   const string input_node = "Func/b/input/_0";
   const string output_node = "Func/b/output/_1";
   const string output_control_node = "Func/b/output_control_node/_2";
 
   // Use data outputs as output control source.
-  inline_opts.output_control_src = OutputControlSrc::kDataOutputs;
+  opts.native_options.output_control_src = OutputControlSrc::kDataOutputs;
 
   init_graph(&g);
-  ExpandInlineFunctions(flr0_, g.get(), inline_opts);
+  ExpandInlineFunctions(flr0_, g.get(), opts);
   {
     GraphDef expected = test::function::GDef(
         {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
@@ -955,10 +955,10 @@ TEST_F(FunctionLibraryRuntimeTest,
   }
 
   // Use control outputs as output control source.
-  inline_opts.output_control_src = OutputControlSrc::kControlOutputs;
+  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
 
   init_graph(&g);
-  ExpandInlineFunctions(flr0_, g.get(), inline_opts);
+  ExpandInlineFunctions(flr0_, g.get(), opts);
   {
     GraphDef expected = test::function::GDef(
         {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
