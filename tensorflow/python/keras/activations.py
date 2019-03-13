@@ -165,16 +165,41 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
+  """Hyperbolic Tangent activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
+      exp(-x))/(exp(x) + exp(-x)))`.
+  """
   return nn.tanh(x)
 
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
+  """Sigmoid activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The sigmoid activation: `(1.0 / (1.0 + exp(-x)))`.
+  """
   return nn.sigmoid(x)
 
 
 @keras_export('keras.activations.exponential')
 def exponential(x):
+  """Exponential activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The exponential activation: `exp(x)`.
+  """
   return math_ops.exp(x)
 
 
@@ -198,6 +223,14 @@ def hard_sigmoid(x):
 
 @keras_export('keras.activations.linear')
 def linear(x):
+  """Linear activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The linear activation: `x`.
+  """
   return x
 
 

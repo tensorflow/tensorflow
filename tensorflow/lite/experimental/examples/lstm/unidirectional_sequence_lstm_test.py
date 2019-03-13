@@ -54,11 +54,11 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     self.num_units = 16
 
   def buildLstmLayer(self):
-    return tf.nn.rnn_cell.MultiRNNCell([
+    return tf.keras.layers.StackedRNNCells([
         tf.lite.experimental.nn.TFLiteLSTMCell(
-            self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
+            self.num_units, use_peepholes=True, forget_bias=1.0, name="rnn1"),
         tf.lite.experimental.nn.TFLiteLSTMCell(
-            self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
+            self.num_units, num_proj=8, forget_bias=1.0, name="rnn2"),
         tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
@@ -66,7 +66,7 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
             forget_bias=0,
             name="rnn3"),
         tf.lite.experimental.nn.TFLiteLSTMCell(
-            self.num_units, forget_bias=0, name="rnn4")
+            self.num_units, forget_bias=1.0, name="rnn4")
     ])
 
   def buildModel(self, lstm_layer, is_dynamic_rnn):

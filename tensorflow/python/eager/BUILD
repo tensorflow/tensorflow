@@ -55,6 +55,7 @@ py_library(
         ":core",
         ":def_function",
         ":execute",
+        ":execution_callbacks",
         ":function",
         ":graph_only_ops",
         ":profiler",
@@ -101,6 +102,7 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
     ],
 )
 

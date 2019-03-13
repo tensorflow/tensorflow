@@ -131,7 +131,7 @@ TEST_P(DatasetGetNextTest, GetNext) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(map_context.get(), &iterator_context));
@@ -177,7 +177,7 @@ TEST_F(MapDatasetOpTest, DatasetName) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -188,7 +188,7 @@ TEST_F(MapDatasetOpTest, DatasetName) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   EXPECT_EQ(map_dataset->type_string(), kOpName);
 }
@@ -204,7 +204,7 @@ TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -215,7 +215,7 @@ TEST_F(MapDatasetOpTest, DatasetOutputDtypes) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   DataTypeVector expected_dtypes({DT_INT64});
   EXPECT_EQ(map_dataset->output_dtypes(), expected_dtypes);
@@ -232,7 +232,7 @@ TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -243,7 +243,7 @@ TEST_F(MapDatasetOpTest, DatasetOutputShapes) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::vector<PartialTensorShape> expected_shapes({PartialTensorShape({})});
   EXPECT_EQ(map_dataset->output_shapes().size(), expected_shapes.size());
@@ -284,7 +284,7 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(test_params.start, test_params.end,
                                          test_params.step, "range",
                                          &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -295,7 +295,7 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   EXPECT_EQ(map_dataset->Cardinality(), test_params.expected_cardinality);
 }
@@ -316,7 +316,7 @@ TEST_F(MapDatasetOpTest, DatasetSave) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -327,7 +327,7 @@ TEST_F(MapDatasetOpTest, DatasetSave) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::unique_ptr<SerializationContext> serialization_context;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
@@ -348,7 +348,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -359,7 +359,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputDtypes) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(map_context.get(), &iterator_context));
@@ -381,7 +381,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -392,7 +392,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputShapes) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(map_context.get(), &iterator_context));
@@ -418,7 +418,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputPrefix) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateRangeDataset<int64>(start, end, step, "range", &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -429,7 +429,7 @@ TEST_F(MapDatasetOpTest, IteratorOutputPrefix) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(map_context.get(), &iterator_context));
@@ -478,7 +478,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   TF_ASSERT_OK(CreateRangeDataset<int64>(test_params.start, test_params.end,
                                          test_params.step, "range",
                                          &range_dataset));
-  core::ScopedUnref scored_unref_range_dataset(range_dataset);
+  core::ScopedUnref scoped_unref_range_dataset(range_dataset);
 
   std::unique_ptr<OpKernel> map_kernel;
   TF_ASSERT_OK(CreateMapDatasetOpKernel<int64>(
@@ -489,7 +489,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   DatasetBase* map_dataset;
   TF_ASSERT_OK(
       CreateDataset(map_kernel.get(), map_context.get(), &map_dataset));
-  core::ScopedUnref scored_unref_map_dataset(map_dataset);
+  core::ScopedUnref scoped_unref_map_dataset(map_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(map_context.get(), &iterator_context));

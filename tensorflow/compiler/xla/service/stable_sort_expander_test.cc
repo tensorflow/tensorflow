@@ -65,7 +65,8 @@ void CheckComputationHasTieBreaker(const HloInstruction* root,
   // the copied comparison function where the parameters are reversed. Lt() is
   // the tie breaker comparison using the Iota operand.
   ASSERT_EQ(root->opcode(), HloOpcode::kSelect);
-  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kEq);
+  ASSERT_EQ(root->operand(0)->opcode(), HloOpcode::kCompare);
+  ASSERT_EQ(root->operand(0)->comparison_direction(), ComparisonDirection::kEq);
 
   // Check that the tie breaker instruction is correct.
   EXPECT_THAT(root->operand(1),
@@ -88,7 +89,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortReuseIotaOperand) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -126,15 +127,15 @@ TEST_F(StableSortExpanderTest,
      lhs.unsigned = u32[] bitcast-convert(p.0.lhs)
      lhs.flipped = u32[] subtract(max, lhs.unsigned)
      lhs.flipped.signed = s32[] bitcast-convert(lhs.flipped)
-     lhs.is_negative = pred[] less-than(lhs.flipped.signed, zero)
+     lhs.is_negative = pred[] compare(lhs.flipped.signed, zero), direction=LT
      lhs.converted = s32[] select(lhs.is_negative, lhs.flipped.signed, lhs.signed)
      rhs.signed = s32[] bitcast-convert(p.0.rhs)
      rhs.unsigned = u32[] bitcast-convert(p.0.rhs)
      rhs.flipped = u32[] subtract(max, rhs.unsigned)
      rhs.flipped.signed = s32[] bitcast-convert(rhs.flipped)
-     rhs.is_negative = pred[] less-than(rhs.flipped.signed, zero)
+     rhs.is_negative = pred[] compare(rhs.flipped.signed, zero), direction=LT
      rhs.converted = s32[] select(rhs.is_negative, rhs.flipped.signed, rhs.signed)
-     ROOT lt = pred[] less-than(lhs.converted, rhs.converted)
+     ROOT lt = pred[] compare(lhs.converted, rhs.converted), direction=LT
    }
 
    ENTRY sort_computation {
@@ -165,7 +166,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortAddIotaOperandAndChangeRoot) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -200,7 +201,7 @@ TEST_F(StableSortExpanderTest, HonorIsStableFlag) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -227,7 +228,7 @@ TEST_F(StableSortExpanderTest,
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = s32[] parameter(2)
      p.1.rhs = s32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -264,7 +265,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortDontReuseIotaOperandWrongType) {
      p.0.rhs = f32[] parameter(1)
      p.1.lhs = f32[] parameter(2)
      p.1.rhs = f32[] parameter(3)
-     ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+     ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -302,7 +303,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1) {
      mask = s32[] constant(65535)
      lhs = s32[] and(p.0.lhs, mask)
      rhs = s32[] and(p.0.rhs, mask)
-     ROOT lt = pred[] less-than(lhs, rhs)
+     ROOT lt = pred[] compare(lhs, rhs), direction=LT
    }
 
    ENTRY sort_computation {
@@ -332,7 +333,7 @@ TEST_F(StableSortExpanderTest, StabilizeSortR1NoRoot) {
      mask = s32[] constant(65535)
      lhs = s32[] and(p.0.lhs, mask)
      rhs = s32[] and(p.0.rhs, mask)
-     ROOT lt = pred[] less-than(lhs, rhs)
+     ROOT lt = pred[] compare(lhs, rhs), direction=LT
    }
 
    ENTRY sort_computation {

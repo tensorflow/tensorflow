@@ -123,13 +123,14 @@ struct EngineInfo {
 //   topological order.
 // - segment_def: the output GraphDef, whose non-input/output nodedefs will be
 //   sorted in topological order.
+// - scope_name: the name of the scope where the TRTEngineOp will be placed.
 //
 // TODO(aaroey): add tests to validate these properties.
 Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,
     std::vector<EngineConnection>* connections, GraphDef* segment_def,
-    string* common_scope);
+    string* scope_name);
 
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'

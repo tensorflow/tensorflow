@@ -2347,7 +2347,8 @@ class AttentionWrapper(rnn_cell_impl.RNNCell):
       if self._initial_cell_state is not None:
         cell_state = self._initial_cell_state
       else:
-        cell_state = self._cell.zero_state(batch_size, dtype)
+        cell_state = self._cell.get_initial_state(batch_size=batch_size,
+                                                  dtype=dtype)
       error_message = (
           "When calling zero_state of AttentionWrapper %s: " % self._base_name +
           "Non-matching batch sizes between the memory "

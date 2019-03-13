@@ -148,10 +148,6 @@ class AsyncCheckpointSaverHook(basic_session_run_hooks.CheckpointSaverHook):
   def _save(self, session, step, asynchronous=True):
     """Saves the latest checkpoint, returns should_stop."""
 
-    # Skip saving on step 0
-    if step == 0:
-      return
-
     def _save_fn():
       """Run the saver process."""
       logging.info("Saving checkpoints for %d into %s.", step, self._save_path)

@@ -1409,7 +1409,6 @@ class ControlFlowTest(test.TestCase):
           r"while loop context '' \(currently defined in 'cond/.+'\)"):
         _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/123601232")
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
@@ -1454,12 +1453,14 @@ class ControlFlowTest(test.TestCase):
 
     with self.session(use_gpu=False) as sess:
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata_without_xla_context = config_pb2.RunMetadata()
       run_metadata = config_pb2.RunMetadata()
 
       final_value_without_xla_context = sess.run(
-          final_without_xla_context, feed_dict={
-              p: [0, 0, 0]
-          })
+          final_without_xla_context,
+          feed_dict={p: [0, 0, 0]},
+          options=opts,
+          run_metadata=run_metadata_without_xla_context)
 
       final_value_with_xla_context = sess.run(
           final_with_xla_context,
@@ -1467,9 +1468,18 @@ class ControlFlowTest(test.TestCase):
           options=opts,
           run_metadata=run_metadata)
 
-      node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        # With while_v2 on xla, run_metadata only contains the unlowered While
+        # op so node_stats does not have statistics for the pushes. So as a
+        # loose check we check the pushes in the lowered version.
+        node_stats = run_metadata_without_xla_context.step_stats.dev_stats[
+            0].node_stats
+        stack_push_op = "TensorListPushBack"
+      else:
+        node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+        stack_push_op = "StackPushV2"
       stack_push_count = len(
-          [x for x in node_stats if x.node_name.endswith("StackPushV2")])
+          [x for x in node_stats if x.node_name.endswith(stack_push_op)])
       # Pushes to the stack = product of maximum_iterations values;
       # the last two "3"s comes from size(p), when p == [0, 0, 0].
       self.assertEqual(stack_push_count, 5 * 3 * 3)

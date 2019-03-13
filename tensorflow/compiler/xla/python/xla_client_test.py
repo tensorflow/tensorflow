@@ -582,7 +582,7 @@ class SingleOpTest(ComputationTest):
       for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
         _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
 
-  # TODO(b/123523486): re-enable when shape check is resolved
+  # TODO(b/123523486) implement AllToAll on CPU
   def DISABLED_testAllToAllOneReplica(self):
     samples = [
         NumpyArrayF32([97.0]),
@@ -1165,6 +1165,26 @@ class SingleOpTest(ComputationTest):
     c.QR(c.Constant(a), full_matrices=True)
     q, r = self._Execute(c, ())
     np.testing.assert_allclose(np.dot(q, r), a, rtol=1e-4)
+
+  def testEigh(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    a = (a + a.T) / 2
+
+    c = self._NewComputation()
+    c.Eigh(c.Constant(a), full_matrices=True)
+    v, w = self._Execute(c, ())
+    self.assertLess(np.linalg.norm(np.dot(a, v) - w * v), 1e-3)
+
+  def testSVD(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    c = self._NewComputation()
+    c.SVD(c.Constant(a))
+    u, d, v = self._Execute(c, ())
+    self.assertLess(np.linalg.norm(a - np.matmul(u * d, v.T)), 1e-3)
 
   def testTriangularSolve(self):
     a_vals = np.array(

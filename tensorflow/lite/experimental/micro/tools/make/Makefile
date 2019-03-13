@@ -87,7 +87,6 @@ tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/kernels/kernel_util.cc \
 tensorflow/lite/kernels/internal/quantization_util.cc
 MICROLITE_CC_SRCS := $(filter-out $(MICROLITE_TEST_SRCS), $(MICROLITE_CC_BASE_SRCS))
-MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
 MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
@@ -150,6 +149,9 @@ KEIL_PROJECT_FILES := \
 # based on platforms or architectures should happen within these files, to
 # keep this main makefile focused on the sources and dependencies.
 include $(wildcard $(MAKEFILE_DIR)/targets/*_makefile.inc)
+
+# Call specialize here so that platform-specific tags can be taken into account.
+MICROLITE_CC_SRCS := $(call specialize,$(MICROLITE_CC_SRCS))
 
 ALL_TAGS += $(TARGET_ARCH)
 

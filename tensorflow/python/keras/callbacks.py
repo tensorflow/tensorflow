@@ -32,7 +32,6 @@ import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.eager import profiler
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.data_utils import Sequence
@@ -1141,7 +1140,7 @@ class TensorBoard(Callback):
         your training.
       profile_batch: Profile the batch to sample compute characteristics. By
         default, it will profile the second batch. Set profile_batch=0 to
-        disable profiling.
+        disable profiling. Must run in TensorFlow eager mode.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1150,7 +1149,7 @@ class TensorBoard(Callback):
   # pylint: enable=line-too-long
 
   def __init__(self,
-               log_dir='./logs',
+               log_dir='logs',
                histogram_freq=0,
                write_graph=True,
                write_images=False,
@@ -1175,12 +1174,17 @@ class TensorBoard(Callback):
     self._total_batches_seen = 0
     self._total_val_batches_seen = 0
 
-    self._writers = []  # file writers to be closed
-    self._train_writer = None  # set in `_initialize_writers`
-    self._validation_writer = None  # set in `_initialize_writers`
+    # A collection of file writers currently in use, to be closed when
+    # training ends for this callback. Writers are keyed by the
+    # directory name under the root logdir: e.g., "train" or
+    # "validation".
+    self._writers = {}
+    self._train_run_name = 'train'
+    self._validation_run_name = 'validation'
+
     self._profile_batch = profile_batch
-    # One profiler session is running if it is True.
-    self._is_profiling = False
+    # True when a trace is running.
+    self._is_tracing = False
 
     # TensorBoard should only write summaries on the chief when in a
     # Multi-Worker setting.
@@ -1213,15 +1217,18 @@ class TensorBoard(Callback):
     """Sets Keras model and writes graph if specified."""
     self.model = model
     with context.eager_mode():
-      self._initialize_writers()
+      self._close_writers()
       if self.write_graph:
-        if model.run_eagerly:
-          logging.warning('TensorBoard Callback will ignore `write_graph=True`'
-                          'when `Model.run_eagerly=True`.`')
-        else:
-          with self._train_writer.as_default():
-            with summary_ops_v2.always_record_summaries():
+        with self._get_writer(self._train_run_name).as_default():
+          with summary_ops_v2.always_record_summaries():
+            if not model.run_eagerly:
               summary_ops_v2.graph(K.get_graph())
+
+            summary_writable = (
+                self.model._is_graph_network or  # pylint: disable=protected-access
+                self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
+            if summary_writable:
+              summary_ops_v2.keras_model('keras', self.model, step=0)
 
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.
@@ -1229,32 +1236,33 @@ class TensorBoard(Callback):
     If there are no such file writers, this is a no-op.
     """
     with context.eager_mode():
-      for writer in self._writers:
+      for writer in six.itervalues(self._writers):
         writer.close()
-      del self._writers[:]
+      self._writers.clear()
 
-  def _initialize_writers(self):
-    """Create all file writers needed and validation writers.
+  def _get_writer(self, writer_name):
+    """Get a summary writer for the given subdirectory under the logdir.
 
-    This updates `self._train_writer` and `self._validation_writer`, and
-    populates the `self._writers` list to be cleaned up by
-    `_close_writers`.
+    A writer will be created if it does not yet exist.
+
+    Args:
+      writer_name: The name of the directory for which to create or
+        retrieve a writer. Should be either `self._train_run_name` or
+        `self._validation_run_name`.
+
+    Returns:
+      A `SummaryWriter` object.
     """
-    self._close_writers()
-
-    def create_writer(subdir):
-      path = os.path.join(self.log_dir, subdir)
-      return summary_ops_v2.create_file_writer(path)
-
-    self._train_writer = create_writer('train')
-    self._writers.append(self._train_writer)
-    self._validation_writer = create_writer('validation')
-    self._writers.append(self._validation_writer)
+    if writer_name not in self._writers:
+      path = os.path.join(self.log_dir, writer_name)
+      writer = summary_ops_v2.create_file_writer_v2(path)
+      self._writers[writer_name] = writer
+    return self._writers[writer_name]
 
   def on_train_begin(self, logs=None):
     if self._profile_batch == 1:
-      profiler.start()
-      self._is_profiling = True
+      summary_ops_v2.trace_on(graph=True, profiler=True)
+      self._is_tracing = True
 
   def on_batch_end(self, batch, logs=None):
     """Writes scalar summaries for metrics on every training batch.
@@ -1269,13 +1277,11 @@ class TensorBoard(Callback):
       self._log_metrics(logs, prefix='batch_', step=self._total_batches_seen)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
-    if self._is_profiling:
-      profiler.save(self.log_dir, profiler.stop())
-      self._is_profiling = False
-    elif (not self._is_profiling and
+    if self._is_tracing:
+      self._log_trace()
+    elif (not self._is_tracing and
           self._total_batches_seen == self._profile_batch - 1):
-      profiler.start()
-      self._is_profiling = True
+      self._enable_trace()
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
@@ -1286,10 +1292,25 @@ class TensorBoard(Callback):
       self._log_weights(epoch)
 
   def on_train_end(self, logs=None):
+    if self._is_tracing:
+      self._log_trace()
     self._close_writers()
-    if self._is_profiling:
-      profiler.save(self.log_dir, profiler.stop())
-      self._is_profiling = False
+
+  def _enable_trace(self):
+    if context.executing_eagerly():
+      summary_ops_v2.trace_on(graph=True, profiler=True)
+      self._is_tracing = True
+
+  def _log_trace(self):
+    if context.executing_eagerly():
+      with self._get_writer(self._train_run_name).as_default(), \
+          summary_ops_v2.always_record_summaries():
+        # TODO(b/126388999): Remove step info in the summary name.
+        summary_ops_v2.trace_export(
+            name='batch_%d' % self._total_batches_seen,
+            step=self._total_batches_seen,
+            profiler_outdir=os.path.join(self.log_dir, 'train'))
+      self._is_tracing = False
 
   def _log_metrics(self, logs, prefix, step):
     """Writes metrics out as custom scalar summaries.
@@ -1302,11 +1323,11 @@ class TensorBoard(Callback):
     if logs is None:
       logs = {}
 
-    # Group metrics by their associated file writer. Values are lists of
-    # metrics, as (name, scalar_value) pairs.
+    # Group metrics by the name of their associated file writer. Values
+    # are lists of metrics, as (name, scalar_value) pairs.
     logs_by_writer = {
-        self._train_writer: [],
-        self._validation_writer: [],
+        self._train_run_name: [],
+        self._validation_run_name: [],
     }
     validation_prefix = 'val_'
     for (name, value) in logs.items():
@@ -1315,23 +1336,30 @@ class TensorBoard(Callback):
         continue
       if name.startswith(validation_prefix):
         name = name[len(validation_prefix):]
-        writer = self._validation_writer
+        writer_name = self._validation_run_name
       else:
-        writer = self._train_writer
+        writer_name = self._train_run_name
       name = prefix + name  # assign batch or epoch prefix
-      logs_by_writer[writer].append((name, value))
+      logs_by_writer[writer_name].append((name, value))
 
     with context.eager_mode():
       with summary_ops_v2.always_record_summaries():
-        for writer in logs_by_writer:
+        for writer_name in logs_by_writer:
+          these_logs = logs_by_writer[writer_name]
+          if not these_logs:
+            # Don't create a "validation" events file if we don't
+            # actually have any validation data.
+            continue
+          writer = self._get_writer(writer_name)
           with writer.as_default():
-            for (name, value) in logs_by_writer[writer]:
+            for (name, value) in these_logs:
               summary_ops_v2.scalar(name, value, step=step)
 
   def _log_weights(self, epoch):
     """Logs the weights of the Model to TensorBoard."""
+    writer = self._get_writer(self._train_run_name)
     with context.eager_mode(), \
-          self._train_writer.as_default(), \
+          writer.as_default(), \
           summary_ops_v2.always_record_summaries():
       for layer in self.model.layers:
         for weight in layer.weights:
@@ -1341,7 +1369,7 @@ class TensorBoard(Callback):
           summary_ops_v2.histogram(weight_name, weight, step=epoch)
           if self.write_images:
             self._log_weight_as_image(weight, weight_name, epoch)
-      self._train_writer.flush()
+      writer.flush()
 
   def _log_weight_as_image(self, weight, weight_name, epoch):
     """Logs a weight as a TensorBoard image."""

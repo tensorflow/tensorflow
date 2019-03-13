@@ -437,7 +437,7 @@ class DistributionStrategy(object):
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
     When eager execution is enabled, executes ops specified by `fn` on each
-    replica.  Otherwise, builds a graph to execute the ops on each replica.
+    replica. Otherwise, builds a graph to execute the ops on each replica.
 
     Each replica will take a single, different input from the inputs provided by
     one `get_next` call on the input iterator.
@@ -445,13 +445,13 @@ class DistributionStrategy(object):
     `fn` may call `tf.distribute.get_replica_context()` to access members such
     as `replica_id_in_sync_group`.
 
-    IMPORTANT: Depending on the `DistributionStrategy` being used, and whether
-    eager execution is enabled, `fn` may be called one or more times (once for
-    each replica).
+    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
+    used, and whether eager execution is enabled, `fn` may be called one or more
+    times (once for each replica).
 
     Args:
-      fn: function to run. The inputs to the function must match the outputs of
-        `input_iterator.get_next()`. The output must be a `tf.nest` of
+      fn: The function to run. The inputs to the function must match the outputs
+        of `input_iterator.get_next()`. The output must be a `tf.nest` of
         `Tensor`s.
       input_iterator: (Optional) input iterator from which the inputs are taken.
 
@@ -463,17 +463,36 @@ class DistributionStrategy(object):
       single replica).
     """
     with self.scope():
-      if input_iterator is None:
-        return self._extended.call_for_each_replica(fn)
-      else:
-        inputs = input_iterator.get_next()
-        return self._extended.call_for_each_replica(fn, args=(inputs,))
+      args = (input_iterator.get_next(),) if input_iterator is not None else ()
+    return self.experimental_run_v2(fn, args=args)
 
-  # TODO(b/121296772,b/121300973): Add logical_device argument (default of 0).
-  def broadcast(self, tensor):
-    """Broadcasts `tensor` to all replicas, returning a per-replica value."""
-    _require_cross_replica_context_extended(self._extended)
-    return self._extended._broadcast(tensor)  # pylint: disable=protected-access
+  def experimental_run_v2(self, fn, args=(), kwargs=None):
+    """Runs ops in `fn` on each replica, with the given arguments.
+
+    When eager execution is enabled, executes ops specified by `fn` on each
+    replica. Otherwise, builds a graph to execute the ops on each replica.
+
+    `fn` may call `tf.distribute.get_replica_context()` to access members such
+    as `replica_id_in_sync_group`.
+
+    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
+    used, and whether eager execution is enabled, `fn` may be called one or more
+    times (once for each replica).
+
+    Args:
+      fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
+      args: (Optional) Positional arguments to `fn`.
+      kwargs: (Optional) Keyword arguments to `fn`.
+
+    Returns:
+      Merged return value of `fn` across replicas. The structure of the return
+      value is the same as the return value from `fn`. Each element in the
+      structure can either be `PerReplica` (if the values are unsynchronized),
+      `Mirrored` (if the values are kept in sync), or `Tensor` (if running on a
+      single replica).
+    """
+    with self.scope():
+      return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value):
     """Reduce `value` across replicas.
@@ -727,7 +746,6 @@ class DistributionStrategyExtended(object):
     scope).
   * `d.make_dataset_iterator(dataset)`: in cross-replica
     context, produces an iterator with locality T
-  * `d.broadcast(t)`: in cross-replica context, produces a value with locality M
   * `d.extended.broadcast_to(t, v)`: in cross-replica context, produces a value
     with locality V(`v`)
   * `d.extended.call_for_each_replica(fn, ...)`: in cross-replica context, runs
@@ -973,13 +991,11 @@ class DistributionStrategyExtended(object):
     Returns:
       A value mirrored to `destinations` devices.
     """
+    assert destinations is not None  # from old strategy.broadcast()
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     return self._broadcast_to(tensor, destinations)
-
-  def _broadcast(self, tensor):
-    return self._broadcast_to(tensor, None)  # Default implementation
 
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")

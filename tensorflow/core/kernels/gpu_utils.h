@@ -20,6 +20,9 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/types/span.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -27,6 +30,9 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
+
+class NodeDef;
+class AutotuneResult;
 
 template <typename T>
 inline se::DeviceMemory<T> AsDeviceMemory(const T* cuda_memory, uint64 size) {
@@ -155,6 +161,25 @@ class AutoTuneSingleton {
     return instance;
   }
 };
+
+// Logs convolution results to customized back-storage.
+void LogConvAutotuneResults(const NodeDef& node, const Tensor& input,
+                            const Tensor& filter, const Tensor& output,
+                            se::StreamExecutor* stream_exec,
+                            absl::Span<const AutotuneResult> results);
+
+// Logs fused convolution results to customized back-storage.
+void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
+                                 const Tensor& filter, const Tensor& output,
+                                 const Tensor& bias, const Tensor* side_input,
+                                 se::StreamExecutor* stream_exec,
+                                 absl::Span<const AutotuneResult> results);
+
+// Returns the best algorithms for the config, one is the fastest, the other is
+// other is fastest with 0 scracth space. Unsuccessful autotuning results are
+// allowed and ignored.
+Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
+                              se::dnn::AlgorithmConfig* algo);
 
 }  // namespace tensorflow
 

@@ -965,7 +965,7 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    ::tflite::LSTMKernelType kernel_type;
+    ::tflite::LSTMKernelType kernel_type = ::tflite::LSTMKernelType_FULL;
     switch (op.kernel_type) {
       case LstmCellOperator::KERNEL_BASIC:
         kernel_type = ::tflite::LSTMKernelType_BASIC;
@@ -973,6 +973,8 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
       case LstmCellOperator::KERNEL_FULL:
         kernel_type = ::tflite::LSTMKernelType_FULL;
         break;
+      default:
+        return -1;
     }
 
     // Current toco converter only supports tanh, no clip.
@@ -1927,7 +1929,7 @@ class UnidirectionalSequenceRnn
   }
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    // Only support tanh actication, so check that tflite type is tanh.
+    // Only support tanh activation, so check that tflite type is tanh.
     DCHECK(options.fused_activation_function() ==
            ::tflite::ActivationFunctionType_TANH);
   }

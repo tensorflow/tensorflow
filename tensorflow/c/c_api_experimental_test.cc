@@ -447,7 +447,7 @@ TEST_F(AddEagerOpToGraphTest, ListAttributesArePreserved) {
 }
 
 TEST_F(AddEagerOpToGraphTest, ListInputsAreAddedCorrectly) {
-  TFE_TensorHandle* scalar = TestScalarTensorHandle();
+  TFE_TensorHandle* scalar = TestScalarTensorHandle(static_cast<float>(1));
   TFE_Op* identityn = TFE_NewOp(eager_ctx_, "IdentityN", status_);
   CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
   constexpr size_t kNumInputs = 3;

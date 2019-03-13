@@ -49,8 +49,8 @@ class GatherTreeTest(test.TestCase):
         parent_ids=parent_ids,
         max_sequence_lengths=max_sequence_lengths,
         end_token=end_token)
-    with self.session(use_gpu=True):
-      self.assertAllEqual(expected_result, beams.eval())
+    with self.cached_session(use_gpu=True):
+      self.assertAllEqual(expected_result, self.evaluate(beams))
 
   def testBadParentValuesOnCPU(self):
     # (batch_size = 1, max_time = 4, beams = 3)
@@ -62,15 +62,14 @@ class GatherTreeTest(test.TestCase):
         [[[0, 0, 0], [0, -1, 1], [2, 1, 2], [-1, -1, -1]]])
     max_sequence_lengths = [3]
     with ops.device("/cpu:0"):
-      beams = beam_search_ops.gather_tree(
-          step_ids=step_ids,
-          parent_ids=parent_ids,
-          max_sequence_lengths=max_sequence_lengths,
-          end_token=end_token)
-    with self.cached_session():
       with self.assertRaisesOpError(
           r"parent id -1 at \(batch, time, beam\) == \(0, 0, 1\)"):
-        _ = beams.eval()
+        beams = beam_search_ops.gather_tree(
+            step_ids=step_ids,
+            parent_ids=parent_ids,
+            max_sequence_lengths=max_sequence_lengths,
+            end_token=end_token)
+        self.evaluate(beams)
 
   def testBadParentValuesOnGPU(self):
     # Only want to run this test on CUDA devices, as gather_tree is not
@@ -93,8 +92,7 @@ class GatherTreeTest(test.TestCase):
           parent_ids=parent_ids,
           max_sequence_lengths=max_sequence_lengths,
           end_token=end_token)
-    with self.session(use_gpu=True):
-      self.assertAllEqual(expected_result, beams.eval())
+      self.assertAllEqual(expected_result, self.evaluate(beams))
 
   def testGatherTreeBatch(self):
     batch_size = 10
@@ -103,7 +101,7 @@ class GatherTreeTest(test.TestCase):
     max_sequence_lengths = [0, 1, 2, 4, 7, 8, 9, 10, 11, 0]
     end_token = 5
 
-    with self.session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       step_ids = np.random.randint(
           0, high=end_token + 1, size=(max_time, batch_size, beam_width))
       parent_ids = np.random.randint(
@@ -116,7 +114,7 @@ class GatherTreeTest(test.TestCase):
           end_token=end_token)
 
       self.assertEqual((max_time, batch_size, beam_width), beams.shape)
-      beams_value = beams.eval()
+      beams_value = self.evaluate(beams)
       for b in range(batch_size):
         # Past max_sequence_lengths[b], we emit all end tokens.
         b_value = beams_value[max_sequence_lengths[b]:, b, :]

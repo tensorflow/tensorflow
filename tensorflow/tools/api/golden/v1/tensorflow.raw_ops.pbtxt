@@ -738,7 +738,7 @@ tf_module {
   }
   member_method {
     name: "CudnnRNNBackpropV3"
-    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'output\', \'output_h\', \'output_c\', \'output_backprop\', \'output_h_backprop\', \'output_c_backprop\', \'reserve_space\', \'host_reserved\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'output\', \'output_h\', \'output_c\', \'output_backprop\', \'output_h_backprop\', \'output_c_backprop\', \'reserve_space\', \'host_reserved\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'time_major\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "CudnnRNNCanonicalToParams"
@@ -758,7 +758,7 @@ tf_module {
   }
   member_method {
     name: "CudnnRNNV3"
-    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'is_training\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'is_training\', \'time_major\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Cumprod"
@@ -1027,6 +1027,10 @@ tf_module {
   member_method {
     name: "ExperimentalAssertNextDataset"
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ExperimentalAutoShardDataset"
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ExperimentalBytesProducedStatsDataset"
@@ -1517,6 +1521,10 @@ tf_module {
     argspec: "args=[\'input\', \'shape\', \'layout\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "InfeedEnqueuePrelinearizedBuffer"
+    argspec: "args=[\'input\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "InfeedEnqueueTuple"
     argspec: "args=[\'inputs\', \'shapes\', \'layouts\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
   }
@@ -1850,7 +1858,7 @@ tf_module {
   }
   member_method {
     name: "MapDefun"
-    argspec: "args=[\'arguments\', \'captured_inputs\', \'output_types\', \'output_shapes\', \'f\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'arguments\', \'captured_inputs\', \'output_types\', \'output_shapes\', \'f\', \'max_intra_op_parallelism\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MapIncompleteSize"
@@ -1966,7 +1974,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGradGradWithArgmax"
-    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MaxPoolGradV2"
@@ -1974,7 +1982,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGradWithArgmax"
-    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MaxPoolV2"
@@ -1982,7 +1990,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolWithArgmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'Targmax\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'Targmax\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Maximum"
@@ -2329,6 +2337,14 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "Prelinearize"
+    argspec: "args=[\'input\', \'shape\', \'layout\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "PrelinearizeTuple"
+    argspec: "args=[\'inputs\', \'shapes\', \'layouts\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "PreventGradient"
     argspec: "args=[\'input\', \'message\'], varargs=None, keywords=None, defaults=None"
   }
@@ -2410,43 +2426,43 @@ tf_module {
   }
   member_method {
     name: "QuantizedConv2DAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBias"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBiasAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBiasAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBiasAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBiasSumAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'summand\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'summand\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedConv2DWithBiasSumAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'out_type\', \'strides\', \'padding\', \'dilations\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'summand\', \'min_summand\', \'max_summand\', \'out_type\', \'strides\', \'padding\', \'dilations\', \'padding_list\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QuantizedInstanceNorm"
@@ -2910,7 +2926,7 @@ tf_module {
   }
   member_method {
     name: "ResourceGather"
-    argspec: "args=[\'resource\', \'indices\', \'validate_indices\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'resource\', \'indices\', \'batch_dims\', \'validate_indices\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResourceScatterAdd"
@@ -3142,11 +3158,11 @@ tf_module {
   }
   member_method {
     name: "ScaleAndTranslate"
-    argspec: "args=[\'images\', \'size\', \'scale\', \'translation\', \'kernel_type\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'scale\', \'translation\', \'kernel_type\', \'antialias\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ScaleAndTranslateGrad"
-    argspec: "args=[\'grads\', \'original_image\', \'scale\', \'translation\', \'kernel_type\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'grads\', \'original_image\', \'scale\', \'translation\', \'kernel_type\', \'antialias\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ScatterAdd"
