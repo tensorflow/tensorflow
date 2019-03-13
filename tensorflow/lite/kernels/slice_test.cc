@@ -163,7 +163,7 @@ TEST(SliceOpTest, SizeMinus1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
 }
 
-TEST(SliceOpTest, BeginNonZeroSizeMinus1Dim2) {
+TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis1) {
   SliceOpModel<int32_t, int32_t> m({3, 3, 2, 1}, {4}, {4}, TensorType_INT32,
                                    TensorType_INT32);
   m.SetInput({1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
@@ -174,7 +174,7 @@ TEST(SliceOpTest, BeginNonZeroSizeMinus1Dim2) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 6, 8, 9}));
 }
 
-TEST(SliceOpTest, BeginNonZeroSizeMinus1Dim3) {
+TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis2) {
   SliceOpModel<int32_t, int32_t> m({3, 2, 3, 1}, {4}, {4}, TensorType_INT32,
                                    TensorType_INT32);
   m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
@@ -185,7 +185,7 @@ TEST(SliceOpTest, BeginNonZeroSizeMinus1Dim3) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 5, 5}));
 }
 
-TEST(SliceOpTest, BeginNonZeroSizeMinus1Dim4) {
+TEST(SliceOpTest, BeginNonZeroSizeMinus1Axis3) {
   SliceOpModel<int32_t, int32_t> m({3, 1, 2, 3}, {4}, {4}, TensorType_INT32,
                                    TensorType_INT32);
   m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
