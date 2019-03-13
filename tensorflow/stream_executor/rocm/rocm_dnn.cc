@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
@@ -139,6 +140,7 @@ static port::ThreadPool* GetROCmThreadpool() {
   return miopen_threadpool;
 }
 
+#ifdef PLATFORM_GOOGLE
 #define STREAM_EXECUTOR_MIOPEN_WRAP(__name)      \
   struct WrapperShim__##__name {                 \
     template <typename... Args>                  \
@@ -147,6 +149,35 @@ static port::ThreadPool* GetROCmThreadpool() {
       return retval;                             \
     }                                            \
   } __name;
+
+#else
+#define STREAM_EXECUTOR_MIOPEN_WRAP(__name)                               \
+  struct DynLoadShim__##__name {                                          \
+    static const char* kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void* GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetMiopenDsoHandle();           \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void* f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in miopen DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    miopenStatus_t operator()(Args... args) {                             \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char* DynLoadShim__##__name::kName = #__name;
+#endif
 
 // clang-format off
 #define MIOPEN_DNN_ROUTINE_EACH(__macro)                   \
@@ -175,6 +206,7 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenConvolutionBackwardBias)                   \
   __macro(miopenConvolutionForwardGetWorkSpaceSize)        \
   __macro(miopenInitConvolutionDescriptor)                 \
+  __macro(miopenGetConvolutionDescriptor)                  \
   __macro(miopenSetConvolutionGroupCount)                  \
   __macro(miopenSet4dTensorDescriptor)                     \
   __macro(miopenGetTensorDescriptor)                       \
@@ -258,7 +290,8 @@ uint64 GetHashValue(miopenTensorDescriptor_t tensor_desc) {
   miopenDataType_t dataType = miopenFloat;
   int dims[kMaxMIOpenTensorSize] = {0};
   int strides[kMaxMIOpenTensorSize] = {0};
-  miopenGetTensorDescriptor(tensor_desc, &dataType, dims, strides);
+  wrap::miopenGetTensorDescriptor(tensor_desc, &dataType, dims,
+                                              strides);
 
   uint64 hashValue = tensorflow::hash<int>()(dataType);
   for (int dim : dims)
@@ -274,8 +307,9 @@ uint64 GetHashValue(miopenTensorDescriptor_t tensor_desc) {
 uint64 GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   miopenConvolutionMode_t c_mode = miopenConvolution;
   int pad_h = 0, pad_w = 0, u = 0, v = 0, dilation_h = 0, dilation_w = 0;
-  miopenGetConvolutionDescriptor(conv_desc, &c_mode, &pad_h, &pad_w, &u, &v,
-                                 &dilation_h, &dilation_w);
+  wrap::miopenGetConvolutionDescriptor(conv_desc, &c_mode, &pad_h,
+                                                   &pad_w, &u, &v, &dilation_h,
+                                                   &dilation_w);
 
   uint64 hashValue = tensorflow::hash<int>()(c_mode);
   hashValue =

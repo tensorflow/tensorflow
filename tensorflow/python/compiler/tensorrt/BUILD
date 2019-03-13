@@ -108,6 +108,7 @@ cuda_py_test(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
+        "no_rocm",
         "nomac",
     ],
     xla_enable_strict_auto_jit = True,
@@ -146,6 +147,7 @@ cuda_py_tests(
     tags = [
         "no_cuda_on_cpu_tap",
         "no_windows",
+        "no_rocm",
         "nomac",
     ],
     xla_enable_strict_auto_jit = True,
@@ -172,6 +174,7 @@ cuda_py_test(
         "no_pip",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
+        "no_rocm",
         "nomac",
     ],
     xla_enable_strict_auto_jit = True,

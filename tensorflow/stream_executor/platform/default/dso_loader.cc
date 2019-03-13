@@ -158,27 +158,27 @@ port::StatusOr<void*> GetCudnnDsoHandle() {
 
 port::StatusOr<void*> GetRocblasDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocblasDsoHandle());
-  return result;
+  return *result;
 }
 
 port::StatusOr<void*> GetMiopenDsoHandle() {
   static auto result = new auto(DsoLoader::GetMiopenDsoHandle());
-  return result;
+  return *result;
 }
 
 port::StatusOr<void*> GetRocfftDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocfftDsoHandle());
-  return result;
+  return *result;
 }
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
-  return result;
+  return *result;
 }
 
 port::StatusOr<void*> GetHipDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipDsoHandle());
-  return result;
+  return *result;
 }
 
 }  // namespace CachedDsoLoader
