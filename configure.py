@@ -1506,7 +1506,7 @@ def system_specific_test_config(env):
       'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
   write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
   if is_windows():
-    if env.get('TF_NEED_CUDA', None) == 1:
+    if env.get('TF_NEED_CUDA', None) == '1':
       write_to_bazelrc(
           'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
       write_to_bazelrc(
@@ -1518,7 +1518,7 @@ def system_specific_test_config(env):
     write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
     write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
   elif is_linux():
-    if env.get('TF_NEED_CUDA', None) == 1:
+    if env.get('TF_NEED_CUDA', None) == '1':
       write_to_bazelrc('test --test_tag_filters=-no_gpu')
       write_to_bazelrc('test --build_tag_filters=-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
