@@ -2101,7 +2101,7 @@ expected to invoke these operators.
 )doc");
 
 REGISTER_OP("_MklMaxPool")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: {float, half, bfloat16} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
@@ -2127,7 +2127,7 @@ expected to invoke these operators.
 )doc");
 
 REGISTER_OP("_MklMaxPoolGrad")
-    .Attr("T: {float, half} = DT_FLOAT")
+    .Attr("T: {float, half, bfloat16} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
     .Attr("workspace_enabled: bool = false")
@@ -2167,7 +2167,7 @@ REGISTER_OP("_MklAvgPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn(shape_inference::AvgPoolShape)
     .Doc(R"doc(
 MKL version of AvgPool operator. Uses MKL DNN APIs to perform average pooling
@@ -2188,7 +2188,7 @@ REGISTER_OP("_MklAvgPoolGrad")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -2213,7 +2213,7 @@ REGISTER_OP("_MklAvgPool3D")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn(shape_inference::Pool3DShape)
     .Doc(R"doc(
 MKL version of AvgPool3D operator. Uses MKL DNN APIs to perform average pooling
@@ -2234,7 +2234,7 @@ REGISTER_OP("_MklAvgPool3DGrad")
     .Attr("strides: list(int) >= 5")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, half, double, bfloat16}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
       TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
@@ -2510,7 +2510,7 @@ REGISTER_OP("_MklToTf")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-    .Attr("T: {half, float, double, qint8, quint8, qint32}")
+    .Attr("T: {half, float, double, bfloat16, qint8, quint8, qint32}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -2531,8 +2531,8 @@ REGISTER_OP("_MklInputConversion")
     .Output("mkl_output_1: uint8")
     // All datatypes supported by element-wise ops
     .Attr(
-        "T: {half, float, double, uint8, int8, uint16, int16, int32, int64, "
-        "complex64, complex128}")
+        "T: {half, float, bfloat16, double, uint8, int8, uint16, int16, int32, "
+        "int64, complex64, complex128}")
     .Attr(GetConvnetDataFormat2D3DAttrString())
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(

@@ -306,6 +306,7 @@ class MklInputConversionOp : public OpKernel {
 // not support types.
 // TF_CALL_NUMBER_TYPES(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
+TF_CALL_bfloat16(REGISTER_CPU);
 #undef REGISTER_CPU
 }  // namespace tensorflow
 #endif  // INTEL_MKL

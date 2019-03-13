@@ -129,6 +129,7 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
 template class MklPoolingFwdPrimitive<float>;
 template class MklPoolingFwdPrimitive<quint8>;
 template class MklPoolingFwdPrimitive<qint8>;
+template class MklPoolingFwdPrimitive<bfloat16>;
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
@@ -217,6 +218,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
 }
 
 template class MklPoolingBwdPrimitive<float>;
+template class MklPoolingBwdPrimitive<bfloat16>;
 
 #endif
 
