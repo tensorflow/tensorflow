@@ -2133,6 +2133,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "NonDeterministicInts"
+    argspec: "args=[\'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "NonMaxSuppression"
     argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\'], varargs=None, keywords=None, defaults=None"
   }
@@ -3671,6 +3675,22 @@ tf_module {
   member_method {
     name: "StatefulPartitionedCall"
     argspec: "args=[\'args\', \'Tout\', \'f\', \'config\', \'config_proto\', \'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulStandardNormal"
+    argspec: "args=[\'resource\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulStandardNormalV2"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulUniformFullInt"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulUniformInt"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'minval\', \'maxval\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "StatelessIf"

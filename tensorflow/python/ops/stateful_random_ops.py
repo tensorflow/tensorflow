@@ -133,7 +133,7 @@ def _make_state_from_seed(seed, alg):
   return _make_1d_state(_get_state_size(alg), seed)
 
 
-@tf_export("random.create_rng_state")
+@tf_export("random.experimental.create_rng_state")
 def create_rng_state(seed, algorithm):
   """Creates a RNG state.
 
