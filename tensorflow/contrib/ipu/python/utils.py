@@ -630,7 +630,7 @@ def extract_all_io_events(events):
 
 def extract_compile_reports(events):
   """Get a list of all compiler reports in the event list.
-  :param events: A list of IpuTraceEvent objects
+  :param events: A list of trace event serialized protobufs
   :return: A list of tuples containing the module namd and report."""
   result = []
   for e in events:
@@ -646,7 +646,7 @@ def extract_compile_reports(events):
 
 def extract_execute_reports(events):
   """Get a list of all compiler reports in the event list.
-  :param events: A list of IpuTraceEvent objects
+  :param events: A list of trace event serialized protobufs
   :return: A list of tuples containing the module namd and report."""
   result = []
   for e in events:

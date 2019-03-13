@@ -300,7 +300,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   int GetNumberOfReplicas() const {
-    return current_config_.device_config(ordinal_).num_replicas();
+    if (current_config_.device_config_size() > ordinal_) {
+      return current_config_.device_config(ordinal_).num_replicas();
+    } else {
+      return 0;
+    }
   }
 
   void AddCompileBeginEventRecord(const std::string& module_name,
