@@ -291,6 +291,13 @@ void GetColocationGroup(const Node* node, string* group) {
   }
 }
 
+const string* AssignedOrRequestedDeviceName(const Node& node) {
+  if (node.has_assigned_device_name()) {
+    return &node.assigned_device_name();
+  }
+  return &node.requested_device();
+}
+
 }  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
@@ -314,26 +321,27 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   for (Node* node : graph->op_nodes()) {
     if (node->IsRetval()) {
       if (output_devices.empty()) {
+        VLOG(3) << "Trying to determine device for node " << node->name();
         // If output_devices are empty, the node producing retval
         // must have explicitly assigned device or a colocation constraint
         // to a node with explicitly assigned device.
         for (const auto& it : node->in_edges()) {
           if (!it->IsControlEdge()) {
             Node* src_node = it->src();
-            const string* src_device = &src_node->requested_device();
+            const string* src_device = AssignedOrRequestedDeviceName(*src_node);
             string colocation_group = "";
             GetColocationGroup(src_node, &colocation_group);
+            VLOG(3) << "Considering src: " << src_node->name()
+                    << " src_device: " << *src_device
+                    << " colo group: " << colocation_group;
             while (src_device->empty() && colocation_group.empty() &&
                    src_node->IsIdentity()) {
               src_node = *src_node->in_nodes().begin();
-              src_device = &src_node->requested_device();
-              if (src_device->empty()) {
-                // Some node (e.g. _Args) can have no requested_device,
-                // but have assigned_device.
-                src_device = &src_node->assigned_device_name();
-              }
-
+              src_device = AssignedOrRequestedDeviceName(*src_node);
               GetColocationGroup(src_node, &colocation_group);
+              VLOG(3) << "Considering src: " << src_node->name()
+                      << " src_device: " << *src_device
+                      << " colo group: " << colocation_group;
             }
 
             if (!colocation_group.empty()) {
@@ -375,6 +383,9 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                     "device. Matched devices are ",
                     devices);
               }
+              VLOG(3) << "Setting output device to "
+                      << matching_devices[0]->name() << " for node "
+                      << node->DebugString();
               node->set_assigned_device_name(matching_devices[0]->name());
             }
           }
@@ -385,6 +396,8 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
         int64 index = attr_value->i();
         // output_devices size is checked in InstantiateMultiDevice
         DCHECK_GT(output_devices.size(), index);
+        VLOG(3) << "Setting output device to " << output_devices[index]
+                << " for return at index " << index;
         node->set_assigned_device_name(output_devices[index]);
       }
     }
