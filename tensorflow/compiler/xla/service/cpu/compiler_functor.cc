@@ -94,7 +94,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (pre_optimization_hook_) {
-    TF_CHECK_OK(pre_optimization_hook_(module));
+    pre_optimization_hook_(module);
   }
 
   // Add the appropriate TargetLibraryInfo and TargetTransformInfo.
@@ -138,10 +138,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (post_optimization_hook_) {
-    // TODO(jlebar): If we're going to CHECK these return values, then we might
-    // as well make them return void and move the CHECKs into the hooks
-    // themselves.
-    TF_CHECK_OK(post_optimization_hook_(module));
+    post_optimization_hook_(module);
   }
 
   // Generate code.
