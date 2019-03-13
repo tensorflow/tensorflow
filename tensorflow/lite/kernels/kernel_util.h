@@ -84,6 +84,12 @@ inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   }
 }
 
+// Determines whether tensor is hybrid op.
+inline bool IsHybridOp(const TfLiteTensor* input, const TfLiteTensor* weight) {
+  return ((weight->type == kTfLiteUInt8 || weight->type == kTfLiteInt8) &&
+          input->type == kTfLiteFloat32);
+}
+
 // Check dimensionality match and populate OpData for Conv and DepthwiseConv.
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
