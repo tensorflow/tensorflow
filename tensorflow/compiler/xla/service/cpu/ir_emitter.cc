@@ -899,8 +899,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
       source_array.EmitReadArrayElement(source_index, &b_);
   llvm_ir::IrArray output_array(GetIrArrayFor(select_and_scatter));
   llvm_ir::IrArray::Index selected_index(
-      selected_multi_index, /*linear=*/nullptr, output_array.GetShape(),
-      source_index.GetType());
+      selected_multi_index, output_array.GetShape(), source_index.GetType());
   llvm::Value* output_value =
       output_array.EmitReadArrayElement(selected_index, &b_);
   llvm::Value* scatter_value =
@@ -2126,9 +2125,8 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
 
   // Store the operand element to the computed output location.
   llvm_ir::IrArray output_array(GetIrArrayFor(pad));
-  llvm_ir::IrArray::Index output_index(output_multi_index, /*linear=*/nullptr,
-                                       output_array.GetShape(),
-                                       operand_index.GetType());
+  llvm_ir::IrArray::Index output_index(
+      output_multi_index, output_array.GetShape(), operand_index.GetType());
   output_array.EmitWriteArrayElement(output_index, operand_data, &b_);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);

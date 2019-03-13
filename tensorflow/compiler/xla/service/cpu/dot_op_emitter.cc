@@ -544,9 +544,8 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
     }
   }
 
-  llvm_ir::IrArray::Index target_index(target_multi_index, /*linear=*/nullptr,
-                                       target_array_.GetShape(),
-                                       lhs_index.GetType());
+  llvm_ir::IrArray::Index target_index(
+      target_multi_index, target_array_.GetShape(), lhs_index.GetType());
   target_array_.EmitWriteArrayElement(target_index, result, b_);
 
   // Set the IR builder insert point to the exit basic block of the outer most
@@ -927,9 +926,8 @@ llvm_ir::IrArray SliceOutInnerArray(llvm_ir::IrArray outer_array,
   std::vector<llvm::Value*> multidim_index(inner_shape.rank() + 1,
                                            b->getInt64(0));
   multidim_index[0] = batch_index;
-  llvm_ir::IrArray::Index slice_index(multidim_index,
-                                      /*linear=*/nullptr,
-                                      outer_array.GetShape());
+  llvm_ir::IrArray::Index slice_index(multidim_index, outer_array.GetShape(),
+                                      batch_index->getType());
   llvm::Value* slice_ptr = outer_array.EmitArrayElementAddress(slice_index, b);
   llvm::Type* slice_ptr_type =
       llvm_ir::ShapeToIrType(inner_shape, module)->getPointerTo();
