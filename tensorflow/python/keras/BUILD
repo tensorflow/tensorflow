@@ -786,6 +786,19 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "recurrent_v2_test",
+    size = "medium",
+    srcs = ["layers/recurrent_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
+)
+
+cuda_py_test(
     name = "separable_convolutional_test",
     size = "medium",
     srcs = ["layers/separable_convolutional_test.py"],
