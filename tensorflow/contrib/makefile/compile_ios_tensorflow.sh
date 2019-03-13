@@ -46,11 +46,11 @@ fi
 usage() {
   echo "Usage: $(basename "$0") [-a]"
   echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64,arm64)"
-  echo "default is [i386, x86_64, armv7, armv7s, arm64]"
+  echo "default is [x86_64, armv7, armv7s, arm64]"
   exit 1
 }
 
-BUILD_TARGET="i386 x86_64 armv7 armv7s arm64"
+BUILD_TARGET="x86_64 armv7 armv7s arm64"
 while getopts "a:f:h:n:" opt_name; do
   case "$opt_name" in
     a) BUILD_TARGET="${OPTARG}";;
@@ -125,18 +125,6 @@ case "$1" in
           exit 1
         fi
         package_tf_library "arm64"
-        ;;
-    i386)
-        make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \
-        TARGET=IOS IOS_ARCH=I386 LIB_NAME=${LIB_PREFIX}-i386.a \
-        OPTFLAGS="${BUILD_OPT}" HOST_NSYNC_LIB="${NSYNC_HOST}" \
-        TARGET_NSYNC_LIB="${NSYNC_TARGET}"
-        if [ $? -ne 0 ]
-        then
-          echo "i386 compilation failed."
-          exit 1
-        fi
-        package_tf_library "i386"
         ;;
     x86_64)
         make -j"${JOB_COUNT}" -f tensorflow/contrib/makefile/Makefile \

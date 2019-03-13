@@ -66,9 +66,9 @@ Status FusedIrEmitter::DefaultAction(HloInstruction* hlo) {
       }
       VLOG(3) << "The cached generated value can't be reused, because it is in "
                  "a different BB ("
-              << llvm_ir::AsString(generated_value_bb->getName())
+              << generated_value_bb->getName().str()
               << ") from the current insertion block ("
-              << llvm_ir::AsString(b_->GetInsertBlock()->getName()) << ").";
+              << b_->GetInsertBlock()->getName().str() << ").";
     }
 
     TF_ASSIGN_OR_RETURN(generated_value_cache_[hlo][index.multidim()],

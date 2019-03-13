@@ -113,10 +113,9 @@ void HloToIrBindings::EmitBasePointersForHlos(
             BindHloToIrValue(*non_io_hlo, b_->CreateAlloca(pointee_type),
                              index);
           } else if (slice.allocation()->is_constant()) {
-            llvm::Value* global_for_constant =
-                module_->getGlobalVariable(llvm_ir::AsStringRef(
-                    llvm_ir::ConstantBufferAllocationToGlobalName(
-                        *slice.allocation())));
+            llvm::Value* global_for_constant = module_->getGlobalVariable(
+                llvm_ir::ConstantBufferAllocationToGlobalName(
+                    *slice.allocation()));
             BindHloToIrValue(*non_io_hlo, global_for_constant);
           } else {
             const int64 offset = slice.offset();
@@ -166,11 +165,10 @@ llvm::Value* HloToIrBindings::GetTypedIrValue(const HloInstruction& hlo,
     typed_ir_value = b_->CreateBitCast(ir_value, pointee_type->getPointerTo());
   }
   if (!HasMeaningfulName(ir_value)) {
-    ir_value->setName(llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "raw")));
+    ir_value->setName(llvm_ir::IrName(&hlo, "raw"));
   }
   if (!HasMeaningfulName(typed_ir_value)) {
-    typed_ir_value->setName(
-        llvm_ir::AsStringRef(llvm_ir::IrName(&hlo, "typed")));
+    typed_ir_value->setName(llvm_ir::IrName(&hlo, "typed"));
   }
   return typed_ir_value;
 }

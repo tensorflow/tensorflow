@@ -393,14 +393,17 @@ void BenchmarkTfLiteModel::Init() {
         << " expected: " << inputs.size();
   }
 
-  // TFLITE_BENCHMARK_CHECK that all names and types match
+  // Check if the tensor names match, and log a warning if it doesn't.
+  // TODO(ycling): Consider to make this an error again when the new converter
+  // create tensors with consistent naming.
   for (int j = 0; j < inputs.size(); ++j) {
     const InputLayerInfo& input = inputs[j];
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter->tensor(i);
-    TFLITE_BENCHMARK_CHECK_EQ(t->name, input.name)
-        << "Tensor # " << i << " is named " << t->name << " but flags call it "
-        << input.name;
+    if (input.name != t->name) {
+      TFLITE_LOG(WARN) << "Tensor # " << i << " is named " << t->name
+                       << " but flags call it " << input.name;
+    }
   }
 
   // Resize all non-string tensors.

@@ -68,8 +68,7 @@ class TypeInfoResolverTest(test.TestCase):
         source_file=None,
         namespace=namespace,
         arg_values=None,
-        arg_types=arg_types,
-        owner_type=None)
+        arg_types=arg_types)
     node = qual_names.resolve(node)
     graphs = cfg.build(node)
     ctx = transformer.Context(entity_info)

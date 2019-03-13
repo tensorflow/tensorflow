@@ -1,6 +1,6 @@
 path: "tensorflow.keras.layers.GRU"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.UnifiedGRU\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent_v2.GRU\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.DropoutRNNCellMixin\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.GRU\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.RNN\'>"

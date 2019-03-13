@@ -799,12 +799,14 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinPad:
-        if (version == 1 && android_sdk_version >= kMinSdkVersionForNNAPI11 &&
-            node->inputs->size == 2 &&
-            context->tensors[node->inputs->data[0]].type == kTfLiteFloat32) {
+        if (version == 1 && node->inputs->size == 2 &&
+            (android_sdk_version >= kMinSdkVersionForNNAPI11) &&
+            (context->tensors[node->inputs->data[0]].type == kTfLiteFloat32 ||
+             android_sdk_version >= kMinSdkVersionForNNAPI12)) {
           // NNAPI does not support specifying the padding value.
-          // NNAPI pads physical zero for quantized tensors, so only delegate
-          // float pad to NNAPI.
+          // Before 1.2, NNAPI pads physical zero for quantized tensors, so only
+          // delegate float pad to NNAPI. NNAPI 1.2 onwards pads with
+          // zero-point, so delegate quantized pad as well.
           return BasicMappingFn<ANEURALNETWORKS_PAD>;
         }
         break;
@@ -1284,7 +1286,18 @@ TfLiteDelegate* NnApiDelegate() {
             !nnapi->nnapi_exists) {
           return kTfLiteOk;
         }
-
+        // For NNAPI 1.2+, check if there is any accelerator available.
+        // If not, don't delegate to NNAPI's CPU reference implementation.
+        if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          uint32_t device_count = 0;
+          RETURN_TFLITE_ERROR_IF_NN_ERROR(
+              context, nnapi->ANeuralNetworks_getDeviceCount(&device_count));
+          // Any available accelerator will make the device_count larger than 1.
+          // More sophisticated check and whitelisting can be added later.
+          if (device_count <= 1) {
+            return kTfLiteOk;
+          }
+        }
         // Allocate one element in vector already since TensorFlow Lite uses
         // the first value as the number of nodes. The actual value will be set
         // later, after the vector has been filled.

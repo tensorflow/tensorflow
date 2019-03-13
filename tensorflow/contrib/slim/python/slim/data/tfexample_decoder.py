@@ -329,7 +329,7 @@ class SparseTensor(ItemHandler):
       shape = indices.dense_shape
     indices_shape = array_ops.shape(indices.indices)
     rank = indices_shape[1]
-    ids = math_ops.to_int64(indices.values)
+    ids = math_ops.cast(indices.values, dtypes.int64)
     indices_columns_to_preserve = array_ops.slice(
         indices.indices, [0, 0], array_ops.stack([-1, rank - 1]))
     new_indices = array_ops.concat(

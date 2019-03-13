@@ -46,6 +46,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
@@ -185,11 +186,11 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   logging.log(1, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
-    node, name, ns = class_to_graph(o, program_ctx)
+    nodes, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    nodes, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
-    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    nodes, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
   elif hasattr(o, '__class__'):
     raise NotImplementedError(
@@ -212,39 +213,22 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   template = '''
       entity.autograph_info__ = {}
   '''
-  node.extend(templates.replace(template, entity=name))
-
-  program_ctx.add_to_cache(o, node)
+  nodes.extend(templates.replace(template, entity=name))
 
   if logging.has_verbosity(2):
     logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
-                compiler.ast_to_source(node))
+                compiler.ast_to_source(nodes))
   if logging.has_verbosity(4):
-    for n in node:
+    for n in nodes:
       logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,
                   pretty_printer.fmt(n, color=False))
 
-  if program_ctx.options.recursive:
-    while True:
-      candidate = None
-      for obj in program_ctx.name_map.keys():
-        if obj not in program_ctx.dependency_cache:
-          candidate = obj
-          break
-      if candidate is None:
-        break
-      if (hasattr(candidate, 'im_class') and
-          getattr(candidate, 'im_class') not in program_ctx.partial_types):
-        # Class members are converted with their objects, unless they're
-        # only converted partially.
-        continue
-      entity_to_graph(candidate, program_ctx, {}, {})
-
-  return node, name, ns
+  return nodes, name, ns
 
 
 def class_to_graph(c, program_ctx):
   """Specialization of `entity_to_graph` for classes."""
+  # TODO(mdan): Revisit this altogether. Not sure we still need it.
   converted_members = {}
   method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
   members = tf_inspect.getmembers(c, predicate=method_filter)
@@ -256,25 +240,22 @@ def class_to_graph(c, program_ctx):
     # Only convert the members that are directly defined by the class.
     if inspect_utils.getdefiningclass(m, c) is not c:
       continue
-    node, _, namespace = function_to_graph(
+    nodes, _, namespace = function_to_graph(
         m,
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c)
+        do_rename=False)
     if class_namespace is None:
       class_namespace = namespace
     else:
       class_namespace.update(namespace)
-    converted_members[m] = node[0]
-  namer = program_ctx.new_namer(class_namespace)
-  class_name = namer.compiled_class_name(c.__name__, c)
+    converted_members[m] = nodes[0]
+  namer = naming.Namer(class_namespace)
+  class_name = namer.class_name(c.__name__)
 
-  # TODO(mdan): This needs to be explained more thoroughly.
   # Process any base classes: if the superclass if of a whitelisted type, an
-  # absolute import line is generated. Otherwise, it is marked for conversion
-  # (as a side effect of the call to namer.compiled_class_name() followed by
-  # program_ctx.update_name_map(namer)).
+  # absolute import line is generated.
   output_nodes = []
   renames = {}
   base_names = []
@@ -290,11 +271,12 @@ def class_to_graph(c, program_ctx):
               names=[gast.alias(name=base.__name__, asname=alias)],
               level=0))
     else:
-      # This will trigger a conversion into a class with this name.
-      alias = namer.compiled_class_name(base.__name__, base)
+      raise NotImplementedError(
+          'Conversion of classes that do not directly extend classes from'
+          ' whitelisted modules is temporarily suspended. If this breaks'
+          ' existing code please notify the AutoGraph team immediately.')
     base_names.append(alias)
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
-  program_ctx.update_name_map(namer)
 
   # Generate the definition of the converted class.
   bases = [gast.Name(n, gast.Load(), None) for n in base_names]
@@ -326,6 +308,7 @@ def _add_reserved_symbol(namespace, name, entity):
 ag_internal = None
 
 
+# TODO(mdan): Move into core or replace with an actual importable module.
 def _add_self_references(namespace, autograph_module):
   """Adds namespace references to the module that exposes the api itself."""
   global ag_internal
@@ -349,11 +332,7 @@ def _add_self_references(namespace, autograph_module):
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f,
-                      program_ctx,
-                      arg_values,
-                      arg_types,
-                      owner_type=None):
+def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
@@ -379,15 +358,14 @@ def function_to_graph(f,
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
-  namer = program_ctx.new_namer(namespace)
+  namer = naming.Namer(namespace)
 
   entity_info = transformer.EntityInfo(
       source_code=source,
       source_file='<fragment>',
       namespace=namespace,
       arg_values=arg_values,
-      arg_types=arg_types,
-      owner_type=owner_type)
+      arg_types=arg_types)
   context = converter.EntityContext(namer, entity_info, program_ctx)
   try:
     node = node_to_graph(node, context)
@@ -401,18 +379,13 @@ def function_to_graph(f,
     node = gast.Assign(
         targets=[gast.Name(new_name, gast.Store(), None)], value=node)
 
-  else:
+  elif do_rename:
     # TODO(mdan): This somewhat duplicates the renaming logic in call_trees.py
-    new_name, did_rename = namer.compiled_function_name(f.__name__, f,
-                                                        owner_type)
-    if did_rename:
-      node.name = new_name
-    else:
-      new_name = f.__name__
-      assert node.name == new_name
-
-  program_ctx.update_name_map(namer)
-  # TODO(mdan): Use this at compilation.
+    new_name = namer.function_name(f.__name__)
+    node.name = new_name
+  else:
+    new_name = f.__name__
+    assert node.name == new_name
 
   return [node], new_name, namespace
 

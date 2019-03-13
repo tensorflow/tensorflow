@@ -251,6 +251,7 @@ cc_library(
         ":optimized_base",
         ":tensor",
         ":types",
+        "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite/c:c_api_internal",
         "//third_party/eigen3",
     ],
