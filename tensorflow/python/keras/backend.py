@@ -2107,6 +2107,32 @@ def minimum(x, y):
   return math_ops.minimum(x, y)
 
 
+@keras_export('keras.backend.sinh')
+def sinh(x):
+  """Computes sinh of x element-wise.
+
+  Arguments:
+      x: Tensor or variable.
+
+  Returns:
+      A tensor.
+  """
+  return math_ops.sinh(x)
+
+
+@keras_export('keras.backend.cosh')
+def cosh(x):
+  """Computes cosh of x element-wise.
+
+  Arguments:
+      x: Tensor or variable.
+
+  Returns:
+      A tensor.
+  """
+  return math_ops.cosh(x)
+
+
 @keras_export('keras.backend.sin')
 def sin(x):
   """Computes sin of x element-wise.
@@ -2118,7 +2144,6 @@ def sin(x):
       A tensor.
   """
   return math_ops.sin(x)
-
 
 @keras_export('keras.backend.cos')
 def cos(x):
