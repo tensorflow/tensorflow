@@ -194,7 +194,7 @@ XLA_TEST_F(FusionTest, Test) {
   //                     (-{{1.0, 1.0, 1.0}, {0.0, 0.0, 0.0}}),
   //              {{0.5, 0.5, 0.5}, {0.5, 0.5, 0.5}})) = {{0.5}, {2.72}}
   auto builder = HloComputation::Builder(TestName());
-  auto hlo_module = CreateNewUnverifiedModule();
+  auto hlo_module = CreateNewVerifiedModule();
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR2<float>({{1.0}, {2.0}, {3.0}})));
   auto const1 = builder.AddInstruction(HloInstruction::CreateConstant(
@@ -234,7 +234,7 @@ XLA_TEST_F(FusionTest, Test) {
 
   EXPECT_TRUE(LiteralTestUtil::Near(
       LiteralUtil::CreateR2<float>({{0.5}, {2.72}}),
-      ExecuteAndTransfer(std::move(hlo_module), {}), ErrorSpec(1e-4)));
+      ExecuteNoHloPasses(std::move(hlo_module), {}), ErrorSpec(1e-4)));
 }
 
 // Test whether we emit appropriate code for parameters of fusion instructions.

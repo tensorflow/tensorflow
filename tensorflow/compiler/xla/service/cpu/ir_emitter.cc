@@ -2011,7 +2011,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   llvm_ir::IrArray source_array = GetIrArrayFor(operand);
   const llvm_ir::IrArray::Index source_index = target_index.SourceIndexOfSlice(
-      /*shape=*/slice->shape(), /*starts=*/slice->slice_starts(),
+      /*operand_shape=*/operand->shape(), /*starts=*/slice->slice_starts(),
       /*strides=*/slice->slice_strides(), /*builder=*/&b_);
 
   llvm::Value* memcpy_dest =
