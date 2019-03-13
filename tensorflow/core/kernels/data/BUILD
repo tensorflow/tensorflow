@@ -427,6 +427,7 @@ tf_cc_test(
 tf_kernel_library(
     name = "take_dataset_op",
     srcs = ["take_dataset_op.cc"],
+    hdrs = ["take_dataset_op.h"],
     deps = [
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",

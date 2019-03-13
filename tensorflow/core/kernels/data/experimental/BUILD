@@ -22,6 +22,20 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "choose_fastest_branch_dataset_op",
+    srcs = ["choose_fastest_branch_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:captured_function",
+        "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:take_dataset_op",
+    ],
+)
+
+tf_kernel_library(
     name = "csv_dataset_op",
     srcs = ["csv_dataset_op.cc"],
     deps = [
@@ -407,6 +421,7 @@ tf_kernel_library(
     deps = [
         ":assert_next_dataset_op",
         ":auto_shard_dataset_op",
+        ":choose_fastest_branch_dataset_op",
         ":choose_fastest_dataset_op",
         ":csv_dataset_op",
         ":dense_to_sparse_batch_dataset_op",

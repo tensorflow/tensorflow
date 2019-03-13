@@ -561,6 +561,10 @@ tf_module {
     argspec: "args=[\'l\', \'grad\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ChooseFastestBranchDataset"
+    argspec: "args=[\'input_dataset\', \'ratio_numerator\', \'ratio_denominator\', \'other_arguments\', \'num_elements_per_branch\', \'branches\', \'other_arguments_lengths\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ClipByValue"
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\'], varargs=None, keywords=None, defaults=None"
   }
