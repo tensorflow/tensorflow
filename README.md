@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="https://www.gstatic.com/devrel-devsite/vd93acc801b2ca40996c3d3af42fda68a31a452afd3dccab01446b6f5e8d85a31/tensorflow/images/lockup.svg"><br><br>
+  <img src="https://www.tensorflow.org/images/tf_logo_transp.png"><br><br>
 </div>
 
 -----------------
