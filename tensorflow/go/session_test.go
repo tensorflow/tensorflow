@@ -270,7 +270,8 @@ func TestSessionConfig(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts := SessionOptions{Config: []byte("(\x01")}
+	config := NewConfigOptions(true, true, 1)
+	opts := SessionOptions{Config: config}
 	s, err := NewSession(graph, &opts)
 	if err != nil {
 		t.Fatal(err)
