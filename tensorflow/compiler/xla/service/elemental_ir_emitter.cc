@@ -1935,8 +1935,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
 
   if (indices_shape.dimensions_size() == dim_numbers.index_vector_dim()) {
     IrArray::Index gather_index_index(gather_index_index_components,
-                                      /*linear=*/nullptr, indices_shape,
-                                      index_type);
+                                      indices_shape, index_type);
     TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                         indices_generator(gather_index_index));
     add_to_operand_index(gather_dim_component, 0);
@@ -1947,15 +1946,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
       gather_index_index_components[dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
       IrArray::Index gather_index_index(gather_index_index_components,
-                                        /*linear=*/nullptr, indices_shape,
-                                        index_type);
+                                        indices_shape, index_type);
       TF_ASSIGN_OR_RETURN(llvm::Value * gather_dim_component,
                           indices_generator(gather_index_index));
       add_to_operand_index(gather_dim_component, i);
     }
   }
-  IrArray::Index operand_index(operand_multi_index, /*linear=*/nullptr,
-                               operand_shape, index_type);
+  IrArray::Index operand_index(operand_multi_index, operand_shape, index_type);
   return operand_generator(operand_index);
 }
 
@@ -2147,8 +2144,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   }
   lhs_multi_index.insert(lhs_multi_index.begin() + lhs_contracting_dim,
                          inner_loop->GetIndVarValue());
-  IrArray::Index lhs_index(lhs_multi_index, /*linear=*/nullptr,
-                           hlo->operand(0)->shape(), index_type);
+  IrArray::Index lhs_index(lhs_multi_index, hlo->operand(0)->shape(),
+                           index_type);
 
   int64 num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
   for (int64 i = 0; i < num_batch_dims; i++) {
@@ -2160,8 +2157,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   }
   rhs_multi_index.insert(rhs_multi_index.begin() + rhs_contracting_dim,
                          inner_loop->GetIndVarValue());
-  IrArray::Index rhs_index(rhs_multi_index, /*linear=*/nullptr,
-                           hlo->operand(1)->shape(), index_type);
+  IrArray::Index rhs_index(rhs_multi_index, hlo->operand(1)->shape(),
+                           index_type);
 
   llvm::Value* current_accumulator = Load(accumulator_alloca);
   TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value, lhs_generator(lhs_index));

@@ -947,7 +947,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     llvm::Value* source_value_address =
         GetIrArray(*source, *select_and_scatter)
             .EmitArrayElementAddress(source_index, &b_);
-    IrArray::Index selected_index(selected_multi_index, /*linear=*/nullptr,
+    IrArray::Index selected_index(selected_multi_index,
                                   select_and_scatter->shape(),
                                   operand_index.GetType());
     llvm::Value* output_value_address =
@@ -1140,8 +1140,7 @@ Status IrEmitterUnnested::EmitScatter(
       raw_scatter_index_multidim[dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
       llvm_ir::IrArray::Index raw_scatter_index_index(
-          raw_scatter_index_multidim, /*linear=*/nullptr, scatter_indices_shape,
-          index.GetType());
+          raw_scatter_index_multidim, scatter_indices_shape, index.GetType());
 
       int64 operand_dim = dim_numbers.scatter_dims_to_operand_dims(i);
       TF_ASSIGN_OR_RETURN(

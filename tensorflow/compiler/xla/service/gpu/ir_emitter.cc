@@ -614,7 +614,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     }
   }
   SetToFirstInsertPoint(reduction_loop->GetExitBasicBlock(), &b_);
-  llvm_ir::IrArray::Index target_index(target_multi_index, /*linear=*/nullptr,
+  llvm_ir::IrArray::Index target_index(target_multi_index,
                                        target_array.GetShape(), index_type);
   target_array.EmitWriteArrayElement(
       target_index,
