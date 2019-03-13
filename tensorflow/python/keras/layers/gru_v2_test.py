@@ -34,6 +34,8 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.layers import recurrent as rnn_v1
+from tensorflow.python.keras.layers import recurrent_v2 as rnn
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -54,7 +56,7 @@ _config = config_pb2.ConfigProto(graph_options=_graph_options)
 
 
 @keras_parameterized.run_all_keras_modes(config=_config)
-class UnifiedGRUTest(keras_parameterized.TestCase):
+class GRUV2Test(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
       ('non_tan_activation', 'relu', 'sigmoid', 0, False, True, True),
@@ -67,13 +69,13 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
   def test_could_use_defun_backend(self, activation, recurrent_activation,
                                    recurrent_dropout, unroll, use_bias,
                                    reset_after):
-    layer = keras.layers.UnifiedGRU(1,
-                                    activation=activation,
-                                    recurrent_activation=recurrent_activation,
-                                    recurrent_dropout=recurrent_dropout,
-                                    unroll=unroll,
-                                    use_bias=use_bias,
-                                    reset_after=reset_after)
+    layer = rnn.GRU(1,
+                    activation=activation,
+                    recurrent_activation=recurrent_activation,
+                    recurrent_dropout=recurrent_dropout,
+                    unroll=unroll,
+                    use_bias=use_bias,
+                    reset_after=reset_after)
     self.assertFalse(layer.could_use_cudnn)
 
   def test_keras_model_with_gru(self):
@@ -91,7 +93,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
         num_classes=output_shape)
     y_train = keras.utils.to_categorical(y_train, output_shape)
 
-    layer = keras.layers.UnifiedGRU(rnn_state_size)
+    layer = rnn.GRU(rnn_state_size)
 
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
@@ -108,7 +110,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     timesteps = 3
     embedding_dim = 4
     units = 2
-    layer = keras.layers.UnifiedGRU(units, input_shape=(None, embedding_dim))
+    layer = rnn.GRU(units, input_shape=(None, embedding_dim))
     model = keras.models.Sequential()
     model.add(layer)
     model.compile(gradient_descent.GradientDescentOptimizer(0.001), 'mse')
@@ -121,15 +123,15 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
     model = keras.models.Sequential()
-    model.add(keras.layers.UnifiedGRU(10, return_sequences=True, unroll=False))
-    model.add(keras.layers.UnifiedGRU(5, return_sequences=True, unroll=False))
+    model.add(rnn.GRU(10, return_sequences=True, unroll=False))
+    model.add(rnn.GRU(5, return_sequences=True, unroll=False))
     model.compile(
         loss='categorical_crossentropy',
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_from_config_GRU(self):
-    layer_class = keras.layers.UnifiedGRU
+    layer_class = rnn.GRU
     for stateful in (False, True):
       l1 = layer_class(units=1, stateful=stateful)
       l2 = layer_class.from_config(l1.get_config())
@@ -152,9 +154,9 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
 
       inputs = keras.layers.Input(
           shape=[timestep, input_shape], dtype=dtypes.float32)
-      gru_layer = keras.layers.GRU(rnn_state_size,
-                                   recurrent_activation='sigmoid',
-                                   reset_after=True)
+      gru_layer = rnn_v1.GRU(rnn_state_size,
+                             recurrent_activation='sigmoid',
+                             reset_after=True)
       output = gru_layer(inputs)
       gru_model = keras.models.Model(inputs, output)
       weights = gru_model.get_weights()
@@ -164,9 +166,9 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
       y_2 = gru_model.predict(x_train)
 
       with test_util.device(use_gpu=True):
-        cudnn_layer = keras.layers.UnifiedGRU(rnn_state_size,
-                                              recurrent_activation='sigmoid',
-                                              reset_after=True)
+        cudnn_layer = rnn.GRU(rnn_state_size,
+                              recurrent_activation='sigmoid',
+                              reset_after=True)
         cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
       cudnn_model.set_weights(weights)
       y_3 = cudnn_model.predict(x_train)
@@ -198,7 +200,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     def build_model():
       inputs = keras.layers.Input(
           shape=[timestep, input_dim], dtype=dtypes.float32)
-      layer = keras.layers.UnifiedGRU(
+      layer = rnn.GRU(
           units,
           use_bias=use_bias,
           bias_initializer=bias_initializer)
@@ -227,14 +229,14 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
     with test_util.device(use_gpu=False):
-      layer = keras.layers.UnifiedGRU(rnn_state_size)
+      layer = rnn.GRU(rnn_state_size)
       output = layer(inputs)
       cpu_model = keras.models.Model(inputs, output)
       weights = cpu_model.get_weights()
       y_1 = cpu_model.predict(x_train)
 
     with test_util.device(use_gpu=True):
-      layer = keras.layers.UnifiedGRU(rnn_state_size)
+      layer = rnn.GRU(rnn_state_size)
       output = layer(inputs)
       gpu_model = keras.models.Model(inputs, output)
       gpu_model.set_weights(weights)
@@ -244,9 +246,9 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     # 'sigmoid' as default. Construct the canonical GRU with sigmoid to achieve
     # the same output.
     with test_util.device(use_gpu=True):
-      layer = keras.layers.GRU(rnn_state_size,
-                               recurrent_activation='sigmoid',
-                               reset_after=True)
+      layer = rnn_v1.GRU(rnn_state_size,
+                         recurrent_activation='sigmoid',
+                         reset_after=True)
       output = layer(inputs)
       canonical_model = keras.models.Model(inputs, output)
       canonical_model.set_weights(weights)
@@ -289,18 +291,18 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
         outputs = layer(inputs)
       return keras.models.Model(inputs, outputs)
 
-    gru_model = build_model(keras.layers.GRU)
+    gru_model = build_model(rnn_v1.GRU)
     y_ref = gru_model.predict(x_train)
     weights = gru_model.get_weights()
 
-    unified_gru_model = build_model(keras.layers.UnifiedGRU)
+    unified_gru_model = build_model(rnn.GRU)
     unified_gru_model.set_weights(weights)
     y = unified_gru_model.predict(x_train)
 
     self.assertAllClose(y, y_ref)
 
   def test_with_masking_layer_GRU(self):
-    layer_class = keras.layers.UnifiedGRU
+    layer_class = rnn.GRU
     inputs = np.random.random((2, 3, 4))
     targets = np.abs(np.random.random((2, 3, 5)))
     targets /= targets.sum(axis=-1, keepdims=True)
@@ -317,8 +319,8 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     targets /= targets.sum(axis=-1, keepdims=True)
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
-    model.add(keras.layers.UnifiedGRU(10, return_sequences=True, unroll=False))
-    model.add(keras.layers.UnifiedGRU(5, return_sequences=True, unroll=False))
+    model.add(rnn.GRU(10, return_sequences=True, unroll=False))
+    model.add(rnn.GRU(5, return_sequences=True, unroll=False))
     model.compile(
         loss='categorical_crossentropy',
         optimizer=gradient_descent.GradientDescentOptimizer(0.01))
@@ -330,13 +332,13 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     embedding_dim = 4
     units = 2
     testing_utils.layer_test(
-        keras.layers.UnifiedGRU,
+        rnn.GRU,
         kwargs={'units': units,
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
   def test_return_states_GRU(self):
-    layer_class = keras.layers.UnifiedGRU
+    layer_class = rnn.GRU
     x = np.random.random((2, 3, 4))
     y = np.abs(np.random.random((2, 5)))
     s = np.abs(np.random.random((2, 5)))
@@ -356,7 +358,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     embedding_dim = 4
     units = 2
     testing_utils.layer_test(
-        keras.layers.UnifiedGRU,
+        rnn.GRU,
         kwargs={'units': units,
                 'dropout': 0.1,
                 'recurrent_dropout': 0.1},
@@ -364,7 +366,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
 
   def test_constraints_GRU(self):
     embedding_dim = 4
-    layer_class = keras.layers.UnifiedGRU
+    layer_class = rnn.GRU
     k_constraint = keras.constraints.max_norm(0.01)
     r_constraint = keras.constraints.max_norm(0.01)
     b_constraint = keras.constraints.max_norm(0.01)
@@ -388,14 +390,14 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     embedding_dim = 4
     units = 2
     testing_utils.layer_test(
-        keras.layers.UnifiedGRU,
+        rnn.GRU,
         kwargs={'units': units,
                 'implementation': implementation_mode},
         input_shape=(num_samples, timesteps, embedding_dim))
 
   def test_regularizers_GRU(self):
     embedding_dim = 4
-    layer_class = keras.layers.UnifiedGRU
+    layer_class = rnn.GRU
     layer = layer_class(
         5,
         return_sequences=False,
@@ -420,7 +422,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     timesteps = 3
     embedding_dim = 4
     units = 2
-    layer_class = keras.layers.UnifiedGRU
+    layer_class = rnn.GRU
     model = keras.models.Sequential()
     model.add(
         keras.layers.Embedding(
@@ -490,9 +492,7 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     model = keras.Sequential([
         keras.layers.Embedding(vocab_size, embedding_dim,
                                batch_input_shape=[batch_size, timestep]),
-        keras.layers.UnifiedGRU(units,
-                                return_sequences=True,
-                                stateful=True),
+        rnn.GRU(units, return_sequences=True, stateful=True),
         keras.layers.Dense(vocab_size)
     ])
     model.compile(optimizer='adam',
@@ -511,11 +511,11 @@ class GRULayerGradientTapeTest(test.TestCase):
     embedding_size = 11
     gru_unit_size = 12
 
-    gru = keras.layers.UnifiedGRU(gru_unit_size,
-                                  return_sequences=True,
-                                  return_state=True,
-                                  recurrent_activation='sigmoid',
-                                  recurrent_initializer='glorot_uniform')
+    gru = rnn.GRU(gru_unit_size,
+                  return_sequences=True,
+                  return_state=True,
+                  recurrent_activation='sigmoid',
+                  recurrent_initializer='glorot_uniform')
 
     x = random_ops.random_uniform([1, time_steps, embedding_size])
     y = random_ops.random_uniform([1, gru_unit_size])
@@ -549,7 +549,7 @@ class GRULayerGraphOnlyTest(test.TestCase):
           num_classes=output_shape)
       y_train = keras.utils.to_categorical(y_train, output_shape)
 
-      layer = keras.layers.UnifiedGRU(rnn_state_size, return_runtime=True)
+      layer = rnn.GRU(rnn_state_size, return_runtime=True)
 
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape), name='inputs')
@@ -598,7 +598,7 @@ class GRULayerGraphOnlyTest(test.TestCase):
           num_classes=output_shape)
       y_train = keras.utils.to_categorical(y_train, output_shape)
 
-      layer = keras.layers.UnifiedGRU(rnn_state_size, return_runtime=True)
+      layer = rnn.GRU(rnn_state_size, return_runtime=True)
 
       inputs = array_ops.placeholder(
           dtypes.float32, shape=(None, timestep, input_shape), name='inputs')

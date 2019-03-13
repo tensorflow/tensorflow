@@ -70,8 +70,8 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
     // All inputs should have been seen already unless this is a Merge node.
     if (name_to_id->find(input_name) == name_to_id->end()) {
       if (!IsMerge(*node_manager->GetCurrNode()))
-        LOG(ERROR) << "input: " << input
-                   << " not found for non-Merge node: " << op_name;
+        VLOG(1) << "input: " << input
+                << " not found for non-Merge node: " << op_name;
 
       // For Merge node, some of inputs may not be seen before
       // For example, for a typical while loop in tensorflow, Merge node

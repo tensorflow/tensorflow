@@ -174,6 +174,10 @@ class Node {
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
   bool IsPartitionedCall() const { return class_ == NC_PARTITIONED_CALL; }
+  // Is this node a function input
+  bool IsArg() const { return class_ == NC_ARG; }
+  // Is this node a function output
+  bool IsRetval() const { return class_ == NC_RETVAL; }
 
   template <typename T>
   void AddAttr(const string& name, const T& val) {
@@ -256,6 +260,8 @@ class Node {
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
     NC_PARTITIONED_CALL,
+    NC_ARG,
+    NC_RETVAL,
     NC_OTHER  // Not a special kind of node
   };
 

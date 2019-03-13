@@ -72,11 +72,15 @@ def trace_model_call(model, input_signature=None):
           'set. Usually, input shapes are automatically determined from calling'
           ' .fit() or .predict(). To manually set the shapes, call '
           'model._set_inputs(inputs).'.format(model))
-    input_specs = []
-    for input_tensor, input_name in zip(inputs, input_names):
-      input_specs.append(tensor_spec.TensorSpec(
+    flat_inputs = nest.flatten(inputs)
+    flat_input_names = nest.flatten(input_names)
+    flat_input_specs = []
+    for input_tensor, input_name in zip(flat_inputs, flat_input_names):
+      flat_input_specs.append(tensor_spec.TensorSpec(
           shape=input_tensor.shape, dtype=input_tensor.dtype,
           name=input_name))
+    input_specs = nest.pack_sequence_as(structure=inputs,
+                                        flat_sequence=flat_input_specs)
     # The input signature of the call function is a list with one element, since
     # all tensor inputs must be passed in as the first argument.
     input_signature = [input_specs] if len(input_specs) > 1 else input_specs

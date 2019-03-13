@@ -299,7 +299,7 @@ llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
   llvm::Function* callee = llvm::dyn_cast<llvm::Function>(
       b_->GetInsertBlock()
           ->getModule()
-          ->getOrInsertFunction(llvm_ir::AsStringRef(callee_name), callee_type)
+          ->getOrInsertFunction(callee_name, callee_type)
           .getCallee());
 
   for (auto attribute : attributes) {

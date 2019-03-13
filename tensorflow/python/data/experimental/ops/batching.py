@@ -665,6 +665,11 @@ def map_and_batch_with_legacy_function(map_func,
   return _apply_fn
 
 
+@deprecation.deprecated(
+    None,
+    "Use `tf.data.Dataset.map(map_func, num_parallel_calls)` followed by "
+    "`tf.data.Dataset.batch(batch_size, drop_remainder)`. Static tf.data "
+    "optimizations will take care of using the fused implementation.")
 @tf_export("data.experimental.map_and_batch")
 def map_and_batch(map_func,
                   batch_size,

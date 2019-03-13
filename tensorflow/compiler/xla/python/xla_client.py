@@ -659,11 +659,12 @@ class CompileOptions(object):
   """
 
   def __init__(self):
-    self.generate_hlo_graph = None
-    self.dump_optimized_hlo_proto_to = None
-    self.dump_unoptimized_hlo_proto_to = None
-    self.dump_per_pass_hlo_proto_to = None
-    self.hlo_profile = False
+    self.xla_dump_to = None
+    self.dump_hlo_pass_re = None
+    self.dump_hlo_module_re = None
+    self.dump_hlo_as_text = None
+    self.dump_hlo_as_proto = None
+    self.hlo_profile = None
     self.num_replicas = get_replica_count()
 
 

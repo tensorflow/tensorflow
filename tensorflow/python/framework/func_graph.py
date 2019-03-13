@@ -678,9 +678,7 @@ def func_graph_from_py_func(name,
           return autograph.converted_call(
               original_func, None,
               autograph.ConversionOptions(
-                  verbose=autograph.Verbosity.BRIEF,
                   recursive=True,
-                  strip_decorators=(def_function.function,),
                   optional_features=autograph_options,
                   force_conversion=True,
               ), args, kwargs)

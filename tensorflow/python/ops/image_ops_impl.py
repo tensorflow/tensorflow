@@ -615,15 +615,17 @@ def central_crop(image, central_fraction):
     # bounding boxes depend on the `image` tensor's rank and whether / not the
     # dimensions are statically defined.
     if dynamic_h:
-      img_hd = math_ops.to_double(img_h)
-      bbox_h_start = math_ops.to_int32((img_hd - img_hd * central_fraction) / 2)
+      img_hd = math_ops.cast(img_h, dtypes.float64)
+      bbox_h_start = math_ops.cast(
+          (img_hd - img_hd * central_fraction) / 2, dtypes.int32)
     else:
       img_hd = float(img_h)
       bbox_h_start = int((img_hd - img_hd * central_fraction) / 2)
 
     if dynamic_w:
-      img_wd = math_ops.to_double(img_w)
-      bbox_w_start = math_ops.to_int32((img_wd - img_wd * central_fraction) / 2)
+      img_wd = math_ops.cast(img_w, dtypes.float64)
+      bbox_w_start = math_ops.cast(
+          (img_wd - img_wd * central_fraction) / 2, dtypes.int32)
     else:
       img_wd = float(img_w)
       bbox_w_start = int((img_wd - img_wd * central_fraction) / 2)
@@ -990,15 +992,21 @@ def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
       _, current_height, current_width, _ = _ImageDimensions(images, rank=4)
 
       # do the computation to find the right scale and height/width.
-      scale_factor_height = (math_ops.to_float(new_height_const) /
-                             math_ops.to_float(current_height))
-      scale_factor_width = (math_ops.to_float(new_width_const) /
-                            math_ops.to_float(current_width))
+      scale_factor_height = (
+          math_ops.cast(new_height_const, dtypes.float32) /
+          math_ops.cast(current_height, dtypes.float32))
+      scale_factor_width = (
+          math_ops.cast(new_width_const, dtypes.float32) /
+          math_ops.cast(current_width, dtypes.float32))
       scale_factor = math_ops.minimum(scale_factor_height, scale_factor_width)
-      scaled_height_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_height)))
-      scaled_width_const = math_ops.to_int32(
-          math_ops.round(scale_factor * math_ops.to_float(current_width)))
+      scaled_height_const = math_ops.cast(
+          math_ops.round(
+              scale_factor * math_ops.cast(current_height, dtypes.float32)),
+          dtypes.int32)
+      scaled_width_const = math_ops.cast(
+          math_ops.round(
+              scale_factor * math_ops.cast(current_width, dtypes.float32)),
+          dtypes.int32)
 
       # NOTE: Reset the size and other constants used later.
       size = ops.convert_to_tensor([scaled_height_const, scaled_width_const],
