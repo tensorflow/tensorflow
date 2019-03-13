@@ -447,10 +447,9 @@ std::pair<LLVMCompiler::ModuleHook, LLVMCompiler::ModuleHook> GetIRModuleHooks(
     const auto& user_hook =
         !optimized ? user_pre_optimization_hook : user_post_optimization_hook;
     if (user_hook) {
-      TF_RETURN_IF_ERROR(user_hook(llvm_module));
+      user_hook(llvm_module);
     }
     llvm_ir::DumpIrIfEnabled(*hlo_module_ptr, llvm_module, optimized);
-    return Status::OK();
   };
   return {[hook](const llvm::Module& llvm_module) {
             return hook(/*optimized=*/false, llvm_module);
@@ -886,7 +885,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     {
       Status verify_status = VerifyLlvmModule(llvm_module);
       if (!verify_status.ok() && pre_optimization_ir_hook) {
-        pre_optimization_ir_hook(llvm_module).IgnoreError();
+        pre_optimization_ir_hook(llvm_module);
       }
       TF_RETURN_IF_ERROR(verify_status);
     }
