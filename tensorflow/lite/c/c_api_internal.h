@@ -279,7 +279,7 @@ typedef enum {
 // The delegates should use zero or positive integers to represent handles.
 // -1 is reserved from unallocated status.
 typedef int TfLiteBufferHandle;
-const TfLiteBufferHandle kTfLiteNullBufferHandle = -1;
+#define kTfLiteNullBufferHandle ((TfLiteBufferHandle)(-1))
 
 // An tensor in the interpreter system which is a wrapper around a buffer of
 // data including a dimensionality (or NULL if not currently defined).
