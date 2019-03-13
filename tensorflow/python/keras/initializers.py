@@ -86,7 +86,7 @@ class TruncatedNormal(TFTruncatedNormal):
     dtype: The data type. Only floating point types are supported.
     
   Returns:
-      TruncatedNormal instance
+    A TruncatedNormal instance.
   """
 
   def __init__(self, mean=0.0, stddev=0.05, seed=None, dtype=dtypes.float32):
