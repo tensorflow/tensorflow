@@ -492,9 +492,8 @@ def make_zip_of_tests(zip_path,
         report["toco"] = report_lib.FAILED
         report["tf"] = report_lib.SUCCESS
         # Convert graph to toco
-        input_tensors = [(input_tensor.name.split(":")[0],
-                          input_tensor.get_shape(), input_tensor.dtype)
-                         for input_tensor in inputs]
+        input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
+                          input_tensor.dtype) for input_tensor in inputs]
         output_tensors = [normalize_output_name(out.name) for out in outputs]
         graph_def = freeze_graph(
             sess,
