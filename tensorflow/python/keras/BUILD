@@ -331,6 +331,7 @@ py_library(
         "layers/merge.py",
         "layers/noise.py",
         "layers/normalization.py",
+        "layers/normalization_v2.py",
         "layers/pooling.py",
         "layers/recurrent.py",
         "layers/recurrent_v2.py",
