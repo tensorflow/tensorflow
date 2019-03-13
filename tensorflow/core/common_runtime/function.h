@@ -207,6 +207,48 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           Node* caller, const FunctionBody* fbody,
                           const InlineFunctionBodyOptions& options);
 
+// There are three types of function calls that could be invoked during
+// *Tensorflow graph execution*:
+//
+// 1) Native function call (node.type_string() is the function name). These
+//    functions are always executed on a single-device, which is the device of
+//    the function call node.
+//
+// 2) Multi-device function calls (PartitionedCall or StatefulPartitionedCall
+//    ops) can execute on multiple devices and accept DT_RESOURCE inputs that
+//    belong to different devices. This type of functions was added in
+//    Tensorflow 2.0 Eager mode, and it has control outputs to represent
+//    side-effects that must always execute (see `control_ret` in FunctionDef).
+//
+// 3) SymbolicGradient has been deprecated for a while, but we still keep it and
+//    use `native` options for inlining for compatibility.
+//
+// We need to have distinct inlining rules for compatibility with Tensorflow v1.
+//
+// There are few other places in Tensorflow that could execute functions:
+//
+// 1) common_runtime/eager/kernel_and_device.{h,cc} - executes "top level"
+//    functions directly via function library runtime, without going through
+//    the graph.
+// 2) tf.data pipelines - also execute functions directly via function library
+//    runtime with custom executors.
+struct ExpandInlineFunctionsOptions {
+  ExpandInlineFunctionsOptions() : native_options(), multi_device_options() {
+    using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
+    multi_device_options.output_control_src = OutputControlSrc::kControlOutputs;
+  }
+
+  InlineFunctionBodyOptions native_options;
+  InlineFunctionBodyOptions multi_device_options;
+};
+
+// WARNING(ezhulenev): PLEASE DO NOT USE THIS FUNCTION. This is a temporary
+// workaround that will be enabled only during the function inlining unification
+// (b/126811947). Contact ezhulenev@ if you think you need it.
+// TODO(ezhulenev): Delete this function.
+bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
+                           const ExpandInlineFunctionsOptions& options);
+
 // For each node in "graph", if "lib" indicates that the node is a
 // function call, inline the function body. Returns true if at least
 // one node is inlined.
@@ -218,13 +260,11 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 // Function calls that can't be safely inlined into the graph (ValidateInlining
 // returns error), are ignored.
 //
-// If `override_device` is true then the inlined operations are placed on the
-// device the call node is placed on.
-bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
-                           const InlineFunctionBodyOptions& options);
-
+// TODO(ezhulenev): We do not FunctionLibraryRuntime for this. We need just the
+// FunctionLibraryDefinition and FunctionDefToBodyHelper to implement this (see
+// lower_function_call.cc).
 inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
-  return ExpandInlineFunctions(lib, graph, InlineFunctionBodyOptions());
+  return ExpandInlineFunctions(lib, graph, ExpandInlineFunctionsOptions());
 }
 
 // Extracts function name and attributes from `call_def` and invokes
