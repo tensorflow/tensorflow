@@ -419,6 +419,7 @@ class KeyValueTensorInitializer(TableInitializerBase):
     return init_op
 
 
+@tf_export("lookup.TextFileIndex")
 class TextFileIndex(object):
   WHOLE_LINE = -2
   LINE_NUMBER = -1
