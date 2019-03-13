@@ -5,6 +5,9 @@ op {
 The `tf.math.acos` operation returns the inverse of `tf.math.cos`, such that
 if `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
 
+**Note**: The output of `tf.math.acos` will lie within the invertible range
+of cosine, i.e [0, pi].
+
 For example:
 
 ```python
