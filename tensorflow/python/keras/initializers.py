@@ -110,7 +110,7 @@ class RandomUniform(TFRandomUniform):
     dtype: The data type.
     
   Returns:
-      RandomUniform instance
+    A RandomUniform instance.
   """
 
   def __init__(self, minval=-0.05, maxval=0.05, seed=None,
