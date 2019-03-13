@@ -1181,6 +1181,21 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "template_mirrored_strategy_test",
+    size = "small",
+    srcs = ["template_mirrored_strategy_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+)
+
 tf_py_test(
     name = "tridiagonal_solve_op_test",
     size = "medium",
