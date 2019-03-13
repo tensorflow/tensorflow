@@ -72,26 +72,26 @@ GraphDef CreateGraphDef(int num_nodes, int num_edges_per_node) {
   const int kNumInNodes = 10 * num_edges_per_node;
   string s;
   for (int in = 0; in < kNumInNodes; in++) {
-    s += absl::PrintF("node { name: 'in%04d' op: 'Input' }", in);
+    absl::StrAppendFormat(&s, "node { name: 'in%04d' op: 'Input' }", in);
   }
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   for (int op = 0; op < num_nodes; op++) {
-    s += absl::PrintF("node { name: 'op%05d' op: 'In%dOut1' input: [ ", op,
-                      num_edges_per_node);
+    absl::StrAppendFormat(&s, "node { name: 'op%05d' op: 'In%dOut1' input: [ ",
+                          op, num_edges_per_node);
     for (int edge = 0; edge < num_edges_per_node - 1; ++edge) {
-      s += absl::PrintF("'in%04d', ", rnd.Uniform(kNumInNodes));
+      absl::StrAppendFormat(&s, "'in%04d', ", rnd.Uniform(kNumInNodes));
     }
-    s += absl::PrintF("'in%04d' ] } ", rnd.Uniform(kNumInNodes));
+    absl::StrAppendFormat(&s, "'in%04d' ] } ", rnd.Uniform(kNumInNodes));
   }
   // Add a single sink node. Otherwise a lot of time is spent in
   // FixupSourceAndSinkEdges().
-  s += absl::PrintF("node { name: 'out' op: 'Output' input: [ ");
+  absl::StrAppendFormat(&s, "node { name: 'out' op: 'Output' input: [ ");
   for (int op = 0; op < num_nodes - 1; op++) {
-    s += absl::PrintF("'op%05d', ", op);
+    absl::StrAppendFormat(&s, "'op%05d', ", op);
   }
-  s += absl::PrintF("'op%05d' ], attr: { key: 'N' value { i: %d } } } ",
-                    num_nodes - 1, num_nodes);
+  absl::StrAppendFormat(&s, "'op%05d' ], attr: { key: 'N' value { i: %d } } } ",
+                        num_nodes - 1, num_nodes);
   GraphDef graph_def;
   CHECK(protobuf::TextFormat::ParseFromString(s, &graph_def));
   return graph_def;
