@@ -55,8 +55,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_
-          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                lhs->getType(), lhs->getType(), rhs->getType())
+          ->getOrInsertFunction(function_name, lhs->getType(), lhs->getType(),
+                                rhs->getType())
           .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
@@ -90,8 +90,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_
-          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                value->getType(), value->getType())
+          ->getOrInsertFunction(function_name, value->getType(),
+                                value->getType())
           .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();

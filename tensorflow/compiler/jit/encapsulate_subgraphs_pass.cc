@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -108,14 +109,14 @@ void MarkGuaranteedConstants(
   for (const auto& src_arg : src_arg_pairs) {
     srcs.push_back(src_arg.first);
   }
-  ReverseDFSFrom(graph, srcs, /*enter=*/nullptr,
-                 /*leave=*/[&guaranteed_const_nodes](const Node* n) {
-                   // TODO(vinuraja): Doesn't work in the presence of loops.
-                   if (AreAllParentsGuaranteedConst(*n,
-                                                    guaranteed_const_nodes)) {
-                     guaranteed_const_nodes.insert(n);
-                   }
-                 });
+  ReverseDFSFrom(
+      graph, srcs, /*enter=*/nullptr,
+      /*leave=*/[&guaranteed_const_nodes](const Node* n) {
+        // TODO(vinuraja): Doesn't work in the presence of loops.
+        if (AreAllParentsGuaranteedConst(*n, guaranteed_const_nodes)) {
+          guaranteed_const_nodes.insert(n);
+        }
+      });
 
   for (auto& src_arg : src_arg_pairs) {
     if (guaranteed_const_nodes.count(src_arg.first) != 0) {
@@ -2319,12 +2320,12 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
                               " in function library.");
     }
     FunctionBody* fbody = nullptr;
-    TF_RETURN_IF_ERROR(
-        FunctionDefToBodyHelper(*fdef, node->attrs(), library,
-                                [library](const string& op, const OpDef** sig) {
-                                  return library->LookUpOpDef(op, sig);
-                                },
-                                &fbody));
+    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
+        *fdef, node->attrs(), library,
+        [library](const string& op, const OpDef** sig) {
+          return library->LookUpOpDef(op, sig);
+        },
+        &fbody));
 
     InlineFunctionBodyOptions inline_opts;
     inline_opts.override_device = false;
@@ -2534,12 +2535,29 @@ Status EncapsulateSubgraphsPass::Run(
   std::unique_ptr<Graph> graph_out;
   FunctionLibraryDefinition* const library = options.flib_def;
 
+  // Constant folding below might need to run part of the function to compute
+  // constants. Create an FunctionLibraryRuntime with a single CPU device
+  // that can run the part of the function.
+  SessionOptions session_options;
+  auto* device_count = session_options.config.mutable_device_count();
+  device_count->insert({"CPU", 1});
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::AddDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+  std::unique_ptr<DeviceMgr> device_mgr =
+      absl::make_unique<DeviceMgr>(std::move(devices));
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-      new ProcessFunctionLibraryRuntime(nullptr, options.session_options->env,
+      new ProcessFunctionLibraryRuntime(device_mgr.get(),
+                                        options.session_options->env,
                                         TF_GRAPH_DEF_VERSION, library, opts));
   FunctionLibraryRuntime* flr =
-      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+      pflr->GetFLR("/job:localhost/replica:0/task:0/device:CPU:0");
+  if (flr == nullptr) {
+    return errors::Internal(
+        "Failed to create and retrieve function library runtime to run "
+        "constant folding");
+  }
 
   auto rewrite_subgraph =
       [flr](const std::vector<OutputTensor>& arg_source_tensors,

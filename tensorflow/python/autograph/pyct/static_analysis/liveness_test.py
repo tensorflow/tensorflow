@@ -39,8 +39,7 @@ class LivenessTest(test.TestCase):
         source_file=None,
         namespace={},
         arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        arg_types=None)
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)

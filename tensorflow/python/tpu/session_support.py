@@ -330,9 +330,15 @@ class GracefulShutdownHook(session_run_hook.SessionRunHook):
           self._session, all_worker_devices(self._session))
       self._heartbeat_supported = self._workers.num_workers() > 0
       if self._heartbeat_supported:
-        self._workers.configure(
-            event_pb2.WorkerHeartbeatRequest(
-                shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
+        try:
+          self._workers.configure(
+              event_pb2.WorkerHeartbeatRequest(
+                  shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR))
+        except errors.InvalidArgumentError:
+          logging.warn(
+              'TPU device does not support heartbeats. Failure '
+              'handling will be disabled.')
+          self._heartbeat_supported = False
       else:
         logging.warn(
             'No workers support hearbeats. Failure handling will be disabled.')

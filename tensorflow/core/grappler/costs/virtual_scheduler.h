@@ -71,14 +71,14 @@ struct NodeState {
   // time_no_references.
 
   // How many times this node has been executed, e.g. in a while loop.
-  int num_executed_times;
+  int execution_count;
 
   NodeState() {
     num_inputs_ready = 0;
     time_ready = Costs::Duration::max();
     time_scheduled = Costs::Duration::max();
     time_finished = Costs::Duration::max();
-    num_executed_times = 0;
+    execution_count = 0;
     // Note that num_outputs_executed and time_no_references are not initialized
     // here, since we don't know the size (i.e., # outputs for this node).
   }
@@ -288,10 +288,6 @@ class VirtualScheduler {
   // of the virtual execution of the graph.
   void GenerateRunMetadata(RunMetadata* metadata);
 
-  // DEPRECATED
-  static ReadyNodeManager* ReadyNodeManagerFactory(
-      const string& ready_node_manager);
-
   // Return per device peak memory usage.
   const std::unordered_map<string, int64> GetPeakMemoryUsage() const;
 
@@ -327,8 +323,6 @@ class VirtualScheduler {
                           std::map<string, Costs>* op_cost);
   float Round2(const float x) const;
   bool IsPersistentNode(const NodeDef* node) const;
-  bool AddSwitchOutputsToReadyQueue(const NodeDef* node, int curr_iter,
-                                    const Costs::Duration& curr_time);
   void AddOutputNodesToReadyQueue(const NodeDef* node,
                                   const Costs::Duration& curr_time);
 
@@ -361,10 +355,6 @@ class VirtualScheduler {
   bool initialized_;
   bool track_mem_usage_snapshot_;
   const bool use_aggressive_shape_inference_;
-
-  // Whether the input graph includes Switch nodes annotated with output slots
-  // information.
-  bool switch_outputs_annotated_ = false;
 
   VirtualPlacer placer_;  // owned.
 };

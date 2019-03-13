@@ -2269,7 +2269,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
     else:
       return False
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
@@ -2416,7 +2416,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
         if method in self.INTERPOLATING_METHODS:
           self.assertAllClose(resized, img_np, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
     # value that can be used.
@@ -2448,7 +2448,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeUp(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -2507,7 +2507,8 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-04)
 
-  @test_util.disable_xla("TODO(jflynn): Figure out why this fails.")
+  # XLA doesn't implement half_pixel_centers
+  @test_util.disable_xla("b/127616992")
   def testLegacyBicubicMethodsMatchNewMethods(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -2562,7 +2563,7 @@ class ResizeImagesV2Test(test_util.TensorFlowTestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -2767,7 +2768,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     else:
       return False
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
@@ -2884,7 +2885,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
             expected_dtype = dtypes.float32
           self.assertEqual(y.dtype, expected_dtype)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
     # This test is also conducted with int8, so 127 is the maximum
@@ -2911,7 +2912,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
     # value that can be used.
@@ -2943,7 +2944,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testResizeUpAlignCornersFalse(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -3069,7 +3070,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -3405,7 +3406,7 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
@@ -3413,7 +3414,7 @@ class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
 
     self._assertReturns(x, x_shape, x, x_shape)
 
-  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.disable_xla("align_corners=False not supported by XLA")
   @test_util.run_deprecated_v1
   def testPad(self):
     # Reduce vertical dimension

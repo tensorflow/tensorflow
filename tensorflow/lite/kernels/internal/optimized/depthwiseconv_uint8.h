@@ -1949,7 +1949,8 @@ inline void DepthwiseConvGeneral(
 
 }  // namespace depthwise_conv
 
-inline void DepthwiseConv(
+template <DepthwiseConvOutputRounding kOutputRounding>
+inline void DepthwiseConvWithRounding(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
@@ -2000,6 +2001,17 @@ inline void DepthwiseConv(
   depthwise_conv::DepthwiseConvGeneral(params, input_shape, input_data,
                                        filter_shape, filter_data, bias_shape,
                                        bias_data, output_shape, output_data);
+}
+
+inline void DepthwiseConv(
+    const DepthwiseParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data) {
+  return DepthwiseConvWithRounding<DepthwiseConvOutputRounding::kAwayFromZero>(
+      params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+      bias_data, output_shape, output_data);
 }
 
 }  // namespace optimized_ops

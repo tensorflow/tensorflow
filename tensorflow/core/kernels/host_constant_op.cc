@@ -63,8 +63,6 @@ REGISTER_KERNEL_BUILDER(Name("Const")
 #endif  // TENSORFLOW_USE_SYCL
 
 // HostConst: forced to generate output on the host.
-// Only used in tests; no op is registered for this kernel
-// externally (i.e., in array_ops.cc)
 REGISTER_KERNEL_BUILDER(Name("HostConst").Device(DEVICE_CPU), _HostConstantOp);
 REGISTER_KERNEL_BUILDER(
     Name("HostConst").Device(DEVICE_GPU).HostMemory("output"), _HostConstantOp);

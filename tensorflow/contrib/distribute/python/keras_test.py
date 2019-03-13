@@ -324,6 +324,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
                                         parameterized.TestCase):
 
   def setUp(self):
+    super(TestEstimatorDistributionStrategy, self).setUp()
     self._base_dir = os.path.join(self.get_temp_dir(),
                                   'keras_mirrored_strategy_test')
     gfile.MakeDirs(self._base_dir)
@@ -331,6 +332,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
         tf_random_seed=_RANDOM_SEED, model_dir=self._base_dir)
 
   def tearDown(self):
+    super(TestEstimatorDistributionStrategy, self).tearDown()
     writer_cache.FileWriterCache.clear()
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)
@@ -831,7 +833,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       self.assertEqual(interleaved_output.history['val_loss'],
                        [x[0] for x in user_controlled_output])
-      self.assertEqual(interleaved_output.history['val_mean_absolute_error'],
+      val_mean_absolute_error = interleaved_output.history.get(
+          'val_mean_absolute_error')
+      if not val_mean_absolute_error:
+        # The name of the metric changed in TF2.0
+        val_mean_absolute_error = interleaved_output.history['val_mae']
+      self.assertEqual(val_mean_absolute_error,
                        [x[1] for x in user_controlled_output])
       self.assertEqual(interleaved_output.history['val_categorical_accuracy'],
                        [x[2] for x in user_controlled_output])
