@@ -516,12 +516,14 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
     // Including calculation cost in the depth loop and pixel loop.
     const double cost_per_pixel =
         (method_name == "bilinear"
-             ? depth * (Eigen::TensorOpCost::AddCost<float>() * 4 +
+             ? depth * (Eigen::TensorOpCost::AddCost<float>() * 7 +
                         Eigen::TensorOpCost::MulCost<float>() * 6 +
                         Eigen::TensorOpCost::CastCost<T, float>() * 4) +
-                   Eigen::TensorOpCost::AddCost<float>() * 4
+               Eigen::TensorOpCost::AddCost<float>() * 4
              : depth * (Eigen::TensorOpCost::AddCost<float>() +
-                        Eigen::TensorOpCost::CastCost<T, float>()));
+                        Eigen::TensorOpCost::CastCost<T, float>()) +
+               Eigen::TensorOpCost::AddCost<float>() * 3);
+                    
     const double cost_per_box = crop_height * crop_width * cost_per_pixel;
 
     const DeviceBase::CpuWorkerThreads& worker_threads =
