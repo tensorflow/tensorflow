@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
@@ -1356,11 +1357,24 @@ class ReplicaContext(object):
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     self._replica_id_in_sync_group = replica_id_in_sync_group
+    self._summary_recording_distribution_strategy = None
 
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
+    ctx = eager_context.context()
+
+    def replica_id_is_zero():
+      return math_ops.equal(self._replica_id_in_sync_group,
+                            constant_op.constant(0))
+
+    self._summary_recording_distribution_strategy = (
+        ctx.summary_recording_distribution_strategy)
+    ctx.summary_recording_distribution_strategy = replica_id_is_zero
 
   def __exit__(self, exception_type, exception_value, traceback):
+    ctx = eager_context.context()
+    ctx.summary_recording_distribution_strategy = (
+        self._summary_recording_distribution_strategy)
     _pop_per_thread_mode()
 
   def merge_call(self, merge_fn, args=(), kwargs=None):
