@@ -124,16 +124,7 @@ bool AutoMixedPrecisionEnabled(RewriterConfig::Toggle opt_level) {
       opt_level == RewriterConfig::AGGRESSIVE) {
     return true;
   }
-  if (opt_level == RewriterConfig::OFF) return false;
-  // Default is to check env var, otherwise off.
-  static bool is_enabled = [] {
-    bool ret = false;
-    TF_CHECK_OK(
-        ReadBoolFromEnvVar("TF_ENABLE_AUTO_MIXED_PRECISION_GRAPH_REWRITE",
-                           /*default_val=*/false, &ret));
-    return ret;
-  }();
-  return is_enabled;
+  return false;
 }
 
 }  // namespace
