@@ -3225,6 +3225,7 @@ cc_library(
     hdrs = ["hlo_module_config.h"],
     deps = [
         ":computation_layout",
+        ":computation_placer",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",

@@ -233,7 +233,7 @@ class FakeITensor : public nvinfer1::ITensor {
     location_ = location;
   }
 
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0)
   bool setDynamicRange(float min, float max) override {
     dynamic_range_ = std::max(std::abs(min), std::abs(max));
     return true;
@@ -242,7 +242,7 @@ class FakeITensor : public nvinfer1::ITensor {
   float getDynamicRange() const override { return dynamic_range_; }
 #endif
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   bool dynamicRangeIsSet() const override { return true; }
 
   void resetDynamicRange() override {}
@@ -845,7 +845,7 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
 
   // Input range should be inferred along the chain and applied to tensors.
   int8_converter.MaybeApplyQuantizationRanges();
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0)
   EXPECT_EQ(input.getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_1.getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_2.getDynamicRange(), 5.0f);
@@ -1964,6 +1964,10 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   } else if (node_def.op() == "Maximum") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(3), CType(6), CType(3), CType(6)));
+  } else if (node_def.op() == "Pow") {
+    ExpectArrayNear(
+        std::vector<CType>{CType(9), CType(36), CType(27), CType(216)},
+        GetSpanForData<CType>(output_data[0]));
   } else {
     ASSERT_TRUE(false);
   }
@@ -2037,6 +2041,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpTensor<ops::RealDiv, DT_FLOAT>(this);
   TestBinaryTensorOpTensor<ops::Minimum, DT_FLOAT>(this);
   TestBinaryTensorOpTensor<ops::Maximum, DT_FLOAT>(this);
+  TestBinaryTensorOpTensor<ops::Pow, DT_FLOAT>(this);
 
   TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
@@ -2045,6 +2050,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpTensor<ops::RealDiv, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Minimum, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Maximum, DT_HALF>(this);
+  TestBinaryTensorOpTensor<ops::Pow, DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
@@ -2666,7 +2672,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     RunValidationAndConversion(node_def);
   }
 // TRT 5.1+ supports strides
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   {
     // Negative strides, should fail.
     Reset();
@@ -2729,7 +2735,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Same input is used for all tests.
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   const int kStridedSliceOKCases = 23;
 #else
   const int kStridedSliceOKCases = 19;
@@ -2856,7 +2862,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
                /*end_mask=*/get_mask({1, 0, 0, 0}),
                /*expected_output_dims=*/{1, 2, 3},
                /*expected_output=*/{1, 2, 3, 4, 5, 6}},
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
     // Strides
     TestParams{/*input_dims=*/{6},
                /*begin=*/{0, 0}, /*end=*/{0, 5}, /*strides=*/{1, 2},

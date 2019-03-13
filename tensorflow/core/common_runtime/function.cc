@@ -1442,7 +1442,18 @@ Status ValidateNoInline(const FunctionBody* fbody) {
   return Status::OK();
 }
 
+using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
+
 }  // namespace
+
+string InlineFunctionBodyOptions::DebugString() const {
+  return absl::StrCat("ignore_noinline=", ignore_noinline ? "true" : "false",
+                      ", override_device=", override_device ? "true" : "false",
+                      ", output_control_src=",
+                      output_control_src == OutputControlSrc::kDataOutputs
+                          ? "DataOutputs"
+                          : "ControlOutputs");
+}
 
 Status ValidateInlining(const Node* node, const FunctionBody* fbody,
                         const InlineFunctionBodyOptions& options) {
@@ -1544,8 +1555,8 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 // 2) Create "output_control_node" NoOp. All nodes that have incoming control
 //    edge *from* the function call node, will be forwarded to this node.
 //
-//    We have two options for choosing which nodes will a control edge *to* the
-//    "output control node":
+//    We have two options for choosing which nodes will have a control edge *to*
+//    the "output control node":
 //       a) control returns            (`control_ret` field in FunctionDef)
 //       b) data returns               (`ret` field in FunctionDef)
 //
@@ -1574,7 +1585,8 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           Node* caller, const FunctionBody* fbody,
                           const InlineFunctionBodyOptions& options) {
-  VLOG(3) << "Inline function call: " << SummarizeNode(*caller);
+  VLOG(3) << "Inline function call: " << SummarizeNode(*caller) << " ["
+          << options.DebugString() << "]";
   VLOG(4) << "Inlined function definition: " << DebugString(fbody->fdef);
 
   Status validation = ValidateInlining(caller, fbody, options);
@@ -1585,8 +1597,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   }
 
   // ------------------------------------------------------------------------ //
-  // We insert NoOps before/after inlined function body nodes, to enforce
-  // side-effects execution order.
+  // Helper functions to create `NoOp` and `Identity` nodes for auxiliary
+  // control nodes and inlined function inputs and outputs.
 
   // Add a NoOp node for function control inputs/outputs.
   const auto no_op = [&](StringPiece name) {
@@ -1710,16 +1722,17 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // ------------------------------------------------------------------------ //
   // Connect output edges.
   //
-  // For i-th return node in fbody->graph, we add in "g" an identity
-  // node (outputs[i-th]). We then reconnect every incoming edge into
-  // the i-th return node to the added identity node.
+  // For i-th return node in fbody->graph, we add in "g" an identity node
+  // (outputs[i-th]). We then reconnect every incoming edge into the i-th return
+  // node to the added identity node.
   //
-  // For every data edge coming out of "callee"s i-th output, we
-  // reconnect it to the i-th identity added above.
+  // For every data edge coming out of "callee"s i-th output, we reconnect it to
+  // the i-th identity added above.
   //
-  // If "callee" is control-depended upon by any other nodes, we add a
-  // NoOp node "output_control_node". "output_control_node" depends on
-  // all identity nodes added above. And nodes previously depend on
+  // If "callee" is control-depended upon by any other nodes, we add a NoOp node
+  // "output_control_node". "output_control_node" depends on all identity nodes
+  // added above or on all control return nodes (controlled by
+  // `options.output_control_src` value). And nodes previously depend on
   // "callee" is changed to depend on "output_control_node".
   std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
@@ -1746,8 +1759,16 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (e->IsControlEdge()) {
       if (output_control_node == nullptr) {
         output_control_node = no_op("output_control_node");
-        for (Node* n : outputs) {
-          g->AddControlEdge(n, output_control_node);
+        if (options.output_control_src ==
+            InlineFunctionBodyOptions::OutputControlSource::kDataOutputs) {
+          for (Node* n : outputs) {
+            g->AddControlEdge(n, output_control_node);
+          }
+        } else {
+          for (Node* fbody_node : fbody->control_ret_nodes) {
+            Node* n = node_map[fbody_node->id()];
+            g->AddControlEdge(n, output_control_node);
+          }
         }
       }
       g->AddControlEdge(output_control_node, e->dst());
@@ -1768,7 +1789,7 @@ bool IsFunctionCall(const FunctionLibraryDefinition& lib_def,
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
-                           const InlineFunctionBodyOptions& options) {
+                           const ExpandInlineFunctionsOptions& options) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
 
   const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
@@ -1797,8 +1818,10 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
 
   bool inlined_any = false;
   for (const auto& p : candidates) {
-    Status inlined =
-        InlineFunctionBody(*fld, graph, p.first, p.second, options);
+    Status inlined = InlineFunctionBody(*fld, graph, p.first, p.second,
+                                        p.first->IsPartitionedCall()
+                                            ? options.multi_device_options
+                                            : options.native_options);
     if (inlined.ok()) {
       inlined_any = true;
     } else {

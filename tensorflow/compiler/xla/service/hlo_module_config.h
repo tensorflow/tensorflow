@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -120,6 +121,20 @@ class HloModuleConfig {
     return intra_op_parallelism_threads_;
   }
 
+  // Checks if this config has a static device assignment.
+  bool has_static_device_assignment() const {
+    return static_device_assignment_.has_value();
+  }
+
+  // Getter and setter of the compile-time known device assignment.
+  const DeviceAssignment& static_device_assignment() const {
+    CHECK(static_device_assignment_.has_value());
+    return *static_device_assignment_;
+  }
+  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
+    static_device_assignment_ = device_assignment;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -141,6 +156,9 @@ class HloModuleConfig {
   std::vector<int32> resource_update_to_input_index_ = std::vector<int32>{};
 
   DebugOptions debug_options_;
+
+  // Compile-time known device assignment.
+  absl::optional<DeviceAssignment> static_device_assignment_;
 };
 
 }  // namespace xla

@@ -28,10 +28,12 @@ from absl.testing import parameterized
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -1109,6 +1111,21 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = self.cycle(root, cycles)
 
     self.assertEqual([2], root.f([2]).numpy())
+
+  def test_dense_features_layer(self, cycles):
+    columns = [feature_column_v2.numeric_column("x"),
+               feature_column_v2.numeric_column("y")]
+    layer = feature_column_v2.DenseFeatures(columns)
+    model = sequential.Sequential([layer])
+    model_input = {"x": constant_op.constant([[1.]]),
+                   "y": constant_op.constant([[2.]])}
+    self.assertAllClose([[1., 2.]], model.predict(model_input))
+    loaded = self.cycle(model, cycles)
+    output, = loaded._default_save_signature(model_input).values()
+    self.assertAllClose([[1., 2.]], output)
+    signature_output, = loaded.signatures["serving_default"](
+        **model_input).values()
+    self.assertAllClose([[1., 2.]], signature_output)
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

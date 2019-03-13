@@ -441,7 +441,7 @@ Status InitializeModuleHooks(
   //
   //  * Calls the user supplied module hook.
   //  * Writes out the IR to a file in the output directory designated by
-  //    --xla_dump_ir
+  //    --xla_dump_to
   const HloModule* hlo_module_ptr = &hlo_module;
   auto hook = [user_pre_optimization_hook, user_post_optimization_hook,
                hlo_module_ptr](bool optimized,
@@ -474,7 +474,7 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
       << "Invalid LLVM IR before optimizations:\n"
       << err_stream.str()
       << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
-         "Rerun with --xla_dump_ir to get the IR. ";
+         "Rerun with --xla_dump_to to get the IR. ";
   return Status::OK();
 }
 
@@ -518,9 +518,6 @@ Status CreateHloProfilingArtifacts(
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/,
     DeviceMemoryAllocator* /*device_allocator*/) {
-  VLOG(2) << "Before optimization:";
-  XLA_VLOG_LINES(2, module->ToString());
-
   std::unique_ptr<llvm::TargetMachine> jit_target_machine =
       SimpleOrcJIT::InferTargetMachineForJIT(
           CompilerTargetOptions(module->config()),
@@ -528,20 +525,16 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
   TF_RETURN_IF_ERROR(RunHloPasses(module.get(), /*is_aot_compile=*/false,
                                   jit_target_machine.get()));
-
-  VLOG(2) << "After optimization:";
-  XLA_VLOG_LINES(2, module->ToString());
   return std::move(module);
 }
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
     DeviceMemoryAllocator* /*device_allocator*/) {
-  const string timer_message =
-      "Compiling [" + module->name() + "] for CPU using JIT";
-  XLA_SCOPED_LOGGING_TIMER(timer_message);
-
   VLOG(1) << "Compiling: " << module->name();
+  XLA_SCOPED_LOGGING_TIMER(
+      absl::StrFormat("Compiling [%s] for CPU using JIT", module->name()));
+
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
                  &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
@@ -602,7 +595,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
                           /*allocate_buffers_for_constants=*/true));
   // BufferAssignment::ToString() includes a header, so no need for us to
   // print one ourselves.
-  XLA_VLOG_LINES(2, assignment->ToString());
+  if (DumpingEnabledForHloModule(*module)) {
+    DumpToFileInDirOrStdout(*module, "buffer_assignment",
+                            assignment->ToString());
+  }
   DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
   // Each computation is a single function.  Emit all embedded computations
@@ -658,7 +654,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
   }
 
-  XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
   TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
   // JIT compile the LLVM IR module to in-memory machine code.
@@ -768,14 +763,8 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     HloModule* module = modules[i].get();
     VLOG(1) << "Compiling ahead-of-time: " << module->name();
 
-    VLOG(2) << "Before optimization:";
-    XLA_VLOG_LINES(2, module->ToString());
-
     TF_RETURN_IF_ERROR(
         RunHloPasses(module, /*is_aot_compile=*/true, target_machine.get()));
-
-    VLOG(2) << "After optimization:";
-    XLA_VLOG_LINES(2, module->ToString());
 
     TF_ASSIGN_OR_RETURN(HloSchedule schedule,
                         ScheduleModule(module, BufferSizeBytesFunction()));
@@ -791,7 +780,10 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                             /*allocate_buffers_for_constants=*/true));
     // BufferAssignment::ToString() includes a header, so no need for us to
     // print one ourselves.
-    XLA_VLOG_LINES(2, assignment->ToString());
+    if (DumpingEnabledForHloModule(*module)) {
+      DumpToFileInDirOrStdout(*module, "buffer_assignment",
+                              assignment->ToString());
+    }
     DumpHloModuleIfEnabled(*module, *assignment, "after_optimizations");
 
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
@@ -854,7 +846,6 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
       TF_RETURN_IF_ERROR(verify_status);
     }
 
-    XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(llvm_module));
 
     Disassembler disassembler(*target_machine);
     CompilerFunctor compiler_functor(

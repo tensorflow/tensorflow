@@ -773,11 +773,9 @@ class Context(object):
 
   @soft_device_placement.setter
   def soft_device_placement(self, enabled):
-    if self._context_handle is not None:
-      raise RuntimeError(
-          "Soft placement must be set at program startup")
-
     self._config.allow_soft_placement = enabled
+
+    self._thread_local_data.function_call_options = None
 
   @property
   def log_device_placement(self):

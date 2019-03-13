@@ -254,6 +254,33 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "keras_multi_worker_test",
+    srcs = ["keras_multi_worker_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/distribute/python:collective_all_reduce_strategy",
+        "//tensorflow/contrib/distribute/python:combinations",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:multi_worker_test_base",
+        "//tensorflow/contrib/distribute/python:parameter_server_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:engine",
+    ],
+    shard_count = 3,
+    tags = [
+        # TODO(b/124344198): Add "multi_and_single_gpu",
+    ],
+)
+
 py_library(
     name = "step_fn",
     srcs = ["step_fn.py"],

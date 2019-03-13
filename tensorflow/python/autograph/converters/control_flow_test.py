@@ -251,6 +251,52 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
 
   @test_util.run_deprecated_v1
+  def test_if_unbalanced_multiple_composites(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+        self.c = 3
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        x.c = 11
+        z = 13
+
+      return x.b, x.c, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 11, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 3, 5))
+
+  @test_util.run_deprecated_v1
+  def test_if_unbalanced_composite(self):
+
+    class Foo(object):
+
+      def __init__(self):
+        self.b = 2
+
+    def test_fn(x, condition):
+
+      z = 5
+      if condition:
+        x.b = 7
+        z = 13
+
+      return x.b, z
+
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(True)),
+                                 (7, 13))
+    self.assertTransformedResult(test_fn, (Foo(), constant_op.constant(False)),
+                                 (2, 5))
+
+  @test_util.run_deprecated_v1
   def test_simple_for(self):
 
     def test_fn(l):
