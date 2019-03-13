@@ -41,53 +41,39 @@ void PoplarXfeedQueueManager::Reset() {
 }
 
 Status PoplarXfeedQueueManager::EnqueueBufferAtomically(
-    cpu::runtime::XfeedBuffer* const buffer, bool pop_if_full) {
+    cpu::runtime::XfeedBuffer* const buffer, bool clear_if_full) {
   tensorflow::mutex_lock l(mu_);
-  bool was_empty = enqueued_buffers_.empty();
-  if (pop_if_full) {
-    if (enqueued_buffers_.size() == max_size_) {
+  if (clear_if_full && enqueued_buffers_.size() == max_size_) {
+    while (false == enqueued_buffers_.empty()) {
       auto front = enqueued_buffers_.front();
       front->Done(Shape{});
       enqueued_buffers_.pop_front();
-      if (max_size_ == 1) {
-        was_empty = true;
-      }
     }
   } else {
     while (enqueued_buffers_.size() == max_size_) {
       VLOG(3) << queue_name_ << ", enqueued buffers full, waiting for dequeue";
-      not_full_cv_.wait(l);
+      item_dequeued_cv_.wait(l);
     }
   }
 
   enqueued_buffers_.push_back(buffer);
-
-  if (was_empty && !enqueued_buffers_.empty()) {
-    // This has the potential to suffer from the notified thread
-    // immediately trying and failing to acquire mu_, but seems
-    // preferable to the alternative of notifying outside the lock
-    // on every enqueue.
-    not_empty_cv_.notify_one();
-  }
+  item_enqueued_cv_.notify_one();
 
   return Status::OK();
 }
 
 cpu::runtime::XfeedBuffer* PoplarXfeedQueueManager::BlockingDequeueBuffer() {
   tensorflow::mutex_lock l(mu_);
-  bool was_full = enqueued_buffers_.size() == max_size_;
   VLOG(3) << "Waiting for an available buffer.";
   while (enqueued_buffers_.empty()) {
-    not_empty_cv_.wait(l);
+    item_enqueued_cv_.wait(l);
   }
   VLOG(3) << "A buffer is available!";
   CHECK(current_buffer_ == nullptr);
   current_buffer_ = enqueued_buffers_.front();
   enqueued_buffers_.pop_front();
 
-  if (was_full) {
-    not_full_cv_.notify_one();
-  }
+  item_dequeued_cv_.notify_one();
 
   return current_buffer_;
 }
@@ -118,6 +104,14 @@ size_t PoplarXfeedQueueManager::size() const {
 void PoplarXfeedQueueManager::set_size(size_t size) {
   tensorflow::mutex_lock l(mu_);
   max_size_ = size;
+}
+
+size_t PoplarXfeedQueueManager::WaitForBuffers(size_t num_expected) {
+  tensorflow::mutex_lock l(mu_);
+  while (enqueued_buffers_.size() < num_expected) {
+    item_enqueued_cv_.wait(l);
+  }
+  return enqueued_buffers_.size();
 }
 
 PoplarTransferManager::PoplarTransferManager()

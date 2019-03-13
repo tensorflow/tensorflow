@@ -45,10 +45,10 @@ class PoplarXfeedQueueManager {
   // Adds a buffer to the queue atomically. buffer->Done will be
   // called when the buffer will no longer be accessed by the
   // PoplarXfeedManager, either as a result of a call to Reset or because the
-  // runtime has dequeued and used the buffer. If pop_if_full is true then the
-  // oldest enqueued item will be popped to make room for a new element.
+  // runtime has dequeued and used the buffer. If clear_if_full is true then the
+  // enqueued buffers are popped and deleted
   Status EnqueueBufferAtomically(cpu::runtime::XfeedBuffer* const buffer,
-                                 bool pop_if_full = false);
+                                 bool clear_if_full = false);
 
   // Blocks until the queue is non-empty, then returns the buffer at the head of
   // the queue. Sets the current buffer to be the returned buffer. It is an
@@ -78,18 +78,22 @@ class PoplarXfeedQueueManager {
   // Checks if buffer FIFO size is at maximum size.
   bool full() const;
 
+  // Wait till one or more buffers are available. Returns the number of
+  // buffers available.
+  size_t WaitForBuffers(size_t num_expected = 1);
+
  private:
   const string queue_name_;
 
   mutable tensorflow::mutex mu_;
 
   // Condition variable that is signaled every time a buffer is
-  // enqueued to an empty queue.
-  tensorflow::condition_variable not_empty_cv_;
+  // enqueued.
+  tensorflow::condition_variable item_enqueued_cv_;
 
   // Condition variable that is signaled every time a buffer is
-  // dequeued from a full queue.
-  tensorflow::condition_variable not_full_cv_;
+  // dequeued.
+  tensorflow::condition_variable item_dequeued_cv_;
 
   // XfeedBuffer* queue contents are not owned, but buffer->Done must
   // be called when the buffer is no longer needed by the runtime.

@@ -299,6 +299,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.retain_control_dependencies();
   }
 
+  int GetNumberOfReplicas() const {
+    return current_config_.device_config(ordinal_).num_replicas();
+  }
+
   void AddCompileBeginEventRecord(const std::string& module_name,
                                   const std::string& xla_graph);
 

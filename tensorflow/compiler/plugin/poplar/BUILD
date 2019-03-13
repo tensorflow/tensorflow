@@ -275,13 +275,13 @@ cc_library(
 cc_library(
     name = "kernels",
     srcs = [
+        "kernels/datastream/feeds.cc",
         "kernels/ipu_kernels.cc",
         "kernels/ipu_kernels_common.cc",
-        "kernels/popnn_kernels.cc",
+        "kernels/popnn/lstm.cc",
+        "kernels/popnn/norm.cc",
         "kernels/popnn/pooling.cc",
-        "kernels/popops_kernels.cc",
-        "kernels/poprand_kernels.cc",
-        "kernels/pop_datastream_kernels.cc",
+        "kernels/poprand/random.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -321,7 +321,10 @@ tf_custom_op_py_library(
 
 cc_library(
     name = "popnn_ops",
-    srcs = ["ops/popnn_ops.cc"],
+    srcs = [
+        "ops/popnn/lstm.cc",
+        "ops/popnn/norm.cc",
+    ],
     deps = ["//tensorflow/core:framework"],
     alwayslink = True,
 )
@@ -342,7 +345,7 @@ tf_custom_op_py_library(
 
 cc_library(
     name = "pop_datastream_ops",
-    srcs = ["ops/pop_datastream_ops.cc"],
+    srcs = ["ops/datastream/feeds.cc"],
     deps = ["//tensorflow/core:framework"],
     alwayslink = True,
 )

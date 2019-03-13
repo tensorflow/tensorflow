@@ -222,6 +222,7 @@ class PopDatastreamOutfeedDequeueOp : public OpKernel {
       tensor_shapes_.emplace_back(tensor_shape);
     }
 
+    num_outputs_ = ctx->num_outputs();
     OP_REQUIRES(ctx, ctx->num_outputs() == xla_shapes_.size(),
                 errors::InvalidArgument(
                     "Outfeed num_outputs() != Attribute num outputs: ",
@@ -240,32 +241,53 @@ class PopDatastreamOutfeedDequeueOp : public OpKernel {
         xla::TransferManager::GetForPlatform(p).ValueOrDie();
 
     auto executor = p->ExecutorForDevice(device_ordinal_).ValueOrDie();
-    for (int i = 0; i < ctx->num_outputs(); ++i) {
-      Tensor* output_tensor = nullptr;
-      TensorShape tensor_shape = tensor_shapes_[i];
-      const auto& xla_shape = xla_shapes_[i];
-      if (outfeed_all_) {
-        auto* outfeed_queue_manager =
-            xla::poplarplugin::GetXfeedManager(device_ordinal_)->outfeed();
-        const size_t num_elements = outfeed_queue_manager->size();
 
-        tensor_shape.InsertDim(0, num_elements);
+    auto* outfeed_queue_manager =
+        xla::poplarplugin::GetXfeedManager(device_ordinal_)->outfeed();
+    size_t num_available = outfeed_queue_manager->size();
+    if (num_available < num_outputs_) {
+      num_available = outfeed_queue_manager->WaitForBuffers(num_outputs_);
+    }
+
+    // TODO(shauryas, T7218): This is slightly tedious due to tuples being
+    // enqueued as separate buffers. When we call dequeue with
+    // outfeed_all_==true we may be in a situation where only some of the tuple
+    // buffers have been enqueued. When the performance optimization refactoring
+    // is done this will need to be rewritten to handle a dequeueing of all the
+    // tuple buffers at once.
+    if (outfeed_all_) {
+      size_t remainder = num_available % num_outputs_;
+      size_t num_dequeue = (num_available - remainder);
+      size_t num_outfeed = num_dequeue / num_outputs_;
+      std::vector<Tensor*> output_tensors;
+      for (size_t i = 0; i < num_outputs_; ++i) {
+        TensorShape tensor_shape = tensor_shapes_[i];
+        tensor_shape.InsertDim(0, num_outfeed);
+        Tensor* output_tensor = nullptr;
         OP_REQUIRES_OK(ctx,
                        ctx->allocate_output(i, tensor_shape, &output_tensor));
+        output_tensors.push_back(output_tensor);
+      }
 
-        for (size_t j = 0; j < num_elements; ++j) {
-          auto subslice = output_tensor->SubSlice(j);
+      for (size_t i = 0; i < num_outfeed; ++i) {
+        for (size_t j = 0; j < num_outputs_; ++j) {
+          Tensor* output_tensor = output_tensors[j];
+          auto subslice = output_tensor->SubSlice(i);
+          const auto& xla_shape = xla_shapes_[j];
           const char* data = subslice.tensor_data().data();
           auto result_literal = xla::MutableBorrowingLiteral(data, xla_shape);
           OP_REQUIRES_OK(ctx, transfer_manager->TransferLiteralFromOutfeed(
                                   executor, xla_shape, result_literal));
         }
-      } else {
-        OP_REQUIRES_OK(ctx,
-                       ctx->allocate_output(i, tensor_shape, &output_tensor));
-        const char* tensor_data = output_tensor->tensor_data().data();
-        auto result_literal =
-            xla::MutableBorrowingLiteral(tensor_data, xla_shape);
+      }
+    } else {
+      for (size_t i = 0; i < xla_shapes_.size(); ++i) {
+        Tensor* output_tensor = nullptr;
+        OP_REQUIRES_OK(
+            ctx, ctx->allocate_output(i, tensor_shapes_[i], &output_tensor));
+        const auto& xla_shape = xla_shapes_[i];
+        const char* data = output_tensor->tensor_data().data();
+        auto result_literal = xla::MutableBorrowingLiteral(data, xla_shape);
         OP_REQUIRES_OK(ctx, transfer_manager->TransferLiteralFromOutfeed(
                                 executor, xla_shape, result_literal));
       }
@@ -277,6 +299,7 @@ class PopDatastreamOutfeedDequeueOp : public OpKernel {
   std::vector<xla::Shape> xla_shapes_;
   std::vector<TensorShape> tensor_shapes_;
   bool outfeed_all_;
+  size_t num_outputs_;
   TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamOutfeedDequeueOp);
 };
 

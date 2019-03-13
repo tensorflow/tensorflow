@@ -100,12 +100,18 @@ def find_all_subgraphs(graph, splitting_edges, input_node, output_node):
   edges = []
   next_node = input_node
   while len(W)>0:
-    index = next((i for i, w in enumerate(W) if next_node in w))
+    indices = (i for i, w in enumerate(W) if next_node in w)
+    index = next(indices, None)
+    assert index is not None, str(next_node) + " not in any subgraph"
+
     sg = W.pop(index)
     subgraphs += [graph.subgraph(sg)]
     if len(W)>0:
       #find edge in subgraph
-      edge = next((e for e in splitting_edges if e[0] in sg))
+      edge_generator = (e for e in splitting_edges if e[0] in sg)
+      edge = next(edge_generator, None)
+      if edge is None:
+        break
       next_node = edge[1]
       edges += [edge]
 
@@ -143,6 +149,8 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
 
   for op in op_list:
     op_name = str(op.name.lower())
+    if op.type == "NextIteration":
+      continue
     if 'gradient' in op_name:
       bwd_ops.append(op)
     else:
@@ -155,6 +163,8 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
     input_op = [op for op in input_ts.consumers() if op in fwd_ops][0]
   else:
     input_op = input_ts
+
+  input_name = input_op.name.split(':')[0]
 
   graph, dictionary = convert_ops_to_nx(fwd_ops, bwd_ops)
 
@@ -176,7 +186,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   # find all graph edges that split the graph into two subgraphs where the input
   # and output are not in the same subgraph
   splitting_edges = [edge for edge in graph_fwd.edges
-                     if is_splitting_edge(graph_fwd, edge, input_op.name,
+                     if is_splitting_edge(graph_fwd, edge, input_name,
                                           loss_op.name)]
 
   if edge_filter and callable(edge_filter):
@@ -186,12 +196,12 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   # given the splitting edges found find all of the subgraphs created and order
   # them
   subgraphs, edges = find_all_subgraphs(graph_fwd, splitting_edges,
-                                        input_op.name, loss_op.name)
+                                        input_name, loss_op.name)
 
 
   subgraph_mem = [calculate_memory(graph_fwd, g) for g in subgraphs]
 
-  # Split the ordered subgraphs into n groups and calulate the memory for each
+  # Split the ordered subgraphs into n groups and calculate the memory for each
   # possible combination
   #
   # Choose the best grouping based on:
