@@ -24,7 +24,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
+#include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 #include "tensorflow/core/kernels/split_lib.h"
 
 namespace tensorflow {
