@@ -511,20 +511,6 @@ Options {
 }
 ```
 
-**LEAKY_RELU**
-
-```
-Inputs {
-  0: a tensor
-}
-Outputs {
-  0: a tensor equivalent to max(input, input * alpha)
-}
-Options {
-  alpha
-}
-```
-
 **LESS**
 
 ```
