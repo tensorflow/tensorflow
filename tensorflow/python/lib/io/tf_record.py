@@ -28,7 +28,8 @@ from tensorflow.python.util.tf_export import tf_export
 
 @tf_export(
     v1=["io.TFRecordCompressionType", "python_io.TFRecordCompressionType"])
-@deprecation.deprecated_endpoints("io.TFRecordCompressionType", "python_io.TFRecordCompressionType")
+@deprecation.deprecated_endpoints(
+    "io.TFRecordCompressionType", "python_io.TFRecordCompressionType")
 class TFRecordCompressionType(object):
   """The type of compression for the record."""
   NONE = 0
