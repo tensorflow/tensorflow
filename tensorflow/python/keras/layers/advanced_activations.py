@@ -337,7 +337,7 @@ class NoisyReLU(Layer):
   """Noisy Rectified Linear Unit activation function.
 
   It follows:
-  `f(x) = x+Y for x > 0, where Y is noise`,
+  `f(x) = x+Y for x > 0, where Y is gaussian noise ranging from 0 to standard deviation of x`,
   `f(x) = 0 otherwise`.
 
   Input shape:
