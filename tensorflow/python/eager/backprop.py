@@ -624,13 +624,14 @@ def _zeros(shape, dtype):
 
 
 def _ones(shape, dtype):
-  if dtypes.as_dtype(dtype) == dtypes.string:
+  as_dtype = dtypes.as_dtype(dtype)
+  if as_dtype == dtypes.string:
     return None
 
   if not context.context().executing_eagerly():
     return array_ops.ones(shape, dtype)
 
-  if dtypes.as_dtype(dtype).is_bool:
+  if as_dtype.is_bool:
     value = True
   else:
     value = 1
