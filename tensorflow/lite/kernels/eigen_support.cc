@@ -29,7 +29,7 @@ namespace {
 const int kDefaultNumThreadpoolThreads = 4;
 
 #ifndef EIGEN_DONT_ALIGN
-// Eigen may require buffers to be algiend to 16, 32 or 64 bytes depending on
+// Eigen may require buffers to be aligned to 16, 32 or 64 bytes depending on
 // hardware architecture and build configurations.
 // If the static assertion fails, try to increase `kDefaultTensorAlignment` to
 // in `arena_planner.h` to 32 or 64.

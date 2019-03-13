@@ -382,17 +382,17 @@ class api_export(object):  # pylint: disable=invalid-name
 
 def kwarg_only(f):
   """A wrapper that throws away all non-kwarg arguments."""
+  f_argspec = tf_inspect.getargspec(f)
 
   def wrapper(*args, **kwargs):
     if args:
       raise TypeError(
-          '{} only takes keyword args. The following args were provided: {}. '
+          '{f} only takes keyword args (possible keys: {kwargs}). '
           'Please pass these args as kwargs instead.'
-          .format(f.__name__, args))
+          .format(f=f.__name__, kwargs=f_argspec.args))
     return f(**kwargs)
 
-  return tf_decorator.make_decorator(
-      f, wrapper, decorator_argspec=tf_inspect.getargspec(f))
+  return tf_decorator.make_decorator(f, wrapper, decorator_argspec=f_argspec)
 
 
 tf_export = functools.partial(api_export, api_name=TENSORFLOW_API_NAME)

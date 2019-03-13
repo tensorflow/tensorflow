@@ -40,12 +40,10 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -533,15 +531,12 @@ def collect_per_output_metric_info(metrics,
       For instance, if the model has 2 outputs, and for the first output
       we want to compute "binary_accuracy" and "binary_crossentropy",
       and just "binary_accuracy" for the second output,
-      the list would look like: `[
-        {
-          'acc': (binary_accuracy(), mean_obj_1),
-          'ce': (binary_crossentropy(), mean_obj_2)
-        },
-        {
-          'acc': (binary_accuracy(), mean_obj_3)
-        }
-      ]`
+      the list would look like: `[{
+          'acc': binary_accuracy(),
+          'ce': binary_crossentropy(),
+        }, {
+          'acc': binary_accuracy(),
+        }]`
 
   Raises:
       TypeError: if an incorrect type is passed for the `metrics` argument.
@@ -585,18 +580,11 @@ def collect_per_output_metric_info(metrics,
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
 
-      # If the metric function is not stateful, we create a stateful version and
-      # return both the stateless and the stateful version together. For batch
-      # APIs like `train_on_batch` we will use the stateless version and for
-      # other APIs like `fit` we will use the stateful version.
-      is_stateful = isinstance(metric_fn,
-                               base_layer.Layer) and metric_fn.stateful
-      stateful_fn = metric_fn
-      if not is_stateful:
-        stateful_fn = metrics_module.MeanMetricWrapper(
+      # If the metric function is not stateful, we create a stateful version.
+      if not isinstance(metric_fn, metrics_module.Metric):
+        metric_fn = metrics_module.MeanMetricWrapper(
             metric_fn, name=metric_name)
-
-      metrics_dict[metric_name] = (metric_fn, stateful_fn)
+      metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
   return per_output_metrics
@@ -624,70 +612,6 @@ def batch_shuffle(index_array, batch_size):
   np.random.shuffle(index_array)
   index_array = index_array.flatten()
   return np.append(index_array, last_batch)
-
-
-def weighted_masked_objective(fn):
-  """Adds support for masking and sample-weighting to an objective function.
-
-  It transforms an objective function `fn(y_true, y_pred)`
-  into a sample-weighted, cost-masked objective function
-  `fn(y_true, y_pred, weights, mask)`.
-
-  Arguments:
-      fn: The objective function to wrap, with signature `fn(y_true, y_pred)`.
-
-  Returns:
-      A function with signature `fn(y_true, y_pred, weights, mask)`.
-  """
-  if fn is None:
-    return None
-
-  def weighted(y_true, y_pred, weights, mask=None):
-    """Wrapper function.
-
-    Arguments:
-        y_true: `y_true` argument of `fn`.
-        y_pred: `y_pred` argument of `fn`.
-        weights: Weights tensor.
-        mask: Mask tensor.
-
-    Returns:
-        Scalar tensor.
-    """
-    # score_array has ndim >= 2
-    score_array = fn(y_true, y_pred)
-    if mask is not None:
-      mask = math_ops.cast(mask, y_pred.dtype)
-      # Update weights with mask.
-      if weights is None:
-        weights = mask
-      else:
-        # Update dimensions of weights to match with mask if possible.
-        mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-        weights *= mask
-
-    # Apply sample weighting.
-    if weights is not None:
-
-      # Update dimensions of weights to match with values if possible.
-      score_array, _, weights = squeeze_or_expand_dimensions(
-          score_array, None, weights)
-      try:
-        # Broadcast weights if possible.
-        weights = weights_broadcast_ops.broadcast_weights(weights, score_array)
-      except ValueError:
-        # Reduce values to same ndim as weight array.
-        ndim = K.ndim(score_array)
-        weight_ndim = K.ndim(weights)
-        score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
-
-      score_array = math_ops.multiply(score_array, weights)
-      score_array = math_ops.reduce_sum(score_array)
-      weights = math_ops.reduce_sum(weights)
-      score_array = math_ops.div_no_nan(score_array, weights)
-    return K.mean(score_array)
-
-  return weighted
 
 
 def standardize_weights(y,

@@ -43,7 +43,6 @@ class DynamicDimensionInferenceTest : public HloTestBase {
   }
 
   Status RunInference() {
-    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before alias analysis");
     TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
                         DynamicDimensionInference::Run(module_.get()));
 
@@ -88,6 +87,8 @@ TEST_F(DynamicDimensionInferenceTest, ParamTest) {
       HloInstruction::CreateParameter(1, scalar_shape_, "param"));
 
   module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
   // Set up dynamic parameter binding.
   TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
       DynamicParameterBinding::DynamicParameter{1, {}},
@@ -112,6 +113,7 @@ TEST_F(DynamicDimensionInferenceTest, ParamTestTuple) {
       DynamicParameterBinding::DynamicParameter{0, {1}},
       DynamicParameterBinding::DynamicDimension{0, {0}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_THAT(inference_->GetDynamicSize(param, {0}, 1),
               op::GetTupleElement(param, 1));
@@ -137,6 +139,7 @@ TEST_F(DynamicDimensionInferenceTest, GetTupleElement) {
       DynamicParameterBinding::DynamicParameter{0, {1}},
       DynamicParameterBinding::DynamicDimension{0, {0}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_THAT(inference_->GetDynamicSize(param, {0}, 1),
               op::GetTupleElement(param, 1));
@@ -167,6 +170,7 @@ TEST_F(DynamicDimensionInferenceTest, ElementwiseTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(negate, {}, 1), size_param);
 }
@@ -197,6 +201,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestI) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), size_param);
 }
@@ -228,6 +233,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceTestII) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(reduce, {}, 0), nullptr);
@@ -271,6 +277,7 @@ TEST_F(DynamicDimensionInferenceTest, DotTest) {
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 0), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(dot, {}, 1), nullptr);
@@ -319,6 +326,7 @@ TEST_F(DynamicDimensionInferenceTest, ConvolutionTest) {
       DynamicParameterBinding::DynamicParameter{2, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(conv, {}, 1), size_param);
   EXPECT_EQ(inference_->GetDynamicSize(conv, {}, 0), nullptr);
@@ -356,6 +364,7 @@ TEST_F(DynamicDimensionInferenceTest, TransposeTest) {
       DynamicParameterBinding::DynamicParameter{3, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 2}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 0), size_param_3);
   EXPECT_EQ(inference_->GetDynamicSize(transpose, {}, 1), size_param_2);
@@ -386,6 +395,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 3}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(reshape, {}, 1), size_param);
@@ -415,6 +425,7 @@ TEST_F(DynamicDimensionInferenceTest, ReshapeTestUnimplemented) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 1}));
 
+  SCOPED_TRACE(module_->ToString());
   Status status = RunInference();
   EXPECT_EQ(status.code(), tensorflow::error::UNIMPLEMENTED);
 }
@@ -439,6 +450,7 @@ TEST_F(DynamicDimensionInferenceTest, BroadcastTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 0), nullptr);
   EXPECT_EQ(inference_->GetDynamicSize(broadcast, {}, 1), size_param);
@@ -580,6 +592,7 @@ TEST_F(DynamicDimensionInferenceTest, ReduceWindowBatchTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{0, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(reduce_window, {}, 0), size_param);
 }
@@ -633,6 +646,7 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
       DynamicParameterBinding::DynamicParameter{1, {}},
       DynamicParameterBinding::DynamicDimension{2, {}, 0}));
 
+  SCOPED_TRACE(module_->ToString());
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(sns, {}, 0), size_param);
 }

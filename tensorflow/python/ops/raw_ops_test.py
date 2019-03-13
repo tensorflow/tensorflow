@@ -29,14 +29,18 @@ from tensorflow.python.platform import test
 class RawOpsTest(test.TestCase):
 
   def testSimple(self):
-
-    with self.assertRaisesRegexp(TypeError, "only takes keyword args"):
-      _ = gen_math_ops.Add(1., 1.)
-
     x = constant_op.constant(1)
     self.assertEqual([2], self.evaluate(gen_math_ops.Add(x=x, y=x)))
 
+  def testRequiresKwargs(self):
+    with self.assertRaisesRegexp(TypeError, "only takes keyword args"):
+      gen_math_ops.Add(1., 1.)
 
-if __name__ == '__main__':
+  def testRequiresKwargs_providesSuggestion(self):
+    msg = "possible keys: \\['x', 'y'\\]"
+    with self.assertRaisesRegexp(TypeError, msg):
+      gen_math_ops.Add(1., y=2.)
+
+if __name__ == "__main__":
   ops.enable_eager_execution()
   test.main()

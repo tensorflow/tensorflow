@@ -36,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -441,11 +442,18 @@ class OptimizerV2(trackable.Trackable):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
-      with ops.control_dependencies(update_ops):
-        apply_updates = self._iterations.assign_add(1)
-      if not context.executing_eagerly():
-        apply_updates = apply_updates.op
-      return apply_updates
+
+      any_symbolic = any(isinstance(i, ops.Operation) or
+                         tf_utils.is_symbolic_tensor(i) for i in update_ops)
+      if not context.executing_eagerly() or any_symbolic:
+        # If the current context is graph mode or any of the update ops are
+        # symbolic then the step update should be carried out under a graph
+        # context. (eager updates execute immediately)
+        with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
+          with ops.control_dependencies(update_ops):
+            return self._iterations.assign_add(1).op
+
+      return self._iterations.assign_add(1)
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)

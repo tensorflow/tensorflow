@@ -23,6 +23,7 @@ import re
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -112,6 +113,14 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
               master_address, devices))
 
     topology = _obtain_topology(master_address, cluster_def)
+
+  # We sort the metadata devices so that downstream users get a sorted list
+  # for creating mirrored variables correctly.
+  def _sort_key(device):
+    spec = tf_device.DeviceSpec.from_string(device.name)
+    return (spec.job, spec.replica, spec.task, spec.device_type,
+            spec.device_index)
+  devices = tuple(sorted(devices, key=_sort_key))
 
   metadata = _TPUSystemMetadata(
       num_cores=tpu_core_count,

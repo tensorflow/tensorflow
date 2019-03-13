@@ -514,7 +514,9 @@ def get_default_session_config():
   else:
     num_thread = int(os.environ.get('OMP_NUM_THREADS'))
     config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
+        intra_op_parallelism_threads=num_thread,
+        inter_op_parallelism_threads=num_thread,
+        allow_soft_placement=True)
   return config
 
 
@@ -2956,7 +2958,10 @@ class GraphExecutionFunction(object):
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
     self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
-    with ops.control_dependencies(self.outputs):
+    # TODO(b/127668432): Consider using autograph to generate these
+    # dependencies in call.
+    # Index 0 = total loss or model output for `predict`.
+    with ops.control_dependencies([self.outputs[0]]):
       updates_ops = []
       for update in updates:
         if isinstance(update, tuple):
@@ -5128,7 +5133,8 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   vals_sparse = array_ops.gather_nd(labels, indices)
 
   return sparse_tensor.SparseTensor(
-      math_ops.to_int64(indices), vals_sparse, math_ops.to_int64(label_shape))
+      math_ops.cast(indices, dtypes_module.int64), vals_sparse,
+      math_ops.cast(label_shape, dtypes_module.int64))
 
 
 @keras_export('keras.backend.ctc_batch_cost')
@@ -5149,10 +5155,12 @@ def ctc_batch_cost(y_true, y_pred, input_length, label_length):
       Tensor with shape (samples,1) containing the
           CTC loss of each element.
   """
-  label_length = math_ops.to_int32(array_ops.squeeze(label_length, axis=-1))
-  input_length = math_ops.to_int32(array_ops.squeeze(input_length, axis=-1))
-  sparse_labels = math_ops.to_int32(
-      ctc_label_dense_to_sparse(y_true, label_length))
+  label_length = math_ops.cast(
+      array_ops.squeeze(label_length, axis=-1), dtypes_module.int32)
+  input_length = math_ops.cast(
+      array_ops.squeeze(input_length, axis=-1), dtypes_module.int32)
+  sparse_labels = math_ops.cast(
+      ctc_label_dense_to_sparse(y_true, label_length), dtypes_module.int32)
 
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
 
@@ -5191,7 +5199,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               the log probability of each decoded sequence.
   """
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
-  input_length = math_ops.to_int32(input_length)
+  input_length = math_ops.cast(input_length, dtypes_module.int32)
 
   if greedy:
     (decoded, log_prob) = ctc.ctc_greedy_decoder(

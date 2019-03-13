@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import histogram_ops
@@ -125,7 +126,7 @@ class DiscreteScalarDistributionTestHelpers(object):
       atol: Python `float`-type indicating the admissible absolute error between
         analytical and sample statistics.
     """
-    x = math_ops.to_float(dist.sample(num_samples, seed=seed))
+    x = math_ops.cast(dist.sample(num_samples, seed=seed), dtypes.float32)
     sample_mean = math_ops.reduce_mean(x, axis=0)
     sample_variance = math_ops.reduce_mean(
         math_ops.square(x - sample_mean), axis=0)
@@ -180,7 +181,7 @@ class DiscreteScalarDistributionTestHelpers(object):
       lo = value_range[0]
       hi = value_range[1]
       if nbins is None:
-        nbins = math_ops.to_int32(hi - lo)
+        nbins = math_ops.cast(hi - lo, dtypes.int32)
       delta = (hi - lo) / math_ops.cast(
           nbins, dtype=value_range.dtype.base_dtype)
       edges = math_ops.range(

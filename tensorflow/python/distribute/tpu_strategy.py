@@ -227,15 +227,12 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
     # TODO(jhseu): Switch to DeviceAssignment to support pods and model
     # parallelism.
-    self._device_index = {
-        d.name: i for i, d in enumerate(self._tpu_metadata.devices)
-        if "device:TPU:" in d.name
-    }
+    self._tpu_devices = [d.name for d in self._tpu_metadata.devices
+                         if "device:TPU:" in d.name]
+
     self._host_device = tpu_strategy_util.get_first_tpu_host_device(
         self._tpu_cluster_resolver)
-    # We sort the devices by the indexes in tpu_metadata.devices.
-    self._tpu_devices = tuple(device[0] for device in sorted(
-        self._device_index.items(), key=lambda device: device[1]))
+
     # Only create variables for the number of replicas we're running.
     self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
     self._device_map = values.ReplicaDeviceMap(self._tpu_devices)
@@ -348,8 +345,11 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
     # Put the while loop op on TPU host 0.
     with ops.device(self._host_device):
-      replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
-                                               initial_loop_values)
+      if self.steps_per_run == 1:
+        replicate_outputs = rewrite_fn()
+      else:
+        replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
+                                                 initial_loop_values)
 
     del self._outer_control_flow_context
     ctx.run_op = control_flow_ops.group(replicate_outputs)

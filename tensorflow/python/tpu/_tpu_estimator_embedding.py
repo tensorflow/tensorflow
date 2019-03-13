@@ -78,7 +78,7 @@ def _get_slot_variable_names(scope_name, var_name, optimization_parameters):
 
 
 def get_full_variable_names(
-    graph, table_to_config_dict, optimization_parameters):
+    graph, table_to_config_dict, optimization_parameters=None):
   """Return embedding variable names and slot variables which are consistent with CPU runs."""
   collection = graph.get_collection_ref(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   if not collection:
@@ -94,8 +94,9 @@ def get_full_variable_names(
     (scope_name, var_name) = collection[0][embedding_var_name]
     embedding_variable_name_by_table[table_name] = (
         _get_embedding_variable_name(scope_name, var_name))
-    slot_variable_names_by_table[table_name] = _get_slot_variable_names(
-        scope_name, var_name, optimization_parameters)
+    if optimization_parameters:
+      slot_variable_names_by_table[table_name] = _get_slot_variable_names(
+          scope_name, var_name, optimization_parameters)
 
   graph.clear_collection(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   return embedding_variable_name_by_table, slot_variable_names_by_table
@@ -236,24 +237,31 @@ class EmbeddingConfig(object):
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       tpu_embedding_mode = tpu_embedding.TRAINING
+      optimization_parameters = (
+          self._embedding_config_spec.optimization_parameters)
     elif (mode == model_fn_lib.ModeKeys.EVAL or
           mode == model_fn_lib.ModeKeys.PREDICT):
       tpu_embedding_mode = tpu_embedding.INFERENCE
+      optimization_parameters = None
     else:
       raise ValueError('Mode {} is not supported.'.format(mode))
 
-    master = (
-        self._run_config.evaluation_master
-        if mode == model_fn_lib.ModeKeys.EVAL else self._run_config.master)
-    cluster_def = (self._run_config.session_config.cluster_def
-                   if self._run_config.session_config else None)
+    if self._run_config.cluster:
+      master = self._run_config.cluster.master()
+      cluster_spec = self._run_config.cluster.cluster_spec()
+      cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
+    else:
+      master = (
+          self._run_config.evaluation_master
+          if mode == model_fn_lib.ModeKeys.EVAL else self._run_config.master)
+      cluster_def = None
     tpu_embedding_ = tpu_embedding.TPUEmbedding(
         self._table_to_config_dict,
         self._feature_to_table_dict,
         batch_size,
         tpu_embedding_mode,
         master,
-        self._embedding_config_spec.optimization_parameters,
+        optimization_parameters,
         cluster_def,
     )
     return tpu_embedding_

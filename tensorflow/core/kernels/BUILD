@@ -742,6 +742,15 @@ cc_library(
 )
 
 cc_library(
+    name = "redux_functor",
+    hdrs = ["redux_functor.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//third_party/eigen3",
+    ],
+)
+
+cc_library(
     name = "eigen_helpers",
     hdrs = [
         "eigen_activations.h",
@@ -756,7 +765,15 @@ cc_library(
     ],
     deps = [
         ":eigen_contraction_kernel",
+        ":eigen_spatial_convolutions-inl",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "eigen_spatial_convolutions-inl",
+    hdrs = [
+        "eigen_spatial_convolutions-inl.h",
     ],
 )
 
@@ -3894,7 +3911,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "bias_op",
     prefix = "bias_op",
-    deps = NN_DEPS + if_cuda([
+    deps = NN_DEPS + [":redux_functor"] + if_cuda([
         ":reduction_ops",
         "@cub_archive//:cub",
         "//tensorflow/core:stream_executor",
@@ -5409,6 +5426,7 @@ filegroup(
         "eigen_pooling.h",
         "eigen_softmax.h",
         "eigen_spatial_convolutions.h",
+        "eigen_spatial_convolutions-inl.h",
         "eigen_volume_patch.h",
         "fifo_queue.h",
         "maxpooling_op.h",
@@ -5504,6 +5522,7 @@ filegroup(
         "ops_util.h",
         "pack_op.cc",
         "pooling_ops_common.h",
+        "redux_functor.h",
         "reshape_op.cc",
         "reshape_op.h",
         "reverse_sequence_op.cc",
