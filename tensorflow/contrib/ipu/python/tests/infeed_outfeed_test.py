@@ -59,8 +59,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-    def body(v):
-      v = v + infeed_queue.get_next()
+    def body(v, x):
+      v = v + x
       return (v)
 
     def my_net(v):
@@ -76,7 +76,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
 
@@ -91,8 +91,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-    def body(v):
-      im1, im2 = infeed_queue.get_next()
+    def body(v, im1, im2):
       v = v + im1 + im2
       return (v)
 
@@ -107,7 +106,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
 
@@ -123,14 +122,16 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-    def body(v):
-      data = infeed_queue.get_next()
-      v = v + data["a"] + data["b"]
-      return (v)
+    # Note how the parameters are swapped around.
+    def body(v1, v2, b, a):
+      v1 = v1 + a
+      v2 = v2 + b
+      return (v1, v2)
 
     def my_net():
-      v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
-      r = loops.repeat(5, body, [v], infeed_queue)
+      v1 = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+      v2 = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
+      r = loops.repeat(5, body, [v1, v2], infeed_queue)
       return r
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
@@ -139,53 +140,18 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res)
-      self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
-
-  def testSingleInfeedRepeatMultipleDequeues(self):
-    dataset = create_increasing_dataset(2)
-
-    def dataset_parser(value):
-      image_1 = value + 1
-      image_2 = image_1 * 2
-      return {"a": image_1,
-              "b": image_2}
-    dataset = dataset.map(dataset_parser)
-
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-
-    # Note how we get the value for a from the first dequeue and value for b
-    # from the second dequeue.
-    def body(v):
-      v = v + infeed_queue.get_next()["a"] + infeed_queue.get_next()["b"]
-      return (v)
-
-    def my_net():
-      v = constant_op.constant(0.0, shape=[4,4], dtype=np.float32)
-      r = loops.repeat(5, body, [v], infeed_queue)
-      return r
-
-    with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = ipu_compiler.compile(my_net, inputs=[])
-
-    cfg = ipu.utils.create_ipu_config()
-    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
-      with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                   'Currently calling'):
-        sess.run(res)
+      self.assertAllClose(result[0], np.broadcast_to(4, [4, 4]))
+      self.assertAllClose(result[1], np.broadcast_to(27, [4, 4]))
 
   def testSingleInfeedMultipleRepeats(self):
     dataset = create_increasing_dataset(2)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-    # Note how we get the value for a from the first dequeue and value for b
-    # from the second dequeue.
-    def body(v):
-      v = v + infeed_queue.get_next()
+    def body(v, x):
+      v = v + x
       return (v)
 
     def my_net():
@@ -200,7 +166,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
 
@@ -212,8 +178,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     def cond(i, v):
       return i < 20
 
-    def body(i, v):
-      v = v + infeed_queue.get_next()
+    def body(i, v, x):
+      v = v + x
       return (i + 1, v)
 
     def my_net(v):
@@ -230,7 +196,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
 
@@ -248,8 +214,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     def cond(i, v):
       return i < 20
 
-    def body(i, v):
-      im1, im2 = infeed_queue.get_next()
+    def body(i, v, im1, im2):
       v = v + im1 + im2
       return (i + 1, v)
 
@@ -267,7 +232,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(129.5, [4, 4]))
 
@@ -277,8 +242,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
     def program(iters):
-      def body(v):
-        v = v + infeed_queue.get_next()
+      def body(v, x):
+        v = v + x
         return (v)
 
       def my_net():
@@ -292,7 +257,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(program(0))
       self.assertAllClose(result[0], np.broadcast_to(0, [4, 4]))
       # The iterator has not moved - next element should be all 1s.
@@ -313,8 +278,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     infeed_queue2 = ipu_infeed_queue.IPUInfeedQueue(dataset2)
 
     def program(iters, infeed_queue):
-      def body(v):
-        v = v + infeed_queue.get_next()
+      def body(v, x):
+        v = v + x
         return (v)
 
       def my_net():
@@ -328,8 +293,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue1.initializer)
-      sess.run(infeed_queue2.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(program(5, infeed_queue1))
       self.assertAllClose(result[0], np.broadcast_to(10, [4, 4]))
       result = sess.run(program(5, infeed_queue2))
@@ -353,8 +317,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
     def my_net(iters):
-      def body(loss):
-        x = infeed_queue.get_next()
+      def body(loss, x):
         with variable_scope.variable_scope("vs", use_resource=True):
           y = convolutional.conv2d(x, 2, 1, use_bias=True,
                                  kernel_initializer=init_ops.ones_initializer(),
@@ -375,7 +338,6 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       r = ipu_compiler.compile(my_net, inputs=[iters])
 
     with session_lib.Session() as sess:
-      sess.run(infeed_queue.initializer)
       sess.run(variables.global_variables_initializer())
       initial_loss = sess.run(r, {iters: 1})
       final_loss = sess.run(r, {iters: 1000})
@@ -420,8 +382,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
 
-    def body(v):
-      v = v + infeed_queue.get_next()
+    def body(v, x):
+      v = v + x
       outfeed = outfeed_queue.enqueue([v])
       return (v, outfeed)
 
@@ -438,7 +400,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
 
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
@@ -461,8 +423,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
-    def body(v):
-      im1, im2 = infeed_queue.get_next()
+    def body(v, im1, im2):
       v = v + im1 + im2
       outfeed = outfeed_queue.enqueue((v, im1, im2))
       return (v, outfeed)
@@ -479,7 +440,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
-      sess.run(infeed_queue.initializer)
+      sess.run(variables.global_variables_initializer())
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(31, shape))
       outfed_result = sess.run(outfed)
@@ -512,8 +473,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
     def my_net(iters):
-      def body(loss):
-        x = infeed_queue.get_next()
+      def body(loss, x):
         with variable_scope.variable_scope("vs", use_resource=True):
           y = convolutional.conv2d(x, 2, 1, use_bias=True,
                                  kernel_initializer=init_ops.ones_initializer(),
@@ -537,7 +497,6 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     outfeeds = outfeed_queue.dequeue()
     with session_lib.Session() as sess:
-      sess.run(infeed_queue.initializer)
       sess.run(variables.global_variables_initializer())
       initial_loss = sess.run(r, {iters: 1})
       final_loss = sess.run(r, {iters: 1000})
@@ -555,8 +514,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(outfeed_all=False)
 
     def my_net(iters):
-      def body(loss):
-        x = infeed_queue.get_next()
+      def body(loss, x):
         with variable_scope.variable_scope("vs", use_resource=True):
           y = convolutional.conv2d(x, 2, 1, use_bias=True,
                                  kernel_initializer=init_ops.ones_initializer(),
@@ -579,7 +537,6 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     outfeeds = outfeed_queue.dequeue()
     with session_lib.Session() as sess:
-      sess.run(infeed_queue.initializer)
       sess.run(variables.global_variables_initializer())
       initial_loss = sess.run(r, {iters: 1})
       final_loss = sess.run(r, {iters: 1000})

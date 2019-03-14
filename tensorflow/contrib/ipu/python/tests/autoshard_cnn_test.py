@@ -169,7 +169,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
       def my_model():
-        inp, lab = infeed_queue.get_next()
+        inp, lab = infeed_queue.dequeue()
 
         x = inp
         y = lab
