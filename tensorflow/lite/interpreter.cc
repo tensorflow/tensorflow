@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
+#include "tensorflow/lite/version.h"
 
 namespace tflite {
 
@@ -56,8 +57,9 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  // TODO(b/128420794): Include the TFLite runtime version in the log.
-  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "Initialized TensorFlow Lite runtime version %s.",
+                       TFLITE_VERSION_STRING);
 
   // There's always at least 1 subgraph which is the primary subgraph.
   AddSubgraphs(1);
