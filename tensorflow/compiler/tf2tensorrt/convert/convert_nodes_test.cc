@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -109,12 +110,16 @@ DataType TrtDataTypeToTf(nvinfer1::DataType trt_dtype) {
 }
 
 NodeDef MakeNodeDef(const string& name, const string& op,
-                    const std::vector<string>& inputs) {
+                    const std::vector<string>& inputs,
+                    const std::map<string, AttrValue> attrs = {}) {
   NodeDef node_def;
   node_def.set_name(name);
   node_def.set_op(op);
   for (const string& input : inputs) {
     node_def.add_input(input);
+  }
+  for (const auto& attr : attrs) {
+    (*node_def.mutable_attr())[attr.first] = attr.second;
   }
   return node_def;
 }
@@ -1094,8 +1099,22 @@ class OpConverterTest : public ::testing::Test {
     validator_inputs_.clear();
   }
 
-  // TODO(laigd): test fp16 and int8 support.
-  void BuildAndRun(const DataVec& input_data, DataVec* output_data) {
+  void CheckDataTypeMatches(const DataVec& datas) {
+    for (const auto& data : datas) {
+      const int input_index = engine_->getBindingIndex(data.name);
+      ASSERT_NE(-1, input_index);
+      const nvinfer1::DataType trt_dtype =
+          engine_->getBindingDataType(input_index);
+      const DataType tf_dtype = TrtDataTypeToTf(trt_dtype);
+      ASSERT_EQ(data.tensor.dtype(), tf_dtype)
+          << DataTypeString(data.tensor.dtype()) << " vs. "
+          << DataTypeString(tf_dtype);
+    }
+  }
+
+  // TODO(laigd): test fp16 and int8 support for more converters.
+  void BuildAndRun(const DataVec& input_data, DataVec* output_data,
+                   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32) {
     // Mark the output tensor as TRT engine output.
     std::vector<Converter::EngineOutputInfo> output_info;
     for (const auto& data : *output_data) {
@@ -1105,9 +1124,20 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(output_info));
 
     // Build the TRT engine.
+    if (precision_mode == TrtPrecisionMode::FP16) {
+      builder_->setFp16Mode(true);
+    } else if (precision_mode == TrtPrecisionMode::INT8) {
+      // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
+      // use them in situations where they are faster than INT8 or where INT8 is
+      // not supported for a given layer.
+      builder_->setFp16Mode(true);
+      builder_->setInt8Mode(true);
+    }
     ASSERT_EQ(nullptr, engine_.get());
     engine_.reset(builder_->buildCudaEngine(*converter_->network()));
     CHECK_NOTNULL(engine_.get());
+    CheckDataTypeMatches(input_data);
+    CheckDataTypeMatches(*output_data);
 
     // Execute the TRT engine.
     const int num_bindings = input_data.size() + output_data->size();
@@ -1761,7 +1791,9 @@ void TestBinaryTensorOpWeightNoBroadcast(OpConverterTest* test) {
     const DataVec input_data{
         {"input", test::AsTensor<CType>(swap_inputs ? operand2 : operand1)}};
     DataVec output_data{{"my_binary", ConstructTensor<CType>(2)}};
-    test->BuildAndRun(input_data, &output_data);
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
     if (node_def.op() == "Add") {
       EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                   ElementsAre(CType(5), CType(10.5)));
@@ -1942,7 +1974,9 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   // After broadcasting first input becomes {3, 6, 3, 6} and second input
   // becomes {2, 3, 2, 3}.
-  test->BuildAndRun(input_data, &output_data);
+  test->BuildAndRun(
+      input_data, &output_data,
+      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
   if (node_def.op() == "Add") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(5), CType(8), CType(6), CType(9)));
@@ -1974,10 +2008,13 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
 }
 
 TEST_F(OpConverterTest, ConvertBinary) {
+  AttrValue dtype;
+  dtype.set_type(DT_FLOAT);
   // Input size doesn't match, should fail.
   for (size_t num_inputs = 0; num_inputs < 2; ++num_inputs) {
     Reset();
-    NodeDef node_def = MakeNodeDef("my_add", "Add", {num_inputs, "input"});
+    NodeDef node_def =
+        MakeNodeDef("my_add", "Add", {num_inputs, "input"}, {{"T", dtype}});
     AddTestTensor("input", {1}, /*batch_size=*/1, nvinfer1::DataType::kFLOAT);
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                StrCat("Add got ", std::to_string(num_inputs),
@@ -1987,7 +2024,8 @@ TEST_F(OpConverterTest, ConvertBinary) {
   {
     // Both inputs are weights.
     Reset();
-    NodeDef node_def = MakeNodeDef("my_add", "Add", {"weights1", "weights2"});
+    NodeDef node_def =
+        MakeNodeDef("my_add", "Add", {"weights1", "weights2"}, {{"T", dtype}});
     AddTestWeights<float>("weights1", {1}, {1});
     AddTestWeights<float>("weights2", {1}, {1});
     RunValidationAndConversion(
@@ -2002,15 +2040,12 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpWeightNoBroadcast<ops::Mul, DT_FLOAT>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Div, DT_FLOAT>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::RealDiv, DT_FLOAT>(this);
-#if 0
-  // TODO(b/119560144): it doesn't support FP16 constants and the following test
-  // will fail.
+
   TestBinaryTensorOpWeightNoBroadcast<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Sub, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Mul, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Div, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::RealDiv, DT_HALF>(this);
-#endif
 
   // Test BinaryTensorOpWeight() with channel-wise broadcasting.
   TestBinaryTensorOpWeightWithChannelWiseBroadcast<DT_FLOAT>(this);
@@ -2192,7 +2227,8 @@ void TestConvertSquare(OpConverterTest* test) {
   auto square = ops::Square(s.WithOpName("my_square"), input);
   NodeDef node_def = square.operation.node()->def();
 
-  test->AddTestTensor("input", {1, 20});
+  test->AddTestTensor("input", {1, 20}, /*batch_size=*/1,
+                      TfDataTypeToTrt(dtype));
   test->RunValidationAndConversion(node_def);
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
@@ -2202,14 +2238,18 @@ void TestConvertSquare(OpConverterTest* test) {
   const int num_inputs = 20;
   std::vector<CType> inputs(num_inputs);
   std::vector<CType> expected_outputs(num_inputs);
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < num_inputs; ++i) {
     const CType value = CType(i - 9);
     inputs[i] = value;
     expected_outputs[i] = value * value;
   }
   const DataVec input_data{{"input", test::AsTensor<CType>(inputs)}};
+  // Engine outputs are converted to FP16 automatically if we set FP16 mode in
+  // the builder.
   DataVec output_data{{"my_square", ConstructTensor<CType>(num_inputs)}};
-  test->BuildAndRun(input_data, &output_data);
+  test->BuildAndRun(
+      input_data, &output_data,
+      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
   ExpectArrayNear(expected_outputs, GetSpanForData<CType>(output_data[0]));
 }
 
@@ -2237,9 +2277,7 @@ TEST_F(OpConverterTest, ConvertSquare) {
   // OK. Note that kINT32 is not supported by IElementWiseLayer, so we don't
   // test DT_INT32 type here.
   TestConvertSquare<DT_FLOAT>(this);
-  // TODO(tmorris): Looks like there may be a bug with this layer for FP16
-  // inputs. Disabling for now.
-  // TestConvertSquare<DT_HALF>(this);
+  TestConvertSquare<DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertActivation) {
@@ -2269,10 +2307,10 @@ TEST_F(OpConverterTest, ConvertActivation) {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     if (op_name == "LeakyRelu") {
-      // LeakyRelu does not have a C++ API
-      NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
-      (*node_def.mutable_attr())["alpha"].set_f(kAlpha);
-      return node_def;
+      auto act =
+          ops::internal::LeakyRelu(s.WithOpName("my_act"), input,
+                                   ops::internal::LeakyRelu::Alpha(kAlpha));
+      return act.operation.node()->def();
     } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
