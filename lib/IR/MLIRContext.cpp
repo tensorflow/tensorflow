@@ -45,6 +45,60 @@ using namespace mlir;
 using namespace mlir::detail;
 using namespace llvm;
 
+/// A utility function to safely get or create a uniqued instance within the
+/// given set container.
+template <typename ValueT, typename DenseInfoT, typename KeyT,
+          typename ConstructorFn>
+static ValueT safeGetOrCreate(DenseSet<ValueT, DenseInfoT> &container,
+                              KeyT &&key, llvm::sys::SmartRWMutex<true> &mutex,
+                              ConstructorFn &&constructorFn) {
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> instanceLock(mutex);
+    auto it = container.find_as(key);
+    if (it != container.end())
+      return *it;
+  }
+
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> instanceLock(mutex);
+
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
+  auto existing = container.insert_as(ValueT(), key);
+  if (!existing.second)
+    return *existing.first;
+
+  // Otherwise, construct a new instance of the value.
+  return *existing.first = constructorFn();
+}
+
+/// A utility function to safely get or create a uniqued instance within the
+/// given map container.
+template <typename ContainerTy, typename KeyT, typename ConstructorFn>
+static typename ContainerTy::mapped_type
+safeGetOrCreate(ContainerTy &container, KeyT &&key,
+                llvm::sys::SmartRWMutex<true> &mutex,
+                ConstructorFn &&constructorFn) {
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> instanceLock(mutex);
+    auto it = container.find(key);
+    if (it != container.end())
+      return it->second;
+  }
+
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> instanceLock(mutex);
+
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
+  auto *&result = container[key];
+  if (result)
+    return result;
+
+  // Otherwise, construct a new instance of the value.
+  return result = constructorFn();
+}
+
 namespace {
 /// A builtin dialect to define types/etc that are necessary for the
 /// validity of the IR.
@@ -337,23 +391,8 @@ struct TypeUniquerImpl {
   TypeStorage *getOrCreate(
       unsigned kind,
       std::function<TypeStorage *(TypeStorageAllocator &)> constructorFn) {
-    { // Check if the type already exists in read-only mode.
-      llvm::sys::SmartScopedReader<true> typeLock(typeMutex);
-      auto it = simpleTypes.find(kind);
-      if (it != simpleTypes.end())
-        return it->second;
-    }
-
-    // Aquire the mutex in write mode so that we can safely construct the new
-    // instance.
-    llvm::sys::SmartScopedWriter<true> typeLock(typeMutex);
-
-    // Check for an existing instance again here, because another writer thread
-    // may have already created one.
-    auto *&result = simpleTypes[kind];
-    if (!result)
-      result = constructorFn(allocator);
-    return result;
+    return safeGetOrCreate(simpleTypes, kind, typeMutex,
+                           [&] { return constructorFn(allocator); });
   }
 
   //===--------------------------------------------------------------------===//
@@ -479,6 +518,11 @@ public:
   TypeUniquerImpl typeUniquer;
 
   // Attribute uniquing.
+
+  // Attribute allocator and mutex for thread safety.
+  llvm::BumpPtrAllocator attributeAllocator;
+  llvm::sys::SmartRWMutex<true> attributeMutex;
+
   BoolAttributeStorage *boolAttrs[2] = {nullptr};
   DenseSet<IntegerAttributeStorage *, IntegerAttrKeyInfo> integerAttrs;
   DenseSet<FloatAttributeStorage *, FloatAttrKeyInfo> floatAttrs;
@@ -506,14 +550,6 @@ public:
 
 public:
   MLIRContextImpl() : filenames(locationAllocator), identifiers(allocator) {}
-
-  /// Copy the specified array of elements into memory managed by our bump
-  /// pointer allocator.  This assumes the elements are all PODs.
-  template <typename T> ArrayRef<T> copyInto(ArrayRef<T> elements) {
-    auto result = allocator.Allocate<T>(elements.size());
-    std::uninitialized_copy(elements.begin(), elements.end(), result);
-    return ArrayRef<T>(result, elements.size());
-  }
 };
 } // end namespace mlir
 
@@ -523,6 +559,16 @@ MLIRContext::MLIRContext() : impl(new MLIRContextImpl()) {
 }
 
 MLIRContext::~MLIRContext() {}
+
+/// Copy the specified array of elements into memory managed by the provided
+/// bump pointer allocator.  This assumes the elements are all PODs.
+template <typename T>
+static ArrayRef<T> copyArrayRefInto(llvm::BumpPtrAllocator &allocator,
+                                    ArrayRef<T> elements) {
+  auto result = allocator.Allocate<T>(elements.size());
+  std::uninitialized_copy(elements.begin(), elements.end(), result);
+  return ArrayRef<T>(result, elements.size());
+}
 
 //===----------------------------------------------------------------------===//
 // Diagnostic Handlers
@@ -855,11 +901,25 @@ const Dialect &TypeUniquer::lookupDialectForType(MLIRContext *ctx,
 //===----------------------------------------------------------------------===//
 
 BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
-  auto *&result = context->getImpl().boolAttrs[value];
+  auto &impl = context->getImpl();
+
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> attributeLock(impl.attributeMutex);
+    if (auto *result = impl.boolAttrs[value])
+      return result;
+  }
+
+  // Aquire the mutex in write mode so that we can safely construct the new
+  // instance.
+  llvm::sys::SmartScopedWriter<true> attributeLock(impl.attributeMutex);
+
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
+  auto *&result = impl.boolAttrs[value];
   if (result)
     return result;
 
-  result = context->getImpl().allocator.Allocate<BoolAttributeStorage>();
+  result = impl.attributeAllocator.Allocate<BoolAttributeStorage>();
   new (result) BoolAttributeStorage{{Attribute::Kind::Bool,
                                      /*isOrContainsFunction=*/false},
                                     IntegerType::get(1, context),
@@ -869,30 +929,24 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
 
 IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
   auto &impl = type.getContext()->getImpl();
-
-  // Look to see if the integer attribute has been created already.
   IntegerAttrKeyInfo::KeyTy key({type, value});
-  auto existing = impl.integerAttrs.insert_as(nullptr, key);
 
-  // If it has been created, return it.
-  if (!existing.second)
-    return *existing.first;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.integerAttrs, key, impl.attributeMutex, [&] {
+    auto elements = ArrayRef<uint64_t>(value.getRawData(), value.getNumWords());
 
-  // If it doesn't, create one and return it.
-  auto elements = ArrayRef<uint64_t>(value.getRawData(), value.getNumWords());
-
-  auto byteSize =
-      IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
-  auto rawMem =
-      impl.allocator.Allocate(byteSize, alignof(IntegerAttributeStorage));
-  // TODO: This uses 64 bit APInts by default without consideration of value.
-  auto result = ::new (rawMem) IntegerAttributeStorage{
-      {Attribute::Kind::Integer, /*isOrContainsFunction=*/false},
-      type,
-      elements.size()};
-  std::uninitialized_copy(elements.begin(), elements.end(),
-                          result->getTrailingObjects<uint64_t>());
-  return *existing.first = result;
+    auto byteSize =
+        IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+    auto rawMem = impl.attributeAllocator.Allocate(
+        byteSize, alignof(IntegerAttributeStorage));
+    auto result = ::new (rawMem) IntegerAttributeStorage{
+        {Attribute::Kind::Integer, /*isOrContainsFunction=*/false},
+        type,
+        elements.size()};
+    std::uninitialized_copy(elements.begin(), elements.end(),
+                            result->getTrailingObjects<uint64_t>());
+    return result;
+  });
 }
 
 IntegerAttr IntegerAttr::get(Type type, int64_t value) {
@@ -942,137 +996,146 @@ FloatAttr FloatAttr::get(Type type, const APFloat &value) {
          "FloatAttr type doesn't match the type implied by its value");
   (void)fltType;
   auto &impl = type.getContext()->getImpl();
-
-  // Look to see if the float attribute has been created already.
   FloatAttrKeyInfo::KeyTy key({type, value});
-  auto existing = impl.floatAttrs.insert_as(nullptr, key);
 
-  // If it has been created, return it.
-  if (!existing.second)
-    return *existing.first;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.floatAttrs, key, impl.attributeMutex, [&] {
+    const auto &apint = value.bitcastToAPInt();
+    // Here one word's bitwidth equals to that of uint64_t.
+    auto elements = ArrayRef<uint64_t>(apint.getRawData(), apint.getNumWords());
 
-  // If it doesn't, create one, unique it and return it.
-  const auto &apint = value.bitcastToAPInt();
-  // Here one word's bitwidth equals to that of uint64_t.
-  auto elements = ArrayRef<uint64_t>(apint.getRawData(), apint.getNumWords());
-
-  auto byteSize =
-      FloatAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
-  auto rawMem =
-      impl.allocator.Allocate(byteSize, alignof(FloatAttributeStorage));
-  auto result = ::new (rawMem) FloatAttributeStorage{
-      {Attribute::Kind::Float, /*isOrContainsFunction=*/false},
-      value.getSemantics(),
-      type,
-      elements.size()};
-  std::uninitialized_copy(elements.begin(), elements.end(),
-                          result->getTrailingObjects<uint64_t>());
-  return *existing.first = result;
+    auto byteSize =
+        FloatAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
+    auto rawMem = impl.attributeAllocator.Allocate(
+        byteSize, alignof(FloatAttributeStorage));
+    auto result = ::new (rawMem) FloatAttributeStorage{
+        {Attribute::Kind::Float, /*isOrContainsFunction=*/false},
+        value.getSemantics(),
+        type,
+        elements.size()};
+    std::uninitialized_copy(elements.begin(), elements.end(),
+                            result->getTrailingObjects<uint64_t>());
+    return result;
+  });
 }
 
 StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
-  auto it = context->getImpl().stringAttrs.insert({bytes, nullptr}).first;
+  auto &impl = context->getImpl();
 
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> attributeLock(impl.attributeMutex);
+    auto it = impl.stringAttrs.find(bytes);
+    if (it != impl.stringAttrs.end())
+      return it->second;
+  }
+
+  // Aquire the mutex in write mode so that we can safely construct the new
+  // instance.
+  llvm::sys::SmartScopedWriter<true> attributeLock(impl.attributeMutex);
+
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
+  auto it = impl.stringAttrs.insert({bytes, nullptr}).first;
   if (it->second)
     return it->second;
 
-  auto result = context->getImpl().allocator.Allocate<StringAttributeStorage>();
+  auto result = impl.attributeAllocator.Allocate<StringAttributeStorage>();
   new (result) StringAttributeStorage{{Attribute::Kind::String,
                                        /*isOrContainsFunction=*/false},
                                       it->first()};
-  it->second = result;
-  return result;
+  return it->second = result;
 }
 
 ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
   auto &impl = context->getImpl();
 
-  // Look to see if we already have this.
-  auto existing = impl.arrayAttrs.insert_as(nullptr, value);
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.arrayAttrs, value, impl.attributeMutex, [&] {
+    auto *result = impl.attributeAllocator.Allocate<ArrayAttributeStorage>();
 
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
+    // Copy the elements into the bump pointer.
+    value = copyArrayRefInto(impl.attributeAllocator, value);
 
-  // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<ArrayAttributeStorage>();
+    // Check to see if any of the elements have a function attr.
+    bool hasFunctionAttr = false;
+    for (auto elt : value)
+      if (elt.isOrContainsFunction()) {
+        hasFunctionAttr = true;
+        break;
+      }
 
-  // Copy the elements into the bump pointer.
-  value = impl.copyInto(value);
-
-  // Check to see if any of the elements have a function attr.
-  bool hasFunctionAttr = false;
-  for (auto elt : value)
-    if (elt.isOrContainsFunction()) {
-      hasFunctionAttr = true;
-      break;
-    }
-
-  // Initialize the memory using placement new.
-  new (result)
-      ArrayAttributeStorage{{Attribute::Kind::Array, hasFunctionAttr}, value};
-
-  // Cache and return it.
-  return *existing.first = result;
+    // Initialize the memory using placement new.
+    return new (result)
+        ArrayAttributeStorage{{Attribute::Kind::Array, hasFunctionAttr}, value};
+  });
 }
 
 AffineMapAttr AffineMapAttr::get(AffineMap value) {
   auto *context = value.getResult(0).getContext();
-  auto &result = context->getImpl().affineMapAttrs[value];
-  if (result)
-    return result;
+  auto &impl = context->getImpl();
 
-  result = context->getImpl().allocator.Allocate<AffineMapAttributeStorage>();
-  new (result) AffineMapAttributeStorage{{Attribute::Kind::AffineMap,
-                                          /*isOrContainsFunction=*/false},
-                                         value};
-  return result;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.affineMapAttrs, value, impl.attributeMutex, [&] {
+    auto result = impl.attributeAllocator.Allocate<AffineMapAttributeStorage>();
+    return new (result)
+        AffineMapAttributeStorage{{Attribute::Kind::AffineMap,
+                                   /*isOrContainsFunction=*/false},
+                                  value};
+  });
 }
 
 IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
   auto *context = value.getConstraint(0).getContext();
-  auto &result = context->getImpl().integerSetAttrs[value];
-  if (result)
-    return result;
+  auto &impl = context->getImpl();
 
-  result = context->getImpl().allocator.Allocate<IntegerSetAttributeStorage>();
-  new (result) IntegerSetAttributeStorage{{Attribute::Kind::IntegerSet,
-                                           /*isOrContainsFunction=*/false},
-                                          value};
-  return result;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.integerSetAttrs, value, impl.attributeMutex, [&] {
+    auto result =
+        impl.attributeAllocator.Allocate<IntegerSetAttributeStorage>();
+    return new (result)
+        IntegerSetAttributeStorage{{Attribute::Kind::IntegerSet,
+                                    /*isOrContainsFunction=*/false},
+                                   value};
+  });
 }
 
 TypeAttr TypeAttr::get(Type type, MLIRContext *context) {
-  auto *&result = context->getImpl().typeAttrs[type];
-  if (result)
-    return result;
+  auto &impl = context->getImpl();
 
-  result = context->getImpl().allocator.Allocate<TypeAttributeStorage>();
-  new (result) TypeAttributeStorage{{Attribute::Kind::Type,
-                                     /*isOrContainsFunction=*/false},
-                                    type};
-  return result;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.typeAttrs, type, impl.attributeMutex, [&] {
+    auto result = impl.attributeAllocator.Allocate<TypeAttributeStorage>();
+    return new (result) TypeAttributeStorage{{Attribute::Kind::Type,
+                                              /*isOrContainsFunction=*/false},
+                                             type};
+  });
 }
 
 FunctionAttr FunctionAttr::get(const Function *value, MLIRContext *context) {
   assert(value && "Cannot get FunctionAttr for a null function");
+  auto &impl = context->getImpl();
 
-  auto *&result = context->getImpl().functionAttrs[value];
-  if (result)
-    return result;
-
-  result = context->getImpl().allocator.Allocate<FunctionAttributeStorage>();
-  new (result) FunctionAttributeStorage{{Attribute::Kind::Function,
-                                         /*isOrContainsFunction=*/true},
-                                        const_cast<Function *>(value)};
-  return result;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.functionAttrs, value, impl.attributeMutex, [&] {
+    auto result = impl.attributeAllocator.Allocate<FunctionAttributeStorage>();
+    return new (result)
+        FunctionAttributeStorage{{Attribute::Kind::Function,
+                                  /*isOrContainsFunction=*/true},
+                                 const_cast<Function *>(value)};
+  });
 }
 
 /// This function is used by the internals of the Function class to null out
 /// attributes refering to functions that are about to be deleted.
 void FunctionAttr::dropFunctionReference(Function *value) {
+  auto &impl = value->getContext()->getImpl();
+
+  // Aquire the mutex in write mode so that we can safely remove the attribute
+  // if it exists.
+  llvm::sys::SmartScopedWriter<true> attributeLock(impl.attributeMutex);
+
   // Check to see if there was an attribute referring to this function.
-  auto &functionAttrs = value->getContext()->getImpl().functionAttrs;
+  auto &functionAttrs = impl.functionAttrs;
 
   // If not, then we're done.
   auto it = functionAttrs.find(value);
@@ -1137,23 +1200,19 @@ AttributeListStorage *AttributeListStorage::get(ArrayRef<NamedAttribute> attrs,
 
   auto &impl = context->getImpl();
 
-  // Look to see if we already have this.
-  auto existing = impl.attributeLists.insert_as(nullptr, attrs);
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(impl.attributeLists, attrs, impl.attributeMutex, [&] {
+    auto byteSize =
+        AttributeListStorage::totalSizeToAlloc<NamedAttribute>(attrs.size());
+    auto rawMem =
+        impl.attributeAllocator.Allocate(byteSize, alignof(NamedAttribute));
 
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
-
-  // Otherwise, allocate a new AttributeListStorage, unique it and return it.
-  auto byteSize =
-      AttributeListStorage::totalSizeToAlloc<NamedAttribute>(attrs.size());
-  auto rawMem = impl.allocator.Allocate(byteSize, alignof(NamedAttribute));
-
-  //  Placement initialize the AggregateSymbolicValue.
-  auto result = ::new (rawMem) AttributeListStorage(attrs.size());
-  std::uninitialized_copy(attrs.begin(), attrs.end(),
-                          result->getTrailingObjects<NamedAttribute>());
-  return *existing.first = result;
+    //  Placement initialize the AggregateSymbolicValue.
+    auto result = ::new (rawMem) AttributeListStorage(attrs.size());
+    std::uninitialized_copy(attrs.begin(), attrs.end(),
+                            result->getTrailingObjects<NamedAttribute>());
+    return result;
+  });
 }
 
 // Returns false if the given `attr` is not of the given `type`.
@@ -1180,21 +1239,18 @@ SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
 
   auto &impl = type.getContext()->getImpl();
 
-  // Look to see if we already have this.
-  auto *&result = impl.splatElementsAttrs[{type, elt}];
-
-  // If we already have it, return that value.
-  if (result)
-    return result;
-
-  // Otherwise, allocate them into the bump pointer.
-  result = impl.allocator.Allocate<SplatElementsAttributeStorage>();
-  new (result) SplatElementsAttributeStorage{{{Attribute::Kind::SplatElements,
-                                               /*isOrContainsFunction=*/false},
-                                              type},
-                                             elt};
-
-  return result;
+  // Safely get or create an attribute instance.
+  std::pair<Type, Attribute> key(type, elt);
+  return safeGetOrCreate(
+      impl.splatElementsAttrs, key, impl.attributeMutex, [&] {
+        auto result =
+            impl.attributeAllocator.Allocate<SplatElementsAttributeStorage>();
+        return new (result)
+            SplatElementsAttributeStorage{{{Attribute::Kind::SplatElements,
+                                            /*isOrContainsFunction=*/false},
+                                           type},
+                                          elt};
+      });
 }
 
 DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
@@ -1205,37 +1261,35 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
          "Input data bit size should be larger than that type requires");
 
   auto &impl = type.getContext()->getImpl();
-
-  // Look to see if this constant is already defined.
   DenseElementsAttrInfo::KeyTy key({type, data});
-  auto existing = impl.denseElementsAttrs.insert_as(nullptr, key);
 
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(
+      impl.denseElementsAttrs, key, impl.attributeMutex, [&] {
+        Attribute::Kind kind;
+        switch (type.getElementType().getKind()) {
+        case StandardTypes::BF16:
+        case StandardTypes::F16:
+        case StandardTypes::F32:
+        case StandardTypes::F64:
+          kind = Attribute::Kind::DenseFPElements;
+          break;
+        case StandardTypes::Integer:
+          kind = Attribute::Kind::DenseIntElements;
+          break;
+        default:
+          llvm_unreachable("unexpected element type");
+        }
 
-  Attribute::Kind kind;
-  switch (type.getElementType().getKind()) {
-  case StandardTypes::BF16:
-  case StandardTypes::F16:
-  case StandardTypes::F32:
-  case StandardTypes::F64:
-    kind = Attribute::Kind::DenseFPElements;
-    break;
-  case StandardTypes::Integer:
-    kind = Attribute::Kind::DenseIntElements;
-    break;
-  default:
-    llvm_unreachable("unexpected element type");
-  }
-
-  // Otherwise, allocate a new one, unique it and return it.
-  auto *copy = (char *)impl.allocator.Allocate(data.size(), 64);
-  std::uninitialized_copy(data.begin(), data.end(), copy);
-  auto *result = impl.allocator.Allocate<DenseElementsAttributeStorage>();
-  new (result) DenseElementsAttributeStorage{
-      {{kind, /*isOrContainsFunction=*/false}, type}, {copy, data.size()}};
-  return *existing.first = result;
+        auto *copy = (char *)impl.attributeAllocator.Allocate(data.size(), 64);
+        std::uninitialized_copy(data.begin(), data.end(), copy);
+        auto *result =
+            impl.attributeAllocator.Allocate<DenseElementsAttributeStorage>();
+        new (result) DenseElementsAttributeStorage{
+            {{kind, /*isOrContainsFunction=*/false}, type},
+            {copy, data.size()}};
+        return result;
+      });
 }
 
 DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
@@ -1286,26 +1340,22 @@ OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect,
          "Input element type should be a valid tensor element type");
 
   auto &impl = type.getContext()->getImpl();
-
-  // Look to see if this constant is already defined.
   OpaqueElementsAttrInfo::KeyTy key(dialect, type, bytes);
-  auto existing = impl.opaqueElementsAttrs.insert_as(nullptr, key);
 
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
+  return safeGetOrCreate(
+      impl.opaqueElementsAttrs, key, impl.attributeMutex, [&] {
+        auto *result =
+            impl.attributeAllocator.Allocate<OpaqueElementsAttributeStorage>();
 
-  // Otherwise, allocate a new one, unique it and return it.
-  auto *result = impl.allocator.Allocate<OpaqueElementsAttributeStorage>();
-
-  // TODO: Provide a way to avoid copying content of large opaque tensors
-  // This will likely require a new reference attribute kind.
-  bytes = bytes.copy(impl.allocator);
-  new (result) OpaqueElementsAttributeStorage{
-      {{Attribute::Kind::OpaqueElements, /*isOrContainsFunction=*/false}, type},
-      dialect,
-      bytes};
-  return *existing.first = result;
+        // TODO: Provide a way to avoid copying content of large opaque tensors
+        // This will likely require a new reference attribute kind.
+        bytes = bytes.copy(impl.attributeAllocator);
+        return new (result) OpaqueElementsAttributeStorage{
+            {{Attribute::Kind::OpaqueElements, /*isOrContainsFunction=*/false},
+             type},
+            dialect,
+            bytes};
+      });
 }
 
 SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
@@ -1315,24 +1365,20 @@ SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
          "expected sparse indices to be 64-bit integer values");
 
   auto &impl = type.getContext()->getImpl();
-
-  // Look to see if we already have this.
   auto key = std::make_tuple(type, indices, values);
-  auto *&result = impl.sparseElementsAttrs[key];
 
-  // If we already have it, return that value.
-  if (result)
-    return result;
-
-  // Otherwise, allocate them into the bump pointer.
-  result = impl.allocator.Allocate<SparseElementsAttributeStorage>();
-  new (result) SparseElementsAttributeStorage{{{Attribute::Kind::SparseElements,
-                                                /*isOrContainsFunction=*/false},
-                                               type},
-                                              indices,
-                                              values};
-
-  return result;
+  // Safely get or create an attribute instance.
+  return safeGetOrCreate(
+      impl.sparseElementsAttrs, key, impl.attributeMutex, [&] {
+        auto result =
+            impl.attributeAllocator.Allocate<SparseElementsAttributeStorage>();
+        return new (result)
+            SparseElementsAttributeStorage{{{Attribute::Kind::SparseElements,
+                                             /*isOrContainsFunction=*/false},
+                                            type},
+                                           indices,
+                                           values};
+      });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1361,8 +1407,8 @@ AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
   auto *res = impl.allocator.Allocate<detail::AffineMapStorage>();
 
   // Copy the results and range sizes into the bump pointer.
-  results = impl.copyInto(results);
-  rangeSizes = impl.copyInto(rangeSizes);
+  results = copyArrayRefInto(impl.allocator, results);
+  rangeSizes = copyArrayRefInto(impl.allocator, rangeSizes);
 
   // Initialize the memory using placement new.
   new (res)
@@ -1701,8 +1747,8 @@ IntegerSet IntegerSet::get(unsigned dimCount, unsigned symbolCount,
   auto *res = impl.allocator.Allocate<detail::IntegerSetStorage>();
 
   // Copy the results and equality flags into the bump pointer.
-  constraints = impl.copyInto(constraints);
-  eqFlags = impl.copyInto(eqFlags);
+  constraints = copyArrayRefInto(impl.allocator, constraints);
+  eqFlags = copyArrayRefInto(impl.allocator, eqFlags);
 
   // Initialize the memory using placement new.
   new (res)
