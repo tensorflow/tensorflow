@@ -265,6 +265,51 @@ class EdscTest(unittest.TestCase):
     self.assertIn("constant 123 : index", code)
     self.assertIn("constant @constants : () -> ()", code)
 
+  def testIndexedValue(self):
+    memrefType = self.module.make_memref_type(self.f32Type, [10, 42])
+    with self.module.function_context("indexed", [memrefType],
+                                      [memrefType]) as fun:
+      A = E.IndexedValue(fun.arg(0))
+      cst = E.constant_float(1., self.f32Type)
+      with E.LoopNestContext(
+          [E.constant_index(0), E.constant_index(0)],
+          [E.constant_index(10), E.constant_index(42)], [1, 1]) as (i, j):
+        A.store([i, j], A.load([i, j]) + cst)
+      E.ret([fun.arg(0)])
+
+    code = str(fun)
+    self.assertIn(
+        '"for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (10)}',
+        code)
+    self.assertIn(
+        '"for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)}',
+        code)
+    self.assertIn("%0 = load %arg0[%i0, %i1] : memref<10x42xf32>", code)
+    self.assertIn("%1 = addf %0, %cst : f32", code)
+    self.assertIn("store %1, %arg0[%i0, %i1] : memref<10x42xf32>", code)
+
+  def testMatrixMultiply(self):
+    memrefType = self.module.make_memref_type(self.f32Type, [32, 32])
+    with self.module.function_context(
+        "matmul", [memrefType, memrefType, memrefType], []) as fun:
+      A = E.IndexedValue(fun.arg(0))
+      B = E.IndexedValue(fun.arg(1))
+      C = E.IndexedValue(fun.arg(2))
+      c0 = E.constant_index(0)
+      c32 = E.constant_index(32)
+      with E.LoopNestContext([c0, c0, c0], [c32, c32, c32], [1, 1, 1]) as (i, j,
+                                                                           k):
+        C.store([i, j], A.load([i, k]) * B.load([k, j]))
+      E.ret([])
+
+    code = str(fun)
+    self.assertIn(
+        '"for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (32)} : () -> ()',
+        code)
+    self.assertIn("%0 = load %arg0[%i0, %i2] : memref<32x32xf32>", code)
+    self.assertIn("%1 = load %arg1[%i2, %i1] : memref<32x32xf32>", code)
+    self.assertIn("%2 = mulf %0, %1 : f32", code)
+    self.assertIn("store %2, %arg2[%i0, %i1] : memref<32x32xf32>", code)
 
   def testBindables(self):
     with E.ContextManager():

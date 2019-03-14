@@ -8,6 +8,7 @@
 
 #include "mlir-c/Core.h"
 #include "mlir/EDSC/Builders.h"
+#include "mlir/EDSC/Helpers.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/EDSC/MLIREmitter.h"
 #include "mlir/EDSC/Types.h"
@@ -525,6 +526,34 @@ struct PythonIndexed : public edsc_indexed_t {
   PythonIndexed(PythonExpr e) : edsc_indexed_t{makeIndexed(e)} {}
   PythonIndexed(PythonBindable b) : edsc_indexed_t{makeIndexed(b)} {}
   operator PythonExpr() { return PythonExpr(base); }
+};
+
+struct PythonIndexedValue {
+  explicit PythonIndexedValue(PythonType type)
+      : indexed(Type::getFromOpaquePointer(type.type)) {}
+  explicit PythonIndexedValue(const IndexedValue &other) : indexed(other) {}
+  PythonIndexedValue(PythonValueHandle handle) : indexed(handle.value) {}
+  PythonIndexedValue(const PythonIndexedValue &other) = default;
+
+  // Create a new indexed value with the same base as this one but with indices
+  // provided as arguments.
+  PythonIndexedValue index(const std::vector<PythonValueHandle> &indices) {
+    std::vector<ValueHandle> handles(indices.begin(), indices.end());
+    return PythonIndexedValue(IndexedValue(indexed(handles)));
+  }
+
+  void store(const std::vector<PythonValueHandle> &indices,
+             PythonValueHandle value) {
+    // Uses the overloaded `opreator=` to emit a store.
+    index(indices).indexed = value.value;
+  }
+
+  PythonValueHandle load(const std::vector<PythonValueHandle> &indices) {
+    // Uses the overloaded cast to `ValueHandle` to emit a load.
+    return static_cast<ValueHandle>(index(indices).indexed);
+  }
+
+  IndexedValue indexed;
 };
 
 struct PythonMaxExpr {
@@ -1155,6 +1184,12 @@ PYBIND11_MODULE(pybind, m) {
       .def("__enter__", &PythonBlockContext::enter)
       .def("__exit__", &PythonBlockContext::exit)
       .def("handle", &PythonBlockContext::getHandle);
+
+  py::class_<PythonIndexedValue>(m, "IndexedValue",
+                                 "A wrapper around mlir::edsc::IndexedValue")
+      .def(py::init<PythonValueHandle>())
+      .def("load", &PythonIndexedValue::load)
+      .def("store", &PythonIndexedValue::store);
 
   py::class_<MLIRFunctionEmitter>(
       m, "MLIRFunctionEmitter",
