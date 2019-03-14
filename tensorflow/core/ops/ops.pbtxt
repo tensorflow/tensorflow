@@ -19943,6 +19943,13 @@ op {
     type: DT_VARIANT
   }
   attr {
+    name: "cpu_budget"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true
