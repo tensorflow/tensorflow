@@ -101,7 +101,7 @@ tflite_model = converter.convert()  # You got a tflite model!
 ## Why introduce another set of LSTM APIs?
 
 Bridging TensorFlow LSTM and TensorFlow Lite is not easy, and the use of
-`dynamic_rnn` adds addtional complexity (as the while loop is introduced).
+`dynamic_rnn` adds additional complexity (as the while loop is introduced).
 With the help of
 [OpHint](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/python/op_hint.py)
 (also see the next section), we create special wrappers around `rnn_cell` and
@@ -373,7 +373,7 @@ See below.
     `tf.lite.experimental.nn.bidirectional_dynamic_rnn` only supports
     `control_flow_v2`, you can this on by setting the environment variable
     `TF_ENABLE_CONTROL_FLOW_V2=1`, see in the tutorial.
-*   Currently, `sequence_length` is not supported, perfer to set it to None.
+*   Currently, `sequence_length` is not supported, prefer to set it to None.
 *   `num_unit_shards` & `num_proj_shards` in LSTMCell are not supported as
     well.
 *   Currently, `tf.lite.experimental.nn.dynamic_rnn` &
