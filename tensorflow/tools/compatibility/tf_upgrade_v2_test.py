@@ -417,6 +417,79 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
       self.assertIn("switch to the schedules in "
                     "`tf.keras.optimizers.schedules`", report)
 
+  def verify_compat_v1_rename_correctness(self, values, ns_prefix=""):
+    if ns_prefix:
+      ns_prefix += "."
+    for v in values:
+      text = "tf." + ns_prefix + v + "(a, b)"
+      _, _, _, new_text = self._upgrade(text)
+      self.assertEqual("tf.compat.v1." + ns_prefix + v + "(a, b)", new_text)
+
+  def testIntializers(self):
+    initializers = [
+        "zeros",
+        "ones",
+        "constant",
+        "random_uniform",
+        "random_normal",
+        "truncated_normal",
+        "variance_scaling",
+        "orthogonal",
+        "glorot_uniform",
+        "glorot_normal",
+        "identity",
+        "lecun_normal",
+        "lecun_uniform",
+        "he_normal",
+        "he_uniform",
+    ]
+    self.verify_compat_v1_rename_correctness(
+        initializers, ns_prefix="initializers")
+
+    initializers = [
+        "zeros_initializer",
+        "ones_initializer",
+        "constant_initializer",
+        "random_uniform_initializer",
+        "random_normal_initializer",
+        "truncated_normal_initializer",
+        "variance_scaling_initializer",
+        "orthogonal_initializer",
+        "glorot_uniform_initializer",
+        "glorot_normal_initializer",
+    ]
+    self.verify_compat_v1_rename_correctness(initializers)
+
+    initializers = [
+        "zeros",
+        "ones",
+        "Ones",
+        "Zeros",
+        "constant",
+        "Constant",
+        "VarianceScaling",
+        "Orthogonal",
+        "orthogonal",
+        "Identity",
+        "identity",
+        "glorot_uniform",
+        "glorot_normal",
+        "lecun_normal",
+        "lecun_uniform",
+        "he_normal",
+        "he_uniform",
+        "TruncatedNormal",
+        "truncated_normal",
+        "RandomUniform",
+        "uniform",
+        "random_uniform",
+        "RandomNormal",
+        "normal",
+        "random_normal",
+    ]
+    self.verify_compat_v1_rename_correctness(
+        initializers, ns_prefix="keras.initializers")
+
   def testMetrics(self):
     metrics = [
         "accuracy",
@@ -1398,16 +1471,14 @@ def _log_prob(self, x):
 
   def test_uniform_unit_scaling_initializer(self):
     text = "tf.uniform_unit_scaling_initializer(0.5)"
-    expected_text = (
-        "tf.keras.initializers.VarianceScaling(" +
-        "scale=0.5, distribution=\"uniform\")")
+    expected_text = ("tf.compat.v1.keras.initializers.VarianceScaling("
+                     "scale=0.5, distribution=\"uniform\")")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
     text = "tf.initializers.uniform_unit_scaling(0.5)"
-    expected_text = (
-        "tf.keras.initializers.VarianceScaling(" +
-        "scale=0.5, distribution=\"uniform\")")
+    expected_text = ("tf.compat.v1.keras.initializers.VarianceScaling("
+                     "scale=0.5, distribution=\"uniform\")")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
