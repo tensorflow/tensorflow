@@ -95,7 +95,7 @@ py_test(
 
 py_test(
     name = "choose_fastest_branch_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["choose_fastest_branch_dataset_serialization_test.py"],
     srcs_version = "PY2AND3",
     tags = [
