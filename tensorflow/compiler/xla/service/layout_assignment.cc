@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -1917,12 +1916,6 @@ Status LayoutAssignment::PropagateComputationLayouts(
 
 StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   VLOG(2) << "Running layout assignment on module " << module->name();
-  XLA_VLOG_LINES(3, module->ToString());
-  if (VLOG_IS_ON(10)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "before layout assignment",
-                                module->config().debug_options());
-  }
   TF_RETURN_IF_ERROR(Init());
 
   // Verify computation layout is sane.
@@ -1977,13 +1970,6 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
                                                  entry_computation_layout_));
   TF_RETURN_IF_ERROR(CheckLayouts(module));
 
-  VLOG(3) << "After layout assignment:";
-  XLA_VLOG_LINES(3, module->ToString());
-  if (VLOG_IS_ON(10)) {
-    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
-                                "after layout assignment",
-                                module->config().debug_options());
-  }
   // All layouts are reset then reassigned by this pass.
   return true;
 }
@@ -2001,6 +1987,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConditional:
@@ -2012,24 +1999,18 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kDivide:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFft:
     case HloOpcode::kFloor:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLe:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
-    case HloOpcode::kLt:
     case HloOpcode::kMap:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:

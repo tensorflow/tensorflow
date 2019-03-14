@@ -227,10 +227,9 @@ bool IsCompilableCall(const NodeDef& call_def,
   }
 
   FunctionLibraryRuntime::Handle handle;
-  Status status =
-      lib_runtime->Instantiate(call_def.op(), AttrSlice(call_def), &handle);
+  Status status = InstantiateFunctionCall(call_def, *lib_runtime, &handle);
   if (!status.ok()) {
-    VLOG(2) << "Rejecting " << call_def.op()
+    VLOG(2) << "Rejecting " << call_def.DebugString()
             << ": could not instantiate: " << status;
     return false;
   }
@@ -1098,7 +1097,11 @@ Status MarkForCompilationPass::RunImpl(
   }
 
   GraphCycles cycles;
-  TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(graph, &cycles));
+  TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
+                      CreateCycleDetectionGraph(graph, &cycles));
+  if (!cycle_detection_graph_ok) {
+    return Status::OK();
+  }
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
       graph, options.flib_def, IgnoreResourceOpForSafetyAnalysis, &cycles));
 

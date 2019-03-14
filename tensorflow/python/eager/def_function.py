@@ -430,8 +430,9 @@ class Function(object):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      canon_args, canon_kwds = self._function_spec.canonicalize_function_inputs(
-          *args, **kwds)
+      canon_args, canon_kwds = \
+          self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+              *args, **kwds)
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
 
@@ -488,8 +489,9 @@ class Function(object):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds = self._function_spec.canonicalize_function_inputs(
-        *args, **kwds)
+    canon_args, canon_kwds = \
+        self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+            *args, **kwds)
     return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
   @property

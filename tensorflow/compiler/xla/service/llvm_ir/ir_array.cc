@@ -29,6 +29,14 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
+IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
+                      llvm::Value* linear, const Shape& shape,
+                      llvm::Type* index_type)
+    : Index(multidim, shape, index_type) {
+  CHECK_NE(linear, nullptr);
+  linear_ = linear;
+}
+
 void IrArray::Index::Delinearize(std::vector<llvm::Value*>* multidim,
                                  llvm::Value* linear, const Shape& shape,
                                  llvm::IRBuilder<>* b) const {
@@ -74,17 +82,12 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
 }
 
 IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
-                      llvm::Value* linear, const Shape& shape)
+                      const Shape& shape, llvm::Type* index_type)
     : multidim_(multidim.begin(), multidim.end()),
-      linear_(linear),
+      linear_(nullptr),
       layout_(shape.layout()),
-      dims_(shape.dimensions().begin(), shape.dimensions().end()) {
-  if (size()) {
-    index_type_ = multidim_[0]->getType();
-  } else {
-    CHECK_NE(linear_, nullptr);
-    index_type_ = linear_->getType();
-  }
+      dims_(shape.dimensions().begin(), shape.dimensions().end()),
+      index_type_(index_type) {
   CHECK_NE(index_type_, nullptr);
   CHECK_EQ(shape.dimensions_size(), multidim.size());
   CHECK(LayoutUtil::HasLayout(shape))
@@ -166,30 +169,30 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   if (linear() != nullptr && LayoutUtil::HasLayout(input_shape) &&
       LayoutUtil::HasLayout(output_shape) &&
       ShapeUtil::ReshapeIsBitcast(input_shape, output_shape)) {
-    return Index(source_multidim_index, linear(), input_shape);
+    return Index(source_multidim_index, linear(), input_shape, index_type_);
   }
   return Index(source_multidim_index, index_type_);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfSlice(
-    const Shape& shape, absl::Span<const int64> starts,
+    const Shape& operand_shape, absl::Span<const int64> starts,
     absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
-  Index source_index(index_type_, multidim_.size());
+  std::vector<llvm::Value*> source_multi_index(multidim_.size());
   for (int i = 0; i < multidim_.size(); ++i) {
     int64 stride = strides[i];
     auto type = multidim_[i]->getType();
 
     if (stride != 1) {
-      source_index[i] = builder->CreateAdd(
+      source_multi_index[i] = builder->CreateAdd(
           builder->CreateMul(multidim_[i],
                              llvm::ConstantInt::get(type, stride)),
           llvm::ConstantInt::get(type, starts[i]));
     } else {
-      source_index[i] = builder->CreateAdd(
+      source_multi_index[i] = builder->CreateAdd(
           multidim_[i], llvm::ConstantInt::get(type, starts[i]));
     }
   }
-  return source_index;
+  return Index(source_multi_index, operand_shape, index_type_);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
@@ -202,7 +205,7 @@ IrArray::Index IrArray::Index::SourceIndexOfTranspose(
   if (linear() != nullptr && LayoutUtil::HasLayout(operand_shape) &&
       LayoutUtil::HasLayout(shape) &&
       ShapeUtil::TransposeIsBitcast(operand_shape, shape, dimension_mapping)) {
-    return Index(operand_multidim_index, linear(), operand_shape);
+    return Index(operand_multidim_index, linear(), operand_shape, index_type_);
   }
 
   return Index(operand_multidim_index);
@@ -238,7 +241,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
   std::vector<llvm::Value*> multi_index(operand_shape.dimensions_size());
   Delinearize(&multi_index, linear_index, operand_shape, builder);
 
-  return Index(multi_index, linear_index, operand_shape);
+  return Index(multi_index, linear_index, operand_shape, index_type_);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
@@ -305,7 +308,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
         linear,
         IrArray::Index(linear->getType()).GetConstantWithIndexType(mod));
   }
-  return Index(source_index, linear, operand_shape);
+  return Index(source_index, linear, operand_shape, index_type_);
 }
 
 llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,

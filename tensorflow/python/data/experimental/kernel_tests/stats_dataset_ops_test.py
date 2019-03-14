@@ -157,7 +157,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     for i in range(34):
       self.assertEqual(i * 3, self.evaluate(next_element()))
       summary_str = self.evaluate(aggregator.get_summary())
-      if i is not 0:
+      if i != 0:
         self._assertSummaryHasScalarValue(
             summary_str,
             self.regexForNodeName("FilterDataset", "dropped_elements"),

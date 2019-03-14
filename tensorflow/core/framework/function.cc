@@ -616,6 +616,8 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
         return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
                                parsed.id);
       } else {
+        LOG(WARNING) << "Failed to parse device \"" << n.device() << "\" in "
+                     << n.op() << ":" << n.name();
         return strings::StrCat(DataTypeString(dt), "@",
                                "<FAILED_TO_PARSE_DEVICE>");
       }
@@ -680,7 +682,7 @@ Status AddDefaultAttrs(const string& op,
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
-  VLOG(3) << "Instantiation Function: " << Print(fdef);
+  VLOG(4) << "Instantiation Function: " << Print(fdef);
 
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));

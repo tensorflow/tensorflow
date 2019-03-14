@@ -40,3 +40,88 @@
      return res;
    }
  };
+--- a/Eigen/src/Core/arch/GPU/PacketMathHalf.h	2019-02-06 12:40:48.000000000 -0800
++++ b/Eigen/src/Core/arch/GPU/PacketMathHalf.h	2019-03-08 14:52:29.000000000 -0800
+@@ -139,15 +139,23 @@
+ template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pabs<half2>(const half2& a) {
+   half2 result;
+   unsigned temp = *(reinterpret_cast<const unsigned*>(&(a)));
+-  *(reinterpret_cast<unsigned*>(&(result))) = temp & 0x7FFF7FFF;
++  *(reinterpret_cast<unsigned*>(&result)) = temp & 0x7FFF7FFF;
+   return result;
+ }
+ 
+ template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 ptrue<half2>(const half2& a) {
+   half2 result;
+-  *(reinterpret_cast<unsigned*>(&(result))) = 0xffffffffu;
++  *(reinterpret_cast<unsigned*>(&result)) = 0xffffffffu;
++  return result;
++}
++
++template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pzero<half2>(const half2& a) {
++  half2 result;
++  *(reinterpret_cast<unsigned*>(&result)) = 0x00000000u;
++  return result;
+ }
+ 
++
+ EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void
+ ptranspose(PacketBlock<half2,2>& kernel) {
+   __half a1 = __low2half(kernel.packet[0]);
+@@ -175,6 +183,56 @@
+ #endif
+ }
+ 
++template <>
++EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pand<half2>(const half2& a,
++                                                        const half2& b) {
++  half2 result;
++  *(reinterpret_cast<unsigned*>(&result)) =
++      *(reinterpret_cast<const unsigned*>(&a)) & *(reinterpret_cast<const unsigned*>(&b));
++  return result;
++}
++
++template <>
++EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pcmp_eq<half2>(const half2& a,
++                                                           const half2& b) {
++  __half true_half = __ushort_as_half(0xffffu);
++  __half false_half = __ushort_as_half(0x0000u);
++  __half a1 = __low2half(a);
++  __half a2 = __high2half(a);
++  __half b1 = __low2half(b);
++  __half b2 = __high2half(b);
++  __half eq1 = __half2float(a1) == __half2float(b1) ? true_half : false_half;
++  __half eq2 = __half2float(a2) == __half2float(b2) ? true_half : false_half;
++  return __halves2half2(eq1, eq2);
++}
++
++template <>
++EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 por<half2>(const half2& a,
++                                                       const half2& b) {
++  half2 result;
++  *(reinterpret_cast<unsigned*>(&result)) =
++      *(reinterpret_cast<const unsigned*>(&a)) | *(reinterpret_cast<const unsigned*>(&b));
++  return result;
++}
++
++template <>
++EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pxor<half2>(const half2& a,
++                                                        const half2& b) {
++  half2 result;
++  *(reinterpret_cast<unsigned*>(&result)) =
++      *(reinterpret_cast<const unsigned*>(&a)) ^ *(reinterpret_cast<const unsigned*>(&b));
++  return result;
++}
++
++template <>
++EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 pandnot<half2>(const half2& a,
++                                                           const half2& b) {
++  half2 result;
++  *(reinterpret_cast<unsigned*>(&result)) =
++      *(reinterpret_cast<const unsigned*>(&a)) & ~*(reinterpret_cast<const unsigned*>(&b));
++  return result;
++}
++
+ template<> EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE half2 padd<half2>(const half2& a, const half2& b) {
+ #if defined(EIGEN_HIP_DEVICE_COMPILE)
+ 

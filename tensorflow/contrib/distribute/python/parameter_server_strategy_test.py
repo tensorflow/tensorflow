@@ -806,31 +806,37 @@ class ParameterServerStrategyTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSum(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSumGradients(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum_gradients(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSumGradientTape(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum_gradient_tape(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMean(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMeanGradients(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean_gradients(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMeanGradientTape(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)

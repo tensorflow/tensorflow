@@ -892,7 +892,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "tensor_array_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],

@@ -168,8 +168,9 @@ class InitializableLookupTableBase(LookupInterface):
     if isinstance(initializer, trackable_base.Trackable):
       self._initializer = self._track_trackable(
           initializer, "_initializer")
-    self._resource_handle = self._create_resource()
-    self._init_op = self._initialize()
+    with ops.init_scope():
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
 
   def _initialize(self):
     return self._initializer.initialize(self)
@@ -379,9 +380,10 @@ class KeyValueTensorInitializer(TableInitializerBase):
       value_dtype: The `values` data type. Used when `values` is a python array.
       name: A name for the operation (optional).
     """
-    self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
-    self._values = ops.convert_to_tensor(
-        values, dtype=value_dtype, name="values")
+    with ops.init_scope():
+      self._keys = ops.convert_to_tensor(keys, dtype=key_dtype, name="keys")
+      self._values = ops.convert_to_tensor(
+          values, dtype=value_dtype, name="values")
     self._name = name if name is not None else "key_value_init"
     if context.executing_eagerly():
       # Ensure a unique name when eager execution is enabled to avoid spurious
@@ -584,8 +586,9 @@ class TextFileInitializer(TableInitializerBase):
           table.resource_handle, filename, self._key_index, self._value_index,
           -1 if self._vocab_size is None else self._vocab_size, self._delimiter)
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
-    # If the filename tensor is anything other than a string constant (e.g., if
-    # it is a placeholder) then it does not make sense to track it as an asset.
+    # If the filename tensor is anything other than a string constant (e.g.,
+    # if it is a placeholder) then it does not make sense to track it as an
+    # asset.
     if not context.executing_eagerly() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
@@ -939,7 +942,7 @@ class IdTableWithHashBuckets(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
-      values = math_ops.to_int64(values)
+      values = math_ops.cast(values, dtypes.int64)
 
     if self._num_oov_buckets == 0:
       ids = self._table.lookup(values, name=name)
@@ -1118,7 +1121,7 @@ class StaticVocabularyTable(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
-      values = math_ops.to_int64(values)
+      values = math_ops.cast(values, dtypes.int64)
 
     # TODO(yleon): Consider moving this functionality to its own kernel.
     with ops.name_scope(name, "%s_Lookup" % self.name):
@@ -1344,10 +1347,11 @@ def index_table_from_tensor(vocabulary_list,
     if (not dtype.is_integer) and (keys.dtype.base_dtype != dtype):
       raise ValueError("Expected %s, got %s." % (dtype, keys.dtype))
     num_elements = array_ops.size(keys)
-    values = math_ops.to_int64(math_ops.range(num_elements))
+    values = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
 
     with ops.name_scope(None, "hash_table"):
-      table_keys = math_ops.to_int64(keys) if keys.dtype.is_integer else keys
+      table_keys = math_ops.cast(
+          keys, dtypes.int64) if keys.dtype.is_integer else keys
       init = KeyValueTensorInitializer(
           table_keys,
           values,
@@ -1507,7 +1511,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
   with ops.name_scope(name, "index_to_string"):
     vocabulary_list = ops.convert_to_tensor(vocabulary_list, dtypes.string)
     num_elements = array_ops.size(vocabulary_list)
-    keys = math_ops.to_int64(math_ops.range(num_elements))
+    keys = math_ops.cast(math_ops.range(num_elements), dtypes.int64)
 
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
