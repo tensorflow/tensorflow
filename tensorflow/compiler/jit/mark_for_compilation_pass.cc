@@ -507,7 +507,7 @@ Status FindCompilationCandidates(
                                XlaOpRegistry::AutoclusteringPolicy::kAlways;
 
     OperationFilter op_filter;
-    op_filter.allow_resource_ops = registration->compile_resource_ops;
+    op_filter.allow_resource_ops = registration->compile_all_resource_ops;
     op_filter.allow_stateful_rng_ops = always_auto_cluster;
     op_filter.allow_control_trigger = always_auto_cluster;
     op_filter.allow_dummy_ops = always_auto_cluster;
@@ -542,7 +542,7 @@ Status FindCompilationCandidates(
       continue;
     }
 
-    if (!op_filter.allow_resource_ops &&
+    if (!registration->compile_all_resource_ops &&
         (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
       // We don't have a way of returning values of type DT_RESOURCE from XLA
       // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
@@ -608,8 +608,8 @@ Status FindCompilationCandidates(
     }
     // We don't auto-cluster functional control flow nodes containing resource
     // operations because safety checks are trickier in this case.
-    // registration->compile_resource_ops is true for XLA_CPU/XLA_GPU but not
-    // for CPU/GPU.
+    // registration->compile_all_resource_ops is true for XLA_CPU/XLA_GPU but
+    // not for CPU/GPU.
     if (node->type_string() == "While" &&
         !IsCompilableWhile(*node, jit_device_type, op_filter, 0, lib_runtime)) {
       continue;
@@ -936,7 +936,7 @@ static Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
     *ignore = true;
   } else {
-    *ignore = registration->compile_resource_ops;
+    *ignore = registration->compile_all_resource_ops;
   }
   return Status::OK();
 }
