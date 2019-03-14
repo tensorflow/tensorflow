@@ -1,3 +1,118 @@
+# Release 1.13.0
+
+## Major Features and Improvements
+
+* TensorFlow Lite has moved from contrib to core. This means that Python modules are under `tf.lite` and source code is now under `tensorflow/lite` rather than `tensorflow/contrib/lite`.
+* TensorFlow GPU binaries are now built against CUDA 10 and TensorRT 5.0.
+* Support for Python3.7 on all operating systems.
+* Moved NCCL to core.
+
+## Behavioral changes
+
+* Disallow conversion of python floating types to uint32/64 (matching behavior of other integer types) in `tf.constant`.
+* Make the `gain` argument of convolutional orthogonal initializers (`convolutional_delta_orthogonal`, `convolutional_orthogonal_1D`, `convolutional_orthogonal_2D`, `convolutional_orthogonal_3D`) have consistent behavior with the `tf.initializers.orthogonal` initializer, i.e. scale the output l2-norm by `gain` and NOT by `sqrt(gain)`. (Note that these functions are currently in `tf.contrib` which is not guaranteed backward compatible).
+
+## Bug Fixes and Other Changes
+
+* Documentation
+  * Update the doc with the details about the rounding mode used in quantize_and_dequantize_v2.
+  * Clarify that tensorflow::port::InitMain() _should_ be called before using the TensorFlow library.  Programs failing to do this are not portable to all platforms.
+* Deprecations and Symbol renames.
+   * Removing deprecations for the following endpoints: `tf.acos`, `tf.acosh`, `tf.add`, `tf.as_string`, `tf.asin`, `tf.asinh`, `tf.atan`, `tf.atan2`, `tf.atanh`, `tf.cos`, `tf.cosh`, `tf.equal`, `tf.exp`, `tf.floor`, `tf.greater`, `tf.greater_equal`, `tf.less`, `tf.less_equal`, `tf.log`, `tf.logp1`, `tf.logical_and`, `tf.logical_not`, `tf.logical_or`, `tf.maximum`, `tf.minimum`, `tf.not_equal`, `tf.sin`, `tf.sinh`, `tf.tan`
+  * Deprecate `tf.data.Dataset.shard`.
+  * Deprecate `saved_model.loader.load` which is replaced by `saved_model.load` and `saved_model.main_op`, which will be replaced by `saved_model.main_op` in V2.
+  * Deprecate tf.QUANTIZED_DTYPES. The official new symbol is tf.dtypes.QUANTIZED_DTYPES.
+  * Update sklearn imports for deprecated packages.
+  * Deprecate `Variable.count_up_to` and `tf.count_up_to` in favor of `Dataset.range`.
+  * Export `confusion_matrix` op as `tf.math.confusion_matrix` instead of `tf.train.confusion_matrix`.
+  * Add `tf.dtypes.` endpoint for every constant in dtypes.py; moving endpoints in versions.py to corresponding endpoints in `tf.sysconfig.` and `tf.version.`; moving all constants under `tf.saved_model` submodules to `tf.saved_model` module. New endpoints are added in V1 and V2 but existing endpoint removals are only applied in V2.
+  * Deprecates behavior where device assignment overrides collocation constraints inside a collocation context manager.
+* Keras & Python API
+  * Add to Keras functionality analogous to `tf.register_tensor_conversion_function`.
+  * Subclassed Keras models can now be saved through `tf.contrib.saved_model.save_keras_model`.
+  * `LinearOperator.matmul` now returns a new `LinearOperator`.
+* New ops and improved op functionality
+  * Add a Nearest Neighbor Resize op.
+  * Add an `ignore_unknown` argument to `parse_values` which suppresses ValueError for unknown hyperparameter types. Such * Add `tf.linalg.matvec` convenience function.
+  * `tf.einsum()`raises `ValueError` for unsupported equations like `"ii->"`.
+  * Add DCT-I and IDCT-I in `tf.signal.dct` and `tf.signal.idct`.
+  * Add LU decomposition op.
+  * Add quantile loss to gradient boosted trees in estimator.
+  * Add `round_mode` to `QuantizeAndDequantizeV2` op to select rounding algorithm.
+  * Add `unicode_encode`, `unicode_decode`, `unicode_decode_with_offsets`, `unicode_split`, `unicode_split_with_offset`, and `unicode_transcode` ops. Amongst other things, this Op adds the ability to encode, decode, and transcode a variety of input text encoding formats into the main Unicode encodings (UTF-8, UTF-16-BE, UTF-32-BE)
+  * Add "unit" attribute to the substr op, which allows obtaining the substring of a string containing unicode characters.
+  * Broadcasting support for Ragged Tensors.
+  * `SpaceToDepth` supports uint8 data type.
+  * Support multi-label quantile regression in estimator.
+  * We now use "div" as the default partition_strategy in `tf.nn.safe_embedding_lookup_sparse`, `tf.nn.sampled_softmax` and `tf.nn.nce_loss`.
+  hyperparameter are ignored.
+* Performance
+  * Improve performance of GPU cumsum/cumprod by up to 300x.
+  * Added support for weight decay in most TPU embedding optimizers, including AdamW and MomentumW.
+* TensorFlow 2.0 Development
+  * Add a command line tool to convert to TF2.0, tf_upgrade_v2
+  * Merge `tf.spectral` into `tf.signal` for TensorFlow 2.0.
+  * Change the default recurrent activation function for LSTM from 'hard_sigmoid' to 'sigmoid' in 2.0. Historically recurrent activation is 'hard_sigmoid' since it is fast than 'sigmoid'. With new unified backend between CPU and GPU mode, since the CuDNN kernel is using sigmoid, we change the default for CPU mode to sigmoid as well. With that, the default LSTM will be compatible with both CPU and GPU kernel. This will enable user with GPU to use CuDNN kernel by default and get a 10x performance boost in training. Note that this is checkpoint breaking change. If user want to use their 1.x pre-trained checkpoint, please construct the layer with LSTM(recurrent_activation='hard_sigmoid') to fallback to 1.x behavior.
+* TensorFlow Lite
+  * Move from `tensorflow/contrib/lite` to `tensorflow/lite`.
+  * Add experimental Java API for injecting TensorFlow Lite delegates
+  * Add support for strings in TensorFlow Lite Java API.
+* `tf.contrib`:
+  * Add Apache Ignite Filesystem plugin to support accessing Apache IGFS.
+  * Dropout now takes `rate` argument, `keep_prob` is deprecated.
+  * Estimator occurrences references `tf.contrib.estimator` were changed to `tf.estimator`:
+    * `tf.contrib.estimator.BaselineEstimator` with `tf.estimator.BaselineEstimator`
+    * `tf.contrib.estimator.DNNLinearCombinedEstimator` with `tf.estimator.DNNLinearCombinedEstimator`
+    * `tf.contrib.estimator.DNNEstimator` with `tf.estimator.DNNEstimator`
+    * `tf.contrib.estimator.LinearEstimator` with `tf.estimator.LinearEstimator`
+    * `tf.contrib.estimator.InMemoryEvaluatorHook` and tf.estimator.experimental.InMemoryEvaluatorHook`.
+    * `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`.
+  * Expose `tf.distribute.Strategy as the new name for tf.contrib.distribute.DistributionStrategy.
+  * Migrate linear optimizer from contrib to core.
+  * Move `tf.contrib.signal` to `tf.signal` (preserving aliases in tf.contrib.signal).
+  * Users of `tf.contrib.estimator.export_all_saved_models` and related should switch to `tf.estimator.Estimator.experimental_export_all_saved_models`.
+* tf.data:
+  * Add `tf.data.experimental.StatsOptions()`, to configure options to collect statistics from `tf.data.Dataset` pipeline using `StatsAggregator`. Add nested option, `experimental_stats` (which takes a `tf.data.experimen tal.StatsOptions` object), to `tf.data.Options`. Deprecates `tf.data.experimental.set_stats_agregator`.
+  * Performance optimizations:
+    * Add `tf.data.experimental.OptimizationOptions()`, to configure options to enable `tf.data` performance optimizations. Add nested option, `experimental_optimization` (which takes a `tf.data.experimental.OptimizationOptions` object), to `tf.data.Options`. Remove performance optimization options from `tf.data.Options`, and add them under `tf.data.experimental.OptimizationOptions` instead.
+    * Enable `map_and_batch_fusion` and `noop_elimination` optimizations by default. They can be disabled by configuring `tf.data.experimental.OptimizationOptions` to set `map_and_batch = False` or `noop_elimination = False` respectively. To disable all default optimizations, set `apply_default_optimizations = False`.
+    * Support parallel map in `map_and_filter_fusion`.
+    * Disable static optimizations for input pipelines that use non-resource `tf.Variable`s.
+  * Add NUMA-aware MapAndBatch dataset.
+  * Deprecate `tf.data.Dataset.make_one_shot_iterator()` in V1, removed it from V2, and added tf.compat.v1.data.make_one_shot_iterator()`.
+  * Deprecate `tf.data.Dataset.make_initializable_iterator()` in V1, removed it from V2, and added `tf.compat.v1.data.make_initializable_iterator()`.
+  * Enable nested dataset support in core `tf.data` transformations.
+  * For `tf.data.Dataset` implementers: Added `tf.data.Dataset._element_structured property` to replace `Dataset.output_{types,shapes,classes}`.
+  * Make `num_parallel_calls` of `tf.data.Dataset.interleave` and `tf.data.Dataset.map` work in Eager mode.
+* Toolchains
+  * Fixed OpenSSL compatibility by avoiding `EVP_MD_CTX_destroy`.
+  * Added bounds checking to printing deprecation warnings.
+  * Upgraded CUDA dependency to 10.0
+  * To build with Android NDK r14b, add "#include <linux/compiler.h>" to android-ndk-r14b/platforms/android-14/arch-*/usr/include/linux/futex.h
+  * Removed `:android_tensorflow_lib_selective_registration*` targets, use `:android_tensorflow_lib_lite*` targets instead.
+* XLA
+  * Move `RoundToEven` function to xla/client/lib/math.h.
+  * A new environment variable `TF_XLA_DEBUG_OPTIONS_PASSTHROUGH` set to "1" or "true" allows the debug options passed within an XRTCompile op to be passed directly to the XLA compilation backend. If such variable is not set (service side), only a restricted set will be passed through.
+  * Allow the XRTCompile op to return the ProgramShape resulted form the XLA compilation as a second return argument.
+  * XLA HLO graphs can now be rendered as SVG/HTML.
+* Estimator
+  * Replace all occurences of `tf.contrib.estimator.BaselineEstimator` with `tf.estimator.BaselineEstimator`
+  * Replace all occurences of `tf.contrib.estimator.DNNLinearCombinedEstimator` with `tf.estimator.DNNLinearCombinedEstimator`
+  * Replace all occurrences of `tf.contrib.estimator.DNNEstimator` with `tf.estimator.DNNEstimator`
+  * Replace all occurrences of `tf.contrib.estimator.LinearEstimator` with `tf.estimator.LinearEstimator`
+  * Users of `tf.contrib.estimator.export_all_saved_models` and related should switch to `tf.estimator.Estimator.experimental_export_all_saved_models`.
+  * Update `regression_head` to the new Head API for Canned Estimator V2.
+  * Switch `multi_class_head` to Head API for Canned Estimator V2.
+  * Replace all occurences of `tf.contrib.estimator.InMemoryEvaluatorHook` and `tf.contrib.estimator.make_stop_at_checkpoint_step_hook` with `tf.estimator.experimental.InMemoryEvaluatorHook` and `tf.estimator.experimental.make_stop_at_checkpoint_step_hook`
+  * Migrate linear optimizer from contrib to core.
+
+
+## Thanks to our Contributors
+
+This release contains contributions from many people at Google, as well as:
+
+Abhinav Upadhyay, Ag Ramesh, akikaaa, Alexis Louis, Anders Huss, Andreas Madsen, Andrew Banchich, Andy Craze, Anton Dmitriev, Artem Malykh, Avijit-Nervana, Balint Cristian, Benjamin Tan Wei Hao, Bhavani Subramanian, Brendan Finan, Brian Nemsick, Bryan Cutler, By Shen, Cao Zongyan, Castiel, Chris Antaki, Christian Goll, Cibifang, Clayne Robison, Codrut Grosu, Cong Xu, Dalmo Cirne, Daniel Hunter, Dougal J. Sutherland, Edvard Fagerholm, EFanZh, Erik Smistad, Evgeniy Polyakov, Feiyang Chen, franklin5, Fred Reiss, Gautam, gehring, Geoffrey Irving, George Sterpu, Gitea, Grzegorz George Pawelczak, Guozhong Zhuang, himkt, Hoeseong Kim, Huan Li (李卓桓), HuiyangFei, hyunyoung, Isaac Burbank, jackonan, Jacky Ko, Jason Furmanek, Jason Zaman, Javier Luraschi, Jiang,Zhoulong, joaak, John Lin, Jonathan Wyatt Hoech, josephyearsley, Josh Gordon, Julian Niedermeier, Karl Lessard, Keno Fischer, lanhin, Leon Graser, leondgarse, Li, Guizi, Li, Yiqiang, lxl910915, Mahmoud Abuzaina, manhyuk, Marcela Morales Quispe, margaretmz, Matt Conley, Max Pumperla, mbhuiyan, mdfaijul, Meng, Peng, Michael, Michael Gielda, mrTsjolder, Muhammad Wildan, neargye, Nehal J Wani, NEWPLAN, Niranjan Hasabnis, Nutti, olicht, Pan Daoxin, Pedro Monreal, Peng Yu, pillarpond, Pooya Davoodi, qiezi, Rholais Lii, Richard Yu, Rin Arakaki, Roger Iyengar, sahilbadyal, Sami Kama, Sandip Giri, Scott Leishman, Serge Panev, Seunghoon Park, Shafi Dayatar, shengfuintel, Shimin Guo, Siju, silent567, Stefan Dyulgerov, steven, Tao Wei, Thor Johnsen, Tingbo Lu, tomguluson92, Tongxuan Liu, Trevor Morris, Ubuntu, Vadim Borisov, vanderliang, wangsiyu, Wen Yun, Wen-Heng (Jack) Chung, wenxizhu, William D. Irons, Xiaoming (Jason) Cui, Yan Facai (颜发才), Yanbo Liang, Yaniv Blumenfeld, Yash Gaurkar, Yicheng Fan, Yong Tang, Yongjoon Lee, Yuan (Terry) Tang, Yuxin Wu, zldrobit
+
 # Release 1.12.0
 
 ## Major Features and Improvements

@@ -27,7 +27,7 @@ namespace {
 
 TEST(DiffAnalyzerTest, ZeroDiff) {
   DiffAnalyzer diff_analyzer;
-  string filename = "third_party/tensorflow/lite/testdata/test_input.csv";
+  string filename = "tensorflow/lite/testdata/test_input.csv";
   ASSERT_EQ(diff_analyzer.ReadFiles(filename, filename), kTfLiteOk);
 
   string output_file =

@@ -102,6 +102,7 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
     ],
 )
 

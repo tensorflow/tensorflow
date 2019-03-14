@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/xla/client/lib/prng.h"
+
 #include <cmath>
 
 #include "absl/base/casts.h"
@@ -30,11 +32,8 @@ XlaOp RotateLeftU32(XlaOp v, int distance) {
          ShiftRightLogical(v, ConstantR0<uint32>(v.builder(), 32 - distance));
 }
 
-using ThreeFry2x32State = std::array<XlaOp, 2>;
+}  // namespace
 
-// Implements the ThreeFry counter-based PRNG algorithm.
-// Salmon et al. SC 2011. Parallel random numbers: as easy as 1, 2, 3.
-// http://www.thesalmons.org/john/random123/papers/random123sc11.pdf
 ThreeFry2x32State ThreeFry2x32(ThreeFry2x32State input, ThreeFry2x32State key) {
   XlaBuilder* builder = input[0].builder();
   key[0] = BitcastConvertType(key[0], U32);
@@ -127,15 +126,28 @@ XlaOp StatelessRngUniformU32(std::array<XlaOp, 2> key, const Shape& shape) {
   return Reshape(result, AsInt64Slice(shape.dimensions()));
 }
 
+ThreeFry2x32State Uint64ToUint32s(XlaOp u64) {
+  auto builder = u64.builder();
+  auto const32 = ConstantR0WithType(builder, U64, 32);
+  auto fst = ConvertElementType(u64, U32);
+  auto snd = ConvertElementType(ShiftRightLogical(u64, const32), U32);
+  return {fst, snd};
+}
+
+XlaOp Uint32sToUint64(ThreeFry2x32State u32s) {
+  auto builder = u32s[0].builder();
+  return ConvertElementType(u32s[0], U64) |
+         ShiftLeft(ConvertElementType(u32s[1], U64),
+                   ConstantR0WithType(builder, U64, 32));
+}
+
 XlaOp StatelessRngUniformU64(std::array<XlaOp, 2> key, const Shape& shape) {
   XlaBuilder* builder = key[0].builder();
   const int64 size = ShapeUtil::ElementsIn(shape);
   ThreeFry2x32State inputs = GetInputs(size, builder);
   ThreeFry2x32State outputs = ThreeFry2x32(inputs, key);
   // low 32 bit: outputs[0], high 32 bit: outputs[1]
-  auto result = ConvertElementType(outputs[0], U64) |
-                ShiftLeft(ConvertElementType(outputs[1], U64),
-                          ConstantR0WithType(builder, U64, 32));
+  auto result = Uint32sToUint64(outputs);
   return Reshape(result, AsInt64Slice(shape.dimensions()));
 }
 
@@ -161,10 +173,6 @@ XlaOp StatelessRngUniformF32(XlaOp bits, XlaOp minval, XlaOp maxval) {
 XlaOp StatelessRngUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
                              PrimitiveType type, PrimitiveType unsigned_type) {
   XlaBuilder* builder = bits.builder();
-  // TODO(b/72573764): Generate real uniform integer distribution.
-  // The following algorithm is the same one that TF uses right now, but it's
-  // uniform only when maxval - minval is a divisor of the range that bits is
-  // generated from.
   auto range = BitcastConvertType(maxval, unsigned_type) -
                BitcastConvertType(minval, unsigned_type);
   auto dist = Rem(bits, range);
@@ -174,8 +182,6 @@ XlaOp StatelessRngUniformInt(XlaOp bits, XlaOp minval, XlaOp maxval,
   return minval + BitcastConvertType(dist_div_2, type) +
          BitcastConvertType(dist - dist_div_2, type);
 }
-
-}  // namespace
 
 XlaOp StatelessRngUniform(std::array<XlaOp, 2> seeds, const Shape& shape,
                           XlaOp minval, XlaOp maxval) {

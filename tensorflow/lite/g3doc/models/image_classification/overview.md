@@ -15,14 +15,14 @@ If you understand image classification, you’re new to TensorFlow Lite, and
 you’re working with Android or iOS, we recommend following the corresponding
 tutorial that will walk you through our sample code.
 
-<a class="button button-primary" href="android">Android</a>
-<a class="button button-primary" href="ios">iOS</a>
+<a class="button button-primary" href="android.md">Android</a>
+<a class="button button-primary" href="ios.md">iOS</a>
 
 We also provide <a href="example_applications">example applications</a> you can
 use to get started.
 
 If you are using a platform other than Android or iOS, or you are already
-familiar with the <a href="../../apis">TensorFlow Lite APIs</a>, you can
+familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
 download our starter image classification model and the accompanying labels.
 
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
@@ -34,7 +34,7 @@ performance, accuracy, and model size. For guidance, see
 <a href="#choose_a_different_model">Choose a different model</a>.
 
 If you are using a platform other than Android or iOS, or you are already
-familiar with the <a href="../../apis.md">TensorFlow Lite APIs</a>, you can
+familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
 download our starter image classification model and the accompanying labels.
 
 <a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
@@ -46,7 +46,7 @@ We have example applications for image classification for both Android and iOS.
 
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">Android
 example</a>
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios">iOS
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios.md">iOS
 example</a>
 
 The following screenshot shows the Android image classification example:
@@ -204,8 +204,8 @@ If you want to train a model to recognize new classes, see
 For the following use cases, you should use a different type of model:
 
 <ul>
-  <li>Predicting the type and position of one or more objects within an image (see <a href="object_detection">object detection</a>)</li>
-  <li>Predicting the composition of an image, for example subject versus background (see <a href="segmentation">segmentation</a>)</li>
+  <li>Predicting the type and position of one or more objects within an image (see <a href="../object_detection/overview.md">object detection</a>)</li>
+  <li>Predicting the composition of an image, for example subject versus background (see <a href="../segmentation/overview.md">segmentation</a>)</li>
 </ul>
 
 Once you have the starter model running on your target device, you can
@@ -216,7 +216,7 @@ performance, accuracy, and model size. For guidance, see
 ## Choose a different model
 
 There are a large number of image classification models available on our
-<a href="../hosted.md">List of hosted models</a>. You should aim to choose the
+<a href="../../guide/hosted_models.md">List of hosted models</a>. You should aim to choose the
 optimal model for your application based on performance, accuracy and model
 size. There are trade-offs between each of them.
 
@@ -239,7 +239,7 @@ We measure accuracy in terms of how often the model correctly classifies an
 image. For example, a model with a stated accuracy of 60% can be expected to
 classify an image correctly an average of 60% of the time.
 
-Our <a href="../hosted.md">List of hosted models</a> provides Top-1 and Top-5
+Our <a href="../../guide/hosted_models.md">list of hosted models</a> provides Top-1 and Top-5
 accuracy statistics. Top-1 refers to how often the correct label appears as the
 label with the highest probability in the model’s output. Top-5 refers to how
 often the correct label appears in the top 5 highest probabilities in the
@@ -258,14 +258,14 @@ Our quantized Mobilenet models’ size ranges from 0.5 to 3.4 Mb.
 ### Architecture
 
 There are several different architectures of models available on
-<a href="../hosted.md">List of hosted models</a>, indicated by the model’s name.
+<a href="../../guide/hosted_models.md">List of hosted models</a>, indicated by the model’s name.
 For example, you can choose between Mobilenet, Inception, and others.
 
 The architecture of a model impacts its performance, accuracy, and size. All of
 our hosted models are trained on the same data, meaning you can use the provided
 statistics to compare them and choose which is optimal for your application.
 
-Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="android.md">Android</a> and <a href="ios">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
+Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="android.md">Android</a> and <a href="ios.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
 
 ## Customize model
 

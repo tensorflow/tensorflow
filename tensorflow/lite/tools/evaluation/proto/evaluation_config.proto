@@ -34,15 +34,19 @@ message EvaluationStageConfig {
   // Example mapping: "BITMAP1:image_in"
   // It is up to individual EvaluationStage sub-classes to specify the
   // initializer/input TAGs they require, and outputs TAGs they provide.
+  // For more information: go/mlperflite-framework#heading=h.fxpk50cps4zs
   repeated string initializers = 3;
   repeated string inputs = 4;
   repeated string outputs = 5;
 }
 
+// Metrics returned from EvaluationStage.LatestMetrics() need not have all
+// fields set.
 message EvaluationStageMetrics {
-  // Total latency in ms.
-  optional double total_latency_ms = 1;
+  // Total number of times the EvaluationStage is run.
+  // Aka number of calls to EvaluationStage::Run().
+  optional int32 num_runs = 1;
 
-  // Process-specific numbers such as accuracy, step-latencies, etc.
+  // Process-specific numbers such as latencies, accuracy, etc.
   optional ProcessMetrics process_metrics = 2;
 }

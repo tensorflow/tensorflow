@@ -82,12 +82,12 @@ Status UpdateArgAndRetvalMetadata(
   // in the original function.
   for (Node* node : subgraph->op_nodes()) {
     string node_type = node->type_string();
-    if (node_type == FunctionLibraryDefinition::kArgOp) {
+    if (node->IsArg()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
       arg_indices->push_back(index);
       arg_nodes.push_back(std::make_pair(node, index));
-    } else if (node_type == FunctionLibraryDefinition::kRetOp) {
+    } else if (node->IsRetval()) {
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int index = static_cast<int>(attr_value->i());
       ret_indices->push_back(index);

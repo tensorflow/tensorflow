@@ -5,14 +5,13 @@ package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 
 exports_files(glob([
     "testdata/*.bmp",
 ]))
 
-tf_cc_binary(
+cc_binary(
     name = "label_image",
     srcs = [
         "get_top_n.h",

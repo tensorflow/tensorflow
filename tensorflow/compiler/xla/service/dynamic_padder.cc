@@ -160,9 +160,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           HloInstruction* broadcasted_effective_size =
               computation->AddInstruction(HloInstruction::CreateBroadcast(
                   mask_shape, dynamic_size, {}));
-          HloInstruction* pred = computation->AddInstruction(
-              HloInstruction::CreateBinary(pred_shape, HloOpcode::kLt, iota,
-                                           broadcasted_effective_size));
+          HloInstruction* pred =
+              computation->AddInstruction(HloInstruction::CreateCompare(
+                  pred_shape, iota, broadcasted_effective_size,
+                  ComparisonDirection::kLt));
 
           HloInstruction* broadcasted_identity_value =
               computation->AddInstruction(HloInstruction::CreateBroadcast(

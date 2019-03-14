@@ -621,6 +621,10 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       _ = checker[-1:0, :, :]
       # empty interval in every dimension
       _ = checker[-1:0, 2:2, 2:3:-1]
+      # empty first dimension only (used to break for aligned tensors).
+      checker = StridedSliceChecker(self,
+                                    StridedSliceChecker.REF_TENSOR_ALIGNED)
+      _ = checker[1:0]
 
   @test_util.run_deprecated_v1
   def testEllipsis(self):

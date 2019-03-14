@@ -1011,7 +1011,7 @@ py_library(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "config_test",
     size = "small",
     srcs = ["framework/config_test.py"],
@@ -1185,6 +1185,9 @@ py_library(
     name = "framework_test_lib",
     srcs = ["framework/test_util.py"],
     srcs_version = "PY2AND3",
+    visibility = visibility + [
+        "//tensorflow_estimator/python/estimator:__subpackages__",
+    ],
     deps = [
         ":array_ops",
         ":client",
@@ -3112,11 +3115,14 @@ tf_py_test(
     name = "sparse_ops_test",
     srcs = ["ops/sparse_ops_test.py"],
     additional_deps = [
+        ":array_grad",
         ":constant_op",
         ":dtypes",
         ":framework_test_lib",
         ":sparse_ops",
         ":sparse_tensor",
+        ":sparse_grad",
+        ":gradient_checker_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -3708,6 +3714,7 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = ["no_windows"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -4689,7 +4696,7 @@ tf_py_test(
     ],
     grpc_enabled = True,
     tags = [
-        "no_gpu",
+        "no_gpu",  # b/127001953
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],
@@ -4792,7 +4799,10 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_gpu",  # b/127386241
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(

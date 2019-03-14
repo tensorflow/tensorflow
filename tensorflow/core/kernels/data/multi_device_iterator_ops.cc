@@ -529,9 +529,7 @@ REGISTER_KERNEL_BUILDER(Name("MultiDeviceIteratorInit").Device(DEVICE_CPU),
 class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
  public:
   explicit MultiDeviceIteratorGetNextFromShardOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx),
-        background_worker_(ctx->env(),
-                           "tf_data_multi_device_iterator_get_next") {}
+      : AsyncOpKernel(ctx) {}
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* tensor_shard_num;
@@ -546,34 +544,27 @@ class MultiDeviceIteratorGetNextFromShardOp : public AsyncOpKernel {
     MultiDeviceIterator* iterator;
     OP_REQUIRES_OK_ASYNC(
         ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
-    background_worker_.Schedule(std::bind(
-        [ctx, iterator, shard_num, incarnation_id](DoneCallback done) {
-          MultiDeviceIteratorCallback callback = std::bind(
-              [ctx](const HostBufferElement& elem, DoneCallback done) {
-                // iterator->Unref();
-                Status s = elem.status;
-                if (!s.ok()) {
-                  ctx->SetStatus(s);
-                } else if (elem.end_of_sequence) {
-                  ctx->SetStatus(errors::OutOfRange("End of sequence"));
-                } else {
-                  for (int i = 0; i < elem.value.size(); ++i) {
-                    ctx->set_output(i, elem.value[i]);
-                  }
-                }
-                done();
-              },
-              std::placeholders::_1, std::move(done));
 
-          iterator->GetNextFromShard(ctx, shard_num, incarnation_id,
-                                     std::move(callback));
-          iterator->Unref();
+    MultiDeviceIteratorCallback callback = std::bind(
+        [ctx](const HostBufferElement& elem, DoneCallback done) {
+          // iterator->Unref();
+          Status s = elem.status;
+          if (!s.ok()) {
+            ctx->SetStatus(s);
+          } else if (elem.end_of_sequence) {
+            ctx->SetStatus(errors::OutOfRange("End of sequence"));
+          } else {
+            for (int i = 0; i < elem.value.size(); ++i) {
+              ctx->set_output(i, elem.value[i]);
+            }
+          }
+          done();
         },
-        std::move(done)));
-  }
+        std::placeholders::_1, std::move(done));
 
- private:
-  BackgroundWorker background_worker_;
+    iterator->GetNextFromShard(ctx, shard_num, incarnation_id, callback);
+    iterator->Unref();
+  }
 };
 
 REGISTER_KERNEL_BUILDER(
