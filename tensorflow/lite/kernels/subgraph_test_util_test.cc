@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/subgraph_test_util.h"
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/kernels/subgraph_test_util.h"
+#include "tensorflow/lite/kernels/test_util.h"
 
 namespace tflite {
 
