@@ -1825,6 +1825,8 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengths) {
   TFE_DeleteOp(identityOp);
   TFE_DeleteTensorHandle(input1);
   TFE_DeleteTensorHandle(input2);
+  TFE_DeleteTensorHandle(retvals[0]);
+  TFE_DeleteTensorHandle(retvals[1]);
 }
 
 TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
