@@ -448,12 +448,16 @@ namespace mlir {
 /// This class is completely private to this file, so everything is public.
 class MLIRContextImpl {
 public:
-  /// We put location info into this allocator, since it is generally not
-  /// touched by compiler passes.
+  //===--------------------------------------------------------------------===//
+  // Location uniquing
+  //===--------------------------------------------------------------------===//
+
+  // Location allocator and mutex for thread safety.
   llvm::BumpPtrAllocator locationAllocator;
+  llvm::sys::SmartRWMutex<true> locationMutex;
 
   /// The singleton for UnknownLoc.
-  UnknownLocationStorage *theUnknownLoc = nullptr;
+  UnknownLocationStorage theUnknownLoc;
 
   /// These are filename locations uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> filenames;
@@ -472,6 +476,10 @@ public:
   /// FusedLoc uniquing.
   using FusedLocations = DenseSet<FusedLocationStorage *, FusedLocKeyInfo>;
   FusedLocations fusedLocs;
+
+  //===--------------------------------------------------------------------===//
+  // Other
+  //===--------------------------------------------------------------------===//
 
   /// We put immortal objects into this allocator.
   llvm::BumpPtrAllocator allocator;
@@ -748,17 +756,14 @@ Identifier Identifier::get(StringRef str, const MLIRContext *context) {
 //===----------------------------------------------------------------------===//
 
 UnknownLoc UnknownLoc::get(MLIRContext *context) {
-  auto &impl = context->getImpl();
-  if (auto *result = impl.theUnknownLoc)
-    return result;
-
-  impl.theUnknownLoc = impl.allocator.Allocate<UnknownLocationStorage>();
-  new (impl.theUnknownLoc) UnknownLocationStorage{Location::Kind::Unknown};
-  return impl.theUnknownLoc;
+  return &context->getImpl().theUnknownLoc;
 }
 
 UniquedFilename UniquedFilename::get(StringRef filename, MLIRContext *context) {
   auto &impl = context->getImpl();
+
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> locationLock(impl.locationMutex);
   auto it = impl.filenames.insert({filename, char()}).first;
   return UniquedFilename(it->getKeyData());
 }
@@ -766,48 +771,35 @@ UniquedFilename UniquedFilename::get(StringRef filename, MLIRContext *context) {
 FileLineColLoc FileLineColLoc::get(UniquedFilename filename, unsigned line,
                                    unsigned column, MLIRContext *context) {
   auto &impl = context->getImpl();
-  auto &entry =
-      impl.fileLineColLocs[std::make_tuple(filename.data(), line, column)];
-  if (!entry) {
-    entry = impl.allocator.Allocate<FileLineColLocationStorage>();
-    new (entry) FileLineColLocationStorage{
-        {Location::Kind::FileLineCol}, filename, line, column};
-  }
 
-  return entry;
+  // Safely get or create a location instance.
+  auto key = std::make_tuple(filename.data(), line, column);
+  return safeGetOrCreate(impl.fileLineColLocs, key, impl.locationMutex, [&] {
+    return new (impl.locationAllocator.Allocate<FileLineColLocationStorage>())
+        FileLineColLocationStorage(filename, line, column);
+  });
 }
 
 NameLoc NameLoc::get(Identifier name, MLIRContext *context) {
   auto &impl = context->getImpl();
-  auto &entry = impl.nameLocs[name.data()];
-  if (!entry) {
-    entry = impl.allocator.Allocate<NameLocationStorage>();
-    new (entry) NameLocationStorage{{Location::Kind::Name}, name};
-  }
 
-  return entry;
+  // Safely get or create a location instance.
+  return safeGetOrCreate(impl.nameLocs, name.data(), impl.locationMutex, [&] {
+    return new (impl.locationAllocator.Allocate<NameLocationStorage>())
+        NameLocationStorage(name);
+  });
 }
 
 CallSiteLoc CallSiteLoc::get(Location callee, Location caller,
                              MLIRContext *context) {
   auto &impl = context->getImpl();
 
-  // Look to see if the fused location has been created already.
-  auto existing =
-      impl.callLocs.insert_as(nullptr, std::make_pair(callee, caller));
-
-  // If it has been created, return it.
-  if (!existing.second)
-    return *existing.first;
-
-  // On the first use, we allocate them into the bump pointer.
-  auto *result = impl.allocator.Allocate<detail::CallSiteLocationStorage>();
-
-  // Initialize the memory using placement new.
-  new (result) detail::CallSiteLocationStorage{
-      {Location::Kind::CallSite}, callee, caller};
-
-  return *existing.first = result;
+  // Safely get or create a location instance.
+  auto key = std::make_pair(callee, caller);
+  return safeGetOrCreate(impl.callLocs, key, impl.locationMutex, [&] {
+    return new (impl.locationAllocator.Allocate<CallSiteLocationStorage>())
+        CallSiteLocationStorage(callee, caller);
+  });
 }
 
 CallSiteLoc CallSiteLoc::get(Location name, ArrayRef<Location> frames,
@@ -855,26 +847,19 @@ Location FusedLoc::get(ArrayRef<Location> locs, Attribute metadata,
 
   auto &impl = context->getImpl();
 
-  // Look to see if the fused location has been created already.
-  auto existing =
-      impl.fusedLocs.insert_as(nullptr, std::make_pair(locs, metadata));
+  // Safely get or create a location instance.
+  auto key = std::make_pair(locs, metadata);
+  return safeGetOrCreate(impl.fusedLocs, key, impl.locationMutex, [&] {
+    auto byteSize =
+        FusedLocationStorage::totalSizeToAlloc<Location>(locs.size());
+    auto rawMem = impl.locationAllocator.Allocate(
+        byteSize, alignof(FusedLocationStorage));
+    auto result = new (rawMem) FusedLocationStorage(locs.size(), metadata);
 
-  // If it has been created, return it.
-  if (!existing.second)
-    return *existing.first;
-
-  auto byteSize = FusedLocationStorage::totalSizeToAlloc<Location>(locs.size());
-  auto rawMem =
-      impl.allocator.Allocate(byteSize, alignof(FusedLocationStorage));
-  auto result =
-      new (rawMem) FusedLocationStorage{{Location::Kind::FusedLocation},
-                                        {},
-                                        static_cast<unsigned>(locs.size()),
-                                        metadata};
-
-  std::uninitialized_copy(locs.begin(), locs.end(),
-                          result->getTrailingObjects<Location>());
-  return *existing.first = result;
+    std::uninitialized_copy(locs.begin(), locs.end(),
+                            result->getTrailingObjects<Location>());
+    return result;
+  });
 }
 
 //===----------------------------------------------------------------------===//

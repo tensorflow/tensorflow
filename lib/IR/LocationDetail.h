@@ -41,24 +41,41 @@ struct alignas(8) LocationStorage {
   Location::Kind kind : 8;
 };
 
-struct UnknownLocationStorage : public LocationStorage {};
+struct UnknownLocationStorage : public LocationStorage {
+  UnknownLocationStorage() : LocationStorage(Location::Kind::Unknown) {}
+};
 
 struct FileLineColLocationStorage : public LocationStorage {
+  FileLineColLocationStorage(UniquedFilename filename, unsigned line,
+                             unsigned column)
+      : LocationStorage(Location::Kind::FileLineCol), filename(filename),
+        line(line), column(column) {}
+
   const UniquedFilename filename;
   const unsigned line, column;
 };
 
 struct NameLocationStorage : public LocationStorage {
+  NameLocationStorage(Identifier name)
+      : LocationStorage(Location::Kind::Name), name(name) {}
+
   const Identifier name;
 };
 
 struct CallSiteLocationStorage : public LocationStorage {
+  CallSiteLocationStorage(Location callee, Location caller)
+      : LocationStorage(Location::Kind::CallSite), callee(callee),
+        caller(caller) {}
+
   const Location callee, caller;
 };
 
 struct FusedLocationStorage final
     : public LocationStorage,
       public llvm::TrailingObjects<FusedLocationStorage, Location> {
+  FusedLocationStorage(unsigned numLocs, Attribute metadata)
+      : LocationStorage(Location::Kind::FusedLocation), numLocs(numLocs),
+        metadata(metadata) {}
 
   ArrayRef<Location> getLocations() const {
     return ArrayRef<Location>(getTrailingObjects<Location>(), numLocs);
