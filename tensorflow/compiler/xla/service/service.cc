@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
@@ -319,6 +320,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     config->set_intra_op_parallelism_threads(
         execute_backend_->eigen_intra_op_thread_pool()->NumThreads());
   }
+
+  if (execution_options != nullptr &&
+      execution_options->has_device_assignment()) {
+    TF_ASSIGN_OR_RETURN(
+        auto device_assignment,
+        DeviceAssignment::Deserialize(execution_options->device_assignment()));
+    config->set_static_device_assignment(*device_assignment);
+  }
+
   return std::move(config);
 }
 
