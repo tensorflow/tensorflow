@@ -1663,15 +1663,18 @@ Applies a reduction function to one or more arrays in parallel.
 
 <b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type                  | Semantics
-------------- | --------------------- | ---------------------------------------
-`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
-`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
-`computation` | `XlaComputation`      | computation of type
-              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
-`dimensions`  | `int64` array         | unordered array of dimensions to reduce
+| Arguments     | Type                  | Semantics                            |
+| ------------- | --------------------- | ------------------------------------ |
+| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
+| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
+| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N,  |
+:               :                       : T_0, ..., T_N ->` `Collate(T_0, ..., :
+:               :                       : T_N)`                                :
+| `dimensions`  | `int64` array         | unordered array of dimensions to     |
+:               :                       : reduce                               :
 
 Where:
+
 * N is required to be greater or equal to 1.
 * All input arrays must have the same dimensions.
 * If `N = 1`, `Collate(T)` is `T`.
@@ -1681,10 +1684,10 @@ The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 `T_i`, the dimensions of which are described below.
 
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may be inserted
+The rank of each returned array is `rank(operand) - len(dimensions)`. The
+initial value used for every reduction is `init_value`, and it may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
-identity of the reduction function (for example, 0 for addition). The applied
+identity of the reduction function (for example, `0` for addition). The applied
 `computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1695,10 +1698,10 @@ Some reduction functions like addition are not strictly associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA reductions.
+incorrect or unpredictable results in XLA.
 
 As an example, when reducing across one dimension in a single 1D array with
-values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
 then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
@@ -1777,16 +1780,27 @@ preserved in the output, but some dimensions may get assigned new numbers (since
 the rank changes).
 
 We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
-the 1D array `| 20 28 36 |`.
+the 1D array `[20, 28, 36]`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
-When `N > 1`, reduce function application is slightly more complex, as it is
-applied simultaneously to all inputs. For example, consider the following
-reduction function, which can be used to compute the max and the argmax of a a
-1-D array in parallel:
+### Variadic Reduce
 
-```
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. The operands are supplied to the
+computation in the following order:
+
+*   Running reduced value for the first operand
+*   ...
+*   Running reduced value for the N'th operand
+*   Input value for the first operand
+*   ...
+*   Input value for the N'th operand
+
+For example, consider the following reduction function, which can be used to
+compute the max and the argmax of a 1-D array in parallel:
+
+```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
   if value >= argmax:
@@ -1798,6 +1812,7 @@ f(max, argmax, value, index):
 For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
 `I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
 input dimension is equivalent to the following recursive application:
+
 ```
 f_0 = f(I_V, I_K, V_0, K_0)
 f_1 = f(f_0.first, f_0.second, V_1, K_1)
