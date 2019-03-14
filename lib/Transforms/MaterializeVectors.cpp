@@ -411,7 +411,7 @@ instantiate(FuncBuilder *b, Instruction *opInst, VectorType hwVectorType,
          "Should call the function specialized for VectorTransferReadOp");
   assert(!opInst->isa<VectorTransferWriteOp>() &&
          "Should call the function specialized for VectorTransferWriteOp");
-  if (opInst->getNumBlockLists() != 0)
+  if (opInst->getNumRegions() != 0)
     return nullptr;
 
   bool fail = false;
@@ -553,7 +553,7 @@ static bool instantiateMaterialization(Instruction *inst,
   if (inst->isa<AffineApplyOp>()) {
     return false;
   }
-  if (inst->getNumBlockLists() != 0)
+  if (inst->getNumRegions() != 0)
     return inst->emitError("NYI path Op with region");
 
   if (auto write = inst->dyn_cast<VectorTransferWriteOp>()) {

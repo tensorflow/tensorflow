@@ -1087,7 +1087,7 @@ static Instruction *vectorizeOneInstruction(FuncBuilder *b, Instruction *opInst,
     opInst->erase();
     return res;
   }
-  if (opInst->getNumBlockLists() != 0)
+  if (opInst->getNumRegions() != 0)
     return nullptr;
 
   auto types = map([state](Value *v) { return getVectorType(v, *state); },
@@ -1112,7 +1112,7 @@ static Instruction *vectorizeOneInstruction(FuncBuilder *b, Instruction *opInst,
   OperationState newOp(b->getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), operands, types,
                        opInst->getAttrs(), /*successors=*/{},
-                       /*numBlockLists=*/0, opInst->hasResizableOperandsList());
+                       /*numRegions=*/0, opInst->hasResizableOperandsList());
   return b->createOperation(newOp);
 }
 

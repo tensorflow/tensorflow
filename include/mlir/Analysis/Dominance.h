@@ -43,10 +43,10 @@ public:
   /// Recalculate the dominance info for the provided function.
   void recalculate(Function *function);
 
-  /// Get the root dominance node of the given block list.
-  DominanceInfoNode *getRootNode(const BlockList *blockList) {
-    assert(dominanceInfos.count(blockList) != 0);
-    return dominanceInfos[blockList]->getRootNode();
+  /// Get the root dominance node of the given region.
+  DominanceInfoNode *getRootNode(const Region *region) {
+    assert(dominanceInfos.count(region) != 0);
+    return dominanceInfos[region]->getRootNode();
   }
 
 protected:
@@ -55,8 +55,8 @@ protected:
   /// Return true if the specified block A properly dominates block B.
   bool properlyDominates(const Block *a, const Block *b);
 
-  /// A mapping of block lists to their base dominator tree.
-  DenseMap<const BlockList *, std::unique_ptr<base>> dominanceInfos;
+  /// A mapping of regions to their base dominator tree.
+  DenseMap<const Region *, std::unique_ptr<base>> dominanceInfos;
 };
 } // end namespace detail
 

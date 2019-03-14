@@ -1103,9 +1103,8 @@ public:
   void printSuccessorAndUseList(const Instruction *term,
                                 unsigned index) override;
 
-  /// Print a block list.
-  void printBlockList(const BlockList &blocks,
-                      bool printEntryBlockArgs) override {
+  /// Print a region.
+  void printRegion(const Region &blocks, bool printEntryBlockArgs) override {
     os << " {\n";
     if (!blocks.empty()) {
       auto *entryBlock = &blocks.front();
@@ -1164,7 +1163,9 @@ FunctionPrinter::FunctionPrinter(const Function *function,
     numberValuesInBlock(block);
 }
 
-/// Number all of the SSA values in the specified block list.
+/// Number all of the SSA values in the specified block.  Values get numbered
+/// continuously throughout regions.  In particular, we traverse the regions
+/// held by operations and number values in depth-first pre-order.
 void FunctionPrinter::numberValuesInBlock(const Block &block) {
   // Each block gets a unique ID, and all of the instructions within it get
   // numbered as well.
@@ -1178,8 +1179,8 @@ void FunctionPrinter::numberValuesInBlock(const Block &block) {
     // result.
     if (inst.getNumResults() != 0)
       numberValueID(inst.getResult(0));
-    for (auto &blockList : inst.getBlockLists())
-      for (const auto &block : blockList)
+    for (auto &region : inst.getRegions())
+      for (const auto &block : region)
         numberValuesInBlock(block);
   }
 }
@@ -1219,9 +1220,9 @@ void FunctionPrinter::numberValueID(const Value *value) {
       // argument is to an entry block of an operation region, give it an 'i'
       // name.
       if (auto *block = cast<BlockArgument>(value)->getOwner()) {
-        auto *parentBlockList = block->getParent();
-        if (parentBlockList && block == &parentBlockList->front()) {
-          if (parentBlockList->getContainingFunction())
+        auto *parentRegion = block->getParent();
+        if (parentRegion && block == &parentRegion->front()) {
+          if (parentRegion->getContainingFunction())
             specialName << "arg" << nextArgumentID++;
           else
             specialName << "i" << nextRegionArgumentID++;
@@ -1279,7 +1280,7 @@ void FunctionPrinter::print() {
   printTrailingLocation(function->getLoc());
 
   if (!function->empty()) {
-    printBlockList(function->getBlockList(), /*printEntryBlockArgs=*/false);
+    printRegion(function->getBody(), /*printEntryBlockArgs=*/false);
     os << "\n";
   }
   os << '\n';
@@ -1496,9 +1497,9 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
     os << ')';
   }
 
-  // Print any trailing block lists.
-  for (auto &blockList : op->getBlockLists())
-    printBlockList(blockList, /*printEntryBlockArgs=*/true);
+  // Print any trailing regions.
+  for (auto &region : op->getRegions())
+    printRegion(region, /*printEntryBlockArgs=*/true);
 }
 
 void FunctionPrinter::printSuccessorAndUseList(const Instruction *term,

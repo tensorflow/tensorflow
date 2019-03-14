@@ -2196,9 +2196,9 @@ public:
   // Block references.
 
   ParseResult
-  parseOperationBlockList(SmallVectorImpl<Block *> &results,
-                          ArrayRef<std::pair<SSAUseInfo, Type>> entryArguments);
-  ParseResult parseBlockListBody(SmallVectorImpl<Block *> &results);
+  parseOperationRegion(SmallVectorImpl<Block *> &results,
+                       ArrayRef<std::pair<SSAUseInfo, Type>> entryArguments);
+  ParseResult parseRegionBody(SmallVectorImpl<Block *> &results);
   ParseResult parseBlock(Block *&block);
   ParseResult parseBlockBody(Block *block);
 
@@ -2279,7 +2279,7 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 
   // Parse the remaining list of blocks.
   SmallVector<Block *, 16> blocks;
-  if (parseBlockListBody(blocks))
+  if (parseRegionBody(blocks))
     return ParseFailure;
   function->getBlocks().insert(function->end(), blocks.begin(), blocks.end());
 
@@ -2307,14 +2307,14 @@ ParseResult FunctionParser::parseFunctionBody(bool hadNamedArguments) {
 ///
 ///   block-list ::= '{' block-list-body
 ///
-ParseResult FunctionParser::parseOperationBlockList(
+ParseResult FunctionParser::parseOperationRegion(
     SmallVectorImpl<Block *> &results,
     ArrayRef<std::pair<FunctionParser::SSAUseInfo, Type>> entryArguments) {
   // Parse the '{'.
-  if (parseToken(Token::l_brace, "expected '{' to begin block list"))
+  if (parseToken(Token::l_brace, "expected '{' to begin a region"))
     return ParseFailure;
 
-  // Check for an empty block list.
+  // Check for an empty region.
   if (entryArguments.empty() && consumeIf(Token::r_brace))
     return ParseSuccess;
   Block *currentBlock = builder.getInsertionBlock();
@@ -2342,9 +2342,9 @@ ParseResult FunctionParser::parseOperationBlockList(
     return emitError("entry block arguments were already defined");
   }
 
-  // Parse the rest of the block list.
+  // Parse the rest of the region.
   results.push_back(block);
-  if (parseBlockListBody(results))
+  if (parseRegionBody(results))
     return ParseFailure;
 
   // Reset insertion point to the current block.
@@ -2352,13 +2352,12 @@ ParseResult FunctionParser::parseOperationBlockList(
   return ParseSuccess;
 }
 
-/// Block list.
+/// Region.
 ///
-///   block-list-body ::= block* '}'
+///   region-body ::= block* '}'
 ///
-ParseResult
-FunctionParser::parseBlockListBody(SmallVectorImpl<Block *> &results) {
-  // Parse the block list.
+ParseResult FunctionParser::parseRegionBody(SmallVectorImpl<Block *> &results) {
+  // Parse the list of blocks.
   while (!consumeIf(Token::r_brace)) {
     Block *newBlock = nullptr;
     if (parseBlock(newBlock)) {
@@ -2440,7 +2439,7 @@ Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
   auto name = OperationName("placeholder", getContext());
   auto *inst = Instruction::create(
       getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
-      /*attributes=*/{}, /*successors=*/{}, /*numBlockLists=*/0,
+      /*attributes=*/{}, /*successors=*/{}, /*numRegions=*/0,
       /*resizableOperandList=*/false, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);
@@ -2888,25 +2887,25 @@ Instruction *FunctionParser::parseGenericOperation() {
     result.addSuccessor(successor, operands);
   }
 
-  // Parse the optional block lists for this operation.
+  // Parse the optional regions for this operation.
   std::vector<SmallVector<Block *, 2>> blocks;
   while (getToken().is(Token::l_brace)) {
     SmallVector<Block *, 2> newBlocks;
-    if (parseOperationBlockList(newBlocks, /*entryArguments=*/llvm::None)) {
-      for (auto &blockList : blocks)
-        cleanupInvalidBlocks(blockList);
+    if (parseOperationRegion(newBlocks, /*entryArguments=*/llvm::None)) {
+      for (auto &region : blocks)
+        cleanupInvalidBlocks(region);
       return nullptr;
     }
     blocks.emplace_back(newBlocks);
   }
-  result.reserveBlockLists(blocks.size());
+  result.reserveRegions(blocks.size());
 
   auto *opInst = builder.createOperation(result);
 
-  // Initialize the parsed block lists.
+  // Initialize the parsed regions.
   for (unsigned i = 0, e = blocks.size(); i != e; ++i) {
-    auto &blockList = opInst->getBlockList(i).getBlocks();
-    blockList.insert(blockList.end(), blocks[i].begin(), blocks[i].end());
+    auto &region = opInst->getRegion(i).getBlocks();
+    region.insert(region.end(), blocks[i].begin(), blocks[i].end());
   }
   return opInst;
 }
@@ -2922,23 +2921,22 @@ public:
     if (opDefinition->parseAssembly(this, opState))
       return true;
 
-    // Check that enough block lists were reserved for those that were parsed.
-    if (parsedBlockLists.size() > opState->numBlockLists) {
+    // Check that enough regions were reserved for those that were parsed.
+    if (parsedRegions.size() > opState->numRegions) {
       return emitError(
           nameLoc,
-          "parsed more block lists than those reserved in the operation state");
+          "parsed more regions than those reserved in the operation state");
     }
 
     // Check there were no dangling entry block arguments.
-    if (!parsedBlockListEntryArguments.empty()) {
+    if (!parsedRegionEntryArguments.empty()) {
       return emitError(
-          nameLoc,
-          "no block list was attached to parsed entry block arguments");
+          nameLoc, "no region was attached to parsed entry block arguments");
     }
 
     // Check that none of the operands of the current operation reference an
-    // entry block argument for any of the block lists.
-    for (auto *entryArg : parsedBlockListEntryArgumentPlaceholders)
+    // entry block argument for any of the region.
+    for (auto *entryArg : parsedRegionEntryArgumentPlaceholders)
       if (llvm::is_contained(opState->operands, entryArg))
         return emitError(nameLoc, "operand use before it's defined");
 
@@ -3144,21 +3142,19 @@ public:
     return result == nullptr;
   }
 
-  /// Parses a list of blocks.
-  bool parseBlockList() override {
-    // Parse the block list.
+  /// Parses a region.
+  bool parseRegion() override {
     SmallVector<Block *, 2> results;
-    if (parser.parseOperationBlockList(results, parsedBlockListEntryArguments))
+    if (parser.parseOperationRegion(results, parsedRegionEntryArguments))
       return true;
 
-    parsedBlockListEntryArguments.clear();
-    parsedBlockLists.emplace_back(results);
+    parsedRegionEntryArguments.clear();
+    parsedRegions.emplace_back(results);
     return false;
   }
 
-  /// Parses an argument for the entry block of the next block list to be
-  /// parsed.
-  bool parseBlockListEntryBlockArgument(Type argType) override {
+  /// Parses an argument for the entry block of the next region to be parsed.
+  bool parseRegionEntryBlockArgument(Type argType) override {
     SmallVector<Value *, 1> argValues;
     OperandType operand;
     if (parseOperand(operand))
@@ -3168,10 +3164,10 @@ public:
     FunctionParser::SSAUseInfo operandInfo = {operand.name, operand.number,
                                               operand.location};
     if (auto *value = parser.resolveSSAUse(operandInfo, argType)) {
-      parsedBlockListEntryArguments.emplace_back(operandInfo, argType);
+      parsedRegionEntryArguments.emplace_back(operandInfo, argType);
       // Track each of the placeholders so that we can detect invalid references
-      // to block list arguments.
-      parsedBlockListEntryArgumentPlaceholders.emplace_back(value);
+      // to region arguments.
+      parsedRegionEntryArgumentPlaceholders.emplace_back(value);
       return false;
     }
 
@@ -3199,10 +3195,10 @@ public:
 
   /// Emit a diagnostic at the specified location and return true.
   bool emitError(llvm::SMLoc loc, const Twine &message) override {
-    // If we emit an error, then cleanup any parsed block lists.
-    for (auto &blockList : parsedBlockLists)
-      parser.cleanupInvalidBlocks(blockList);
-    parsedBlockLists.clear();
+    // If we emit an error, then cleanup any parsed regions.
+    for (auto &region : parsedRegions)
+      parser.cleanupInvalidBlocks(region);
+    parsedRegions.clear();
 
     parser.emitError(loc, "custom op '" + Twine(opName) + "' " + message);
     emittedError = true;
@@ -3211,16 +3207,16 @@ public:
 
   bool didEmitError() const { return emittedError; }
 
-  /// Returns the block lists that were parsed.
-  MutableArrayRef<SmallVector<Block *, 2>> getParsedBlockLists() {
-    return parsedBlockLists;
+  /// Returns the regions that were parsed.
+  MutableArrayRef<SmallVector<Block *, 2>> getParsedRegions() {
+    return parsedRegions;
   }
 
 private:
-  std::vector<SmallVector<Block *, 2>> parsedBlockLists;
+  std::vector<SmallVector<Block *, 2>> parsedRegions;
   SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 2>
-      parsedBlockListEntryArguments;
-  SmallVector<Value *, 2> parsedBlockListEntryArgumentPlaceholders;
+      parsedRegionEntryArguments;
+  SmallVector<Value *, 2> parsedRegionEntryArgumentPlaceholders;
   SMLoc nameLoc;
   StringRef opName;
   FunctionParser &parser;
@@ -3271,12 +3267,12 @@ Instruction *FunctionParser::parseCustomOperation() {
   // Otherwise, we succeeded.  Use the state it parsed as our op information.
   auto *opInst = builder.createOperation(opState);
 
-  // Resolve any parsed block lists.
-  auto parsedBlockLists = opAsmParser.getParsedBlockLists();
-  for (unsigned i = 0, e = parsedBlockLists.size(); i != e; ++i) {
-    auto &opBlockList = opInst->getBlockList(i).getBlocks();
-    opBlockList.insert(opBlockList.end(), parsedBlockLists[i].begin(),
-                       parsedBlockLists[i].end());
+  // Resolve any parsed regions.
+  auto parsedRegions = opAsmParser.getParsedRegions();
+  for (unsigned i = 0, e = parsedRegions.size(); i != e; ++i) {
+    auto &opRegion = opInst->getRegion(i).getBlocks();
+    opRegion.insert(opRegion.end(), parsedRegions[i].begin(),
+                    parsedRegions[i].end());
   }
   return opInst;
 }

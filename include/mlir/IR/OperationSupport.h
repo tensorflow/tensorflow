@@ -229,7 +229,7 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
   /// Successors of this operation and their respective operands.
   SmallVector<Block *, 1> successors;
-  unsigned numBlockLists = 0;
+  unsigned numRegions = 0;
   /// If the operation has a resizable operand list.
   bool resizableOperandList = false;
 
@@ -243,14 +243,14 @@ public:
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<Value *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes,
-                 ArrayRef<Block *> successors = {}, unsigned numBlockLists = 0,
+                 ArrayRef<Block *> successors = {}, unsigned numRegions = 0,
                  bool resizableOperandList = false)
       : context(context), location(location), name(name, context),
         operands(operands.begin(), operands.end()),
         types(types.begin(), types.end()),
         attributes(attributes.begin(), attributes.end()),
         successors(successors.begin(), successors.end()),
-        numBlockLists(numBlockLists) {}
+        numRegions(numRegions) {}
 
   void addOperands(ArrayRef<Value *> newOperands) {
     assert(successors.empty() &&
@@ -279,8 +279,8 @@ public:
     operands.append(succOperands.begin(), succOperands.end());
   }
 
-  /// Add a new block list with the specified blocks.
-  void reserveBlockLists(unsigned numReserved) { numBlockLists += numReserved; }
+  /// Reserve space for new regions.
+  void reserveRegions(unsigned numReserved) { numRegions += numReserved; }
 
   /// Sets the operand list of the operation as resizable.
   void setOperandListToResizable(bool isResizable = true) {

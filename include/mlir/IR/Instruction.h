@@ -49,15 +49,15 @@ using BlockOperand = IROperandImpl<Block>;
 class Instruction final
     : public llvm::ilist_node_with_parent<Instruction, Block>,
       private llvm::TrailingObjects<Instruction, InstResult, BlockOperand,
-                                    unsigned, BlockList,
-                                    detail::OperandStorage> {
+                                    unsigned, Region, detail::OperandStorage> {
 public:
   /// Create a new Instruction with the specific fields.
-  static Instruction *
-  create(Location location, OperationName name, ArrayRef<Value *> operands,
-         ArrayRef<Type> resultTypes, ArrayRef<NamedAttribute> attributes,
-         ArrayRef<Block *> successors, unsigned numBlockLists,
-         bool resizableOperandList, MLIRContext *context);
+  static Instruction *create(Location location, OperationName name,
+                             ArrayRef<Value *> operands,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<NamedAttribute> attributes,
+                             ArrayRef<Block *> successors, unsigned numRegions,
+                             bool resizableOperandList, MLIRContext *context);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() const { return name; }
@@ -279,24 +279,24 @@ public:
   // Blocks
   //===--------------------------------------------------------------------===//
 
-  /// Returns the number of block lists held by this operation.
-  unsigned getNumBlockLists() const { return numBlockLists; }
+  /// Returns the number of regions held by this operation.
+  unsigned getNumRegions() const { return numRegions; }
 
-  /// Returns the block lists held by this operation.
-  MutableArrayRef<BlockList> getBlockLists() {
-    return {getTrailingObjects<BlockList>(), numBlockLists};
+  /// Returns the regions held by this operation.
+  MutableArrayRef<Region> getRegions() {
+    return {getTrailingObjects<Region>(), numRegions};
   }
-  ArrayRef<BlockList> getBlockLists() const {
-    return const_cast<Instruction *>(this)->getBlockLists();
+  ArrayRef<Region> getRegions() const {
+    return const_cast<Instruction *>(this)->getRegions();
   }
 
-  /// Returns the block list held by this operation at position 'index'.
-  BlockList &getBlockList(unsigned index) {
-    assert(index < numBlockLists && "invalid block list index");
-    return getBlockLists()[index];
+  /// Returns the region held by this operation at position 'index'.
+  Region &getRegion(unsigned index) {
+    assert(index < numRegions && "invalid region index");
+    return getRegions()[index];
   }
-  const BlockList &getBlockList(unsigned index) const {
-    return const_cast<Instruction *>(this)->getBlockList(index);
+  const Region &getRegion(unsigned index) const {
+    return const_cast<Instruction *>(this)->getRegion(index);
   }
 
   //===--------------------------------------------------------------------===//
@@ -528,7 +528,7 @@ public:
 
 protected:
   Instruction(Location location, OperationName name, unsigned numResults,
-              unsigned numSuccessors, unsigned numBlockLists,
+              unsigned numSuccessors, unsigned numRegions,
               ArrayRef<NamedAttribute> attributes, MLIRContext *context);
 
   // Instructions are deleted through the destroy() member because they are
@@ -558,7 +558,7 @@ private:
   /// O(1) local dominance checks between instructions.
   mutable unsigned orderIndex = 0;
 
-  const unsigned numResults, numSuccs, numBlockLists;
+  const unsigned numResults, numSuccs, numRegions;
 
   /// This holds the name of the operation.
   OperationName name;
@@ -577,16 +577,14 @@ private:
 
   // This stuff is used by the TrailingObjects template.
   friend llvm::TrailingObjects<Instruction, InstResult, BlockOperand, unsigned,
-                               BlockList, detail::OperandStorage>;
+                               Region, detail::OperandStorage>;
   size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
   }
   size_t numTrailingObjects(OverloadToken<BlockOperand>) const {
     return numSuccs;
   }
-  size_t numTrailingObjects(OverloadToken<BlockList>) const {
-    return numBlockLists;
-  }
+  size_t numTrailingObjects(OverloadToken<Region>) const { return numRegions; }
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
 

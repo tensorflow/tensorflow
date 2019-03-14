@@ -134,12 +134,13 @@ void detail::OperandStorage::grow(ResizableStorage &resizeUtil,
 //===----------------------------------------------------------------------===//
 
 /// Create a new Instruction with the specific fields.
-Instruction *
-Instruction::create(Location location, OperationName name,
-                    ArrayRef<Value *> operands, ArrayRef<Type> resultTypes,
-                    ArrayRef<NamedAttribute> attributes,
-                    ArrayRef<Block *> successors, unsigned numBlockLists,
-                    bool resizableOperandList, MLIRContext *context) {
+Instruction *Instruction::create(Location location, OperationName name,
+                                 ArrayRef<Value *> operands,
+                                 ArrayRef<Type> resultTypes,
+                                 ArrayRef<NamedAttribute> attributes,
+                                 ArrayRef<Block *> successors,
+                                 unsigned numRegions, bool resizableOperandList,
+                                 MLIRContext *context) {
   unsigned numSuccessors = successors.size();
 
   // Input operands are nullptr-separated for each successor, the null operands
@@ -147,9 +148,9 @@ Instruction::create(Location location, OperationName name,
   unsigned numOperands = operands.size() - numSuccessors;
 
   // Compute the byte size for the instruction and the operand storage.
-  auto byteSize = totalSizeToAlloc<InstResult, BlockOperand, unsigned,
-                                   BlockList, detail::OperandStorage>(
-      resultTypes.size(), numSuccessors, numSuccessors, numBlockLists,
+  auto byteSize = totalSizeToAlloc<InstResult, BlockOperand, unsigned, Region,
+                                   detail::OperandStorage>(
+      resultTypes.size(), numSuccessors, numSuccessors, numRegions,
       /*detail::OperandStorage*/ 1);
   byteSize += llvm::alignTo(detail::OperandStorage::additionalAllocSize(
                                 numOperands, resizableOperandList),
@@ -158,15 +159,15 @@ Instruction::create(Location location, OperationName name,
 
   // Create the new Instruction.
   auto inst = ::new (rawMem)
-      Instruction(location, name, resultTypes.size(), numSuccessors,
-                  numBlockLists, attributes, context);
+      Instruction(location, name, resultTypes.size(), numSuccessors, numRegions,
+                  attributes, context);
 
   assert((numSuccessors == 0 || !inst->isKnownNonTerminator()) &&
          "unexpected successors in a non-terminator operation");
 
-  // Initialize the block lists.
-  for (unsigned i = 0; i != numBlockLists; ++i)
-    new (&inst->getBlockList(i)) BlockList(inst);
+  // Initialize the regions.
+  for (unsigned i = 0; i != numRegions; ++i)
+    new (&inst->getRegion(i)) Region(inst);
 
   // Initialize the results and operands.
   new (&inst->getOperandStorage())
@@ -238,11 +239,11 @@ Instruction::create(Location location, OperationName name,
 
 Instruction::Instruction(Location location, OperationName name,
                          unsigned numResults, unsigned numSuccessors,
-                         unsigned numBlockLists,
+                         unsigned numRegions,
                          ArrayRef<NamedAttribute> attributes,
                          MLIRContext *context)
     : location(location), numResults(numResults), numSuccs(numSuccessors),
-      numBlockLists(numBlockLists), name(name), attrs(context, attributes) {}
+      numRegions(numRegions), name(name), attrs(context, attributes) {}
 
 // Instructions are deleted through the destroy() member because they are
 // allocated via malloc.
@@ -259,9 +260,9 @@ Instruction::~Instruction() {
   for (auto &successor : getBlockOperands())
     successor.~BlockOperand();
 
-  // Explicitly destroy the block list.
-  for (auto &blockList : getBlockLists())
-    blockList.~BlockList();
+  // Explicitly destroy the regions.
+  for (auto &region : getRegions())
+    region.~Region();
 }
 
 /// Destroy this instruction or one of its subclasses.
@@ -301,16 +302,16 @@ void Instruction::walk(const std::function<void(Instruction *)> &callback) {
   callback(this);
 
   // Visit any internal instructions.
-  for (auto &blockList : getBlockLists())
-    for (auto &block : blockList)
+  for (auto &region : getRegions())
+    for (auto &block : region)
       block.walk(callback);
 }
 
 void Instruction::walkPostOrder(
     const std::function<void(Instruction *)> &callback) {
   // Visit any internal instructions.
-  for (auto &blockList : llvm::reverse(getBlockLists()))
-    for (auto &block : llvm::reverse(blockList))
+  for (auto &region : llvm::reverse(getRegions()))
+    for (auto &block : llvm::reverse(region))
       block.walkPostOrder(callback);
 
   // Visit the current instruction.
@@ -465,8 +466,8 @@ void Instruction::dropAllReferences() {
   for (auto &op : getInstOperands())
     op.drop();
 
-  for (auto &blockList : getBlockLists())
-    for (Block &block : blockList)
+  for (auto &region : getRegions())
+    for (Block &block : region)
       block.dropAllReferences();
 
   for (auto &dest : getBlockOperands())
@@ -603,14 +604,14 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
   for (auto *result : getResults())
     resultTypes.push_back(result->getType());
 
-  unsigned numBlockLists = getNumBlockLists();
+  unsigned numRegions = getNumRegions();
   auto *newOp = Instruction::create(getLoc(), getName(), operands, resultTypes,
-                                    getAttrs(), successors, numBlockLists,
+                                    getAttrs(), successors, numRegions,
                                     hasResizableOperandsList(), context);
 
-  // Clone the block lists.
-  for (unsigned i = 0; i != numBlockLists; ++i)
-    getBlockList(i).cloneInto(&newOp->getBlockList(i), mapper, context);
+  // Clone the regions.
+  for (unsigned i = 0; i != numRegions; ++i)
+    getRegion(i).cloneInto(&newOp->getRegion(i), mapper, context);
 
   // Remember the mapping of any results.
   for (unsigned i = 0, e = getNumResults(); i != e; ++i)

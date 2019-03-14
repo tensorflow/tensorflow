@@ -787,7 +787,7 @@ func @verbose_if(%N: index) {
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index
     // CHECK-NEXT: } else {
-  } { // The else block list.
+  } { // The else region.
     // CHECK-NEXT: "add"
     %z = "add"(%c, %c) : (index, index) -> index
   }

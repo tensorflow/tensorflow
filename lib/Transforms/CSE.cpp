@@ -109,7 +109,7 @@ struct CSE : public FunctionPass<CSE> {
   bool simplifyOperation(Instruction *op);
 
   void simplifyBlock(DominanceInfo &domInfo, Block *bb);
-  void simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList);
+  void simplifyRegion(DominanceInfo &domInfo, Region &region);
 
   void runOnFunction() override;
 
@@ -127,7 +127,7 @@ bool CSE::simplifyOperation(Instruction *op) {
   // Don't simplify operations with nested blocks. We don't currently model
   // equality comparisons correctly among other things. It is also unclear
   // whether we would want to CSE such operations.
-  if (op->getNumBlockLists() != 0)
+  if (op->getNumRegions() != 0)
     return false;
 
   // TODO(riverriddle) We currently only eliminate non side-effecting
@@ -166,25 +166,25 @@ bool CSE::simplifyOperation(Instruction *op) {
 
 void CSE::simplifyBlock(DominanceInfo &domInfo, Block *bb) {
   for (auto &i : *bb) {
-    // If the operation is simplified, we don't process any held block lists.
+    // If the operation is simplified, we don't process any held regions.
     if (simplifyOperation(&i))
       continue;
 
     // Simplify any held blocks.
-    for (auto &blockList : i.getBlockLists())
-      simplifyBlockList(domInfo, blockList);
+    for (auto &region : i.getRegions())
+      simplifyRegion(domInfo, region);
   }
 }
 
-void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
-  // If the block list is empty there is nothing to do.
-  if (blockList.empty())
+void CSE::simplifyRegion(DominanceInfo &domInfo, Region &region) {
+  // If the region is empty there is nothing to do.
+  if (region.empty())
     return;
 
-  // If the block list only contains one block, then simplify it directly.
-  if (std::next(blockList.begin()) == blockList.end()) {
+  // If the region only contains one block, then simplify it directly.
+  if (std::next(region.begin()) == region.end()) {
     ScopedMapTy::ScopeTy scope(knownValues);
-    simplifyBlock(domInfo, &blockList.front());
+    simplifyBlock(domInfo, &region.front());
     return;
   }
 
@@ -196,9 +196,9 @@ void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
   // http://lists.llvm.org/pipermail/llvm-commits/Week-of-Mon-20120116/135228.html
   std::deque<std::unique_ptr<CFGStackNode>> stack;
 
-  // Process the nodes of the dom tree for this blocklist.
+  // Process the nodes of the dom tree for this region.
   stack.emplace_back(std::make_unique<CFGStackNode>(
-      knownValues, domInfo.getRootNode(&blockList)));
+      knownValues, domInfo.getRootNode(&region)));
 
   while (!stack.empty()) {
     auto &currentNode = stack.back();
@@ -223,8 +223,7 @@ void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
 }
 
 void CSE::runOnFunction() {
-  simplifyBlockList(getAnalysis<DominanceInfo>(),
-                    getFunction()->getBlockList());
+  simplifyRegion(getAnalysis<DominanceInfo>(), getFunction()->getBody());
 
   // If no operations were erased, then we mark all analyses as preserved.
   if (opsToErase.empty()) {

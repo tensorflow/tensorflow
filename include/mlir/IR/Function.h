@@ -80,37 +80,37 @@ public:
   // Body Handling
   //===--------------------------------------------------------------------===//
 
-  BlockList &getBlockList() { return blocks; }
-  const BlockList &getBlockList() const { return blocks; }
+  Region &getBody() { return body; }
+  const Region &getBody() const { return body; }
 
   /// This is the list of blocks in the function.
-  using BlockListType = llvm::iplist<Block>;
-  BlockListType &getBlocks() { return blocks.getBlocks(); }
-  const BlockListType &getBlocks() const { return blocks.getBlocks(); }
+  using RegionType = llvm::iplist<Block>;
+  RegionType &getBlocks() { return body.getBlocks(); }
+  const RegionType &getBlocks() const { return body.getBlocks(); }
 
   // Iteration over the block in the function.
-  using iterator = BlockListType::iterator;
-  using const_iterator = BlockListType::const_iterator;
-  using reverse_iterator = BlockListType::reverse_iterator;
-  using const_reverse_iterator = BlockListType::const_reverse_iterator;
+  using iterator = RegionType::iterator;
+  using const_iterator = RegionType::const_iterator;
+  using reverse_iterator = RegionType::reverse_iterator;
+  using const_reverse_iterator = RegionType::const_reverse_iterator;
 
-  iterator begin() { return blocks.begin(); }
-  iterator end() { return blocks.end(); }
-  const_iterator begin() const { return blocks.begin(); }
-  const_iterator end() const { return blocks.end(); }
-  reverse_iterator rbegin() { return blocks.rbegin(); }
-  reverse_iterator rend() { return blocks.rend(); }
-  const_reverse_iterator rbegin() const { return blocks.rbegin(); }
-  const_reverse_iterator rend() const { return blocks.rend(); }
+  iterator begin() { return body.begin(); }
+  iterator end() { return body.end(); }
+  const_iterator begin() const { return body.begin(); }
+  const_iterator end() const { return body.end(); }
+  reverse_iterator rbegin() { return body.rbegin(); }
+  reverse_iterator rend() { return body.rend(); }
+  const_reverse_iterator rbegin() const { return body.rbegin(); }
+  const_reverse_iterator rend() const { return body.rend(); }
 
-  bool empty() const { return blocks.empty(); }
-  void push_back(Block *block) { blocks.push_back(block); }
-  void push_front(Block *block) { blocks.push_front(block); }
+  bool empty() const { return body.empty(); }
+  void push_back(Block *block) { body.push_back(block); }
+  void push_front(Block *block) { body.push_front(block); }
 
-  Block &back() { return blocks.back(); }
+  Block &back() { return body.back(); }
   const Block &back() const { return const_cast<Function *>(this)->back(); }
 
-  Block &front() { return blocks.front(); }
+  Block &front() { return body.front(); }
   const Block &front() const { return const_cast<Function *>(this)->front(); }
 
   //===--------------------------------------------------------------------===//
@@ -329,8 +329,8 @@ private:
   /// The attributes lists for each of the function arguments.
   std::vector<NamedAttributeList> argAttrs;
 
-  /// The contents of the body.
-  BlockList blocks;
+  /// The body of the function.
+  Region body;
 
   void operator=(const Function &) = delete;
   friend struct llvm::ilist_traits<Function>;

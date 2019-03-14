@@ -462,8 +462,8 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
       return getInstAtPosition(positions, level + 1,
                                childAffineForOp->getBody());
 
-    for (auto &blockList : inst.getBlockLists()) {
-      for (auto &b : blockList)
+    for (auto &region : inst.getRegions()) {
+      for (auto &b : region)
         if (auto *ret = getInstAtPosition(positions, level + 1, &b))
           return ret;
     }

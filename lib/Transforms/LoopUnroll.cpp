@@ -109,8 +109,8 @@ void LoopUnroll::runOnFunction() {
     }
     bool walkPostOrder(Instruction *opInst) {
       bool hasInnerLoops = false;
-      for (auto &blockList : opInst->getBlockLists())
-        for (auto &block : blockList)
+      for (auto &region : opInst->getRegions())
+        for (auto &block : region)
           hasInnerLoops |= walkPostOrder(block.begin(), block.end());
       if (opInst->isa<AffineForOp>()) {
         if (!hasInnerLoops)

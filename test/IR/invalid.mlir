@@ -222,7 +222,7 @@ func @malformed_for_to() {
 
 func @incomplete_for() {
   for %i = 1 to 10 step 2
-}        // expected-error {{expected '{' to begin block list}}
+}        // expected-error {{expected '{' to begin a region}}
 
 // -----
 

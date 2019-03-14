@@ -306,8 +306,8 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
   }
 
   // Verify that all child blocks are ok.
-  for (auto &blockList : op.getBlockLists())
-    for (auto &b : blockList)
+  for (auto &region : op.getRegions())
+    for (auto &b : region)
       if (verifyBlock(b, /*isTopLevel=*/false))
         return true;
 
@@ -338,8 +338,8 @@ bool FuncVerifier::verifyInstDominance(const Instruction &inst) {
   }
 
   // Verify the dominance of each of the nested blocks within this instruction.
-  for (auto &blockList : inst.getBlockLists())
-    for (auto &block : blockList)
+  for (auto &region : inst.getRegions())
+    for (auto &block : region)
       if (verifyDominance(block))
         return true;
 

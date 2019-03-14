@@ -130,7 +130,7 @@ struct LoopNestStateCollector {
     instToWalk->walk([&](Instruction *opInst) {
       if (opInst->isa<AffineForOp>())
         forOps.push_back(opInst->cast<AffineForOp>());
-      else if (opInst->getNumBlockLists() != 0)
+      else if (opInst->getNumRegions() != 0)
         hasNonForRegion = true;
       else if (opInst->isa<LoadOp>())
         loadOpInsts.push_back(opInst);
@@ -670,7 +670,7 @@ bool MemRefDependenceGraph::init(Function *f) {
       auto *memref = inst.cast<StoreOp>()->getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
-    } else if (inst.getNumBlockLists() != 0) {
+    } else if (inst.getNumRegions() != 0) {
       // Return false if another region is found (not currently supported).
       return false;
     } else if (inst.getNumResults() > 0 && !inst.use_empty()) {

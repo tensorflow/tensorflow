@@ -553,8 +553,8 @@ void AffineForOp::build(Builder *builder, OperationState *result,
                        builder->getAffineMapAttr(ubMap));
   result->addOperands(ubOperands);
 
-  // Reserve a block list for the body.
-  result->reserveBlockLists(/*numReserved=*/1);
+  // Reserve a region for the body.
+  result->reserveRegions(/*numReserved=*/1);
 
   // Set the operands list as resizable so that we can freely modify the bounds.
   result->setOperandListToResizable();
@@ -568,12 +568,11 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
 }
 
 bool AffineForOp::verify() const {
-  const auto &bodyBlockList = getInstruction()->getBlockList(0);
+  const auto &bodyRegion = getInstruction()->getRegion(0);
 
-  // The body block list must contain a single basic block.
-  if (bodyBlockList.empty() ||
-      std::next(bodyBlockList.begin()) != bodyBlockList.end())
-    return emitOpError("expected body block list to have a single block");
+  // The body region must contain a single basic block.
+  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
+    return emitOpError("expected body region to have a single block");
 
   // Check that the body defines as single block argument for the induction
   // variable.
@@ -701,7 +700,7 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
 bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   auto &builder = parser->getBuilder();
   // Parse the induction variable followed by '='.
-  if (parser->parseBlockListEntryBlockArgument(builder.getIndexType()) ||
+  if (parser->parseRegionEntryBlockArgument(builder.getIndexType()) ||
       parser->parseEqual())
     return true;
 
@@ -730,9 +729,9 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
           "expected step to be representable as a positive signed integer");
   }
 
-  // Parse the body block list.
-  result->reserveBlockLists(/*numReserved=*/1);
-  if (parser->parseBlockList())
+  // Parse the body region.
+  result->reserveRegions(/*numReserved=*/1);
+  if (parser->parseRegion())
     return true;
 
   // Parse the optional attribute list.
@@ -793,8 +792,8 @@ void AffineForOp::print(OpAsmPrinter *p) const {
 
   if (getStep() != 1)
     *p << " step " << getStep();
-  p->printBlockList(getInstruction()->getBlockList(0),
-                    /*printEntryBlockArgs=*/false);
+  p->printRegion(getInstruction()->getRegion(0),
+                 /*printEntryBlockArgs=*/false);
   p->printOptionalAttrDict(getAttrs(),
                            /*elidedAttrs=*/{getLowerBoundAttrName(),
                                             getUpperBoundAttrName(),
@@ -872,14 +871,14 @@ void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 Block *AffineForOp::createBody() {
-  auto &bodyBlockList = getBlockList();
-  assert(bodyBlockList.empty() && "expected no existing body blocks");
+  auto &bodyRegion = getRegion();
+  assert(bodyRegion.empty() && "expected no existing body blocks");
 
   // Create a new block for the body, and add an argument for the induction
   // variable.
   Block *body = new Block();
   body->addArgument(IndexType::get(getInstruction()->getContext()));
-  bodyBlockList.push_back(body);
+  bodyRegion.push_back(body);
   return body;
 }
 
@@ -1040,8 +1039,8 @@ void AffineIfOp::build(Builder *builder, OperationState *result,
   result->addAttribute(getConditionAttrName(), IntegerSetAttr::get(condition));
   result->addOperands(conditionOperands);
 
-  // Reserve 2 block lists, one for the 'then' and one for the 'else' regions.
-  result->reserveBlockLists(2);
+  // Reserve 2 regions, one for the 'then' and one for the 'else' regions.
+  result->reserveRegions(2);
 }
 
 bool AffineIfOp::verify() const {
@@ -1061,20 +1060,19 @@ bool AffineIfOp::verify() const {
                                     condition.getNumDims()))
     return true;
 
-  // Verify that the entry of each child blocklist does not have arguments.
-  for (const auto &blockList : getInstruction()->getBlockLists()) {
-    if (blockList.empty())
+  // Verify that the entry of each child region does not have arguments.
+  for (const auto &region : getInstruction()->getRegions()) {
+    if (region.empty())
       continue;
 
     // TODO(riverriddle) We currently do not allow multiple blocks in child
-    // block lists.
-    if (std::next(blockList.begin()) != blockList.end())
-      return emitOpError(
-          "expects only one block per 'then' or 'else' block list");
-    if (blockList.front().back().isKnownTerminator())
+    // regions.
+    if (std::next(region.begin()) != region.end())
+      return emitOpError("expects only one block per 'then' or 'else' regions");
+    if (region.front().back().isKnownTerminator())
       return emitOpError("expects region block to not have a terminator");
 
-    for (const auto &b : blockList)
+    for (const auto &b : region)
       if (b.getNumArguments() != 0)
         return emitOpError(
             "requires that child entry blocks have no arguments");
@@ -1102,13 +1100,13 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
         parser->getNameLoc(),
         "symbol operand count and integer set symbol count must match");
 
-  // Parse the 'then' block list.
-  if (parser->parseBlockList())
+  // Parse the 'then' region.
+  if (parser->parseRegion())
     return true;
 
-  // If we find an 'else' keyword then parse the else block list.
+  // If we find an 'else' keyword then parse the 'else' region.
   if (!parser->parseOptionalKeyword("else")) {
-    if (parser->parseBlockList())
+    if (parser->parseRegion())
       return true;
   }
 
@@ -1116,8 +1114,8 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   if (parser->parseOptionalAttributeDict(result->attributes))
     return true;
 
-  // Reserve 2 block lists, one for the 'then' and one for the 'else' regions.
-  result->reserveBlockLists(2);
+  // Reserve 2 regions, one for the 'then' and one for the 'else' regions.
+  result->reserveRegions(2);
   return false;
 }
 
@@ -1126,13 +1124,13 @@ void AffineIfOp::print(OpAsmPrinter *p) const {
   *p << "if " << conditionAttr;
   printDimAndSymbolList(operand_begin(), operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
-  p->printBlockList(getInstruction()->getBlockList(0));
+  p->printRegion(getInstruction()->getRegion(0));
 
-  // Print the 'else' block list if it has any blocks.
-  const auto &elseBlockList = getInstruction()->getBlockList(1);
-  if (!elseBlockList.empty()) {
+  // Print the 'else' regions if it has any blocks.
+  const auto &elseRegion = getInstruction()->getRegion(1);
+  if (!elseRegion.empty()) {
     *p << " else";
-    p->printBlockList(elseBlockList);
+    p->printRegion(elseRegion);
   }
 
   // Print the attribute list.
@@ -1148,11 +1146,7 @@ void AffineIfOp::setIntegerSet(IntegerSet newSet) {
 }
 
 /// Returns the list of 'then' blocks.
-BlockList &AffineIfOp::getThenBlocks() {
-  return getInstruction()->getBlockList(0);
-}
+Region &AffineIfOp::getThenBlocks() { return getInstruction()->getRegion(0); }
 
 /// Returns the list of 'else' blocks.
-BlockList &AffineIfOp::getElseBlocks() {
-  return getInstruction()->getBlockList(1);
-}
+Region &AffineIfOp::getElseBlocks() { return getInstruction()->getRegion(1); }

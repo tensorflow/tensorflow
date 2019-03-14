@@ -142,14 +142,12 @@ public:
   Block *createBody();
 
   /// Get the body of the AffineForOp.
-  Block *getBody() { return &getBlockList().front(); }
-  const Block *getBody() const { return &getBlockList().front(); }
+  Block *getBody() { return &getRegion().front(); }
+  const Block *getBody() const { return &getRegion().front(); }
 
-  /// Get the blocklist containing the body.
-  BlockList &getBlockList() { return getInstruction()->getBlockList(0); }
-  const BlockList &getBlockList() const {
-    return getInstruction()->getBlockList(0);
-  }
+  /// Get the body region of the AffineForOp.
+  Region &getRegion() { return getInstruction()->getRegion(0); }
+  const Region &getRegion() const { return getInstruction()->getRegion(0); }
 
   /// Returns the induction variable for this loop.
   Value *getInductionVar();
@@ -332,15 +330,15 @@ public:
   IntegerSet getIntegerSet() const;
   void setIntegerSet(IntegerSet newSet);
 
-  /// Returns the list of 'then' blocks.
-  BlockList &getThenBlocks();
-  const BlockList &getThenBlocks() const {
+  /// Returns the 'then' region.
+  Region &getThenBlocks();
+  const Region &getThenBlocks() const {
     return const_cast<AffineIfOp *>(this)->getThenBlocks();
   }
 
-  /// Returns the list of 'else' blocks.
-  BlockList &getElseBlocks();
-  const BlockList &getElseBlocks() const {
+  /// Returns the 'else' blocks.
+  Region &getElseBlocks();
+  const Region &getElseBlocks() const {
     return const_cast<AffineIfOp *>(this)->getElseBlocks();
   }
 

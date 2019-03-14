@@ -1,4 +1,4 @@
-//===- Block.cpp - MLIR Block and BlockList Classes -----------------------===//
+//===- Block.cpp - MLIR Block and Region Classes --------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -66,7 +66,7 @@ Function *Block::getFunction() {
 void Block::insertBefore(Block *block) {
   assert(!getParent() && "already inserted into a block!");
   assert(block->getParent() && "cannot insert before a block without a parent");
-  block->getParent()->getBlocks().insert(BlockList::iterator(block), this);
+  block->getParent()->getBlocks().insert(Region::iterator(block), this);
 }
 
 /// Unlink this Block from its Function and delete it.
@@ -262,26 +262,26 @@ Block *Block::splitBlock(iterator splitBefore) {
 }
 
 //===----------------------------------------------------------------------===//
-// BlockList
+// Region
 //===----------------------------------------------------------------------===//
 
-BlockList::BlockList(Function *container) : container(container) {}
+Region::Region(Function *container) : container(container) {}
 
-BlockList::BlockList(Instruction *container) : container(container) {}
+Region::Region(Instruction *container) : container(container) {}
 
-Instruction *BlockList::getContainingInst() {
+Instruction *Region::getContainingInst() {
   return container.dyn_cast<Instruction *>();
 }
 
-Function *BlockList::getContainingFunction() {
+Function *Region::getContainingFunction() {
   return container.dyn_cast<Function *>();
 }
 
-/// Clone the internal blocks from this block list into dest. Any
+/// Clone the internal blocks from this region into `dest`. Any
 /// cloned blocks are appended to the back of dest.
-void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
-                          MLIRContext *context) const {
-  assert(dest && "expected valid block list to clone into");
+void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
+                       MLIRContext *context) const {
+  assert(dest && "expected valid region to clone into");
 
   // If the list is empty there is nothing to clone.
   if (empty())
@@ -321,25 +321,24 @@ void BlockList::cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
     it->walk(remapOperands);
 }
 
-BlockList *llvm::ilist_traits<::mlir::Block>::getContainingBlockList() {
+Region *llvm::ilist_traits<::mlir::Block>::getContainingRegion() {
   size_t Offset(
-      size_t(&((BlockList *)nullptr->*BlockList::getSublistAccess(nullptr))));
+      size_t(&((Region *)nullptr->*Region::getSublistAccess(nullptr))));
   iplist<Block> *Anchor(static_cast<iplist<Block> *>(this));
-  return reinterpret_cast<BlockList *>(reinterpret_cast<char *>(Anchor) -
-                                       Offset);
+  return reinterpret_cast<Region *>(reinterpret_cast<char *>(Anchor) - Offset);
 }
 
-/// This is a trait method invoked when a basic block is added to a function.
-/// We keep the function pointer up to date.
+/// This is a trait method invoked when a basic block is added to a region.
+/// We keep the region pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::addNodeToList(Block *block) {
-  assert(!block->getParent() && "already in a function!");
-  block->parentValidInstOrderPair.setPointer(getContainingBlockList());
+  assert(!block->getParent() && "already in a region!");
+  block->parentValidInstOrderPair.setPointer(getContainingRegion());
 }
 
 /// This is a trait method invoked when an instruction is removed from a
-/// function.  We keep the function pointer up to date.
+/// region.  We keep the region pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::removeNodeFromList(Block *block) {
-  assert(block->getParent() && "not already in a function!");
+  assert(block->getParent() && "not already in a region!");
   block->parentValidInstOrderPair.setPointer(nullptr);
 }
 
@@ -349,8 +348,8 @@ void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
     ilist_traits<Block> &otherList, block_iterator first, block_iterator last) {
   // If we are transferring instructions within the same function, the parent
   // pointer doesn't need to be updated.
-  auto *curParent = getContainingBlockList();
-  if (curParent == otherList.getContainingBlockList())
+  auto *curParent = getContainingRegion();
+  if (curParent == otherList.getContainingRegion())
     return;
 
   // Update the 'parent' member of each Block.

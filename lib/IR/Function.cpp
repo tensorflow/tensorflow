@@ -30,14 +30,14 @@ Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs)
     : name(Identifier::get(name, type.getContext())), location(location),
       type(type), attrs(type.getContext(), attrs),
-      argAttrs(type.getNumInputs()), blocks(this) {}
+      argAttrs(type.getNumInputs()), body(this) {}
 
 Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs,
                    ArrayRef<NamedAttributeList> argAttrs)
     : name(Identifier::get(name, type.getContext())), location(location),
       type(type), attrs(type.getContext(), attrs), argAttrs(argAttrs),
-      blocks(this) {}
+      body(this) {}
 
 Function::~Function() {
   // Instructions may have cyclic references, which need to be dropped before we
@@ -160,8 +160,8 @@ void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) const {
   }
   dest->setAttrs(newAttrs.takeVector());
 
-  // Clone the block list.
-  blocks.cloneInto(&dest->blocks, mapper, dest->getContext());
+  // Clone the body.
+  body.cloneInto(&dest->body, mapper, dest->getContext());
 }
 
 /// Create a deep copy of this function and all of its blocks, remapping

@@ -41,19 +41,19 @@ void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
 
   // Build the top level function dominance.
   auto functionDominance = std::make_unique<base>();
-  functionDominance->recalculate(function->getBlockList());
-  dominanceInfos.try_emplace(&function->getBlockList(),
+  functionDominance->recalculate(function->getBody());
+  dominanceInfos.try_emplace(&function->getBody(),
                              std::move(functionDominance));
 
-  /// Build the dominance for each of the internal region block lists.
+  /// Build the dominance for each of the operation regions.
   function->walk([&](Instruction *inst) {
-    for (auto &blockList : inst->getBlockLists()) {
+    for (auto &region : inst->getRegions()) {
       // Don't compute dominance if the region is empty.
-      if (blockList.empty())
+      if (region.empty())
         continue;
       auto opDominance = std::make_unique<base>();
-      opDominance->recalculate(blockList);
-      dominanceInfos.try_emplace(&blockList, std::move(opDominance));
+      opDominance->recalculate(region);
+      dominanceInfos.try_emplace(&region, std::move(opDominance));
     }
   });
 }
@@ -66,21 +66,21 @@ bool DominanceInfoBase<IsPostDom>::properlyDominates(const Block *a,
   if (a == b)
     return false;
 
-  // If both blocks are not in the same block list, 'a' properly dominates 'b'
-  // if 'b' is defined in an instruction region that (recursively) ends up being
+  // If both blocks are not in the same region, 'a' properly dominates 'b' if
+  // 'b' is defined in an instruction region that (recursively) ends up being
   // dominated by 'a'. Walk up the list of containers enclosing B.
-  auto *blockListA = a->getParent(), *blockListB = b->getParent();
-  if (blockListA != blockListB) {
+  auto *regionA = a->getParent(), *regionB = b->getParent();
+  if (regionA != regionB) {
     Instruction *bAncestor;
     do {
-      bAncestor = blockListB->getContainingInst();
+      bAncestor = regionB->getContainingInst();
       // If 'bAncestor' is the top level function, then 'a' is a block
       // that post dominates 'b'.
       if (!bAncestor)
         return IsPostDom;
 
-      blockListB = bAncestor->getBlock()->getParent();
-    } while (blockListA != blockListB);
+      regionB = bAncestor->getBlock()->getParent();
+    } while (regionA != regionB);
 
     // Check to see if the ancestor of 'b' is the same block as 'a'.
     b = bAncestor->getBlock();
@@ -89,8 +89,8 @@ bool DominanceInfoBase<IsPostDom>::properlyDominates(const Block *a,
   }
 
   // Otherwise, use the standard dominance functionality.
-  auto baseInfoIt = dominanceInfos.find(blockListA);
-  assert(baseInfoIt != dominanceInfos.end() && "block list info not found");
+  auto baseInfoIt = dominanceInfos.find(regionA);
+  assert(baseInfoIt != dominanceInfos.end() && "region info not found");
   return baseInfoIt->second->properlyDominates(a, b);
 }
 

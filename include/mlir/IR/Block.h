@@ -1,4 +1,4 @@
-//===- Block.h - MLIR Block and BlockList Classes ---------------*- C++ -*-===//
+//===- Block.h - MLIR Block and Region Classes ------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines Block and BlockList classes.
+// This file defines Block and Region classes.
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,7 +35,7 @@ namespace llvm {
 namespace ilist_detail {
 // Explicitly define the node access for the instruction list so that we can
 // break the dependence on the Instruction class in this header. This allows for
-// instructions to have trailing BlockLists without a circular include
+// instructions to have trailing Regions without a circular include
 // dependence.
 template <>
 struct SpecificNodeAccess<
@@ -71,7 +71,7 @@ private:
 
 namespace mlir {
 class BlockAndValueMapping;
-class BlockList;
+class Region;
 class Function;
 
 using BlockOperand = IROperandImpl<Block>;
@@ -81,7 +81,7 @@ template <typename BlockType> class SuccessorIterator;
 
 /// `Block` represents an ordered list of `Instruction`s.
 class Block : public IRObjectWithUseList,
-              public llvm::ilist_node_with_parent<Block, BlockList> {
+              public llvm::ilist_node_with_parent<Block, Region> {
 public:
   explicit Block() {}
   ~Block();
@@ -96,8 +96,8 @@ public:
       instructions.pop_back();
   }
 
-  /// Blocks are maintained in a list of BlockList type.
-  BlockList *getParent() const { return parentValidInstOrderPair.getPointer(); }
+  /// Blocks are maintained in a Region.
+  Region *getParent() const { return parentValidInstOrderPair.getPointer(); }
 
   /// Returns the closest surrounding instruction that contains this block or
   /// nullptr if this is a top-level block.
@@ -339,8 +339,7 @@ public:
 private:
   /// Pair of the parent object that owns this block and a bit that signifies if
   /// the instructions within this block have a valid ordering.
-  llvm::PointerIntPair<BlockList *, /*IntBits=*/1, bool>
-      parentValidInstOrderPair;
+  llvm::PointerIntPair<Region *, /*IntBits=*/1, bool> parentValidInstOrderPair;
 
   /// This is the list of instructions in the block.
   InstListType instructions;
@@ -373,7 +372,7 @@ struct ilist_traits<::mlir::Block> : public ilist_alloc_traits<::mlir::Block> {
                              block_iterator first, block_iterator last);
 
 private:
-  mlir::BlockList *getContainingBlockList();
+  mlir::Region *getContainingRegion();
 };
 } // end namespace llvm
 
@@ -381,20 +380,20 @@ namespace mlir {
 
 /// This class contains a list of basic blocks and has a notion of the object it
 /// is part of - a Function or an operation region.
-class BlockList {
+class Region {
 public:
-  explicit BlockList(Function *container);
-  explicit BlockList(Instruction *container);
+  explicit Region(Function *container);
+  explicit Region(Instruction *container);
 
-  using BlockListType = llvm::iplist<Block>;
-  BlockListType &getBlocks() { return blocks; }
-  const BlockListType &getBlocks() const { return blocks; }
+  using RegionType = llvm::iplist<Block>;
+  RegionType &getBlocks() { return blocks; }
+  const RegionType &getBlocks() const { return blocks; }
 
   // Iteration over the block in the function.
-  using iterator = BlockListType::iterator;
-  using const_iterator = BlockListType::const_iterator;
-  using reverse_iterator = BlockListType::reverse_iterator;
-  using const_reverse_iterator = BlockListType::const_reverse_iterator;
+  using iterator = RegionType::iterator;
+  using const_iterator = RegionType::const_iterator;
+  using reverse_iterator = RegionType::reverse_iterator;
+  using const_reverse_iterator = RegionType::const_reverse_iterator;
 
   iterator begin() { return blocks.begin(); }
   iterator end() { return blocks.end(); }
@@ -410,40 +409,39 @@ public:
   void push_front(Block *block) { blocks.push_front(block); }
 
   Block &back() { return blocks.back(); }
-  const Block &back() const { return const_cast<BlockList *>(this)->back(); }
+  const Block &back() const { return const_cast<Region *>(this)->back(); }
 
   Block &front() { return blocks.front(); }
-  const Block &front() const { return const_cast<BlockList *>(this)->front(); }
+  const Block &front() const { return const_cast<Region *>(this)->front(); }
 
-  /// getSublistAccess() - Returns pointer to member of block list.
-  static BlockListType BlockList::*getSublistAccess(Block *) {
-    return &BlockList::blocks;
+  /// getSublistAccess() - Returns pointer to member of region.
+  static RegionType Region::*getSublistAccess(Block *) {
+    return &Region::blocks;
   }
 
-  /// A BlockList is part of a function or an operation region.  If it is
-  /// part of an operation region, then return the operation, otherwise return
-  /// null.
+  /// A Region is either a function body or a part of an operation.  If it is
+  /// part of an operation, then return the operation, otherwise return null.
   Instruction *getContainingInst();
   const Instruction *getContainingInst() const {
-    return const_cast<BlockList *>(this)->getContainingInst();
+    return const_cast<Region *>(this)->getContainingInst();
   }
 
-  /// A BlockList is part of a function or an operation region.  If it is part
-  /// of a Function, then return it, otherwise return null.
+  /// A Region is either a function body or a part of an operation.  If it is
+  /// a Function body, then return this function, otherwise return null.
   Function *getContainingFunction();
   const Function *getContainingFunction() const {
-    return const_cast<BlockList *>(this)->getContainingFunction();
+    return const_cast<Region *>(this)->getContainingFunction();
   }
 
-  /// Clone the internal blocks from this block list into dest. Any
+  /// Clone the internal blocks from this region into dest. Any
   /// cloned blocks are appended to the back of dest. If the mapper
   /// contains entries for block arguments, these arguments are not included
   /// in the respective cloned block.
-  void cloneInto(BlockList *dest, BlockAndValueMapping &mapper,
+  void cloneInto(Region *dest, BlockAndValueMapping &mapper,
                  MLIRContext *context) const;
 
 private:
-  BlockListType blocks;
+  RegionType blocks;
 
   /// This is the object we are part of.
   llvm::PointerUnion<Function *, Instruction *> container;

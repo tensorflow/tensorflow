@@ -132,8 +132,8 @@ LogicalResult mlir::loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
 
     // This is a linear time walk.
     void walk(Instruction *inst) {
-      for (auto &blockList : inst->getBlockLists())
-        for (auto &block : blockList)
+      for (auto &region : inst->getRegions())
+        for (auto &block : region)
           walk(block);
     }
     void walk(Block &block) {

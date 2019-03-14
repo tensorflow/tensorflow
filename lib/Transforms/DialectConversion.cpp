@@ -172,7 +172,7 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
 
   // Iterate over ops and convert them.
   for (Instruction &inst : *block) {
-    if (inst.getNumBlockLists() != 0) {
+    if (inst.getNumRegions() != 0) {
       inst.emitError("unsupported region instruction");
       return failure();
     }

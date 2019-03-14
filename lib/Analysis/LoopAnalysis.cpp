@@ -303,7 +303,7 @@ static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
 
   // No vectorization across unknown regions.
   auto regions = matcher::Op([](const Instruction &inst) -> bool {
-    return inst.getNumBlockLists() != 0 &&
+    return inst.getNumRegions() != 0 &&
            !(inst.isa<AffineIfOp>() || inst.isa<AffineForOp>());
   });
   SmallVector<NestedMatch, 8> regionsMatched;

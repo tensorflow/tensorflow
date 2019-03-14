@@ -89,9 +89,9 @@ public:
   /// Print the entire operation with the default generic assembly form.
   virtual void printGenericOp(const Instruction *op) = 0;
 
-  /// Prints a block list.
-  virtual void printBlockList(const BlockList &blocks,
-                              bool printEntryBlockArgs = true) = 0;
+  /// Prints a region.
+  virtual void printRegion(const Region &blocks,
+                           bool printEntryBlockArgs = true) = 0;
 
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
@@ -314,13 +314,12 @@ public:
                            int requiredOperandCount = -1,
                            Delimiter delimiter = Delimiter::None) = 0;
 
-  /// Parses a block list. Any parsed blocks are filled in to the
-  /// operation's block lists after the operation is created.
-  virtual bool parseBlockList() = 0;
+  /// Parses a region. Any parsed blocks are filled in to the operation's
+  /// regions after the operation is created.
+  virtual bool parseRegion() = 0;
 
-  /// Parses an argument for the entry block of the next block list to be
-  /// parsed.
-  virtual bool parseBlockListEntryBlockArgument(Type argType) = 0;
+  /// Parses an argument for the entry block of the next region to be parsed.
+  virtual bool parseRegionEntryBlockArgument(Type argType) = 0;
 
   //===--------------------------------------------------------------------===//
   // Methods for interacting with the parser
