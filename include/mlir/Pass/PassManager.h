@@ -21,6 +21,10 @@
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/SmallVector.h"
 
+namespace llvm {
+class Any;
+} // end namespace llvm
+
 namespace mlir {
 class FunctionPassBase;
 class Module;
@@ -82,6 +86,17 @@ public:
   /// Add the provided instrumentation to the pass manager. This takes ownership
   /// over the given pointer.
   void addInstrumentation(PassInstrumentation *pi);
+
+  /// Add an instrumentation to print the IR before and after pass execution.
+  /// * 'shouldPrintBeforePass' and 'shouldPrintAfterPass' correspond to filter
+  ///   functions that take a 'Pass *'. These function should return true if the
+  ///   IR should be printed or not.
+  /// * 'printModuleScope' signals if the module IR should be printed, even for
+  ///   non module passes.
+  /// * 'out' corresponds to the stream to output the printed IR to.
+  void enableIRPrinting(std::function<bool(Pass *)> shouldPrintBeforePass,
+                        std::function<bool(Pass *)> shouldPrintAfterPass,
+                        bool printModuleScope, raw_ostream &out);
 
   /// Add an instrumentation to time the execution of passes and the computation
   /// of analyses.

@@ -88,7 +88,11 @@ const PassInfo *mlir::Pass::lookupPassInfo(const PassID *passID) {
 //===----------------------------------------------------------------------===//
 
 PassNameParser::PassNameParser(llvm::cl::Option &opt)
-    : llvm::cl::parser<const PassRegistryEntry *>(opt) {
+    : llvm::cl::parser<const PassRegistryEntry *>(opt) {}
+
+void PassNameParser::initialize() {
+  llvm::cl::parser<const PassRegistryEntry *>::initialize();
+
   /// Add the pass entries.
   for (const auto &kv : *passRegistry) {
     addLiteralOption(kv.second.getPassArgument(), &kv.second,

@@ -156,6 +156,8 @@ struct PassPipelineRegistration {
 struct PassNameParser : public llvm::cl::parser<const PassRegistryEntry *> {
   PassNameParser(llvm::cl::Option &opt);
 
+  void initialize();
+
   void printOptionInfo(const llvm::cl::Option &O,
                        size_t GlobalWidth) const override;
 };

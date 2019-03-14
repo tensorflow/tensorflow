@@ -462,3 +462,72 @@ $ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing
    0.0016 (  7.9%)   0.0006 (  8.9%)   0.0022 (  8.2%)   0.0022 (  8.2%)  ModuleVerifier
    0.0199 (100.0%)   0.0073 (100.0%)   0.0272 (100.0%)   0.0272 (100.0%)  Total
 ```
+
+#### IR Printing
+
+When debugging it is often useful to dump the IR at various stages of a pass
+pipeline. This is where the IR printing instrumentation comes into play. This
+instrumentation allows for conditionally printing the IR before and after pass
+execution by optionally filtering on the pass being executed. This
+instrumentation can be added directly to the PassManager via the
+`enableIRPrinting` method. `mlir-opt` provides a few useful flags for utilizing
+this instrumentation:
+
+*   `print-ir-before=(comma-separated-pass-list)`
+    *   Print the IR before each of the passes provided within the pass list.
+*   `print-ir-before-all`
+    *   Print the IR before every pass in the pipeline.
+
+```shell
+$ mlir-opt foo.mlir -cse -print-ir-before=cse
+
+*** IR Dump Before CSE ***
+func @simple_constant() -> (i32, i32) {
+  %c1_i32 = constant 1 : i32
+  %c1_i32_0 = constant 1 : i32
+  return %c1_i32, %c1_i32_0 : i32, i32
+}
+```
+
+*   `print-ir-after=(comma-separated-pass-list)`
+    *   Print the IR after each of the passes provided within the pass list.
+*   `print-ir-after-all`
+    *   Print the IR after every pass in the pipeline.
+
+```shell
+$ mlir-opt foo.mlir -cse -print-ir-after=cse
+
+*** IR Dump After CSE ***
+func @simple_constant() -> (i32, i32) {
+  %c1_i32 = constant 1 : i32
+  return %c1_i32, %c1_i32 : i32, i32
+}
+```
+
+*   `print-ir-module-scope`
+    *   Always print the Module IR, even for non module passes.
+
+```shell
+$ mlir-opt foo.mlir -cse -print-ir-after=cse -print-ir-module-scope
+
+*** IR Dump After CSE ***  (function: bar)
+func @bar(%arg0: f32, %arg1: f32) -> f32 {
+  ...
+}
+
+func @simple_constant() -> (i32, i32) {
+  %c1_i32 = constant 1 : i32
+  %c1_i32_0 = constant 1 : i32
+  return %c1_i32, %c1_i32_0 : i32, i32
+}
+
+*** IR Dump After CSE ***  (function: simple_constant)
+func @bar(%arg0: f32, %arg1: f32) -> f32 {
+  ...
+}
+
+func @simple_constant() -> (i32, i32) {
+  %c1_i32 = constant 1 : i32
+  return %c1_i32, %c1_i32 : i32, i32
+}
+```

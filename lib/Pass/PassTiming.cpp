@@ -30,13 +30,6 @@ using namespace mlir::detail;
 constexpr llvm::StringLiteral kPassTimingDescription =
     "... Pass execution timing report ...";
 
-/// Utility function to return if a pass refers to an adaptor pass. Adaptor
-/// passes are those that internally execute a pipeline, such as the
-/// ModuleToFunctionPassAdaptor.
-static bool isAdaptorPass(Pass *pass) {
-  return isa<ModuleToFunctionPassAdaptor>(pass);
-}
-
 namespace {
 struct PassTiming : public PassInstrumentation {
   PassTiming(PassTimingDisplayMode displayMode) : displayMode(displayMode) {}
