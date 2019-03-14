@@ -19,11 +19,11 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/framework/bounds_check.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/training_ops.h"
 #include "tensorflow/core/kernels/variable_ops.h"
-#include "tensorflow/core/util/work_sharder.h"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/common_runtime/sycl/sycl_util.h"
@@ -34,6 +34,7 @@ namespace tensorflow {
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
 using SYCLDevice = Eigen::SyclDevice;
+using Index = Eigen::Index;
 
 namespace {
 template <class T>
@@ -301,7 +302,7 @@ struct ApplyKerasMomentum<CPUDevice, T> {
 
 template <typename Device, typename T>
 struct ApplyAdamNonCuda {
-  void operator()(OpKernelContext* ctx, typename TTypes<T>::Flat var,
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
                   typename TTypes<T>::ConstScalar beta1_power,
                   typename TTypes<T>::ConstScalar beta2_power,
@@ -310,7 +311,14 @@ struct ApplyAdamNonCuda {
                   typename TTypes<T>::ConstScalar beta2,
                   typename TTypes<T>::ConstScalar epsilon,
                   typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
-    const int length = var.size();
+    // Get params length and check if they can be vectorized by packet size.
+    Index length = var.size();
+    Index size = Eigen::internal::packet_traits<T>::size;
+    if (length % size == 0) {
+      length = length / size;
+    } else {
+      size = 1;
+    }
 
     T* var_ptr = var.data();
     T* m_ptr = m.data();
@@ -324,53 +332,41 @@ struct ApplyAdamNonCuda {
     // var   == θ
 
     auto shard = [this, var_ptr, m_ptr, v_ptr, g_ptr, alpha, beta1, beta2,
-                  epsilon, use_nesterov](int begin, int end) {
-      T m;
-      T v;
-      T g;
+                  epsilon, use_nesterov, size](int begin, int end) {
+      int t_size = (end - begin) * size;
+      begin = begin * size;
+      auto var = typename TTypes<T>::UnalignedTensor(var_ptr + begin, t_size);
+      auto m = typename TTypes<T>::UnalignedTensor(m_ptr + begin, t_size);
+      auto v = typename TTypes<T>::UnalignedTensor(v_ptr + begin, t_size);
+      auto g = typename TTypes<T>::UnalignedConstTensor(g_ptr + begin, t_size);
 
       if (use_nesterov) {
-        for (int i = begin; i < end; ++i) {
-          m = *(m_ptr + i);
-          v = *(v_ptr + i);
-          g = *(g_ptr + i);
-
-          m += (g - m) * (T(1) - beta1());
-          v += (g * g - v) * (T(1) - beta2());
-          *(var_ptr + i) -= ((g * (T(1) - beta1()) + beta1() * m) * alpha) /
-                            (Eigen::numext::sqrt(v) + epsilon());
-          *(m_ptr + i) = m;
-          *(v_ptr + i) = v;
-        }
+        m += (g - m) * (T(1) - beta1());
+        v += (g.square() - v) * (T(1) - beta2());
+        var -= ((g * (T(1) - beta1()) + beta1() * m) * alpha) /
+               (v.sqrt() + epsilon());
       } else {
-        for (int i = begin; i < end; ++i) {
-          m = *(m_ptr + i);
-          v = *(v_ptr + i);
-          g = *(g_ptr + i);
-
-          m += (g - m) * (T(1) - beta1());
-          v += (g * g - v) * (T(1) - beta2());
-          *(var_ptr + i) -= (m * alpha) / (Eigen::numext::sqrt(v) + epsilon());
-          *(m_ptr + i) = m;
-          *(v_ptr + i) = v;
-        }
+        m += (g - m) * (T(1) - beta1());
+        v += (g.square() - v) * (T(1) - beta2());
+        var -= (m * alpha) / (v.sqrt() + epsilon());
       }
     };
 
-    // TODO: lack of memory access and sqrt
-    int cost = Eigen::TensorOpCost::AddCost<int>() * 6 +
-               Eigen::TensorOpCost::AddCost<T>() * 4 +
-               // Consider Sub as Add
-               Eigen::TensorOpCost::AddCost<T>() * 5 +
-               Eigen::TensorOpCost::MulCost<T>() * 6 +
-               Eigen::TensorOpCost::DivCost<T>();
-      
+    // Input data: var, v, m, grad.
+    // Consider only load will cause cache miss, store to cache is 0 cost.
+    const int input_bytes = length * size * sizeof(T) * 4;
+    int compute_cycles = Eigen::TensorOpCost::AddCost<int>() * 6 +
+                         Eigen::TensorOpCost::AddCost<T>() * 4 +
+                         // Consider Sub as Add
+                         Eigen::TensorOpCost::AddCost<T>() * 5 +
+                         Eigen::TensorOpCost::MulCost<T>() * 6 +
+                         Eigen::TensorOpCost::DivCost<T>();
+    const Eigen::TensorOpCost cost(input_bytes, 0, compute_cycles);
+
     // Eigen device must update 3 variables with 3 different expressions,
-    // which is bad for cache locality on CPU. Here use Shard instead of 
+    // which is bad for cache locality on CPU. Here use ParallelFor instead of
     // "regular" tensor expressions to get better performance.
-    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
-    Shard(worker_threads.num_threads, worker_threads.workers, length, cost,
-          shard);
+    d.parallelFor(length, cost, shard);
   }
 };
 
@@ -2905,10 +2901,12 @@ class ApplyAdamOp : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
 
+    const Device& device = ctx->template eigen_device<Device>();
     functor::ApplyAdam<Device, T>()(
-        ctx, var.flat<T>(), m.flat<T>(), v.flat<T>(), beta1_power.scalar<T>(),
-        beta2_power.scalar<T>(), lr.scalar<T>(), beta1.scalar<T>(),
-        beta2.scalar<T>(), epsilon.scalar<T>(), grad.flat<T>(), use_nesterov_);
+        device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+        beta1_power.scalar<T>(), beta2_power.scalar<T>(), lr.scalar<T>(),
+        beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
+        grad.flat<T>(), use_nesterov_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -3067,7 +3065,7 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                   \
   template <>                                                 \
   void ApplyAdam<GPUDevice, T>::operator()(                   \
-      OpKernelContext* ctx, typename TTypes<T>::Flat var,     \
+      const GPUDevice& d, typename TTypes<T>::Flat var,       \
       typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
       typename TTypes<T>::ConstScalar beta1_power,            \
       typename TTypes<T>::ConstScalar beta2_power,            \

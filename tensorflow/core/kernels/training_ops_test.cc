@@ -176,23 +176,28 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
     auto beta2 = Scalar(g, 0.99);
     auto epsilon = Scalar(g, 1e-8);
     auto grad = Random(g, n);
-    test::graph::Multi(
-        g, "ApplyAdam",
-        {var, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad});
+    test::graph::Multi(g, "ApplyAdam", {var, m, v, beta1_power, beta2_power, lr,
+                                        beta1, beta2, epsilon, grad});
     *train_g = g;
   }
 }
 
-static void BM_Adam(int iters, int params) {
+static void BM_Adam(int iters, int params, int is_perf) {
   const int64 tot = static_cast<int64>(iters) * params;
   testing::ItemsProcessed(tot);
   testing::BytesProcessed(tot * sizeof(float));
   Graph* init;
   Graph* train;
   Adam(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  if (is_perf) {
+    // Use max thread number if test performance.
+    test::Benchmark("cpu", train, nullptr, init).Run(iters);
+  } else {
+    test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  }
 }
-BENCHMARK(BM_Adam)->Arg(128 << 10)->Arg(256 << 10);
+BENCHMARK(BM_Adam)->ArgPair(128 << 10, 0)->ArgPair(256 << 10, 0);
+BENCHMARK(BM_Adam)->ArgPair(256 << 16, 1);
 
 static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});

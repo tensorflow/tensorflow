@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 #define TENSORFLOW_CORE_KERNELS_TRAINING_OPS_H_
 
-#include "tensorflow/core/framework/op_kernel.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 namespace functor {
@@ -138,7 +137,7 @@ struct ApplyKerasMomentum {
 
 template <typename Device, typename T>
 struct ApplyAdam {
-  void operator()(OpKernelContext* ctx, typename TTypes<T>::Flat var,
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
                   typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
                   typename TTypes<T>::ConstScalar beta1_power,
                   typename TTypes<T>::ConstScalar beta2_power,
