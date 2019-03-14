@@ -30,9 +30,9 @@ using namespace mlir;
 namespace {
 
 // AffineExprConstantFolder evaluates an affine expression using constant
-// operands passed in 'operandConsts'. Returns a pointer to an IntegerAttr
-// attribute representing the constant value of the affine expression
-// evaluated on constant 'operandConsts'.
+// operands passed in 'operandConsts'. Returns an IntegerAttr attribute
+// representing the constant value of the affine expression evaluated on
+// constant 'operandConsts', or nullptr if it can't be folded.
 class AffineExprConstantFolder {
 public:
   AffineExprConstantFolder(unsigned numDims, ArrayRef<Attribute> operandConsts)
@@ -41,6 +41,13 @@ public:
   /// Attempt to constant fold the specified affine expr, or return null on
   /// failure.
   IntegerAttr constantFold(AffineExpr expr) {
+    if (auto result = constantFoldImpl(expr))
+      return IntegerAttr::get(IndexType::get(expr.getContext()), *result);
+    return nullptr;
+  }
+
+private:
+  llvm::Optional<int64_t> constantFoldImpl(AffineExpr expr) {
     switch (expr.getKind()) {
     case AffineExprKind::Add:
       return constantFoldBinExpr(
@@ -50,37 +57,37 @@ public:
           expr, [](int64_t lhs, int64_t rhs) { return lhs * rhs; });
     case AffineExprKind::Mod:
       return constantFoldBinExpr(
-          expr, [](int64_t lhs, uint64_t rhs) { return mod(lhs, rhs); });
+          expr, [](int64_t lhs, int64_t rhs) { return mod(lhs, rhs); });
     case AffineExprKind::FloorDiv:
       return constantFoldBinExpr(
-          expr, [](int64_t lhs, uint64_t rhs) { return floorDiv(lhs, rhs); });
+          expr, [](int64_t lhs, int64_t rhs) { return floorDiv(lhs, rhs); });
     case AffineExprKind::CeilDiv:
       return constantFoldBinExpr(
-          expr, [](int64_t lhs, uint64_t rhs) { return ceilDiv(lhs, rhs); });
+          expr, [](int64_t lhs, int64_t rhs) { return ceilDiv(lhs, rhs); });
     case AffineExprKind::Constant:
-      return IntegerAttr::get(IndexType::get(expr.getContext()),
-                              expr.cast<AffineConstantExpr>().getValue());
+      return expr.cast<AffineConstantExpr>().getValue();
     case AffineExprKind::DimId:
-      return operandConsts[expr.cast<AffineDimExpr>().getPosition()]
-          .dyn_cast_or_null<IntegerAttr>();
+      if (auto attr = operandConsts[expr.cast<AffineDimExpr>().getPosition()]
+                          .dyn_cast_or_null<IntegerAttr>())
+        return attr.getInt();
+      return llvm::None;
     case AffineExprKind::SymbolId:
-      return operandConsts[numDims +
-                           expr.cast<AffineSymbolExpr>().getPosition()]
-          .dyn_cast_or_null<IntegerAttr>();
+      if (auto attr = operandConsts[numDims +
+                                    expr.cast<AffineSymbolExpr>().getPosition()]
+                          .dyn_cast_or_null<IntegerAttr>())
+        return attr.getInt();
+      return llvm::None;
     }
   }
 
-private:
   // TODO: Change these to operate on APInts too.
-  IntegerAttr
-  constantFoldBinExpr(AffineExpr expr,
-                      std::function<uint64_t(int64_t, uint64_t)> op) {
+  llvm::Optional<int64_t> constantFoldBinExpr(AffineExpr expr,
+                                              int64_t (*op)(int64_t, int64_t)) {
     auto binOpExpr = expr.cast<AffineBinaryOpExpr>();
-    auto lhs = constantFold(binOpExpr.getLHS());
-    auto rhs = constantFold(binOpExpr.getRHS());
-    if (!lhs || !rhs)
-      return nullptr;
-    return IntegerAttr::get(lhs.getType(), op(lhs.getInt(), rhs.getInt()));
+    if (auto lhs = constantFoldImpl(binOpExpr.getLHS()))
+      if (auto rhs = constantFoldImpl(binOpExpr.getRHS()))
+        return op(*lhs, *rhs);
+    return llvm::None;
   }
 
   // The number of dimension operands in AffineMap containing this expression.
