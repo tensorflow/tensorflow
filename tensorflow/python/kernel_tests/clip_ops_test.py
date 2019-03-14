@@ -460,7 +460,7 @@ class ClipTest(test.TestCase):
       clip_norm = constant_op.constant(0.8)
       with_norm = clip_ops.clip_by_average_norm(x, clip_norm)
       without_norm = clip_ops.clip_by_norm(
-          x, clip_norm * math_ops.to_float(array_ops.size(x)))
+          x, clip_norm * math_ops.cast(array_ops.size(x), dtypes.float32))
       clip_by_average_norm_ans = self.evaluate(with_norm)
       clip_by_norm_ans = self.evaluate(without_norm)
       self.assertAllClose(clip_by_average_norm_ans, clip_by_norm_ans)

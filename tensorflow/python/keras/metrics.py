@@ -177,7 +177,8 @@ class Metric(Layer):
       # to reset variable state after each epoch of training.
       # Example:
       #   model = Model()
-      #   model.add_metric(Mean()(values), name='mean')
+      #   mean = Mean()
+      #   model.add_metric(mean(values), name='mean')
       if not context.executing_eagerly():
         result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t

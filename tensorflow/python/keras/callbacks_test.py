@@ -1118,6 +1118,25 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
         })
 
+  def test_TensorBoard_no_spurious_event_files(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[tb_cbk])
+
+    events_file_run_basenames = set()
+    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
+      del dirnames  # unused
+      if any(fn.startswith('events.out.') for fn in filenames):
+        events_file_run_basenames.add(os.path.basename(dirpath))
+    self.assertEqual(events_file_run_basenames, {'train'})
+
   def test_TensorBoard_batch_metrics(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -1236,6 +1255,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
 
 # Note that this test specifies model_type explicitly.
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
   def setUp(self):
@@ -1300,8 +1320,6 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=False)
     self.fitModelAndAssertKerasModelWritten(model)
 
-  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_TensorBoard_autoTrace(self):
     model = self._get_seq_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -1324,8 +1342,6 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         },
     )
 
-  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
     model = self._get_seq_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -1348,8 +1364,6 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         },
     )
 
-  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
     model = self._get_seq_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))

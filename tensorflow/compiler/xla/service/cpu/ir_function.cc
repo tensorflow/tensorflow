@@ -24,11 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
-
-namespace {
-using llvm_ir::AsStringRef;
-}  // namespace
-
 namespace cpu {
 
 static std::vector<llvm::Type*> GetComputeFunctionParams(
@@ -193,7 +188,7 @@ llvm::Value* IrFunction::GetDynamicLoopBound(const int64 offset) {
   CHECK_LT(offset, num_dynamic_loop_bounds_ * 2);
   string name = absl::StrCat("dynamic_loop_bound_", offset);
   return b_->CreateLoad(b_->CreateGEP(CHECK_NOTNULL(dynamic_loop_bounds_arg_),
-                                      b_->getInt64(offset), AsStringRef(name)));
+                                      b_->getInt64(offset), name));
 }
 
 // Emits code to allocate an array of parameter address pointers, and store
@@ -216,10 +211,9 @@ std::vector<llvm::Value*> GetArrayFunctionCallArguments(
         absl::StrCat(name, "_parameter_addresses"), b);
 
     for (size_t i = 0; i < parameter_addresses.size(); ++i) {
-      llvm::Value* parameter_as_i8ptr =
-          b->CreateBitCast(parameter_addresses[i], b->getInt8PtrTy(),
-                           AsStringRef(absl::StrCat(name, "_parameter_", i,
-                                                    "_address_as_i8ptr")));
+      llvm::Value* parameter_as_i8ptr = b->CreateBitCast(
+          parameter_addresses[i], b->getInt8PtrTy(),
+          absl::StrCat(name, "_parameter_", i, "_address_as_i8ptr"));
       llvm::Value* slot_in_param_addresses =
           b->CreateInBoundsGEP(parameter_addresses_buffer, {b->getInt64(i)});
       b->CreateStore(parameter_as_i8ptr, slot_in_param_addresses);
@@ -324,7 +318,7 @@ Status EmitCallToParallelForkJoin(
       /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
       /*Initializer=*/partitions_array,
       /*Name=*/
-      AsStringRef(absl::StrCat(name, "_parallel_dimension_partitions")));
+      absl::StrCat(name, "_parallel_dimension_partitions"));
 
   // Add argument specifying parallel dimension partitions.
   fork_join_arguments.push_back(

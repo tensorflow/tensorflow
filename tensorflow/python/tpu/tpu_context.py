@@ -405,8 +405,12 @@ class _InternalTPUContext(object):
 
   def is_input_broadcast_with_iterators(self):
     """Return true if input_fn should be run in the full_replicae config."""
-    return (self._config.tpu_config.per_host_input_for_training is
-            tpu_config.InputPipelineConfig.BROADCAST)
+    mode = self._assert_mode()
+    return ((self._config.tpu_config.per_host_input_for_training is
+             tpu_config.InputPipelineConfig.BROADCAST) or
+            (mode != model_fn_lib.ModeKeys.TRAIN and
+             self._config.tpu_config.eval_training_input_configuration is
+             tpu_config.InputPipelineConfig.SLICED))
 
   def is_running_on_cpu(self, is_export_mode=False):
     """Determines whether the input_fn and model_fn should be invoked on CPU.
@@ -465,7 +469,6 @@ class _InternalTPUContext(object):
   def batch_size_for_input_fn(self):
     """Returns the shard batch size for `input_fn`."""
     global_batch_size = self.global_batch_size
-
     if (self.is_running_on_cpu() or self.is_input_broadcast_with_iterators()):
       return global_batch_size
 

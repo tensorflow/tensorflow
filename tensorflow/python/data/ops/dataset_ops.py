@@ -59,6 +59,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -2297,25 +2298,21 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
-    def _warn_if_collections(transformation_name, graph, initial_length):
+    def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
 
-      NOTE(mrry): Currently a warning is only generated for lookup tables. Any
+      NOTE(mrry): Currently a warning is only generated for resources. Any
       variables created will be automatically hoisted out to the outermost scope
       using `init_scope()`. Some collections (such as for control-flow contexts)
       are benign and should not generate a warning.
 
       Args:
         transformation_name: A human-readable name for the transformation.
-        graph: The graph to check for collections.
-        initial_length: The initial length of the lookup table collection.
       """
-      length = len(graph.get_collection(ops.GraphKeys.TABLE_INITIALIZERS))
-      if length != initial_length:
-        warnings.warn("Creating lookup tables inside a function passed to %s "
-                      "is not supported. Create each table outside the "
-                      "function, and capture it inside the function to use it."
-                      % transformation_name)
+      warnings.warn("Creating resources inside a function passed to %s "
+                    "is not supported. Create each resource outside the "
+                    "function, and capture it inside the function to use it." %
+                    transformation_name)
 
     def _wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
@@ -2353,16 +2350,21 @@ class StructuredFunctionWrapper(object):
           **defun_kwargs)
       def wrapper_fn(*args):
         ret = _wrapper_helper(*args)
-        _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
+        # _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
         return self._output_structure._to_tensor_list(ret)
 
       self._function = wrapper_fn
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-      else:
-        # Use the private method that will execute `wrapper_fn` but delay adding
-        # it to the graph in case (e.g.) we need to rerun the function.
-        self._function._create_definition_if_needed()
+      resource_tracker = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker):
+        if add_to_graph:
+          self._function.add_to_graph(ops.get_default_graph())
+        else:
+          # Use the private method that will execute `wrapper_fn` but delay
+          # adding it to the graph in case (e.g.) we need to rerun the function.
+          self._function._create_definition_if_needed()
+      if resource_tracker.resources:
+        _warn_if_collections(transformation_name)
+
     else:
       defun_kwargs.update({"func_name": func_name})
 
@@ -2382,15 +2384,22 @@ class StructuredFunctionWrapper(object):
         ret = self._output_structure._to_tensor_list(ret)
         return [ops.convert_to_tensor(t) for t in ret]
 
-      initial_length = len(ops.get_default_graph().get_collection(
-          ops.GraphKeys.TABLE_INITIALIZERS))
+      resource_tracker = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker):
+        self._function = wrapper_fn._get_concrete_function_internal()
+        if add_to_graph:
+          self._function.add_to_graph(ops.get_default_graph())
+      if resource_tracker.resources:
+        _warn_if_collections(transformation_name)
 
-      self._function = wrapper_fn._get_concrete_function_internal()
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-
-      _warn_if_collections(transformation_name, self._function.graph,
-                           initial_length)
+      outer_graph_seed = ops.get_default_graph().seed
+      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+        if self._function.graph._seed_used:
+          warnings.warn(
+              "Seed %s from outer graph might be getting used by function %s,"
+              " if you have not provided any seed to the random op. "
+              "Explicitly set the seed in the function if this is not "
+              "the intended behavior." % (outer_graph_seed, func_name))
   # pylint: enable=protected-access
 
   @property

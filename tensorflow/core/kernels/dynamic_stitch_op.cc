@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #ifdef GOOGLE_CUDA
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -141,6 +141,18 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
                           const CudaDeviceArrayStruct<int>& input_indices,
                           const CudaDeviceArrayStruct<const T*>& input_ptrs,
                           T* output);
+#define REGISTER_GPU(T)                                           \
+  extern template void DynamicStitchGPUImpl(                      \
+      const Eigen::GpuDevice& gpu_device, const int32 slice_size, \
+      const int32 first_dim_size,                                 \
+      const CudaDeviceArrayStruct<int32>& input_indices,          \
+      const CudaDeviceArrayStruct<const T*>& input_ptrs, T* output);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
+TF_CALL_int32(REGISTER_GPU);
+#undef REGISTER_GPU
 
 template <class T>
 class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
@@ -167,7 +179,7 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
     // merged that aren't covered by an index in indices.  What should we do?
     if (first_dim_size > 0) {
       // because the collision requirements, we have to deal with
-      // collion first before send data to gpu kernel.
+      // collision first before send data to gpu kernel.
       // TODO(ekelsen): Instead of doing a serial scan on the CPU to pick the
       // last of duplicated indices, it could instead be done of the GPU
       // implicitly using atomics to make sure the last index is the final

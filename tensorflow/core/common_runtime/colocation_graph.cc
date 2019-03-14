@@ -212,7 +212,9 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
         "Cannot place the graph because a reference or resource edge "
         "connects colocation groups with incompatible assigned devices: ",
         DeviceNameUtils::ParsedNameToString(src_root.assigned_device_name_),
-        " vs ", DeviceNameUtils::ParsedNameToString(assigned_device_name_));
+        " vs ", DeviceNameUtils::ParsedNameToString(assigned_device_name_),
+        ". The edge src node is ", src.name(), " , and the dst node is ",
+        dst.name());
   }
 
   if (DeviceNameUtils::AreCompatibleDevNames(src_root.requested_device_name_,

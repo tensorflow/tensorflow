@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -65,21 +64,6 @@ namespace tensorrt {
 namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
-
-// Returns compiled TRT version information {Maj, Min, Patch}
-std::vector<int> GetLinkedTensorRTVersion() {
-  return {NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH};
-}
-
-// Returns loaded TRT library version {Maj, Min, Patch}
-std::vector<int> GetLoadedTensorRTVersion() {
-  int ver = getInferLibVersion();
-  int ver_major = ver / 1000;
-  ver = ver - ver_major * 1000;
-  int ver_minor = ver / 100;
-  int ver_patch = ver - ver_minor * 100;
-  return {ver_major, ver_minor, ver_patch};
-}
 
 TrtCandidateSelector::TrtCandidateSelector(
     const grappler::GraphProperties& graph_properties,
@@ -347,9 +331,13 @@ Status GetEngineInfo(const Graph* g,
   // Construct the const nodes first.
   subgraph_nodes.insert(subgraph_nodes.begin(), added_const_nodes.begin(),
                         added_const_nodes.end());
+  string scope_name;
   TF_RETURN_IF_ERROR(ConvertSegmentToGraphDef(
       g, graph_properties, subgraph_nodes, &info->connections,
-      &info->segment_graph_def, &info->engine_name));
+      &info->segment_graph_def, &scope_name));
+  info->engine_name = StrCat(scope_name, info->engine_name);
+  VLOG(1) << "Converted TensorRT candidate segment '" << info->engine_name
+          << "' to a GraphDef";
   // TODO(sami): This should not happen once segmenter is updated.
   if (segment_devices.size() == 1) {
     info->device = *segment_devices.begin();
@@ -415,7 +403,6 @@ Status CreateTRTNode(const ConversionParams& params,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
-  TRT_RETURN_IF_TEST_VALUE(StrCat(info.engine_name, ":CreateTRTNode"), "fail");
   std::vector<TensorShapeProto> output_shape_protos;
   std::vector<TensorShapeProto> input_shape_protos;
   std::vector<PartialTensorShape> input_shapes;
@@ -509,8 +496,7 @@ Status CreateTRTNode(const ConversionParams& params,
   // these segments.
   if (inputs.empty()) {
     return errors::Internal(
-        "Segment has no inputs (possible "
-        "constfold failure)");
+        "Segment has no inputs (possible constfold failure)");
   }
 
   const bool calibrate_int8 =
@@ -856,6 +842,7 @@ Status ConvertAfterShapes(const ConversionParams& params) {
   for (size_t t = 0; t < initial_segments.size(); t++) {
     auto& curr_segment = initial_segments.at(t);
     EngineInfo curr_engine;
+    curr_engine.engine_name = StrCat("TRTEngineOp_", t);
     Status status =
         GetEngineInfo(&graph, *params.graph_properties, curr_segment.first,
                       node_map, reverse_topo_order, &curr_engine);
@@ -871,7 +858,6 @@ Status ConvertAfterShapes(const ConversionParams& params) {
     curr_engine.use_calibration = params.use_calibration;
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
-    StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
     if (params.use_function_backup) {
       status = RegisterSegmentFunctionToFunctionLibrary(
           &graph, curr_engine.segment_graph_def, curr_engine.engine_name);

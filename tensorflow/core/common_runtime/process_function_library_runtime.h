@@ -137,6 +137,8 @@ class ProcessFunctionLibraryRuntime {
            std::vector<Tensor>* rets,
            FunctionLibraryRuntime::DoneCallback done) const;
 
+  const DeviceMgr* device_mgr() { return device_mgr_; }
+
  private:
   friend class FunctionLibraryRuntimeImpl;
 
@@ -285,6 +287,7 @@ class ProcessFunctionLibraryRuntime {
 
   mutable mutex mu_;
 
+  Env* const env_;
   const DeviceMgr* const device_mgr_;
   const FunctionLibraryDefinition* lib_def_;
   thread::ThreadPool* default_thread_pool_;

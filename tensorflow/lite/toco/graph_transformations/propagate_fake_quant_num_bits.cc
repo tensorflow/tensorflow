@@ -110,6 +110,13 @@ bool DoesOpBlockBackwardPropagation(const Operator& op) {
     case OperatorType::kSelect:
     case OperatorType::kTile:
       // Reshapes and transposes don't change values.
+    case OperatorType::kRelu:
+    case OperatorType::kRelu1:
+    case OperatorType::kRelu6:
+      // Relus only clamp the output. If min/max of parent is unknown, just
+      // prop the range backward. This only happens for cases where activations
+      // are not fused to avoid a default being set on the RELU input and
+      // propagating forward to the RELU output.
       return false;
     default:
       return true;

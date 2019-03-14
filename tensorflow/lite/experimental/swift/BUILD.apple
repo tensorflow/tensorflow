@@ -14,7 +14,6 @@ MINIMUM_OS_VERSION = "9.0"
 # Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
 DEFAULT_TAGS = [
     "apple",
-    "manual",
 ]
 
 swift_library(
@@ -56,7 +55,7 @@ ios_application(
     sdk_frameworks = [
         "CoreGraphics",
     ],
-    tags = DEFAULT_TAGS,
+    tags = DEFAULT_TAGS + ["manual"],
     deps = [
         ":AppLib",
     ],
@@ -76,8 +75,8 @@ swift_library(
 swift_library(
     name = "AppLib",
     srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
-    module_name = "TensorFlowLiteAppLib",
-    tags = DEFAULT_TAGS,
+    module_name = "AppLib",
+    tags = DEFAULT_TAGS + ["manual"],
     deps = [
         ":AppResources",
         ":TensorFlowLite",
@@ -99,7 +98,7 @@ objc_library(
     data = glob([
         "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/*.storyboard",
     ]),
-    tags = DEFAULT_TAGS,
+    tags = DEFAULT_TAGS + ["manual"],
     deps = [
         ":Resources",
     ],

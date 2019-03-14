@@ -86,10 +86,15 @@ void GraphOptimizer::Optimize(
       DumpGraph("OptimizeCSE", g);
       changed = true;
     }
-    if (opts_.do_function_inlining() &&
-        ExpandInlineFunctions(runtime, g, /*override_device=*/true)) {
-      DumpGraph("ExpandInlineFunctions", g);
-      changed = true;
+    if (opts_.do_function_inlining()) {
+      ExpandInlineFunctionsOptions expand_inline_opts;
+      expand_inline_opts.native_options.override_device = true;
+
+      bool was_mutated = ExpandInlineFunctions(runtime, g, expand_inline_opts);
+      if (was_mutated) {
+        DumpGraph("ExpandInlineFunctions", g);
+        changed = true;
+      }
     }
     if (!changed) break;
   }
