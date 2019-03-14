@@ -445,10 +445,12 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
   // operand dimensions. The reduction dimension of the LHS and RHS are handled
   // in a separate innermost loop which performs the sum of products.
   llvm_ir::ForLoopNest loop_nest(llvm_ir::IrName(dot_hlo_name_), b_);
-  llvm_ir::IrArray::Index lhs_index = loop_nest.EmitOperandArrayLoopNest(
-      lhs_array_, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
-  llvm_ir::IrArray::Index rhs_index = loop_nest.EmitOperandArrayLoopNest(
-      rhs_array_, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
+  std::vector<llvm::Value*> lhs_multi_index =
+      loop_nest.EmitOperandArrayLoopNest(
+          lhs_array_, /*dimension_to_skip=*/lhs_reduction_dimension, "lhs");
+  std::vector<llvm::Value*> rhs_multi_index =
+      loop_nest.EmitOperandArrayLoopNest(
+          rhs_array_, /*dimension_to_skip=*/rhs_reduction_dimension, "rhs");
 
   // Create the loop which does the sum of products reduction.
   //
@@ -468,8 +470,12 @@ void DotOpEmitter::EmitNaiveLlvmIrGemm() {
 
   // The final entry in the rhs and lhs indexes is the indvar of the
   // reduction loop.
-  lhs_index[lhs_reduction_dimension] = reduction_loop->GetIndVarValue();
-  rhs_index[rhs_reduction_dimension] = reduction_loop->GetIndVarValue();
+  lhs_multi_index[lhs_reduction_dimension] = reduction_loop->GetIndVarValue();
+  llvm_ir::IrArray::Index lhs_index(lhs_multi_index, lhs_shape,
+                                    b_->getInt64Ty());
+  rhs_multi_index[rhs_reduction_dimension] = reduction_loop->GetIndVarValue();
+  llvm_ir::IrArray::Index rhs_index(rhs_multi_index, rhs_shape,
+                                    b_->getInt64Ty());
 
   // For computing the sum of products we alloca a single location to store the
   // dot product result as we accumulate it within the reduction loop. After the

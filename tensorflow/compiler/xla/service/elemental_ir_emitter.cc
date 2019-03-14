@@ -1783,24 +1783,25 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     b_->SetInsertPoint(init_block, saved_insert_point);
   }
 
+  std::vector<llvm::Value*> source_multi_index = source_index.multidim();
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
-    auto concat_dim_size =
-        llvm::ConstantInt::get(source_index[concat_dim]->getType(),
-                               operand->shape().dimensions(concat_dim));
+    auto concat_dim_size = source_index.GetConstantWithIndexType(
+        operand->shape().dimensions(concat_dim));
     int64 operand_id = to_unique_operand_id[operand];
-    source_index_phis[operand_id]->addIncoming(source_index[concat_dim],
+    source_index_phis[operand_id]->addIncoming(source_multi_index[concat_dim],
                                                b_->GetInsertBlock());
-    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size),
+    CondBr(ICmpULT(source_multi_index[concat_dim], concat_dim_size),
            emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
     b_->SetInsertPoint(false_block);
-    source_index[concat_dim] = Sub(source_index[concat_dim], concat_dim_size);
+    source_multi_index[concat_dim] =
+        Sub(source_multi_index[concat_dim], concat_dim_size);
   }
 
   Unreachable();
@@ -2050,27 +2051,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& padded_index) {
-  auto index = padded_index;
+  std::vector<llvm::Value*> multi_index = padded_index.multidim();
   llvm::Value* in_bounds = b_->getTrue();
-  for (size_t i = 0; i < index.size(); ++i) {
+  for (size_t i = 0; i < multi_index.size(); ++i) {
     auto index_typed_const = [=](int64 n) {
-      return llvm::ConstantInt::get(index[i]->getType(), n);
+      return padded_index.GetConstantWithIndexType(n);
     };
     const auto& pad_dim = hlo->padding_config().dimensions(i);
-    index[i] = Sub(index[i], index_typed_const(pad_dim.edge_padding_low()));
-    in_bounds =
-        And(in_bounds, ICmpSGE(index[i], index_typed_const(0)), "in_bounds");
-    in_bounds = And(
-        in_bounds,
-        ICmpEQ(
-            index_typed_const(0),
-            URem(index[i], index_typed_const(pad_dim.interior_padding() + 1))),
-        "in_bounds");
-    index[i] =
-        SDiv(index[i], index_typed_const(pad_dim.interior_padding() + 1));
+    multi_index[i] =
+        Sub(multi_index[i], index_typed_const(pad_dim.edge_padding_low()));
+    in_bounds = And(in_bounds, ICmpSGE(multi_index[i], index_typed_const(0)),
+                    "in_bounds");
     in_bounds =
         And(in_bounds,
-            ICmpSLT(index[i],
+            ICmpEQ(index_typed_const(0),
+                   URem(multi_index[i],
+                        index_typed_const(pad_dim.interior_padding() + 1))),
+            "in_bounds");
+    multi_index[i] =
+        SDiv(multi_index[i], index_typed_const(pad_dim.interior_padding() + 1));
+    in_bounds =
+        And(in_bounds,
+            ICmpSLT(multi_index[i],
                     index_typed_const(hlo->operand(0)->shape().dimensions(i))),
             "in_bounds");
   }
@@ -2086,6 +2088,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalPad(
   llvm_ir::LlvmIfData if_data =
       llvm_ir::EmitIfThenElse(in_bounds, "in_bounds", b_);
   SetToFirstInsertPoint(if_data.true_block, b_);
+  llvm_ir::IrArray::Index index(multi_index, hlo->operand(0)->shape(),
+                                padded_index.GetType());
   TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
                       operand_to_generator.at(hlo->operand(0))(index));
   Store(operand_value, ret_value_addr);
@@ -2281,13 +2285,14 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
         const HloInstruction* operand = hlo->operand(0);
-        auto source_index = target_index;
+        std::vector<llvm::Value*> source_multi_index = target_index.multidim();
         for (int64 dim : hlo->dimensions()) {
-          source_index[dim] =
-              Sub(llvm::ConstantInt::get(target_index[dim]->getType(),
-                                         hlo->shape().dimensions(dim) - 1),
-                  target_index[dim]);
+          source_multi_index[dim] = Sub(target_index.GetConstantWithIndexType(
+                                            hlo->shape().dimensions(dim) - 1),
+                                        target_index[dim]);
         }
+        llvm_ir::IrArray::Index source_index(
+            source_multi_index, operand->shape(), target_index.GetType());
         return operand_to_generator.at(operand)(source_index);
       };
     case HloOpcode::kBroadcast:
