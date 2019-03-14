@@ -96,6 +96,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     imported.weights.assign(4.0)
     self.assertEqual(8., imported.f(constant_op.constant(2.)).numpy())
 
+  def test_control_outputs(self, cycles):
+    exported = tracking.AutoTrackable()
+    exported.v = variables.Variable(1.)
+    exported.f = def_function.function(
+        lambda: exported.v.assign(2., name="should_be_control_output"))
+    exported_graph = exported.f.get_concrete_function().graph
+    self.assertIn(
+        exported_graph.get_operation_by_name("should_be_control_output"),
+        exported_graph.control_outputs)
+
+    imported = self.cycle(exported, cycles)
+    # Calling get_concrete_function wraps in a second call operation; we want to
+    # inspect the original function body for the control output; digging into
+    # graph.as_graph_def() and its FunctionDefLibrary is another option.
+    imported_concrete, = imported.f._concrete_functions
+    imported_graph = imported_concrete.graph
+    self.assertIn(
+        imported_graph.get_operation_by_name("should_be_control_output"),
+        imported_graph.control_outputs)
+
   def _make_asset(self, contents):
     filename = tempfile.mktemp(prefix=self.get_temp_dir())
     with open(filename, "w") as f:
