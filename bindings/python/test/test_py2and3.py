@@ -17,9 +17,36 @@ class EdscTest(unittest.TestCase):
     self.f32Type = self.module.make_scalar_type("f32")
     self.indexType = self.module.make_index_type()
 
+  def testFunctionContext(self):
+    with self.module.function_context("foo", [], []):
+      pass
+    self.assertIsNotNone(self.module.get_function("foo"))
+
+  def testMultipleFunctions(self):
+    with self.module.function_context("foo", [], []):
+      E.IdxCst(0)
+    code = str(self.module)
+    self.assertIn("func @foo()", code)
+    self.assertIn("  %c0 = constant 0 : index", code)
+
+    with self.module.function_context("bar", [], []):
+      E.IdxCst(42)
+    code = str(self.module)
+    barPos = code.find("func @bar()")
+    c42Pos = code.find("%c42 = constant 42 : index")
+    self.assertNotEqual(barPos, -1)
+    self.assertNotEqual(c42Pos, -1)
+    self.assertGreater(c42Pos, barPos)
+
+  def testFunctionArgs(self):
+    with self.module.function_context("foo", [self.f32Type, self.f32Type],
+                                      [self.indexType]) as fun:
+      pass
+    code = str(fun)
+    self.assertIn("func @foo(%arg0: f32, %arg1: f32) -> index", code)
+
   def testLoopContext(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       lhs = E.IdxCst(0)
       rhs = E.IdxCst(42)
       with E.LoopContext(lhs, rhs, 1) as i:
@@ -41,8 +68,7 @@ class EdscTest(unittest.TestCase):
         code)
 
   def testLoopNestContext(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       lbs = [E.IdxCst(i) for i in range(4)]
       ubs = [E.IdxCst(10 * i + 5) for i in range(4)]
       with E.LoopNestContext(lbs, ubs, [1, 3, 5, 7]) as (i, j, k, l):
@@ -70,8 +96,7 @@ class EdscTest(unittest.TestCase):
         code)
 
   def testBlockContext(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       cst = E.IdxCst(42)
       with E.BlockContext():
         cst + cst
@@ -89,8 +114,7 @@ class EdscTest(unittest.TestCase):
     self.assertLess(bb1pos, c84pos)
 
   def testBlockContextAppend(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       E.IdxCst(41)
       with E.BlockContext() as b:
         blk = b  # save block handle for later
@@ -117,8 +141,7 @@ class EdscTest(unittest.TestCase):
     self.assertLess(bb1pos, c1pos)
 
   def testBlockContextStandalone(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       blk1 = E.BlockContext()
       blk2 = E.BlockContext()
       with blk1:
@@ -159,10 +182,8 @@ class EdscTest(unittest.TestCase):
     self.assertLess(bb2pos, c56pos)
     self.assertLess(bb2pos, c57pos)
 
-
   def testBlockArguments(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       E.IdxCst(42)
       with E.BlockContext([self.f32Type, self.f32Type]) as b:
         b.arg(0) + b.arg(1)
@@ -172,8 +193,7 @@ class EdscTest(unittest.TestCase):
     self.assertIn("  %2 = addf %0, %1 : f32", code)
 
   def testBr(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       with E.BlockContext() as b:
         blk = b
         E.ret()
@@ -184,8 +204,7 @@ class EdscTest(unittest.TestCase):
     self.assertIn("  return", code)
 
   def testBrDeclaration(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       blk = E.BlockContext()
       E.br(blk.handle())
       with blk:
@@ -196,8 +215,7 @@ class EdscTest(unittest.TestCase):
     self.assertIn("  return", code)
 
   def testBrArgs(self):
-    fun = self.module.make_function("foo", [], [])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [], []) as fun:
       # Create an infinite loop.
       with E.BlockContext([self.indexType, self.indexType]) as b:
         E.br(b, [b.arg(1), b.arg(0)])
@@ -210,8 +228,8 @@ class EdscTest(unittest.TestCase):
     self.assertIn("  br ^bb1(%1, %0 : index, index)", code)
 
   def testRet(self):
-    fun = self.module.make_function("foo", [], [self.indexType, self.indexType])
-    with E.FunctionContext(fun):
+    with self.module.function_context("foo", [],
+                                      [self.indexType, self.indexType]) as fun:
       c42 = E.IdxCst(42)
       c0 = E.IdxCst(0)
       E.ret([c42, c0])

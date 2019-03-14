@@ -39,8 +39,44 @@ struct PythonAttribute;
 struct PythonAttributedType;
 struct PythonBindable;
 struct PythonExpr;
+struct PythonFunctionContext;
 struct PythonStmt;
 struct PythonBlock;
+
+struct PythonType {
+  PythonType() : type{nullptr} {}
+  PythonType(mlir_type_t t) : type{t} {}
+
+  operator mlir_type_t() const { return type; }
+
+  PythonAttributedType attachAttributeDict(
+      const std::unordered_map<std::string, PythonAttribute> &attrs) const;
+
+  std::string str() {
+    mlir::Type f = mlir::Type::getFromOpaquePointer(type);
+    std::string res;
+    llvm::raw_string_ostream os(res);
+    f.print(os);
+    return res;
+  }
+
+  mlir_type_t type;
+};
+
+struct PythonValueHandle {
+  PythonValueHandle(PythonType type)
+      : value(mlir::Type::getFromOpaquePointer(type.type)) {}
+  PythonValueHandle(const PythonValueHandle &other) = default;
+  PythonValueHandle(const mlir::edsc::ValueHandle &other) : value(other) {}
+  operator ValueHandle() const { return value; }
+  operator ValueHandle &() { return value; }
+
+  std::string str() const {
+    return std::to_string(reinterpret_cast<intptr_t>(value.getValue()));
+  }
+
+  mlir::edsc::ValueHandle value;
+};
 
 struct PythonFunction {
   PythonFunction() : function{nullptr} {}
@@ -67,27 +103,13 @@ struct PythonFunction {
     return true;
   }
 
-  mlir_func_t function;
-};
-
-struct PythonType {
-  PythonType() : type{nullptr} {}
-  PythonType(mlir_type_t t) : type{t} {}
-
-  operator mlir_type_t() const { return type; }
-
-  PythonAttributedType attachAttributeDict(
-      const std::unordered_map<std::string, PythonAttribute> &attrs) const;
-
-  std::string str() {
-    mlir::Type f = mlir::Type::getFromOpaquePointer(type);
-    std::string res;
-    llvm::raw_string_ostream os(res);
-    f.print(os);
-    return res;
+  PythonValueHandle arg(unsigned index) {
+    Function *f = static_cast<Function *>(function);
+    assert(index < f->getNumArguments() && "argument index out of bounds");
+    return PythonValueHandle(ValueHandle(f->getArgument(index)));
   }
 
-  mlir_type_t type;
+  mlir_func_t function;
 };
 
 /// Trivial C++ wrappers make use of the EDSC C API.
@@ -162,6 +184,11 @@ struct PythonMLIRModule {
     return module->getNamedFunction(name);
   }
 
+  PythonFunctionContext
+  makeFunctionContext(const std::string &name, const py::list &inputs,
+                      const std::vector<PythonType> &outputs,
+                      const py::kwargs &attributes);
+
 private:
   mlir::MLIRContext mlirContext;
   // One single module in a python-exposed MLIRContext for now.
@@ -180,12 +207,19 @@ struct ContextManager {
 
 struct PythonFunctionContext {
   PythonFunctionContext(PythonFunction f) : function(f) {}
+  PythonFunctionContext(PythonMLIRModule &module, const std::string &name,
+                        const py::list &inputs,
+                        const std::vector<PythonType> &outputs,
+                        const py::kwargs &attributes) {
+    auto function = module.declareFunction(name, inputs, outputs, attributes);
+    function.define();
+  }
 
-  void enter() {
+  PythonFunction enter() {
     assert(function.function && "function is not set up");
-    assert(context);
     context = new mlir::edsc::ScopedContext(
         static_cast<mlir::Function *>(function.function));
+    return function;
   }
 
   void exit(py::object, py::object, py::object) {
@@ -197,6 +231,14 @@ struct PythonFunctionContext {
   mlir::edsc::ScopedContext *context;
 };
 
+PythonFunctionContext PythonMLIRModule::makeFunctionContext(
+    const std::string &name, const py::list &inputs,
+    const std::vector<PythonType> &outputs, const py::kwargs &attributes) {
+  auto func = declareFunction(name, inputs, outputs, attributes);
+  func.define();
+  return PythonFunctionContext(func);
+}
+
 struct PythonExpr {
   PythonExpr() : expr{nullptr} {}
   PythonExpr(const PythonBindable &bindable);
@@ -207,21 +249,6 @@ struct PythonExpr {
     return Expr(*this).str();
   }
   edsc_expr_t expr;
-};
-
-struct PythonValueHandle {
-  PythonValueHandle(PythonType type)
-      : value(mlir::Type::getFromOpaquePointer(type.type)) {}
-  PythonValueHandle(const PythonValueHandle &other) = default;
-  PythonValueHandle(const mlir::edsc::ValueHandle &other) : value(other) {}
-  operator ValueHandle() const { return value; }
-  operator ValueHandle &() { return value; }
-
-  std::string str() const {
-    return std::to_string(reinterpret_cast<intptr_t>(value.getValue()));
-  }
-
-  mlir::edsc::ValueHandle value;
 };
 
 struct PythonBlockHandle {
@@ -1009,6 +1036,11 @@ PYBIND11_MODULE(pybind, m) {
            "definition and can be linked to an external library.")
       .def("make_function", &PythonMLIRModule::makeFunction,
            "Defines a new mlir::Function in the current mlir::Module.")
+      .def("function_context", &PythonMLIRModule::makeFunctionContext,
+           "Defines a new mlir::Function in the mlir::Module and creates the "
+           "function context for building the body of the function.")
+      .def("get_function", &PythonMLIRModule::getNamedFunction,
+           "Looks up the function with the given name in the module.")
       .def(
           "make_scalar_type",
           [](PythonMLIRModule &instance, const std::string &type,
