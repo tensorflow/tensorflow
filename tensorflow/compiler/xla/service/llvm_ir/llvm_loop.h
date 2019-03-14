@@ -241,7 +241,7 @@ class ForLoopNest {
   // The return value is an index with the induction variables. The
   // size equals the rank of shape and there is a null for each
   // dimension that is not in "dimensions".
-  IrArray::Index AddLoopsForShapeOnDimensions(
+  std::vector<llvm::Value*> AddLoopsForShapeOnDimensions(
       const Shape& shape, absl::Span<const int64> dimensions,
       absl::string_view suffix);
 
@@ -252,9 +252,9 @@ class ForLoopNest {
   // dimensions of the index are filled except for 'dimension_to_skip'.
   // name_suffix is the string to append to the names of LLVM constructs (eg,
   // basic blocks) constructed by this method.
-  IrArray::Index EmitOperandArrayLoopNest(const llvm_ir::IrArray& operand_array,
-                                          int64 dimension_to_skip,
-                                          absl::string_view name_suffix);
+  std::vector<llvm::Value*> EmitOperandArrayLoopNest(
+      const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
+      absl::string_view name_suffix);
 
   // Convenience methods which return particular basic blocks of the outermost
   // or innermost loops. These methods return nullptr if no loops have been

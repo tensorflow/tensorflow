@@ -90,6 +90,9 @@ IrArray::Index::Index(absl::Span<llvm::Value* const> multidim,
       index_type_(index_type) {
   CHECK_NE(index_type_, nullptr);
   CHECK_EQ(shape.dimensions_size(), multidim.size());
+  for (const auto* dim : multidim) {
+    CHECK_NE(dim, nullptr);
+  }
   CHECK(LayoutUtil::HasLayout(shape))
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";

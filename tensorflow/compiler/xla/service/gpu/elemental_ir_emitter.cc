@@ -453,19 +453,22 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         b()->CreateStore(init_value, accum_ptr);
 
         llvm_ir::ForLoopNest loops(IrName(hlo), b_, index_type);
-        IrArray::Index input_index = loops.AddLoopsForShapeOnDimensions(
-            operand->shape(), hlo->dimensions(), "reduction_dim");
+        std::vector<llvm::Value*> input_multi_index =
+            loops.AddLoopsForShapeOnDimensions(
+                operand->shape(), hlo->dimensions(), "reduction_dim");
         if (!ShapeUtil::IsScalar(hlo->shape())) {
-          // Here only input_index[hlo->dimensions()] are non-null, so we must
-          // set the rest.
+          // Here only input_multi_index[hlo->dimensions()] are non-null, so we
+          // must set the rest.
           size_t j = 0;
-          for (size_t i = 0; i < input_index.size(); ++i) {
-            if (input_index[i] == nullptr) {
-              input_index[i] = output_index[j++];
+          for (auto& i : input_multi_index) {
+            if (i == nullptr) {
+              i = output_index[j++];
             }
           }
           CHECK_EQ(output_index.size(), j);
         }
+        llvm_ir::IrArray::Index input_index(
+            input_multi_index, hlo->operand(0)->shape(), index_type);
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b());
         TF_ASSIGN_OR_RETURN(

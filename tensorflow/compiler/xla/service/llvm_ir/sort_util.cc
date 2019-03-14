@@ -187,10 +187,12 @@ Status EmitTiledCompareLoop(
       };
 
   // Copy operand tiles from the operand buffers to shared memory.
-  IrArray::Index keys_index = tiled_keys_index;
+  std::vector<llvm::Value*> keys_multi_index = tiled_keys_index.multidim();
   for (int64 i = 0; i < params.size(); ++i) {
     copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
-      keys_index[dimension_to_sort] = index;
+      keys_multi_index[dimension_to_sort] = index;
+      IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
+                                tiled_keys_index.GetType());
       auto value = params[i].EmitReadArrayElement(keys_index, b);
       b->CreateStore(value,
                      b->CreateGEP(param_shmem_buffers[i],
@@ -266,7 +268,9 @@ Status EmitTiledCompareLoop(
   // Copy the operand tiles back from shared memory to the operand buffers.
   for (int64 i = 0; i < params.size(); ++i) {
     copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
-      keys_index[dimension_to_sort] = index;
+      keys_multi_index[dimension_to_sort] = index;
+      IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
+                                tiled_keys_index.GetType());
       auto value = b->CreateLoad(b->CreateGEP(
           param_shmem_buffers[i],
           {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));

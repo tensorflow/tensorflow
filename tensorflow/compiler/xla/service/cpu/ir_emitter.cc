@@ -1598,22 +1598,23 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
 
   llvm_ir::ForLoopNest reduction_loop_nest(IrName(arg, "vectorized_inner"),
                                            &b_);
-  llvm_ir::IrArray::Index reduced_dims_index =
+  std::vector<llvm::Value*> input_multi_index =
       reduction_loop_nest.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
                                                        "reduction_dim");
 
   SetToFirstInsertPoint(reduction_loop_nest.GetInnerLoopBodyBasicBlock(), &b_);
 
   llvm_ir::IrArray arg_array(GetIrArrayFor(arg));
-  llvm_ir::IrArray::Index input_index = reduced_dims_index;
   llvm_ir::IrArray::Index::const_iterator it = output_index.begin();
 
-  for (size_t i = 0; i < input_index.size(); ++i) {
-    if (input_index[i] == nullptr) {
-      input_index[i] = *it++;
+  for (auto& i : input_multi_index) {
+    if (i == nullptr) {
+      i = *it++;
     }
   }
   CHECK(output_index.end() == it);
+  llvm_ir::IrArray::Index input_index(input_multi_index, arg->shape(),
+                                      b_.getInt64Ty());
 
   llvm::Value* input_address = BitCast(
       arg_array.EmitArrayElementAddress(input_index, &b_), b_.getInt8PtrTy());
@@ -1840,7 +1841,7 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalReduce(
   // AddLoopsForShapeOnDimensions will return an Index where induction Value*s
   // are placed for each dimension in dimensions, and all the rest are nullptrs.
   llvm_ir::ForLoopNest loops(IrName(reduce, "inner"), &b_);
-  const llvm_ir::IrArray::Index reduced_dims_index =
+  std::vector<llvm::Value*> input_multi_index =
       loops.AddLoopsForShapeOnDimensions(arg->shape(), dimensions,
                                          "reduction_dim");
 
@@ -1851,15 +1852,16 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalReduce(
   // fill in the rest of the dimensions with induction Value*s taken from
   // 'index' which iterates over the target array.  See the high-level
   // description in the XLA documentation for details.
-  llvm_ir::IrArray::Index input_index = reduced_dims_index;
   llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
-  for (size_t i = 0; i < input_index.size(); ++i) {
-    if (input_index[i] == nullptr) {
-      input_index[i] = *it++;
+  for (auto& i : input_multi_index) {
+    if (i == nullptr) {
+      i = *it++;
     }
   }
   CHECK(index.end() == it);
+  llvm_ir::IrArray::Index input_index(input_multi_index, arg->shape(),
+                                      b_.getInt64Ty());
 
   // Apply the reduction function to the loaded value.
   TF_ASSIGN_OR_RETURN(llvm::Value* const input_element,
@@ -2009,15 +2011,17 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   const int64 num_outer_loops = outer_dims.size();
   llvm_ir::ForLoopNest loops(IrName(slice), &b_);
-  llvm_ir::IrArray::Index target_index =
+  std::vector<llvm::Value*> target_multi_index =
       loops.AddLoopsForShapeOnDimensions(slice->shape(), outer_dims, "slice");
 
   // Only the indices for the outer dimensions have been initialized in
   // target_index. The rest of the indices should get initialized to 0, since
   // for the rest of the dimensions the copy writes to the full dimension.
-  std::replace(target_index.begin(), target_index.end(),
+  std::replace(target_multi_index.begin(), target_multi_index.end(),
                static_cast<llvm::Value*>(nullptr),
                static_cast<llvm::Value*>(b_.getInt64(0)));
+  llvm_ir::IrArray::Index target_index(target_multi_index, slice->shape(),
+                                       b_.getInt64Ty());
 
   if (num_outer_loops > 0) {
     SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &b_);
@@ -2419,11 +2423,13 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   llvm_ir::IrArray target_array = GetIrArrayFor(concatenate);
 
   llvm_ir::ForLoopNest loops(IrName(concatenate), &b_);
-  llvm_ir::IrArray::Index outer_dims_index =
+  std::vector<llvm::Value*> target_multi_index =
       loops.AddLoopsForShapeOnDimensions(output_shape, outer_dims, "concat");
-  std::replace(outer_dims_index.begin(), outer_dims_index.end(),
+  std::replace(target_multi_index.begin(), target_multi_index.end(),
                static_cast<llvm::Value*>(nullptr),
                static_cast<llvm::Value*>(b_.getInt64(0)));
+  llvm_ir::IrArray::Index target_index(target_multi_index, output_shape,
+                                       b_.getInt64Ty());
 
   if (!outer_dims.empty()) {
     SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &b_);
@@ -2435,10 +2441,9 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
 
   // Contiguous subregions from each operand to the concatenate contribute to a
   // contiguous subregion in the target buffer starting at target_region_begin.
-  llvm::Value* target_region_begin =
-      BitCast(target_array.EmitArrayElementAddress(outer_dims_index, &b_,
-                                                   "target_region"),
-              i8_ptr_type);
+  llvm::Value* target_region_begin = BitCast(
+      target_array.EmitArrayElementAddress(target_index, &b_, "target_region"),
+      i8_ptr_type);
   int64 byte_offset_into_target_region = 0;
 
   int64 inner_dims_product =
@@ -2453,7 +2458,7 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
     const Shape& input_shape = operand->shape();
     llvm_ir::IrArray source_array = GetIrArrayFor(operand);
     llvm::Value* copy_source_address = BitCast(
-        source_array.EmitArrayElementAddress(outer_dims_index, &b_, "src_addr"),
+        source_array.EmitArrayElementAddress(target_index, &b_, "src_addr"),
         i8_ptr_type);
 
     llvm::Value* copy_target_address =
