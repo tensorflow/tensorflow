@@ -386,9 +386,14 @@ Status InlineCallInGraph(const absl::string_view node_type, Node* n, Graph* g,
                               &fbody));
   // TODO(jpienaar): Improve this interface to make the need to delete it
   // explicit.
-  Status can_inline_function_call = ValidateInlining(n, fbody);
+  InlineFunctionBodyOptions inline_opts;
+  inline_opts.override_device = false;
+
+  Status can_inline_function_call = ValidateInlining(n, fbody, inline_opts);
+
   if (can_inline_function_call.ok()) {
-    TF_RETURN_IF_ERROR(InlineFunctionBody(g->flib_def(), g, n, fbody, false));
+    TF_RETURN_IF_ERROR(
+        InlineFunctionBody(g->flib_def(), g, n, fbody, inline_opts));
   } else {
     VLOG(4) << "Do not inline '" << node_type
             << "' function call: " << can_inline_function_call.error_message();

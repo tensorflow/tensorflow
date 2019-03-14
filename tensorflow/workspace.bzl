@@ -82,31 +82,31 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     mkl_repository(
         name = "mkl_linux",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "f00dc3b142a5be399bdeebd7e7ea369545a35d4fb84c86f98b6b048d72685295",
-        strip_prefix = "mklml_lnx_2019.0.1.20180928",
+        sha256 = "f84f92b047edad0467d68a925410b782e54eac9e7af61f4cc33d3d38b29bee5d",
+        strip_prefix = "mklml_lnx_2019.0.3.20190125",
         urls = [
-            "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.17-rc/mklml_lnx_2019.0.1.20180928.tgz",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.17-rc/mklml_lnx_2019.0.1.20180928.tgz",
+            "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.18-rc/mklml_lnx_2019.0.3.20190125.tgz",
+            "https://github.com/intel/mkl-dnn/releases/download/v0.18-rc/mklml_lnx_2019.0.3.20190125.tgz",
         ],
     )
     mkl_repository(
         name = "mkl_windows",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "efef90b7b9613fab10f44c8ac4ff28db613a112c64ed94826d7e44df09c44b0b",
-        strip_prefix = "mklml_win_2019.0.1.20180928",
+        sha256 = "8f968cdb175242f887efa9a6dbced76e65a584fbb35e5f5b05883a3584a2382a",
+        strip_prefix = "mklml_win_2019.0.3.20190125",
         urls = [
-            "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.17-rc/mklml_win_2019.0.1.20180928.zip",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.17-rc/mklml_win_2019.0.1.20180928.zip",
+            "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.18-rc/mklml_win_2019.0.3.20190125.zip",
+            "https://github.com/intel/mkl-dnn/releases/download/v0.18-rc/mklml_win_2019.0.3.20190125.zip",
         ],
     )
     mkl_repository(
         name = "mkl_darwin",
         build_file = clean_dep("//third_party/mkl:mkl.BUILD"),
-        sha256 = "83f02938a0c095274db7b8b7b694157abafa3837c5cbaef740440d466c86a477",
-        strip_prefix = "mklml_mac_2019.0.1.20180928",
+        sha256 = "60d6500f0e1a98f011324180fbf7a51a177f45494b4089e02867684d413c4293",
+        strip_prefix = "mklml_mac_2019.0.3.20190125",
         urls = [
-            "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.17-rc/mklml_mac_2019.0.1.20180928.tgz",
-            "https://github.com/intel/mkl-dnn/releases/download/v0.17-rc/mklml_mac_2019.0.1.20180928.tgz",
+            "https://mirror.bazel.build/github.com/intel/mkl-dnn/releases/download/v0.18-rc/mklml_mac_2019.0.3.20190125.tgz",
+            "https://github.com/intel/mkl-dnn/releases/download/v0.18-rc/mklml_mac_2019.0.3.20190125.tgz",
         ],
     )
 
@@ -114,26 +114,30 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
+    # Important: If you are upgrading MKL-DNN, then update the version numbers
+    # in third_party/mkl_dnn/mkldnn.BUILD. In addition, the new version of
+    # MKL-DNN might require upgrading MKL ML libraries also. If they need to be
+    # upgraded then update the version numbers on all three versions above
+    # (Linux, Mac, Windows).
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
-        sha256 = "b100f57af4a2b59a3a37a1ba38f77b644d2107d758a1a7f4e51310063cd21e73",
-        strip_prefix = "mkl-dnn-733fc908874c71a5285043931a1cf80aa923165c",
+        sha256 = "4d0522fc609b4194738dbbe14c8ee1546a2736b03886a07f498250cde53f38fb",
+        strip_prefix = "mkl-dnn-bdd1c7be2cbc0b451d3541ab140742db67f17684",
         urls = [
-            "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/733fc908874c71a5285043931a1cf80aa923165c.tar.gz",
-            "https://github.com/intel/mkl-dnn/archive/733fc908874c71a5285043931a1cf80aa923165c.tar.gz",
+            "https://mirror.bazel.build/github.com/intel/mkl-dnn/archive/bdd1c7be2cbc0b451d3541ab140742db67f17684.tar.gz",
+            "https://github.com/intel/mkl-dnn/archive/bdd1c7be2cbc0b451d3541ab140742db67f17684.tar.gz",
         ],
     )
 
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        patch_file = clean_dep("//third_party/absl:absl-nvcc.patch"),
-        sha256 = "c19386566a66fc0389d7ec70c0ffc398f037844c92c694ea7bc687929202e4eb",
-        strip_prefix = "abseil-cpp-b312c3cb53a0aad75a85ac2bf57c4a614fbd48d4",
+        sha256 = "bc275e1e4642b7e6d4e867b999886971bf0e75b57cb7ad723ffeeb3d595924d7",
+        strip_prefix = "abseil-cpp-256be563447a315f2a7993ec669460ba475fa86a",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/b312c3cb53a0aad75a85ac2bf57c4a614fbd48d4.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/b312c3cb53a0aad75a85ac2bf57c4a614fbd48d4.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/256be563447a315f2a7993ec669460ba475fa86a.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/256be563447a315f2a7993ec669460ba475fa86a.tar.gz",
         ],
     )
 
@@ -141,11 +145,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "61f0017318a24cf940db14e57febecc524b24a9faa8ff4fa7f9f91630c4cd09d",
-        strip_prefix = "eigen-eigen-5a4931dafc1c",
+        sha256 = "c1c5f06805d3c7ecd74152edd535443e32dfd96ab37107e350b7d4f8399f7c71",
+        strip_prefix = "eigen-eigen-c7118091d7e4",
         urls = [
-            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/5a4931dafc1c.tar.gz",
-            "https://bitbucket.org/eigen/eigen/get/5a4931dafc1c.tar.gz",
+            "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/c7118091d7e4.tar.gz",
+            "https://bitbucket.org/eigen/eigen/get/c7118091d7e4.tar.gz",
         ],
     )
 
@@ -186,15 +190,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "8e3a302d37f232dec041bf3f3916ca3fa5689216d42112898a4e36581f2f4ce5",
-        strip_prefix = "google-cloud-cpp-0.6.1",
+        sha256 = "06bc735a117ec7ea92ea580e7f2ffa4b1cd7539e0e04f847bf500588d7f0fe90",
+        strip_prefix = "google-cloud-cpp-0.7.0",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://mirror.bazel.build/github.com/googleapis/google-cloud-cpp/archive/v0.6.1.tar.gz",
-            "https://github.com/googleapis/google-cloud-cpp/archive/v0.6.1.tar.gz",
+            "https://mirror.bazel.build/github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.7.0.tar.gz",
         ],
     )
 
@@ -514,11 +518,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "llvm",
         build_file = clean_dep("//third_party/llvm:llvm.autogenerated.BUILD"),
-        sha256 = "215517541a52a8015042eec88b55c0b06524f2fc90066a3a1cea5be26921ed14",
-        strip_prefix = "llvm-b4ec9009a62f5966fd723d9dc89eac2216bf122c",
+        sha256 = "015878aac86e9afb2db9b8877b814fbcb146a7ee2b79bfce9fd99b6c3d076d7b",
+        strip_prefix = "llvm-d13e5110081a68cacd856d3a3c7860996d67679d",
         urls = [
-            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/b4ec9009a62f5966fd723d9dc89eac2216bf122c.tar.gz",
-            "https://github.com/llvm-mirror/llvm/archive/b4ec9009a62f5966fd723d9dc89eac2216bf122c.tar.gz",
+            "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/d13e5110081a68cacd856d3a3c7860996d67679d.tar.gz",
+            "https://github.com/llvm-mirror/llvm/archive/d13e5110081a68cacd856d3a3c7860996d67679d.tar.gz",
         ],
     )
 

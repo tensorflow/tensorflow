@@ -64,7 +64,7 @@ class ResizeBilinearOpModel : public SingleOpModel {
 };
 
 TEST(ResizeBilinearOpTest, HorizontalResize) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}}, {});
   m.SetInput<float>({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
@@ -79,7 +79,7 @@ TEST(ResizeBilinearOpTest, HorizontalResize) {
 }
 
 TEST(ResizeBilinearOpTest, HorizontalResizeUInt8) {
-  ResizeBilinearOpModel m({TensorType_UINT8, {1, 1, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_UINT8, {1, 1, 2, 1}}, {});
   m.SetInput<uint8>({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
@@ -94,7 +94,7 @@ TEST(ResizeBilinearOpTest, HorizontalResizeUInt8) {
 }
 
 TEST(ResizeBilinearOpTest, HorizontalResizeInt8) {
-  ResizeBilinearOpModel m({TensorType_INT8, {1, 1, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_INT8, {1, 1, 2, 1}}, {});
   m.SetInput<int8_t>({3, 6});
   m.SetSize({1, 3});
   m.Invoke();
@@ -109,7 +109,7 @@ TEST(ResizeBilinearOpTest, HorizontalResizeInt8) {
 }
 
 TEST(ResizeBilinearOpTest, VerticalResize) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}}, {});
   m.SetInput<float>({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
@@ -124,7 +124,7 @@ TEST(ResizeBilinearOpTest, VerticalResize) {
 }
 
 TEST(ResizeBilinearOpTest, VerticalResizeUInt8) {
-  ResizeBilinearOpModel m({TensorType_UINT8, {1, 2, 1, 1}});
+  ResizeBilinearOpModel m({TensorType_UINT8, {1, 2, 1, 1}}, {});
   m.SetInput<uint8>({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
@@ -139,7 +139,7 @@ TEST(ResizeBilinearOpTest, VerticalResizeUInt8) {
 }
 
 TEST(ResizeBilinearOpTest, VerticalResizeInt8) {
-  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 1, 1}});
+  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 1, 1}}, {});
   m.SetInput<int8_t>({3, 9});
   m.SetSize({3, 1});
   m.Invoke();
@@ -154,7 +154,7 @@ TEST(ResizeBilinearOpTest, VerticalResizeInt8) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResize) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {});
   m.SetInput<float>({
       3, 6,  //
       9, 12  //
@@ -181,7 +181,7 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResize) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeUInt8) {
-  ResizeBilinearOpModel m({TensorType_UINT8, {1, 2, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_UINT8, {1, 2, 2, 1}}, {});
   m.SetInput<uint8>({
       3, 6,  //
       9, 12  //
@@ -208,7 +208,7 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeUInt8) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeInt8) {
-  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 2, 1}}, {});
   m.SetInput<int8_t>({
       3, 6,  //
       9, 12  //
@@ -235,7 +235,7 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeInt8) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {});
   m.SetInput<float>({
       3, 6,   //
       9, 12,  //
@@ -272,7 +272,7 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
 }
 
 TEST(ResizeBilinearOpTest, ThreeDimensionalResize) {
-  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}});
+  ResizeBilinearOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, {});
   m.SetInput<float>({
       3, 4, 6, 10,    //
       9, 10, 12, 16,  //
@@ -299,7 +299,7 @@ TEST(ResizeBilinearOpTest, ThreeDimensionalResize) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
-  ResizeBilinearOpModel m({TensorType_UINT8, {2, 2, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_UINT8, {2, 2, 2, 1}}, {});
   m.SetInput<uint8>({
       3, 6,   //
       9, 12,  //
@@ -336,7 +336,7 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
-  ResizeBilinearOpModel m({TensorType_INT8, {2, 2, 2, 1}});
+  ResizeBilinearOpModel m({TensorType_INT8, {2, 2, 2, 1}}, {});
   m.SetInput<int8_t>({
       3, 6,   //
       9, 12,  //
@@ -373,7 +373,7 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
 }
 
 TEST(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
-  ResizeBilinearOpModel m({TensorType_UINT8, {1, 2, 2, 2}});
+  ResizeBilinearOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {});
   m.SetInput<uint8>({
       3, 4, 6, 10,     //
       10, 12, 14, 16,  //
@@ -400,7 +400,7 @@ TEST(ResizeBilinearOpTest, ThreeDimensionalResizeUInt8) {
 }
 
 TEST(ResizeBilinearOpTest, ThreeDimensionalResizeInt8) {
-  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 2, 2}});
+  ResizeBilinearOpModel m({TensorType_INT8, {1, 2, 2, 2}}, {});
   m.SetInput<int8_t>({
       3, 4, 6, 10,     //
       10, 12, 14, 16,  //

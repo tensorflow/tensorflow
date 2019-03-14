@@ -27,6 +27,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -172,6 +173,15 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     output_shape = l.compute_output_shape([(10, 10), (10, 20)])
     self.assertAllEqual([(10, 10), (10, 20)], output_shape)
 
+  def test_lambda_output_shape_nested(self):
+
+    def lambda_fn(inputs):
+      return (inputs[1]['a'], {'b': inputs[0]})
+
+    l = keras.layers.Lambda(lambda_fn)
+    output_shape = l.compute_output_shape(((10, 20), {'a': (10, 5)}))
+    self.assertAllEqual(((10, 5), {'b': (10, 20)}), output_shape)
+
   def test_lambda_config_serialization(self):
     # Test serialization with output_shape and output_shape_type
     layer = keras.layers.Lambda(lambda x: x + 1, output_shape=(1, 1))
@@ -182,6 +192,40 @@ class LambdaLayerTest(keras_parameterized.TestCase):
         'config': config
     })
     layer = keras.layers.Lambda.from_config(config)
+
+  def test_lambda_with_variable(self):
+
+    def fn(x):
+      return x * variables.Variable(2., name='multiplier')
+
+    layer = keras.layers.Lambda(fn)
+    for _ in range(10):
+      layer(np.ones((10, 10), 'float32'))
+    self.assertLen(layer.trainable_weights, 1)
+    self.assertEqual(layer.trainable_weights[0].name, 'lambda/multiplier:0')
+
+
+class TestStatefulLambda(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_all_keras_modes
+  @keras_parameterized.run_with_all_model_types
+  def test_lambda_with_variable_in_model(self):
+
+    def lambda_fn(x):
+      # Variable will only get created once.
+      v = variables.Variable(1., trainable=True)
+      return x * v
+
+    model = testing_utils.get_model_from_layers(
+        [keras.layers.Lambda(lambda_fn)], input_shape=(10,))
+    model.compile(
+        keras.optimizer_v2.gradient_descent.SGD(0.1),
+        'mae',
+        run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10), 'float32'), 2 * np.ones((10, 10), 'float32')
+    model.fit(x, y, batch_size=2, epochs=2, validation_data=(x, y))
+    self.assertLen(model.trainable_weights, 1)
+    self.assertAllClose(keras.backend.get_value(model.trainable_weights[0]), 2.)
 
 
 @keras_parameterized.run_all_keras_modes

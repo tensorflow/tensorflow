@@ -74,8 +74,7 @@ class AnfTransformerTest(test.TestCase):
         source_file=None,
         namespace=None,
         arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        arg_types=None)
     return transformer.Context(entity_info)
 
   def test_basic(self):

@@ -92,12 +92,6 @@ Status ConvertGraphDefToTensorRT(
 // Method to call from optimization pass
 Status ConvertAfterShapes(const ConversionParams& params);
 
-// Return compile time TensorRT library version information.
-std::vector<int> GetLinkedTensorRTVersion();
-
-// Return runtime time TensorRT library version information.
-std::vector<int> GetLoadedTensorRTVersion();
-
 // Helper method for the conversion, expose for testing.
 std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
                                                  const EngineInfo& engine);

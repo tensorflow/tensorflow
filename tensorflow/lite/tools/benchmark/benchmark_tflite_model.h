@@ -60,9 +60,14 @@ class GemmlowpProfilingListener : public BenchmarkListener {
 // Benchmarks a TFLite model by running tflite interpreter.
 class BenchmarkTfLiteModel : public BenchmarkModel {
  public:
+  struct InputLayerInfo {
+    std::string name;
+    std::vector<int> shape;
+  };
+
   BenchmarkTfLiteModel();
   explicit BenchmarkTfLiteModel(BenchmarkParams params);
-  virtual ~BenchmarkTfLiteModel() {}
+  virtual ~BenchmarkTfLiteModel();
 
   std::vector<Flag> GetFlags() override;
   void LogParams() override;
@@ -74,14 +79,11 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     delegates_ = std::move(delegates);
   }
 
-  struct InputLayerInfo {
-    std::string name;
-    std::vector<int> shape;
-  };
-
  protected:
   static BenchmarkParams DefaultParams();
-  void PrepareInputsAndOutputs() override;
+  void PrepareInputData() override;
+  void ResetInputsAndOutputs() override;
+  void CleanUp();
 
   // Allows installation of custom delegates during initialization
   virtual void ApplyDelegates();
@@ -90,7 +92,12 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   std::unique_ptr<tflite::Interpreter> interpreter;
 
  private:
+  struct InputTensorData {
+    TfLitePtrUnion data;
+    size_t bytes;
+  };
   std::vector<InputLayerInfo> inputs;
+  std::vector<InputTensorData> inputs_data_;
   ProfilingListener profiling_listener_;
   GemmlowpProfilingListener gemmlowp_profiling_listener_;
   std::vector<std::unique_ptr<TfLiteDelegate>> delegates_;

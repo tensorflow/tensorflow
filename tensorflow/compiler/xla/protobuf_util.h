@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_PROTOBUF_UTIL_H_
 
-#include "google/protobuf/duration.pb.h"
 #include "absl/time/time.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -44,20 +43,6 @@ Status DumpProtoToDirectory(const tensorflow::protobuf::Message& message,
 // Registers a function that may either expand a dirpath or forward the original
 // dirpath along as-is.
 void RegisterDirectoryExpander(const std::function<string(string)>& expander);
-
-// Converts an absl::Duration to a google::protobuf::Duration.
-inline google::protobuf::Duration ToDurationProto(absl::Duration duration) {
-  google::protobuf::Duration proto;
-  proto.set_seconds(absl::IDivDuration(duration, absl::Seconds(1), &duration));
-  proto.set_nanos(
-      absl::IDivDuration(duration, absl::Nanoseconds(1), &duration));
-  return proto;
-}
-
-// Converts a google::protobuf::Duration to an absl::Duration.
-inline absl::Duration FromDurationProto(google::protobuf::Duration proto) {
-  return absl::Seconds(proto.seconds()) + absl::Nanoseconds(proto.nanos());
-}
 
 }  // namespace protobuf_util
 }  // namespace xla

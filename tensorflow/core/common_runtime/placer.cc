@@ -79,16 +79,20 @@ Status AssignAndLog(int assigned_device, Node* node,
 }  // namespace
 
 Placer::Placer(Graph* graph, const DeviceSet* devices,
-               const SessionOptions* options, const Device* default_device)
+               const Device* default_device, bool allow_soft_placement,
+               bool log_device_placement)
     : graph_(graph),
       devices_(devices),
-      options_(options),
-      log_device_placement_(options != nullptr &&
-                            options->config.log_device_placement()),
-      default_device_(default_device) {}
+      default_device_(default_device),
+      allow_soft_placement_(allow_soft_placement),
+      log_device_placement_(log_device_placement) {}
+
+Placer::Placer(Graph* graph, const DeviceSet* devices,
+               const Device* default_device)
+    : Placer(graph, devices, default_device, true, false) {}
 
 Placer::Placer(Graph* graph, const DeviceSet* devices)
-    : Placer(graph, devices, nullptr, nullptr) {}
+    : Placer(graph, devices, nullptr, true, false) {}
 
 Placer::~Placer() {}
 
@@ -106,10 +110,9 @@ Status Placer::Run() {
     }
   }
 
-  ColocationGraph colocation_graph(
-      graph_, devices_, default_device_,
-      options_ == nullptr || options_->config.allow_soft_placement(),
-      log_device_placement_);
+  ColocationGraph colocation_graph(graph_, devices_, default_device_,
+                                   allow_soft_placement_,
+                                   log_device_placement_);
 
   TF_RETURN_IF_ERROR(colocation_graph.Initialize());
 
