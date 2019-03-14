@@ -102,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -387,6 +388,7 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
