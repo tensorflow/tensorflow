@@ -33,7 +33,7 @@ from tensorflow.python.platform import test
 class DefinitionInfoTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, source = parser.parse_entity(test_fn)
+    node, source, _ = parser.parse_entity(test_fn)
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
@@ -86,7 +86,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
     self.assertHasDefs(fn_body[1].test, 1)
@@ -105,7 +105,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].value.args[0], 1)
     self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
@@ -128,7 +128,7 @@ class DefinitionInfoTest(test.TestCase):
       return x, y
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
     self.assertHasDefs(fn_body[1].test, 2)
@@ -153,7 +153,7 @@ class DefinitionInfoTest(test.TestCase):
       return x, y
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
     self.assertHasDefs(fn_body[1].target, 1)
@@ -178,7 +178,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
     def_of_a_in_if = fn_body[1].body[0].targets[0]
 
     self.assertHasDefs(fn_body[0].targets[0], 1)
@@ -202,7 +202,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     parent_return = fn_body[3]
     child_return = fn_body[1].body[1]
@@ -219,7 +219,7 @@ class DefinitionInfoTest(test.TestCase):
         return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasDefs(fn_body[0].items[0].context_expr.func, 0)
     self.assertHasDefs(fn_body[0].items[0].context_expr.args[0], 1)
@@ -232,7 +232,7 @@ class DefinitionInfoTest(test.TestCase):
       return l
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     creation = fn_body[0].targets[0]
     mutation = fn_body[1].targets[0].value
@@ -251,7 +251,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     first_def = fn_body[0].targets[0]
     second_def = fn_body[1].orelse[0].targets[0]
@@ -270,7 +270,7 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     use = fn_body[2].value
     self.assertHasDefs(use, 0)
@@ -285,9 +285,9 @@ class DefinitionInfoTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
-    param = node.body[0].args.args[0]
+    param = node.args.args[0]
     source = fn_body[0].value.args[0]
     target = fn_body[0].targets[0]
     retval = fn_body[1].value
@@ -302,7 +302,7 @@ class DefinitionInfoTest(test.TestCase):
       return x  # pylint:disable=undefined-variable
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     listcomp_target = fn_body[0].value.args[0].generators[0].target
     retval = fn_body[1].value

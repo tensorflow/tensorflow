@@ -35,7 +35,17 @@ _parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
 
 
 def parse_entity(entity):
-  """Returns the AST of given entity."""
+  """Returns the AST and source code of given entity.
+
+  Args:
+    entity: A python function/method/class
+
+  Returns:
+    gast.AST, str, gast.ModuleNode: a tuple of the AST node corresponding
+    exactly to the entity; the string that was parsed to generate the AST; and
+    the containing module AST node, which might contain extras like future
+    import nodes.
+  """
   try:
     with _parse_lock:
       source = tf_inspect.getsource_no_unwrap(entity)
@@ -59,7 +69,9 @@ def parse_entity(entity):
   source = textwrap.dedent(source)
 
   try:
-    return parse_str(source), source
+    module_node = parse_str(source)
+    assert len(module_node.body) == 1
+    return module_node.body[0], source, module_node
 
   except IndentationError:
     # The text below lists the causes of this error known to us. There may
@@ -99,7 +111,8 @@ def parse_entity(entity):
     new_source = '\n'.join(lines)
 
     try:
-      return parse_str(new_source), new_source
+      module_node = parse_str(new_source)
+      return module_node.body[0], new_source, module_node
     except SyntaxError as e:
       raise_parse_failure(
           'If this is a lambda function, the error may be avoided by creating'
