@@ -888,8 +888,26 @@ PYBIND11_MODULE(pybind, m) {
       .def("__enter__", &PythonLoopNestContext::enter)
       .def("__exit__", &PythonLoopNestContext::exit);
 
-  m.def("IdxCst", [](int64_t val) -> PythonValueHandle {
+  m.def("constant_index", [](int64_t val) -> PythonValueHandle {
     return ValueHandle(index_t(val));
+  });
+  m.def("constant_int", [](int64_t val, int width) -> PythonValueHandle {
+    return ValueHandle::create<ConstantIntOp>(val, width);
+  });
+  m.def("constant_float", [](double val, PythonType type) -> PythonValueHandle {
+    FloatType floatType =
+        Type::getFromOpaquePointer(type.type).cast<FloatType>();
+    assert(floatType);
+    auto value = APFloat(val);
+    bool lostPrecision;
+    value.convert(floatType.getFloatSemantics(), APFloat::rmNearestTiesToEven,
+                  &lostPrecision);
+    return ValueHandle::create<ConstantFloatOp>(value, floatType);
+  });
+  m.def("constant_function", [](PythonFunction func) -> PythonValueHandle {
+    auto *function = reinterpret_cast<const Function *>(func.function);
+    auto attr = FunctionAttr::get(function, function->getContext());
+    return ValueHandle::create<ConstantOp>(function->getType(), attr);
   });
   m.def("appendTo", [](const PythonBlockHandle &handle) {
     return PythonBlockAppender(handle);
@@ -980,7 +998,9 @@ PYBIND11_MODULE(pybind, m) {
       .def("__str__", &PythonFunction::str)
       .def("define", &PythonFunction::define,
            "Adds a body to the function if it does not already have one.  "
-           "Returns true if the body was added");
+           "Returns true if the body was added")
+      .def("arg", &PythonFunction::arg,
+           "Get the ValueHandle to the indexed argument of the function");
 
   py::class_<PythonBlock>(m, "StmtBlock",
                           "Wrapping class for mlir::edsc::StmtBlock")

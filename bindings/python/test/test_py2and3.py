@@ -24,13 +24,13 @@ class EdscTest(unittest.TestCase):
 
   def testMultipleFunctions(self):
     with self.module.function_context("foo", [], []):
-      E.IdxCst(0)
+      E.constant_index(0)
     code = str(self.module)
     self.assertIn("func @foo()", code)
     self.assertIn("  %c0 = constant 0 : index", code)
 
     with self.module.function_context("bar", [], []):
-      E.IdxCst(42)
+      E.constant_index(42)
     code = str(self.module)
     barPos = code.find("func @bar()")
     c42Pos = code.find("%c42 = constant 42 : index")
@@ -47,8 +47,8 @@ class EdscTest(unittest.TestCase):
 
   def testLoopContext(self):
     with self.module.function_context("foo", [], []) as fun:
-      lhs = E.IdxCst(0)
-      rhs = E.IdxCst(42)
+      lhs = E.constant_index(0)
+      rhs = E.constant_index(42)
       with E.LoopContext(lhs, rhs, 1) as i:
         lhs + rhs + i
         with E.LoopContext(rhs, rhs + rhs, 2) as j:
@@ -69,8 +69,8 @@ class EdscTest(unittest.TestCase):
 
   def testLoopNestContext(self):
     with self.module.function_context("foo", [], []) as fun:
-      lbs = [E.IdxCst(i) for i in range(4)]
-      ubs = [E.IdxCst(10 * i + 5) for i in range(4)]
+      lbs = [E.constant_index(i) for i in range(4)]
+      ubs = [E.constant_index(10 * i + 5) for i in range(4)]
       with E.LoopNestContext(lbs, ubs, [1, 3, 5, 7]) as (i, j, k, l):
         i + j + k + l
 
@@ -97,7 +97,7 @@ class EdscTest(unittest.TestCase):
 
   def testBlockContext(self):
     with self.module.function_context("foo", [], []) as fun:
-      cst = E.IdxCst(42)
+      cst = E.constant_index(42)
       with E.BlockContext():
         cst + cst
     code = str(fun)
@@ -115,13 +115,13 @@ class EdscTest(unittest.TestCase):
 
   def testBlockContextAppend(self):
     with self.module.function_context("foo", [], []) as fun:
-      E.IdxCst(41)
+      E.constant_index(41)
       with E.BlockContext() as b:
         blk = b  # save block handle for later
-        E.IdxCst(0)
-      E.IdxCst(42)
+        E.constant_index(0)
+      E.constant_index(42)
       with E.BlockContext(E.appendTo(blk)):
-        E.IdxCst(1)
+        E.constant_index(1)
     code = str(fun)
     # Find positions of instructions and make sure they are in the block we put
     # them by comparing those positions.
@@ -145,14 +145,14 @@ class EdscTest(unittest.TestCase):
       blk1 = E.BlockContext()
       blk2 = E.BlockContext()
       with blk1:
-        E.IdxCst(0)
+        E.constant_index(0)
       with blk2:
-        E.IdxCst(56)
-        E.IdxCst(57)
-      E.IdxCst(41)
+        E.constant_index(56)
+        E.constant_index(57)
+      E.constant_index(41)
       with blk1:
-        E.IdxCst(1)
-      E.IdxCst(42)
+        E.constant_index(1)
+      E.constant_index(42)
     code = str(fun)
     # Find positions of instructions and make sure they are in the block we put
     # them by comparing those positions.
@@ -184,7 +184,7 @@ class EdscTest(unittest.TestCase):
 
   def testBlockArguments(self):
     with self.module.function_context("foo", [], []) as fun:
-      E.IdxCst(42)
+      E.constant_index(42)
       with E.BlockContext([self.f32Type, self.f32Type]) as b:
         b.arg(0) + b.arg(1)
     code = str(fun)
@@ -219,7 +219,7 @@ class EdscTest(unittest.TestCase):
       # Create an infinite loop.
       with E.BlockContext([self.indexType, self.indexType]) as b:
         E.br(b, [b.arg(1), b.arg(0)])
-      E.br(b, [E.IdxCst(0), E.IdxCst(1)])
+      E.br(b, [E.constant_index(0), E.constant_index(1)])
     code = str(fun)
     self.assertIn("  %c0 = constant 0 : index", code)
     self.assertIn("  %c1 = constant 1 : index", code)
@@ -230,13 +230,40 @@ class EdscTest(unittest.TestCase):
   def testRet(self):
     with self.module.function_context("foo", [],
                                       [self.indexType, self.indexType]) as fun:
-      c42 = E.IdxCst(42)
-      c0 = E.IdxCst(0)
+      c42 = E.constant_index(42)
+      c0 = E.constant_index(0)
       E.ret([c42, c0])
     code = str(fun)
     self.assertIn("  %c42 = constant 42 : index", code)
     self.assertIn("  %c0 = constant 0 : index", code)
     self.assertIn("  return %c42, %c0 : index, index", code)
+
+
+  def testConstants(self):
+    with self.module.function_context("constants", [], []) as fun:
+      E.constant_float(1.23, self.module.make_scalar_type("bf16"))
+      E.constant_float(1.23, self.module.make_scalar_type("f16"))
+      E.constant_float(1.23, self.module.make_scalar_type("f32"))
+      E.constant_float(1.23, self.module.make_scalar_type("f64"))
+      E.constant_int(1, 1)
+      E.constant_int(123, 8)
+      E.constant_int(123, 16)
+      E.constant_int(123, 32)
+      E.constant_int(123, 64)
+      E.constant_index(123)
+      E.constant_function(fun)
+
+    code = str(fun)
+    self.assertIn("constant 1.230000e+00 : bf16", code)
+    self.assertIn("constant 1.230470e+00 : f16", code)
+    self.assertIn("constant 1.230000e+00 : f32", code)
+    self.assertIn("constant 1.230000e+00 : f64", code)
+    self.assertIn("constant 1 : i1", code)
+    self.assertIn("constant 123 : i8", code)
+    self.assertIn("constant 123 : i16", code)
+    self.assertIn("constant 123 : i32", code)
+    self.assertIn("constant 123 : index", code)
+    self.assertIn("constant @constants : () -> ()", code)
 
 
   def testBindables(self):
