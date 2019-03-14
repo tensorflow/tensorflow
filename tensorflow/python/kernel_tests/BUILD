@@ -1695,7 +1695,6 @@ cuda_py_test(
     shard_count = 16,
     tags = [
         "no_gpu",  # TODO(b/117928656)
-        "no_windows",  # TODO(b/127888628)
     ],
     xla_enable_strict_auto_jit = True,
 )
