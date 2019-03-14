@@ -288,6 +288,10 @@ message ExecutionOptions {
   // Number of replicas of the computation to run. If zero, uses the default
   // number of replicas for the XLA service.
   int32 num_replicas = 6;
+
+  // This optional field specifies the device assignment if known at compile
+  // time.
+  DeviceAssignmentProto device_assignment = 7;
 }
 
 message GetDeviceHandlesRequest {

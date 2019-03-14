@@ -75,6 +75,10 @@ CompileOnlyService::CompileAheadOfTime(
     *execution_options.mutable_debug_options() = debug_options;
     *execution_options.mutable_shape_with_output_layout() =
         instance.result_layout->ToProto();
+    if (options.has_static_device_assignment()) {
+      TF_RETURN_IF_ERROR(options.static_device_assignment().Serialize(
+          execution_options.mutable_device_assignment()));
+    }
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(
