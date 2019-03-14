@@ -992,14 +992,27 @@ PYBIND11_MODULE(pybind, m) {
   m.def("op",
         [](const std::string &name,
            const std::vector<PythonValueHandle> &operands,
-           const std::vector<PythonType> &resultTypes) -> PythonValueHandle {
+           const std::vector<PythonType> &resultTypes,
+           const py::kwargs &attributes) -> PythonValueHandle {
           std::vector<ValueHandle> operandHandles(operands.begin(),
                                                   operands.end());
           std::vector<Type> types;
           types.reserve(resultTypes.size());
           for (auto t : resultTypes)
             types.push_back(Type::getFromOpaquePointer(t.type));
-          return ValueHandle::create(name, operandHandles, types);
+
+          std::vector<NamedAttribute> attrs;
+          attrs.reserve(attributes.size());
+          for (const auto &a : attributes) {
+            std::string name = a.first.str();
+            auto pyAttr = a.second.cast<PythonAttribute>();
+            auto cppAttr = Attribute::getFromOpaquePointer(pyAttr.attr);
+            auto identifier =
+                Identifier::get(name, ScopedContext::getContext());
+            attrs.emplace_back(identifier, cppAttr);
+          }
+
+          return ValueHandle::create(name, operandHandles, types, attrs);
         });
 
   m.def("Max", [](const py::list &args) {
@@ -1207,6 +1220,52 @@ PYBIND11_MODULE(pybind, m) {
         .def("__mod__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
                  -> PythonValueHandle { return lhs.value % rhs.value; })
+        .def("__lt__",
+             [](PythonValueHandle lhs,
+                PythonValueHandle rhs) -> PythonValueHandle {
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::SLT, lhs.value,
+                                                  rhs.value);
+             })
+        .def("__le__",
+             [](PythonValueHandle lhs,
+                PythonValueHandle rhs) -> PythonValueHandle {
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::SLE, lhs.value,
+                                                  rhs.value);
+             })
+        .def("__gt__",
+             [](PythonValueHandle lhs,
+                PythonValueHandle rhs) -> PythonValueHandle {
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::SGT, lhs.value,
+                                                  rhs.value);
+             })
+        .def("__ge__",
+             [](PythonValueHandle lhs,
+                PythonValueHandle rhs) -> PythonValueHandle {
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::SGE, lhs.value,
+                                                  rhs.value);
+             })
+        .def("__eq__",
+             [](PythonValueHandle lhs,
+                PythonValueHandle rhs) -> PythonValueHandle {
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::EQ, lhs.value,
+                                                  rhs.value);
+             })
+        .def("__ne__",
+             [](PythonValueHandle lhs,
+                PythonValueHandle rhs) -> PythonValueHandle {
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::NE, lhs.value,
+                                                  rhs.value);
+             })
+        .def("__invert__",
+             [](PythonValueHandle handle) -> PythonValueHandle {
+               return !handle.value;
+             })
+        .def("__and__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value && rhs.value; })
+        .def("__or__",
+             [](PythonValueHandle lhs, PythonValueHandle rhs)
+                 -> PythonValueHandle { return lhs.value || rhs.value; })
         .def("__call__", &PythonValueHandle::call);
   }
 

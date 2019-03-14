@@ -272,6 +272,28 @@ class EdscTest(unittest.TestCase):
     self.assertIn("%f = constant @sqrtf : (f32) -> f32", code)
     self.assertIn("%0 = call_indirect %f(%arg0) : (f32) -> f32", code)
 
+  def testBooleanOps(self):
+    with self.module.function_context(
+        "booleans", [self.boolType for _ in range(4)], []) as fun:
+      i, j, k, l = (fun.arg(x) for x in range(4))
+      stmt1 = (i < j) & (j >= k)
+      stmt2 = ~(stmt1 | (k == l))
+
+    code = str(fun)
+    self.assertIn('%0 = cmpi "slt", %arg0, %arg1 : i1', code)
+    self.assertIn('%1 = cmpi "sge", %arg1, %arg2 : i1', code)
+    self.assertIn("%2 = muli %0, %1 : i1", code)
+    self.assertIn('%3 = cmpi "eq", %arg2, %arg3 : i1', code)
+    self.assertIn("%true = constant 1 : i1", code)
+    self.assertIn("%4 = subi %true, %2 : i1", code)
+    self.assertIn("%true_0 = constant 1 : i1", code)
+    self.assertIn("%5 = subi %true_0, %3 : i1", code)
+    self.assertIn("%6 = muli %4, %5 : i1", code)
+    self.assertIn("%true_1 = constant 1 : i1", code)
+    self.assertIn("%7 = subi %true_1, %6 : i1", code)
+    self.assertIn("%true_2 = constant 1 : i1", code)
+    self.assertIn("%8 = subi %true_2, %7 : i1", code)
+
   def testCustom(self):
     with self.module.function_context("custom", [self.indexType, self.f32Type],
                                       []) as fun:

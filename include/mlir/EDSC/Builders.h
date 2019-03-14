@@ -438,6 +438,11 @@ ValueHandle operator%(ValueHandle lhs, ValueHandle rhs);
 ValueHandle floorDiv(ValueHandle lhs, ValueHandle rhs);
 ValueHandle ceilDiv(ValueHandle lhs, ValueHandle rhs);
 
+ValueHandle operator!(ValueHandle value);
+ValueHandle operator&&(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator||(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator^(ValueHandle lhs, ValueHandle rhs);
+
 } // namespace op
 } // namespace edsc
 } // namespace mlir

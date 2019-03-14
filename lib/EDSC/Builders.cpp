@@ -366,3 +366,18 @@ ValueHandle mlir::edsc::op::ceilDiv(ValueHandle lhs, ValueHandle rhs) {
   return createBinaryIndexHandle(
       lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0.ceilDiv(d1); });
 }
+
+ValueHandle mlir::edsc::op::operator!(ValueHandle value) {
+  assert(value.getType().isInteger(1) && "expected boolean expression");
+  return ValueHandle::create<ConstantIntOp>(1, 1) - value;
+}
+
+ValueHandle mlir::edsc::op::operator&&(ValueHandle lhs, ValueHandle rhs) {
+  assert(lhs.getType().isInteger(1) && "expected boolean expression on LHS");
+  assert(rhs.getType().isInteger(1) && "expected boolean expression on RHS");
+  return lhs * rhs;
+}
+
+ValueHandle mlir::edsc::op::operator||(ValueHandle lhs, ValueHandle rhs) {
+  return !(!lhs && !rhs);
+}
