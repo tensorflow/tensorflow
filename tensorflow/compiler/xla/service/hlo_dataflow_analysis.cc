@@ -1033,9 +1033,6 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
   }
 
   if (user->opcode() == HloOpcode::kFusion) {
-    if (fusion_can_share_buffer_ != nullptr) {
-      return fusion_can_share_buffer_(user, operand);
-    }
     // Get the parameter associated with 'operand';
     HloInstruction* fusion_param =
         user->fused_parameter(user->operand_index(operand));
@@ -1043,9 +1040,20 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     const HloValue& fusion_param_value =
         GetValueDefinedAt(fusion_param, operand_index);
 
+    // TODO(b/80315712): This code is in a bit of a weird intermediate state
+    // at the moment. The in-place DUS check really needs to be common to all
+    // backends, so it runs first. Then we run the backend-specific check if
+    // provided, or go through the target-indepdendent check if not.
+    // Unfortunately, the notionally "target-independent" path actually contains
+    // some target-specific code, so we can't run all of it *in addition* to the
+    // target-specific function, like the interface documentation says.
     if (user->fused_expression_root()->opcode() ==
         HloOpcode::kDynamicUpdateSlice) {
       return CanDoInPlaceDynamicUpdateSlice(user, fusion_param_value);
+    }
+
+    if (fusion_can_share_buffer_ != nullptr) {
+      return fusion_can_share_buffer_(user, operand);
     }
 
     if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||

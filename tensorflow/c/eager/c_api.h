@@ -98,7 +98,8 @@ TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
 
 // Clears the internal caches in the TFE context. Useful when reseeding random
 // ops.
-TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
+TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx,
+                                                  TF_Status* status);
 
 // Sets a thread-local device placement policy. After this call, other calls to
 // TFE_Execute in the same thread will use the device policy specified here

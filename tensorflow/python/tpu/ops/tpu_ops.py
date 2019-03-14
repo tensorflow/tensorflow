@@ -382,17 +382,19 @@ def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
   """A placeholder op for enqueueing embedding IDs to the TPU.
 
   Args:
-    sample_indices: A list of rank 1 Tensors specifying the training example
+    sample_indices: A list of rank 2 Tensors specifying the training example
       to which the corresponding embedding_indices and aggregation_weights
-      values belong. It corresponds to sp_ids.indices[:,0] in
-      embedding_lookup_sparse(). Both int32 and int64 are allowed and will be
-      converted to int32 internally.
+      values belong. It corresponds to sp_ids.indices in
+      embedding_lookup_sparse(). If the size of its first dimension is 0, we
+      assume each embedding_indices belongs to a different sample. Both int32
+      and int64 are allowed and will be converted to int32 internally.
     embedding_indices: A list of rank 1 Tensors, indices into the embedding
       tables. It corresponds to sp_ids.values in embedding_lookup_sparse(). Both
       int32 and int64 are allowed and will be converted to int32 internally.
     aggregation_weights: A list of rank 1 Tensors containing per training
       example aggregation weights. It corresponds to sp_weights.values in
-      embedding_lookup_sparse(). Both float32 and float64 are allowed and will
+      embedding_lookup_sparse(). If the size of its first dimension is 0, we
+      assume all weights are 1. Both float32 and float64 are allowed and will
       be converted to float32 internally.
     table_ids: A list of integers specifying the identifier of the embedding
       table (offset of TableDescriptor in the TPUEmbeddingConfiguration) to

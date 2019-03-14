@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -58,14 +59,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-string AsString(const std::string& str) {
-  return string(str.data(), str.length());
-}
-
-llvm::StringRef AsStringRef(absl::string_view str) {
-  return llvm::StringRef(str.data(), str.size());
-}
-
 std::unique_ptr<llvm::Module> DropConstantInitializers(
     const llvm::Module& module) {
   std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
@@ -81,7 +74,7 @@ string DumpModuleToString(const llvm::Module& module) {
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
 llvm::CallInst* EmitCallToIntrinsic(
@@ -248,7 +241,7 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+  return b->CreateGlobalStringPtr(encoded_shape);
 }
 
 StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
@@ -334,7 +327,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
     b->CreateBr(if_data.after_block);
   } else {
     if_data.after_block = if_data.if_block->splitBasicBlock(
-        b->GetInsertPoint(), AsStringRef(absl::StrCat(name, "-after")));
+        b->GetInsertPoint(), absl::StrCat(name, "-after"));
   }
 
   // Our basic block should now end with an unconditional branch.  Remove it;
@@ -575,14 +568,6 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static string GetProcessUniqueIrFileName(absl::string_view prefix) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static NameUniquer* uniquer = new NameUniquer(/*separator=*/"-");
-
-  tensorflow::mutex_lock lock(mu);
-  return uniquer->GetUniqueName(prefix);
-}
-
 static Status CreateAndWriteStringToFile(const string& directory_name,
                                          const string& file_name,
                                          const string& text) {
@@ -596,29 +581,27 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
   return Status::OK();
 }
 
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized) {
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized) {
+  const auto& debug_opts = hlo_module.config().debug_options();
+  if (!DumpingEnabledForHloModule(hlo_module)) {
+    return;
+  }
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string unique_and_safe_file_name = GetProcessUniqueIrFileName(
-      absl::StrCat("ir-", SanitizeFileName(hlo_module_name), "-",
-                   optimized ? "with" : "no", "-opt"));
-
-  string ir_file_name = tensorflow::io::JoinPath(
-      directory_name, absl::StrCat(unique_and_safe_file_name, ".ll"));
+  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
+  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.
-  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
-      directory_name, absl::StrCat(unique_and_safe_file_name, "-noconst.ll"));
-
-  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
-      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
-  return CreateAndWriteStringToFile(
-      directory_name, ir_no_constant_initializers_file_name,
-      DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  // with the constants stripped to get IR that is easier to manipulate.  Skip
+  // this if we're dumping to stdout; there's no point in duplicating everything
+  // when writing to the terminal.
+  if (!DumpingToStdout(debug_opts)) {
+    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  }
 }
 
 llvm::Function* CreateFunction(llvm::FunctionType* function_type,

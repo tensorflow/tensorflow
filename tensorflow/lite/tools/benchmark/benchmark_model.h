@@ -158,7 +158,11 @@ class BenchmarkModel {
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
                                         RunType run_type);
-  virtual void PrepareInputsAndOutputs();
+  // Prepares input data for benchmark. This can be used to initialize input
+  // data that has non-trivial cost.
+  virtual void PrepareInputData();
+
+  virtual void ResetInputsAndOutputs();
   virtual void RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;

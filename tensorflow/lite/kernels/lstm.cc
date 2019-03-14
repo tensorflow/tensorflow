@@ -840,6 +840,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
       return full::Init(context, buffer, length);
     case kTfLiteLSTMBasicKernel:
       return basic::Init(context, buffer, length);
+    default:
+      return nullptr;
   }
 }
 void Free(TfLiteContext* context, void* buffer) {
@@ -855,6 +857,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       return full::Prepare(context, node);
     case kTfLiteLSTMBasicKernel:
       return basic::Prepare(context, node);
+    default:
+      return kTfLiteError;
   }
 }
 
@@ -865,6 +869,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return full::Eval(context, node);
     case kTfLiteLSTMBasicKernel:
       return basic::Eval(context, node);
+    default:
+      return kTfLiteError;
   }
 }
 

@@ -620,6 +620,32 @@ bool HandleStringAttribute(PyObject* o, const char* attr_name,
   return true;  // Handled string attribute, ok!
 }
 
+// Returns "ok"; true if there is no error, false if there was an error.
+bool HandleBoolAttribute(PyObject* o, const char* attr_name,
+                         std::function<void(bool b)> f) {
+  if (!PyObject_HasAttrString(o, attr_name)) {
+    return true;  // It's ok for the object to not have the attribute.
+  }
+  PyObject* attr = PyObject_GetAttrString(o, attr_name);
+  if (attr == nullptr) {
+    return false;  // An error occurred getting the attribute.
+  }
+  if (attr == Py_None) {
+    Py_DECREF(attr);
+    return true;  // The attribute is None, which we consider ok.
+  }
+  if (!PyBool_Check(attr)) {
+    string message = absl::StrFormat("%s must be a boolean or none; got %s",
+                                     attr_name, numpy::PyObjectCppRepr(attr));
+    PyErr_SetString(PyExc_TypeError, message.c_str());
+    Py_DECREF(attr);
+    return false;  // Type error, not ok.
+  }
+  f(PyObject_IsTrue(attr));
+  Py_DECREF(attr);
+  return true;  // Handled boolean attribute, ok!
+}
+
 bool HandleRepeatedInt64Attribute(
     PyObject* o, const char* attr_name,
     tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* field) {

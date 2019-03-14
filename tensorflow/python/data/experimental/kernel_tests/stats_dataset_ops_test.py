@@ -157,7 +157,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     for i in range(34):
       self.assertEqual(i * 3, self.evaluate(next_element()))
       summary_str = self.evaluate(aggregator.get_summary())
-      if i is not 0:
+      if i != 0:
         self._assertSummaryHasScalarValue(
             summary_str,
             self.regexForNodeName("FilterDataset", "dropped_elements"),
@@ -192,12 +192,9 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testMapAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
-      dataset = dataset_ops.Dataset.range(10).map(
+      return dataset_ops.Dataset.range(10).map(
           lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
           num_parallel_calls=optimization.AUTOTUNE)
-      options = dataset_ops.Options()
-      options.experimental_autotune = True
-      return dataset.with_options(options)
 
     self._testParallelCallsStats(
         dataset_fn, {self.regexForNodeName("ParallelMapDataset")},
@@ -213,13 +210,10 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         return dataset_ops.Dataset.range(
             10).map(lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
 
-      dataset = dataset_ops.Dataset.range(1).interleave(
+      return dataset_ops.Dataset.range(1).interleave(
           interleave_fn,
           cycle_length=1,
           num_parallel_calls=optimization.AUTOTUNE)
-      options = dataset_ops.Options()
-      options.experimental_autotune = True
-      return dataset.with_options(options)
 
     self._testParallelCallsStats(
         dataset_fn, {self.regexForNodeName("ParallelInterleaveDatasetV2")}, 10,
@@ -228,14 +222,11 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testMapAndBatchAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
-      dataset = dataset_ops.Dataset.range(100).apply(
+      return dataset_ops.Dataset.range(100).apply(
           batching.map_and_batch(
               lambda x: array_ops.tile([x], ops.convert_to_tensor([2])),
               num_parallel_calls=optimization.AUTOTUNE,
               batch_size=16))
-      options = dataset_ops.Options()
-      options.experimental_autotune = True
-      return dataset.with_options(options)
 
     num_output = 100 // 16 + 1
     self._testParallelCallsStats(

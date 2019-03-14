@@ -63,8 +63,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
@@ -332,8 +331,10 @@ py_library(
         "layers/merge.py",
         "layers/noise.py",
         "layers/normalization.py",
+        "layers/normalization_v2.py",
         "layers/pooling.py",
         "layers/recurrent.py",
+        "layers/recurrent_v2.py",
         "layers/serialization.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
@@ -539,6 +540,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
+    tags = [
+        "no_windows",  # TODO(b/127888631)
+        "no_windows_gpu",  # TODO(b/127881287)
+    ],
 )
 
 tf_py_test(
@@ -601,6 +606,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -618,6 +624,7 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -630,6 +637,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    # TODO(b/127881287): Re-enable.
+    tags = [
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(
@@ -666,6 +677,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -778,6 +790,19 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "recurrent_v2_test",
+    size = "medium",
+    srcs = ["layers/recurrent_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
+)
+
+cuda_py_test(
     name = "separable_convolutional_test",
     size = "medium",
     srcs = ["layers/separable_convolutional_test.py"],
@@ -787,12 +812,13 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
-    name = "unified_lstm_test",
+    name = "lstm_v2_test",
     size = "medium",
-    srcs = ["layers/unified_lstm_test.py"],
+    srcs = ["layers/lstm_v2_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -804,9 +830,9 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "unified_gru_test",
+    name = "gru_v2_test",
     size = "medium",
-    srcs = ["layers/unified_gru_test.py"],
+    srcs = ["layers/gru_v2_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -1014,6 +1040,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1026,6 +1053,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1310,6 +1338,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(
