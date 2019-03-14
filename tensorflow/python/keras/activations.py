@@ -194,7 +194,6 @@ def sigmoid(x):
       x: A tensor or variable.
   Returns:
       A tensor.
-=======
   """Sigmoid activation function.
 
   Arguments:
