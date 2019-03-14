@@ -29,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -541,6 +542,24 @@ class UnaryOpTest(test.TestCase):
             grads = [grads]
           for analytical, numerical in grads:
             self.assertAllClose(analytical, numerical, rtol=tol, atol=tol)
+
+
+class SingularGradientOpTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testGradientAtOrigin(self):
+    ops_to_test = [
+        gen_math_ops.reciprocal, gen_math_ops.rsqrt, gen_math_ops.sqrt
+    ]
+    for op in ops_to_test:
+      for dtype in (dtypes_lib.float32, dtypes_lib.float64):
+        with self.cached_session():
+          x = constant_op.constant(0, dtype=dtype)
+          grad_y = constant_op.constant(0, dtype=dtype)
+          y = op(x)
+          g = gradients_impl.gradients(y, [x], grad_ys=grad_y)
+          g_val = self.evaluate(g)
+          self.assertAllEqual(g_val, [0])
 
 
 if __name__ == "__main__":
