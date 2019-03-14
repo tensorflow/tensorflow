@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
 #include "tensorflow/core/kernels/stateful_random_ops.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -69,7 +69,7 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
   // maximize occupancy
   const int kGroupSize = Distribution::kResultElementCount;
   int work_element_count = (output_size + kGroupSize - 1) / kGroupSize;
-  CudaLaunchConfig cfg = GetCudaLaunchConfig(work_element_count, d,
+  GpuLaunchConfig cfg = GetGpuLaunchConfig(work_element_count, d,
                                              FillKernel<Distribution>, 0, 0);
 
   int zero = 0;
