@@ -385,12 +385,12 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
         SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), b_);
 
-        IrArray::Index input_index(index_type, index.size());
+        std::vector<llvm::Value*> input_multi_index(index.size());
         llvm::Value* in_bounds = b_->getInt1(true);
         for (size_t i = 0; i < index.size(); ++i) {
           llvm::Value* stridden_index = NSWMul(
               index[i], index_typed_const(window.dimensions(i).stride()));
-          input_index[i] = NSWSub(
+          input_multi_index[i] = NSWSub(
               NSWAdd(stridden_index,
                      NSWMul(window_index[i],
                             index_typed_const(
@@ -399,24 +399,24 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
 
           // We need to verify that we are not in the dilated base area.
           llvm::Value* dilation_condition = ICmpEQ(
-              SRem(input_index[i],
+              SRem(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation())),
               index_typed_const(0));
           in_bounds = And(in_bounds, dilation_condition);
 
           // Apply base dilation to the index.
-          input_index[i] =
-              SDiv(input_index[i],
+          input_multi_index[i] =
+              SDiv(input_multi_index[i],
                    index_typed_const(window.dimensions(i).base_dilation()));
 
-          // We must check whether 0 ≤ input_index[i] < bound, as otherwise
-          // we are in the pad and so can skip the computation. This
+          // We must check whether 0 ≤ input_multi_index[i] < bound, as
+          // otherwise we are in the pad and so can skip the computation. This
           // comparison is equivalent to the unsigned comparison
-          // input_index[i] < bound, as a negative value wraps to a large
+          // input_multi_index[i] < bound, as a negative value wraps to a large
           // positive value.
           in_bounds =
               And(in_bounds,
-                  ICmpULT(input_index[i],
+                  ICmpULT(input_multi_index[i],
                           index_typed_const(operand->shape().dimensions(i))));
         }
 
@@ -425,6 +425,8 @@ llvm_ir::ElementGenerator GpuElementalIrEmitter::MakeElementGenerator(
         SetToFirstInsertPoint(if_data.true_block, b_);
 
         // We are not in pad, so do the computation.
+        IrArray::Index input_index(input_multi_index, operand->shape(),
+                                   index_type);
         TF_ASSIGN_OR_RETURN(llvm::Value * input_value,
                             operand_to_generator.at(operand)(input_index));
         TF_ASSIGN_OR_RETURN(

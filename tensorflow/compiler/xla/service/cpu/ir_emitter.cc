@@ -671,21 +671,22 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalReduceWindow(
 
   SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(), &b_);
 
-  llvm_ir::IrArray::Index input_index(b_.getInt64Ty(), index.size());
+  std::vector<llvm::Value*> input_multi_index(index.size());
   llvm::Value* in_bounds_condition = nullptr;
   for (size_t i = 0; i < index.size(); ++i) {
     llvm::Value* strided_index =
         NSWMul(index[i], b_.getInt64(window.dimensions(i).stride()));
-    input_index[i] = NSWSub(
+    input_multi_index[i] = NSWSub(
         NSWAdd(strided_index,
                NSWMul(window_index[i],
                       b_.getInt64(window.dimensions(i).window_dilation()))),
         b_.getInt64(window.dimensions(i).padding_low()));
 
     // We need to verify that we are not in the dilated base area.
-    llvm::Value* dilation_condition = ICmpEQ(
-        SRem(input_index[i], b_.getInt64(window.dimensions(i).base_dilation())),
-        b_.getInt64(0));
+    llvm::Value* dilation_condition =
+        ICmpEQ(SRem(input_multi_index[i],
+                    b_.getInt64(window.dimensions(i).base_dilation())),
+               b_.getInt64(0));
     if (in_bounds_condition == nullptr) {
       in_bounds_condition = dilation_condition;
     } else {
@@ -693,15 +694,16 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalReduceWindow(
     }
 
     // Apply base dilation to the index.
-    input_index[i] =
-        SDiv(input_index[i], b_.getInt64(window.dimensions(i).base_dilation()));
+    input_multi_index[i] =
+        SDiv(input_multi_index[i],
+             b_.getInt64(window.dimensions(i).base_dilation()));
 
-    // We need to check if 0 <= input_index[i] < bound, as otherwise we are in
-    // the padding so that we can skip the computation. That is equivalent to
-    // input_index[i] < bound as an *unsigned* comparison, since a negative
-    // value will wrap to a large positive value.
+    // We need to check if 0 <= input_multi_index[i] < bound, as otherwise we
+    // are in the padding so that we can skip the computation. That is
+    // equivalent to input_multi_index[i] < bound as an *unsigned* comparison,
+    // since a negative value will wrap to a large positive value.
     llvm::Value* index_condition =
-        ICmpULT(input_index[i],
+        ICmpULT(input_multi_index[i],
                 b_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
     if (in_bounds_condition == nullptr) {
       in_bounds_condition = index_condition;
@@ -716,6 +718,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalReduceWindow(
   SetToFirstInsertPoint(if_data.true_block, &b_);
 
   // We are not in the padding, so carry out the computation.
+  llvm_ir::IrArray::Index input_index(input_multi_index, operand->shape(),
+                                      b_.getInt64Ty());
   TF_ASSIGN_OR_RETURN(llvm::Value* const input_value,
                       input_generator(input_index));
   llvm::Value* result = EmitThreadLocalCall(
@@ -821,15 +825,16 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // Compute the operand index to visit and evaluate the condition whether the
   // operand index is within the bounds. The unsigned comparison includes
   // checking whether the operand index >= 0.
-  llvm_ir::IrArray::Index operand_index(b_.getInt64Ty(), source_index.size());
+  std::vector<llvm::Value*> operand_multi_index(source_index.size());
   llvm::Value* in_bounds_condition = b_.getTrue();
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* strided_index =
         NSWMul(source_index[i], b_.getInt64(window.dimensions(i).stride()));
-    operand_index[i] = NSWSub(NSWAdd(strided_index, window_index[i]),
-                              b_.getInt64(window.dimensions(i).padding_low()));
+    operand_multi_index[i] =
+        NSWSub(NSWAdd(strided_index, window_index[i]),
+               b_.getInt64(window.dimensions(i).padding_low()));
     llvm::Value* index_condition =
-        ICmpULT(operand_index[i],
+        ICmpULT(operand_multi_index[i],
                 b_.getInt64(ShapeUtil::GetDimension(operand->shape(), i)));
     in_bounds_condition = And(in_bounds_condition, index_condition);
   }
@@ -855,6 +860,8 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
         }
       };
   llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
+  llvm_ir::IrArray::Index operand_index(
+      operand_multi_index, operand_array.GetShape(), b_.getInt64Ty());
   llvm::Value* operand_data =
       operand_array.EmitReadArrayElement(operand_index, &b_);
   Store(operand_data, selected_value_address);
@@ -1054,27 +1061,31 @@ StatusOr<llvm::Value*> IrEmitter::EmitElementalConvolution(
 
   // We are not in the padding, so carry out the computation.
   int num_dims = num_spatial_dims + 2;
-  llvm_ir::IrArray::Index input_index(b_.getInt64Ty(), num_dims);
+  std::vector<llvm::Value*> input_multi_index(num_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
-    input_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
+    input_multi_index[dnums.input_spatial_dimensions(i)] = input_spatial[i];
   }
-  input_index[dnums.input_feature_dimension()] = input_feature;
-  input_index[dnums.input_batch_dimension()] = batch;
+  input_multi_index[dnums.input_feature_dimension()] = input_feature;
+  input_multi_index[dnums.input_batch_dimension()] = batch;
 
-  llvm_ir::IrArray::Index kernel_index(b_.getInt64Ty(), num_dims);
+  std::vector<llvm::Value*> kernel_multi_index(num_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
-    kernel_index[dnums.kernel_spatial_dimensions(i)] =
+    kernel_multi_index[dnums.kernel_spatial_dimensions(i)] =
         window.dimensions(i).window_reversal()
             ? NSWSub(b_.getInt64(window.dimensions(i).size() - 1),
                      kernel_spatial[i])
             : kernel_spatial[i];
   }
 
-  kernel_index[dnums.kernel_input_feature_dimension()] = input_feature;
-  kernel_index[dnums.kernel_output_feature_dimension()] = output_feature;
+  kernel_multi_index[dnums.kernel_input_feature_dimension()] = input_feature;
+  kernel_multi_index[dnums.kernel_output_feature_dimension()] = output_feature;
 
+  llvm_ir::IrArray::Index input_index(input_multi_index, lhs->shape(),
+                                      b_.getInt64Ty());
   TF_ASSIGN_OR_RETURN(llvm::Value* const input_value,
                       input_generator(input_index));
+  llvm_ir::IrArray::Index kernel_index(kernel_multi_index, rhs->shape(),
+                                       b_.getInt64Ty());
   TF_ASSIGN_OR_RETURN(llvm::Value* const kernel_value,
                       kernel_generator(kernel_index));
   llvm::Value* product = FMul(input_value, kernel_value);
@@ -1714,8 +1725,8 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   //  }
 
   llvm_ir::ForLoopNest loop_nest(IrName(reduce), &b_);
-  llvm_ir::IrArray::Index array_index(b_.getInt64Ty(),
-                                      reduce->shape().dimensions_size());
+  std::vector<llvm::Value*> array_multi_index(
+      reduce->shape().dimensions_size());
   for (int i = LayoutUtil::MinorToMajor(reduce->shape()).size() - 1; i > 0;
        --i) {
     int64 dimension = LayoutUtil::Minor(reduce->shape().layout(), i);
@@ -1723,7 +1734,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     int64 end_index = reduce->shape().dimensions(dimension);
     std::unique_ptr<llvm_ir::ForLoop> loop = loop_nest.AddLoop(
         start_index, end_index, absl::StrFormat("dim.%d", dimension));
-    array_index[dimension] = loop->GetIndVarValue();
+    array_multi_index[dimension] = loop->GetIndVarValue();
   }
 
   int64 innermost_dimension = LayoutUtil::Minor(reduce->shape().layout(), 0);
@@ -1744,12 +1755,14 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     std::unique_ptr<llvm_ir::ForLoop> loop =
         loop_nest.AddLoop(start_index, end_index, vectorization_factor,
                           absl::StrFormat("dim.%d", innermost_dimension));
-    array_index[innermost_dimension] = loop->GetIndVarValue();
+    array_multi_index[innermost_dimension] = loop->GetIndVarValue();
 
     SetToFirstInsertPoint(loop->GetBodyBasicBlock(), &b_);
 
     ShardedVectorType vector_type = CreateShardedVectorType(
         reduce->shape().element_type(), vectorization_factor);
+    llvm_ir::IrArray::Index array_index(array_multi_index, reduce->shape(),
+                                        b_.getInt64Ty());
     TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
                         EmitInnerLoopForVectorizedReduction(
                             reduction_generator, array_index, vector_type,
@@ -1775,13 +1788,15 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   // in the following case:
   if (innermost_dimension_size % vectorization_factor) {
     // TODO(b/63775531): Consider using a scalar loop here to save on code size.
-    array_index[innermost_dimension] =
+    array_multi_index[innermost_dimension] =
         b_.getInt64(innermost_dimension_size -
                     (innermost_dimension_size % vectorization_factor));
 
     ShardedVectorType vector_type = CreateShardedVectorType(
         reduce->shape().element_type(),
         innermost_dimension_size % vectorization_factor);
+    llvm_ir::IrArray::Index array_index(array_multi_index, reduce->shape(),
+                                        b_.getInt64Ty());
     TF_ASSIGN_OR_RETURN(std::vector<llvm::Value*> accumulator,
                         EmitInnerLoopForVectorizedReduction(
                             reduction_generator, array_index, vector_type,

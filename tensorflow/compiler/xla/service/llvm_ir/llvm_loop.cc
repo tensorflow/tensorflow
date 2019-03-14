@@ -240,16 +240,16 @@ IrArray::Index ForLoopNest::AddLoopsForShape(const Shape& shape,
 IrArray::Index ForLoopNest::AddLoopsForShapeOnDimensions(
     const Shape& shape, absl::Span<const int64> dimensions,
     absl::string_view suffix) {
-  llvm_ir::IrArray::Index index(index_type_, shape.dimensions_size());
+  std::vector<llvm::Value*> multi_index(shape.dimensions_size());
   for (int64 dimension : dimensions) {
     std::unique_ptr<llvm_ir::ForLoop> loop = AddLoop(
         /*start_index=*/0,
         /*end_index=*/shape.dimensions(dimension),
         /*suffix=*/
         llvm_ir::IrName(suffix, absl::StrCat(dimension)));
-    index[dimension] = loop->GetIndVarValue();
+    multi_index[dimension] = loop->GetIndVarValue();
   }
-  return index;
+  return llvm_ir::IrArray::Index(multi_index, shape, index_type_);
 }
 
 IrArray::Index ForLoopNest::EmitOperandArrayLoopNest(

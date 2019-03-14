@@ -55,10 +55,8 @@ class IrArray {
   // multidimensional index, which LLVM DCE can delete.
   class Index {
    public:
-    // Constructs an index of rank "size". Each dimension of the index is
-    // initialized to nullptr.
-    explicit Index(llvm::Type* index_ty, size_t size = 0)
-        : multidim_(size, nullptr), index_type_(index_ty) {
+    // Constructs an index for a scalar shape.
+    explicit Index(llvm::Type* index_ty) : index_type_(index_ty) {
       CHECK(index_ty->isIntegerTy());
     }
 
@@ -100,9 +98,9 @@ class IrArray {
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64 dim,
                          llvm::IRBuilder<>* b) const {
-      IrArray::Index index = *this;
-      index[dim] = b->CreateAdd(index[dim], addend);
-      return index;
+      std::vector<llvm::Value*> multi_index = multidim();
+      multi_index[dim] = b->CreateAdd(multi_index[dim], addend);
+      return Index(multi_index, index_type_);
     }
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }

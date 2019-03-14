@@ -294,9 +294,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
     divisor *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
   }
   if (divisor > 1) {
-    linear = builder->CreateUDiv(
-        linear,
-        IrArray::Index(linear->getType()).GetConstantWithIndexType(divisor));
+    linear = builder->CreateUDiv(linear, GetConstantWithIndexType(divisor));
   }
   if (min_broadcasted_dimension > 0) {
     int64 mod = 1;
@@ -304,9 +302,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
          ++i) {
       mod *= shape.dimensions(LayoutUtil::Major(shape.layout(), i));
     }
-    linear = builder->CreateURem(
-        linear,
-        IrArray::Index(linear->getType()).GetConstantWithIndexType(mod));
+    linear = builder->CreateURem(linear, GetConstantWithIndexType(mod));
   }
   return Index(source_index, linear, operand_shape, index_type_);
 }
