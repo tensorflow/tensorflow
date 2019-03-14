@@ -1263,12 +1263,23 @@ Status MarkForCompilationPass::RunImpl(
 
   // Count the number of non-trivial elements in each cluster.
   std::vector<int> effective_cluster_sizes(graph->num_node_ids());
+
+  // has_functional_control_flow remembers if a cluster contains a functional
+  // control flow node.
+  std::vector<bool> has_functional_control_flow(graph->num_node_ids());
+
   for (const Node* n : compilation_candidates) {
     int cluster = clusters[n->id()].Get().representative;
-    // Identity nodes will be removed if the node gets marked for compilation.
-    // Therefore we don't want to count them towards the effective cluster size.
-    if (n->def().op() != "Identity") {
+    // We want clusters to be big enough that the benefit from XLA's
+    // optimizations offsets XLA related overhead (for instance we add some
+    // Switch/Merge nodes into the graph to implement lazy compilation).  To
+    // this end, we don't count Identity and Constant nodes because they do not
+    // enable interesting optimizations by themselves.
+    if (!n->IsIdentity() && !n->IsConstant()) {
       effective_cluster_sizes[cluster]++;
+    }
+    if (n->type_string() == "While" || n->type_string() == "If") {
+      has_functional_control_flow[cluster] = true;
     }
   }
 
@@ -1312,11 +1323,13 @@ Status MarkForCompilationPass::RunImpl(
       marked_for_compilation = compile_attr;
     }
 
-    // Compile if this is a cluster of >= min_cluster_size compilable operators.
-    // Also, always compile if it contains at least one op that is marked for
-    // compilation that is not an Identity op.
+    // We assume that functional If and While nodes have at least
+    // min_cluster_size non-trivial nodes in them.  It would be more principled
+    // to (recursively) verify this fact, but that's probably not worth the
+    // trouble.
+
     if (effective_cluster_sizes[cluster_repr] >= min_cluster_size ||
-        (effective_cluster_sizes[cluster_repr] > 0 && marked_for_compilation)) {
+        has_functional_control_flow[cluster_repr] || marked_for_compilation) {
       string& name = cluster_names[cluster_repr];
 
       if (name.empty()) {
