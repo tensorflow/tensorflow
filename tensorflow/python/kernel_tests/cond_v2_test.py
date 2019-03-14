@@ -829,6 +829,8 @@ class CondV2Test(test.TestCase):
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
 
   @test_util.enable_control_flow_v2
+  @test_util.disable_xla(
+      "b/127846988: No tf2xla kernel for IfOp taking DT_VARIANT")
   def testCondAndTensorArrayInDefun(self):
 
     @function.defun

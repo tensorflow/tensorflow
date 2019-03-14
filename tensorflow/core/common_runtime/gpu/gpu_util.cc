@@ -150,7 +150,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   const int64 total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
     tracing::ScopedAnnotation annotation("SetProtoFromGPU");
-    alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
+    alloc = GPUProcessState::singleton()->GetGpuHostAllocator(0);
     buf = alloc->Allocate<char>(total_bytes);
     if (LogMemory::IsEnabled()) {
       LogMemory::RecordRawAllocation("SetProtoFromGPU",

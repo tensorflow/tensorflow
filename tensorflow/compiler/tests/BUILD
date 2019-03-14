@@ -139,6 +139,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "add_n_test",
+    size = "small",
+    srcs = ["add_n_test.py"],
+    # TensorList ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "addsign_test",
     size = "small",
     srcs = ["addsign_test.py"],
@@ -247,12 +263,23 @@ tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
-    # TODO(kuny): remove it after b/124377352 is fixed.
-    disabled_backends = [
-        "cpu",
-        "gpu",
-        "cpu_ondemand",
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+tf_xla_py_test(
+    name = "svd_op_test",
+    size = "medium",
+    srcs = ["svd_op_test.py"],
     tags = ["optonly"],
     deps = [
         ":xla_test",
@@ -865,7 +892,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "tensor_array_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["tensor_array_ops_test.py"],
     # TensorArray ops are not implemented in the on-demand compilation model yet.
     disabled_backends = ["cpu_ondemand"],

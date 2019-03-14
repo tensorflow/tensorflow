@@ -65,11 +65,11 @@ Pixel&nbsp;2 devices using a single big core. As the toolkit improves, so will t
       <th> Size (Original) (MB)</th>
       <th> Size (Optimized) (MB)</th>
     </tr> <tr><td>Mobilenet-v1-1-224</td><td>0.709</td><td>0.657</td><td>0.70</td>
-      <td>180</td><td>145</td><td>80.2</td><td>16.9</td><td>4.3</td></tr>
+      <td>124</td><td>112</td><td>64</td><td>16.9</td><td>4.3</td></tr>
     <tr><td>Mobilenet-v2-1-224</td><td>0.719</td><td>0.637</td><td>0.709</td>
-      <td>117</td><td>121</td><td>80.3</td><td>14</td><td>3.6</td></tr>
+      <td>89</td><td>98</td><td>54</td><td>14</td><td>3.6</td></tr>
    <tr><td>Inception_v3</td><td>0.78</td><td>0.772</td><td>0.775</td>
-      <td>1585</td><td>1187</td><td>637</td><td>95.7</td><td>23.9</td></tr>
+      <td>1130</td><td>845</td><td>543</td><td>95.7</td><td>23.9</td></tr>
    <tr><td>Resnet_v2_101</td><td>0.770</td><td>0.768</td><td>N/A</td>
       <td>3973</td><td>2868</td><td>N/A</td><td>178.3</td><td>44.9</td></tr>
  </table>

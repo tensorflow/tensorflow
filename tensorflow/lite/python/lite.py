@@ -258,14 +258,14 @@ class TFLiteConverterV2(object):
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
       # Note that shape_list might be empty for scalar shapes.
-      shape_list = tensor.get_shape().as_list()
+      shape_list = tensor.shape.as_list()
       if None in shape_list[1:]:
         raise ValueError(
             "None is only supported in the 1st dimension. Tensor '{0}' has "
             "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
       elif shape_list and shape_list[0] is None:
         # Set the batch size to 1 if undefined.
-        shape = tensor.get_shape().as_list()
+        shape = tensor.shape.as_list()
         shape[0] = 1
         tensor.set_shape(shape)
 
@@ -411,7 +411,7 @@ class TFLiteConverter(object):
     Args:
       graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
@@ -460,7 +460,7 @@ class TFLiteConverter(object):
     Args:
       sess: TensorFlow Session.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
 
     Returns:
@@ -678,7 +678,7 @@ class TFLiteConverter(object):
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
-        shape = tensor.get_shape()
+        shape = tensor.shape
         if not shape:
           raise ValueError("Provide an input shape for input array "
                            "'{0}'.".format(_tensor_name(tensor)))
@@ -808,7 +808,7 @@ class TFLiteConverter(object):
                        "use input_shapes parameter.")
 
     for tensor in self._input_tensors:
-      shape = tensor.get_shape().as_list()
+      shape = tensor.shape.as_list()
       shape[0] = batch_size
       tensor.set_shape(shape)
 

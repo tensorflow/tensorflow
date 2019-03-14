@@ -3,7 +3,7 @@
 
 This document describes how to build TensorFlow Lite iOS library. If you just
 want to use it, the easiest way is using the TensorFlow Lite CocoaPod releases.
-See [TensorFlow Lite iOS Demo](demo_ios.md) for examples.
+See [TensorFlow Lite iOS Demo](ios.md) for examples.
 
 
 ## Building

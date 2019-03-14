@@ -89,7 +89,7 @@ class XlaOpRegistry {
     AutoclusteringPolicy autoclustering_policy;
 
     // Enable compilation of operators that use DT_RESOURCE types?
-    bool compile_resource_ops = false;
+    bool compile_all_resource_ops = false;
   };
 
   // Registers an XLA backend. `compilation_device_name` is the name of the

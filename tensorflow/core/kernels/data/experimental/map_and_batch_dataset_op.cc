@@ -60,6 +60,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
  protected:
@@ -87,12 +89,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
                                                  &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       map_func = [](IteratorContext* ctx,
                     InstantiatedCapturedFunction* instantiated_captured_func,
                     const string& prefix, std::vector<Tensor> args,
@@ -102,7 +101,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             ctx, std::move(args), out_tensors.get(), std::move(done), prefix);
       };
     } else {
-      std::vector<bool> can_move = ComputeMoveVector(indices);
+      std::vector<bool> can_move = ComputeMoveVector(short_circuit_indices_);
+      const auto& indices = short_circuit_indices_;
       map_func = [raw_captured_func, indices, can_move](
                      IteratorContext* ctx,
                      InstantiatedCapturedFunction* instantiated_captured_func,
@@ -824,6 +824,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
   NameAttrList func_;
   bool preserve_cardinality_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(

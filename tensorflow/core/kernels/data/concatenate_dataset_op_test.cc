@@ -45,12 +45,12 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new ConcatenateDataset op kernel.
   Status CreateConcatenateDatasetKernel(
-      const DataTypeVector &output_tyeps,
+      const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
     node_def_ = test::function::NDef(
         kNodeName, kOpName, {"input_dataset", "another_dataset"},
-        {{"output_types", output_tyeps}, {"output_shapes", output_shapes}});
+        {{"output_types", output_types}, {"output_shapes", output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, op_kernel));
     return Status::OK();
   }

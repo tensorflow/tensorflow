@@ -19,12 +19,14 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include <mutex>  // NOLINT(build/c++11): only using std::call_once, not mutex.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
+#include "tensorflow/lite/minimal_logging.h"
 #include "tensorflow/lite/nnapi_delegate.h"
 #include "tensorflow/lite/profiling/profiler.h"
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -55,6 +57,13 @@ TfLiteQuantization GetQuantizationFromLegacy(
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
+  // Only log initialization once per-process to avoid log spam.
+  static std::once_flag init_log_once_flag;
+  std::call_once(init_log_once_flag, []() {
+    // TODO(b/128420794): Include the TFLite runtime version in the log.
+    TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+  });
+
   // There's always at least 1 subgraph which is the primary subgraph.
   AddSubgraphs(1);
   context_ = primary_subgraph().context();

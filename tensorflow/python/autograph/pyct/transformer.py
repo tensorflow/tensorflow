@@ -59,18 +59,16 @@ class EntityInfo(object):
       parameters).
     arg_values: dict[str->*], containing parameter values, if known.
     arg_types: dict[str->*], containing parameter types, if known.
-    owner_type: The surrounding class type of the function, if present.
   """
 
   # TODO(mdan): Remove the default and update tests.
-  def __init__(self, source_code, source_file, namespace, arg_values, arg_types,
-               owner_type):
+  def __init__(self, source_code, source_file, namespace, arg_values,
+               arg_types):
     self.source_code = source_code
     self.source_file = source_file
     self.namespace = namespace
     self.arg_values = {} if arg_values is None else arg_values
     self.arg_types = {} if arg_types is None else arg_types
-    self.owner_type = owner_type
 
 
 class _StateStack(object):

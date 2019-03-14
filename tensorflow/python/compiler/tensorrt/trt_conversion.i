@@ -17,8 +17,6 @@ limitations under the License.
 %{
 #define SWIG_FILE_WITH_INIT
 %}
-%include "std_string.i"
-%include "tensorflow/python/platform/base.i"
 
 %{
 struct version_struct{
@@ -40,21 +38,7 @@ PyObject* version_helper(version_struct* in) {
   return tuple;
 }
 
-/* Define converters for vector<int> */
-template<>
-bool _PyObjAs(PyObject *pyobj, int* dest) {
-  *dest = PyLong_AsLong(pyobj);
-  return true;
-}
-
-template<>
-PyObject *_PyObjFrom(const int& src) {
-  return PyLong_FromLong(src);
-}
-
 %}
-
-_LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 
 %typemap(out) version_struct {
   PyObject *tuple = version_helper(&$1);
@@ -63,39 +47,29 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 }
 
 %{
-#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
-#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 %}
 
-%ignoreall
-%unignore tensorflow;
-%unignore get_linked_tensorrt_version;
-%unignore get_loaded_tensorrt_version;
-%unignore is_tensorrt_enabled;
+%ignore "";
+%rename("%s") get_linked_tensorrt_version;
+%rename("%s") get_loaded_tensorrt_version;
+%rename("%s") is_tensorrt_enabled;
 
 %{
 
 version_struct get_linked_tensorrt_version() {
   // Return the version at the link time.
   version_struct s;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  const auto &lv = tensorflow::tensorrt::convert::GetLinkedTensorRTVersion();
-  s.vmajor = lv[0];
-  s.vminor = lv[1];
-  s.vpatch = lv[2];
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+  tensorflow::tensorrt::GetLinkedTensorRTVersion(
+      &s.vmajor, &s.vminor, &s.vpatch);
   return s;
 }
 
 version_struct get_loaded_tensorrt_version() {
   // Return the version from the loaded library.
   version_struct s;
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  const auto &lv = tensorflow::tensorrt::convert::GetLoadedTensorRTVersion();
-  s.vmajor = lv[0];
-  s.vminor = lv[1];
-  s.vpatch = lv[2];
-#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
+  tensorflow::tensorrt::GetLoadedTensorRTVersion(
+      &s.vmajor, &s.vminor, &s.vpatch);
   return s;
 }
 
@@ -109,4 +83,4 @@ version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 bool is_tensorrt_enabled();
 
-%unignoreall
+%rename("%s") "";
