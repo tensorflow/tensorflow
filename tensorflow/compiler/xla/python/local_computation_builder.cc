@@ -392,10 +392,9 @@ StatusOr<string> Computation::GetHloDotGraph() const {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModule> hlo_module,
       HloModule::CreateFromProto(computation_.proto(), module_config));
-  hlo_graph_dumper::DotGraphOptions options;
-  options.debug_options = &hlo_module->config().debug_options();
-  return hlo_graph_dumper::HloComputationToDotGraph(
-      *hlo_module->entry_computation(), options);
+  return RenderGraph(*hlo_module->entry_computation(), /*label=*/"",
+                     hlo_module->config().debug_options(),
+                     RenderedGraphFormat::kDot);
 }
 
 StatusOr<ProgramShape> Computation::GetProgramShape() const {

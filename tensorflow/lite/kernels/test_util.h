@@ -326,6 +326,10 @@ class SingleOpModel {
     return result;
   }
 
+  void SetNumThreads(int num_threads) {
+    interpreter_->SetNumThreads(num_threads);
+  }
+
   void SetResolver(std::unique_ptr<OpResolver> resolver) {
     resolver_ = std::move(resolver);
   }

@@ -545,7 +545,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // If all inputs have the same shape, rewrite whole group with a single AddN
     if (shapes.size() == 1) {
-      string node_name = OptimizedNodeName(root_scope_and_name);
+      string node_name = UniqueOptimizedNodeName(root_scope_and_name);
       AddInputsOfSymbolicallyEqualShape(*group.root_node, node_name,
                                         group.inputs);
       return node_name;
@@ -561,13 +561,13 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // optimized name for leaf AddN nodes
     auto leaf_node_name = [&root_scope_and_name, this](int i) {
-      return OptimizedNodeName(root_scope_and_name,
-                               strings::StrCat("Leaf_", i));
+      return UniqueOptimizedNodeName(root_scope_and_name,
+                                     strings::StrCat("Leaf_", i));
     };
     // optimized name for internal nodes of a tree built up from AddN leaves
     auto internal_node_name = [&root_scope_and_name, this](int i) {
-      return OptimizedNodeName(root_scope_and_name,
-                               strings::StrCat("Internal_", i));
+      return UniqueOptimizedNodeName(root_scope_and_name,
+                                     strings::StrCat("Internal_", i));
     };
 
     // Add/AddN nodes that must be added to the tree
@@ -588,8 +588,9 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
       add_ops.pop_front();
       const InputAndShape rhs = add_ops.front();
       add_ops.pop_front();
-      string name = add_ops.empty() ? OptimizedNodeName(root_scope_and_name)
-                                    : internal_node_name(internal_nodes++);
+      string name = add_ops.empty()
+                        ? UniqueOptimizedNodeName(root_scope_and_name)
+                        : internal_node_name(internal_nodes++);
       InputAndShape add = AddAggregatedInputs(*group.root_node, name, lhs, rhs);
       add_ops.push_front(add);
     } while (add_ops.size() > 1);
@@ -1799,6 +1800,34 @@ class FuseSquaredDiffStage : public ArithmeticOptimizerStage {
       b->set_op("SquaredDifference");
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(b);
+    }
+    return Status::OK();
+  }
+};
+
+// Performs the conversion:
+// Log(Softmax(x)) => LogSoftmax(x)
+class LogSoftmaxStage : public ArithmeticOptimizerStage {
+ public:
+  explicit LogSoftmaxStage(const GraphOptimizerContext& ctx,
+                           const ArithmeticOptimizerContext& ctx_ext)
+      : ArithmeticOptimizerStage("LogSoftmaxStage", ctx, ctx_ext) {}
+  ~LogSoftmaxStage() override = default;
+
+  bool IsSupported(const NodeDef* node) const override { return IsLog(*node); }
+
+  Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
+    NodeDef* x;
+    TF_RETURN_IF_ERROR(GetInputNode(node->input(0), &x));
+    // Optimize only if arg is a Softmax whose output is not being consumed
+    // elsewhere.
+    if (IsSoftmax(*x) && !IsInPreserveSet(*x) &&
+        (NumNonControlOutputs(*x, *ctx().node_map) == 1)) {
+      // Log(Softmax(x)) => LogSoftmax(Identity(x))
+      node->set_op("LogSoftmax");
+      x->set_op("Identity");
+      AddToOptimizationQueue(node);
+      AddToOptimizationQueue(x);
     }
     return Status::OK();
   }
@@ -3552,6 +3581,8 @@ Status ArithmeticOptimizer::SimplifyArithmeticOps(bool can_use_shapes) {
   if (options_.convert_pow) pipeline.AddStage<ConvertPowStage>(ctx, ctx_ext);
   if (options_.convert_log1p)
     pipeline.AddStage<ConvertLog1pStage>(ctx, ctx_ext);
+  if (options_.convert_log_softmax)
+    pipeline.AddStage<LogSoftmaxStage>(ctx, ctx_ext);
   if (options_.optimize_max_or_min_of_monotonic)
     pipeline.AddStage<OptimizeMaxOrMinOfMonotonicStage>(ctx, ctx_ext);
   if (options_.convert_expm1)

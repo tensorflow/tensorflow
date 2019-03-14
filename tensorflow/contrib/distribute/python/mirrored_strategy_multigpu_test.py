@@ -143,6 +143,9 @@ class MirroredTwoDeviceDistributionTest(
   def testGlobalStepUpdate(self, distribution):
     self._test_global_step_update(distribution)
 
+  def testRun(self, distribution):
+    self._test_run(distribution)
+
   def testAllReduceSum(self, distribution):
     self._test_all_reduce_sum(distribution)
 
@@ -160,6 +163,9 @@ class MirroredTwoDeviceDistributionTest(
 
   def testAllReduceMeanGradientTape(self, distribution):
     self._test_all_reduce_mean_gradient_tape(distribution)
+
+  def testSummaryForReplicaZeroOnly(self, distribution):
+    self._test_summary_for_replica_zero_only(distribution)
 
 
 def one_device_combinations():
@@ -189,6 +195,9 @@ class MirroredOneDeviceDistributionTest(
 
   def testCallAndMergeExceptions(self, distribution):
     self._test_call_and_merge_exceptions(distribution)
+
+  def testRun(self, distribution):
+    self._test_run(distribution)
 
   def testAllReduceSum(self, distribution):
     self._test_all_reduce_sum(distribution)
@@ -1555,6 +1564,12 @@ class MultiWorkerMirroredStrategyTestWithChief(
       strategy = mirrored_strategy.CoreMirroredStrategy()
       self.assertEqual(
           max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
+
+  def testSummaryForReplicaZeroOnly(self):
+    strategy = mirrored_strategy.CoreMirroredStrategy(
+        mirrored_strategy.all_local_devices())
+    strategy.configure(cluster_spec=self._cluster_spec)
+    self._test_summary_for_replica_zero_only(strategy)
 
 
 def _replica_id():

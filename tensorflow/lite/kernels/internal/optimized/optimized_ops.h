@@ -774,7 +774,7 @@ inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& weights_shape,
     const float* weights_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
+    const float* optional_bias_data, const RuntimeShape& output_shape,
     float* output_data) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected");
   const float output_activation_min = params.float_activation_min;
@@ -798,9 +798,18 @@ inline void FullyConnected(
       MapAsMatrixWithLastDimAsRows(output_data, output_shape);
 
   Gemm(filter_matrix_map.transpose(), input_matrix_map, &output_matrix_map);
-  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
-                                   bias_shape, bias_data, output_shape,
-                                   output_data);
+
+  if (optional_bias_data != nullptr) {
+    AddBiasAndEvalActivationFunction(
+        output_activation_min, output_activation_max, bias_shape,
+        optional_bias_data, output_shape, output_data);
+  } else {
+    const int flat_size = output_shape.FlatSize();
+    for (int i = 0; i < flat_size; ++i) {
+      output_data[i] = ActivationFunctionWithMinMax(
+          output_data[i], output_activation_min, output_activation_max);
+    }
+  }
 }
 
 #ifdef USE_NEON

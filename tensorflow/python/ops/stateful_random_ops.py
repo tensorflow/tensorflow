@@ -61,17 +61,21 @@ PHILOX_STATE_SIZE = 3
 THREEFRY_STATE_SIZE = 2
 
 
-def non_deterministic_seed():
-  """Makes a non-deterministic seed.
+def non_deterministic_ints(shape, dtype=dtypes.int64):
+  """Non-deterministically generates some integers.
 
-  The implementation will be changed soon from pure Python to an op.
+  This op may use some OS-provided source of non-determinism (e.g. an RNG), so
+  each execution will give different results.
+
+  Args:
+    shape: the shape of the result.
+    dtype: (optional) the dtype of the result.
 
   Returns:
-    a 1-D tensor.
+    a tensor whose element values are non-deterministically chosen.
   """
-  return np.random.randint(
-      low=SEED_MIN, high=SEED_MAX + 1, size=SEED_SIZE,
-      dtype=SEED_TYPE)
+  return gen_stateful_random_ops.non_deterministic_ints(
+      shape=shape, dtype=dtype)
 
 
 def _uint_to_int(n):
@@ -116,40 +120,20 @@ def _make_1d_state(state_size, seed):
   return seed
 
 
-def _make_philox_state(seed):
-  """Makes a RNG state for Philox algorithm.
-
-  Args:
-    seed: an integer or 1-D tensor.
-
-  Returns:
-    a 1-D tensor.
-  """
-  return _make_1d_state(PHILOX_STATE_SIZE, seed)
-
-
-def _make_threefry_state(seed):
-  """Makes a RNG state for ThreeFry algorithm.
-
-  Args:
-    seed: an integer or 1-D tensor.
-
-  Returns:
-    a 1-D tensor.
-  """
-  return _make_1d_state(THREEFRY_STATE_SIZE, seed)
-
-
-def _make_state_from_seed(seed, algorithm):
-  if algorithm == RNG_ALG_PHILOX:
-    return _make_philox_state(seed)
-  elif algorithm == RNG_ALG_THREEFRY:
-    return _make_threefry_state(seed)
+def _get_state_size(alg):
+  if alg == RNG_ALG_PHILOX:
+    return PHILOX_STATE_SIZE
+  elif alg == RNG_ALG_THREEFRY:
+    return THREEFRY_STATE_SIZE
   else:
-    raise ValueError("Unsupported algorithm id: %s" % algorithm)
+    raise ValueError("Unsupported algorithm id: %s" % alg)
 
 
-@tf_export("random.create_rng_state")
+def _make_state_from_seed(seed, alg):
+  return _make_1d_state(_get_state_size(alg), seed)
+
+
+@tf_export("random.experimental.create_rng_state")
 def create_rng_state(seed, algorithm):
   """Creates a RNG state.
 
@@ -190,12 +174,14 @@ class Generator(tracking.AutoTrackable):
                  auto-selected.
     """
     if copy_from is None:
-      if seed is None:
-        seed = non_deterministic_seed()
       if algorithm is None:
         # TODO(wangpeng): more sophisticated algorithm selection
         algorithm = DEFAULT_ALGORITHM
-      state = create_rng_state(seed, algorithm)
+      if seed is None:
+        state = non_deterministic_ints(shape=[_get_state_size(algorithm)],
+                                       dtype=SEED_TYPE)
+      else:
+        state = create_rng_state(seed, algorithm)
       self._state_var = variables.Variable(state, dtype=STATE_TYPE)
       self._alg_var = algorithm
     else:
@@ -220,6 +206,10 @@ class Generator(tracking.AutoTrackable):
   def algorithm(self):
     return self._alg_var
 
+  def _standard_normal(self, shape, dtype):
+    return gen_stateful_random_ops.stateful_standard_normal_v2(
+        self.state.handle, self.algorithm, shape, dtype=dtype)
+
   # The following functions return a tensor and as a side effect update
   # self._state_var.
   def normal(self, shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
@@ -228,8 +218,7 @@ class Generator(tracking.AutoTrackable):
       shape = _shape_tensor(shape)
       mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
       stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-      rnd = gen_stateful_random_ops.stateful_standard_normal_v2(
-          self.state.handle, self.algorithm, shape, dtype=dtype)
+      rnd = self._standard_normal(shape, dtype=dtype)
       return math_ops.add(rnd * stddev, mean, name=name)
 
   def uniform(self, shape, minval=0, maxval=None,

@@ -67,7 +67,7 @@ def get_plugin_asset(plugin_asset_cls, graph=None):
   name = _PLUGIN_ASSET_PREFIX + plugin_asset_cls.plugin_name
   container = graph.get_collection(name)
   if container:
-    if len(container) is not 1:
+    if len(container) != 1:
       raise ValueError("Collection for %s had %d items, expected 1" %
                        (name, len(container)))
     instance = container[0]
@@ -102,7 +102,7 @@ def get_all_plugin_assets(graph=None):
   out = []
   for name in graph.get_collection(_PLUGIN_ASSET_PREFIX):
     collection = graph.get_collection(_PLUGIN_ASSET_PREFIX + name)
-    if len(collection) is not 1:
+    if len(collection) != 1:
       raise ValueError("Collection for %s had %d items, expected 1" %
                        (name, len(collection)))
     out.append(collection[0])

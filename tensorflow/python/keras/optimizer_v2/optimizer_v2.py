@@ -36,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -358,7 +359,8 @@ class OptimizerV2(trackable.Trackable):
       ValueError: In case any gradient cannot be computed (e.g. if gradient
         function not implemented).
     """
-    grads = gradients.gradients(loss, params)
+    with backend.get_graph().as_default():
+      grads = gradients.gradients(loss, params)
     if None in grads:
       raise ValueError("An operation has `None` for gradient. "
                        "Please make sure that all of your ops have a "
@@ -440,11 +442,18 @@ class OptimizerV2(trackable.Trackable):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
-      with ops.control_dependencies(update_ops):
-        apply_updates = self._iterations.assign_add(1)
-      if not context.executing_eagerly():
-        apply_updates = apply_updates.op
-      return apply_updates
+
+      any_symbolic = any(isinstance(i, ops.Operation) or
+                         tf_utils.is_symbolic_tensor(i) for i in update_ops)
+      if not context.executing_eagerly() or any_symbolic:
+        # If the current context is graph mode or any of the update ops are
+        # symbolic then the step update should be carried out under a graph
+        # context. (eager updates execute immediately)
+        with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
+          with ops.control_dependencies(update_ops):
+            return self._iterations.assign_add(1).op
+
+      return self._iterations.assign_add(1)
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
@@ -526,11 +535,13 @@ class OptimizerV2(trackable.Trackable):
             initializer, shape=var.shape, dtype=var.dtype)
       else:
         initial_value = initializer
-      weight = tf_variables.Variable(
-          name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-          dtype=var.dtype,
-          trainable=False,
-          initial_value=initial_value)
+      strategy = distribute_ctx.get_strategy()
+      with strategy.colocate_vars_with(var):
+        weight = tf_variables.Variable(
+            name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
+            dtype=var.dtype,
+            trainable=False,
+            initial_value=initial_value)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(

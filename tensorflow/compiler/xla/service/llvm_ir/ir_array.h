@@ -89,11 +89,13 @@ class IrArray {
     // Precondition: "shape" has a layout.
     Index(llvm::Value* linear, const Shape& shape, llvm::IRBuilder<>* b);
 
-    // Constructs an index from both a multi-dimensional index and a linear
-    // index. "shape" has the same meaning as that in the constructor that takes
-    // only a linear index.
-    Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
-          const Shape& shape);
+    // Constructs an index from a multi-dimensional index. 'shape' is the shape
+    // for which the multi-dimensional index is used. 'index_type' is the type
+    // of the index.
+    //
+    // Precondition: "shape" has a layout.
+    Index(absl::Span<llvm::Value* const> multidim, const Shape& shape,
+          llvm::Type* index_type);
 
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64 dim,
@@ -110,17 +112,6 @@ class IrArray {
 
     llvm::Value* operator[](size_t i) const { return multidim()[i]; }
     llvm::Value*& operator[](size_t i) { return mutable_multidim()[i]; }
-
-    void push_back(llvm::Value* value) { mutable_multidim().push_back(value); }
-    void InsertAt(int64 index, llvm::Value* value) {
-      CHECK_LE(index, size());
-      mutable_multidim().insert(mutable_multidim().begin() + index, value);
-    }
-    void InsertAt(int64 index, int64 count, llvm::Value* value) {
-      CHECK_LE(index, size());
-      mutable_multidim().insert(mutable_multidim().begin() + index, count,
-                                value);
-    }
 
     using iterator = std::vector<llvm::Value*>::iterator;
     using const_iterator = std::vector<llvm::Value*>::const_iterator;
@@ -143,8 +134,10 @@ class IrArray {
     // selects a value to be placed into index "this". The slice is described
     // by starting indices `starts` and stride values `strides`.
     //
-    // Precondition: "this" is an index into a slice whose shape is `shape`.
-    Index SourceIndexOfSlice(const Shape& shape, absl::Span<const int64> starts,
+    // Precondition: "this" is an index into a slice whose operand shape is
+    // `operand_shape`.
+    Index SourceIndexOfSlice(const Shape& operand_shape,
+                             absl::Span<const int64> starts,
                              absl::Span<const int64> strides,
                              llvm::IRBuilder<>* builder) const;
 
@@ -182,6 +175,14 @@ class IrArray {
     void ClearLinearIndex() { linear_ = nullptr; }
 
    private:
+    // Constructs an index from both a multi-dimensional index and a linear
+    // index. 'shape' is the shape on which the index is used. 'index_type' is
+    // the type of the index.
+    //
+    // Precondition: "shape" has a layout.
+    Index(absl::Span<llvm::Value* const> multidim, llvm::Value* linear,
+          const Shape& shape, llvm::Type* index_type);
+
     // Changing the multi-dimensional index invalidates the linear index.
     std::vector<llvm::Value*>& mutable_multidim() {
       linear_ = nullptr;

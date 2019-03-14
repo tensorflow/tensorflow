@@ -43,10 +43,7 @@ class DynamicPadderTest : public HloTestBase {
   DynamicPadderTest() : HloTestBase() { module_ = CreateNewVerifiedModule(); }
 
   StatusOr<bool> RunPadder() {
-    hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before padder");
-
     DynamicPadder padder;
-
     return padder.Run(module_.get());
   }
 

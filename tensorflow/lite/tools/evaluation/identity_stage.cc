@@ -14,78 +14,42 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/evaluation/identity_stage.h"
 
-#include <ctime>
-
-#include "tensorflow/cc/ops/array_ops.h"
-#include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
+#include "tensorflow/lite/tools/evaluation/proto/evaluation_stages.pb.h"
 
 namespace tflite {
 namespace evaluation {
 
-using ::tensorflow::Scope;
-using ::tensorflow::SessionOptions;
-using ::tensorflow::Tensor;
-using ::tensorflow::ops::Identity;
-using ::tensorflow::ops::Placeholder;
-
-IdentityStage::IdentityStage(const EvaluationStageConfig& config)
-    : EvaluationStage(config) {
-  stage_input_name_ = config_.name() + "_identity_input";
-  stage_output_name_ = config_.name() + "_identity_output";
-}
-
 bool IdentityStage::DoInit(
     absl::flat_hash_map<std::string, void*>& object_map) {
-  // Initialize TF Graph.
-  const Scope scope = Scope::NewRootScope();
-  if (!GetObjectFromTag(kInputTypeTag, object_map, &input_type_)) {
+  float* default_value;
+  if (!GetObjectFromTag(kDefaultValueTag, object_map, &default_value)) {
     return false;
   }
-  auto input_placeholder =
-      Placeholder(scope.WithOpName(stage_input_name_), *input_type_);
-  stage_output_ =
-      Identity(scope.WithOpName(stage_output_name_), input_placeholder);
-  if (!scope.status().ok() || !scope.ToGraphDef(&graph_def_).ok()) {
-    return false;
-  }
-
-  // Initialize TF Session.
-  session_.reset(NewSession(SessionOptions()));
-  if (!session_->Create(graph_def_).ok()) {
-    return false;
-  }
-
+  default_value_ = *default_value;
   return true;
 }
 
-bool IdentityStage::Run(absl::flat_hash_map<std::string, void*>& object_map,
-                        EvaluationStageMetrics& metrics) {
-  std::vector<Tensor>* input_tensors;
-  if (!GetObjectFromTag(kInputTensorsTag, object_map, &input_tensors)) {
-    return false;
-  }
-  tensor_outputs_.clear();
-  // TODO(b/122482115): Encapsulate timing into its own helper.
-  std::clock_t start = std::clock();
-  if (!session_
-           ->Run({{stage_input_name_, input_tensors->at(0)}},
-                 {stage_output_name_}, {}, &tensor_outputs_)
-           .ok()) {
-    return false;
-  }
-  metrics.set_total_latency_ms(
-      static_cast<float>((std::clock() - start) / (CLOCKS_PER_SEC / 1000)));
-
-  if (!AssignObjectToTag(kOutputTensorsTag, &tensor_outputs_, object_map)) {
-    return false;
-  }
+bool IdentityStage::Run(absl::flat_hash_map<std::string, void*>& object_map) {
+  float* current_value;
+  GET_OBJECT(kInputValueTag, object_map, &current_value);
+  current_value_ = *current_value ? *current_value : default_value_;
+  ASSIGN_OBJECT(kOutputValueTag, &current_value_, object_map);
+  ++num_runs_;
   return true;
 }
 
-const char IdentityStage::kInputTypeTag[] = "INPUT_TYPE";
-const char IdentityStage::kInputTensorsTag[] = "INPUT_TENSORS";
-const char IdentityStage::kOutputTensorsTag[] = "OUTPUT_TENSORS";
+EvaluationStageMetrics IdentityStage::LatestMetrics() {
+  EvaluationStageMetrics metrics;
+  metrics.set_num_runs(num_runs_);
+  return metrics;
+}
+
+const char IdentityStage::kDefaultValueTag[] = "DEFAULT_VALUE";
+const char IdentityStage::kInputValueTag[] = "INPUT_VALUE";
+const char IdentityStage::kOutputValueTag[] = "OUTPUT_VALUE";
+
+DEFINE_FACTORY(IdentityStage, IDENTITY);
 
 }  // namespace evaluation
 }  // namespace tflite

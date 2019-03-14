@@ -17,8 +17,6 @@ limitations under the License.
 %{
 #define SWIG_FILE_WITH_INIT
 %}
-%include "std_string.i"
-%include "tensorflow/python/platform/base.i"
 
 %{
 struct version_struct{
@@ -42,8 +40,6 @@ PyObject* version_helper(version_struct* in) {
 
 %}
 
-_LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
-
 %typemap(out) version_struct {
   PyObject *tuple = version_helper(&$1);
   if (!tuple) SWIG_fail;
@@ -54,10 +50,10 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 #include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
 %}
 
-%ignoreall
-%unignore get_linked_tensorrt_version;
-%unignore get_loaded_tensorrt_version;
-%unignore is_tensorrt_enabled;
+%ignore "";
+%rename("%s") get_linked_tensorrt_version;
+%rename("%s") get_loaded_tensorrt_version;
+%rename("%s") is_tensorrt_enabled;
 
 %{
 
@@ -87,4 +83,4 @@ version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 bool is_tensorrt_enabled();
 
-%unignoreall
+%rename("%s") "";
