@@ -227,6 +227,18 @@ class EdscTest(unittest.TestCase):
     self.assertIn("^bb1(%0: index, %1: index):", code)
     self.assertIn("  br ^bb1(%1, %0 : index, index)", code)
 
+  def testCondBr(self):
+    with self.module.function_context("foo", [self.boolType], []) as fun:
+      with E.BlockContext() as blk1:
+        E.ret([])
+      with E.BlockContext([self.indexType]) as blk2:
+        E.ret([])
+      cst = E.constant_index(0)
+      E.cond_br(fun.arg(0), blk1, [], blk2, [cst])
+
+    code = str(fun)
+    self.assertIn("cond_br %arg0, ^bb1, ^bb2(%c0 : index)", code)
+
   def testRet(self):
     with self.module.function_context("foo", [],
                                       [self.indexType, self.indexType]) as fun:
@@ -238,6 +250,35 @@ class EdscTest(unittest.TestCase):
     self.assertIn("  %c0 = constant 0 : index", code)
     self.assertIn("  return %c42, %c0 : index, index", code)
 
+  def testSelectOp(self):
+    with self.module.function_context("foo", [self.boolType],
+                                      [self.i32Type]) as fun:
+      a = E.constant_int(42, 32)
+      b = E.constant_int(0, 32)
+      E.ret([E.select(fun.arg(0), a, b)])
+
+    code = str(fun)
+    self.assertIn("%0 = select %arg0, %c42_i32, %c0_i32 : i32", code)
+
+  def testCallOp(self):
+    callee = self.module.declare_function("sqrtf", [self.f32Type],
+                                          [self.f32Type])
+    with self.module.function_context("call", [self.f32Type], []) as fun:
+      funCst = E.constant_function(callee)
+      funCst([fun.arg(0)]) + E.constant_float(42., self.f32Type)
+
+    code = str(self.module)
+    self.assertIn("func @sqrtf(f32) -> f32", code)
+    self.assertIn("%f = constant @sqrtf : (f32) -> f32", code)
+    self.assertIn("%0 = call_indirect %f(%arg0) : (f32) -> f32", code)
+
+  def testCustom(self):
+    with self.module.function_context("custom", [self.indexType, self.f32Type],
+                                      []) as fun:
+      E.op("foo", [fun.arg(0)], [self.f32Type]) + fun.arg(1)
+    code = str(fun)
+    self.assertIn('%0 = "foo"(%arg0) : (index) -> f32', code)
+    self.assertIn("%1 = addf %0, %arg1 : f32", code)
 
   def testConstants(self):
     with self.module.function_context("constants", [], []) as fun:

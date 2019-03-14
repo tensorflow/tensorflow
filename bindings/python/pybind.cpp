@@ -76,6 +76,17 @@ struct PythonValueHandle {
     return std::to_string(reinterpret_cast<intptr_t>(value.getValue()));
   }
 
+  PythonValueHandle call(const std::vector<PythonValueHandle> &args) {
+    assert(value.hasType() && value.getType().isa<FunctionType>() &&
+           "can only call function-typed values");
+
+    std::vector<Value *> argValues;
+    argValues.reserve(args.size());
+    for (auto arg : args)
+      argValues.push_back(arg.value.getValue());
+    return ValueHandle::create<CallIndirectOp>(value, argValues);
+  }
+
   mlir::edsc::ValueHandle value;
 };
 
@@ -958,6 +969,38 @@ PYBIND11_MODULE(pybind, m) {
         return PythonValueHandle(nullptr);
       },
       py::arg("dest"), py::arg("args") = std::vector<PythonValueHandle>());
+  m.def(
+      "cond_br",
+      [](PythonValueHandle condition, const PythonBlockHandle &trueDest,
+         const std::vector<PythonValueHandle> &trueArgs,
+         const PythonBlockHandle &falseDest,
+         const std::vector<PythonValueHandle> &falseArgs) -> PythonValueHandle {
+        std::vector<ValueHandle> trueArguments(trueArgs.begin(),
+                                               trueArgs.end());
+        std::vector<ValueHandle> falseArguments(falseArgs.begin(),
+                                                falseArgs.end());
+        intrinsics::COND_BR(condition, trueDest, trueArguments, falseDest,
+                            falseArguments);
+        return PythonValueHandle(nullptr);
+      });
+  m.def("select",
+        [](PythonValueHandle condition, PythonValueHandle trueValue,
+           PythonValueHandle falseValue) -> PythonValueHandle {
+          return ValueHandle::create<SelectOp>(condition.value, trueValue.value,
+                                               falseValue.value);
+        });
+  m.def("op",
+        [](const std::string &name,
+           const std::vector<PythonValueHandle> &operands,
+           const std::vector<PythonType> &resultTypes) -> PythonValueHandle {
+          std::vector<ValueHandle> operandHandles(operands.begin(),
+                                                  operands.end());
+          std::vector<Type> types;
+          types.reserve(resultTypes.size());
+          for (auto t : resultTypes)
+            types.push_back(Type::getFromOpaquePointer(t.type));
+          return ValueHandle::create(name, operandHandles, types);
+        });
 
   m.def("Max", [](const py::list &args) {
     SmallVector<edsc_expr_t, 8> owning;
@@ -1163,7 +1206,8 @@ PYBIND11_MODULE(pybind, m) {
                  -> PythonValueHandle { return lhs.value / rhs.value; })
         .def("__mod__",
              [](PythonValueHandle lhs, PythonValueHandle rhs)
-                 -> PythonValueHandle { return lhs.value % rhs.value; });
+                 -> PythonValueHandle { return lhs.value % rhs.value; })
+        .def("__call__", &PythonValueHandle::call);
   }
 
   py::class_<PythonBlockAppender>(
