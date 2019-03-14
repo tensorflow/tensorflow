@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import six
-
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.ops import math_ops
@@ -254,7 +252,7 @@ def deserialize(name, custom_objects=None):
 def get(identifier):
   if identifier is None:
     return linear
-  if isinstance(identifier, six.string_types):
+  if isinstance(identifier, ("".__class__, u"".__class__)):
     identifier = str(identifier)
     return deserialize(identifier)
   elif callable(identifier):
