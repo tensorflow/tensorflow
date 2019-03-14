@@ -2314,7 +2314,7 @@ class StructuredFunctionWrapper(object):
       warnings.warn("Creating resources inside a function passed to %s "
                     "is not supported. Create each resource outside the "
                     "function, and capture it inside the function to use it." %
-                    transformation_name)
+                    transformation_name, stacklevel=5)
 
     def _wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
@@ -2398,10 +2398,10 @@ class StructuredFunctionWrapper(object):
       if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
         if self._function.graph._seed_used:
           warnings.warn(
-              "Seed %s from outer graph might be getting used by function %s,"
-              " if you have not provided any seed to the random op. "
-              "Explicitly set the seed in the function if this is not "
-              "the intended behavior." % (outer_graph_seed, func_name))
+              "Seed %s from outer graph might be getting used by function %s, "
+              "if the random op has not been provided any seed. Explicitly set "
+              "the seed in the function if this is not the intended behavior."
+              %(outer_graph_seed, func_name), stacklevel=4)
   # pylint: enable=protected-access
 
   @property
