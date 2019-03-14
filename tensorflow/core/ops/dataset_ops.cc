@@ -673,6 +673,7 @@ REGISTER_OP("MapDefun")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("f: func")
+    .Attr("max_intra_op_parallelism: int = 1")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));

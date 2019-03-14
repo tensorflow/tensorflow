@@ -19,8 +19,10 @@ limitations under the License.
 #include <iosfwd>
 #include <string>
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -65,6 +67,7 @@ namespace xla {
   V(kClamp, "clamp", 3)                                                \
   V(kCollectivePermute, "collective-permute", 1)                       \
   V(kClz, "count-leading-zeros", 1)                                    \
+  V(kCompare, "compare", 2)                                            \
   V(kComplex, "complex", 2)                                            \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)                 \
   V(kConditional, "conditional", kHloOpcodeIsVariadic)                 \
@@ -79,34 +82,28 @@ namespace xla {
   V(kDot, "dot", 2)                                                    \
   V(kDynamicSlice, "dynamic-slice", kHloOpcodeIsVariadic)              \
   V(kDynamicUpdateSlice, "dynamic-update-slice", kHloOpcodeIsVariadic) \
-  V(kEq, "equal-to", 2, kHloOpcodeIsComparison)                        \
   V(kExp, "exponential", 1)                                            \
   V(kExpm1, "exponential-minus-one", 1)                                \
   V(kFft, "fft", 1)                                                    \
   V(kFloor, "floor", 1)                                                \
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                           \
   V(kGather, "gather", 2)                                              \
-  V(kGe, "greater-than-or-equal-to", 2, kHloOpcodeIsComparison)        \
   V(kGetDimensionSize, "get-dimension-size", 1)                        \
   V(kGetTupleElement, "get-tuple-element", 1)                          \
-  V(kGt, "greater-than", 2, kHloOpcodeIsComparison)                    \
   V(kImag, "imag", 1)                                                  \
   V(kInfeed, "infeed", 1)                                              \
   V(kIota, "iota", 0)                                                  \
   V(kIsFinite, "is-finite", 1)                                         \
-  V(kLe, "less-than-or-equal-to", 2, kHloOpcodeIsComparison)           \
   V(kLog, "log", 1)                                                    \
   V(kLog1p, "log-plus-one", 1)                                         \
   V(kAnd, "and", 2)                                                    \
   V(kNot, "not", 1)                                                    \
   V(kOr, "or", 2)                                                      \
   V(kXor, "xor", 2)                                                    \
-  V(kLt, "less-than", 2, kHloOpcodeIsComparison)                       \
   V(kMap, "map", kHloOpcodeIsVariadic)                                 \
   V(kMaximum, "maximum", 2)                                            \
   V(kMinimum, "minimum", 2)                                            \
   V(kMultiply, "multiply", 2)                                          \
-  V(kNe, "not-equal-to", 2, kHloOpcodeIsComparison)                    \
   V(kNegate, "negate", 1)                                              \
   V(kOutfeed, "outfeed", 2)                                            \
   V(kPad, "pad", 2)                                                    \

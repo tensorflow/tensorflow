@@ -23,19 +23,19 @@ import threading
 import platform
 from tensorflow.python.framework import errors
 
-_trt_ops_so = None
+_tf_trt_so = None
 _module_lock = threading.Lock()
 
 
 def load_trt_ops():
   """Load TF-TRT op libraries so if it hasn't been loaded already."""
-  global _trt_ops_so
+  global _tf_trt_so
 
   if platform.system() == "Windows":
     raise RuntimeError("Windows platforms are not supported")
 
   with _module_lock:
-    if _trt_ops_so:
+    if _tf_trt_so:
       return
 
     try:
@@ -56,8 +56,8 @@ def load_trt_ops():
       from tensorflow.python.platform import resource_loader
       # pylint: enable=g-import-not-at-top
 
-      _trt_ops_so = load_library.load_op_library(
-          resource_loader.get_path_to_datafile("_trt_ops.so"))
+      _tf_trt_so = load_library.load_op_library(
+          resource_loader.get_path_to_datafile("libtftrt.so"))
     except errors.NotFoundError as e:
       no_trt_message = (
           "**** Failed to initialize TensorRT. This is either because the "

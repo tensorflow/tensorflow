@@ -10,6 +10,9 @@ ifeq ($(TARGET),$(filter $(TARGET),apollo3evb sparkfun_edge))
   # with the hard interfaces.
   GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
+  # Use the faster depthwise conv implementation.
+  ALL_TAGS += portable_optimized
+
   PLATFORM_FLAGS = \
     -DPART_apollo3 \
     -DAM_PACKAGE_BGA \

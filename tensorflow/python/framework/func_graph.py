@@ -208,13 +208,9 @@ class FuncGraph(ops.Graph):
       # any None op_seed for random_op in the function, in which case we end up
       # using function seed, which could be unintended behavior for the op.
       self._seed_used = False
-      device_type = context.context().device_spec.device_type
-      self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
-                           or device_type == "XLA_CPU")
     else:
       self.seed = graph.seed
       self._seed_used = False
-      self._xla_compile = getattr(graph, "_xla_compile", False)
       # TODO(allenl): Figure out if we can remove colocation stack
       # specialization (currently used in cond_v2), here and in the cache key.
       self._colocation_stack = graph._colocation_stack.copy()  # pylint: disable=protected-access
@@ -297,11 +293,10 @@ class FuncGraph(ops.Graph):
       # restored.
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
-        if self._distribution_strategy_stack or self._xla_compile:
+        if self._distribution_strategy_stack:
           self._add_device_to_stack(context.context().device_name)
       else:
         if (self._distribution_strategy_stack
-            or self._xla_compile
             or device_stack_has_callable(graph._device_function_stack)):
           # Hard-code devices from device functions in the function body
           self._device_function_stack = graph._device_function_stack.copy()
@@ -389,7 +384,7 @@ class FuncGraph(ops.Graph):
       self,
       op_type,
       inputs,
-      dtypes,  # pylint: disable=redefined-outer-name
+      dtypes=None,  # pylint: disable=redefined-outer-name
       input_types=None,
       name=None,
       attrs=None,
@@ -406,8 +401,8 @@ class FuncGraph(ops.Graph):
       op_type: The `Operation` type to create. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
       inputs: A list of `Tensor` objects that will be inputs to the `Operation`.
-      dtypes: A list of `DType` objects that will be the types of the tensors
-        that the operation produces.
+      dtypes: (Optional) A list of `DType` objects that will be the types of the
+        tensors that the operation produces.
       input_types: (Optional.) A list of `DType`s that will be the types of
         the tensors that the operation consumes. By default, uses the base
         `DType` of each input in `inputs`. Operations that expect
@@ -683,9 +678,7 @@ def func_graph_from_py_func(name,
           return autograph.converted_call(
               original_func, None,
               autograph.ConversionOptions(
-                  verbose=autograph.Verbosity.BRIEF,
                   recursive=True,
-                  strip_decorators=(def_function.function,),
                   optional_features=autograph_options,
                   force_conversion=True,
               ), args, kwargs)

@@ -35,6 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging
@@ -92,11 +93,13 @@ def get_loss_reduction():
 # Internal API for validating the current thread mode
 
 
-def _require_cross_replica_context_extended(extended):
+def _require_cross_replica_or_default_context_extended(extended):
   """Verify in cross-replica context."""
   context = _get_per_thread_mode()
   cross_replica = context.cross_replica_context
   if cross_replica is not None and cross_replica.extended is extended:
+    return
+  if context is _get_default_replica_mode():
     return
   strategy = extended._container_strategy()  # pylint: disable=protected-access
   # We have an error to report, figure out the right message.
@@ -396,8 +399,9 @@ class DistributionStrategy(object):
     if replication_mode != InputReplicationMode.PER_WORKER:
       raise ValueError(
           "Input replication mode not supported: %r" % replication_mode)
-    return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
-        input_fn, replication_mode=replication_mode)
+    with self.scope():
+      return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
+          input_fn, replication_mode=replication_mode)
 
   def experimental_make_numpy_iterator(
       self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
@@ -437,7 +441,7 @@ class DistributionStrategy(object):
     """Runs ops in `fn` on each replica, with inputs from `input_iterator`.
 
     When eager execution is enabled, executes ops specified by `fn` on each
-    replica.  Otherwise, builds a graph to execute the ops on each replica.
+    replica. Otherwise, builds a graph to execute the ops on each replica.
 
     Each replica will take a single, different input from the inputs provided by
     one `get_next` call on the input iterator.
@@ -445,13 +449,13 @@ class DistributionStrategy(object):
     `fn` may call `tf.distribute.get_replica_context()` to access members such
     as `replica_id_in_sync_group`.
 
-    IMPORTANT: Depending on the `DistributionStrategy` being used, and whether
-    eager execution is enabled, `fn` may be called one or more times (once for
-    each replica).
+    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
+    used, and whether eager execution is enabled, `fn` may be called one or more
+    times (once for each replica).
 
     Args:
-      fn: function to run. The inputs to the function must match the outputs of
-        `input_iterator.get_next()`. The output must be a `tf.nest` of
+      fn: The function to run. The inputs to the function must match the outputs
+        of `input_iterator.get_next()`. The output must be a `tf.nest` of
         `Tensor`s.
       input_iterator: (Optional) input iterator from which the inputs are taken.
 
@@ -463,11 +467,36 @@ class DistributionStrategy(object):
       single replica).
     """
     with self.scope():
-      if input_iterator is None:
-        return self._extended.call_for_each_replica(fn)
-      else:
-        inputs = input_iterator.get_next()
-        return self._extended.call_for_each_replica(fn, args=(inputs,))
+      args = (input_iterator.get_next(),) if input_iterator is not None else ()
+    return self.experimental_run_v2(fn, args=args)
+
+  def experimental_run_v2(self, fn, args=(), kwargs=None):
+    """Runs ops in `fn` on each replica, with the given arguments.
+
+    When eager execution is enabled, executes ops specified by `fn` on each
+    replica. Otherwise, builds a graph to execute the ops on each replica.
+
+    `fn` may call `tf.distribute.get_replica_context()` to access members such
+    as `replica_id_in_sync_group`.
+
+    IMPORTANT: Depending on the `tf.distribute.Strategy` implementation being
+    used, and whether eager execution is enabled, `fn` may be called one or more
+    times (once for each replica).
+
+    Args:
+      fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
+      args: (Optional) Positional arguments to `fn`.
+      kwargs: (Optional) Keyword arguments to `fn`.
+
+    Returns:
+      Merged return value of `fn` across replicas. The structure of the return
+      value is the same as the return value from `fn`. Each element in the
+      structure can either be `PerReplica` (if the values are unsynchronized),
+      `Mirrored` (if the values are kept in sync), or `Tensor` (if running on a
+      single replica).
+    """
+    with self.scope():
+      return self._extended.call_for_each_replica(fn, args=args, kwargs=kwargs)
 
   def reduce(self, reduce_op, value):
     """Reduce `value` across replicas.
@@ -480,7 +509,7 @@ class DistributionStrategy(object):
     Returns:
       A `Tensor`.
     """
-    _require_cross_replica_context_extended(self._extended)
+    _require_cross_replica_or_default_context_extended(self._extended)
     return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
@@ -806,7 +835,7 @@ class DistributionStrategyExtended(object):
   def _scope(self, strategy):
     """Implementation of DistributionStrategy.scope()."""
     if distribution_strategy_context.has_strategy():
-      _require_cross_replica_context_extended(self)
+      _require_cross_replica_or_default_context_extended(self)
       return _SameScopeAgainContext(strategy)
 
     def creator_with_resource_vars(*args, **kwargs):
@@ -949,7 +978,7 @@ class DistributionStrategyExtended(object):
     Returns:
       A `tf.data.Dataset` representing `numpy_input`.
     """
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     return self._experimental_make_numpy_dataset(numpy_input, session=session)
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
@@ -968,7 +997,7 @@ class DistributionStrategyExtended(object):
     """
     assert destinations is not None  # from old strategy.broadcast()
     # TODO(josh11b): More docstring
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     return self._broadcast_to(tensor, destinations)
 
@@ -1012,9 +1041,10 @@ class DistributionStrategyExtended(object):
         - non_tensor_outputs: A dictionatry containing anything that was set by
           `fn` by calling `context.set_non_tensor_output`.
     """
-    _require_cross_replica_context_extended(self)
-    return self._experimental_run_steps_on_iterator(
-        fn, iterator, iterations, initial_loop_values)
+    _require_cross_replica_or_default_context_extended(self)
+    with self._container_strategy().scope():
+      return self._experimental_run_steps_on_iterator(
+          fn, iterator, iterations, initial_loop_values)
 
   def _experimental_run_steps_on_iterator(self, fn, iterator, iterations,
                                           initial_loop_values):
@@ -1063,10 +1093,11 @@ class DistributionStrategyExtended(object):
     Returns:
       Merged return value of `fn` across all replicas.
     """
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
-    return self._call_for_each_replica(fn, args, kwargs)
+    with self._container_strategy().scope():
+      return self._call_for_each_replica(fn, args, kwargs)
 
   def _call_for_each_replica(self, fn, args, kwargs):
     raise NotImplementedError("must be implemented in descendants")
@@ -1091,7 +1122,7 @@ class DistributionStrategyExtended(object):
       A value mirrored to `destinations`.
     """
     # TODO(josh11b): More docstring
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     assert (reduce_op == reduce_util.ReduceOp.SUM or
@@ -1113,7 +1144,7 @@ class DistributionStrategyExtended(object):
       A list of mirrored values, one per pair in `value_destination_pairs`.
     """
     # TODO(josh11b): More docstring
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
     return self._batch_reduce_to(reduce_op, value_destination_pairs)
 
@@ -1160,10 +1191,11 @@ class DistributionStrategyExtended(object):
       where each list has an element per replica, and the caller is responsible
       for ensuring all elements are executed.
     """
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
-    return self._update(var, fn, args, kwargs, group)
+    with self._container_strategy().scope():
+      return self._update(var, fn, args, kwargs, group)
 
   def _update(self, var, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
@@ -1183,10 +1215,11 @@ class DistributionStrategyExtended(object):
     Returns:
       Return value of `fn`, possibly merged across devices.
     """
-    _require_cross_replica_context_extended(self)
+    _require_cross_replica_or_default_context_extended(self)
     if kwargs is None:
       kwargs = {}
-    return self._update_non_slot(colocate_with, fn, args, kwargs, group)
+    with self._container_strategy().scope():
+      return self._update_non_slot(colocate_with, fn, args, kwargs, group)
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
@@ -1324,11 +1357,24 @@ class ReplicaContext(object):
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
     self._replica_id_in_sync_group = replica_id_in_sync_group
+    self._summary_recording_distribution_strategy = None
 
   def __enter__(self):
     _push_per_thread_mode(self._thread_context)
+    ctx = eager_context.context()
+
+    def replica_id_is_zero():
+      return math_ops.equal(self._replica_id_in_sync_group,
+                            constant_op.constant(0))
+
+    self._summary_recording_distribution_strategy = (
+        ctx.summary_recording_distribution_strategy)
+    ctx.summary_recording_distribution_strategy = replica_id_is_zero
 
   def __exit__(self, exception_type, exception_value, traceback):
+    ctx = eager_context.context()
+    ctx.summary_recording_distribution_strategy = (
+        self._summary_recording_distribution_strategy)
     _pop_per_thread_mode()
 
   def merge_call(self, merge_fn, args=(), kwargs=None):
@@ -1626,3 +1672,5 @@ resource_variable_ops._from_proto_fn = _from_proto_fn
 _push_per_thread_mode = distribution_strategy_context._push_per_thread_mode  # pylint: disable=protected-access
 _get_per_thread_mode = distribution_strategy_context._get_per_thread_mode  # pylint: disable=protected-access
 _pop_per_thread_mode = distribution_strategy_context._pop_per_thread_mode  # pylint: disable=protected-access
+_get_default_replica_mode = (
+    distribution_strategy_context._get_default_replica_mode)  # pylint: disable=protected-access

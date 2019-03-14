@@ -41,6 +41,20 @@ from tensorflow.python.platform import test
 @test_util.run_v1_only("b/123903858: Add eager and V2 test coverage")
 class MapDefunTest(test_base.DatasetTestBase):
 
+  def testNoIntraOpLimit(self):
+
+    @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
+    def simple_fn(x):
+      return x * 2 + 3
+
+    nums = [[1, 2], [3, 4], [5, 6]]
+    elems = constant_op.constant(nums, dtype=dtypes.int32, name="data")
+    r = map_defun.map_defun(
+        simple_fn, [elems], [dtypes.int32], [(2,)],
+        max_intra_op_parallelism=0)[0]
+    expected = elems * 2 + 3
+    self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
+
   def testMapDefunSimple(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])

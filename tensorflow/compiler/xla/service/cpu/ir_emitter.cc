@@ -74,7 +74,6 @@ limitations under the License.
 namespace xla {
 
 namespace {
-using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
 }  // namespace
@@ -173,8 +172,7 @@ Status IrEmitter::HandleBitcast(HloInstruction* bitcast) {
   VLOG(2) << "HandleBitcast: " << bitcast->ToString();
   emitted_value_[bitcast] =
       BitCast(GetEmittedValueFor(bitcast->operand(0)),
-              IrShapeType(bitcast->shape())->getPointerTo(),
-              AsStringRef(IrName(bitcast)));
+              IrShapeType(bitcast->shape())->getPointerTo(), IrName(bitcast));
   return Status::OK();
 }
 
@@ -890,16 +888,18 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // location is computed by calling the `scatter` function with the source
   // value and the current output value.
   SetToFirstInsertPoint(window_loops.GetOuterLoopExitBasicBlock(), &b_);
-  llvm_ir::IrArray::Index selected_index(source_index.GetType());
+  std::vector<llvm::Value*> selected_multi_index;
   for (int64 i = 0; i < rank; ++i) {
     llvm::Value* selected_index_address_slot =
         InBoundsGEP(selected_index_address, {b_.getInt32(i)});
-    selected_index.push_back(Load(selected_index_address_slot));
+    selected_multi_index.push_back(Load(selected_index_address_slot));
   }
   llvm_ir::IrArray source_array(GetIrArrayFor(source));
   llvm::Value* source_value =
       source_array.EmitReadArrayElement(source_index, &b_);
   llvm_ir::IrArray output_array(GetIrArrayFor(select_and_scatter));
+  llvm_ir::IrArray::Index selected_index(
+      selected_multi_index, output_array.GetShape(), source_index.GetType());
   llvm::Value* output_value =
       output_array.EmitReadArrayElement(selected_index, &b_);
   llvm::Value* scatter_value =
@@ -2010,7 +2010,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
 
   llvm_ir::IrArray source_array = GetIrArrayFor(operand);
   const llvm_ir::IrArray::Index source_index = target_index.SourceIndexOfSlice(
-      /*shape=*/slice->shape(), /*starts=*/slice->slice_starts(),
+      /*operand_shape=*/operand->shape(), /*starts=*/slice->slice_starts(),
       /*strides=*/slice->slice_strides(), /*builder=*/&b_);
 
   llvm::Value* memcpy_dest =
@@ -2113,18 +2113,20 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   // Compute the output index the operand element should be assigned to.
   // output_index := edge_padding_low + operand_index * (interior_padding + 1)
   const PaddingConfig& padding_config = pad->padding_config();
-  llvm_ir::IrArray::Index output_index(operand_index.GetType());
+  std::vector<llvm::Value*> output_multi_index;
   for (size_t i = 0; i < operand_index.size(); ++i) {
     llvm::Value* offset =
         Mul(operand_index[i],
             b_.getInt64(padding_config.dimensions(i).interior_padding() + 1));
     llvm::Value* index = Add(
         offset, b_.getInt64(padding_config.dimensions(i).edge_padding_low()));
-    output_index.push_back(index);
+    output_multi_index.push_back(index);
   }
 
   // Store the operand element to the computed output location.
   llvm_ir::IrArray output_array(GetIrArrayFor(pad));
+  llvm_ir::IrArray::Index output_index(
+      output_multi_index, output_array.GetShape(), operand_index.GetType());
   output_array.EmitWriteArrayElement(output_index, operand_data, &b_);
 
   SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(), &b_);
@@ -2213,7 +2215,6 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   absl::Span<HloInstruction* const> operands(custom_call->operands());
-  absl::string_view custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
       llvm_ir::EmitAllocaAtFunctionEntryWithCount(
@@ -2248,7 +2249,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   auto* custom_call_ir_function = llvm::dyn_cast<llvm::Function>(
       module_
           ->getOrInsertFunction(
-              AsStringRef(custom_call_target),
+              custom_call->custom_call_target(),
               llvm::FunctionType::get(
                   /*Result=*/b_.getVoidTy(),
                   /*Params=*/{i8_ptr_type, operands_alloca->getType()},
@@ -2331,7 +2332,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 
   // Terminates the current block with a branch to a while header.
   llvm::BasicBlock* header_bb = llvm::BasicBlock::Create(
-      module_->getContext(), AsStringRef(IrName(xla_while, "header")),
+      module_->getContext(), IrName(xla_while, "header"),
       compute_function_->function());
   Br(header_bb);
   b_.SetInsertPoint(header_bb);
@@ -2344,11 +2345,11 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
       llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0));
 
   // Branches to the body or to the while exit depending on the condition.
-  llvm::BasicBlock* body_bb = llvm::BasicBlock::Create(
-      module_->getContext(), AsStringRef(IrName(xla_while, "body")),
-      compute_function_->function());
+  llvm::BasicBlock* body_bb =
+      llvm::BasicBlock::Create(module_->getContext(), IrName(xla_while, "body"),
+                               compute_function_->function());
   llvm::BasicBlock* exit_bb = llvm::BasicBlock::Create(
-      module_->getContext(), AsStringRef(IrName(xla_while, "exit")));
+      module_->getContext(), IrName(xla_while, "exit"));
   CondBr(while_predicate, body_bb, exit_bb);
 
   // Calls the body function from the body block.
@@ -2691,7 +2692,7 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
   int64 prof_counter_idx = it->second;
   string counter_name = IrName("prof_counter", hlo.name());
   return GEP(GetProfileCountersArgument(), b_.getInt64(prof_counter_idx),
-             AsStringRef(counter_name));
+             counter_name);
 }
 
 void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
@@ -2735,7 +2736,7 @@ llvm::Value* IrEmitter::ProfilingState::ReadCycleCounter(llvm::IRBuilder<>* b) {
 void IrEmitter::ProfilingState::RecordCycleStart(llvm::IRBuilder<>* b,
                                                  HloInstruction* hlo) {
   auto* cycle_start = ReadCycleCounter(b);
-  cycle_start->setName(AsStringRef(IrName(hlo, "cycle_start")));
+  cycle_start->setName(IrName(hlo, "cycle_start"));
   cycle_starts_[hlo] = cycle_start;
   if (first_read_cycle_start_ == nullptr) {
     first_read_cycle_start_ = cycle_start;
@@ -2746,7 +2747,7 @@ void IrEmitter::ProfilingState::RecordCycleDelta(llvm::IRBuilder<>* b,
                                                  HloInstruction* hlo,
                                                  llvm::Value* prof_counter) {
   auto* cycle_end = ReadCycleCounter(b);
-  cycle_end->setName(AsStringRef(IrName(hlo, "cycle_end")));
+  cycle_end->setName(IrName(hlo, "cycle_end"));
   auto* cycle_start = cycle_starts_[hlo];
   UpdateProfileCounter(b, prof_counter, cycle_end, cycle_start);
   last_read_cycle_end_ = cycle_end;
@@ -2919,7 +2920,7 @@ Status IrEmitter::EmitTargetAddressForOp(const HloInstruction* op) {
   TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice slice,
                       assignment_.GetUniqueTopLevelSlice(op));
   llvm::Value* addr = EmitBufferPointer(slice, target_shape);
-  addr->setName(AsStringRef(IrName(op)));
+  addr->setName(IrName(op));
   emitted_value_[op] = addr;
   return Status::OK();
 }

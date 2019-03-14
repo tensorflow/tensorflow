@@ -264,6 +264,29 @@ py_test(
 )
 
 py_test(
+    name = "choose_fastest_branch_dataset_test",
+    size = "small",
+    srcs = ["choose_fastest_branch_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
     name = "model_dataset_test",
     size = "medium",
     srcs = ["model_dataset_test.py"],

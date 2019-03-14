@@ -873,9 +873,9 @@ std::unique_ptr<HloInstruction> TryDivideToShift(HloInstruction* divide,
           computation, a->shape().element_type(), a->shape().dimensions());
 
       auto* dividend_is_negative =
-          computation->AddInstruction(HloInstruction::CreateBinary(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), HloOpcode::kLt, a,
-              zero_like_a));
+          computation->AddInstruction(HloInstruction::CreateCompare(
+              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
+              ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
@@ -1219,7 +1219,7 @@ StatusOr<bool> AlgebraicSimplifierVisitor::HandleDotStrengthReduction(
     return true;
   }
 
-  // Simplify outer product into multiply with implicit broadcasting.
+  // Simplify outer product into multiply with broadcasting.
   //
   // A dot(a[M, 1], b[1, N]) = multiply(a [M,1], b [1, N])
   if (rhs_rank == 2 && rhs->shape().dimensions(rhs_collapsing_dim) == 1) {
@@ -2475,9 +2475,9 @@ std::unique_ptr<HloInstruction> TryRemainderToAnd(HloInstruction* remainder,
           computation, a->shape().element_type(), a->shape().dimensions());
 
       auto* dividend_is_negative =
-          computation->AddInstruction(HloInstruction::CreateBinary(
-              ShapeUtil::ChangeElementType(a->shape(), PRED), HloOpcode::kLt, a,
-              zero_like_a));
+          computation->AddInstruction(HloInstruction::CreateCompare(
+              ShapeUtil::ChangeElementType(a->shape(), PRED), a, zero_like_a,
+              ComparisonDirection::kLt));
 
       auto* negated_dividend = computation->AddInstruction(
           HloInstruction::CreateUnary(a->shape(), HloOpcode::kNegate, a));
@@ -3271,7 +3271,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   }
 
   if (is_effective_broadcast()) {
-    VLOG(10) << "Replacing pad/reduce-window with (implicit) broadcast.";
+    VLOG(10) << "Replacing pad/reduce-window with broadcast.";
     auto fadd = [this](std::unique_ptr<HloInstruction> x) {
       return computation_->AddInstruction(std::move(x));
     };

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -42,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -426,7 +426,7 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
   }
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
+    DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
   }
 
   return Status::OK();

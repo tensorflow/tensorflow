@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
+
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.util import event_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
@@ -33,12 +37,17 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.layers import core
+from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import gfile
 from tensorflow.python.training import optimizer
+from tensorflow.python.training import training_util
+from tensorflow.python.util import nest
 
 
 class _TestException(Exception):
@@ -84,6 +93,20 @@ def _call_merge_raises_fn(dist):
 # raises an exception.
 def _merge_call_merge_raises_fn():
   ds_context.get_replica_context().merge_call(_call_merge_raises_fn)
+
+
+def _events_from_logdir(test_case, logdir):
+  """Reads summary events from log directory."""
+  test_case.assertTrue(gfile.Exists(logdir))
+  files = gfile.ListDirectory(logdir)
+  test_case.assertLen(files, 1)
+  records = list(tf_record.tf_record_iterator(os.path.join(logdir, files[0])))
+  result = []
+  for r in records:
+    event = event_pb2.Event()
+    event.ParseFromString(r)
+    result.append(event)
+  return result
 
 
 class DistributionTestBase(test.TestCase):
@@ -190,6 +213,39 @@ class DistributionTestBase(test.TestCase):
       error_after = abs(after - 1)
       # Error should go down
       self.assertLess(error_after, error_before)
+
+  def _test_summary_for_replica_zero_only(self, d):
+    logdir = tempfile.mkdtemp()
+
+    def run_fn():
+      """Function executed for each replica."""
+      with summary_writer.as_default():
+        replica_id = ds_context.get_replica_context().replica_id_in_sync_group
+        return summary_ops.scalar("a", replica_id)
+
+    with self.cached_session() as sess, d.scope(), \
+        summary_ops.always_record_summaries():
+      # We need global_step because summary writing op *always* has global_step
+      # as input, even when we always record summary or never record summary.
+      global_step = training_util.get_or_create_global_step()
+      if not context.executing_eagerly():
+        # When executing eagerly, variables are initialized immediately after
+        # creation, and its initializer will be None.
+        global_step.initializer.run()
+      summary_writer = summary_ops.create_file_writer(logdir)
+      output = d.extended.call_for_each_replica(run_fn)
+      unwrapped = d.unwrap(output)
+      if not context.executing_eagerly():
+        sess.run(summary_writer.init())
+        sess.run(unwrapped)
+        sess.run(summary_writer.close())
+
+      events = _events_from_logdir(self, logdir)
+      # There will be 2 entries: 1 summary file header entry, and 1 entry
+      # written by replica 0.
+      self.assertLen(events, 2)
+      self.assertEqual(events[1].summary.value[0].tag, "a")
+      self.assertEqual(events[1].summary.value[0].simple_value, 0.0)
 
   def _test_replica_id(self, d):
     with d.scope():
@@ -325,6 +381,19 @@ class DistributionTestBase(test.TestCase):
 class OneDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any one-device DistributionStrategy."""
 
+  def _test_run(self, strategy):
+    out1 = strategy.experimental_run_v2(lambda: constant_op.constant(4.))
+    self.assertAllEqual([4.], self.evaluate(strategy.unwrap(out1)))
+
+    out2 = strategy.experimental_run_v2(
+        lambda x: {"a": x * 2, "b": x * x}, args=(out1,))
+    out2_vals = self.evaluate(nest.map_structure(strategy.unwrap, out2))
+    self.assertAllEqual([8.], out2_vals["a"])
+    self.assertAllEqual([16.], out2_vals["b"])
+
+    out3 = strategy.experimental_run_v2(lambda b, a: a + 2 * b + 2, kwargs=out2)
+    self.assertAllEqual([42.], self.evaluate(strategy.unwrap(out3)))
+
   def _test_all_reduce_sum(self, strategy):
     self._test_collective_comms(
         strategy, _all_sum, inputs=(4., [42., 43.]), expected=(4., [42., 43.]))
@@ -397,6 +466,20 @@ class OneDeviceDistributionTestBase(test.TestCase):
 
 class TwoDeviceDistributionTestBase(test.TestCase):
   """Some tests that should work with any two-device DistributionStrategy."""
+
+  def _test_run(self, strategy):
+    out1 = strategy.experimental_run_v2(
+        lambda: ds_context.get_replica_context().replica_id_in_sync_group + 1)
+    self.assertAllEqual([1, 2], self.evaluate(strategy.unwrap(out1)))
+
+    out2 = strategy.experimental_run_v2(
+        lambda x: {"a": x * 2, "b": x * x}, args=(out1,))
+    out2_vals = self.evaluate(nest.map_structure(strategy.unwrap, out2))
+    self.assertAllEqual([2, 4], out2_vals["a"])
+    self.assertAllEqual([1, 4], out2_vals["b"])
+
+    out3 = strategy.experimental_run_v2(lambda b, a: a + 2 * b + 2, kwargs=out2)
+    self.assertAllEqual([6, 14], self.evaluate(strategy.unwrap(out3)))
 
   def _test_all_reduce_sum(self, strategy):
     self._test_collective_comms(
