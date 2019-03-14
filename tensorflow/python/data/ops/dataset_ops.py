@@ -193,8 +193,17 @@ class DatasetV2(object):
       else:
         dataset = _OptimizeDataset(dataset, static_optimizations)
 
-    if options.experimental_autotune is not False:
-      dataset = _ModelDataset(dataset)
+    autotune = True
+    cpu_budget = 0  # Indicates that all CPU cores should be used.
+    if options.experimental_optimization is not None:
+      if options.experimental_optimization.autotune is False:  # pylint: disable=g-bool-id-comparison
+        autotune = False
+      if options.experimental_optimization.autotune_cpu_budget is not None:
+        cpu_budget = options.experimental_optimization.autotune_cpu_budget
+
+    if autotune:
+      dataset = _ModelDataset(dataset, cpu_budget)
+
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
       dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
           dataset, options.experimental_stats.aggregator,
@@ -1946,13 +1955,6 @@ class Options(options_lib.OptionsBase):
   `tf.data.Dataset.interleave`.
   """
 
-  experimental_autotune = options_lib.create_option(
-      name="experimental_autotune",
-      ty=bool,
-      docstring=
-      "Whether to dynamically adjust the values of tunable parameters (e.g. "
-      "degrees of parallelism). If None, defaults to True.")
-
   experimental_deterministic = options_lib.create_option(
       name="experimental_deterministic",
       ty=bool,
@@ -3265,10 +3267,11 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
-  def __init__(self, input_dataset):
+  def __init__(self, input_dataset, cpu_budget):
     self._input_dataset = input_dataset
     variant_tensor = gen_dataset_ops.model_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
+        cpu_budget=cpu_budget,
         **flat_structure(self))
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
