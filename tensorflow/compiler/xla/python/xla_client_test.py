@@ -1166,6 +1166,26 @@ class SingleOpTest(ComputationTest):
     q, r = self._Execute(c, ())
     np.testing.assert_allclose(np.dot(q, r), a, rtol=1e-4)
 
+  def testEigh(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    a = (a + a.T) / 2
+
+    c = self._NewComputation()
+    c.Eigh(c.Constant(a), full_matrices=True)
+    v, w = self._Execute(c, ())
+    self.assertLess(np.linalg.norm(np.dot(a, v) - w * v), 1e-3)
+
+  def testSVD(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    c = self._NewComputation()
+    c.SVD(c.Constant(a))
+    u, d, v = self._Execute(c, ())
+    self.assertLess(np.linalg.norm(a - np.matmul(u * d, v.T)), 1e-3)
+
   def testTriangularSolve(self):
     a_vals = np.array(
         [[2, 0, 0, 0], [3, 6, 0, 0], [4, 7, 9, 0], [5, 8, 10, 11]],

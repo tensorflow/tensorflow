@@ -1,0 +1,13 @@
+// This is used for convolution logging. Also see
+// tensorflow/core/protobuf/autotuing.h
+syntax = "proto3";
+
+package xla.gpu;
+
+import "tensorflow/compiler/xla/service/hlo.proto";
+import "tensorflow/compiler/xla/xla_data.proto";
+
+message ConvInstructionLog {
+  xla.HloInstructionProto instruction = 1;
+  repeated xla.ShapeProto operand_shapes = 2;
+}

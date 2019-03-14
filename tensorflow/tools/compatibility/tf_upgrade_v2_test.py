@@ -97,6 +97,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
             cls.v2_symbols["tf." + name] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
+      visitor.private_map["tf.compat"] = ["v1"]
       traverse.traverse(tf.compat.v2, visitor)
 
     if hasattr(tf.compat, "v1"):
@@ -516,6 +517,32 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
                      "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def testBaseEstimatorPartitioner(self):
+    classes = ["LinearEstimator", "DNNLinearCombinedEstimator", "DNNEstimator"]
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST)"
+      text = ns + suffix
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
+
+  def testCannedEstimatorPartitioner(self):
+    classes = [
+        "LinearClassifier", "LinearRegressor", "DNNLinearCombinedClassifier",
+        "DNNLinearCombinedRegressor", "DNNRegressor", "DNNClassifier"
+    ]
+
+    for c in classes:
+      ns = "tf.estimator." + c
+      suffix = "(input_layer_partitioner=TEST)"
+      text = ns + suffix
+      suffix = ("(input_layer_partitioner=TEST, "
+                "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+      expected_text = "tf.compat.v1.estimator." + c + suffix
+      _, unused_report, unused_errors, new_text = self._upgrade(text)
+      self.assertEqual(new_text, expected_text)
 
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "

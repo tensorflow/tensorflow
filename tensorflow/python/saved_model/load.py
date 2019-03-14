@@ -303,8 +303,9 @@ def load(export_dir, tags=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  if tags is not None:
-    # Supports e.g. tags=SERVING and tags=[SERVING]
+  if tags is not None and not isinstance(tags, set):
+    # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
+    # sequences for nest.flatten, so we put those through as-is.
     tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
   if (len(saved_model_proto.meta_graphs) == 1

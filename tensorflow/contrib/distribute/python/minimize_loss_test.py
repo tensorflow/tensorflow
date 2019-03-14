@@ -418,13 +418,14 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         # tensors. But for non reduced losses, we need to have initial
         # values that are of the same structure as non reduced losses. In
         # MirroredStrategy, this will be a list of losses, in TPUStrategy
-        # it will be single tensor. Using `broadcast` followed by `unwrap`
-        # gives us the desired initial value structure.
+        # it will be single tensor. Using `call_for_each_replica` followed
+        # by `unwrap` gives us the desired initial value structure.
+        not_reduced = distribution.unwrap(
+            distribution.extended.call_for_each_replica(initial_loss))
         initial_loop_values = {
             "replica_loss_reduced": initial_loss(),
             "cross_replica_loss_reduced": initial_loss(),
-            "cross_replica_loss_not_reduced":
-            distribution.unwrap(distribution.broadcast(initial_loss()))
+            "cross_replica_loss_not_reduced": not_reduced,
         }
         ctx = distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=2,

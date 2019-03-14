@@ -116,7 +116,7 @@ class CapturedFunction {
   // Creates a new instance using a list of named attributes, fetching captured
   // inputs from a context argument.
   static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       const string& argument,
+                       const string& argument_name,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Creates a new instance using a list of named attributes, fetching captured
@@ -125,7 +125,18 @@ class CapturedFunction {
   // If `use_inter_op_parallelism` is false, the runtime may use an executor
   // that is optimized for small functions.
   static Status Create(const NameAttrList& func, OpKernelContext* ctx,
-                       const string& argument, bool use_inter_op_parallelism,
+                       const string& argument_name,
+                       bool use_inter_op_parallelism,
+                       std::unique_ptr<CapturedFunction>* out_function);
+
+  // Creates a new instance using a list of named attributes, using provided
+  // captured inputs.
+  //
+  // If `use_inter_op_parallelism` is false, the runtime may use an executor
+  // that is optimized for small functions.
+  static Status Create(const NameAttrList& func, OpKernelContext* ctx,
+                       std::vector<Tensor>&& captured_inputs,
+                       bool use_inter_op_parallelism,
                        std::unique_ptr<CapturedFunction>* out_function);
 
   // Instantiates this function for use in the given context, providing an

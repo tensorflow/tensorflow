@@ -1,0 +1,23 @@
+path: "tensorflow.random.experimental"
+tf_module {
+  member {
+    name: "Generator"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "create_rng_state"
+    argspec: "args=[\'seed\', \'algorithm\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_global_generator"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_global_generator"
+    argspec: "args=[\'seed\', \'algorithm\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "set_global_generator"
+    argspec: "args=[\'generator\'], varargs=None, keywords=None, defaults=None"
+  }
+}

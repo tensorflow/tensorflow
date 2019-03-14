@@ -561,6 +561,10 @@ tf_module {
     argspec: "args=[\'l\', \'grad\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ChooseFastestBranchDataset"
+    argspec: "args=[\'input_dataset\', \'ratio_numerator\', \'ratio_denominator\', \'other_arguments\', \'num_elements_per_branch\', \'branches\', \'other_arguments_lengths\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ClipByValue"
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\'], varargs=None, keywords=None, defaults=None"
   }
@@ -738,7 +742,7 @@ tf_module {
   }
   member_method {
     name: "CudnnRNNBackpropV3"
-    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'output\', \'output_h\', \'output_c\', \'output_backprop\', \'output_h_backprop\', \'output_c_backprop\', \'reserve_space\', \'host_reserved\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'output\', \'output_h\', \'output_c\', \'output_backprop\', \'output_h_backprop\', \'output_c_backprop\', \'reserve_space\', \'host_reserved\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'time_major\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "CudnnRNNCanonicalToParams"
@@ -758,7 +762,7 @@ tf_module {
   }
   member_method {
     name: "CudnnRNNV3"
-    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'is_training\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'input_h\', \'input_c\', \'params\', \'sequence_lengths\', \'rnn_mode\', \'input_mode\', \'direction\', \'dropout\', \'seed\', \'seed2\', \'is_training\', \'time_major\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Cumprod"
@@ -1521,6 +1525,10 @@ tf_module {
     argspec: "args=[\'input\', \'shape\', \'layout\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "InfeedEnqueuePrelinearizedBuffer"
+    argspec: "args=[\'input\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "InfeedEnqueueTuple"
     argspec: "args=[\'inputs\', \'shapes\', \'layouts\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
   }
@@ -1854,7 +1862,7 @@ tf_module {
   }
   member_method {
     name: "MapDefun"
-    argspec: "args=[\'arguments\', \'captured_inputs\', \'output_types\', \'output_shapes\', \'f\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'arguments\', \'captured_inputs\', \'output_types\', \'output_shapes\', \'f\', \'max_intra_op_parallelism\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MapIncompleteSize"
@@ -2034,7 +2042,7 @@ tf_module {
   }
   member_method {
     name: "ModelDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input_dataset\', \'cpu_budget\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Mul"
@@ -2127,6 +2135,10 @@ tf_module {
   member_method {
     name: "NoOp"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "NonDeterministicInts"
+    argspec: "args=[\'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "NonMaxSuppression"
@@ -2331,6 +2343,14 @@ tf_module {
   member_method {
     name: "PrefetchDataset"
     argspec: "args=[\'input_dataset\', \'buffer_size\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "Prelinearize"
+    argspec: "args=[\'input\', \'shape\', \'layout\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "PrelinearizeTuple"
+    argspec: "args=[\'inputs\', \'shapes\', \'layouts\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "PreventGradient"
@@ -2914,7 +2934,7 @@ tf_module {
   }
   member_method {
     name: "ResourceGather"
-    argspec: "args=[\'resource\', \'indices\', \'validate_indices\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'resource\', \'indices\', \'batch_dims\', \'validate_indices\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResourceScatterAdd"
@@ -3659,6 +3679,22 @@ tf_module {
   member_method {
     name: "StatefulPartitionedCall"
     argspec: "args=[\'args\', \'Tout\', \'f\', \'config\', \'config_proto\', \'executor_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulStandardNormal"
+    argspec: "args=[\'resource\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulStandardNormalV2"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulUniformFullInt"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "StatefulUniformInt"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'minval\', \'maxval\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "StatelessIf"

@@ -19,7 +19,6 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_util.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -31,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -581,10 +581,9 @@ Status ConstructHostGraph(
       &host_graph, outside_compilation_attr_name));
 
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
-        absl::StrCat("extract_outside_compilation_host_graph_for_",
-                     xla_cluster_name),
-        host_graph, fld);
+    DumpGraphToFile(absl::StrCat("extract_outside_compilation_host_graph_for_",
+                                 xla_cluster_name),
+                    host_graph, fld);
   }
 
   FunctionDef host_graph_fdef;
@@ -789,7 +788,7 @@ Status RewriteShapeInferenceGraph(const string& shape_inference_graph_name,
                               std::unordered_set<const Node*>{send_from_host});
 
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(shape_inference_graph_name, *g, fld);
+    DumpGraphToFile(shape_inference_graph_name, *g, fld);
   }
 
   // Replace original shape inference graph.
@@ -1620,7 +1619,7 @@ Status ExtractOutsideCompilationForFunction(
   TF_RETURN_IF_ERROR(PreprocessEdgesBetweenOutsideCompilations(
       fbody->graph, outside_compilation_attr_name));
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
+    DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_before_", func_name),
         *fbody->graph, fld);
   }
@@ -1705,7 +1704,7 @@ Status ExtractOutsideCompilationForFunction(
     TF_RETURN_IF_ERROR(fld->AddFunctionDef(updated_fdef));
   }
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile(
+    DumpGraphToFile(
         absl::StrCat("extract_outside_compilation_for_func_after_", func_name),
         *graph_out, fld);
   }
@@ -1719,7 +1718,7 @@ Status ExtractOutsideCompilation(
     const std::unordered_map<string, XlaClusterInfo>& clusters, Graph* g,
     FunctionLibraryRuntime* flr, FunctionLibraryDefinition* fld) {
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("extract_outside_compilation_before", *g, fld);
+    DumpGraphToFile("extract_outside_compilation_before", *g, fld);
   }
 
   std::vector<string> shape_inference_graphs;
@@ -1747,7 +1746,7 @@ Status ExtractOutsideCompilation(
   }
 
   if (VLOG_IS_ON(4)) {
-    dump_graph::DumpGraphToFile("extract_outside_compilation_after", *g, fld);
+    DumpGraphToFile("extract_outside_compilation_after", *g, fld);
   }
   return Status::OK();
 }

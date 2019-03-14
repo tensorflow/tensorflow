@@ -270,10 +270,18 @@ class TensorListFromTensorOp : public XlaOpKernel {
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    TensorShape element_shape;
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(1, &element_shape));
+    PartialTensorShape element_shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsPartialShape(1, &element_shape));
 
     const TensorShape tensor_shape = ctx->InputShape(0);
+    // Ensure that tensor_shape is compatible with element_shape.
+    PartialTensorShape unused;
+    OP_REQUIRES_OK(
+        ctx,
+        element_shape.MergeWith(
+            PartialTensorShape(
+                absl::Span<const int64>(tensor_shape.dim_sizes()).subspan(1)),
+            &unused));
     OP_REQUIRES(ctx, tensor_shape.dims() > 0,
                 errors::InvalidArgument("Input value must be at least a "
                                         "vector but received shape: ",

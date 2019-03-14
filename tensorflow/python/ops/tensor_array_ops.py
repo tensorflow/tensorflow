@@ -370,7 +370,7 @@ class _GraphTensorArray(object):
                         [self._handle, value, lengths]):
       value = ops.convert_to_tensor(value, name="value")
       with self._maybe_colocate_with(value):
-        lengths_64 = math_ops.to_int64(lengths)
+        lengths_64 = math_ops.cast(lengths, dtypes.int64)
         if self._infer_shape and not context.executing_eagerly():
           clengths = tensor_util.constant_value(lengths_64)
           if value.shape.dims is not None:
@@ -646,7 +646,7 @@ class _GraphTensorArrayV2(object):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArraySplit", [self._flow, value, lengths]):
       value = ops.convert_to_tensor(value, name="value")
-      lengths_64 = math_ops.to_int64(lengths)
+      lengths_64 = math_ops.cast(lengths, dtypes.int64)
       if self._infer_shape and not context.executing_eagerly():
         clengths = tensor_util.constant_value(lengths_64)
         if value.shape.dims is not None:

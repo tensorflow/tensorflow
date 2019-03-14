@@ -38,6 +38,20 @@ REGISTER_OP("ExperimentalBytesProducedStatsDataset")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ChooseFastestBranchDataset")
+    .Input("input_dataset: variant")
+    .Input("ratio_numerator: int64")
+    .Input("ratio_denominator: int64")
+    .Input("other_arguments: Targuments")
+    .Output("handle: variant")
+    .Attr("Targuments: list(type) >= 0")
+    .Attr("num_elements_per_branch: int >= 1")
+    .Attr("branches: list(func) >= 1")
+    .Attr("other_arguments_lengths: list(int) >= 1")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape);
+
 REGISTER_OP("ExperimentalCSVDataset")
     .Input("filenames: string")
     .Input("compression_type: string")

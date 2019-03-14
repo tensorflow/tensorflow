@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 namespace data {
@@ -162,6 +163,13 @@ TEST(DatasetUtilsTest, AddToFunctionLibraryWithConflictingSignatures) {
       "Cannot add function '0' because a different function with the same "
       "signature already exists.",
       s.error_message());
+}
+
+TEST(DatasetUtilsTest, RunnerWithMaxParallelism) {
+  auto runner =
+      RunnerWithMaxParallelism([](const std::function<void()> fn) { fn(); }, 2);
+  auto fn = []() { ASSERT_EQ(GetPerThreadMaxParallelism(), 2); };
+  runner(fn);
 }
 }  // namespace
 }  // namespace data

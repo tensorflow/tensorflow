@@ -35,36 +35,54 @@ from tensorflow.python.util import nest
 
 class InputIteratorTestBase(test.TestCase):
 
-  def _test_iterator(self, input_type, dataset_fn, worker_device_pairs,
-                     expected_values, sess=None, split_batch_by=None):
-    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+  def _create_iterator(self, input_type, dataset_fn, worker_device_pairs,
+                       devices, split_batch_by):
     device_map = values.ReplicaDeviceMap(devices)
     input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
 
     if input_type == "input_fn":
-      input_contexts = [
-          distribute_lib.InputContext() for _ in worker_device_pairs]
-      input_fn = lambda _: dataset_fn()
-      iterator = input_lib.InputFunctionIterator(
-          input_fn, input_workers, input_contexts)
+      input_contexts = []
+      for i in range(input_workers.num_workers):
+        input_contexts.append(
+            distribute_lib.InputContext(
+                num_input_pipelines=input_workers.num_workers,
+                input_pipeline_id=i,
+                num_replicas_in_sync=len(devices)))
+
+      iterator = input_lib.InputFunctionIterator(dataset_fn, input_workers,
+                                                 input_contexts)
     else:
       iterator = input_lib.DatasetIterator(
-          dataset_fn(), input_workers, split_batch_by)
+          dataset_fn(distribute_lib.InputContext()), input_workers,
+          split_batch_by)
+    return iterator
+
+  def _test_iterator(self,
+                     input_type,
+                     dataset_fn,
+                     worker_device_pairs,
+                     expected_values,
+                     sess=None,
+                     split_batch_by=None):
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+    iterator = self._create_iterator(
+        input_type, dataset_fn, worker_device_pairs, devices, split_batch_by)
 
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
-
     evaluate(control_flow_ops.group(iterator.initialize()))
 
     for expected_value in expected_values:
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_replica(r, next_element) for r in range(len(devices))])
-      self.assertAllEqual(expected_value, computed_value)
+      self.assertEqual(len(expected_value), len(computed_value))
+      for i in range(len(expected_value)):
+        self.assertAllEqual(expected_value[i], computed_value[i])
 
     with self.assertRaises(errors.OutOfRangeError):
       next_element = iterator.get_next()
-      evaluate([values.select_replica(r, next_element)
-                for r in range(len(devices))])
+      evaluate(
+          [values.select_replica(r, next_element) for r in range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
     evaluate(control_flow_ops.group(iterator.initialize()))
@@ -73,7 +91,9 @@ class InputIteratorTestBase(test.TestCase):
       next_element = iterator.get_next()
       computed_value = evaluate(
           [values.select_replica(r, next_element) for r in range(len(devices))])
-      self.assertAllEqual(expected_value, computed_value)
+      self.assertEqual(len(expected_value), len(computed_value))
+      for i in range(len(expected_value)):
+        self.assertAllEqual(expected_value[i], computed_value[i])
 
 
 class InputIteratorSingleWorkerTest(InputIteratorTestBase,
@@ -84,7 +104,7 @@ class InputIteratorSingleWorkerTest(InputIteratorTestBase,
       input_type=["input_fn", "dataset"]))
   def testOneDeviceCPU(self, input_type):
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10)
 
     expected_values = [[i] for i in range(10)]
 
@@ -97,7 +117,7 @@ class InputIteratorSingleWorkerTest(InputIteratorTestBase,
       required_gpus=1))
   def testTwoDevicesOneGPUOneCPU(self, input_type):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    dataset_fn = lambda: dataset_ops.Dataset.range(10)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10)
 
     expected_values = [[i, i+1] for i in range(0, 10, 2)]
 
@@ -110,7 +130,9 @@ class InputIteratorSingleWorkerTest(InputIteratorTestBase,
       required_gpus=1))
   def testTupleDataset(self, input_type):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    def dataset_fn():
+
+    def dataset_fn(ctx):
+      del ctx
       dataset1 = dataset_ops.Dataset.range(10)
       dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
       return dataset_ops.Dataset.zip((dataset1, dataset2))
@@ -120,15 +142,17 @@ class InputIteratorSingleWorkerTest(InputIteratorTestBase,
     self._test_iterator(input_type, dataset_fn, worker_device_pairs,
                         expected_values)
 
-  @combinations.generate(combinations.combine(
-      mode=["graph", "eager"],
-      input_type=["input_fn", "dataset"],
-      required_gpus=1))
+  @combinations.generate(
+      combinations.combine(
+          mode=["graph", "eager"],
+          input_type=["input_fn", "dataset"],
+          required_gpus=1))
   def testUnevenDatasetBatches(self, input_type):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
-    dataset_fn = lambda: dataset_ops.Dataset.range(11)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(2)
 
-    expected_values = [[i, i+1] for i in range(0, 10, 2)]
+    # The last global batch only contains data for one replica.
+    expected_values = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8], []]]
     self._test_iterator(input_type, dataset_fn, worker_device_pairs,
                         expected_values)
 
@@ -140,7 +164,7 @@ class InputIteratorSingleWorkerTest(InputIteratorTestBase,
   def testBatchSplitting(self, input_type, split_batch_by):
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
     batch_size = 10
-    dataset_fn = lambda: dataset_ops.Dataset.range(100).batch(batch_size)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(100).batch(batch_size)
 
     updated_batch_size = (
         batch_size // split_batch_by if split_batch_by else batch_size)
@@ -182,7 +206,7 @@ class InputIteratorMultiWorkerTest(
   def testOneDevicePerWorker(self, input_type):
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      dataset_fn = lambda _: dataset_ops.Dataset.range(4)
       self._test_iterator(input_type, dataset_fn, worker_devices,
                           [[0, 0], [1, 1], [2, 2], [3, 3]], sess)
 
@@ -193,7 +217,7 @@ class InputIteratorMultiWorkerTest(
   def testTwoDevicesPerWorker(self, input_type):
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      dataset_fn = lambda: dataset_ops.Dataset.range(4)
+      dataset_fn = lambda _: dataset_ops.Dataset.range(4)
       self._test_iterator(input_type, dataset_fn, worker_devices,
                           [[0, 1, 0, 1], [2, 3, 2, 3]], sess)
 
@@ -203,12 +227,44 @@ class InputIteratorMultiWorkerTest(
   def testTupleDataset(self, input_type):
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
-      def dataset_fn():
+
+      def dataset_fn(ctx):
+        del ctx
         dataset1 = dataset_ops.Dataset.range(4)
         dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
         return dataset_ops.Dataset.zip((dataset1, dataset2))
 
       expected_values = [[(i, i**2), (i, i**2)] for i in range(0, 4)]
+      self._test_iterator(input_type, dataset_fn, worker_devices,
+                          expected_values, sess)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["graph"], input_type=["input_fn", "dataset"], required_gpus=1))
+  def testUnevenDatasetBatches(self, input_type):
+    worker_devices = self._cpu_and_one_gpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+      dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(2)
+      expected_values = [[[0, 1], [2, 3], [0, 1], [2, 3]],
+                         [[4, 5], [6, 7], [4, 5], [6, 7]], [[8], [], [8], []]]
+      self._test_iterator(input_type, dataset_fn, worker_devices,
+                          expected_values, sess)
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["graph"], input_type=["input_fn"], required_gpus=1))
+  def testDifferentDatasets(self, input_type):
+    worker_devices = self._cpu_and_one_gpu_devices()
+    with context.graph_mode(), self.cached_session() as sess:
+
+      def dataset_fn(ctx):
+        if ctx.input_pipeline_id == 0:
+          return dataset_ops.Dataset.range(8).batch(2)
+        else:
+          return dataset_ops.Dataset.range(9).batch(2)
+
+      expected_values = [[[0, 1], [2, 3], [0, 1], [2, 3]],
+                         [[4, 5], [6, 7], [4, 5], [6, 7]], [[], [], [8], []]]
       self._test_iterator(input_type, dataset_fn, worker_devices,
                           expected_values, sess)
 

@@ -41,6 +41,7 @@ config_setting(
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
+    "-Wno-extern-c-compat",
 ])
 
 cc_library(

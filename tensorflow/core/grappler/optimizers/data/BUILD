@@ -522,6 +522,7 @@ tf_cc_test(
     name = "map_vectorization_test",
     srcs = ["map_vectorization_test.cc"],
     deps = [
+        ":function_utils",
         ":graph_utils",
         ":map_vectorization",
         "//tensorflow/core:array_ops_op_lib",
