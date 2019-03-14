@@ -863,16 +863,16 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     // Compute the operand index to visit and evaluate the condition whether the
     // operand index is within the bounds. The unsigned comparison includes
     // checking whether the operand index >= 0.
-    IrArray::Index operand_index(index_type, source_index.size());
+    std::vector<llvm::Value*> operand_multi_index(source_index.size());
     llvm::Value* in_bounds_condition = b_.getInt1(true);
     for (int64 i = 0; i < rank; ++i) {
       llvm::Value* strided_index = NSWMul(
           source_index[i], index_typed_constant(window.dimensions(i).stride()));
-      operand_index[i] =
+      operand_multi_index[i] =
           NSWSub(NSWAdd(strided_index, window_index[i]),
                  index_typed_constant(window.dimensions(i).padding_low()));
       llvm::Value* index_condition = ICmpULT(
-          operand_index[i],
+          operand_multi_index[i],
           index_typed_constant(ShapeUtil::GetDimension(operand->shape(), i)));
       in_bounds_condition = And(in_bounds_condition, index_condition);
     }
@@ -897,6 +897,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       }
     };
     IrArray operand_array = GetIrArray(*operand, *select_and_scatter);
+    IrArray::Index operand_index(operand_multi_index, operand->shape(),
+                                 index_type);
     llvm::Value* operand_data =
         operand_array.EmitReadArrayElement(operand_index, &b_);
     Store(operand_data, selected_value_address);

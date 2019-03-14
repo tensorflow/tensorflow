@@ -1768,13 +1768,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
     llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
     source_index_phis[operand_id] =
         PHI(source_index.GetType(), operand_usage_count[operand_id]);
-    auto operand_index = source_index;
-    operand_index[concat_dim] = source_index_phis[operand_id];
+    std::vector<llvm::Value*> operand_multi_index = source_index.multidim();
+    operand_multi_index[concat_dim] = source_index_phis[operand_id];
 
     // Create the terminator of the block before calling operand generators,
     // because they require non-degenerate basic blocks.
     b_->SetInsertPoint(llvm::BranchInst::Create(
         exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
+    llvm_ir::IrArray::Index operand_index(operand_multi_index, operand->shape(),
+                                          source_index.GetType());
     TF_ASSIGN_OR_RETURN(llvm::Value * value,
                         operand_to_generator.at(operand)(operand_index));
     output->addIncoming(value, b_->GetInsertBlock());
@@ -1815,7 +1817,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
   const int64 rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
-  llvm_ir::IrArray::Index slice_start_index(index_type, rank);
+  std::vector<llvm::Value*> slice_start_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
@@ -1839,15 +1841,17 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
         is_signed);
 
     start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
-    slice_start_index[i] = start_index_value;
+    slice_start_multi_index[i] = start_index_value;
   }
 
-  llvm_ir::IrArray::Index input_index(index_type, rank);
+  std::vector<llvm::Value*> input_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
     // Emit IR which computes:
     //   input_index = start_index + offset_index
-    input_index[i] = Add(slice_start_index[i], index[i]);
+    input_multi_index[i] = Add(slice_start_multi_index[i], index[i]);
   }
+  llvm_ir::IrArray::Index input_index(input_multi_index, input_hlo->shape(),
+                                      index_type);
   return operand_to_generator.at(input_hlo)(input_index);
 }
 
@@ -1965,8 +1969,8 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
   const int64 rank = input_hlo->shape().rank();
-  llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
-  llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
+  std::vector<llvm::Value*> slice_start_multi_index(rank);
+  std::vector<llvm::Value*> slice_limit_multi_index(rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
   // 'input' is set to 'update'
   llvm::Value* slice_intersection = b_->getTrue();
@@ -1998,14 +2002,15 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
         is_signed);
 
     start_index_value->setName(IrName(hlo, StrCat("start_idx", i)));
-    slice_start_index[i] = start_index_value;
-    slice_limit_index[i] = Add(slice_start_index[i], update_dim_size);
+    slice_start_multi_index[i] = start_index_value;
+    slice_limit_multi_index[i] =
+        Add(slice_start_multi_index[i], update_dim_size);
 
     slice_intersection =
-        And(slice_intersection, ICmpSGE(index[i], slice_start_index[i]),
+        And(slice_intersection, ICmpSGE(index[i], slice_start_multi_index[i]),
             "slice_intersection");
     slice_intersection =
-        And(slice_intersection, ICmpSLT(index[i], slice_limit_index[i]),
+        And(slice_intersection, ICmpSLT(index[i], slice_limit_multi_index[i]),
             "slice_intersection");
   }
 
@@ -2021,10 +2026,12 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   // Handle true BB (return data from 'update')
   SetToFirstInsertPoint(if_data.true_block, b_);
   // Compute update index for intersection case.
-  llvm_ir::IrArray::Index update_index(index.GetType(), rank);
+  std::vector<llvm::Value*> update_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    update_index[i] = Sub(index[i], slice_start_index[i]);
+    update_multi_index[i] = Sub(index[i], slice_start_multi_index[i]);
   }
+  llvm_ir::IrArray::Index update_index(update_multi_index, update_hlo->shape(),
+                                       index.GetType());
   TF_ASSIGN_OR_RETURN(llvm::Value * true_value,
                       operand_to_generator.at(update_hlo)(update_index));
   Store(true_value, ret_value_addr);
