@@ -795,7 +795,7 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
 
   # Make nodes inside function def inputs point to the real nodes.
   for node in function_def.node_def:
-    for i in range(len(node.input)):
+    for i, _ in enumerate(node.input):
       if node.input[i] in nodes_mapping:
         node.input[i] = nodes_mapping[node.input[i]]
     new_nodes.append(_copy.deepcopy(node))
@@ -855,7 +855,7 @@ def _find_children_hints(call, graph_def):
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
               nodes_mapping = {}
-              for i in range(len(function_inputs)):
+              for i, _ in enumerate(function_inputs):
                 nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
