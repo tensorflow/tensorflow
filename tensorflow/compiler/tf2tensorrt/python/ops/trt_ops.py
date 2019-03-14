@@ -40,7 +40,9 @@ def load_trt_ops():
 
     try:
       # pylint: disable=g-import-not-at-top,unused-variable
-      # This registers the TRT ops, it doesn't require loading TRT library.
+      # This will call register_op_list() in
+      # tensorflow/python/framework/op_def_registry.py, but it doesn't register
+      # the op or the op kernel in C++ runtime.
       from tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops import trt_engine_op
       # pylint: enable=g-import-not-at-top,unused-variable
     except ImportError as e:
@@ -48,14 +50,14 @@ def load_trt_ops():
             "not built with CUDA or TensorRT enabled. ****")
       raise e
 
-    # TODO(laigd): we should load TF-TRT kernels here as well after removing the
-    # swig binding.
     try:
       # pylint: disable=g-import-not-at-top
       from tensorflow.python.framework import load_library
       from tensorflow.python.platform import resource_loader
       # pylint: enable=g-import-not-at-top
 
+      # Loading the shared object will cause registration of the op and the op
+      # kernel if we link TF-TRT dynamically.
       _tf_trt_so = load_library.load_op_library(
           resource_loader.get_path_to_datafile("libtftrt.so"))
     except errors.NotFoundError as e:
