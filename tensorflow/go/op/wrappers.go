@@ -11496,6 +11496,17 @@ func MaxPoolWithArgmax(scope *Scope, input tf.Output, ksize []int64, strides []i
 	return op.Output(0), op.Output(1)
 }
 
+// ModelDatasetAttr is an optional argument to ModelDataset.
+type ModelDatasetAttr func(optionalAttr)
+
+// ModelDatasetCpuBudget sets the optional cpu_budget attribute to value.
+// If not specified, defaults to 0
+func ModelDatasetCpuBudget(value int64) ModelDatasetAttr {
+	return func(m optionalAttr) {
+		m["cpu_budget"] = value
+	}
+}
+
 // Identity transformation that models performance.
 //
 // Identity transformation that models performance.
@@ -11504,11 +11515,14 @@ func MaxPoolWithArgmax(scope *Scope, input tf.Output, ksize []int64, strides []i
 //	input_dataset: A variant tensor representing the input dataset.
 //
 //
-func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ModelDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ModelDataset",
 		Input: []tf.Input{
