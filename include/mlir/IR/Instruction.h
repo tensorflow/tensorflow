@@ -59,6 +59,15 @@ public:
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList, MLIRContext *context);
 
+  /// Overload of create that takes an existing NamedAttributeList to avoid
+  /// unnecessarily uniquing a list of attributes.
+  static Instruction *create(Location location, OperationName name,
+                             ArrayRef<Value *> operands,
+                             ArrayRef<Type> resultTypes,
+                             const NamedAttributeList &attributes,
+                             ArrayRef<Block *> successors, unsigned numRegions,
+                             bool resizableOperandList, MLIRContext *context);
+
   /// The name of an operation is the key identifier for it.
   OperationName getName() const { return name; }
 
@@ -526,16 +535,15 @@ public:
   /// handlers that may be listening.
   void emitNote(const Twine &message) const;
 
-protected:
+private:
   Instruction(Location location, OperationName name, unsigned numResults,
               unsigned numSuccessors, unsigned numRegions,
-              ArrayRef<NamedAttribute> attributes, MLIRContext *context);
+              const NamedAttributeList &attributes, MLIRContext *context);
 
   // Instructions are deleted through the destroy() member because they are
   // allocated with malloc.
   ~Instruction();
 
-private:
   /// Returns the operand storage object.
   detail::OperandStorage &getOperandStorage() {
     return *getTrailingObjects<detail::OperandStorage>();

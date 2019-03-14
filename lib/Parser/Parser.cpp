@@ -2439,7 +2439,7 @@ Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
   auto name = OperationName("placeholder", getContext());
   auto *inst = Instruction::create(
       getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
-      /*attributes=*/{}, /*successors=*/{}, /*numRegions=*/0,
+      /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
       /*resizableOperandList=*/false, getContext());
   forwardReferencePlaceholders[inst->getResult(0)] = loc;
   return inst->getResult(0);

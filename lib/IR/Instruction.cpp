@@ -141,6 +141,20 @@ Instruction *Instruction::create(Location location, OperationName name,
                                  ArrayRef<Block *> successors,
                                  unsigned numRegions, bool resizableOperandList,
                                  MLIRContext *context) {
+  return create(location, name, operands, resultTypes,
+                NamedAttributeList(context, attributes), successors, numRegions,
+                resizableOperandList, context);
+}
+
+/// Overload of create that takes an existing NamedAttributeList to avoid
+/// unnecessarily uniquing a list of attributes.
+Instruction *Instruction::create(Location location, OperationName name,
+                                 ArrayRef<Value *> operands,
+                                 ArrayRef<Type> resultTypes,
+                                 const NamedAttributeList &attributes,
+                                 ArrayRef<Block *> successors,
+                                 unsigned numRegions, bool resizableOperandList,
+                                 MLIRContext *context) {
   unsigned numSuccessors = successors.size();
 
   // Input operands are nullptr-separated for each successor, the null operands
@@ -240,10 +254,10 @@ Instruction *Instruction::create(Location location, OperationName name,
 Instruction::Instruction(Location location, OperationName name,
                          unsigned numResults, unsigned numSuccessors,
                          unsigned numRegions,
-                         ArrayRef<NamedAttribute> attributes,
+                         const NamedAttributeList &attributes,
                          MLIRContext *context)
     : location(location), numResults(numResults), numSuccs(numSuccessors),
-      numRegions(numRegions), name(name), attrs(context, attributes) {}
+      numRegions(numRegions), name(name), attrs(attributes) {}
 
 // Instructions are deleted through the destroy() member because they are
 // allocated via malloc.
@@ -606,7 +620,7 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
 
   unsigned numRegions = getNumRegions();
   auto *newOp = Instruction::create(getLoc(), getName(), operands, resultTypes,
-                                    getAttrs(), successors, numRegions,
+                                    attrs, successors, numRegions,
                                     hasResizableOperandsList(), context);
 
   // Clone the regions.
