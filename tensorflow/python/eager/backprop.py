@@ -926,14 +926,14 @@ class GradientTape(object):
       else:
         logging.log_first_n(logging.WARN,
                             "Calling GradientTape.gradient on a persistent "
-                            "tape inside it's context is significantly less "
+                            "tape inside its context is significantly less "
                             "efficient than calling it outside the context (it "
                             "causes the gradient ops to be recorded on the "
                             "tape, leading to increased CPU and memory usage). "
                             "Only call GradientTape.gradient inside the "
                             "context if you actually want to trace the "
                             "gradient in order to compute higher order "
-                            "derrivatives.", 1)
+                            "derivatives.", 1)
 
     flat_targets = []
     for t in nest.flatten(target):
