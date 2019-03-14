@@ -494,6 +494,14 @@ public:
   /// These are identifiers uniqued into this MLIRContext.
   llvm::StringMap<char, llvm::BumpPtrAllocator &> identifiers;
 
+  //===--------------------------------------------------------------------===//
+  // Affine uniquing
+  //===--------------------------------------------------------------------===//
+
+  // Affine allocator and mutex for thread safety.
+  llvm::BumpPtrAllocator affineAllocator;
+  llvm::sys::SmartRWMutex<true> affineMutex;
+
   // Affine map uniquing.
   using AffineMapSet = DenseSet<AffineMap, AffineMapKeyInfo>;
   AffineMapSet affineMaps;
@@ -514,10 +522,14 @@ public:
   // Uniqui'ing of AffineConstantExprStorage using constant value as key.
   DenseMap<int64_t, AffineConstantExprStorage *> constExprs;
 
-  /// Type uniquing.
+  //===--------------------------------------------------------------------===//
+  // Type uniquing
+  //===--------------------------------------------------------------------===//
   TypeUniquerImpl typeUniquer;
 
-  // Attribute uniquing.
+  //===--------------------------------------------------------------------===//
+  // Attribute uniquing
+  //===--------------------------------------------------------------------===//
 
   // Attribute allocator and mutex for thread safety.
   llvm::BumpPtrAllocator attributeAllocator;
@@ -1394,28 +1406,21 @@ AffineMap AffineMap::get(unsigned dimCount, unsigned symbolCount,
   assert(rangeSizes.empty() || results.size() == rangeSizes.size());
 
   auto &impl = results[0].getContext()->getImpl();
-
-  // Check if we already have this affine map.
   auto key = std::make_tuple(dimCount, symbolCount, results, rangeSizes);
-  auto existing = impl.affineMaps.insert_as(AffineMap(), key);
 
-  // If we already have it, return that value.
-  if (!existing.second)
-    return *existing.first;
+  // Safely get or create an AffineMap instance.
+  return safeGetOrCreate(impl.affineMaps, key, impl.affineMutex, [&] {
+    auto *res = impl.affineAllocator.Allocate<detail::AffineMapStorage>();
 
-  // On the first use, we allocate them into the bump pointer.
-  auto *res = impl.allocator.Allocate<detail::AffineMapStorage>();
+    // Copy the results and range sizes into the bump pointer.
+    results = copyArrayRefInto(impl.affineAllocator, results);
+    rangeSizes = copyArrayRefInto(impl.affineAllocator, rangeSizes);
 
-  // Copy the results and range sizes into the bump pointer.
-  results = copyArrayRefInto(impl.allocator, results);
-  rangeSizes = copyArrayRefInto(impl.allocator, rangeSizes);
-
-  // Initialize the memory using placement new.
-  new (res)
-      detail::AffineMapStorage{dimCount, symbolCount, results, rangeSizes};
-
-  // Cache and return it.
-  return *existing.first = AffineMap(res);
+    // Initialize the memory using placement new.
+    new (res)
+        detail::AffineMapStorage{dimCount, symbolCount, results, rangeSizes};
+    return AffineMap(res);
+  });
 }
 
 /// Simplify add expression. Return nullptr if it can't be simplified.
@@ -1621,9 +1626,13 @@ AffineExpr AffineBinaryOpExprStorage::get(AffineExprKind kind, AffineExpr lhs,
 
   // Check if we already have this affine expression, and return it if we do.
   auto keyValue = std::make_tuple((unsigned)kind, lhs, rhs);
-  auto cached = impl.affineExprs.find(keyValue);
-  if (cached != impl.affineExprs.end())
-    return cached->second;
+
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> affineLock(impl.affineMutex);
+    auto cached = impl.affineExprs.find(keyValue);
+    if (cached != impl.affineExprs.end())
+      return cached->second;
+  }
 
   // Simplify the expression if possible.
   AffineExpr simplified;
@@ -1651,14 +1660,18 @@ AffineExpr AffineBinaryOpExprStorage::get(AffineExprKind kind, AffineExpr lhs,
   if (simplified)
     return simplified;
 
-  // An expression with these operands will already be in the
-  // simplified/canonical form. Create and store it.
-  auto *result = impl.allocator.Allocate<AffineBinaryOpExprStorage>();
-  // Initialize the memory using placement new.
-  new (result) AffineBinaryOpExprStorage{{kind, lhs.getContext()}, lhs, rhs};
-  bool inserted = impl.affineExprs.insert({keyValue, result}).second;
-  assert(inserted && "the expression shouldn't already exist in the map");
-  (void)inserted;
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
+
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
+  auto &result = impl.affineExprs.insert({keyValue, nullptr}).first->second;
+  if (!result) {
+    // An expression with these operands will already be in the
+    // simplified/canonical form. Create and store it.
+    result = new (impl.affineAllocator.Allocate<AffineBinaryOpExprStorage>())
+        AffineBinaryOpExprStorage{{kind, lhs.getContext()}, lhs, rhs};
+  }
   return result;
 }
 
@@ -1670,15 +1683,26 @@ AffineExpr mlir::getAffineBinaryOpExpr(AffineExprKind kind, AffineExpr lhs,
 AffineExpr mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> affineLock(impl.affineMutex);
+    if (impl.dimExprs.size() > position && impl.dimExprs[position])
+      return impl.dimExprs[position];
+  }
+
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
+
   // Check if we need to resize.
   if (position >= impl.dimExprs.size())
     impl.dimExprs.resize(position + 1, nullptr);
 
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
   auto *&result = impl.dimExprs[position];
   if (result)
     return result;
 
-  result = impl.allocator.Allocate<AffineDimExprStorage>();
+  result = impl.affineAllocator.Allocate<AffineDimExprStorage>();
   // Initialize the memory using placement new.
   new (result) AffineDimExprStorage{{AffineExprKind::DimId, context}, position};
   return result;
@@ -1687,15 +1711,26 @@ AffineExpr mlir::getAffineDimExpr(unsigned position, MLIRContext *context) {
 AffineExpr mlir::getAffineSymbolExpr(unsigned position, MLIRContext *context) {
   auto &impl = context->getImpl();
 
+  { // Check for an existing instance in read-only mode.
+    llvm::sys::SmartScopedReader<true> affineLock(impl.affineMutex);
+    if (impl.symbolExprs.size() > position && impl.symbolExprs[position])
+      return impl.symbolExprs[position];
+  }
+
+  // Aquire a writer-lock so that we can safely create the new instance.
+  llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
+
   // Check if we need to resize.
   if (position >= impl.symbolExprs.size())
     impl.symbolExprs.resize(position + 1, nullptr);
 
+  // Check for an existing instance again here, because another writer thread
+  // may have already created one.
   auto *&result = impl.symbolExprs[position];
   if (result)
     return result;
 
-  result = impl.allocator.Allocate<AffineSymbolExprStorage>();
+  result = impl.affineAllocator.Allocate<AffineSymbolExprStorage>();
   // Initialize the memory using placement new.
   new (result)
       AffineSymbolExprStorage{{AffineExprKind::SymbolId, context}, position};
@@ -1704,16 +1739,13 @@ AffineExpr mlir::getAffineSymbolExpr(unsigned position, MLIRContext *context) {
 
 AffineExpr mlir::getAffineConstantExpr(int64_t constant, MLIRContext *context) {
   auto &impl = context->getImpl();
-  auto *&result = impl.constExprs[constant];
 
-  if (result)
-    return result;
-
-  result = impl.allocator.Allocate<AffineConstantExprStorage>();
-  // Initialize the memory using placement new.
-  new (result)
-      AffineConstantExprStorage{{AffineExprKind::Constant, context}, constant};
-  return result;
+  // Safely get or create an AffineConstantExpr instance.
+  return safeGetOrCreate(impl.constExprs, constant, impl.affineMutex, [&] {
+    auto *result = impl.affineAllocator.Allocate<AffineConstantExprStorage>();
+    return new (result) AffineConstantExprStorage{
+        {AffineExprKind::Constant, context}, constant};
+  });
 }
 
 //===----------------------------------------------------------------------===//
@@ -1728,35 +1760,32 @@ IntegerSet IntegerSet::get(unsigned dimCount, unsigned symbolCount,
   assert(!constraints.empty());
   assert(constraints.size() == eqFlags.size());
 
-  bool unique = constraints.size() < IntegerSet::kUniquingThreshold;
-
   auto &impl = constraints[0].getContext()->getImpl();
 
-  std::pair<DenseSet<IntegerSet, IntegerSetKeyInfo>::Iterator, bool> existing;
-  if (unique) {
-    // Check if we already have this integer set.
-    auto key = std::make_tuple(dimCount, symbolCount, constraints, eqFlags);
-    existing = impl.integerSets.insert_as(IntegerSet(nullptr), key);
+  // A utility function to construct a new IntegerSetStorage instance.
+  auto constructorFn = [&] {
+    auto *res = impl.affineAllocator.Allocate<detail::IntegerSetStorage>();
 
-    // If we already have it, return that value.
-    if (!existing.second)
-      return *existing.first;
+    // Copy the results and equality flags into the bump pointer.
+    constraints = copyArrayRefInto(impl.affineAllocator, constraints);
+    eqFlags = copyArrayRefInto(impl.affineAllocator, eqFlags);
+
+    // Initialize the memory using placement new.
+    new (res)
+        detail::IntegerSetStorage{dimCount, symbolCount, constraints, eqFlags};
+    return IntegerSet(res);
+  };
+
+  // If this instance is uniqued, then we handle it separately so that multiple
+  // threads may simulatenously access existing instances.
+  if (constraints.size() < IntegerSet::kUniquingThreshold) {
+    auto key = std::make_tuple(dimCount, symbolCount, constraints, eqFlags);
+    return safeGetOrCreate(impl.integerSets, key, impl.affineMutex,
+                           constructorFn);
   }
 
-  // On the first use, we allocate them into the bump pointer.
-  auto *res = impl.allocator.Allocate<detail::IntegerSetStorage>();
-
-  // Copy the results and equality flags into the bump pointer.
-  constraints = copyArrayRefInto(impl.allocator, constraints);
-  eqFlags = copyArrayRefInto(impl.allocator, eqFlags);
-
-  // Initialize the memory using placement new.
-  new (res)
-      detail::IntegerSetStorage{dimCount, symbolCount, constraints, eqFlags};
-
-  if (unique)
-    // Cache and return it.
-    return *existing.first = IntegerSet(res);
-
-  return IntegerSet(res);
+  // Otherwise, aquire a writer-lock so that we can safely create the new
+  // instance.
+  llvm::sys::SmartScopedWriter<true> affineLock(impl.affineMutex);
+  return constructorFn();
 }
