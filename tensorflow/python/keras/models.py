@@ -88,7 +88,6 @@ def _clone_functional_model(model, input_tensors=None, share_weights=False):
   tensor_map = {}  # Map {reference_tensor: corresponding_tensor}
   if input_tensors is None:
     # Create placeholders to build the model on top of.
-    input_layers = []
     input_tensors = []
     for layer in model._input_layers:
       input_tensor = Input(
@@ -100,10 +99,6 @@ def _clone_functional_model(model, input_tensors=None, share_weights=False):
       # Cache newly created input layer.
       newly_created_input_layer = input_tensor._keras_history[0]
       layer_map[layer] = newly_created_input_layer
-
-    for original_input_layer, cloned_input_layer in zip(model._input_layers,
-                                                        input_layers):
-      layer_map[original_input_layer] = cloned_input_layer
   else:
     # Make sure that all input tensors come from a Keras layer.
     # If tensor comes from an input layer: cache the input layer.
@@ -319,10 +314,9 @@ def _in_place_subclassed_model_reset(model):
                          'in `model_to_estimator` at this time. Found nested '
                          'layer: %s' % value)
     elif isinstance(
-        value,
-        (list, tuple)) and name not in ('layers', '_layers', 'metrics',
-                                        '_compile_stateful_metric_functions',
-                                        '_output_loss_metrics'):
+        value, (list, tuple)) and name not in ('layers', '_layers', 'metrics',
+                                               '_compile_metric_functions',
+                                               '_output_loss_metrics'):
       # Handle case: list/tuple of layers (also tracked by the Network API).
       if value and all(isinstance(val, Layer) for val in value):
         raise ValueError('We do not support the use of list-of-layers '
@@ -368,8 +362,6 @@ def _in_place_subclassed_model_reset(model):
           'total_loss',
           'sample_weights',
           '_feed_sample_weights',
-          '_fit_function',
-          '_eval_function',
           'train_function',
           'test_function',
           'predict_function',

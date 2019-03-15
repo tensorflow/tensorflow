@@ -7,6 +7,7 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/framework";
 
+// (== suppress_warning documentation-presence ==)
 // LINT.IfChange
 enum DataType {
   // Not a legal value for DataType.  Used to indicate a DataType field

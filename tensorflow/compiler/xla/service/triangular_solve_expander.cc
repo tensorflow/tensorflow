@@ -403,6 +403,9 @@ XlaOp BuildTriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
           block_size);
     }
 
+    block_size = std::max(
+        int64{1}, std::min(block_size, ShapeUtil::GetDimension(a_shape, -1)));
+
     if (ShapeUtil::IsZeroElementArray(b_shape)) {
       // The output has the same shape as 'b', and since the output has zero
       // elements, any such array will do.

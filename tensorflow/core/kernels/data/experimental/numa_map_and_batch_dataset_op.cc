@@ -807,7 +807,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // inputs. When the runner thread makes new inputs available, it
         // notifies this condition variable.
         condition_variable worker_cond_var_ GUARDED_BY(mu_);
-        // The client threads wait on this condition variable for avaiable
+        // The client threads wait on this condition variable for available
         // batched outputs. When worker threads complete a batch, they notify
         // this condition variable.
         condition_variable client_cond_var_ GUARDED_BY(mu_);
@@ -926,8 +926,8 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             if (!new_ctx) {
               new_ctx = std::make_shared<IteratorContext>(*ctx);
             }
-            workers_[i]->threads.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_numa_map_and_batch_", i, "_", j),
+            workers_[i]->threads.emplace_back(ctx->StartThread(
+                strings::StrCat("tf_data_numa_map_and_batch_", i, "_", j),
                 [this, new_ctx, i, j]() { WorkerThread(new_ctx, i, j); }));
             VLOG(3) << "Worker " << i << ", " << j << " successfully started.";
           }
@@ -936,9 +936,9 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           if (!new_ctx) {
             new_ctx = std::make_shared<IteratorContext>(*ctx);
           }
-          runner_thread_.reset(ctx->env()->StartThread(
-              {}, "tf_data_numa_map_and_batch",
-              [this, new_ctx] { RunnerThread(new_ctx); }));
+          runner_thread_ =
+              ctx->StartThread("tf_data_numa_map_and_batch",
+                               [this, new_ctx] { RunnerThread(new_ctx); });
         }
         VLOG(3) << "All workers & runner thread started.";
         return Status::OK();

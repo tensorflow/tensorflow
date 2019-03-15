@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -208,7 +209,7 @@ bool CompressTensorContent(float min_compression_ratio,
   }
   // Round up to the next whole number of element of type T.
   const int64 new_num_values = last_offset / sizeof(T) + 1;
-  if (new_num_values * sizeof(FieldType) >
+  if (new_num_values * (is_complex<T>::value ? 2 : 1) * sizeof(FieldType) >
       static_cast<int64>(num_bytes / min_compression_ratio)) {
     return false;
   }
@@ -227,12 +228,14 @@ bool CompressTensorContent(float min_compression_ratio,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(tmp.data()));
     tensor->clear_tensor_content();
-    TypeHelper::AddValues(tmp.data(), tmp.data() + tmp.size(), tensor);
+    const T* begin = tmp.begin();
+    const T* end = tmp.end();
+    TypeHelper::AddValues(begin, end, tensor);
   } else {
     // Copy and cast, one byte at a time.
     for (int64 i = 0; i < new_num_values; ++i) {
       char c = tensor->tensor_content()[i];
-      TypeHelper::AddValue(static_cast<FieldType>(c), tensor);
+      TypeHelper::AddValue(static_cast<T>(c), tensor);
     }
     tensor->clear_tensor_content();
   }
@@ -251,6 +254,12 @@ template <>
 inline bool PackedValuesNotEqual(double a, double b) {
   return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
 }
+template <typename RealType>
+inline bool PackedValuesNotEqual(const std::complex<RealType>& a,
+                                 const std::complex<RealType>& b) {
+  return PackedValuesNotEqual(a.real(), b.real()) ||
+         PackedValuesNotEqual(a.imag(), b.imag());
+}
 
 template <typename T>
 bool CompressRepeatedField(float min_compression_ratio,
@@ -258,6 +267,9 @@ bool CompressRepeatedField(float min_compression_ratio,
   using TypeHelper = internal::TensorProtoHelper<T>;
   using FieldType = typename internal::TensorProtoHelper<T>::FieldType;
   const int64 num_tensor_values = shape.num_elements();
+  // Notice that for complex types the tensor is stored as an array of up to
+  // 2 * num_tensor_values real values (real and imaginary parts), possibly
+  // truncated.
   const int64 num_proto_values = TypeHelper::NumValues(*tensor);
   if (num_proto_values != num_tensor_values) {
     // Already compressed or invalid.
@@ -325,6 +337,8 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
   switch (tensor->dtype()) {
     HANDLE_COMPRESS_CASE(DT_FLOAT);
     HANDLE_COMPRESS_CASE(DT_DOUBLE);
+    HANDLE_COMPRESS_CASE(DT_COMPLEX64);
+    HANDLE_COMPRESS_CASE(DT_COMPLEX128);
     HANDLE_COMPRESS_CASE(DT_UINT8);
     HANDLE_COMPRESS_CASE(DT_INT8);
     HANDLE_COMPRESS_CASE(DT_UINT16);
@@ -339,9 +353,8 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
     HANDLE_COMPRESS_CASE(DT_QUINT16);
     HANDLE_COMPRESS_CASE(DT_QINT16);
     HANDLE_COMPRESS_CASE(DT_QINT32);
-    // TODO(rmlarsen): Add support for complex and half float types.
-    //    HANDLE_COMPRESS_CASE(DT_HALF);
-    //    HANDLE_COMPRESS_CASE(DT_BFLOAT16);
+    HANDLE_COMPRESS_CASE(DT_HALF);
+    HANDLE_COMPRESS_CASE(DT_BFLOAT16);
     default:
       return false;
   }

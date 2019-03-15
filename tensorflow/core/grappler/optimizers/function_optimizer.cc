@@ -1160,7 +1160,9 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
   // 1. Inline symbolic gradient node.
   const bool expanded = ExpandInlineFunctions(flr, &graph);
-  DCHECK(expanded) << "Didn't expand SymbolicGradient op";
+  if (!expanded) {
+    return errors::Internal("Failed to expand SymbolicGradient op");
+  }
 
   // TODO(ezhulenev): InlineFunctionBody in common_runtime/function silently
   // fails to inline function into the graph, and leaves the graph unmodified.
@@ -1544,8 +1546,7 @@ Status PlaceInlinedFunctionBody(
     const Device* default_device =
         devices->FindDeviceByName(func_node.device());
 
-    Placer placer(func_body_graph.get(), devices,
-                  nullptr /* No session options */, default_device);
+    Placer placer(func_body_graph.get(), devices, default_device);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 

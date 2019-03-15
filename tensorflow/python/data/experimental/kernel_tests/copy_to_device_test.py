@@ -36,7 +36,7 @@ from tensorflow.python.util import compat as util_compat
 # TODO(b/117581999): add eager coverage when supported.
 class CopyToDeviceTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -61,7 +61,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceInt32(self):
     host_dataset = dataset_ops.Dataset.from_tensors([0, 1, 2, 3])
     device_dataset = host_dataset.apply(
@@ -85,7 +85,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyToSameDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -110,7 +110,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -135,7 +135,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -160,7 +160,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyDictToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -185,7 +185,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopySparseTensorsToDevice(self):
 
     def make_tensor(i):
@@ -218,7 +218,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopySparseTensorsToDeviceWithPrefetch(self):
 
     def make_tensor(i):
@@ -251,6 +251,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -271,6 +272,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuWithPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -291,6 +293,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuWithMap(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -310,7 +313,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
     device_dataset = device_dataset.apply(
         prefetching_ops.map_on_gpu(gpu_map_func))
     options = dataset_ops.Options()
-    options.experimental_autotune = False
+    options.experimental_optimization.autotune = False
     device_dataset = device_dataset.with_options(options)
 
     with ops.device("/gpu:0"):
@@ -328,6 +331,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuInt32(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -347,6 +351,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuInt32AndPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -366,6 +371,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuStrings(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -385,6 +391,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuStringsAndPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -404,6 +411,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDevicePingPongCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -427,7 +435,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
         with self.assertRaises(errors.OutOfRangeError):
           self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -456,7 +464,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceWithReInitAndPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -485,6 +493,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuWithReInit(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -508,6 +517,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testCopyToDeviceGpuWithReInitAndPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -531,6 +541,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testIteratorGetNextAsOptionalOnGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")

@@ -1,4 +1,4 @@
-# TensorFlow Lite Objective-C Library
+# TensorFlow Lite for Objective-C
 
 [TensorFlow Lite](https://www.tensorflow.org/lite/) is TensorFlow's lightweight
 solution for Objective-C developers. It enables low-latency inference of
@@ -44,9 +44,11 @@ bazel test tensorflow/lite/experimental/objc:TensorFlowLiteTests
 
 ### Tulsi
 
-Open the `TensorFlowLiteObjc.tulsiproj` using the Tulsi application on Mac or by
-running the following command in Terminal from the root source directory:
+Open the `TensorFlowLite.tulsiproj` using the
+[TulsiApp](https://github.com/bazelbuild/tulsi) or by running the
+[`generate_xcodeproj.sh`](https://github.com/bazelbuild/tulsi/blob/master/src/tools/generate_xcodeproj.sh)
+script from the root `tensorflow` directory:
 
 ```shell
-generate_xcodeproj.sh --genconfig tensorflow/lite/experimental/objc/TensorFlowLiteObjc.tulsiproj:TensorFlowLiteObjC --outputfolder ~/path/to/xcodeproj
+generate_xcodeproj.sh --genconfig tensorflow/lite/experimental/objc/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
 ```

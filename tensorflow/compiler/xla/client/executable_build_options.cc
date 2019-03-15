@@ -71,9 +71,8 @@ string ExecutableBuildOptions::ToString() const {
   }
   return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
-      "generate_hlo_graph=%s, num_replicas=%d}",
-      device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph(),
-      num_replicas_);
+      "num_replicas=%d}",
+      device_ordinal_, result_layout, num_replicas_);
 }
 
 }  // namespace xla

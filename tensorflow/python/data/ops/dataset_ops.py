@@ -59,6 +59,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -192,8 +193,17 @@ class DatasetV2(object):
       else:
         dataset = _OptimizeDataset(dataset, static_optimizations)
 
-    if options.experimental_autotune is not False:
-      dataset = _ModelDataset(dataset)
+    autotune = True
+    cpu_budget = 0  # Indicates that all CPU cores should be used.
+    if options.experimental_optimization is not None:
+      if options.experimental_optimization.autotune is False:  # pylint: disable=g-bool-id-comparison
+        autotune = False
+      if options.experimental_optimization.autotune_cpu_budget is not None:
+        cpu_budget = options.experimental_optimization.autotune_cpu_budget
+
+    if autotune:
+      dataset = _ModelDataset(dataset, cpu_budget)
+
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
       dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
           dataset, options.experimental_stats.aggregator,
@@ -228,38 +238,6 @@ class DatasetV2(object):
       dataset.
     """
     raise NotImplementedError("Dataset._element_structure")
-
-  @property
-  def output_classes(self):
-    """Returns the class of each component of an element of this dataset.
-
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
-
-    Returns:
-      A nested structure of Python `type` objects corresponding to each
-      component of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
-
-  @property
-  def output_shapes(self):
-    """Returns the shape of each component of an element of this dataset.
-
-    Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
-      component of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
-
-  @property
-  def output_types(self):
-    """Returns the type of each component of an element of this dataset.
-
-    Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
   def __repr__(self):
     output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
@@ -1548,6 +1526,38 @@ class DatasetV1(DatasetV2):
         get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
 
   @property
+  def output_classes(self):
+    """Returns the class of each component of an element of this dataset.
+
+    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+
+    Returns:
+      A nested structure of Python `type` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
+
+  @property
+  def output_shapes(self):
+    """Returns the shape of each component of an element of this dataset.
+
+    Returns:
+      A nested structure of `tf.TensorShape` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
+
+  @property
+  def output_types(self):
+    """Returns the type of each component of an element of this dataset.
+
+    Returns:
+      A nested structure of `tf.DType` objects corresponding to each component
+      of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_types()  # pylint: disable=protected-access
+
+  @property
   def _element_structure(self):
     # TODO(b/110122868): Remove this override once all `Dataset` instances
     # implement `element_structure`.
@@ -1945,13 +1955,6 @@ class Options(options_lib.OptionsBase):
   `tf.data.Dataset.interleave`.
   """
 
-  experimental_autotune = options_lib.create_option(
-      name="experimental_autotune",
-      ty=bool,
-      docstring=
-      "Whether to dynamically adjust the values of tunable parameters (e.g. "
-      "degrees of parallelism). If None, defaults to True.")
-
   experimental_deterministic = options_lib.create_option(
       name="experimental_deterministic",
       ty=bool,
@@ -2297,25 +2300,21 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
-    def _warn_if_collections(transformation_name, graph, initial_length):
+    def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
 
-      NOTE(mrry): Currently a warning is only generated for lookup tables. Any
+      NOTE(mrry): Currently a warning is only generated for resources. Any
       variables created will be automatically hoisted out to the outermost scope
       using `init_scope()`. Some collections (such as for control-flow contexts)
       are benign and should not generate a warning.
 
       Args:
         transformation_name: A human-readable name for the transformation.
-        graph: The graph to check for collections.
-        initial_length: The initial length of the lookup table collection.
       """
-      length = len(graph.get_collection(ops.GraphKeys.TABLE_INITIALIZERS))
-      if length != initial_length:
-        warnings.warn("Creating lookup tables inside a function passed to %s "
-                      "is not supported. Create each table outside the "
-                      "function, and capture it inside the function to use it."
-                      % transformation_name)
+      warnings.warn("Creating resources inside a function passed to %s "
+                    "is not supported. Create each resource outside the "
+                    "function, and capture it inside the function to use it." %
+                    transformation_name, stacklevel=5)
 
     def _wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
@@ -2353,19 +2352,26 @@ class StructuredFunctionWrapper(object):
           **defun_kwargs)
       def wrapper_fn(*args):
         ret = _wrapper_helper(*args)
-        _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
+        # _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
         return self._output_structure._to_tensor_list(ret)
 
       self._function = wrapper_fn
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-      else:
-        # Use the private method that will execute `wrapper_fn` but delay adding
-        # it to the graph in case (e.g.) we need to rerun the function.
-        self._function._create_definition_if_needed()
+      resource_tracker = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker):
+        if add_to_graph:
+          self._function.add_to_graph(ops.get_default_graph())
+        else:
+          # Use the private method that will execute `wrapper_fn` but delay
+          # adding it to the graph in case (e.g.) we need to rerun the function.
+          self._function._create_definition_if_needed()
+      if resource_tracker.resources:
+        _warn_if_collections(transformation_name)
+
     else:
       defun_kwargs.update({"func_name": func_name})
 
+      # TODO(b/124254153): Enable autograph once the overhead is low enough.
+      # TODO(mdan): Make sure autograph recurses into _wrapper_helper when on.
       @eager_function.defun_with_attributes(
           input_signature=[
               tensor_spec.TensorSpec(input_shape, input_type)  # pylint: disable=g-complex-comprehension
@@ -2373,21 +2379,29 @@ class StructuredFunctionWrapper(object):
                   self._input_structure._flat_shapes,
                   self._input_structure._flat_types)
           ],
+          autograph=False,
           attributes=defun_kwargs)
       def wrapper_fn(*args):  # pylint: disable=missing-docstring
         ret = _wrapper_helper(*args)
         ret = self._output_structure._to_tensor_list(ret)
         return [ops.convert_to_tensor(t) for t in ret]
 
-      initial_length = len(ops.get_default_graph().get_collection(
-          ops.GraphKeys.TABLE_INITIALIZERS))
+      resource_tracker = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker):
+        self._function = wrapper_fn._get_concrete_function_internal()
+        if add_to_graph:
+          self._function.add_to_graph(ops.get_default_graph())
+      if resource_tracker.resources:
+        _warn_if_collections(transformation_name)
 
-      self._function = wrapper_fn._get_concrete_function_internal()
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-
-      _warn_if_collections(transformation_name, self._function.graph,
-                           initial_length)
+      outer_graph_seed = ops.get_default_graph().seed
+      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+        if self._function.graph._seed_used:
+          warnings.warn(
+              "Seed %s from outer graph might be getting used by function %s, "
+              "if the random op has not been provided any seed. Explicitly set "
+              "the seed in the function if this is not the intended behavior."
+              %(outer_graph_seed, func_name), stacklevel=4)
   # pylint: enable=protected-access
 
   @property
@@ -3253,10 +3267,11 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
-  def __init__(self, input_dataset):
+  def __init__(self, input_dataset, cpu_budget):
     self._input_dataset = input_dataset
     variant_tensor = gen_dataset_ops.model_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
+        cpu_budget=cpu_budget,
         **flat_structure(self))
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 

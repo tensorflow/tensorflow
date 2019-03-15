@@ -47,15 +47,29 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMax(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
+}
+
 bool IsAnyMaxPool(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
          op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
 }
 
+bool IsAnyMin(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
+
+bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
+
+bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
@@ -433,6 +447,8 @@ bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
 bool IsSnapshot(const NodeDef& node) { return node.op() == "Snapshot"; }
 
+bool IsSoftmax(const NodeDef& node) { return node.op() == "Softmax"; }
+
 bool IsSoftplusGrad(const NodeDef& node) { return node.op() == "SoftplusGrad"; }
 
 bool IsSoftsignGrad(const NodeDef& node) { return node.op() == "SoftsignGrad"; }
@@ -799,6 +815,115 @@ bool HasOpDef(const NodeDef& node) {
 bool IsIdempotent(const NodeDef& node) {
   return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node) &&
          !ModifiesFrameInfo(node);
+}
+
+bool NeverForwardsInputs(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kNonForwardingOps = CHECK_NOTNULL(
+      (new gtl::FlatSet<string>{"ArgMax",
+                                "ArgMin",
+                                "AudioSpectrogram",
+                                "BatchMatMul",
+                                "BatchToSpace",
+                                "BatchToSpaceND",
+                                "Bincount",
+                                "BroadcastArgs",
+                                "BroadcastGradientArgs",
+                                "CTCBeamSearchDecoder",
+                                "CTCGreedyDecoder",
+                                "CTCLoss",
+                                "ComplexAbs",
+                                "Concat",
+                                "ConcatOffset",
+                                "ConcatV2",
+                                "Copy",
+                                "CopyHost",
+                                "Cross",
+                                "CudnnRNN",
+                                "CudnnRNNBackprop",
+                                "CudnnRNNBackpropV2",
+                                "CudnnRNNBackpropV3",
+                                "CudnnRNNCanonicalToParams",
+                                "CudnnRNNParamsSize",
+                                "CudnnRNNParamsToCanonical",
+                                "CudnnRNNV2",
+                                "CudnnRNNV3",
+                                "CumSum",
+                                "CumProd",
+                                "DebugNanCount",
+                                "DebugNumericSummary",
+                                "DecodeProtoV2",
+                                "DecodeWav",
+                                "DeepCopy",
+                                "DepthToSpace",
+                                "Dequantize",
+                                "Diag",
+                                "DiagPart",
+                                "EditDistance",
+                                "Empty",
+                                "EncodeProtoV2",
+                                "EncodeWav",
+                                "ExtractImagePatches",
+                                "ExtractVolumePatches",
+                                "Fill",
+                                "Gather",
+                                "GatherNd",
+                                "GatherV2",
+                                "HistogramFixedWidth",
+                                "InvertPermutation",
+                                "IsInf",
+                                "IsNan",
+                                "Isfinite",
+                                "LinSpace",
+                                "LowerBound",
+                                "MatMul",
+                                "MatrixDiag",
+                                "MatrixDiagPart",
+                                "Mfcc",
+                                "OneHot",
+                                "Pack",
+                                "PopulationCount",
+                                "Range",
+                                "Rank",
+                                "ReverseSequence",
+                                "Shape",
+                                "ShapeN",
+                                "Size",
+                                "SpaceToBatch",
+                                "SpaceToBatchND",
+                                "SpaceToDepth",
+                                "SparseMatMul",
+                                "Split",
+                                "SplitV",
+                                "Unique",
+                                "UniqueV2",
+                                "UniqueWithCounts",
+                                "UniqueWithCountsV2",
+                                "Unpack",
+                                "UnravelIndex",
+                                "UpperBound",
+                                "Where",
+                                "CompareAndBitpack",
+                                "Requantize",
+                                "RequantizationRange",
+                                "Bucketize",
+                                "AvgPool",
+                                "BatchNormWithGlobalNormalization",
+                                "FusedBatchNorm",
+                                "FusedBatchNormV2",
+                                "Conv2D",
+                                "RandomUniform",
+                                "RandomUniformInt",
+                                "RandomStandardNormal",
+                                "ParameterizedTruncatedNormal",
+                                "TruncatedNormal",
+                                "Multinomial",
+                                "RandomGamma",
+                                "RandomPoisson",
+                                "RandomPoissonV2"}));
+  const string& op_name = node.op();
+  return kNonForwardingOps->count(op_name) > 0 ||
+         str_util::StrContains(op_name, "Segment") ||
+         str_util::StartsWith(op_name, "Quantize");
 }
 
 }  // namespace grappler

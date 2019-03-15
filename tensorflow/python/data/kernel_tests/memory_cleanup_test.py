@@ -80,7 +80,7 @@ class MemoryCleanupTest(test_base.DatasetTestBase):
       multi_device_iterator._eager_reset()
 
     self.assertNotIncreasingMemory(
-        f, num_iters=100, increase_threshold_absolute_mb=50)
+        f, num_iters=100, increase_threshold_absolute_mb=350)
 
   @test_util.run_v1_only("b/121264236")
   def testEagerMemoryUsageWithRecreation(self):

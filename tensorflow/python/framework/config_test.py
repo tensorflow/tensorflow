@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
@@ -165,15 +167,20 @@ class ConfigTest(test.TestCase):
     with self.assertRaises(RuntimeError):
       config.set_inter_op_parallelism_threads(1)
 
+  @test_util.run_gpu_only
   @reset_eager
-  def testEnableSoftPlacement(self):
-    self.assertEqual(config.get_soft_device_placement(), False)
-
-    config.set_soft_device_placement(True)
+  def testSoftPlacement(self):
     self.assertEqual(config.get_soft_device_placement(), True)
-    self.assertEqual(
-        config.get_soft_device_placement(),
-        context.context().soft_device_placement)
+
+    @def_function.function
+    def mod():
+      with ops.device('/device:GPU:0'):
+        a = constant_op.constant(1.0)
+        b = constant_op.constant(1.0)
+        return math_ops.mod(a, b)
+
+    # Since soft placement is enabled, the mod operation should work with CPU
+    mod()
 
     config.set_soft_device_placement(False)
     self.assertEqual(config.get_soft_device_placement(), False)
@@ -181,11 +188,18 @@ class ConfigTest(test.TestCase):
         config.get_soft_device_placement(),
         context.context().soft_device_placement)
 
-    constant_op.constant(1)
-    with self.assertRaises(RuntimeError):
-      config.set_soft_device_placement(True)
-    with self.assertRaises(RuntimeError):
-      config.set_soft_device_placement(False)
+    # Since soft placement is disabled, the mod operation should fail on GPU
+    with self.assertRaises(errors.InvalidArgumentError):
+      mod()
+
+    config.set_soft_device_placement(True)
+    self.assertEqual(config.get_soft_device_placement(), True)
+    self.assertEqual(
+        config.get_soft_device_placement(),
+        context.context().soft_device_placement)
+
+    # Since soft placement is re-enabled, the mod operation should work with CPU
+    mod()
 
   @reset_eager
   def testLogDevicePlacement(self):

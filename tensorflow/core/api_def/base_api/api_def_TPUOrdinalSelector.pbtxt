@@ -1,5 +1,6 @@
 op {
   graph_op_name: "TPUOrdinalSelector"
+  visibility: HIDDEN
   out_arg {
     name: "device_ordinals"
     description: <<END

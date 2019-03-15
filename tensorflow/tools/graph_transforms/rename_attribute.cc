@@ -34,9 +34,9 @@ Status RenameAttribute(const GraphDef& input_graph_def,
       !context.params.count("new_attribute_name") ||
       (context.params.at("new_attribute_name").size() != 1)) {
     return errors::InvalidArgument(
-        "remove_nodes expects exactly one 'old_attribute_name' and one "
+        "rename_attribute expects exactly one 'old_attribute_name' and one "
         "'new_attribute_name' argument, e.g. "
-        "remove_attribute(old_attribute_name=foo, new_attribute_name=bar)");
+        "rename_attribute(old_attribute_name=foo, new_attribute_name=bar)");
   }
 
   string op_name;

@@ -454,10 +454,13 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       global_batch_size = batch_size
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
-    if not allow_partial_batch and num_samples % global_batch_size:
-      raise ValueError('The number of samples %s is not divisible by '
-                       'batch size %s.' % (num_samples, global_batch_size))
-    steps = num_samples // global_batch_size
+    if allow_partial_batch:
+      steps = np.ceil(num_samples / global_batch_size).astype(int)
+    else:
+      if num_samples % global_batch_size:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'batch size %s.' % (num_samples, global_batch_size))
+      steps = num_samples // global_batch_size
   else:
     if batch_size is None:
       # We calculate the batch size based on the number of steps specified
@@ -592,8 +595,6 @@ def _custom_compile_for_predict(model):
     return
   model._is_compiled = True
   model.total_loss = None
-  model._fit_function = None
-  model._eval_function = None
   model.train_function = None
   model.test_function = None
   model.predict_function = None

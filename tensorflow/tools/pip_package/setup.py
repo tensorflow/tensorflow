@@ -45,10 +45,10 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.12.0'
+_VERSION = '1.13.1'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.1.6',
+    'absl-py >= 0.7.0',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
     'google_pasta >= 0.1.2',
@@ -87,7 +87,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.14.0a0, < 1.15.0a0'
     elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
       REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
     elif 'tensorflow_estimator' in pkg:

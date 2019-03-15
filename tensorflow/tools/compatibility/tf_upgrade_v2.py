@@ -92,6 +92,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
+        "tf.image.resize": {
+            "align_corners": None,
+        },
+        "tf.image.resize_images": {
+            "align_corners": None,
+        },
         "tf.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -225,11 +231,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool": {
             "value": "input"
         },
-
         "tf.nn.avg_pool": {
             "value": "input"
         },
-
         "tf.nn.avg_pool2d": {
             "value": "input"
         },
@@ -599,7 +603,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.saved_model.save_keras_model":
             "tf.keras.experimental.export_saved_model",
         "tf.contrib.rnn.RNNCell":
-            "tf.nn.rnn_cell.RNNCell",
+            "tf.compat.v1.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
             "tf.nn.rnn_cell.LSTMStateTuple",
         "tf.contrib.rnn.BasicLSTMCell":
@@ -680,6 +684,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.nn.fused_batch_norm",
         "tf.nn.softmax_cross_entropy_with_logits_v2":
             "tf.nn.softmax_cross_entropy_with_logits",
+        "tf.nn.sigmoid_cross_entropy_with_logits":
+            "tf.nn.sigmoid_cross_entropy_with_logits",
         "tf.losses.Reduction.MEAN":
             "tf.compat.v1.losses.Reduction.MEAN",
         "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
@@ -710,18 +716,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.saved_model.load",
         "tf.saved_model.load_v2":
             "tf.compat.v2.saved_model.load",
-        "tf.zeros_initializer":
-            "tf.compat.v1.initializers.zeros",
-        "tf.ones_initializer":
-            "tf.compat.v1.initializers.ones",
-        "tf.constant_initializer":
-            "tf.compat.v1.initializers.constant",
-        "tf.random_uniform_initializer":
-            "tf.compat.v1.initializers.random_uniform",
-        "tf.random_normal_initializer":
-            "tf.compat.v1.initializers.random_normal",
-        "tf.truncated_normal_initializer":
-            "tf.compat.v1.initializers.truncated_normal",
         "tf.image.resize_images":
             "tf.image.resize",
         "tf.random_poisson":
@@ -774,14 +768,110 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.avg_pool2d",
         "tf.keras.initializers.zeros":
             "tf.compat.v1.keras.initializers.zeros",
+        "tf.keras.initializers.Zeros":
+            "tf.compat.v1.keras.initializers.Zeros",
         "tf.keras.initializers.ones":
             "tf.compat.v1.keras.initializers.ones",
+        "tf.keras.initializers.Ones":
+            "tf.compat.v1.keras.initializers.Ones",
         "tf.keras.initializers.constant":
             "tf.compat.v1.keras.initializers.constant",
+        "tf.keras.initializers.Constant":
+            "tf.compat.v1.keras.initializers.Constant",
+        "tf.keras.initializers.VarianceScaling":
+            "tf.compat.v1.keras.initializers.VarianceScaling",
+        "tf.keras.initializers.Orthogonal":
+            "tf.compat.v1.keras.initializers.Orthogonal",
+        "tf.keras.initializers.orthogonal":
+            "tf.compat.v1.keras.initializers.orthogonal",
+        "tf.keras.initializers.Identity":
+            "tf.compat.v1.keras.initializers.Identity",
+        "tf.keras.initializers.identity":
+            "tf.compat.v1.keras.initializers.identity",
+        "tf.keras.initializers.glorot_uniform":
+            "tf.compat.v1.keras.initializers.glorot_uniform",
+        "tf.keras.initializers.glorot_normal":
+            "tf.compat.v1.keras.initializers.glorot_normal",
+        "tf.keras.initializers.lecun_normal":
+            "tf.compat.v1.keras.initializers.lecun_normal",
+        "tf.keras.initializers.lecun_uniform":
+            "tf.compat.v1.keras.initializers.lecun_uniform",
+        "tf.keras.initializers.he_normal":
+            "tf.compat.v1.keras.initializers.he_normal",
+        "tf.keras.initializers.he_uniform":
+            "tf.compat.v1.keras.initializers.he_uniform",
+        "tf.keras.initializers.TruncatedNormal":
+            "tf.compat.v1.keras.initializers.TruncatedNormal",
+        "tf.keras.initializers.truncated_normal":
+            "tf.compat.v1.keras.initializers.truncated_normal",
+        "tf.keras.initializers.RandomUniform":
+            "tf.compat.v1.keras.initializers.RandomUniform",
+        "tf.keras.initializers.uniform":
+            "tf.compat.v1.keras.initializers.uniform",
+        "tf.keras.initializers.random_uniform":
+            "tf.compat.v1.keras.initializers.random_uniform",
+        "tf.keras.initializers.RandomNormal":
+            "tf.compat.v1.keras.initializers.RandomNormal",
+        "tf.keras.initializers.normal":
+            "tf.compat.v1.keras.initializers.normal",
+        "tf.keras.initializers.random_normal":
+            "tf.compat.v1.keras.initializers.random_normal",
+        "tf.zeros_initializer":
+            "tf.compat.v1.zeros_initializer",
+        "tf.initializers.zeros":
+            "tf.compat.v1.initializers.zeros",
+        "tf.ones_initializer":
+            "tf.compat.v1.ones_initializer",
+        "tf.initializers.ones":
+            "tf.compat.v1.initializers.ones",
+        "tf.constant_initializer":
+            "tf.compat.v1.constant_initializer",
+        "tf.initializers.constant":
+            "tf.compat.v1.initializers.constant",
+        "tf.random_uniform_initializer":
+            "tf.compat.v1.random_uniform_initializer",
+        "tf.initializers.random_uniform":
+            "tf.compat.v1.initializers.random_uniform",
+        "tf.random_normal_initializer":
+            "tf.compat.v1.random_normal_initializer",
+        "tf.initializers.random_normal":
+            "tf.compat.v1.initializers.random_normal",
+        "tf.truncated_normal_initializer":
+            "tf.compat.v1.truncated_normal_initializer",
+        "tf.initializers.truncated_normal":
+            "tf.compat.v1.initializers.truncated_normal",
+        "tf.variance_scaling_initializer":
+            "tf.compat.v1.variance_scaling_initializer",
+        "tf.initializers.variance_scaling":
+            "tf.compat.v1.initializers.variance_scaling",
+        "tf.orthogonal_initializer":
+            "tf.compat.v1.orthogonal_initializer",
+        "tf.initializers.orthogonal":
+            "tf.compat.v1.initializers.orthogonal",
+        "tf.glorot_uniform_initializer":
+            "tf.compat.v1.glorot_uniform_initializer",
+        "tf.initializers.glorot_uniform":
+            "tf.compat.v1.initializers.glorot_uniform",
+        "tf.glorot_normal_initializer":
+            "tf.compat.v1.glorot_normal_initializer",
+        "tf.initializers.glorot_normal":
+            "tf.compat.v1.initializers.glorot_normal",
+        "tf.initializers.identity":
+            "tf.compat.v1.initializers.identity",
+        "tf.initializers.lecun_normal":
+            "tf.compat.v1.initializers.lecun_normal",
+        "tf.initializers.lecun_uniform":
+            "tf.compat.v1.initializers.lecun_uniform",
+        "tf.initializers.he_normal":
+            "tf.compat.v1.initializers.he_normal",
+        "tf.initializers.he_uniform":
+            "tf.compat.v1.initializers.he_uniform",
         "tf.data.experimental.map_and_batch_with_legacy_function":
             "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
         "tf.nn.conv2d_backprop_input":
-            "tf.nn.conv2d_transpose"
+            "tf.nn.conv2d_transpose",
+        "tf.test.compute_gradient":
+            "tf.compat.v1.test.compute_gradient",
     }
     # pylint: enable=line-too-long
 
@@ -895,6 +985,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.hessians",
         "tf.nn.max_pool",
         "tf.nn.avg_pool",
+        "tf.estimator.LinearClassifier",
+        "tf.estimator.LinearRegressor",
+        "tf.estimator.DNNLinearCombinedClassifier",
+        "tf.estimator.DNNLinearCombinedRegressor",
+        "tf.estimator.DNNRegressor",
+        "tf.estimator.DNNClassifier",
+        "tf.estimator.BaselineClassifier",
+        "tf.estimator.BaselineRegressor",
+        "tf.initializers.uniform_unit_scaling",
+        "tf.uniform_unit_scaling_initializer",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -977,13 +1077,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         ast_edits.WARNING,
         "`partition_strategy` has been removed from <function name>. "
         " The 'div' strategy will be used by default.")
-
-    # TODO(b/118888586): add default value change to update script.
-    default_loss_reduction_changed = (
-        ast_edits.WARNING,
-        "default value of loss_reduction has been changed to "
-        "SUM_OVER_BATCH_SIZE.\n"
-    )
 
     # make change instead
     uniform_unit_scaling_initializer_comment = (
@@ -1112,22 +1205,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             decay_function_comment,
         "tf.train.noisy_linear_cosine_decay":
             decay_function_comment,
-        "tf.estimator.LinearClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.LinearRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNLinearCombinedClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNLinearCombinedRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.BaselineClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.BaselineRegressor":
-            default_loss_reduction_changed,
+        "tf.nn.embedding_lookup":
+            deprecate_partition_strategy_comment,
+        "tf.nn.embedding_lookup_sparse":
+            deprecate_partition_strategy_comment,
         "tf.nn.nce_loss":
             deprecate_partition_strategy_comment,
         "tf.nn.safe_embedding_lookup_sparse":
@@ -1202,10 +1283,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             initializers_no_dtype_comment,
         "tf.initializers.glorot_normal":
             initializers_no_dtype_comment,
-        "tf.initializers.uniform_unit_scaling":
-            uniform_unit_scaling_initializer_comment,
-        "tf.uniform_unit_scaling_initializer":
-            uniform_unit_scaling_initializer_comment,
         "tf.losses.absolute_difference":
             losses_comment,
         "tf.losses.add_loss":
@@ -1304,6 +1381,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             metrics_comment,
         "tf.metrics.true_positives_at_thresholds":
             metrics_comment,
+        "tf.get_variable":
+            (ast_edits.WARNING,
+             "<function name> returns ResourceVariables by default in 2.0, "
+             "which have well-defined semantics and are stricter about shapes. "
+             "You can disable this behavior by passing use_resource=False, or "
+             "by calling tf.compat.v1.disable_resource_variables().")
     }
 
     # Warnings that are emitted only if a specific arg is found.
@@ -1393,6 +1476,46 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "argument; instead name scoping should be used. This call site "
                 "specifies a family argument so it cannot be converted safely.")
         },
+        "tf.image.resize": {
+            ("align_corners",
+             3): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize."),
+        },
+        "tf.image.resize_bilinear": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bilinear."),
+        },
+        "tf.image.resize_area": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_area."),
+        },
+        "tf.image.resize_bicubic": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bicubic."),
+        },
+        "tf.image.resize_nearest_neighbor": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_nearest_neighbor."),
+        },
     }
 
     # Specially handled functions
@@ -1430,6 +1553,79 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.resize_nearest_neighbor": _image_resize_transformer,
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
+        "tf.name_scope": _name_scope_transformer,
+        "tf.estimator.DNNEstimator":
+            functools.partial(
+                _rename_if_arg_found_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNEstimator no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNClassifier no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNRegressor no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.LinearEstimator":
+            functools.partial(
+                _rename_if_arg_found_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.LinearEstimator no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.LinearClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.LinearClassifier no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.LinearRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.LinearRegressor no longer takes "
+                "input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNLinearCombinedEstimator":
+            functools.partial(
+                _rename_if_arg_found_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNLinearCombinedEstimator no longer "
+                "takes input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNLinearCombinedClassifier":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNLinearCombinedClassifier no longer "
+                "takes input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
+        "tf.estimator.DNNLinearCombinedRegressor":
+            functools.partial(
+                _rename_if_arg_found_and_add_loss_reduction_transformer,
+                arg_name="input_layer_partitioner",
+                message="tf.estimator.DNNLinearCombinedRegressor no longer "
+                "takes input_layer_partitioner, so the call was converted to "
+                "compat.v1."
+            ),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -1472,6 +1668,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.summary.histogram": _add_summary_step_transformer,
         "tf.contrib.summary.image": _add_summary_step_transformer,
         "tf.contrib.summary.scalar": _add_summary_step_transformer,
+        "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
+        "tf.initializers.uniform_unit_scaling":
+            _add_uniform_scaling_initializer_transformer,
+        "tf.uniform_unit_scaling_initializer":
+            _add_uniform_scaling_initializer_transformer,
     }
 
     self.module_deprecations = {
@@ -1758,7 +1960,12 @@ def _image_resize_transformer(parent, node, full_name, name, logs):
     pos_arg = ast.keyword(arg="align_corners",
                           value=node.args[-1])
     node.args = node.args[:-1]
-    node.keywords.append(pos_arg)
+
+  new_keywords = []
+  for kw in node.keywords:
+    if kw.arg != "align_corners":
+      new_keywords.append(kw)
+  node.keywords = new_keywords
 
   # Python3 ast requires the args for the Attribute, but codegen will mess up
   # the arg order if we just set them to 0.
@@ -1884,3 +2091,137 @@ def _add_summary_step_transformer(parent, node, full_name, name, logs):
       "Summary API writing function %s now requires a 'step' argument; "
       "inserting default of %s." % (full_name or name, default_value)))
   return node
+
+
+def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
+  """Adds a loss_reduction argument if not specified.
+
+  Default value for tf.estimator.*Classifier and tf.estimator.*Regressor
+  loss_reduction argument changed to SUM_OVER_BATCH_SIZE. So, we update
+  existing calls to use the old default value `tf.losses.Reduction.SUM`.
+
+  Note: to apply this transformation, symbol must be added
+  to reordered_function_names above.
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "loss_reduction":
+      return node
+  # TODO(annarev): this should be updated to tf.keras.losses.Reduction.SUM
+  # once b/125525822 is fixed.
+  default_value = "tf.compat.v1.losses.Reduction.SUM"
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(default_value)
+  node.keywords.append(ast.keyword(arg="loss_reduction", value=ast_value))
+  logs.append((
+      ast_edits.INFO, node.lineno, node.col_offset,
+      "%s: Default value of loss_reduction has been changed to "
+      "SUM_OVER_BATCH_SIZE; inserting old default value %s.\n"
+      % (full_name or name, default_value)))
+  return node
+
+
+def _rename_if_arg_found_and_add_loss_reduction_transformer(
+    parent,
+    node,
+    full_name,
+    name,
+    logs,
+    arg_name=None,
+    arg_ok_predicate=None,
+    remove_if_ok=False,
+    message=None):
+  """Combination of _rename_if_arg_found and _add_loss_reduction transformers.
+
+  Args:
+    parent: Parent of node.
+    node: ast.Call node to maybe modify.
+    full_name: full name of function to modify
+    name: name of function to modify
+    logs: list of logs to append to
+    arg_name: name of the argument to look for
+    arg_ok_predicate: predicate callable with the ast of the argument value,
+      returns whether the argument value is allowed.
+    remove_if_ok: remove the argument if present and ok as determined by
+      arg_ok_predicate.
+    message: message to print if a non-ok arg is found (and hence, the function
+      is renamed to its compat.v1 version).
+
+  Returns:
+    node, if it was modified, else None.
+  """
+
+  add_loss_node = _add_loss_reduction_transformer(parent, node, full_name, name,
+                                                  logs)
+  rename_node = _rename_if_arg_found_transformer(
+      parent, add_loss_node, full_name, name, logs, arg_name, arg_ok_predicate,
+      remove_if_ok, message)
+
+  return rename_node
+
+
+def _add_uniform_scaling_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to uniform_unit_scaling_initializer.
+
+  Transforms:
+  tf.uniform_unit_scaling_initializer(factor, seed, dtype) to
+  tf.compat.v1.keras.initializers.VarianceScaling(
+      scale=factor, distribution="uniform", seed=seed)
+
+  Note: to apply this transformation, symbol must be added
+  to reordered_function_names above.
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "factor":
+      keyword_arg.arg = "scale"
+
+  distribution_value = "\"uniform\""
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(distribution_value)
+  node.keywords.append(ast.keyword(arg="distribution", value=ast_value))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.compat.v1.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+  return node
+
+
+def _name_scope_transformer(parent, node, full_name, name, logs):
+  """Fix name scope invocation to use 'default_name' and omit 'values' args."""
+
+  name_found, name = ast_edits.get_arg_value(node, "name", 0)
+  default_found, default_name = ast_edits.get_arg_value(node, "default_name", 1)
+
+  # If an actual name was given...
+  if name_found and pasta.dump(name) != "None":
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "`name` passed to `name_scope`. Because you may be re-entering"
+                 " an existing scope, it is not safe to convert automatically, "
+                 " the v2 name_scope does not support re-entering scopes by"
+                 " name.\n"))
+    # Rename to compat.v1
+    new_name = "tf.compat.v1.name_scope"
+    logs.append((ast_edits.INFO, node.func.lineno, node.func.col_offset,
+                 "Renamed %r to %r" % (full_name, new_name)))
+    new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
+    ast.copy_location(new_name_node, node.func)
+    pasta.ast_utils.replace_child(node, node.func, new_name_node)
+    return node
+
+  if default_found:
+    # New name scope doesn't have name, but it has a default name. We use
+    # name=default_name, and values can be dropped (it's only for
+    # error reporting and useless outside of graph mode).
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Using default_name as name in call to name_scope.\n"))
+    # Remove all args other than name
+    node.args = []
+    node.keywords = [ast.keyword(arg="name", value=default_name)]
+    return node
+
+  logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
+               "name_scope call with neither name nor default_name cannot be "
+               "converted properly."))

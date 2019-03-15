@@ -293,7 +293,7 @@ class BufferValueMap {
             VLOG(3)
                 << "  value @ " << position << " is root of "
                 << callsite.instruction()->name()
-                << "; true/false branch roots must share buffer among them : "
+                << "; branch computation roots must share buffer among them : "
                 << cond_value.ToShortString();
             aliased_buffers->push_back(GetBufferForValue(cond_value));
           }

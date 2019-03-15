@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -164,12 +164,10 @@ Status RewriteAndPruneGraph(
   std::unordered_set<const Node*> retval_nodes;
   TF_RETURN_IF_ERROR(
       AddRetvalNodes(graph, node_map, config.fetch(), &retval_nodes));
-  VLOG(2) << "Post rewrite: "
-          << dump_graph::DumpGraphToFile("tf2xla_post_rewrite", *graph);
+  VLOG(2) << "Post rewrite: " << DumpGraphToFile("tf2xla_post_rewrite", *graph);
   PruneForReverseReachability(graph, retval_nodes);
   FixupSourceAndSinkEdges(graph);
-  VLOG(2) << "Post prune: "
-          << dump_graph::DumpGraphToFile("tfcompile_post_prune", *graph);
+  VLOG(2) << "Post prune: " << DumpGraphToFile("tfcompile_post_prune", *graph);
   // Sanity-check, to make sure the feeds and fetches still exist post-pruning.
   std::set<string> missing_feeds, missing_fetches;
   for (const tf2xla::Feed& feed : config.feed()) {
@@ -265,8 +263,11 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   std::vector<XlaCompiler::Argument> xla_args;
   TF_RETURN_IF_ERROR(CreateXlaArgs(*graph, &xla_args));
 
+  std::vector<xla::XlaBuilder::InputOutputAlias> xla_aliases;
   // Populate arguments with resource variables from the config. The variables
   // get turned into inputs and outputs.
+  int64 input_num = xla_args.size();
+  int64 output_num = config.fetch_size();
   for (const tf2xla::Variable& variable : config.variable()) {
     XlaCompiler::Argument arg;
     arg.type = variable.type();
@@ -276,6 +277,13 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
     arg.resource_kind = XlaResource::kVariable;
     arg.initialized = true;
     xla_args.push_back(std::move(arg));
+
+    // We want to alias the input and output of the variable, so the updates are
+    // carried out in-place.
+    xla_aliases.push_back({/*output_index=*/{output_num},
+                           /*param_number=*/input_num, /*param_index=*/{}});
+    ++input_num;
+    ++output_num;
   }
 
   // Compile the graph into an XLA computation.
@@ -290,7 +298,7 @@ Status ConvertGraphToXla(std::unique_ptr<Graph> graph,
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(compiler.CompileGraph(XlaCompiler::CompileOptions(),
                                            "tfcompile", std::move(graph),
-                                           xla_args, &result));
+                                           xla_args, xla_aliases, &result));
   *computation = std::move(*result.computation);
 
   int num_const_results = 0;

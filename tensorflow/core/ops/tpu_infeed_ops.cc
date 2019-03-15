@@ -63,4 +63,25 @@ REGISTER_OP("InfeedDequeueTuple")
       return Status::OK();
     });
 
+REGISTER_OP("Prelinearize")
+    .Input("input: dtype")
+    .Attr("dtype: type")
+    .Attr("shape: shape = {}")
+    .Attr("layout: list(int) = []")
+    .Output("output: variant")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("PrelinearizeTuple")
+    .Input("inputs: dtypes")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .Attr("layouts: list(int) = []")
+    .Output("output: variant")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("InfeedEnqueuePrelinearizedBuffer")
+    .Input("input: variant")
+    .Attr("device_ordinal: int = -1")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 }  // namespace tensorflow

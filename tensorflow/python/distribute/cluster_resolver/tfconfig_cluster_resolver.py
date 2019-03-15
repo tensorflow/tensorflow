@@ -112,6 +112,15 @@ class TFConfigClusterResolver(ClusterResolver):
   def rpc_layer(self, rpc_layer):
     self._rpc_layer = rpc_layer
 
+  def num_accelerators(self,
+                       task_type=None,
+                       task_id=None,
+                       config_proto=None):
+    task_type = self.task_type if task_type is None else task_type
+    task_id = self.task_id if task_id is None else task_id
+    return super(TFConfigClusterResolver, self).num_accelerators(
+        task_type, task_id, config_proto)
+
   def cluster_spec(self):
     """Returns a ClusterSpec based on the TF_CONFIG environment variable.
 

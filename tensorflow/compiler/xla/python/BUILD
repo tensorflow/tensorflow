@@ -13,8 +13,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_xla",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 
@@ -33,6 +31,7 @@ py_test(
     deps = [
         ":custom_call_for_test",
         ":xla_client",
+        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -70,9 +69,10 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/client/lib:cholesky",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:qr",
+        "//tensorflow/compiler/xla/client/lib:self_adjoint_eig",
+        "//tensorflow/compiler/xla/client/lib:svd",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -121,7 +121,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     version_script = select({
-        "//tensorflow:darwin": "pywrap_xla_exported_symbols.lds",
+        "//tensorflow:macos": "pywrap_xla_exported_symbols.lds",
         "//tensorflow:windows": None,
         "//conditions:default": "pywrap_xla_version_script.lds",
     }),
@@ -145,7 +145,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     version_script = select({
-        "//tensorflow:darwin": "pywrap_xla_exported_symbols.lds",
+        "//tensorflow:macos": "pywrap_xla_exported_symbols.lds",
         "//tensorflow:windows": None,
         "//conditions:default": "pywrap_xla_version_script.lds",
     }),

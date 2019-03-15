@@ -165,11 +165,22 @@ tf_cc_test(
 
 cc_library(
     name = "cost_estimator",
+    srcs = ["cost_estimator.cc"],
     hdrs = ["cost_estimator.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "cost_estimator_test",
+    srcs = ["cost_estimator_test.cc"],
+    deps = [
+        ":cost_estimator",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

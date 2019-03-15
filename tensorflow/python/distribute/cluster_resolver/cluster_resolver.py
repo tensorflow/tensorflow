@@ -21,12 +21,17 @@ from __future__ import print_function
 import abc
 
 import collections
+import re
 import six
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
+
+
+DEVICE_TYPE_REGEX = re.compile('.*device:([^:]+).*')
 
 
 def format_master_url(master, rpc_layer=None):
@@ -37,11 +42,24 @@ def format_master_url(master, rpc_layer=None):
 
 
 def get_accelerator_devices(master, config_proto):
-  # TODO(frankchn): Add support for eager mode as well as graph mode.
-  with ops.Graph().as_default():
-    with session.Session(master, config=config_proto) as s:
-      devices = s.list_devices()
-  return devices
+  """Returns accelerator devices given a master and a configuration."""
+  if context.executing_eagerly():
+    device_names = context.list_devices()  # list_devices returns list(string)
+    devices = []
+    for name in device_names:
+      device_type = 'GPU'  # default device type is GPU
+      device_match = DEVICE_TYPE_REGEX.match(name)
+      if device_match:
+        device_type = device_match.group(1)
+      if device_type == 'CPU' or device_type == 'XLA_CPU':  # Filter CPUs
+        continue
+      devices.append(session._DeviceAttributes(name, device_type, 0, 0))  # pylint: disable=protected-access
+    return devices
+  else:
+    with ops.Graph().as_default():
+      with session.Session(master, config=config_proto) as s:
+        devices = s.list_devices()
+    return devices
 
 
 @tf_export('distribute.cluster_resolver.ClusterResolver')
@@ -133,6 +151,11 @@ class ClusterResolver(object):
     devices = get_accelerator_devices(master, config_proto)
     mapping = collections.defaultdict(int)
     for device in devices:
+      if task_type is not None and task_id is not None:
+        job_path = '/job:%s' % task_type
+        task_path = '/task:%s' % task_id
+        if job_path not in device.name or task_path not in device.name:
+          continue
       mapping[device.device_type] += 1
     return mapping
 

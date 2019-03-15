@@ -6,7 +6,7 @@ package(
 
 licenses(["notice"])
 
-exports_files(["LICENSE"])
+exports_files(["COPYING"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@org_tensorflow//third_party:common.bzl", "template_rule")
@@ -112,7 +112,6 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS = {
     "#undef HAVE_X11_KEYSYM_H": "#define HAVE_X11_KEYSYM_H 1",
     "#undef HAVE_X11_XLIB_H": "#define HAVE_X11_XLIB_H 1",
     "#undef HAVE_X11_XUTIL_H": "#define HAVE_X11_XUTIL_H 1",
-    "#undef HAVE_XLOCALE_H": "#define HAVE_XLOCALE_H 1",
     "#undef HAVE___PROGNAME": "#define HAVE___PROGNAME 1",
     "#undef HWLOC_C_HAVE_VISIBILITY": "#define HWLOC_C_HAVE_VISIBILITY 1",
     "#undef HWLOC_HAVE_ATTRIBUTE": "#define HWLOC_HAVE_ATTRIBUTE 1",
@@ -191,7 +190,9 @@ _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS = {
     "#undef HAVE_CUDA": "#undef HAVE_CUDA 1",
     "#undef HAVE_CUDA_H": "#undef HAVE_CUDA_H 1",
     "#undef HAVE_CUDA_RUNTIME_API_H": "#undef HAVE_CUDA_RUNTIME_API_H 1",
-} + _INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS
+}
+
+_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_CUDA_SUBS.update(_INCLUDE_PRIVATE_HWLOC_AUTOIGEN_CONFIG_H_COMMON_SUBS)
 
 template_rule(
     name = "include_private_hwloc_autogen__config_h",
@@ -228,7 +229,6 @@ cc_library(
         "hwloc/topology-linux.c",
         "hwloc/topology-noos.c",
         "hwloc/topology-synthetic.c",
-        "hwloc/topology-x86.c",
         "hwloc/topology-xml.c",
         "hwloc/topology-xml-nolibxml.c",
         "hwloc/traversal.c",
@@ -237,13 +237,18 @@ cc_library(
         "include/hwloc/shmem.h",
         "include/private/autogen/config.h",
         "include/private/components.h",
-        "include/private/cpuid-x86.h",
         "include/private/debug.h",
         "include/private/internal-components.h",
         "include/private/misc.h",
         "include/private/private.h",
         "include/private/xml.h",
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow:linux_x86_64": [
+            "hwloc/topology-x86.c",
+            "include/private/cpuid-x86.h",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "include/hwloc.h",
         "include/hwloc/autogen/config.h",

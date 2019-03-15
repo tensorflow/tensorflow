@@ -220,7 +220,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def step_fn(ctx, inputs):
         del ctx  # Unused
-        fetches = distribution.unwrap(
+        fetches = distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(
                 model_fn, args=(inputs,)))
         if update_ops_in_cross_replica_mode:
@@ -418,13 +418,15 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         # tensors. But for non reduced losses, we need to have initial
         # values that are of the same structure as non reduced losses. In
         # MirroredStrategy, this will be a list of losses, in TPUStrategy
-        # it will be single tensor. Using `broadcast` followed by `unwrap`
-        # gives us the desired initial value structure.
+        # it will be single tensor. Using `call_for_each_replica` followed
+        # by `experimental_local_results` gives us the desired initial
+        # value structure.
+        not_reduced = distribution.experimental_local_results(
+            distribution.extended.call_for_each_replica(initial_loss))
         initial_loop_values = {
             "replica_loss_reduced": initial_loss(),
             "cross_replica_loss_reduced": initial_loss(),
-            "cross_replica_loss_not_reduced":
-            distribution.unwrap(distribution.broadcast(initial_loss()))
+            "cross_replica_loss_not_reduced": not_reduced,
         }
         ctx = distribution.extended.experimental_run_steps_on_iterator(
             step_fn, iterator, iterations=2,
@@ -468,11 +470,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def _verify_loss_output(self, initial_loss, loss_output, reduced,
                           distribution):
     if not reduced:
-      self.assertLen(distribution.unwrap(loss_output),
+      self.assertLen(distribution.experimental_local_results(loss_output),
                      distribution.num_replicas_in_sync)
       loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
     else:
-      unwrapped_output = distribution.unwrap(loss_output)
+      unwrapped_output = distribution.experimental_local_results(loss_output)
       self.assertLen(unwrapped_output, 1)
       loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)

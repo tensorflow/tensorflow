@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -29,14 +30,35 @@ from tensorflow.python.platform import test
 class RawOpsTest(test.TestCase):
 
   def testSimple(self):
-
-    with self.assertRaises(TypeError):
-      _ = gen_math_ops.Add(1., 1.)
-
     x = constant_op.constant(1)
     self.assertEqual([2], self.evaluate(gen_math_ops.Add(x=x, y=x)))
 
+  def testRequiresKwargs(self):
+    with self.assertRaisesRegexp(TypeError, "only takes keyword args"):
+      gen_math_ops.Add(1., 1.)
 
-if __name__ == '__main__':
+  def testRequiresKwargs_providesSuggestion(self):
+    msg = "possible keys: \\['x', 'y', 'name'\\]"
+    with self.assertRaisesRegexp(TypeError, msg):
+      gen_math_ops.Add(1., y=2.)
+
+  def testName(self):
+    x = constant_op.constant(1)
+    op = gen_math_ops.Add(x=x, y=x, name="double")
+    if not context.executing_eagerly():
+      # `Tensor.name` is not available in eager.
+      self.assertEqual(op.name, "double:0")
+
+  def testDoc(self):
+    self.assertEqual(gen_math_ops.add.__doc__, gen_math_ops.Add.__doc__)
+
+  def testDefaults(self):
+    x = constant_op.constant([[True]])
+    self.assertAllClose(
+        gen_math_ops.Any(input=x, axis=0),
+        gen_math_ops.Any(input=x, axis=0, keep_dims=False))
+
+
+if __name__ == "__main__":
   ops.enable_eager_execution()
   test.main()

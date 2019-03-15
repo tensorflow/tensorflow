@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -790,8 +791,8 @@ Status LoopOptimizer::RemoveDeadBranches(
       }
 
       if (IsMerge(*dead.node)) {
-        const int fanout = dead.node->attr().at("N").i();
-        if (fanout > 2) {
+        const int num_data_inputs = dead.node->attr().at("N").i();
+        if (num_data_inputs > 2) {
           // This never happens in practice, so we'll just skip these to
           // simplify the code for now.
           found_node_to_preserve = true;
@@ -809,18 +810,21 @@ Status LoopOptimizer::RemoveDeadBranches(
         }
 
         bool fully_dead = false;
-        if (dead.port_id < 0) {
-          // If the control dependency never gets triggered the merge will also
-          // never get triggered.
-          fully_dead = true;
-        } else {
+        // Merge node can become real dead only if all data inputs are dead.
+        // Merge always waits for all control edges, but they do not
+        // change the node deadness.
+        if (dead.port_id >= 0) {
           local_dead_merge_inputs[dead.node].insert(dead.port_id);
-          if (local_dead_merge_inputs[dead.node].size() ==
-              dead.node->attr().at("N").i()) {
+          if (local_dead_merge_inputs[dead.node].size() == num_data_inputs) {
             fully_dead = true;
           }
+        } else {
+          // Keep track of all Merge nodes, even if they do not have dead data
+          // inputs. We'll need to cleanup dead control edges for them later.
+          local_dead_merge_inputs.insert({dead.node, {}});
         }
         if (fully_dead) {
+          local_dead_merge_inputs.erase(dead.node);
           local_dead_nodes.insert(dead.node);
           for (const MutableGraphView::InputPort& port :
                view.GetFanouts(*dead.node, true)) {
@@ -852,21 +856,47 @@ Status LoopOptimizer::RemoveDeadBranches(
     if (dead_nodes.count(&optimized_graph->node(i)))
       nodes_idx_to_delete.push_back(i);
   }
-  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
 
+  // Names of the nodes that were removed from the graph.
+  absl::flat_hash_set<absl::string_view> dead_node_names;
+  dead_node_names.reserve(dead_nodes.size());
+  for (const NodeDef* dead_node : dead_nodes)
+    dead_node_names.insert(dead_node->name());
+
+  // Remove dead inputs from Merge nodes that were not pruned from the graph.
   for (const auto& itr : dead_merge_inputs) {
     NodeDef* dead_node = itr.first;
     if (dead_nodes.find(dead_node) != dead_nodes.end()) {
       // The node has been pruned since all its inputs are dead.
       continue;
     }
+    // Remove dead data input.
     const std::set<int>& dead_inputs = itr.second;
     for (int index : dead_inputs) {
       dead_node->mutable_input()->DeleteSubrange(index, 1);
     }
-    dead_node->set_op("Identity");
-    dead_node->mutable_attr()->erase("N");
+    // Turn Merge into Identity only if we deleted data inputs.
+    if (!dead_inputs.empty()) {
+      dead_node->set_op("Identity");
+      dead_node->mutable_attr()->erase("N");
+    }
+    // Remove control inputs from dead nodes.
+    int pos = 0;
+    while (pos < dead_node->input_size()) {
+      TensorId tensor = ParseTensorName(dead_node->input(pos));
+      if (tensor.index() == Graph::kControlSlot &&
+          dead_node_names.contains(tensor.node())) {
+        auto* inputs = dead_node->mutable_input();
+        inputs->SwapElements(pos, dead_node->input_size() - 1);
+        inputs->RemoveLast();
+      } else {
+        ++pos;
+      }
+    }
   }
+
+  EraseNodesFromGraph(std::move(nodes_idx_to_delete), optimized_graph);
+
   return Status::OK();
 }
 
