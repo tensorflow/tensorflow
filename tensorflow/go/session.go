@@ -350,22 +350,74 @@ func (o *SessionOptions) c() (ret *C.TF_SessionOptions, done func(), err error) 
 	}, nil
 }
 
-// NewConfigOptions generates a serialized ConfigOptions protobuf for use
-// in the `Config` field of a `SessionOptions` struct. The function only supports
-// the session options available via TensorFlow's experimental C API function
-// `TF_CreateConfig()`. THIS API IS UNSTABLE, and the set of available options
-// will change in future versions of TensorFlow.
-func NewConfigOptions(enableXLACompilation bool, gpuMemoryAllowGrowth bool, numCPUDevices uint) []byte {
-	// C API expects unsigned chars
+// JitLevel represents the level of optimization that the XLA compiler
+// performs during just-in-time compilation.
+type JitLevel int
+
+const (
+	// DEFAULT is the default setting for this version of TensorFlow,
+	// Currently the default is OFF, but it will change to ON in a future
+	// version.
+	DEFAULT JitLevel = 0
+	// OFF disables just-in-time compilation and will continue to do so
+	// even after JIT compilation is enabled by default.
+	OFF JitLevel = -1
+	// ON is a synonym for the ON_1 optimization level.
+	ON JitLevel = 1
+)
+
+// Config represents session parameters as encoded in the tensorflow.ConfigProto
+// protocol buffer message.
+type Config struct {
+	// GlobalJitLevel controls the degree of optimization that the XLA just-in-time
+	// compiler will perform. The default is currently "off", but it is expected
+	// to change to "on" in a future version of TensorFlow.
+	GlobalJitLevel JitLevel
+
+	// AllowGPUMemoryGrowth controls whether the TensorFlow memory allocator
+	// pre-allocates the entire specified GPU memory region or instead starts
+	// with a small block of GPU memory and grows its memory usage as needed.
+	AllowGPUMemoryGrowth bool
+
+	// NumCPUs is the maximum number of CPU devices that the session will use.
+	// A value of 0 means "let the system pick an appropriate number"
+	NumCPUs int
+
+	// This struct only exposes the session options available via TensorFlow's
+	// experimental C API function `TF_CreateConfig()`.
+	// TODO(frreiss): Add additional options here as more session options are
+	// exposed via the C API.
+}
+
+// Bytes generates a serialized ConfigOptions protobuf for use in the `Config`
+// field of a `SessionOptions` struct.
+func (c *Config) Bytes() []byte {
+	// The C API expects an unsigned char that is 0 if XLA compilation is off and
+	// nonzero otherwise.
+	// There is currently no way in the C API to specify "use TensorFlow's default
+	//  JIT level".  The translation logic here ensures that the zero value of
+	// c.GlobalJitLevel means the same as the default value of
+	// OptimizerOptions.global_jit_level in the Python API.
 	enableXLACompilationAsChar := C.uchar(0)
-	if enableXLACompilation {
-		enableXLACompilationAsChar = 1
+	switch c.GlobalJitLevel {
+	case DEFAULT:
+		// TODO(frreiss): When the semantics of GlobalJitLevel.DEFAULT change to
+		// "on", uncomment the following line.
+		// enableXLACompilationAsChar = C.uchar(1)
+	case ON:
+		enableXLACompilationAsChar = C.uchar(1)
 	}
 	gpuMemoryAllowGrowthAsChar := C.uchar(0)
-	if gpuMemoryAllowGrowth {
+	if c.AllowGPUMemoryGrowth {
 		gpuMemoryAllowGrowthAsChar = 1
 	}
-	buf := C.TF_CreateConfig(enableXLACompilationAsChar, gpuMemoryAllowGrowthAsChar, C.uint(numCPUDevices))
+	// The C API doesn't currently have a way to say "let the system pick how many
+	// CPUs to use," so detect the number of CPUs here.
+	numCPUDevicesAsUint := C.uint(runtime.NumCPU())
+	if c.NumCPUs > 0 {
+		numCPUDevicesAsUint = C.uint(c.NumCPUs)
+	}
+	buf := C.TF_CreateConfig(enableXLACompilationAsChar, gpuMemoryAllowGrowthAsChar, numCPUDevicesAsUint)
 	defer C.TF_DeleteBuffer(buf)
 	// Copy out of C memory.
 	return C.GoBytes(unsafe.Pointer(buf.data), C.int(buf.length))
