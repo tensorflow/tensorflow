@@ -3580,7 +3580,6 @@ def average_filtering(tf_img,filter_shape=3):
             li = []
             for b in range(i, i + filter_shape):
                 li.append(img[b])
-            li.sort()
             res1[i] = sum(li) / filter_shape
         res1 = res1.reshape(m, no, 1)
         res[:, :, a:a + 1] = res1
