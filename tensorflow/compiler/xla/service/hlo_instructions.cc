@@ -202,6 +202,42 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
+HloCompareInstruction::HloCompareInstruction(const Shape& shape,
+                                             HloInstruction* lhs,
+                                             HloInstruction* rhs,
+                                             ComparisonDirection direction)
+    : HloInstruction(HloOpcode::kCompare, shape), direction_(direction) {
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+}
+
+HloInstructionProto HloCompareInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_comparison_direction(ComparisonDirectionToString(direction_));
+  return proto;
+}
+
+std::vector<string> HloCompareInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("direction=", ComparisonDirectionToString(direction()))};
+}
+
+bool HloCompareInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloCompareInstruction&>(other);
+  return direction() == casted_other.direction();
+}
+
+std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return absl::make_unique<HloCompareInstruction>(shape, new_operands[0],
+                                                  new_operands[1], direction());
+}
+
 namespace {
 
 // Converts a protocol buffer message (e.g., TriangularSolveOptions) to a vector

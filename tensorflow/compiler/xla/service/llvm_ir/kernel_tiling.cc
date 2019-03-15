@@ -185,15 +185,15 @@ IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
 
 IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
     const IrArray::Index& tile_index) {
-  IrArray::Index elem_index = tile_index;
+  std::vector<llvm::Value*> elem_multi_index = tile_index.multidim();
   for (int i = DimY; i < DimTot; ++i) {
-    elem_index[i] =
+    elem_multi_index[i] =
         b_->CreateMul(tile_index[i],
                       llvm::ConstantInt::get(tile_index[i]->getType(),
                                              GetTileSizeForDimension(i)),
                       "tile_origin." + std::to_string(i));
   }
-  return elem_index;
+  return IrArray::Index(elem_multi_index, tile_index.GetType());
 }
 
 llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(

@@ -1435,10 +1435,11 @@ def _create_local_cuda_repository(repository_ctx):
             wrapper_defines,
         )
 
+    cuda_defines.update(_get_win_cuda_defines(repository_ctx))
     _tpl(
         repository_ctx,
         "crosstool:CROSSTOOL",
-        cuda_defines + _get_win_cuda_defines(repository_ctx),
+        cuda_defines,
         out = "crosstool/CROSSTOOL",
     )
 

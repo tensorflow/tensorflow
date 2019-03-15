@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/redux_functor.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
@@ -267,171 +268,33 @@ class BiasGradOp : public OpKernel {
       // Eigen often crashes by design on empty tensors, but setZero is safe
       output->template flat<T>().setZero();
     } else {
-      //******************************************************************************
-      //  Divide the input tensor into several blocks.
-      //  As we don't know anything about the detail shape of incoming input
-      //  tensor, and it will be too complex to deal with different shapes
-      //  separately, so we just evenly distribute total workloads to each
-      //  block.
-      //******************************************************************************
-      // Init the output to zero
-      output->template flat<T>().setZero();
-      // Get the location of input/output data.
-      const T* input_ptr = output_backprop.template flat<T>().data();
+      // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
+      if (data_format_ == FORMAT_NCHW) {
+        Eigen::DSizes<Eigen::Index, 3> three_dims(batch, channel,
+                                                  height * width * depth);
+#ifdef EIGEN_HAS_INDEX_LIST
+        using idx0 = Eigen::type2index<0>;
+        using idx2 = Eigen::type2index<2>;
+        Eigen::IndexList<idx0, idx2> reduction_axes;
+#else
+        Eigen::array<Eigen::Index, 2> reduction_axes = {0, 2};
+#endif
+        output->template flat<T>().device(context->eigen_device<Device>()) =
+            output_backprop.flat<T>()
+                .template cast<typename AccumulatorType<T>::type>()
+                .reshape(three_dims)
+                .sum(reduction_axes)
+                .template cast<T>();  // End of code by intel_tf.
+      } else {
+        using AccumT = typename AccumulatorType<T>::type;
+        const functor::ReduceOuterDimensions<
+            T, AccumT, Eigen::internal::scalar_sum_op<AccumT>>
+            redux;
 
-      // Get the format of input/output data.
-      const bool format_is_nhwc = (data_format_ == FORMAT_NHWC);
-
-      // Get the intra-thread pool handle.
-      auto worker_threads =
-          *(context->device()->tensorflow_cpu_worker_threads());
-      const int num_threads = worker_threads.num_threads;
-      auto workers = worker_threads.workers;
-
-      // Get the workload parameters.
-      const int reduce_dims = batch * height * width * depth;
-      const int hwd_size = height * width * depth;
-      const int total_workload = reduce_dims * channel;
-
-      // For small workloads, large block number will waste
-      // scheduling and compute resources.
-      // Use minimum workload and max_parallelism to limit total
-      // thread number and guarantee the workload for a each thread.
-      // Roughly, persume the CPU is 2GHz, using 1ns as a block,
-      // then each block gets about 2000 FLOP.
-      const int min_block_workloads = 2000;
-      // For NHWC format, we use each channel layer as a scheduling unit,
-      // while for NCHW format, we use each FLOP as a scheduling unit.
-      int parallel_cell_size = 1;
-      if ((format_is_nhwc) || ((!format_is_nhwc) && (hwd_size == 1))) {
-        parallel_cell_size = channel;
-      }
-      const int max_parallelism = total_workload / parallel_cell_size;
-      const int min_block_size =
-          (min_block_workloads + parallel_cell_size - 1) / parallel_cell_size;
-      const int max_num_blocks =
-          std::min(max_parallelism,
-                   (total_workload + min_block_size - 1) / min_block_size);
-      // As the BiasAddGradOp is a reducing op,
-      // it is necessary to build buffer for each block to avoid hazard.
-      // To minimize the buffer, the block number is no more than thread number.
-      const int num_blocks = std::min(max_num_blocks, num_threads);
-
-      // Build&initialize buffers for blocks.
-      TensorShape output_buffer_shape({num_blocks, channel});
-      Tensor block_results_buffer(output->dtype(), output_buffer_shape);
-      block_results_buffer.template flat<T>().setZero();
-      T* block_results_buffer_ptr =
-          block_results_buffer.template flat<T>().data();
-
-      using Shell = Eigen::TensorMap<Eigen::Tensor<T, 1>>;
-      using ConstShell = Eigen::TensorMap<Eigen::Tensor<const T, 1>>;
-
-      //******************************************************************************
-      //  Job func for each thread
-      //******************************************************************************
-      auto BiasGradWorker = [this, &total_workload, &num_blocks,
-                             &format_is_nhwc, &input_ptr,
-                             &block_results_buffer_ptr, &hwd_size, &channel](
-          int my_job_begin, int my_job_end) mutable -> void {
-        // We generate a cover of [0,total_workload), which is comprised of
-        // num_blocks non-overlapping divisions of [0,total_workload)
-        // EXP: If we get 22 elements in input tensor, which are divided
-        // into 4 blocks:
-        //
-        // lockId  :   0   |   1   |   2   |   3   | res
-        // Elements: $$$$$ | $$$$$ | $$$$$ | $$$$$ | **
-        //                        ↓
-        // BlockId :   0   |   1    |    2    |    3
-        // Elements: $$$$$ | $$$$$* |  $$$$$  |  $$$$$*
-        // Range   : [0,5) | [5,11) | [11,16) | [16,22)
-        //     22*0/4=0 22*1/4=5 22*2/4=11 22*3/4=16 22*4/4=22
-        const int block_begin = total_workload * my_job_begin / num_blocks;
-        const int block_end = total_workload * my_job_end / num_blocks;
-
-        T* buffer_ptr = &block_results_buffer_ptr[my_job_begin * channel];
-        Shell my_buffer(buffer_ptr, channel);
-
-        if ((format_is_nhwc) || ((!format_is_nhwc) && (hwd_size == 1))) {
-          // For NHWC, it is easy to divide workload, because the parallelism
-          // mainly comes from layers outside channel (N*H*W).
-          // So we just divide NHW layers.
-          // Align the calculation by inner most layer (channel).
-          const int align_begin = (block_begin / channel) * channel;
-          const int align_end = (block_end / channel) * channel;
-          // Apply the calculation.
-          for (int i = align_begin; i < align_end; i += channel) {
-            my_buffer += ConstShell(&input_ptr[i], channel);
-          }
-        } else {  // For NCHW format
-          // A straight forward impl for NCHW could be like:
-          //  for(int i=block_begin;i<block_end;i++) {
-          //    my_buffer_ptr[(i/hwd_size)%channel] +=
-          //    input_ptr[i];
-          //  }
-          // It is more complex than NHWC for there are calculations
-          // both inside and outside channel layer.
-          // There are two extreme situations:
-          //   1. N is large and H*W is small;
-          //   2. H*W is large and N is small.
-          // The first one is more similar to NHWC, which easy to divid
-          // workload. While for the second situation, the workload could
-          // be heavy, because of the large H*W, while there is not enough
-          // dimensions outside channel to divide (small N).
-          // We divide the workload basing on total.
-          const int align_begin =
-              ((block_begin + hwd_size - 1) / hwd_size) * hwd_size;
-          const int align_end = (block_end / hwd_size) * hwd_size;
-
-          // Dealing with front residual.
-          int channel_id = block_begin / hwd_size % channel;
-          Eigen::Tensor<T, 0> sum =
-              ConstShell(&input_ptr[block_begin], align_begin - block_begin)
-                  .sum();
-          my_buffer(channel_id) += sum(0);
-
-          // Init channel_id to avoid the error when align_begin == block_begin.
-          channel_id = align_begin / hwd_size % channel;
-
-          for (int i = align_begin; i < align_end; i += hwd_size) {
-            // Apply the reduction
-            if (channel_id < channel) {
-              // When channel_id is in channel,
-              // just add the sum of inside dim to block buffer.
-              sum = ConstShell(&input_ptr[i], hwd_size).sum();
-              my_buffer(channel_id) += sum(0);
-              channel_id++;
-            } else {
-              // When channel_id exceed the range of channel,
-              // go back to the beginning of block buffer.
-              channel_id = channel_id - channel;
-              sum = ConstShell(&input_ptr[i], hwd_size).sum();
-              my_buffer(channel_id) += sum(0);
-              channel_id++;
-            }
-          }
-          // Dealing with back residual.
-          sum = ConstShell(&input_ptr[align_end], block_end - align_end).sum();
-          my_buffer(channel_id) += sum(0);
-        }
-      };
-      // Run multi-threads
-      // We use Sharder::Do here to make sure each block matches one thread
-      const int total_units = num_blocks;
-      // As we have pretreated workload,
-      // set cost_per_unit to 10000 to override the defalt.
-      const int cost_per_unit = 10000;
-      Sharder::Do(
-          total_units, cost_per_unit, BiasGradWorker,
-          [&workers](Sharder::Closure c) -> void { workers->Schedule(c); },
-          max_parallelism);
-
-      //******************************************************************************
-      //  Now sum block results up
-      //******************************************************************************
-      for (int i = 0; i < num_blocks; i++) {
-        Shell buffer_i(&block_results_buffer_ptr[channel * i], channel);
-        output->template flat<T>() += buffer_i;
+        Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width * depth,
+                                                channel);
+        redux(context->eigen_device<Device>(), two_dims, output_backprop,
+              output);
       }
     }
   }

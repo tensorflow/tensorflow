@@ -50,7 +50,7 @@ constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
-constexpr char kChooseFastestOp[] = "ExperimentalChooseFastestDataset";
+constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
 constexpr char kPrefetchOp[] = "PrefetchDataset";
 constexpr int kAutotune = -1;
 
@@ -317,23 +317,123 @@ Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
   return Status::OK();
 }
 
-Status AddNewChooseFastestNode(gtl::ArraySlice<NodeDef> input_nodes,
+Status AddBranch(gtl::ArraySlice<const NodeDef*> branch,
+                 NodeDef* choose_fastest_node, DataTypeVector* t_arguments,
+                 std::vector<NameAttrList>* branches,
+                 std::vector<int>* other_arguments_lengths,
+                 FunctionDefLibrary* library) {
+  FunctionDef* branch_func = library->add_function();
+  auto* signature = branch_func->mutable_signature();
+  graph_utils::SetUniqueGraphFunctionName("branch", library, branch_func);
+
+  // Input dataset.
+  string prev_node_output = "args_0";
+  auto* input_arg_0 = signature->add_input_arg();
+  input_arg_0->set_name(prev_node_output);
+  input_arg_0->set_type(DT_VARIANT);
+
+  auto* output_arg = signature->add_output_arg();
+  output_arg->set_name("output");
+  output_arg->set_type(DT_VARIANT);
+
+  int32 captured_arg_lengths = 0;
+
+  // For each node in the branch, copy it to the function def. Add the
+  // corresponding non-0th inputs as captured arguments, modifying the function
+  // input signature, node input names, other_arguments_lengths, and t_arguments
+  // accordingly.
+  for (const NodeDef* node : branch) {
+    // Copy the node to the function
+    auto function_node = branch_func->add_node_def();
+    *function_node = *node;
+    function_utils::SetUniqueFunctionNodeName(node->name(), branch_func,
+                                              function_node);
+    function_node->clear_input();
+    function_node->add_input(prev_node_output);
+
+    // Every input besides the 0th (dataset) becomes a captured argument.
+    int input_size = node->input_size();
+    DataTypeVector input_types;
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
+    TF_RETURN_IF_ERROR(InputTypesForNode(*node, *op_def, &input_types));
+    DCHECK_EQ(input_types.size(), input_size);
+
+    for (int i = 1; i < input_size; ++i) {
+      // Capture input in `other_arguments`
+      choose_fastest_node->add_input(node->input(i));
+      // Add type to function signature
+      auto* input_arg = signature->add_input_arg();
+
+      string input_arg_name = strings::StrCat(function_node->name(), "_", i);
+      input_arg->set_name(input_arg_name);
+      input_arg->set_type(input_types[i]);
+      function_node->add_input(input_arg_name);
+    }
+    // Add to `Targuments`
+    t_arguments->reserve(t_arguments->size() + input_types.size() - 1);
+    t_arguments->insert(t_arguments->end(), input_types.begin() + 1,
+                        input_types.end());
+    captured_arg_lengths += input_size - 1;
+    prev_node_output = strings::StrCat(function_node->name(), ":handle:0");
+  }
+
+  // Add to `other_arguments_lengths`
+  other_arguments_lengths->push_back(captured_arg_lengths);
+  (*branch_func->mutable_ret())["output"] = prev_node_output;
+
+  // Add to `branches`
+  NameAttrList func_attr;
+  func_attr.set_name(branch_func->signature().name());
+  branches->push_back(std::move(func_attr));
+  return Status::OK();
+}
+
+Status AddNewChooseFastestNode(const NodeDef* input_dataset_node,
+                               const string& ratio_numerator_name,
+                               std::vector<const NodeDef*> original_branch,
+                               std::vector<const NodeDef*> vectorized_branch,
                                MutableGraphView* graph,
+                               FunctionDefLibrary* library,
                                NodeDef** new_choose_fastest_node) {
   NodeDef choose_fastest_node;
   choose_fastest_node.set_op(kChooseFastestOp);
   graph_utils::SetUniqueGraphNodeName(choose_fastest_node.op(), graph->graph(),
                                       &choose_fastest_node);
 
-  // Set the `input_datasets` input argument.
-  for (const auto& node_def : input_nodes) {
-    choose_fastest_node.add_input(node_def.name());
-  }
-  AddNodeAttr("N", static_cast<int>(input_nodes.size()), &choose_fastest_node);
-  AddNodeAttr("num_experiments", 10, &choose_fastest_node);
+  // input_dataset
+  choose_fastest_node.add_input(input_dataset_node->name());
+  choose_fastest_node.add_input(ratio_numerator_name);
+  // ratio_denominator == 1
+  auto ratio_denominator =
+      graph_utils::AddScalarConstNode(static_cast<int64>(1), graph);
+  choose_fastest_node.add_input(ratio_denominator->name());
+
+  DataTypeVector t_arguments;
+  std::vector<NameAttrList> branches;
+  std::vector<int32> other_arguments_lengths;
+  // Branch 0: vectorized branch
+  TF_RETURN_IF_ERROR(AddBranch(vectorized_branch, &choose_fastest_node,
+                               &t_arguments, &branches,
+                               &other_arguments_lengths, library));
+  // Branch 1: original branch
+  TF_RETURN_IF_ERROR(AddBranch(original_branch, &choose_fastest_node,
+                               &t_arguments, &branches,
+                               &other_arguments_lengths, library));
+
+  DCHECK_EQ(t_arguments.size(), choose_fastest_node.input_size() - 3);
+  DCHECK_EQ(branches.size(), other_arguments_lengths.size());
+
+  AddNodeAttr("Targuments", t_arguments, &choose_fastest_node);
+  AddNodeAttr("num_elements_per_branch", 10, &choose_fastest_node);
+  AddNodeAttr("branches", branches, &choose_fastest_node);
+  AddNodeAttr("other_arguments_lengths", other_arguments_lengths,
+              &choose_fastest_node);
 
   for (auto key : {"output_shapes", "output_types"}) {
-    graph_utils::CopyAttribute(key, input_nodes[0], &choose_fastest_node);
+    graph_utils::CopyAttribute(key,
+                               *vectorized_branch[vectorized_branch.size() - 1],
+                               &choose_fastest_node);
   }
 
   *new_choose_fastest_node = graph->AddNode(std::move(choose_fastest_node));
@@ -434,14 +534,16 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
         AddVectorizedFunction(*map_node, *map_func, library);
     CHECK_NOTNULL(vectorized_func);
 
+    std::vector<const NodeDef*> vectorized_branch;
     NodeDef* new_batch_node;
     TF_RETURN_IF_ERROR(AddNewBatchNode(
         *batch_node, *input_node, *vectorized_func, &graph, &new_batch_node));
+    vectorized_branch.push_back(new_batch_node);
 
     NodeDef* new_map_node;
     TF_RETURN_IF_ERROR(AddNewMapNode(*map_node, *batch_node, *new_batch_node,
                                      *vectorized_func, &graph, &new_map_node));
-    NodeDef* final_node = new_map_node;
+    vectorized_branch.push_back(new_map_node);
 
     if (optional_prefetch_node) {
       // If the original pipeline was .map().prefetch().batch(), the new
@@ -450,13 +552,22 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
       TF_RETURN_IF_ERROR(AddNewPrefetchNode(*optional_prefetch_node,
                                             *batch_node, *new_map_node, &graph,
                                             &new_prefetch_node));
+      vectorized_branch.push_back(new_prefetch_node);
+    }
 
-      final_node = new_prefetch_node;
+    std::vector<const NodeDef*> original_branch({map_node});
+    if (optional_prefetch_node) {
+      original_branch.push_back(optional_prefetch_node);
+    }
+    if (map_node->op() != kExperimentalMapAndBatchOp) {
+      original_branch.push_back(batch_node);
     }
 
     NodeDef* new_choose_fastest_node;
     TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
-        {*final_node, *batch_node}, &graph, &new_choose_fastest_node));
+        input_node, /*ratio_numerator_name=*/new_batch_node->input(1),
+        std::move(original_branch), std::move(vectorized_branch), &graph,
+        library, &new_choose_fastest_node));
 
     // Make output of Batch point to ChooseFastest instead.
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),

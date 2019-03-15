@@ -658,6 +658,7 @@ REGISTER_OP("IteratorGetNextAsOptional")
 REGISTER_OP("ModelDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
+    .Attr("cpu_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);

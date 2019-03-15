@@ -74,16 +74,15 @@ class AnfTransformerTest(test.TestCase):
         source_file=None,
         namespace=None,
         arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        arg_types=None)
     return transformer.Context(entity_info)
 
   def test_basic(self):
     def test_function():
       a = 0
       return a
-    node, _ = parser.parse_entity(test_function)
-    node = anf.transform(node.body[0], self._simple_context())
+    node, _, _ = parser.parse_entity(test_function)
+    node = anf.transform(node, self._simple_context())
     result, _ = compiler.ast_to_object(node)
     self.assertEqual(test_function(), result.test_function())
 
@@ -98,15 +97,15 @@ class AnfTransformerTest(test.TestCase):
     # Testing the code bodies only.  Wrapping them in functions so the
     # syntax highlights nicely, but Python doesn't try to execute the
     # statements.
-    exp_node, _ = parser.parse_entity(expected_fn)
-    node, _ = parser.parse_entity(test_fn)
+    exp_node, _, _ = parser.parse_entity(expected_fn)
+    node, _, _ = parser.parse_entity(test_fn)
     node = anf.transform(
         node, self._simple_context(), gensym_source=DummyGensym)
-    exp_name = exp_node.body[0].name
+    exp_name = exp_node.name
     # Ignoring the function names in the result because they can't be
     # the same (because both functions have to exist in the same scope
     # at the same time).
-    node.body[0].name = exp_name
+    node.name = exp_name
     self.assert_same_ast(exp_node, node)
     # Check that ANF is idempotent
     node_repeated = anf.transform(

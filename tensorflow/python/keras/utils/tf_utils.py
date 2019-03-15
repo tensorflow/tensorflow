@@ -179,7 +179,7 @@ def map_structure_with_atomic(is_atomic_fn, map_fn, nested):
 
 
 def convert_shapes(input_shape, to_tuples=True):
-  """Converts nested shape representations  to desired format.
+  """Converts nested shape representations to desired format.
 
   Performs:
 
@@ -201,17 +201,16 @@ def convert_shapes(input_shape, to_tuples=True):
     Nested structure of shapes in desired format.
   """
 
-  def _is_shape_component(element):
-    value = tensor_shape.as_dimension(element).value
-    return value is None or isinstance(value, int)
+  def _is_shape_component(value):
+    return value is None or isinstance(value, (int, tensor_shape.Dimension))
 
   def _is_atomic_shape(input_shape):
     # Ex: TensorShape or (None, 10, 32) or 5 or `None`
-    if input_shape is None or isinstance(input_shape, int):
+    if _is_shape_component(input_shape):
       return True
     if isinstance(input_shape, tensor_shape.TensorShape):
       return True
-    if (isinstance(input_shape, tuple) and
+    if (isinstance(input_shape, (tuple, list)) and
         all(_is_shape_component(ele) for ele in input_shape)):
       return True
     return False

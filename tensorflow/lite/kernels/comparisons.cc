@@ -129,6 +129,9 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   switch (input1->type) {
+    case kTfLiteBool:
+      TF_LITE_COMPARISON(bool, Equal, requires_broadcast);
+      break;
     case kTfLiteFloat32:
       TF_LITE_COMPARISON(float, Equal, requires_broadcast);
       break;
@@ -147,9 +150,9 @@ TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
                                  requires_broadcast);
       break;
     default:
-      context->ReportError(context,
-                           "Does not support type %d, requires float|int|uint8",
-                           input1->type);
+      context->ReportError(
+          context, "Does not support type %d, requires bool|float|int|uint8",
+          input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;
@@ -162,6 +165,9 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   bool requires_broadcast = !HaveSameShapes(input1, input2);
   switch (input1->type) {
+    case kTfLiteBool:
+      TF_LITE_COMPARISON(bool, NotEqual, requires_broadcast);
+      break;
     case kTfLiteFloat32:
       TF_LITE_COMPARISON(float, NotEqual, requires_broadcast);
       break;
@@ -180,9 +186,9 @@ TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
                                     requires_broadcast);
       break;
     default:
-      context->ReportError(context,
-                           "Does not support type %d, requires float|int|uint8",
-                           input1->type);
+      context->ReportError(
+          context, "Does not support type %d, requires bool|float|int|uint8",
+          input1->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

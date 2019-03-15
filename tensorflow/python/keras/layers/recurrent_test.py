@@ -35,6 +35,8 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.layers import recurrent as rnn_v1
+from tensorflow.python.keras.layers import recurrent_v2 as rnn_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -730,8 +732,8 @@ class RNNTest(keras_parameterized.TestCase):
 
   @parameterized.named_parameters(
       *test_util.generate_combinations_with_testcase_name(
-          layer=[keras.layers.SimpleRNN, keras.layers.GRU, keras.layers.LSTM,
-                 keras.layers.UnifiedGRU, keras.layers.UnifiedLSTM],
+          layer=[rnn_v1.SimpleRNN, rnn_v1.GRU, rnn_v1.LSTM,
+                 rnn_v2.GRU, rnn_v2.LSTM],
           unroll=[True, False]))
   def test_rnn_dropout(self, layer, unroll):
     rnn_layer = layer(3, dropout=0.1, recurrent_dropout=0.1, unroll=unroll)
@@ -1301,6 +1303,40 @@ class RNNTest(keras_parameterized.TestCase):
     layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
     with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
       layer(x)
+
+  def test_full_input_spec(self):
+    # See https://github.com/tensorflow/tensorflow/issues/25985
+    inputs = keras.layers.Input(batch_shape=(1, 1, 1))
+    state_h = keras.layers.Input(batch_shape=(1, 1))
+    state_c = keras.layers.Input(batch_shape=(1, 1))
+    states = [state_h, state_c]
+    decoder_out = keras.layers.LSTM(1, stateful=True)(
+        inputs,
+        initial_state=states
+    )
+    model = keras.Model([inputs, state_h, state_c], decoder_out)
+    model.reset_states()
+
+  def test_reset_states(self):
+    # See https://github.com/tensorflow/tensorflow/issues/25852
+    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+      simple_rnn = keras.layers.SimpleRNN(1, stateful=True)
+      simple_rnn.reset_states()
+
+    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+      cell = Minimal2DRNNCell(1, 2)
+      custom_rnn = keras.layers.RNN(cell, stateful=True)
+      custom_rnn.reset_states()
+
+  def test_input_dim_length(self):
+    simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
+    self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))
+
+    simple_rnn = keras.layers.SimpleRNN(5, input_dim=8)
+    self.assertEqual(simple_rnn._batch_input_shape, (None, None, 8))
+
+    simple_rnn = keras.layers.SimpleRNN(5, input_length=10)
+    self.assertEqual(simple_rnn._batch_input_shape, (None, 10, None))
 
 
 class Minimal2DRNNCell(keras.layers.Layer):

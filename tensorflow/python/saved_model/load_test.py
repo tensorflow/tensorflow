@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import functools
 import os
 import tempfile
 
@@ -27,10 +28,12 @@ from absl.testing import parameterized
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
+from tensorflow.python.feature_column import feature_column_v2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
@@ -92,6 +95,26 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(4., imported.f(constant_op.constant(2.)).numpy())
     imported.weights.assign(4.0)
     self.assertEqual(8., imported.f(constant_op.constant(2.)).numpy())
+
+  def test_control_outputs(self, cycles):
+    exported = tracking.AutoTrackable()
+    exported.v = variables.Variable(1.)
+    exported.f = def_function.function(
+        lambda: exported.v.assign(2., name="should_be_control_output"))
+    exported_graph = exported.f.get_concrete_function().graph
+    self.assertIn(
+        exported_graph.get_operation_by_name("should_be_control_output"),
+        exported_graph.control_outputs)
+
+    imported = self.cycle(exported, cycles)
+    # Calling get_concrete_function wraps in a second call operation; we want to
+    # inspect the original function body for the control output; digging into
+    # graph.as_graph_def() and its FunctionDefLibrary is another option.
+    imported_concrete, = imported.f._concrete_functions
+    imported_graph = imported_concrete.graph
+    self.assertIn(
+        imported_graph.get_operation_by_name("should_be_control_output"),
+        imported_graph.control_outputs)
 
   def _make_asset(self, contents):
     filename = tempfile.mktemp(prefix=self.get_temp_dir())
@@ -1077,6 +1100,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
+  def test_partial(self, cycles):
+    # TODO(vbardiovsky): Figure out the story for FunctionSpec vs partial vs
+    # input_signature.
+    self.skipTest("Partial does not work for serialization.")
+
+    def f(x, y):
+      return x + y
+
+    func = def_function.function(
+        functools.partial(f, x=array_ops.zeros([1]), y=array_ops.zeros([1])))
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    self.assertAllEqual(root.f(), [0.0])
+
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(), [0.0])
+
   def test_convert_to_input_signature(self, cycles):
 
     @def_function.function(
@@ -1091,6 +1132,21 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual([2], root.f([2]).numpy())
 
+  def test_dense_features_layer(self, cycles):
+    columns = [feature_column_v2.numeric_column("x"),
+               feature_column_v2.numeric_column("y")]
+    layer = feature_column_v2.DenseFeatures(columns)
+    model = sequential.Sequential([layer])
+    model_input = {"x": constant_op.constant([[1.]]),
+                   "y": constant_op.constant([[2.]])}
+    self.assertAllClose([[1., 2.]], model.predict(model_input))
+    loaded = self.cycle(model, cycles)
+    output, = loaded._default_save_signature(model_input).values()
+    self.assertAllClose([[1., 2.]], output)
+    signature_output, = loaded.signatures["serving_default"](
+        **model_input).values()
+    self.assertAllClose([[1., 2.]], signature_output)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
@@ -1102,6 +1158,7 @@ class SingleCycleTests(test.TestCase, parameterized.TestCase):
       load.load(path, tags=[tag_constants.EVAL])
     load.load(path, tags=[tag_constants.SERVING])
     load.load(path, tags=tag_constants.SERVING)
+    load.load(path, tags=set([tag_constants.SERVING]))
 
   def test_docstring_examples(self):
     path = tempfile.mkdtemp(prefix=self.get_temp_dir())

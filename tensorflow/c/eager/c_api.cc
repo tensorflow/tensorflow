@@ -226,12 +226,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  ctx->context.InitializeRemote(std::move(server),
-                                std::move(remote_eager_workers),
-                                std::move(remote_device_mgr), remote_contexts,
-                                r, device_mgr, keep_alive_secs);
-
-  return tensorflow::Status::OK();
+  return ctx->context.InitializeRemote(
+      std::move(server), std::move(remote_eager_workers),
+      std::move(remote_device_mgr), remote_contexts, r, device_mgr,
+      keep_alive_secs);
 #undef LOG_AND_RETURN_IF_ERROR
 }
 
@@ -375,7 +373,9 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context.ClearCaches(); }
+void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
+  status->status = ctx->context.ClearCaches();
+}
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,

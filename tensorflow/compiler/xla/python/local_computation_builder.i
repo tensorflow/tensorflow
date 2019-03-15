@@ -196,41 +196,38 @@ tensorflow::ImportNumpy();
   if ($input == Py_None) {
     $1 = NULL;
   } else {
-    if (!HandleStringAttribute($input, "generate_hlo_graph", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_generate_hlo_graph(std::move(s));
+    if (!HandleStringAttribute($input, "dump_to", [&](string s) {
+      build_options.mutable_debug_options()->set_xla_dump_to(std::move(s));
     })) {
       return nullptr;
     }
-    if (!HandleStringAttribute($input, "dump_optimized_hlo_proto_to", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_dump_optimized_hlo_proto_to(std::move(s));
+    if (!HandleStringAttribute($input, "dump_hlo_pass_re", [&](string s) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_pass_re(std::move(s));
     })) {
       return nullptr;
     }
-    if (!HandleStringAttribute($input, "dump_unoptimized_hlo_proto_to", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_dump_unoptimized_hlo_proto_to(std::move(s));
+    if (!HandleStringAttribute($input, "dump_hlo_module_re", [&](string s) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_module_re(std::move(s));
     })) {
       return nullptr;
     }
-    if (!HandleStringAttribute($input, "dump_per_pass_hlo_proto_to", [&](string s) {
-      build_options.mutable_debug_options()->set_xla_dump_per_pass_hlo_proto_to(std::move(s));
+    if (!HandleBoolAttribute($input, "dump_hlo_as_text", [&](bool b) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_as_text(b);
+    })) {
+      return nullptr;
+    }
+    if (!HandleBoolAttribute($input, "dump_hlo_as_proto", [&](bool b) {
+      build_options.mutable_debug_options()->set_xla_dump_hlo_as_proto(b);
+    })) {
+      return nullptr;
+    }
+    if (!HandleBoolAttribute($input, "hlo_profile", [&](bool b) {
+      build_options.mutable_debug_options()->set_xla_hlo_profile(b);
     })) {
       return nullptr;
     }
 
-    PyObject* o = PyObject_GetAttrString($input, "hlo_profile");
-    if (o == NULL) {
-      SWIG_fail;
-    }
-    if (o != Py_None) {
-      if (!PyBool_Check(o)) {
-        PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.hlo_profile must be a bool or None.");
-        SWIG_fail;
-      }
-      build_options.mutable_debug_options()->set_xla_hlo_profile(o == Py_True);
-    }
-    Py_DECREF(o);
-
-    o = PyObject_GetAttrString($input, "result_shape");
+    PyObject* o = PyObject_GetAttrString($input, "result_shape");
     if (o == nullptr) {
       return nullptr;
     }

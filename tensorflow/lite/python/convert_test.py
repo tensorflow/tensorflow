@@ -55,6 +55,17 @@ class ConvertTest(test_util.TensorFlowTestCase):
     # with self.assertRaisesRegexp(RuntimeError, "!model->operators.empty()"):
     #   result = convert.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
 
+  def testTensorName(self):
+    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
+    # out_tensors should have names: "split:0", "split:1", "split:2", "split:3".
+    out_tensors = array_ops.split(
+        value=in_tensor, num_or_size_splits=[1, 1, 1, 1], axis=0)
+    expect_names = ["split", "split:1", "split:2", "split:3"]
+
+    for i in range(len(expect_names)):
+      got_name = convert.tensor_name(out_tensors[i])
+      self.assertEqual(got_name, expect_names[i])
+
   def testQuantization(self):
     in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
                                       dtype=dtypes.float32)
@@ -323,6 +334,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
+      self.assertEqual(self._get_sort_index(b), 0)
       self.assertEqual(self._get_input_index(c), 0)
       self.assertEqual(self._get_sort_index(c), 1)
 

@@ -140,7 +140,7 @@ class LoadTest(test.TestCase):
                      self.evaluate(first_imported.signatures["first_key"](
                          first_start=constant_op.constant(2.))))
     second_imported = load.load(self._v1_multi_metagraph_saved_model(),
-                                tags=["second"])
+                                tags=set(["second"]))
     with self.assertRaisesRegexp(TypeError, "second_start"):
       second_imported.signatures["second_key"](x=constant_op.constant(2.))
     with self.assertRaisesRegexp(TypeError, "second_start"):
