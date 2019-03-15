@@ -500,7 +500,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(var, values.TPUMirroredVariable)
     return var.read_value()
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
       return tuple(val.get(device=d) for d in sorted(val.devices))
@@ -589,7 +589,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def _configure(self,
                  session_config=None,

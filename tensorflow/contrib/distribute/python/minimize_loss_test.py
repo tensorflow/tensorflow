@@ -220,7 +220,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
       def step_fn(ctx, inputs):
         del ctx  # Unused
-        fetches = distribution.unwrap(
+        fetches = distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(
                 model_fn, args=(inputs,)))
         if update_ops_in_cross_replica_mode:
@@ -419,8 +419,9 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
         # values that are of the same structure as non reduced losses. In
         # MirroredStrategy, this will be a list of losses, in TPUStrategy
         # it will be single tensor. Using `call_for_each_replica` followed
-        # by `unwrap` gives us the desired initial value structure.
-        not_reduced = distribution.unwrap(
+        # by `experimental_local_results` gives us the desired initial
+        # value structure.
+        not_reduced = distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(initial_loss))
         initial_loop_values = {
             "replica_loss_reduced": initial_loss(),
@@ -469,11 +470,11 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
   def _verify_loss_output(self, initial_loss, loss_output, reduced,
                           distribution):
     if not reduced:
-      self.assertLen(distribution.unwrap(loss_output),
+      self.assertLen(distribution.experimental_local_results(loss_output),
                      distribution.num_replicas_in_sync)
       loss_tensor = distribution.reduce(reduce_util.ReduceOp.MEAN, loss_output)
     else:
-      unwrapped_output = distribution.unwrap(loss_output)
+      unwrapped_output = distribution.experimental_local_results(loss_output)
       self.assertLen(unwrapped_output, 1)
       loss_tensor = unwrapped_output[0]
     self.assertEqual(initial_loss.dtype, loss_tensor.dtype)

@@ -1164,6 +1164,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
+    model_type = testing_utils.get_model_type()
 
     model.fit(
         x,
@@ -1182,7 +1183,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.histograms),
+        self._strip_layer_names(summary_file.histograms, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
@@ -1194,6 +1195,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(
         self.logdir, histogram_freq=1, write_images=True)
+    model_type = testing_utils.get_model_type()
 
     model.fit(
         x,
@@ -1212,14 +1214,14 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.histograms),
+        self._strip_layer_names(summary_file.histograms, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.images),
+        self._strip_layer_names(summary_file.images, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
@@ -1228,7 +1230,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
 
-  def _strip_layer_names(self, summaries):
+  def _strip_layer_names(self, summaries, model_type):
     """Deduplicate summary names modulo layer prefix.
 
     This removes the first slash-component of each tag name: for
@@ -1236,6 +1238,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
     Args:
       summaries: A `set` of `_ObservedSummary` values.
+      model_type: The model type currently being tested.
 
     Returns:
       A new `set` of `_ObservedSummary` values with layer prefixes
@@ -1245,7 +1248,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     for summary in summaries:
       if '/' not in summary.tag:
         raise ValueError('tag has no layer name: %r' % summary.tag)
-      new_tag = summary.tag.split('/', 1)[1]
+      start_from = 2 if 'subclass' in model_type else 1
+      new_tag = '/'.join(summary.tag.split('/')[start_from:])
       result.add(summary._replace(tag=new_tag))
     return result
 

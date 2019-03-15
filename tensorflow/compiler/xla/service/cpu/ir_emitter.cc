@@ -98,9 +98,7 @@ IrEmitter::IrEmitter(
       is_top_level_computation_(false),
       target_machine_features_(*target_machine_features),
       emit_code_for_msan_(emit_code_for_msan) {
-  b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
-      /*fast_math_enabled=*/hlo_module_config_.debug_options()
-          .xla_cpu_enable_fast_math()));
+  b_.setFastMathFlags(llvm_ir::GetCpuFastMathFlags(hlo_module_config_));
   Status s = GatherComputationsByAllocationType(
       &hlo_module, &thread_local_computations_, &global_computations_);
   absl::c_sort(thread_local_computations_);
@@ -159,11 +157,9 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
   // Create and initialize new IrFunction.
-  compute_function_.reset(new IrFunction(
-      function_name, linkage,
-      options::OptimizeForSizeRequested(hlo_module_config_),
-      hlo_module_config_.debug_options().xla_cpu_enable_fast_math(), module_,
-      &b_, num_dynamic_loop_bounds_));
+  compute_function_.reset(new IrFunction(function_name, linkage,
+                                         hlo_module_config_, module_, &b_,
+                                         num_dynamic_loop_bounds_));
 }
 
 IrEmitter::~IrEmitter() {}
@@ -302,7 +298,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
   const Shape& shape = get_tuple_element->shape();
   emitted_value_[get_tuple_element] = llvm_ir::EmitGetTupleElement(
       shape, get_tuple_element->tuple_index(), MinimumAlignmentForShape(shape),
-      GetEmittedValueFor(operand), &b_, module_);
+      GetEmittedValueFor(operand), &b_);
   return Status::OK();
 }
 
@@ -322,7 +318,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(tuple_select));
   llvm_ir::EmitTupleSelect(GetIrArrayFor(tuple_select), GetIrArrayFor(pred),
                            GetEmittedValueFor(on_true),
-                           GetEmittedValueFor(on_false), &b_, module_);
+                           GetEmittedValueFor(on_false), &b_);
   return Status::OK();
 }
 
@@ -345,8 +341,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
                       assignment_.GetUniqueSlice(infeed, {1}));
   llvm::Value* token_address = EmitBufferPointer(
       token_slice, ShapeUtil::GetTupleElementShape(infeed->shape(), 1));
-  llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_,
-                     module_);
+  llvm_ir::EmitTuple(GetIrArrayFor(infeed), {data_address, token_address}, &b_);
 
   if (data_shape.IsTuple()) {
     TF_RET_CHECK(!ShapeUtil::IsNestedTuple(data_shape));
@@ -377,7 +372,7 @@ Status IrEmitter::HandleInfeed(HloInstruction* instruction) {
     }
 
     llvm_ir::EmitTuple(llvm_ir::IrArray(data_address, data_shape),
-                       tuple_element_addresses, &b_, module_);
+                       tuple_element_addresses, &b_);
   } else {
     TF_RETURN_IF_ERROR(
         EmitXfeedTransfer(XfeedKind::kInfeed, data_shape, data_address));
@@ -498,7 +493,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
         ShapeUtil::GetTupleElementShape(operand_shape, i);
     llvm::Value* tuple_element = llvm_ir::EmitGetTupleElement(
         tuple_element_shape, i, MinimumAlignmentForShape(tuple_element_shape),
-        value, &b_, module_);
+        value, &b_);
     TF_RETURN_IF_ERROR(EmitXfeedTransfer(XfeedKind::kOutfeed,
                                          tuple_element_shape, tuple_element));
   }
@@ -621,8 +616,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
         GetProfileCountersArgument(), less_than_function});
 
   if (sort->values_count() > 0) {
-    llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_,
-                       module_);
+    llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_);
   }
   return Status::OK();
 }
@@ -633,7 +627,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   for (auto operand : tuple->operands()) {
     base_ptrs.push_back(GetEmittedValueFor(operand));
   }
-  llvm_ir::EmitTuple(GetIrArrayFor(tuple), base_ptrs, &b_, module_);
+  llvm_ir::EmitTuple(GetIrArrayFor(tuple), base_ptrs, &b_);
   return Status::OK();
 }
 
@@ -1349,7 +1343,7 @@ Status IrEmitter::HandleAllReduce(HloInstruction* crs) {
     MemCpy(operand_ptrs.back(), /*DstAlign=*/1, in_ptr,
            /*SrcAlign=*/1, ShapeUtil::ByteSizeOf(operand_shape));
   }
-  llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_, module_);
+  llvm_ir::EmitTuple(GetIrArrayFor(crs), operand_ptrs, &b_);
   return Status::OK();
 }
 
@@ -2289,7 +2283,7 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
       llvm::Value* addr = EmitBufferPointer(slice, elem_shape);
       base_ptrs.push_back(addr);
     }
-    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_, module_);
+    llvm_ir::EmitTuple(GetIrArrayFor(custom_call), base_ptrs, &b_);
   }
   auto* output_address_arg =
       PointerCast(GetEmittedValueFor(custom_call), i8_ptr_type);
@@ -2980,7 +2974,7 @@ Status IrEmitter::EmitTargetElementLoop(
     for (int64 i = 0; i < output_arrays.size(); ++i) {
       tuple_operand_ptrs.push_back(output_arrays[i].GetBasePointer());
     }
-    llvm_ir::EmitTuple(target_array, tuple_operand_ptrs, &b_, module_);
+    llvm_ir::EmitTuple(target_array, tuple_operand_ptrs, &b_);
 
   } else {
     if (ShouldEmitParallelLoopFor(*target_op)) {
