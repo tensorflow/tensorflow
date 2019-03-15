@@ -540,6 +540,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
+    tags = [
+        "no_windows",  # TODO(b/127888631)
+        "no_windows_gpu",  # TODO(b/127881287)
+    ],
 )
 
 tf_py_test(
