@@ -266,7 +266,7 @@ class CollectiveAllReduceStrategyTestBase(
                              target=master_target) as sess:
       with d.scope():
         train_op = d.extended.call_for_each_replica(model_fn)
-        train_op = d.group(d.unwrap(train_op))
+        train_op = d.group(d.experimental_local_results(train_op))
 
       sess.run(variables.global_variables_initializer())
       sess.run(train_op)
@@ -294,7 +294,7 @@ class CollectiveAllReduceStrategyTestBase(
 
       x = distribution.extended.call_for_each_replica(model_fn)
       reduced_x = distribution.reduce(reduce_util.ReduceOp.MEAN, x)
-      x = distribution.unwrap(x)[0]
+      x = distribution.experimental_local_results(x)[0]
 
       sess.run(variables.global_variables_initializer())
 

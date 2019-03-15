@@ -44,6 +44,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -466,6 +467,8 @@ class OptimizerV2(trackable.Trackable):
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
+    if isinstance(value, trackable.Trackable):
+      self._track_trackable(value, name, overwrite=True)
     if name not in self._hyper:
       self._hyper[name] = value
     else:
@@ -968,3 +971,37 @@ def _get_slot_key_from_var(var, slot_name):
 
   name = _var_key(var)
   return name + "/" + slot_name
+
+
+class _RestoredOptimizer(OptimizerV2):
+  """A non-functional Optimizer implementation for checkpoint compatibility.
+
+  Holds slot variables and hyperparameters when an optimizer is restored from a
+  SavedModel. These variables may be referenced in functions along with ops
+  created by the original optimizer, but currently we do not support using the
+  optimizer object iself (e.g. through `apply_gradients`).
+  """
+  # TODO(allenl): Make the restored optimizer functional by tracing its apply
+  # methods.
+
+  def __init__(self):
+    super(_RestoredOptimizer, self).__init__("_RestoredOptimizer")
+    self._hypers_created = True
+
+  def get_config(self):
+    # TODO(allenl): Save and restore the Optimizer's config
+    raise NotImplementedError(
+        "Restoring functional Optimzers from SavedModels is not currently "
+        "supported. Please file a feature request if this limitation bothers "
+        "you.")
+
+revived_types.register_revived_type(
+    "optimizer",
+    lambda obj: isinstance(obj, OptimizerV2),
+    versions=[revived_types.VersionedTypeRegistration(
+        object_factory=lambda proto: _RestoredOptimizer(),
+        version=1,
+        min_producer_version=1,
+        min_consumer_version=1,
+        setter=_RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+    )])
