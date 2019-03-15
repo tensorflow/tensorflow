@@ -455,7 +455,7 @@ def convert_to_generator_like(data,
     - ValueError: If `batch_size` is not provided for NumPy or EagerTensor
       inputs.
   """
-  if hasattr(data, '__next__'):
+  if hasattr(data, '__next__') or hasattr(data, 'next'):
     def _gen(data):
       """Make generator compatible."""
       for batch in data:
