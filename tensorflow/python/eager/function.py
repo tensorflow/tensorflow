@@ -735,7 +735,7 @@ class ConcreteFunction(object):
     # In case of eager execution, function definition gets added to context
     # during construction itself.
 
-    # TODO(allel/shivaniagrawal): rename this to register to reflect the
+    # TODO(allenl/shivaniagrawal): rename this to register to reflect the
     # method's functionality better. Remove register_gradient_functions argument
     # and figure out if these needs to be registered.
 

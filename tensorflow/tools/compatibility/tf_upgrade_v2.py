@@ -42,6 +42,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Only keyword args are handled, so make sure to also put any function in
     # function_reorders to ensure that all args are made into keywords first.
     self.function_keyword_renames = {
+        "tf.string_split": {
+            "delimiter": "sep",
+        },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
         },
@@ -652,6 +655,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.random.stateless_categorical",
         "tf.substr":
             "tf.strings.substr",
+        "tf.string_split":
+            "tf.strings.split",
         "tf.string_to_hash_bucket":
             "tf.strings.to_hash_bucket",
         "tf.string_to_number":
@@ -921,6 +926,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.feature_column.categorical_column_with_vocabulary_file",
         "tf.shape",
         "tf.size",
+        "tf.string_split",
         "tf.random.poisson",
         "tf.sparse.add",
         "tf.sparse_add",
@@ -1626,6 +1632,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "takes input_layer_partitioner, so the call was converted to "
                 "compat.v1."
             ),
+        "tf.string_split": functools.partial(
+            _rename_if_arg_found_transformer, arg_name="skip_empty",
+            arg_ok_predicate=_is_ast_false, remove_if_ok=True,
+            message="tf.string_split's replacement no longer takes the "
+            "skip_empty argument. Since the argument was present, the call was "
+            "converted to compat.v1."),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,

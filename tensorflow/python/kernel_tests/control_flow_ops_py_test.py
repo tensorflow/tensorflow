@@ -580,6 +580,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(r)
     self.assertAllEqual(12, result)
 
+  @test_util.disable_xla("b/128638446")
   @test_util.run_in_graph_and_eager_modes
   def testCondPruning(self):
     v1 = variables.Variable(7)
@@ -657,7 +658,7 @@ class ControlFlowTest(test.TestCase):
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
   def testCond_Device(self):
-    x = constant_op.constant(-10)
+    x = constant_op.constant(-10.)
 
     # True branch function defined outside of device scope
     def true_fn():
@@ -674,6 +675,77 @@ class ControlFlowTest(test.TestCase):
       sess.run(r, options=options, run_metadata=run_metadata)
       # We expect that everything runs on CPU, even if GPU is available.
       self.assertEqual(len(run_metadata.partition_graphs), 1)
+
+  def _count_matching_switch_nodes_on_device(self, run_metadata, device_str):
+    # Returns the number of Switch nodes with type float32 placed on
+    # `device_str`.
+    device_graphs = [
+        g for g in run_metadata.partition_graphs
+        if device_str in g.node[0].device
+    ]
+    self.assertLen(device_graphs, 1)
+    switch_nodes = [
+        n for n in device_graphs[0].node if n.op == "Switch" and
+        n.attr["T"].type == dtypes.float32.as_datatype_enum
+    ]
+    return len(switch_nodes)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputOnCPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # We force `arg` to be on CPU here.
+    with ops.device("CPU:0"):
+      arg = x + 10.
+
+    def true_fn():
+      with ops.device("CPU:0"):
+        return arg + 1
+
+    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertEqual(len(run_metadata.partition_graphs), 2)
+      # Check that the Switch for `arg` gets placed on CPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 1)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 0)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputOnGPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # Note: `arg` gets placed on GPU by default by the placer.
+    arg = x + 10.
+
+    def true_fn():
+      with ops.device("CPU:0"):
+        return arg + 1
+
+    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertEqual(len(run_metadata.partition_graphs), 2)
+      # Check that the Switch for `arg` gets placed on GPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 0)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 1)
 
   def testCondListOutput(self):
     with self.cached_session() as sess:
@@ -987,6 +1059,7 @@ class ControlFlowTest(test.TestCase):
                                                                   [1., 1.],
                                                                   [0., 0.]])
 
+  @test_util.disable_xla("b/128643464")
   def testCondGrad_MultiGather(self):
     # NOTE(skyewm): this test is interesting because the array_ops.gather and
     # ResourceVariable.sparse_read gradient functions returns IndexedSlices.
@@ -1063,8 +1136,11 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
+  @test_util.disable_xla("b/128644469 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128676188 causes OOM on opensource gpu tests")
 
     def branch_fn():
       logging_ops.print_v2("A")
@@ -1130,6 +1206,7 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(self.evaluate(pruned_nested_cond()), 10)
     self.assertEqual(printed.contents(), "C\n")
 
+  @test_util.disable_xla("b/128643646 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testWhileAutoControlDeps(self):
     # Legacy while_loop fails this test because it produces deprecation notices
@@ -1411,6 +1488,9 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128646372, b/128645947 fails in opensource build")
+
     v = constant_op.constant(1.0)
 
     p = array_ops.placeholder(dtype=dtypes.int32)
@@ -1482,7 +1562,7 @@ class ControlFlowTest(test.TestCase):
           [x for x in node_stats if x.node_name.endswith(stack_push_op)])
       # Pushes to the stack = product of maximum_iterations values;
       # the last two "3"s comes from size(p), when p == [0, 0, 0].
-      self.assertEqual(stack_push_count, 5 * 3 * 3)
+      self.assertEqual(stack_push_count, 5 * 3 * 3, str(node_stats))
 
       self.assertAllClose(final_value_with_xla_context,
                           final_value_without_xla_context)
@@ -2618,6 +2698,7 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(self.evaluate(fn()), 32.)
 
+  @test_util.disable_xla("b/128643381")
   def testWhileGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -2638,6 +2719,7 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
+  @test_util.disable_xla("b/128643461")
   def testWhileGrad_ResourceVarInNestedFunctionCall(self):
 
     @def_function.function
@@ -2663,6 +2745,8 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
+    if test.is_gpu_available():
+      self.skipTest("b/128635252")
 
     @def_function.function
     def foo(x, var):
@@ -2686,6 +2770,7 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
 
+  @test_util.disable_xla("b/128639858")
   def testWhileCondGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -2880,6 +2965,7 @@ class ControlFlowTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(foo()), 9.0)
 
+  @test_util.disable_xla("b/128643398")
   def testNestedResourceAccess(self):
     var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
 
@@ -4343,6 +4429,9 @@ class AssertTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGuardedAssertDoesNotCopyWhenTrue(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128646478 fails in opensource")
+
     with self.session(use_gpu=True) as sess:
       with ops.device(test.gpu_device_name()):
         value = constant_op.constant(1.0)
@@ -4374,7 +4463,8 @@ class AssertTest(test.TestCase):
       ]
       if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
         # A copy was performed for the unguarded assert
-        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names),
+                        str(unguarded_nodestat_names))
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
 
