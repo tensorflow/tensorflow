@@ -39,6 +39,50 @@ namespace {
 struct SimplifyAffineStructures
     : public FunctionPass<SimplifyAffineStructures> {
   void runOnFunction() override;
+
+  /// Utility to simplify an affine attribute and update its entry in the parent
+  /// instruction if necessary.
+  template <typename AttributeT>
+  void simplifyAndUpdateAttribute(Instruction *inst, Identifier name,
+                                  AttributeT attr) {
+    auto &simplified = simplifiedAttributes[attr];
+    if (simplified == attr)
+      return;
+
+    // This is a newly encountered attribute.
+    if (!simplified) {
+      // Try to simplify the value of the attribute.
+      auto value = attr.getValue();
+      auto simplifiedValue = simplify(value);
+      if (simplifiedValue == value) {
+        simplified = attr;
+        return;
+      }
+      simplified = AttributeT::get(simplifiedValue);
+    }
+
+    // Simplification was successful, so update the attribute.
+    inst->setAttr(name, simplified);
+  }
+
+  /// Performs basic integer set simplifications. Checks if it's empty, and
+  /// replaces it with the canonical empty set if it is.
+  IntegerSet simplify(IntegerSet set) {
+    FlatAffineConstraints fac(set);
+    if (fac.isEmpty())
+      return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
+                                     set.getContext());
+    return set;
+  }
+
+  /// Performs basic affine map simplifications.
+  AffineMap simplify(AffineMap map) {
+    MutableAffineMap mMap(map);
+    mMap.simplify();
+    return mMap.getAffineMap();
+  }
+
+  DenseMap<Attribute, Attribute> simplifiedAttributes;
 };
 
 } // end anonymous namespace
@@ -47,28 +91,14 @@ FunctionPassBase *mlir::createSimplifyAffineStructuresPass() {
   return new SimplifyAffineStructures();
 }
 
-/// Performs basic integer set simplifications. Checks if it's empty, and
-/// replaces it with the canonical empty set if it is.
-static IntegerSet simplifyIntegerSet(IntegerSet set) {
-  FlatAffineConstraints fac(set);
-  if (fac.isEmpty())
-    return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
-                                   set.getContext());
-  return set;
-}
-
 void SimplifyAffineStructures::runOnFunction() {
+  simplifiedAttributes.clear();
   getFunction()->walk([&](Instruction *opInst) {
     for (auto attr : opInst->getAttrs()) {
-      if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
-        MutableAffineMap mMap(mapAttr.getValue());
-        mMap.simplify();
-        auto map = mMap.getAffineMap();
-        opInst->setAttr(attr.first, AffineMapAttr::get(map));
-      } else if (auto setAttr = attr.second.dyn_cast<IntegerSetAttr>()) {
-        auto simplified = simplifyIntegerSet(setAttr.getValue());
-        opInst->setAttr(attr.first, IntegerSetAttr::get(simplified));
-      }
+      if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>())
+        simplifyAndUpdateAttribute(opInst, attr.first, mapAttr);
+      else if (auto setAttr = attr.second.dyn_cast<IntegerSetAttr>())
+        simplifyAndUpdateAttribute(opInst, attr.first, setAttr);
     }
   });
 }
