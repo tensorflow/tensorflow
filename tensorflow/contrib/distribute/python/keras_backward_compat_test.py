@@ -749,7 +749,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-      grouped_models = distribution.unwrap(
+      grouped_models = distribution.experimental_local_results(
           distributed_training_utils.get_distributed_model(
               model, ModeKeys.TRAIN))
       with distribution.scope():

@@ -272,7 +272,7 @@ class DistributedValues(object):
   def device_map(self):
     return self._device_map
 
-  # TODO(josh11b): Replace unwrap with this?
+  # TODO(josh11b): Replace experimental_local_results with this?
   @property
   def values(self):
     return self._values
@@ -622,8 +622,9 @@ def validate_colocate(v, extended):
 
 def _apply_aggregation(strategy, value, aggregation, destinations):
   if aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-    return strategy.extended.broadcast_to(strategy.unwrap(value)[0],
-                                          destinations=destinations)
+    return strategy.extended.broadcast_to(
+        strategy.experimental_local_results(value)[0],
+        destinations=destinations)
   reduce_op = reduce_util.ReduceOp.from_variable_aggregation(aggregation)
   return strategy.extended.reduce_to(reduce_op, value, destinations)
 
@@ -824,7 +825,7 @@ class TPUMirroredVariable(trackable.Trackable):
   def device_map(self):
     return self._device_map
 
-  # TODO(josh11b): Replace unwrap with this?
+  # TODO(josh11b): Replace experimental_local_results with this?
   @property
   def values(self):
     return self._values
@@ -1410,7 +1411,7 @@ def update_regroup(extended, device_map, updates, group):
   # so we can avoid all these nest operations.
   regrouped = regroup(device_map, updates, Mirrored)
   if not group:
-    return nest.map_structure(extended._unwrap, regrouped)  # pylint: disable=protected-access
+    return nest.map_structure(extended._local_results, regrouped)  # pylint: disable=protected-access
   grouped_flat = []
   for u in nest.flatten(regrouped):
     if isinstance(u, DistributedValues):

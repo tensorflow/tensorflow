@@ -50,6 +50,7 @@ _DEFAULT_PROMPT_ASK_ATTEMPTS = 10
 _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
+_TF_CURRENT_BAZEL_VERSION = None
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -337,8 +338,8 @@ def get_var(environ_cp,
           'Environment variable %s must be set as a boolean indicator.\n'
           'The following are accepted as TRUE : %s.\n'
           'The following are accepted as FALSE: %s.\n'
-          'Current value is %s.' % (var_name, ', '.join(true_strings),
-                                    ', '.join(false_strings), var))
+          'Current value is %s.' %
+          (var_name, ', '.join(true_strings), ', '.join(false_strings), var))
 
   while var is None:
     user_input_origin = get_input(question)
@@ -771,11 +772,12 @@ def check_ndk_level(android_ndk_home_path):
   else:
     raise Exception('Unable to parse NDK revision.')
   if int(ndk_api_level) not in _SUPPORTED_ANDROID_NDK_VERSIONS:
-    print('WARNING: The API level of the NDK in %s is %s, which is not '
-          'supported by Bazel (officially supported versions: %s). Please use '
-          'another version. Compiling Android targets may result in confusing '
-          'errors.\n' % (android_ndk_home_path, ndk_api_level,
-                         _SUPPORTED_ANDROID_NDK_VERSIONS))
+    print(
+        'WARNING: The API level of the NDK in %s is %s, which is not '
+        'supported by Bazel (officially supported versions: %s). Please use '
+        'another version. Compiling Android targets may result in confusing '
+        'errors.\n' %
+        (android_ndk_home_path, ndk_api_level, _SUPPORTED_ANDROID_NDK_VERSIONS))
   return ndk_api_level
 
 
@@ -1230,8 +1232,8 @@ def set_tf_nccl_install_path(environ_cp):
       # Reset and Retry
       print(
           'Invalid path to NCCL %s toolkit, %s or %s not found. Please use the '
-          'O/S agnostic package of NCCL 2' % (tf_nccl_version, nccl_lib_path,
-                                              nccl_hdr_path))
+          'O/S agnostic package of NCCL 2' %
+          (tf_nccl_version, nccl_lib_path, nccl_hdr_path))
 
       environ_cp['TF_NCCL_VERSION'] = ''
   else:
@@ -1498,6 +1500,7 @@ def set_other_mpi_vars(environ_cp):
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
         (mpi_home, mpi_home, mpi_home))
 
+
 def system_specific_test_config(env):
   """Add default test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
@@ -1593,11 +1596,15 @@ def configure_apple_bazel_rules():
     existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
     renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)
     os.rename(existing_filepath, renamed_filepath)
+  if _TF_CURRENT_BAZEL_VERSION is None or _TF_CURRENT_BAZEL_VERSION < 23000:
+    print(
+        'Building Bazel rules on Apple platforms requires Bazel 0.23 or later.')
 
 
 def main():
   global _TF_WORKSPACE_ROOT
   global _TF_BAZELRC
+  global _TF_CURRENT_BAZEL_VERSION
 
   parser = argparse.ArgumentParser()
   parser.add_argument(
@@ -1614,7 +1621,8 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.19.0', '0.23.2')
+  current_bazel_version = check_bazel_version('0.19.0', '0.23.2')
+  _TF_CURRENT_BAZEL_VERSION = convert_version_to_int(current_bazel_version)
 
   reset_tf_configure_bazelrc()
 
