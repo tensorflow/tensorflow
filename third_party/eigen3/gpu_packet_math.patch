@@ -40,3 +40,18 @@
      return res;
    }
  };
+--- a/Eigen/src/Core/arch/AltiVec/Complex.h
++++ b/Eigen/src/Core/arch/AltiVec/Complex.h
+@@ -246,6 +246,12 @@ EIGEN_STRONG_INLINE void ptranspose(PacketBlock<Packet2cf,2>& kernel)
+   kernel.packet[0].v = tmp;
+ }
+
++template<> EIGEN_STRONG_INLINE Packet2cf pcmp_eq(const Packet2cf& a, const Packet2cf& b) {
++  Packet4f eq = reinterpret_cast<Packet4f>(vec_cmpeq(a.v,b.v));
++  return Packet2cf(vec_perm(eq, eq, p16uc_COMPLEX32_REV));
++}
++
++
+ #ifdef __VSX__
+ template<> EIGEN_STRONG_INLINE Packet2cf pblend(const Selector<2>& ifPacket, const Packet2cf& thenPacket, const Packet2cf& elsePacket) {
+   Packet2cf result;
