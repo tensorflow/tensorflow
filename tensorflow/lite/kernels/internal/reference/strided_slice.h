@@ -23,69 +23,44 @@ namespace tflite {
 namespace reference_ops {
 template <typename T>
 inline void StridedSlice(const tflite::StridedSliceParams& op_params,
-                         const RuntimeShape& unextended_input_shape,
-                         const T* input_data,
-                         const RuntimeShape& unextended_output_shape,
-                         T* output_data) {
-  using strided_slice::LoopCondition;
-  using strided_slice::StartForAxis;
-  using strided_slice::StopForAxis;
-  // Note that the output_shape is not used herein.
-  tflite::StridedSliceParams params_copy = op_params;
-
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 5);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 5);
-  const RuntimeShape input_shape =
-      RuntimeShape::ExtendedShape(5, unextended_input_shape);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(5, unextended_output_shape);
-
-  // Reverse and pad to 5 dimensions because that is what the runtime code
-  // requires (ie. all shapes must be 5D and are given backwards).
-  strided_slice::StridedSlicePadIndices(&params_copy, 5);
-
-  const int start_0 = StartForAxis(params_copy, input_shape, 0);
-  const int stop_0 = StopForAxis(params_copy, input_shape, 0, start_0);
-  const int start_1 = StartForAxis(params_copy, input_shape, 1);
-  const int stop_1 = StopForAxis(params_copy, input_shape, 1, start_1);
-  const int start_2 = StartForAxis(params_copy, input_shape, 2);
-  const int stop_2 = StopForAxis(params_copy, input_shape, 2, start_2);
-  const int start_3 = StartForAxis(params_copy, input_shape, 3);
-  const int stop_3 = StopForAxis(params_copy, input_shape, 3, start_3);
-  const int start_4 = StartForAxis(params_copy, input_shape, 4);
-  const int stop_4 = StopForAxis(params_copy, input_shape, 4, start_4);
-
+						 const RuntimeShape& input_shape,
+						 const T* input_data,
+						 const RuntimeShape& output_shape,
+						 T* output_data) {
+  const int slice_dimensions = input_shape.DimensionsCount();
   T* out_ptr = output_data;
-  for (int offset_0 = start_0 * input_shape.Dims(1),
-           end_0 = stop_0 * input_shape.Dims(1),
-           step_0 = params_copy.strides[0] * input_shape.Dims(1);
-       !LoopCondition(offset_0, end_0, params_copy.strides[0]);
-       offset_0 += step_0) {
-    for (int offset_1 = (offset_0 + start_1) * input_shape.Dims(2),
-             end_1 = (offset_0 + stop_1) * input_shape.Dims(2),
-             step_1 = params_copy.strides[1] * input_shape.Dims(2);
-         !LoopCondition(offset_1, end_1, params_copy.strides[1]);
-         offset_1 += step_1) {
-      for (int offset_2 = (offset_1 + start_2) * input_shape.Dims(3),
-               end_2 = (offset_1 + stop_2) * input_shape.Dims(3),
-               step_2 = params_copy.strides[2] * input_shape.Dims(3);
-           !LoopCondition(offset_2, end_2, params_copy.strides[2]);
-           offset_2 += step_2) {
-        for (int offset_3 = (offset_2 + start_3) * input_shape.Dims(4),
-                 end_3 = (offset_2 + stop_3) * input_shape.Dims(4),
-                 step_3 = params_copy.strides[3] * input_shape.Dims(4);
-             !LoopCondition(offset_3, end_3, params_copy.strides[3]);
-             offset_3 += step_3) {
-          for (int offset_4 = offset_3 + start_4, end_4 = offset_3 + stop_4;
-               !LoopCondition(offset_4, end_4, params_copy.strides[4]);
-               offset_4 += params_copy.strides[4]) {
-            *out_ptr++ = input_data[offset_4];
-          }
-        }
-      }
-    }
+
+  std::vector<int> start;
+  std::vector<int> stop;
+  int start_i;
+
+  // Compute Start & Stop for all axes
+  for (int i = 0; i < op_params.start_indices_count; i++) {
+	start_i = strided_slice::StartForAxis(op_params, input_shape, i);
+	start.emplace_back(start_i);
+	stop.emplace_back(strided_slice::StopForAxis(op_params, input_shape, i, start_i));
   }
+
+  std::function<void(int, int)> compute_strided_slice = [&compute_strided_slice, slice_dimensions, input_data, input_shape, start, stop, op_params, &out_ptr](int axis, int curr_indices) {
+	if (axis == (slice_dimensions - 1)) {
+	  for (int in_x = start[axis]; !strided_slice::LoopCondition(in_x, stop[axis], op_params.strides[axis]); in_x += op_params.strides[axis]) {
+		int index = in_x + curr_indices;
+		*out_ptr++ = input_data[index];
+	  }
+	  return;
+	}
+	else {
+	  for (int in_x = start[axis]; !strided_slice::LoopCondition(in_x, stop[axis], op_params.strides[axis]); in_x += op_params.strides[axis]) {
+		int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
+		compute_strided_slice(axis + 1, indices);
+	  }
+	  return;
+	}
+  };
+
+  compute_strided_slice(0, 0);
 }
+
 }  // namespace reference_ops
 }  // namespace tflite
 

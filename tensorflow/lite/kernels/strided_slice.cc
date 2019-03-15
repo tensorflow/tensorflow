@@ -172,6 +172,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
   }
+
+  // Current implementation limits by expecting begin fills all dims of input
+  // also begin, end and stride has same num of elements
+  TF_LITE_ENSURE_EQ(context, op_context.dims, NumElements(op_context.begin));
+  TF_LITE_ENSURE_EQ(context, NumElements(op_context.begin), NumElements(op_context.end));
+  TF_LITE_ENSURE_EQ(context, NumElements(op_context.end), NumElements(op_context.strides));
+
   StridedSliceParams op_params = BuildStridedSliceParams(&op_context);
 
 #define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                    \
@@ -218,9 +225,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     default:
       context->ReportError(context,
-                           "Type %d is currently not supported "
+                           "Type %s is currently not supported "
                            "by StridedSlice.",
-                           op_context.input->type);
+                           TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_STRIDED_SLICE
