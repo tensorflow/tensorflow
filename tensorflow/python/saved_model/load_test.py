@@ -34,7 +34,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -394,6 +397,42 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(["b", "a"], list(result[0]._asdict().keys()))
     self.assertEqual(5, result[1].numpy())
     self.assertEqual(0.5, result[2]["x"].numpy())
+
+  def test_optimizer(self, cycles):
+
+    class _HasOptimizer(module.Module):
+
+      def __init__(self):
+        super(_HasOptimizer, self).__init__()
+        self.layer = core.Dense(1)
+        self.optimizer = adam.Adam(0.01)
+
+      @def_function.function
+      def __call__(self, x):
+        return self.layer(x)
+
+      @def_function.function
+      def train(self, x, y):
+        with backprop.GradientTape() as tape:
+          predicted = self(x)
+          loss = math_ops.reduce_sum(math_ops.abs(y - predicted))
+        train_vars = self.layer.trainable_variables
+        grads = tape.gradient(loss, train_vars)
+        self.optimizer.apply_gradients(zip(grads, train_vars))
+
+    root = _HasOptimizer()
+    train_input = dict(x=constant_op.constant([[1.]]),
+                       y=constant_op.constant([[2.]]))
+    root.train(**train_input)
+    imported = self.cycle(root, cycles)
+    self.assertAllClose(root.optimizer.learning_rate.numpy(),
+                        imported.optimizer.learning_rate.numpy())
+    self.assertAllClose(root(constant_op.constant([[-0.5]])),
+                        imported(constant_op.constant([[-0.5]])))
+    root.train(**train_input)
+    imported.train(**train_input)
+    self.assertAllClose(root(constant_op.constant([[-0.5]])),
+                        imported(constant_op.constant([[-0.5]])))
 
   def test_positional_arguments(self, cycles):
     def func(x, training=False, abc=7.1, defg=7.7):
