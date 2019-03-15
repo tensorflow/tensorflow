@@ -28,6 +28,7 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
+#include <numeric>
 
 namespace mlir {
 class BlockAndValueMapping;
