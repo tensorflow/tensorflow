@@ -20,11 +20,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/util/env_var.h"
 
-// TODO(benbarsdell): GOOGLE_CUDA doesn't seem to be working?
-//#if GOOGLE_CUDA
+#if GOOGLE_CUDA
 // Needed for CUDA_VERSION macro.
 #include "cuda/include/cuda.h"
-//#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 namespace grappler {
