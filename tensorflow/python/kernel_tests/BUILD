@@ -1695,9 +1695,6 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = [
-        "no_gpu",  # TODO(b/117928656)
-    ],
     xla_enable_strict_auto_jit = True,
 )
 
