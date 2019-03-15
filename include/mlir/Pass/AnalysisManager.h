@@ -100,7 +100,7 @@ template <typename AnalysisT> struct AnalysisModel : public AnalysisConcept {
 template <typename IRUnitT> class AnalysisMap {
   /// A mapping between an analysis id and an existing analysis instance.
   using ConceptMap =
-      DenseMap<const AnalysisID *, std::unique_ptr<AnalysisConcept>>;
+      llvm::DenseMap<const AnalysisID *, std::unique_ptr<AnalysisConcept>>;
 
   /// Utility to return the name of the given analysis class.
   template <typename AnalysisT> static llvm::StringRef getAnalysisName() {
@@ -274,7 +274,7 @@ public:
 
 private:
   /// The cached analyses for functions within the current module.
-  DenseMap<Function *, detail::AnalysisMap<Function>> functionAnalyses;
+  llvm::DenseMap<Function *, detail::AnalysisMap<Function>> functionAnalyses;
 
   /// The analyses for the owning module.
   detail::AnalysisMap<Module> moduleAnalyses;
