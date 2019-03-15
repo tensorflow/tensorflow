@@ -1369,9 +1369,10 @@ cc_test(
     size = "small",
     srcs = ["subgraph_test_util_test.cc"],
     deps = [
+        ":kernel_util",
         ":subgraph_test_util",
+        ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
 )
