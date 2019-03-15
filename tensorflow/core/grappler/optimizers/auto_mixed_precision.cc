@@ -1471,16 +1471,25 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
         return errors::FailedPrecondition(
             "Expected Merge node after NextIteration, got ", merge_node.op());
       }
-      int merge_idx =
-          graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"))
-              .value();
+      const absl::optional<int> maybe_merge_idx =
+          graph_type_view_.GetNodeIndex(merge_node.name(), TypeAttrId("T"));
+      if (!maybe_merge_idx.has_value()) {
+        return errors::Internal("Type attribute T of Merge node ",
+                                merge_node.name(), " not found in graph view");
+      }
+      int merge_idx = maybe_merge_idx.value();
       bool merge_is_white = white_set->count(merge_idx);
       VLOG(2) << "Painting type T of " << node.op() << " node " << node.name()
               << " " << (merge_is_white ? "WHITE" : "BLACK")
               << " to match the color of its output Merge node "
               << merge_node.name();
-      int nextiter_idx =
-          graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T")).value();
+      const absl::optional<int> maybe_nextiter_idx =
+          graph_type_view_.GetNodeIndex(node.name(), TypeAttrId("T"));
+      if (!maybe_nextiter_idx.has_value()) {
+        return errors::Internal("Type attribute T of NextIteration node ",
+                                node.name(), " not found in graph view");
+      }
+      int nextiter_idx = maybe_nextiter_idx.value();
       if (merge_is_white) {
         white_set->insert(nextiter_idx);
       } else {
@@ -1521,7 +1530,13 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
     bool any_black = false;
     bool any_white = false;
     for (const NodeTypeId& node_type : all_client_nodes) {
-      int node_idx = graph_type_view_.GetNodeIndex(node_type).value();
+      const absl::optional<int> maybe_node_idx =
+          graph_type_view_.GetNodeIndex(node_type);
+      DCHECK(maybe_node_idx.has_value())
+          << "Type attribute " << node_type.type_attr.DebugString()
+          << " of node " << node_type.node->name()
+          << " not found in graph view";
+      int node_idx = maybe_node_idx.value();
       if (black_set->count(node_idx)) {
         any_black = true;
         break;
@@ -1539,7 +1554,13 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
                 << (any_black ? "BLACK" : "WHITE")
                 << " because at least one of its siblings is "
                 << (any_black ? "BLACK" : "WHITE");
-        int node_idx = graph_type_view_.GetNodeIndex(node_type).value();
+        const absl::optional<int> maybe_node_idx =
+            graph_type_view_.GetNodeIndex(node_type);
+        DCHECK(maybe_node_idx.has_value())
+            << "Type attribute " << node_type.type_attr.DebugString()
+            << " of node " << node_type.node->name()
+            << " not found in graph view";
+        int node_idx = maybe_node_idx.value();
         if (any_black) {
           white_set->erase(node_idx);
           black_set->insert(node_idx);
@@ -1581,9 +1602,12 @@ void AutoMixedPrecisionImpl::MakeCastsWhiteIfAllOutputsWhite(
     for (const MutableGraphView::InputPort& dst : fanout) {
       TypeAttrId dst_type_attr =
           node_type_map_.GetInputTypeAttr(*dst.node, dst.port_id);
-      int dst_type_idx =
-          graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr)
-              .value();
+      const absl::optional<int> maybe_dst_type_idx =
+          graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
+      DCHECK(maybe_dst_type_idx.has_value())
+          << "Type attribute " << dst_type_attr.DebugString() << " of node "
+          << dst.node->name() << " not found in graph view";
+      int dst_type_idx = maybe_dst_type_idx.value();
       bool dst_is_white = white_set->count(dst_type_idx);
       if (!dst_is_white) {
         all_fanouts_white = false;
@@ -1591,7 +1615,13 @@ void AutoMixedPrecisionImpl::MakeCastsWhiteIfAllOutputsWhite(
       }
     }
     if (!fanout.empty() && all_fanouts_white) {
-      int node_type_idx = graph_type_view_.GetNodeIndex(node_type).value();
+      const absl::optional<int> maybe_node_type_idx =
+          graph_type_view_.GetNodeIndex(node_type);
+      DCHECK(maybe_node_type_idx.has_value())
+          << "Type attribute " << node_type.type_attr.DebugString()
+          << " of node " << node_type.node->name()
+          << " not found in graph view";
+      int node_type_idx = maybe_node_type_idx.value();
       white_set->insert(node_type_idx);
     }
   }
@@ -1608,8 +1638,14 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
   for (int node_idx = 0; node_idx < num_nodes_preop; ++node_idx) {
     NodeDef* node = graph_->mutable_node(node_idx);
     for (const TypeAttrId& type_attr : node_type_map_.GetTypeAttrs(*node)) {
-      int node_type_idx =
-          graph_type_view_.GetNodeIndex(node->name(), type_attr).value();
+      const absl::optional<int> maybe_node_type_idx =
+          graph_type_view_.GetNodeIndex(node->name(), type_attr);
+      if (!maybe_node_type_idx.has_value()) {
+        return errors::Internal("Type attribute ", type_attr.DebugString(),
+                                " of ", node->op(), " node ", node->name(),
+                                " not found in graph view");
+      }
+      int node_type_idx = maybe_node_type_idx.value();
       if (!IsFloat32(*graph_type_view_.GetNode(node_type_idx))) continue;
       bool src_is_white = white_set.count(node_type_idx);
       if (src_is_white) {
@@ -1628,9 +1664,15 @@ Status AutoMixedPrecisionImpl::ChangeTypeAttrsAndAddCasts(
         for (const MutableGraphView::InputPort& dst : fanout) {
           TypeAttrId dst_type_attr =
               node_type_map_.GetInputTypeAttr(*dst.node, dst.port_id);
-          int dst_type_idx =
-              graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr)
-                  .value();
+          const absl::optional<int> maybe_dst_type_idx =
+              graph_type_view_.GetNodeIndex(dst.node->name(), dst_type_attr);
+          if (!maybe_dst_type_idx.has_value()) {
+            return errors::Internal("Type attribute ",
+                                    dst_type_attr.DebugString(), " of ",
+                                    dst.node->op(), " node ", dst.node->name(),
+                                    " not found in graph view");
+          }
+          int dst_type_idx = maybe_dst_type_idx.value();
           bool dst_is_white = white_set.count(dst_type_idx);
           if (src_is_white != dst_is_white) {
             if (!added_cast_node) {
