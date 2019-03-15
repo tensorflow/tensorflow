@@ -15,7 +15,7 @@
 
 """Library for constructing a loop, suitable for IPUs."""
 # This implementation is based on:
-# tensorflow/python/tpu/training_loop.py
+# tensorflow/contrib/tpu/python/tpu/training_loop.py
 # which creates the loops for the TPUs.
 
 from __future__ import absolute_import
@@ -25,9 +25,7 @@ from __future__ import print_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.tpu import xla
 from tensorflow.python.ops import while_v2
-
 
 def while_loop(condition, body, inputs=None, infeed_queue=None,
                use_while_v1=False):
@@ -52,6 +50,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
 
   Raises:
     TypeError: if body or condition has the wrong signature.
+    ValueError: if infeed_queue is not None and it has not been dequeued.
   """
 
   # Converts inputs to Tensors.
@@ -59,37 +58,6 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
                                       x in inputs]
   input_types = [x.dtype for x in inputs]
   input_arity = len(inputs)
-  body_arg_error = xla.check_function_argument_count(
-      body, input_arity, infeed_queue)
-  if body_arg_error is not None:
-    if infeed_queue is None:
-      raise TypeError(
-          "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s, but the loop body needs %s" % (
-              input_arity, str(inputs), body_arg_error))
-    else:
-      raise TypeError(
-          "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s and %d additional inputs from "
-          "infeed, but the computation needs %s" % (input_arity, str(
-              inputs), infeed_queue.number_of_tuple_elements,
-                                                    body_arg_error))
-  condition_arg_error = xla.check_function_argument_count(
-      condition, input_arity, None)
-  if condition_arg_error is not None:
-    if infeed_queue is None:
-      raise TypeError(
-          "Supplied loop condition function cannot be called with the "
-          "specified inputs. You specified %d inputs: %s, but the loop "
-          "condition needs %s" % (input_arity, str(inputs),
-                                  condition_arg_error))
-    else:
-      raise TypeError(
-          "Supplied loop condition function cannot be called with the "
-          "specified inputs. You specified %d inputs: %s, but the loop "
-          "condition needs %s. Note that infeed is not passed to the loop "
-          "condition." % (input_arity, str(inputs),
-                          condition_arg_error))
 
   def condition_wrapper(*inputs):
     # Discards the dummy output added for arity-0 loops.
@@ -105,17 +73,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
     if input_arity == 0:
       inputs = []
 
-    # Runs `body` with the dequeue_ops appended.
-    if infeed_queue:
-      dequeue_ops = _convert_to_list(infeed_queue.dequeue())
-    else:
-      dequeue_ops = []
-
-    if len(dequeue_ops) == 1 and isinstance(dequeue_ops[0], dict):
-      dequeue_ops = dequeue_ops[0]
-      outputs = body(*(inputs), **dequeue_ops)
-    else:
-      outputs = body(*(inputs + dequeue_ops))
+    outputs = body(*(inputs))
 
     # If the computation only returned one value, make it a tuple.
     if not isinstance(outputs, (list, tuple)):
@@ -165,6 +123,11 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
   outputs = while_fn(condition_wrapper, body_wrapper, inputs, name="",
                      parallel_iterations=1)
 
+  # Check the infeed queue has been used - this is more of a courtesy to the
+  # user.
+  if infeed_queue is not None and not infeed_queue.dequeued:
+    raise ValueError("The infeed queue has not been dequeued.")
+
   return outputs
 
 
@@ -186,32 +149,20 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=False):
     The final values of the loop-carried tensors.
   Raises:
     ValueError: if there is a type error.
-    TypeError: if body has the wrong signature.
+    ValueError: if infeed_queue is not None and it has not been dequeued.
   """
-  inputs = _convert_to_list(inputs)
-  input_arity = len(inputs)
-  body_arg_error = xla.check_function_argument_count(
-      body, input_arity, infeed_queue)
-  if body_arg_error is not None:
-    if infeed_queue is None:
-      raise TypeError(
-          "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s, but the loop body needs %s" % (
-              input_arity, str(inputs), body_arg_error))
+  def _convert_to_list(xs):
+    if not isinstance(xs, (list, tuple)):
+      return [xs]
     else:
-      raise TypeError(
-          "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s and %d additional inputs from "
-          "infeed, but the computation needs %s" % (input_arity, str(
-              inputs), infeed_queue.number_of_tuple_elements,
-                                                    body_arg_error))
+      return list(xs)
 
   def cond(i, *args):
     del args
     return i < n
 
-  def body_wrapper(i, *args, **kwargs):
-    return [i + 1] + _convert_to_list(body(*args, **kwargs))
+  def body_wrapper(i, *args):
+    return [i + 1] + _convert_to_list(body(*args))
 
   inputs = [0] if inputs is None else [0] + _convert_to_list(inputs)
   outputs = while_loop(
@@ -221,13 +172,8 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=False):
   if len(outputs) == 1:
     # Returns the Op rather than an empty list.
     return outputs[0].op
-  elif len(outputs) == 2:
-    return outputs[1]
   else:
-    return outputs[1:]
-
-def _convert_to_list(xs):
-  if not isinstance(xs, (list, tuple)):
-    return [xs]
-  else:
-    return list(xs)
+    if len(outputs) == 2:
+      return outputs[1]
+    else:
+      return outputs[1:]
