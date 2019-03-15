@@ -325,15 +325,20 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
       void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
+        VLOG(2) << "90.0 percentile iteration time:";
         double best_percentile = histograms_[0].Percentile(kPercentile);
+        VLOG(2) << "Branch 0: " << best_percentile;
         for (size_t i = 1, num_inputs = histograms_.size(); i < num_inputs;
              ++i) {
           double percentile = histograms_[i].Percentile(kPercentile);
+          VLOG(2) << "Branch " << i << ": " << percentile;
           if (percentile <= best_percentile) {
             best_percentile = percentile;
             fastest_index_ = i;
           }
         }
+        VLOG(1) << "Selecting index " << fastest_index_
+                << " as the fastest index.";
 
         fastest_input_impl_ = std::move(input_impls_[fastest_index_]);
         input_impls_.clear();  // Delete the unused iterators.
