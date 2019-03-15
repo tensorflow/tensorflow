@@ -238,7 +238,8 @@ void CopyTensor::ViaDMA(StringPiece edge_name, DeviceContext* send_dev_context,
                         const AllocatorAttributes dst_alloc_attr,
                         const Tensor* input, Tensor* output,
                         int dev_to_dev_stream_index, StatusCallback done) {
-  tracing::ScopedAnnotation annotation(edge_name);
+  tracing::ScopedAnnotation annotation(edge_name, StringPiece(),
+                                       src->name(), dst->name());
   VLOG(1) << "Copy " << edge_name;
 
   const DeviceType src_device_type(
