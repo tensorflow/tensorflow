@@ -71,6 +71,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service/cpu:cpu_options",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
@@ -239,7 +240,7 @@ cc_library(
     hdrs = ["kernel_support_library.h"],
     deps = [
         ":llvm_loop",
-        "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
+        ":llvm_util",
         "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],
