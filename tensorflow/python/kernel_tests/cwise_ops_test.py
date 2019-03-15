@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
@@ -1115,6 +1116,9 @@ class SingularGradientOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGradientAtSingularity(self):
+    if not compat.forward_compatible(2019, 4, 7):
+      self.skipTest("Skipping test for future functionality.")
+
     ops_and_singularity = [
         (gen_math_ops.reciprocal, (0.,)),
         (gen_math_ops.rsqrt, (0.,)),

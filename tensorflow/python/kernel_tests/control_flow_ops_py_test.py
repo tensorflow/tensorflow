@@ -1139,6 +1139,8 @@ class ControlFlowTest(test.TestCase):
   @test_util.disable_xla("b/128644469 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128676188 causes OOM on opensource gpu tests")
 
     def branch_fn():
       logging_ops.print_v2("A")
