@@ -2,5 +2,6 @@ op {
   graph_op_name: "SdcaFprint"
   endpoint {
     name: "train.sdca_fprint"
+    deprecation_version: 2
   }
 }

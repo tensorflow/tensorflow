@@ -677,6 +677,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.math.confusion_matrix",
         "tf.train.confusion_matrix":
             "tf.math.confusion_matrix",
+        "tf.train.sdca_fprint":
+            "tf.raw_ops.SdcaFprint",
+        "tf.train.sdca_optimizer":
+            "tf.raw_ops.SdcaOptimizer",
+        "tf.train.sdca_shrink_l1":
+            "tf.raw_ops.SdcaShrinkL1",
         "tf.decode_csv":
             "tf.io.decode_csv",
         "tf.data.Iterator":
@@ -1001,6 +1007,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.estimator.BaselineRegressor",
         "tf.initializers.uniform_unit_scaling",
         "tf.uniform_unit_scaling_initializer",
+        "tf.train.sdca_fprint",
+        "tf.train.sdca_optimizer",
+        "tf.train.sdca_shrink_l1",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
