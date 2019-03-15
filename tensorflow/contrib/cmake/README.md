@@ -294,11 +294,12 @@ Here we assume that you have basic knowledge on gathering dependency with
     `CMakeLists.txt` and the c++ file `main.cxx`
 2.  Fill in the `main.cxx` with the code provided in
     [official c++ api basic](https://www.tensorflow.org/api_guides/cc/guide).
-3.  Fill in the `CMakeLists.txt` with following code: ``` cmake
+3.  Fill in the `CMakeLists.txt` with following code:
+
+    ```cmake
     cmake_minimum_required (VERSION 2.6) project (tf_hello)
 
     # Tensorflow
-
     find_package(Tensorflow REQUIRED)
     include_directories(${TENSORFLOW_INCLUDE_DIRS})
 
@@ -314,7 +315,8 @@ Here we assume that you have basic knowledge on gathering dependency with
     this CMakeList.txt, under development") endif()
 
     add_executable(tf_hello main.cxx) target_link_libraries(tf_hello
-    ${TENSORFLOW_LIBRARIES}) ```
+    ${TENSORFLOW_LIBRARIES})
+    ```
 
 4.  Configure the folder with cmake-gui, an error should be prompted out,
     requesting you to locate the folder containing `TensorflowConfig.cmake`.

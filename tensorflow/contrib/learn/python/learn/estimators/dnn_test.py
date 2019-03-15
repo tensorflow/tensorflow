@@ -815,7 +815,7 @@ class DNNClassifierTest(test.TestCase):
     def _my_metric_op(predictions, labels):
       # For the case of binary classification, the 2nd column of "predictions"
       # denotes the model predictions.
-      labels = math_ops.to_float(labels)
+      labels = math_ops.cast(labels, dtypes.float32)
       predictions = array_ops.strided_slice(
           predictions, [0, 1], [-1, 2], end_mask=1)
       labels = math_ops.cast(labels, predictions.dtype)

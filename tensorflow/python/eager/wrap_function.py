@@ -37,21 +37,40 @@ from tensorflow.python.util.tf_export import tf_export
 class VariableHolder(object):
   """Holds variables for a python function."""
 
-  def __init__(self, fn):
+  def __init__(self, fn=None, share_variables=False):
     self._fn = fn
+
     self._variables = []
+
+    self._share_variables = share_variables
+    self._variables_by_name = {}
+
+  @property
+  def variables(self):
+    return self._variables
 
   def variable_creator_scope(self, next_creator, **kwargs):
     """Creates variables & adds them to collections to match legacy code."""
-    v = next_creator(**kwargs)
-    self._variables.append(v)
+    collections = kwargs.pop("collections", None)
+    v = None
 
-    collections = kwargs.get("collections")
-    trainable = v.trainable
+    # Get expected variable name.
+    name = kwargs.get("name", None)
+    with ops.name_scope(name, "Variable") as name_scope:
+      name = name_scope
+
+    if self._share_variables:
+      v = self._variables_by_name.get(name, None)
+
+    if v is None:
+      v = next_creator(**kwargs)
+      self._variables.append(v)
+      if self._share_variables:
+        self._variables_by_name[name] = v
 
     if collections is None:
       collections = [ops.GraphKeys.GLOBAL_VARIABLES]
-    if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
+    if v.trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
 
     ops.add_to_collections(collections, v)
@@ -59,8 +78,13 @@ class VariableHolder(object):
     return v
 
   def __call__(self, *args, **kwargs):
-    with variable_scope.variable_creator_scope(self.variable_creator_scope):
-      return self._fn(*args, **kwargs)
+    return self.call_with_variable_creator_scope(self._fn)(*args, **kwargs)
+
+  def call_with_variable_creator_scope(self, fn):
+    def wrapped(*args, **kwargs):
+      with variable_scope.variable_creator_scope(self.variable_creator_scope):
+        return fn(*args, **kwargs)
+    return wrapped
 
 
 # TODO(allenl): make this trackable
@@ -120,7 +144,8 @@ class WrappedFunction(function.ConcreteFunction):
         for index, current in enumerate(mutable_collection):
           mutable_collection[index] = lifted_variables.get(current, current)
 
-  def prune(self, feeds, fetches):
+  def prune(self, feeds, fetches, name=None):
+    name = name or "pruned"
     flat_feeds, flat_fetches = nest.flatten(feeds), nest.flatten(fetches)
     for f in flat_feeds:
       if not isinstance(f, ops.Tensor):
@@ -148,7 +173,7 @@ class WrappedFunction(function.ConcreteFunction):
             "are from this graph (%s). Tensor %s from graph %s" % (
                 self._func_graph, f, f.graph))
     with self._func_graph.as_default():
-      pruned_graph = func_graph.FuncGraph("pruned")
+      pruned_graph = func_graph.FuncGraph(name)
       with ops.control_dependencies(operation_fetches):
         if tensor_fetches:
           identity_fetches = array_ops.identity_n(tensor_fetches)
@@ -185,6 +210,89 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
     pruned_fn._arg_keywords = []  # pylint: disable=protected-access
     return pruned_fn
+
+
+class WrappedGraph(object):
+  """Class for wrapping multiple TF 1.X functions in a single graph.
+
+  Maintains a dictionary mapping names to wrapped functions. See
+  `tf.compat.v1.wrap_function` to learn more about wrapping V1 functions.
+
+  Functions wrapped using this class have access to variables and collections
+  created in other wrapped functions, using the standard TF 1.X API (
+  `tf.compat.v1.get_variable` or
+  `tf.compat.v1.get_default_graph().get_collection(...)`)
+
+  Outside a function, variables and collections may be accessed using the
+  `variables` and `graph` properties.
+
+  Example:
+
+  ```
+  def add_v1(x):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+      v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
+    return v + x
+
+  def increment_var_v1(x):
+    with tf.compat.v1.variable_scope('vars', reuse=tf.AUTO_REUSE):
+      v = tf.compat.v1.get_variable('v', shape=[], dtype=tf.int32)
+    return v.assign_add(x)
+
+  g = WrappedGraph()
+  add = g.wrap_function(add_v1, [tf.TensorSpec([], tf.int32)])
+  increment_var = g.wrap_function(increment_var_v1,
+                                  [tf.TensorSpec([], tf.int32)])
+
+  assert len(g.variables) == 1
+  assert g.variables[0].numpy() == 0
+  increment_var(tf.constant(5))
+  assert g.variables[0].numpy() == 5
+
+  ```
+  """
+
+  def __init__(self, variable_holder=None, **kwargs):
+    self._variable_holder = (
+        variable_holder or VariableHolder(share_variables=True))
+
+    name = kwargs.pop("name", "wrapped_function_graph")
+    # Always start with empty collections, unless otherwise specified. Setting
+    # `collections=None` will copy the collections from the outer graph.
+    collections = kwargs.pop("collections", {})
+    self.graph = func_graph.FuncGraph(name, collections=collections, **kwargs)
+
+    self._wrapped_function = WrappedFunction(self.graph, self._variable_holder)
+    self._functions = {}
+
+  @property
+  def functions(self):
+    return self._functions
+
+  @property
+  def variables(self):
+    return self._variable_holder.variables
+
+  def wrap_function(self, fn, signature, name=None):
+    """Wrap a TF 1.X function and save to functions dictionary."""
+    func_graph.func_graph_from_py_func(
+        None,  # Name is unused.
+        self._variable_holder.call_with_variable_creator_scope(fn),
+        args=None, kwargs=None, signature=signature,
+        add_control_dependencies=False,
+        func_graph=self.graph)
+
+    # This code relies on questional behavior from `func_graph_from_py_func`.
+    # If an existing FuncGraph is passed into the `func_graph` arg, the inputs
+    # and structured outputs are overwritten. Pretty sure this is a bug,
+    # because structured outputs doesn't match up with the outputs...
+    fn_inputs = self.graph.inputs[:-len(self.graph.captures)]
+    fn_outputs = self.graph.structured_outputs
+
+    wrapped_function = self._wrapped_function.prune(fn_inputs, fn_outputs)
+    name = name or fn.__name__
+    self._functions[name] = wrapped_function
+    return wrapped_function
 
 
 @tf_export(v1=["wrap_function"])

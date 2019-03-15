@@ -184,11 +184,6 @@ class Executable {
   }
   bool dumping_snapshot() const { return hlo_snapshot_ != nullptr; }
   HloSnapshot* hlo_snapshot() const { return hlo_snapshot_.get(); }
-  Status DumpHloSnapshot();
-
-  // Dump hlo snapshot to directory_path/filename.
-  static Status DumpToDirectory(const string& directory_path, string filename,
-                                const HloSnapshot& hlo_session);
 
  protected:
   mutable tensorflow::mutex mutex_;

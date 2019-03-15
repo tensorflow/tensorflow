@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/random_op.h"
 #include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
+#include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
 
@@ -142,6 +143,44 @@ class StatefulRandomOpV2 : public OpKernel {
   }
 };
 
+template <typename T>
+class NonDeterministicIntsOp : public OpKernel {
+ public:
+  explicit NonDeterministicIntsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+  }
+
+  void Compute(OpKernelContext* ctx) override {
+    const Tensor& shape_t = ctx->input(0);
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->op_kernel().MakeShape(shape_t, &shape));
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, shape, &output));
+    if (shape.num_elements() == 0) return;
+
+    switch (dtype_) {
+      case DT_INT32:
+      case DT_UINT32:
+      case DT_INT64:
+      case DT_UINT64: {
+        auto output_flat = output->flat<T>();
+        auto data = output_flat.data();
+        for (int64 i = 0; i < output_flat.size(); ++i) {
+          data[i] = static_cast<T>(random::New64());
+        }
+        break;
+      }
+      default:
+        OP_REQUIRES(ctx, false,
+                    errors::InvalidArgument("Unsupported dtype: ",
+                                            DataTypeString(dtype_)));
+    }
+  }
+
+ private:
+  DataType dtype_;
+};
+
 // So far the 'Distribution' type parameter is only used when the algorithm is
 // philox, so 'NormalDistribution<PhiloxRandom, ...>' is fine for now.
 #define REGISTER(DEVICE, TYPE)            \
@@ -186,7 +225,20 @@ TF_CALL_double(REGISTER_GPU);
 #undef REGISTER_CPU
 #undef REGISTER
 
+#define REGISTER_NonDeterministicInts(TYPE)                   \
+  REGISTER_KERNEL_BUILDER(Name("NonDeterministicInts")        \
+                              .Device(DEVICE_CPU)             \
+                              .HostMemory("shape")            \
+                              .TypeConstraint<TYPE>("dtype"), \
+                          NonDeterministicIntsOp<TYPE>);
+
+TF_CALL_int32(REGISTER_NonDeterministicInts);
+TF_CALL_uint32(REGISTER_NonDeterministicInts);
+TF_CALL_int64(REGISTER_NonDeterministicInts);
+TF_CALL_uint64(REGISTER_NonDeterministicInts);
+
+#undef REGISTER_NonDeterministicInts
+
 // TODO(wangpeng): Add RNG ops for other distributions.
-// TODO(wangpeng): Add support for XLA.
 
 }  // end namespace tensorflow

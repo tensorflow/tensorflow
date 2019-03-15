@@ -61,7 +61,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     const OptimizerOptions& optimizer_options,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent)
-    : device_mgr_(device_mgr),
+    : env_(env),
+      device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
       next_handle_(0),
@@ -86,7 +87,8 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
     CustomKernelCreator custom_kernel_creator,
     thread::ThreadPool* default_thread_pool,
     DistributedFunctionLibraryRuntime* parent)
-    : device_mgr_(device_mgr),
+    : env_(env),
+      device_mgr_(device_mgr),
       lib_def_(lib_def),
       default_thread_pool_(default_thread_pool),
       next_handle_(0),
@@ -289,6 +291,13 @@ void GetColocationGroup(const Node* node, string* group) {
   }
 }
 
+const string* AssignedOrRequestedDeviceName(const Node& node) {
+  if (node.has_assigned_device_name()) {
+    return &node.assigned_device_name();
+  }
+  return &node.requested_device();
+}
+
 }  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
@@ -301,7 +310,7 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   // arguments. To make sure that the output producing nodes have assigned
   // devices, we assign them to arguments first.
   for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (node->IsArg()) {
       const AttrValue* attr_value;
       TF_RETURN_IF_ERROR(node->attrs().Find("index", &attr_value));
       int64 index = attr_value->i();
@@ -310,28 +319,29 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   }
 
   for (Node* node : graph->op_nodes()) {
-    if (node->type_string() == FunctionLibraryDefinition::kRetOp) {
+    if (node->IsRetval()) {
       if (output_devices.empty()) {
+        VLOG(3) << "Trying to determine device for node " << node->name();
         // If output_devices are empty, the node producing retval
         // must have explicitly assigned device or a colocation constraint
         // to a node with explicitly assigned device.
         for (const auto& it : node->in_edges()) {
           if (!it->IsControlEdge()) {
             Node* src_node = it->src();
-            const string* src_device = &src_node->requested_device();
+            const string* src_device = AssignedOrRequestedDeviceName(*src_node);
             string colocation_group = "";
             GetColocationGroup(src_node, &colocation_group);
+            VLOG(3) << "Considering src: " << src_node->name()
+                    << " src_device: " << *src_device
+                    << " colo group: " << colocation_group;
             while (src_device->empty() && colocation_group.empty() &&
                    src_node->IsIdentity()) {
               src_node = *src_node->in_nodes().begin();
-              src_device = &src_node->requested_device();
-              if (src_device->empty()) {
-                // Some node (e.g. _Args) can have no requested_device,
-                // but have assigned_device.
-                src_device = &src_node->assigned_device_name();
-              }
-
+              src_device = AssignedOrRequestedDeviceName(*src_node);
               GetColocationGroup(src_node, &colocation_group);
+              VLOG(3) << "Considering src: " << src_node->name()
+                      << " src_device: " << *src_device
+                      << " colo group: " << colocation_group;
             }
 
             if (!colocation_group.empty()) {
@@ -373,6 +383,9 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                     "device. Matched devices are ",
                     devices);
               }
+              VLOG(3) << "Setting output device to "
+                      << matching_devices[0]->name() << " for node "
+                      << node->DebugString();
               node->set_assigned_device_name(matching_devices[0]->name());
             }
           }
@@ -383,6 +396,8 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
         int64 index = attr_value->i();
         // output_devices size is checked in InstantiateMultiDevice
         DCHECK_GT(output_devices.size(), index);
+        VLOG(3) << "Setting output device to " << output_devices[index]
+                << " for return at index " << index;
         node->set_assigned_device_name(output_devices[index]);
       }
     }
@@ -512,7 +527,17 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   VLOG(1) << "Instantiating MultiDevice function \"" << function_name
-          << "\" on default device " << options.target;
+          << "\" on default device \"" << options.target << "\"";
+  if (VLOG_IS_ON(3)) {
+    VLOG(3) << "Requested input devices:";
+    for (const string& device : options.input_devices) {
+      VLOG(3) << "    " << device;
+    }
+    VLOG(3) << "Requested output devices:";
+    for (const string& device : options.output_devices) {
+      VLOG(3) << "    " << device;
+    }
+  }
 
   const FunctionLibraryDefinition* lib_def =
       options.overlay_lib == nullptr ? lib_def_ : options.overlay_lib;
@@ -548,17 +573,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   TF_RETURN_IF_ERROR(PinArgsAndRets(
       options.input_devices, options.output_devices, device_set, graph.get()));
 
-  // Make the FunctionLibraryRuntime's device the default device if
-  // nothing else is hard coded. This allows the same function definition
-  // to be specialized to different devices depending on the
-  // PartitionedCallOp's device.
-  FunctionLibraryRuntime* flr = GetFLR(options.target);
-  if (flr == nullptr) {
-    return errors::InvalidArgument(
-        "Cannot instantiate multi-device function with target device ",
-        options.target);
-  }
-
   std::unique_ptr<MultiDeviceFunctionData> data =
       MakeUnique<MultiDeviceFunctionData>(function_name, function_key,
                                           ret_node_names.size(),
@@ -567,7 +581,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
-  session_options.env = flr->env();
+  session_options.env = env_;
   session_options.config = options.config_proto;
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
@@ -579,14 +593,26 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   DumpGraph("Before calling Placer", graph.get());
+  // Make the FunctionLibraryRuntime's device the default device if
+  // nothing else is hard coded. This allows the same function definition
+  // to be specialized to different devices depending on the
+  // PartitionedCallOp's device.
+  Device* default_device = nullptr;
+  if (!options.target.empty()) {
+    FunctionLibraryRuntime* flr = GetFLR(options.target);
+    if (flr == nullptr) {
+      return errors::InvalidArgument(
+          "Cannot instantiate multi-device function with target device ",
+          options.target);
+    }
+    default_device = flr->device();
+  }
+
   // TODO(b/124993244): Smartly merge options in nested defuns, and raise
   // exceptions/warnings in case where nested function call options are ignored.
-  // TODO(b/125933502): Currently config proto in function call options is not
-  // respected by placer, because placer and config proto has different default
-  // behaviors (allowing soft placement by default, vs. not allowing it). Pass
-  // config proto with appropriate default values to placer here.
-  Placer placer(graph.get(), &device_set, nullptr, /* No session options */
-                flr->device() /* Default device */);
+  Placer placer(graph.get(), &device_set, default_device,
+                options.config_proto.allow_soft_placement(),
+                options.config_proto.log_device_placement());
   TF_RETURN_IF_ERROR(placer.Run());
 
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());

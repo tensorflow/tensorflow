@@ -73,7 +73,7 @@ void AllocateAndParseFlags() {
 
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->tf_xla_auto_jit = 0;
-  mark_for_compilation_flags->tf_xla_min_cluster_size = 2;
+  mark_for_compilation_flags->tf_xla_min_cluster_size = 4;
   mark_for_compilation_flags->tf_xla_max_cluster_size =
       std::numeric_limits<int32>::max();
   mark_for_compilation_flags->tf_xla_clustering_debug = false;

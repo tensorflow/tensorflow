@@ -72,6 +72,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -91,6 +92,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -110,6 +112,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -129,6 +132,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -148,6 +152,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -167,6 +172,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -186,6 +192,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -236,6 +243,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
@@ -248,4 +256,5 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 2,
+    xla_enable_strict_auto_jit = True,
 )

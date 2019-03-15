@@ -43,7 +43,8 @@ class UnstackOpTest(test.TestCase):
     np.random.seed(7)
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
       for dtype in [
-          np.bool, np.float16, np.float32, np.float64, np.int32, np.int64
+          np.bool, np.float16, np.float32, np.float64, np.uint8, np.int32,
+          np.int64
       ]:
         data = np.random.randn(*shape).astype(dtype)
         # Convert data to a single tensorflow tensor
@@ -62,7 +63,10 @@ class UnstackOpTest(test.TestCase):
     np.random.seed(7)
     with test_util.force_gpu():
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+        for dtype in [
+            np.bool, np.float16, np.float32, np.float64, np.uint8, np.int32,
+            np.int64
+        ]:
           data = np.random.randn(*shape).astype(dtype)
           # Convert data to a single tensorflow tensor
           x = constant_op.constant(data)

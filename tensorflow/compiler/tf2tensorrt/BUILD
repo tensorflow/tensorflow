@@ -11,6 +11,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -46,19 +47,6 @@ tf_cuda_cc_test(
     ]),
 )
 
-tf_custom_op_library(
-    name = "python/ops/_trt_ops.so",
-    srcs = [
-        "ops/get_serialized_resource_op.cc",
-        "ops/trt_engine_op.cc",
-    ],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-    ] + if_tensorrt([
-        "@local_config_tensorrt//:tensorrt",
-    ]),
-)
-
 cc_library(
     name = "trt_op_kernels",
     srcs = [
@@ -84,6 +72,19 @@ cc_library(
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
+)
+
+tf_cc_shared_object(
+    name = "python/ops/libtftrt.so",
+    copts = tf_copts(is_external = True),
+    linkopts = ["-lm"],
+    deps = [
+        ":trt_op_kernels",
+        ":trt_op_libs",
+        "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
+        "@local_config_tensorrt//:tensorrt",
+    ]) + tf_custom_op_library_additional_deps(),
 )
 
 tf_cuda_cc_test(
@@ -149,7 +150,7 @@ tf_custom_op_py_library(
     name = "trt_ops_loader",
     srcs = ["python/ops/trt_ops.py"],
     dso = [
-        "python/ops/_trt_ops.so",
+        "python/ops/libtftrt.so",
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]),
@@ -159,6 +160,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":trt_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -271,6 +273,7 @@ tf_cuda_library(
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]) + tf_custom_op_library_additional_deps(),
+    alwayslink = 1,
 )
 
 tf_cuda_cc_test(
@@ -321,6 +324,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/grappler/costs:graph_properties",

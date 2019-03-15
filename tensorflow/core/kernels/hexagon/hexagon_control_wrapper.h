@@ -76,7 +76,7 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   // TODO(satok): Use actual data passed by FillInputNode and remove
   // std::vector<float> dummy_input_float_{};
   std::unordered_map<int, std::vector<uint8>> input_tensor_data_{};
-  // Dummy byte array for cosnt node.
+  // Dummy byte array for const node.
   // TODO(satok): Remove
   std::unordered_map<int, std::vector<uint8>> dummy_const_data_{};
 

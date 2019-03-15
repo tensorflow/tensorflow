@@ -437,7 +437,7 @@ TEST_F(MultiOutputFusionTest, ProducerConsumerFusionLoopFusionAndReduceFusion) {
       p1.1 = f32[2,2,2]{2,1,0} parameter(1)
       c0 = f32[] constant(0)
       broadcast = f32[2,2,2]{2,1,0} broadcast(f32[] c0), dimensions={}
-      greater-than = pred[2,2,2]{2,1,0} greater-than(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast)
+      greater-than = pred[2,2,2]{2,1,0} compare(f32[2,2,2]{2,1,0} p1.1, f32[2,2,2]{2,1,0} broadcast), direction=GT
       p0.1 = f32[2,2,2]{2,1,0} parameter(0)
       ROOT select = f32[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f32[2,2,2]{2,1,0} p0.1, f32[2,2,2]{2,1,0} broadcast)
     }
@@ -505,7 +505,7 @@ TEST_F(MultiOutputFusionTest,
       p1.1 = f16[2,2,2]{2,1,0} parameter(1)
       c0 = f16[] constant(0)
       broadcast = f16[2,2,2]{2,1,0} broadcast(f16[] c0), dimensions={}
-      greater-than = pred[2,2,2]{2,1,0} greater-than(f16[2,2,2]{2,1,0} p1.1, f16[2,2,2]{2,1,0} broadcast)
+      greater-than = pred[2,2,2]{2,1,0} compare(f16[2,2,2]{2,1,0} p1.1, f16[2,2,2]{2,1,0} broadcast), direction=GT
       p0.1 = f16[2,2,2]{2,1,0} parameter(0)
       ROOT select = f16[2,2,2]{2,1,0} select(pred[2,2,2]{2,1,0} greater-than, f16[2,2,2]{2,1,0} p0.1, f16[2,2,2]{2,1,0} broadcast)
     }
@@ -548,7 +548,7 @@ TEST_F(MultiOutputFusionTest,
       copy = f16[128,1024,32,32]{1,3,2,0} copy(p1.1)
       c0 = f16[] constant(0)
       broadcast = f16[128,1024,32,32]{1,3,2,0} broadcast(c0), dimensions={}
-      greater-than = pred[128,1024,32,32]{1,3,2,0} greater-than(copy, broadcast)
+      greater-than = pred[128,1024,32,32]{1,3,2,0} compare(copy, broadcast), direction=GT
       ROOT root = f16[128,1024,32,32]{1,3,2,0} select(greater-than, p0.1, broadcast)
     }
     fused_reduce {

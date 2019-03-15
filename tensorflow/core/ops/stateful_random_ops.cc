@@ -66,7 +66,21 @@ REGISTER_OP("StatefulUniformInt")
       return Status::OK();
     });
 
-// Register the old 'StatefulStandardNormal' op. This op is a short-lived
+REGISTER_OP("NonDeterministicInts")
+    .Input("shape: shape_dtype")
+    .SetIsStateful()
+    .Output("output: dtype")
+    .Attr("dtype : type = DT_INT64")
+    .Attr("shape_dtype : type = DT_INT64")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      using shape_inference::ShapeHandle;
+      ShapeHandle out;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &out));
+      c->set_output(0, out);
+      return Status::OK();
+    });
+
+// Register the depracated 'StatefulStandardNormal' op. This op is a short-lived
 // version where the 'resource' variable also contains the algorithm tag.
 // It is deprecated in favor of 'StatefulStandardNormalV2'.
 REGISTER_OP("StatefulStandardNormal")

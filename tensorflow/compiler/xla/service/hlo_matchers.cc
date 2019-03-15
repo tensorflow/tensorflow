@@ -89,6 +89,22 @@ bool HloParameterMatcher::MatchAndExplain(
   return true;
 }
 
+bool HloComparisonMatcher::MatchAndExplain(
+    const HloInstruction* instruction,
+    ::testing::MatchResultListener* listener) const {
+  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
+    return false;
+  }
+  if (instruction->comparison_direction() != direction_) {
+    *listener << "has wrong comparison direction (got "
+              << ComparisonDirectionToString(
+                     instruction->comparison_direction())
+              << ", want " << ComparisonDirectionToString(direction_) << ")";
+    return false;
+  }
+  return true;
+}
+
 bool HloGetTupleElementMatcher::MatchAndExplain(
     const HloInstruction* instruction,
     ::testing::MatchResultListener* listener) const {

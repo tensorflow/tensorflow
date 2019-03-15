@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -103,7 +104,8 @@ def batch_gather(params, indices, name=None):
         num_indices = indices.row_lengths()
         params_starts = params.row_starts()
         adjustments = ragged_util.repeat(params_starts, num_indices, axis=0)
-        adjusted_index_values = math_ops.to_int64(indices.values) + adjustments
+        adjusted_index_values = math_ops.cast(
+            indices.values, dtypes.int64) + adjustments
         return ragged_tensor.RaggedTensor.from_row_splits(
             ragged_gather_ops.gather(params.values, adjusted_index_values),
             indices.row_splits)
@@ -114,7 +116,7 @@ def batch_gather(params, indices, name=None):
       elif indices_ndims == 2:
         # Adjust indices from batch-local to global (in params.values)
         adjustments = array_ops.expand_dims(params.row_starts(), 1)
-        adjusted_indices = math_ops.to_int64(indices) + adjustments
+        adjusted_indices = math_ops.cast(indices, dtypes.int64) + adjustments
         return ragged_gather_ops.gather(params.values, adjusted_indices)
       else:
         raise ValueError('batch shape from indices does not match params shape')
