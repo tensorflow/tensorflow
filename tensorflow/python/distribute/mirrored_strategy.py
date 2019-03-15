@@ -602,7 +602,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       fn_result = fn(ctx, iterator.get_next())
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
-        ctx.last_step_outputs[name] = self._unwrap(output)
+        ctx.last_step_outputs[name] = self._local_results(output)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
@@ -741,7 +741,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(replica_local_var, values.Mirrored)
     return array_ops.identity(replica_local_var.get())
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)

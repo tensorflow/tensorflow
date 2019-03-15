@@ -426,7 +426,7 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
@@ -436,9 +436,9 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)
