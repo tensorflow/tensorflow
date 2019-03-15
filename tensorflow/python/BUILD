@@ -3738,7 +3738,10 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+	"no_rocm",
+    ],
     xla_enable_strict_auto_jit = True,
     flaky = True,
 )

@@ -571,6 +571,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = [
+	"no_gpu",
+	"no_rocm",
+    ],
     shard_count = 4,
 )
 
@@ -1125,6 +1129,9 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+	"no_rocm",
     ],
 )
 

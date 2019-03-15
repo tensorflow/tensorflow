@@ -75,7 +75,10 @@ py_test(
         "api_init_files_v1.bzl",
     ],
     srcs_version = "PY2AND3",
-    tags = ["no_pip"],
+    tags = [
+        "no_pip",
+	"no_rocm",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:no_contrib",

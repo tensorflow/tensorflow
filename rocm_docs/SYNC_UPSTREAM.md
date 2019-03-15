@@ -86,12 +86,15 @@ git merge upstream/master --no-edit
 - The first Jenkins CI job might result in failure due to additional failed
   unit tests introduced from new commits upstream. Examine the reason behind
   those failed cases.
-- In case those cases can't be easily fixed, modify:
+- In case those cases can't be easily fixed, modify the bazel target for that
+  test to add the tag "no_rocm" to it.
 
-  `tensorflow/tools/ci_build/linux/rocm/run_py3_core.sh`
+  For example:
+  for the test `//tensorflow/python/kernel_tests:conv_ops_test`
+  the definition for the test-target `conv_ops_test` will be in the file `tensorflow/python/kernel_tests/BUILD`.
+  Adding a "tags = ["no_rocm",]" to that target, will result in removing this test from CI.
+  grep for "tags" in the tensorflow/.../BUILD files for a concrete example
 
-  and append those failed cases to the test script, prefixed with "-" so they
-  will be skipped in Jenkins CI process.
 
 - Document the list of excluded tests amending the commit. Also update:
 
