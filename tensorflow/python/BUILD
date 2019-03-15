@@ -5342,7 +5342,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":distribute",
         ":framework",
         ":framework_for_generated_wrappers",
         ":platform",
@@ -5371,6 +5370,7 @@ py_library(
         ":summary_ops_gen",
         ":summary_ops_v2",
         ":util",
+        "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],

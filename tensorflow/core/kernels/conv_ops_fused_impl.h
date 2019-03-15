@@ -499,12 +499,12 @@ inline int64 ConvolveScratchSize() {
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 // TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.
-template <typename T, typename ConvLaunch>
-Status FindBestConvolveAlgorithm(
-    const FusedConvParameters& params, const ConvLaunch launch,
-    OpKernelContext* context, se::Stream* stream,
-    se::dnn::AlgorithmConfig* algorithm_config,
-    std::vector<tensorflow::AutotuneResult>* results) {
+template <typename T, typename ConvLaunch, typename LogFunc>
+Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
+                                 const ConvLaunch launch,
+                                 OpKernelContext* context, se::Stream* stream,
+                                 const LogFunc& log,
+                                 se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
   if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
     return Status::OK();
@@ -521,6 +521,7 @@ Status FindBestConvolveAlgorithm(
         "see if a warning log message was printed above.");
   }
 
+  std::vector<tensorflow::AutotuneResult> results;
   for (auto profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     se::dnn::ProfileResult profile_result;
@@ -530,8 +531,8 @@ Status FindBestConvolveAlgorithm(
                &profile_result);
 
     if (cudnn_launch_status && profile_result.is_valid()) {
-      results->emplace_back();
-      auto& result = results->back();
+      results.emplace_back();
+      auto& result = results.back();
       result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
       result.mutable_conv()->set_tensor_ops_enabled(
           profile_algorithm.tensor_ops_enabled());
@@ -542,7 +543,9 @@ Status FindBestConvolveAlgorithm(
               absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }
-  TF_RETURN_IF_ERROR(BestCudnnConvAlgorithm(*results, algorithm_config));
+  // Only log on an AutoTuneFusedConv cache miss.
+  log(results);
+  TF_RETURN_IF_ERROR(BestCudnnConvAlgorithm(results, algorithm_config));
   AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
   return Status::OK();
 }
@@ -789,13 +792,14 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     se::dnn::AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune) {
-      std::vector<tensorflow::AutotuneResult> results;
-      auto status =
-          FindBestConvolveAlgorithm<T>(conv_parameters, launch, context, stream,
-                                       &algorithm_config, &results);
-      LogFusedConvAutotuneResults(context->op_kernel().def(), input,
-                                  transformed_filter, transformed_output, bias,
-                                  nullptr, stream->parent(), results);
+      auto status = FindBestConvolveAlgorithm<T>(
+          conv_parameters, launch, context, stream,
+          [&](absl::Span<const tensorflow::AutotuneResult> results) {
+            LogFusedConvAutotuneResults(
+                context->op_kernel().def(), input, transformed_filter,
+                transformed_output, bias, nullptr, stream->parent(), results);
+          },
+          &algorithm_config);
       OP_REQUIRES_OK(context, status);
     }
 

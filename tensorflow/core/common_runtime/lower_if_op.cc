@@ -147,11 +147,21 @@ string CondBuilder::NewName(const string& infix) {
 Status CondBuilder::AddInput(Node* src, int src_output) {
   Node* input;
   NodeDebugInfo debug_info(*src);
+  // Colocate the Switch node with the `src` node.
+  //
+  // This is to avoid unnecessary Host<->Device copies between src and the
+  // Switch node. This aligns with the implementation of legacy tf.cond in
+  // control_flow_ops.py. The legacy impl colocates the Switch with the
+  // input tensor which resets the device stack and forces the Switch to have
+  // the same device as the input node (if set) and sets the colocation _class
+  // attr. It also ignores the existing colocation constraints on the input node
+  // using colocate_with(ignore_existing=True).
   TF_RETURN_IF_ERROR(NodeBuilder(NewName(src->name()), "Switch",
                                  graph_->op_registry(), &debug_info)
                          .Input(src, src_output)
                          .Input(pred_)
-                         .Device(if_op_->requested_device())
+                         .Device(src->requested_device())
+                         .Attr("_class", {src->name()})
                          .Finalize(graph_, &input));
   then_call_builder_.Input(input, kThenBranch);
   else_call_builder_.Input(input, kElseBranch);

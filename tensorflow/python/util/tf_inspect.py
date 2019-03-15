@@ -198,7 +198,9 @@ def _get_argspec_for_partial(obj):
   # Partial function may give default value to any argument, therefore length
   # of default value list must be len(args) to allow each argument to
   # potentially be given a default value.
-  all_defaults = [None] * len(args)
+  no_default = object()
+  all_defaults = [no_default] * len(args)
+
   if defaults:
     all_defaults[-len(defaults):] = defaults
 
@@ -208,7 +210,8 @@ def _get_argspec_for_partial(obj):
     all_defaults[idx] = default
 
   # Find first argument with default value set.
-  first_default = next((idx for idx, x in enumerate(all_defaults) if x), None)
+  first_default = next(
+      (idx for idx, x in enumerate(all_defaults) if x is not no_default), None)
 
   # If no default values are found, return ArgSpec with defaults=None.
   if first_default is None:
@@ -217,7 +220,7 @@ def _get_argspec_for_partial(obj):
   # Checks if all arguments have default value set after first one.
   invalid_default_values = [
       args[i] for i, j in enumerate(all_defaults)
-      if j is None and i > first_default
+      if j is no_default and i > first_default
   ]
 
   if invalid_default_values:

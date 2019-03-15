@@ -249,7 +249,7 @@ class MirroredStrategyVariableCreatorStackTest(
         distribution.scope(), \
         variable_scope.variable_creator_scope(main_thread_creator):
       result = distribution.extended.call_for_each_replica(model_fn)
-      result = distribution.unwrap(result)
+      result = distribution.experimental_local_results(result)
       expected = ("main_thread:thread_0", "main_thread:thread_1")
       self.assertEqual(expected, result)
 
@@ -269,7 +269,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     with distribution.scope():
       in_scope = ops.executing_eagerly_outside_functions()
       in_model_fn = distribution.extended.call_for_each_replica(model_fn)
-      unwrapped = distribution.unwrap(in_model_fn)
+      unwrapped = distribution.experimental_local_results(in_model_fn)
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
@@ -277,7 +277,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     with func_graph.FuncGraph("fg").as_default(), distribution.scope():
       in_scope = ops.executing_eagerly_outside_functions()
       in_model_fn = distribution.extended.call_for_each_replica(model_fn)
-      unwrapped = distribution.unwrap(in_model_fn)
+      unwrapped = distribution.experimental_local_results(in_model_fn)
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
@@ -701,7 +701,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       # Apply updates
       self.evaluate(variables.global_variables_initializer())
-      self.evaluate([y for x in ret_ops for y in distribution.unwrap(x)])
+      self.evaluate([y for x in ret_ops  # pylint: disable=g-complex-comprehension
+                     for y in distribution.experimental_local_results(x)])
       expected_sum = 0.0
       expected_mean = 0.0
       for i, d in enumerate(distribution.extended.worker_devices):
@@ -747,7 +748,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.assertEqual(2, len(result))
       for v in result:
         self.assertIsInstance(v, values.DistributedValues)
-        _, v1 = distribution.unwrap(v)
+        _, v1 = distribution.experimental_local_results(v)
         self.assertStartsWith(v1._op.name, "replica_1/")
 
   def testSyncOnReadVariableUpdate(self, distribution):
@@ -816,7 +817,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
         self.assertEqual(2, len(result))
         for v, name in zip(result, ["a", "b"]):
           self.assertIsInstance(v, values.DistributedValues)
-          v0, v1 = distribution.unwrap(v)
+          v0, v1 = distribution.experimental_local_results(v)
           self.assertEqual("main/foo/" + name + ":0", v0.name)
           self.assertEqual("main/replica_1/foo/" + name + ":0", v1.name)
 
@@ -833,7 +834,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       self.assertEqual(2, len(result))
       for v, name in zip(result, ["a", "b"]):
         self.assertIsInstance(v, values.DistributedValues)
-        v0, v1 = distribution.unwrap(v)
+        v0, v1 = distribution.experimental_local_results(v)
         self.assertEqual("foo/" + name + ":0", v0.name)
         self.assertEqual("replica_1/foo/" + name + ":0", v1.name)
 
@@ -860,9 +861,9 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       result_c = result[1]
       self.assertIsInstance(result_b, values.DistributedValues)
       self.assertIsInstance(result_c, values.DistributedValues)
-      a0, a1 = distribution.unwrap(a)
-      b0, b1 = distribution.unwrap(result_b)
-      c0, c1 = distribution.unwrap(result_c)
+      a0, a1 = distribution.experimental_local_results(a)
+      b0, b1 = distribution.experimental_local_results(result_b)
+      c0, c1 = distribution.experimental_local_results(result_c)
       self.assertEqual("main/a:0", a0.name)
       self.assertEqual("main/a/replica_1:0", a1.name)
       self.assertEqual("main/b:0", b0.name)
@@ -889,9 +890,9 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       result_c = result[1]
       self.assertIsInstance(result_b, values.DistributedValues)
       self.assertIsInstance(result_c, values.DistributedValues)
-      a0, a1 = distribution.unwrap(a)
-      b0, b1 = distribution.unwrap(result_b)
-      c0, c1 = distribution.unwrap(result_c)
+      a0, a1 = distribution.experimental_local_results(a)
+      b0, b1 = distribution.experimental_local_results(result_b)
+      c0, c1 = distribution.experimental_local_results(result_c)
       self.assertEqual("a:0", a0.name)
       self.assertEqual("a/replica_1:0", a1.name)
       self.assertEqual("b:0", b0.name)
@@ -961,7 +962,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       with self.assertRaisesRegexp(
           ValueError, "You must specify an aggregation method to update a "
                       "MirroredVariable in Replica Context."):
-        self.evaluate(distribution.unwrap(
+        self.evaluate(distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(model_fn)))
 
   def testAssignMirroredVarReplicaContextWithSum(self, distribution):
@@ -983,7 +984,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       with self.assertRaisesRegexp(
           ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
           "with the given reduce op ReduceOp.SUM."):
-        self.evaluate(distribution.unwrap(
+        self.evaluate(distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(model_fn)))
 
   def testAssignMirroredVarCrossDeviceContext(self, distribution):
@@ -1015,7 +1016,7 @@ class MirroredVariableUpdateTest(test.TestCase):
             mirrored_var.dtype)
         return mirrored_var.assign(value)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(0.5, self.evaluate(mirrored_var))
 
@@ -1033,7 +1034,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(5.0, self.evaluate(mirrored_var))
 
@@ -1076,7 +1077,7 @@ class MirroredVariableUpdateTest(test.TestCase):
             mirrored_var.dtype)
         return mirrored_var.assign_add(value)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(1.5, self.evaluate(mirrored_var))
 
@@ -1094,7 +1095,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign_add(5.0)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(6.0, self.evaluate(mirrored_var))
 
@@ -1129,7 +1130,7 @@ class MirroredVariableUpdateTest(test.TestCase):
             mirrored_var.dtype)
         return mirrored_var.assign_sub(value)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(4.5, self.evaluate(mirrored_var))
 
@@ -1147,7 +1148,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign_sub(1.0)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(4.0, self.evaluate(mirrored_var))
 
