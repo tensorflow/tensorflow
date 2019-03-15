@@ -129,6 +129,7 @@ reorders = {
     'tf.sparse_segment_sqrt_n': ['data', 'indices', 'segment_ids', 'name', 'num_segments'],
     'tf.sparse_segment_sum': ['data', 'indices', 'segment_ids', 'name', 'num_segments'],
     'tf.sparse_split': ['keyword_required', 'sp_input', 'num_split', 'axis', 'name', 'split_dim'],
+    'tf.string_split': ['source', 'delimiter', 'skip_empty'],
     'tf.strings.length': ['input', 'name', 'unit'],
     'tf.strings.reduce_join': ['inputs', 'axis', 'keep_dims', 'separator', 'name', 'reduction_indices', 'keepdims'],
     'tf.strings.substr': ['input', 'pos', 'len', 'name', 'unit'],
