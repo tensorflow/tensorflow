@@ -1504,6 +1504,22 @@ def _log_prob(self, x):
     self.assertIn("name_scope call with neither name nor default_name",
                   errors[0])
 
+  def test_string_split(self):
+    text = "tf.string_split('test', delimiter=' ')"
+    expected_text = "tf.strings.split(source='test', sep=' ')"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.string_split('test', ' ', True)"
+    expected_text = "tf.compat.v1.string_split(source='test', sep=' ', skip_empty=True)"  # pylint: disable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.string_split('test', ' ', skip_empty=False)"
+    expected_text = "tf.strings.split(source='test', sep=' ')"  # pylint: disable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
