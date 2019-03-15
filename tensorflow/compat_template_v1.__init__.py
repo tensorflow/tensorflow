@@ -21,7 +21,6 @@ from __future__ import print_function as _print_function
 import os as _os
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 # API IMPORTS PLACEHOLDER
 
