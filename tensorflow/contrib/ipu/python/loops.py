@@ -26,9 +26,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.tpu import xla
+from tensorflow.python.ops import while_v2
 
 
-def while_loop(condition, body, inputs=None, infeed_queue=None):
+def while_loop(condition, body, inputs=None, infeed_queue=None,
+               use_while_v1=False):
   """Builds a while loop for IPUs.
 
   The set of loop-carried tensors corresponds to `inputs`.  Both
@@ -43,6 +45,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None):
     inputs: a list of initial values passed into the loop, or
       None (equivalent to an empty list).
     infeed_queue: if not None, the IPUInfeedQueue from which data is consumed.
+    use_while_v1: if True, then use a Tensorflow v1.x dataflow while loop.
 
   Returns:
     The final values of the loop-carried tensors.
@@ -154,13 +157,18 @@ def while_loop(condition, body, inputs=None, infeed_queue=None):
   if input_arity == 0:
     inputs = [array_ops.constant(0)]
 
-  outputs = control_flow_ops.while_loop(
-      condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
+  if use_while_v1:
+    while_fn = control_flow_ops.while_loop
+  else:
+    while_fn = while_v2.while_loop
+
+  outputs = while_fn(condition_wrapper, body_wrapper, inputs, name="",
+                     parallel_iterations=1)
 
   return outputs
 
 
-def repeat(n, body, inputs=None, infeed_queue=None):
+def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=False):
   """Builds a loop that executes a fixed number of iterations.
 
   The set of loop-carried tensors correspond to `inputs`.
@@ -173,6 +181,7 @@ def repeat(n, body, inputs=None, infeed_queue=None):
     inputs: a list of initial values passed into the loop or
       None (equivalent to an empty list).
     infeed_queue: if not None, the IPUInfeedQueue from which data is consumed.
+    use_while_v1: if True, then use a Tensorflow v1.x dataflow while loop.
   Returns:
     The final values of the loop-carried tensors.
   Raises:
@@ -206,7 +215,8 @@ def repeat(n, body, inputs=None, infeed_queue=None):
 
   inputs = [0] if inputs is None else [0] + _convert_to_list(inputs)
   outputs = while_loop(
-      cond, body_wrapper, inputs=inputs, infeed_queue=infeed_queue)
+    cond, body_wrapper, inputs=inputs, infeed_queue=infeed_queue,
+    use_while_v1=use_while_v1)
   outputs = _convert_to_list(outputs)
   if len(outputs) == 1:
     # Returns the Op rather than an empty list.

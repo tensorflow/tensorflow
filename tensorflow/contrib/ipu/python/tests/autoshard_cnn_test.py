@@ -10,7 +10,11 @@ import numpy as np
 from tensorflow.contrib.ipu.python import autoshard
 from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import ipu_infeed_queue
+from tensorflow.contrib.ipu.python import loops
+from tensorflow.contrib.ipu.python import popnn_rnn
 from tensorflow.contrib.ipu.python import sharded_optimizer as so
+from tensorflow.contrib.ipu.python import sharding
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -18,11 +22,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops as nn
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent as gd
 
-allowed_op_types = ['NoOp', 'Identity', 'XlaClusterOutput']
+allowed_op_types = ['NoOp', 'Identity', 'XlaClusterOutput', 'Enter', 'Exit',
+                    'Switch', 'Merge', 'NextIteration', 'LoopCond',
+                    'VarHandleOp', 'Const']
 
 def create_increasing_dataset(value, data_shape=[1, 32, 32, 4],
                               label_shape=[1, 8], dtype=np.float32):
@@ -34,6 +42,13 @@ def create_increasing_dataset(value, data_shape=[1, 32, 32, 4],
 
   dataset = Dataset.range(value).repeat().map(_get_one_input)
   return dataset
+
+def get_single_while_op_body(g):
+  outer_ops = g.get_operations()
+  while_ops = list(filter(lambda x : x.type == 'While', outer_ops))
+  assert (len(while_ops) == 1)
+  body = g._get_function(while_ops[0].get_attr('body').name)
+  return body._graph
 
 class AutoshardTest(test_util.TensorFlowTestCase):
 
@@ -88,7 +103,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       with ops.device("/device:IPU:0"):
         out = ipu_compiler.compile(my_model, inputs=[inp, lab])
 
-      op_set = autoshard.dependencies([out[0]])
+      op_set = sharding.dependencies([out[0]])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
@@ -120,7 +135,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
       autoshard.automatic_sharding(2, inp, l, [t])
 
-      op_set = autoshard.dependencies([l, t])
+      op_set = sharding.dependencies([l, t])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
@@ -155,7 +170,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
       autoshard.automatic_sharding(2, inp, l, [t], edge_filter=filt)
 
-      op_set = autoshard.dependencies([l, t])
+      op_set = sharding.dependencies([l, t])
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
@@ -163,43 +178,142 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
 
     def testSimpleXlaCompileTrainingInLoop(self):
-
       dataset = create_increasing_dataset(3)
 
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
-      def my_model():
-        inp, lab = infeed_queue.dequeue()
+      def my_net():
+        def my_model(loss, x, y):
+          with ops.device("/device:IPU:0"):
+            inp = x
 
-        x = inp
-        y = lab
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
+                                     use_bias=False)
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv2",
+                                     use_bias=False)
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv3",
+                                     use_bias=False)
+            x = math_ops.reduce_max(x,  axis=[1, 2])
 
-        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
-                                 use_bias=False)
-        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv2",
-                                 use_bias=False)
-        x = convolutional.conv2d(x, 8, 3, padding='same', name="conv3",
-                                 use_bias=False)
-        x = math_ops.reduce_max(x,  axis=[1, 2])
+            cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+            loss = math_ops.reduce_mean(cross_entropy)
 
-        cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
-        loss = math_ops.reduce_mean(cross_entropy)
-        optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
-        train = optim.minimize(cross_entropy)
+            optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+            train = optim.minimize(cross_entropy)
 
-        autoshard.automatic_sharding(2, inp, loss, [train])
+            autoshard.automatic_sharding(2, inp, loss, [])
 
-        return [loss, train]
+            return [loss, train]
 
-      with ops.device("/device:IPU:0"):
-        out = ipu_compiler.compile(my_model, inputs=[])
+        loss = 0.0
+        return loops.repeat(10, my_model, [loss], infeed_queue)
 
-      op_set = autoshard.dependencies([out[0]])
+      ipu_compiler.compile(my_net, inputs=[])
+
+      body = get_single_while_op_body(ops.get_default_graph())
+      op_set = body.get_operations()
+      op_types = set()
+      for o in op_set:
+        if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
+          op_types.add(o.type)
+          self.assertTrue(o.get_attr('_XlaSharding') is not None)
+
+      self.assertTrue(len(op_types) > 10)
+      self.assertTrue('Conv2D' in op_types)
+      self.assertTrue('Conv2DBackpropInput' in op_types)
+      self.assertTrue('Conv2DBackpropFilter' in op_types)
+      self.assertTrue('ResourceApplyGradientDescent' in op_types)
+
+    def testPopnnLstmXlaCompileTrainingInLoop(self):
+      dataset = create_increasing_dataset(3, data_shape=[16, 2, 8],
+                                          label_shape=[16, 2, 256])
+
+      infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+      def my_net():
+        def my_model(loss, x, y):
+          with ops.device("/device:IPU:0"):
+            inp = x
+
+            lstm_cell = popnn_rnn.PopnnLSTM(256, dtype=dtypes.float32)
+            x, _ = lstm_cell(x, training=True)
+
+            cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+            loss = math_ops.reduce_mean(cross_entropy)
+
+            optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+            train = optim.minimize(cross_entropy)
+
+            autoshard.automatic_sharding(2, inp, loss, [])
+
+            return [loss, train]
+
+        loss = 0.0
+        return loops.repeat(10, my_model, [loss], infeed_queue)
+
+      ipu_compiler.compile(my_net, inputs=[])
+
+      body = get_single_while_op_body(ops.get_default_graph())
+      op_set = body.get_operations()
+      op_types = set()
 
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
+          op_types.add(o.type)
           self.assertTrue(o.get_attr('_XlaSharding') is not None)
 
+      self.assertTrue(len(op_types) > 10)
+      self.assertTrue('PopnnLstmLayer' in op_types)
+      self.assertTrue('PopnnLstmLayerBackprop' in op_types)
+      self.assertTrue('LogSoftmax' in op_types)
+      self.assertTrue('SoftmaxCrossEntropyWithLogits' in op_types)
+      self.assertTrue('ResourceApplyGradientDescent' in op_types)
+
+    # TODO re-enable this when while loops can be compiled correctly : T7502
+    # def testTfLstmXlaCompileTrainingInLoop(self):
+    #   dataset = create_increasing_dataset(3, data_shape=[16, 2, 8],
+    #                                       label_shape=[16, 2, 256])
+    #
+    #   infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+    #
+    #   def my_net():
+    #     def my_model(loss, x, y):
+    #       with ops.device("/device:IPU:0"):
+    #         inp = x
+    #
+    #         lstm_cell = rnn_cell.LSTMCell(256)
+    #         x, _ = rnn.dynamic_rnn(cell=lstm_cell, inputs=x,
+    #                                dtype=dtypes.float32, time_major=True)
+    #
+    #         cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+    #         loss = math_ops.reduce_mean(cross_entropy)
+    #
+    #         optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
+    #         train = optim.minimize(cross_entropy)
+    #
+    #         autoshard.automatic_sharding(2, inp, loss, [])
+    #
+    #         return [loss, train]
+    #
+    #     loss = 0.0
+    #     return loops.repeat(10, my_model, [loss], infeed_queue)
+    #
+    #   ipu_compiler.compile(my_net, inputs=[])
+    #
+    #   body = get_single_while_op_body(ops.get_default_graph())
+    #   op_set = body.get_operations()
+    #   op_types = set()
+    #
+    #   for o in op_set:
+    #     if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
+    #       op_types.add(o.type)
+    #       self.assertTrue(o.get_attr('_XlaSharding') is not None)
+    #
+    #   self.assertTrue(len(op_types) > 10)
+    #   self.assertTrue('While' in op_types)
+    #   self.assertTrue('LogSoftmax' in op_types)
+    #   self.assertTrue('SoftmaxCrossEntropyWithLogits' in op_types)
+    #   self.assertTrue('ResourceApplyGradientDescent' in op_types)
 
 if __name__ == "__main__":
     googletest.main()
