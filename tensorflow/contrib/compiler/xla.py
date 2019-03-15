@@ -25,11 +25,11 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.compiler.jit.ops import xla_ops
 from tensorflow.compiler.jit.ops import xla_ops_grad  # pylint: disable=unused-import
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.distribute import summary_op_util
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import summary_op_util
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat

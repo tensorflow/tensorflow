@@ -173,6 +173,16 @@ struct InlineFunctionBodyOptions {
   // If 'true' function inlining will override explicitly specified devices
   // inside function body with the caller node device.
   bool override_device = false;
+  // If 'true' function inlining will add an IdentityN node to the graph with
+  // the same name as the caller node. It will have a control edge from inlined
+  // 'output_control_node' and data edges from function output nodes. IdentityN
+  // node will be placed on the same device as the caller node.
+  // This is mostly for compatibility with Tensorflow v1 and sessions. When we
+  // prepare a graph for execution in GraphExecutionState::MakeForBaseGraph we
+  // don't know what nodes will be fetched, so we can't safely remove any of
+  // them. When graph executed as a function it has 'Retval' nodes for each
+  // fetched tensor, and we can safely inline function calls.
+  bool keep_caller_fetchable = false;
   // For compatibility with Tensorflow v1 by default we will use data outputs.
   // Control returns were added to Tensorflow v2 with automatic control
   // dependencies tracking in Eager mode.
