@@ -161,7 +161,7 @@ BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_ANDROID_ARM_FLAGS="--config=android --config=android_arm --action_env ANDROID_NDK_API_LEVEL=21 --cxxopt=-std=c++11 --copt=-D_GLIBCXX_USE_C99"
 BAZEL_ANDROID_ARM64_FLAGS="--config=android --config=android_arm64 --action_env ANDROID_NDK_API_LEVEL=21 --cxxopt=-std=c++11 --copt=-D_GLIBCXX_USE_C99"
 BAZEL_CUDA_FLAGS="--config=cuda"
-BAZEL_EXTRA_FLAGS="--config=noaws --config=nogcp --config=nohdfs --config=noignite --config=nokafka"
+BAZEL_EXTRA_FLAGS="--config=noignite --config=nokafka"
 
 if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
     # Somehow, even with Python being in the PATH, Bazel on windows struggles
@@ -172,7 +172,7 @@ if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
     # it messes with cxx_builtin_include_directory
     BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS} --action_env=PATH=${TC_WIN_BUILD_PATH} --action_env=TEMP=${TEMP} --action_env=TMP=${TMP}"
 else
-    BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS} --copt=-fvisibility=hidden"
+    BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS} --config=nogcp --config=nohdfs --config=noaws --copt=-fvisibility=hidden"
 fi
 
 ### Define build targets that we will re-ues in sourcing scripts.
