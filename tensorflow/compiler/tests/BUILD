@@ -482,7 +482,7 @@ tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
-    shard_count = 3,
+    shard_count = 6,
     tags = ["optonly"],
     deps = [
         ":xla_test",

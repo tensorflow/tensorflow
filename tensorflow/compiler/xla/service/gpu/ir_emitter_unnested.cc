@@ -2916,13 +2916,6 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       reduction_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
           index,
           GetFirstReduceInstruction(output_instructions)->operand(0)->shape());
-  int num_partial_results = reduction_info->GetNumberOfPartialResults();
-  if (num_partial_results > 1) {
-    // Clear the linear index field of the IrArray::Index to enable the use of
-    // GetElementPointer with array types. This enables the vectorization of
-    // the computation for different partial results.
-    input_index.ClearLinearIndex();
-  }
   absl::Span<llvm::AllocaInst* const> partial_reduction_result_addresses =
       reduction_info->GetPartialResultAddresses();
   absl::Span<llvm::AllocaInst* const> reduction_input_addresses =

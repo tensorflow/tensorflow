@@ -218,7 +218,7 @@ def _create_tensor_values_cache(graph, num_tensors):
             _COMPACT_TRACE_ENTRY_INIT_VALUE),
         trainable=False,
         use_resource=True,
-        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.GLOBAL_VARIABLES])
+        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
 
 
 class TensorTracer(object):

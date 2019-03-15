@@ -98,9 +98,7 @@ IrEmitter::IrEmitter(
       is_top_level_computation_(false),
       target_machine_features_(*target_machine_features),
       emit_code_for_msan_(emit_code_for_msan) {
-  b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
-      /*fast_math_enabled=*/hlo_module_config_.debug_options()
-          .xla_cpu_enable_fast_math()));
+  b_.setFastMathFlags(llvm_ir::GetCpuFastMathFlags(hlo_module_config_));
   Status s = GatherComputationsByAllocationType(
       &hlo_module, &thread_local_computations_, &global_computations_);
   absl::c_sort(thread_local_computations_);
@@ -159,11 +157,9 @@ void IrEmitter::InitializeIrFunction(const string& function_name) {
       is_top_level_computation_ ? llvm::GlobalValue::ExternalLinkage
                                 : llvm::GlobalValue::InternalLinkage;
   // Create and initialize new IrFunction.
-  compute_function_.reset(new IrFunction(
-      function_name, linkage,
-      options::OptimizeForSizeRequested(hlo_module_config_),
-      hlo_module_config_.debug_options().xla_cpu_enable_fast_math(), module_,
-      &b_, num_dynamic_loop_bounds_));
+  compute_function_.reset(new IrFunction(function_name, linkage,
+                                         hlo_module_config_, module_, &b_,
+                                         num_dynamic_loop_bounds_));
 }
 
 IrEmitter::~IrEmitter() {}
