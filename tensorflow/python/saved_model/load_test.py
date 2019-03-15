@@ -1186,6 +1186,18 @@ class LoadTest(test.TestCase, parameterized.TestCase):
         **model_input).values()
     self.assertAllClose([[1., 2.]], signature_output)
 
+  def test_dense_features_layer_fit(self, cycles):
+    columns = [feature_column_v2.numeric_column("x")]
+    model = sequential.Sequential(
+        [feature_column_v2.DenseFeatures(columns),
+         core.Dense(1)])
+    model_input = {"x": constant_op.constant([[1.]])}
+    model.compile(optimizer="adam", loss="mse")
+    model.fit(model_input, constant_op.constant([[3.]]))
+    loaded = self.cycle(model, cycles)
+    loaded._default_save_signature(model_input)
+    loaded.signatures["serving_default"](**model_input)
+
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
 
