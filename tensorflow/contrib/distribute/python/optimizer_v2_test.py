@@ -45,7 +45,7 @@ class MinimizeLossOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
       def run_step():
         return control_flow_ops.group(
-            distribution.unwrap(
+            distribution.experimental_local_results(
                 distribution.extended.call_for_each_replica(
                     model_fn, args=(iterator.get_next(),))))
 

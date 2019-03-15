@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/compiler/jit/shape_inference.h"
 
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 

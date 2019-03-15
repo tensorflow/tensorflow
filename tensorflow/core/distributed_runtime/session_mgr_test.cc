@@ -140,7 +140,6 @@ TEST_F(SessionMgrTest, CreateSessionIsolateSessionState) {
 }
 
 TEST_F(SessionMgrTest, LegacySession) {
-  ServerDef server_def;
   string session_handle = "";
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
@@ -150,7 +149,6 @@ TEST_F(SessionMgrTest, LegacySession) {
 }
 
 TEST_F(SessionMgrTest, UnknownSessionHandle) {
-  ServerDef server_def;
   string session_handle = "unknown_session_handle";
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);

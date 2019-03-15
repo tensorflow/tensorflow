@@ -73,5 +73,9 @@ bool EvaluationStage::ProcessExpectedTags(
   return true;
 }
 
+std::map<ProcessClass, FactoryFunc>*
+    EvaluationStage::process_class_to_factory_map_ =
+        new std::map<ProcessClass, FactoryFunc>();
+
 }  // namespace evaluation
 }  // namespace tflite

@@ -72,7 +72,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
                                    uint32_t flags) {
   if (size == 0) return nullptr;
   // WAR for allocator alignment requirement. Certain cuda API calls require GPU
-  // memory with alignemtn to cudaDeviceProp::textureAlignment.
+  // memory with alignment to cudaDeviceProp::textureAlignment.
   // See issue #20856
   alignment = 512;
   assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.

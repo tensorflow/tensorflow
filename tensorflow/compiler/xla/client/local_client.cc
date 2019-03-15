@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/backend.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
 #include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/service/stream_pool.h"
@@ -185,7 +186,7 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::ExecuteAndDump(
       executable_->ExecuteOnStream(run_options, arguments,
                                    /*hlo_execution_profile=*/nullptr));
   TF_RETURN_IF_ERROR(RecordResult(&result, executable_->hlo_snapshot()));
-  TF_RETURN_IF_ERROR(executable_->DumpHloSnapshot());
+  DumpHloSnapshotIfEnabled(executable_->module(), *executable_->hlo_snapshot());
   return std::move(result);
 }
 

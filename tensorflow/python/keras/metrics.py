@@ -20,12 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import sys
 import types
 import numpy as np
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -111,8 +111,8 @@ class Metric(Layer):
   ```
   class BinaryTruePositives(tf.keras.metrics.Metric):
 
-    def __init__(self, name='binary_true_positives'):
-      super(BinaryTruePositives, self).__init__(name=name)
+    def __init__(self, name='binary_true_positives', **kwargs):
+      super(BinaryTruePositives, self).__init__(name=name, **kwargs)
       self.true_positives = self.add_weight(name='tp', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
@@ -123,11 +123,12 @@ class Metric(Layer):
       values = tf.cast(values, self.dtype)
       if sample_weight is not None:
         sample_weight = tf.cast(sample_weight, self.dtype)
+        sample_weight = tf.broadcast_weights(sample_weight, values)
         values = tf.multiply(values, sample_weight)
-      return self.true_positives.assign_add(tf.reduce_sum(values))
+      self.true_positives.assign_add(tf.reduce_sum(values))
 
     def result(self):
-      return tf.identity(self.true_positives)
+      return self.true_positives
   ```
   """
 
@@ -140,24 +141,19 @@ class Metric(Layer):
   def __new__(cls, *args, **kwargs):
     obj = super(Metric, cls).__new__(cls)
 
-    if sys.version_info < (3,):
-      # Wrap methods in `weakmethod` function to remove binding and create a
-      # weak reference. This is to remove reference cycle that is created here.
-      # This is not an issue in python versions > 3.
-      if context.executing_eagerly():
-        obj.update_state = metrics_utils.weakmethod(obj.update_state)
-      obj.update_state = metrics_utils.weakmethod(
-          types.MethodType(
-              metrics_utils.update_state_wrapper(obj.update_state), obj))
-      result = metrics_utils.weakmethod(obj.result)
-      obj.result = metrics_utils.weakmethod(
-          types.MethodType(metrics_utils.result_wrapper(result), obj))
+    # TODO(psv): We are excluding wrapping `update_state` of built-in metrics
+    # with function here because of b/121302287. With this, built-in metrics
+    # will continue to work with TPUs and custom metrics will not, however
+    # users writing custom metrics need not worry about control dependencies
+    # and returning ops.
+    if cls.__module__ == Metric.__module__:
+      update_state_fn = obj.update_state
     else:
-      obj.update_state = types.MethodType(
-          metrics_utils.update_state_wrapper(obj.update_state), obj)
-      obj.result = types.MethodType(
-          metrics_utils.result_wrapper(obj.result), obj)
+      update_state_fn = def_function.function(obj.update_state)
 
+    obj.update_state = types.MethodType(
+        metrics_utils.update_state_wrapper(update_state_fn), obj)
+    obj.result = types.MethodType(metrics_utils.result_wrapper(obj.result), obj)
     return obj
 
   def __call__(self, *args, **kwargs):
@@ -171,9 +167,9 @@ class Metric(Layer):
     Returns:
       The metric value tensor.
     """
-    update_op = self.update_state(*args, **kwargs)
+    update_op = self.update_state(*args, **kwargs)  # pylint: disable=not-callable
     with ops.control_dependencies([update_op]):
-      result_t = self.result()
+      result_t = self.result()  # pylint: disable=not-callable
 
       # We are adding the metric object as metadata on the result tensor.
       # This is required when we want to use a metric with `add_metric` API on
@@ -181,7 +177,8 @@ class Metric(Layer):
       # to reset variable state after each epoch of training.
       # Example:
       #   model = Model()
-      #   model.add_metric(Mean()(values), name='mean')
+      #   mean = Mean()
+      #   model.add_metric(mean(values), name='mean')
       if not context.executing_eagerly():
         result_t._metric_obj = self  # pylint: disable=protected-access
       return result_t
@@ -215,6 +212,9 @@ class Metric(Layer):
          All update ops added to the graph by this function will be executed.
       As a result, code should generally work the same way with graph or
       eager execution.
+
+    Please use `tf.config.experimental_run_functions_eagerly(True)` to execute
+    this function eagerly for debugging or profiling.
 
     Args:
       *args:
@@ -496,7 +496,7 @@ class MeanRelativeError(Mean):
 
     y_pred, self.normalizer = confusion_matrix.remove_squeezable_dimensions(
         y_pred, self.normalizer)
-    y_pred.shape.assert_is_compatible_with(y_pred.shape)
+    y_pred.shape.assert_is_compatible_with(y_true.shape)
     relative_errors = math_ops.div_no_nan(
         math_ops.abs(y_true - y_pred), self.normalizer)
 
@@ -2489,7 +2489,6 @@ class BinaryCrossentropy(MeanMetricWrapper):
         e.g. `label_smoothing=0.2` means that we will use a value of `0.1` for
         label `0` and `0.9` for label `1`"
     """
-    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
 
     super(BinaryCrossentropy, self).__init__(
         binary_crossentropy,
@@ -2553,7 +2552,6 @@ class CategoricalCrossentropy(MeanMetricWrapper):
                dtype=None,
                from_logits=False,
                label_smoothing=0):
-    label_smoothing = ops.convert_to_tensor(label_smoothing, dtype=K.floatx())
 
     super(CategoricalCrossentropy, self).__init__(
         categorical_crossentropy,

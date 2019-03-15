@@ -68,6 +68,8 @@ class CuptiWrapper {
                         CUpti_CallbackFunc callback, void* userdata);
 
   CUptiResult Unsubscribe(CUpti_SubscriberHandle subscriber);
+
+  CUptiResult GetResultString(CUptiResult result, const char** str);
 };
 
 }  // namespace profiler

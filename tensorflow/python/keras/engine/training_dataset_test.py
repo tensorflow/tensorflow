@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import sys
 
 import numpy as np
+import six
 
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
@@ -292,7 +294,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     predict_dataset_dict = dataset_ops.Dataset.from_tensor_slices(
         input_dict)
     predict_dataset_dict = predict_dataset_dict.repeat(100)
-    predict_dataset_dict = dataset_dict.batch(10)
+    predict_dataset_dict = predict_dataset_dict.batch(10)
     model.predict(predict_dataset_dict, steps=1)
 
   @keras_parameterized.run_with_all_model_types
@@ -355,12 +357,32 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     inputs[20:30, :] = 1
     inputs[30:, :] = 4
     targets = np.zeros((40, 1), dtype=np.float32)
-    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
-    dataset = dataset.batch(10)
-    history = model.fit(dataset,
-                        epochs=2, steps_per_epoch=2, verbose=1, shuffle=False)
+
+    # Test correctness with `steps_per_epoch`.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(train_dataset,
+                        epochs=2, steps_per_epoch=2, verbose=1,
+                        validation_data=val_dataset, validation_steps=2)
     self.assertListEqual(history.history['loss'],
                          [inputs[:20].sum() / 2, inputs[20:].sum() / 2])
+    # The validation dataset will be reset at the end of each validation run.
+    self.assertListEqual(history.history['val_loss'],
+                         [inputs[:20].sum() / 2, inputs[:20].sum() / 2])
+
+    # Test correctness with dataset reset.
+    train_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    val_dataset = dataset_ops.Dataset.from_tensor_slices(
+        (inputs, targets)).batch(10)
+    history = model.fit(train_dataset,
+                        epochs=2, verbose=1, validation_data=val_dataset)
+    self.assertListEqual(history.history['loss'],
+                         [inputs.sum() / 4, inputs.sum() / 4])
+    self.assertListEqual(history.history['val_loss'],
+                         [inputs.sum() / 4, inputs.sum() / 4])
 
   @tf_test_util.run_deprecated_v1
   def test_dataset_input_shape_validation(self):
@@ -428,6 +450,54 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
 
     batch_counter = BatchCounterCallback()
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
+
+    self.assertLen(history.history['loss'], 2)
+    self.assertEqual(batch_counter.batch_count, 20)
+    model.evaluate(dataset)
+    out = model.predict(dataset)
+    self.assertEqual(out.shape[0], 100)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_finite_dataset_unknown_cardinality_no_step_with_train_and_val(self):
+
+    class CaptureStdout(object):
+
+      def __enter__(self):
+        self._stdout = sys.stdout
+        string_io = six.StringIO()
+        sys.stdout = string_io
+        self._stringio = string_io
+        return self
+
+      def __exit__(self, *args):
+        self.output = self._stringio.getvalue()
+        sys.stdout = self._stdout
+
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(
+        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs = np.zeros((100, 3), dtype=np.float32)
+    targets = np.random.randint(0, 4, size=100, dtype=np.int32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.filter(lambda x, y: True).batch(10)
+    self.assertEqual(
+        keras.backend.get_value(cardinality.cardinality(dataset)),
+        cardinality.UNKNOWN)
+
+    batch_counter = BatchCounterCallback()
+    with CaptureStdout() as capture:
+      history = model.fit(
+          dataset,
+          epochs=2,
+          callbacks=[batch_counter],
+          validation_data=dataset.take(3))
+
+    lines = capture.output.splitlines()
+
+    self.assertIn('1/Unknown', lines[2])
+    self.assertIn('10/10', lines[-1])
 
     self.assertLen(history.history['loss'], 2)
     self.assertEqual(batch_counter.batch_count, 20)

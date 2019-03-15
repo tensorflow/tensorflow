@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
+#include <functional>
 #include <queue>
 #include <random>
 #include <set>
@@ -113,7 +114,7 @@ Status ReplaceArgUsageWithConstNode(
   // Collect all _Arg nodes.
   std::unordered_map<int, Node*> arg_nodes;
   for (Node* n : g->op_nodes()) {
-    if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       arg_nodes[index] = n;
@@ -555,7 +556,9 @@ uint32 GetXLARandomSeed() {
   // after an overflow. When seeded with zero, some XLA backends
   // can return all zeros instead of random numbers.
   static std::atomic<uint32> counter(InitialRandomSeed());
-  return counter.fetch_add(2);
+  uint32 seed = counter.fetch_add(2);
+  std::srand(seed);
+  return std::rand() | 1;
 }
 
 // TODO(b/77601805): add tests for associated function related stuff.

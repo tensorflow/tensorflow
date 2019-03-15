@@ -85,6 +85,21 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  def testExternalControlDependencies(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+      op = v.assign_add(1.0)
+
+      def true_branch():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      cond_v2.cond_v2(array_ops.placeholder_with_default(False, None),
+                      true_branch,
+                      lambda: 2.0).eval()
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   @test_util.run_deprecated_v1
   def testMultipleOutputs(self):
     x = constant_op.constant(1.0, name="x")
@@ -814,6 +829,8 @@ class CondV2Test(test.TestCase):
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
 
   @test_util.enable_control_flow_v2
+  @test_util.disable_xla(
+      "b/127846988: No tf2xla kernel for IfOp taking DT_VARIANT")
   def testCondAndTensorArrayInDefun(self):
 
     @function.defun

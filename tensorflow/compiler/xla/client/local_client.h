@@ -67,10 +67,10 @@ class LocalExecutable {
       const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
-  // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
+  // invoke it, and the result. Enabled by flag: --xla_dump_hlo_snapshots.
   //
-  // The given ServiceExecutableRunOptions override any values from TF_XLA_FLAGS
-  // environment variable.
+  // The given ServiceExecutableRunOptions override any values from the
+  // XLA_FLAGS environment variable.
   StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const absl::Span<const ShapedBuffer* const> arguments);

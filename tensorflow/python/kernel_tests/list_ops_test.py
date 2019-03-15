@@ -1205,6 +1205,43 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(self.evaluate(result_0), [6., 8.])
     self.assertAllEqual(self.evaluate(result_1), [10., 12.])
 
+  def testAddTensorListsFailsIfLeadingDimsMismatch(self):
+    l1 = list_ops.tensor_list_reserve(
+        element_shape=[], element_dtype=dtypes.float32, num_elements=2)
+    l2 = list_ops.tensor_list_reserve(
+        element_shape=[], element_dtype=dtypes.float32, num_elements=3)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        "Trying to add two lists of tensors with different lengths"):
+      l = math_ops.add_n([l1, l2])
+      self.evaluate(list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))
+
+  @test_util.run_v1_only("Uses placeholders")
+  def testSkipEagerAddTensorListsFailsIfElementShapesMismatch(self):
+    with self.cached_session() as sess:
+      # Use placeholders instead of constant values for shapes to prevent TF's
+      # shape inference from catching this early.
+      l1_element_shape = array_ops.placeholder(dtype=dtypes.int32)
+      l2_element_shape = array_ops.placeholder(dtype=dtypes.int32)
+      l1 = list_ops.tensor_list_reserve(
+          element_shape=l1_element_shape,
+          element_dtype=dtypes.float32,
+          num_elements=3)
+      l2 = list_ops.tensor_list_reserve(
+          element_shape=l2_element_shape,
+          element_dtype=dtypes.float32,
+          num_elements=3)
+      l = math_ops.add_n([l1, l2])
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "Trying to add two lists of tensors with incompatible element shapes"
+      ):
+        sess.run(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32), {
+                l1_element_shape: [],
+                l2_element_shape: [2]
+            })
+
   @test_util.run_deprecated_v1
   def testSkipEagerConcatShapeInference(self):
 

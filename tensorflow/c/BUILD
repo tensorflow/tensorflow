@@ -39,14 +39,19 @@ filegroup(
             "python_api.h",
             "*test*",
         ],
-    ),
+    ) + [
+        "//tensorflow/cc:srcs",
+        "//tensorflow/core/distributed_runtime:server_lib.h",
+    ],
     visibility = ["//visibility:public"],
 )
 
 tf_cuda_library(
     name = "c_api_internal",
-    srcs = ["c_api.h"],
-    hdrs = ["c_api_internal.h"],
+    hdrs = [
+        "c_api.h",
+        "c_api_internal.h",
+    ],
     visibility = [
         "//tensorflow:internal",
         "//tensorflow/c:__subpackages__",
@@ -59,6 +64,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:lib_platform",
             "//tensorflow/core:op_gen_lib",
             "//tensorflow/core/distributed_runtime:server_lib",
         ],
@@ -67,7 +73,9 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "c_api",
-    hdrs = ["c_api.h"],
+    hdrs = [
+        "c_api.h",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
@@ -88,9 +96,7 @@ tf_cuda_library(
         "c_api.cc",
         "c_api_function.cc",
     ],
-    hdrs = [
-        "c_api.h",
-    ],
+    hdrs = ["c_api.h"],
     copts = tf_copts(),
     visibility = ["//tensorflow/c:__subpackages__"],
     deps = [":c_api_internal"] + select({
@@ -281,7 +287,7 @@ tf_cuda_cc_test(
     ],
     kernels = [":test_op_kernel"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = [
@@ -330,7 +336,7 @@ tf_cc_test(
     srcs = ["c_api_experimental_test.cc"],
     data = ["testdata/tf_record"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     # We must ensure that the dependencies can be dynamically linked since
@@ -399,7 +405,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["env_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = ["noasan"],
@@ -420,7 +426,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["kernels_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = ["noasan"],

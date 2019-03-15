@@ -33,14 +33,13 @@ from tensorflow.python.platform import test
 class LivenessTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, source = parser.parse_entity(test_fn)
+    node, source, _ = parser.parse_entity(test_fn)
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace={},
         arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        arg_types=None)
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)
@@ -76,7 +75,7 @@ class LivenessTest(test.TestCase):
       return x
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], ('a', 'x'))
     self.assertHasLiveOut(fn_body[1], 'x')
@@ -93,7 +92,7 @@ class LivenessTest(test.TestCase):
       return x
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], 'a')
     self.assertHasLiveOut(fn_body[1], 'x')
@@ -106,7 +105,7 @@ class LivenessTest(test.TestCase):
       return x
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], 'x')
 
@@ -118,7 +117,7 @@ class LivenessTest(test.TestCase):
       return x.y
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], ('x.y', 'x'))
 
@@ -134,7 +133,7 @@ class LivenessTest(test.TestCase):
       foo()
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], 'a')
 
@@ -152,7 +151,7 @@ class LivenessTest(test.TestCase):
       child()
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], 'max')
 
@@ -166,7 +165,7 @@ class LivenessTest(test.TestCase):
           y = 0
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveOut(fn_body[0], ())
 
@@ -180,7 +179,7 @@ class LivenessTest(test.TestCase):
       return x
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'b', 'c', 'x'))
     self.assertHasLiveIn(fn_body[1], ('c', 'x'))
@@ -197,7 +196,7 @@ class LivenessTest(test.TestCase):
       return x
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'b', 'c', 'd'))
     self.assertHasLiveIn(fn_body[1], ('d', 'x'))
@@ -212,7 +211,7 @@ class LivenessTest(test.TestCase):
       return y, z
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'y', 'z'))
 
@@ -227,7 +226,7 @@ class LivenessTest(test.TestCase):
       return y, z
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'y', 'z'))
 
@@ -241,7 +240,7 @@ class LivenessTest(test.TestCase):
           y = 0
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     self.assertHasLiveIn(fn_body[0], ('a', 'x', 'y'))
 
@@ -252,7 +251,7 @@ class LivenessTest(test.TestCase):
         return
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     if six.PY2:
       self.assertHasLiveIn(fn_body[0], ('all', 'x', 'y'))
@@ -266,7 +265,7 @@ class LivenessTest(test.TestCase):
         return
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     if six.PY2:
       self.assertHasLiveIn(fn_body[0], ('x', 'y'))
@@ -280,7 +279,7 @@ class LivenessTest(test.TestCase):
         return
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     if six.PY2:
       self.assertHasLiveIn(fn_body[0], ('x', 'y'))
@@ -294,7 +293,7 @@ class LivenessTest(test.TestCase):
         return
 
     node = self._parse_and_analyze(test_fn)
-    fn_body = node.body[0].body
+    fn_body = node.body
 
     if six.PY2:
       self.assertHasLiveIn(fn_body[0], ('k', 'v', 'y'))

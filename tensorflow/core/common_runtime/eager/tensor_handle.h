@@ -158,6 +158,9 @@ class TensorHandle : public core::RefCounted {
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
+  // Can be nullptr if the op producing this tensor was a function executed
+  // with function library runtime or if this tensor represents a symbolic
+  // tensor.
   tensorflow::Device* const op_device_;
 
   // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device

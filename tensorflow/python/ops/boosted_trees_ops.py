@@ -109,8 +109,8 @@ class QuantileAccumulator(tracking.TrackableResource):
 
     with ops.name_scope(name, 'QuantileAccumulator') as name:
       self._name = name
-      self._resource_handle = self.create_resource()
-      self._init_op = self.initialize()
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
     resources.register_resource(self.resource_handle, self._init_op,
                                 is_initialized_op)
@@ -119,18 +119,18 @@ class QuantileAccumulator(tracking.TrackableResource):
         self.resource_handle.name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
-  def create_resource(self):
+  def _create_resource(self):
     return quantile_resource_handle_op(
         container='', shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return create_quantile_stream_resource(self.resource_handle, self._eps,
                                            self._num_streams)
 
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):
@@ -210,8 +210,8 @@ class TreeEnsemble(tracking.TrackableResource):
     self._is_local = is_local
     with ops.name_scope(name, 'TreeEnsemble') as name:
       self._name = name
-      self._resource_handle = self.create_resource()
-      self._init_op = self.initialize()
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
       # Adds the variable to the savable list.
       if not is_local:
@@ -224,11 +224,11 @@ class TreeEnsemble(tracking.TrackableResource):
           is_initialized_op,
           is_shared=not is_local)
 
-  def create_resource(self):
+  def _create_resource(self):
     return gen_boosted_trees_ops.boosted_trees_ensemble_resource_handle_op(
         container='', shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return gen_boosted_trees_ops.boosted_trees_create_ensemble(
         self.resource_handle,
         self._stamp_token,
@@ -237,7 +237,7 @@ class TreeEnsemble(tracking.TrackableResource):
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):

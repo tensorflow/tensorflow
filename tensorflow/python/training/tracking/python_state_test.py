@@ -24,14 +24,13 @@ import numpy
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import variables
+from tensorflow.python.module import module
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import python_state
 from tensorflow.python.training.tracking import util
 
 
-class _NumpyState(base.Trackable):
+class _NumpyState(module.Module):
   """A checkpointable object whose NumPy array attributes are saved/restored.
 
   Example usage:
@@ -65,64 +64,42 @@ class _NumpyState(base.Trackable):
   TensorFlow variables when graph building.
   """
 
-  def _lookup_dependency(self, name):
-    """Create placeholder NumPy arrays for to-be-restored attributes.
-
-    Typically `_lookup_dependency` is used to check by name whether a dependency
-    exists. We cheat slightly by creating a checkpointable object for `name` if
-    we don't already have one, giving us attribute re-creation behavior when
-    loading a checkpoint.
-
-    Args:
-      name: The name of the dependency being checked.
-    Returns:
-      An existing dependency if one exists, or a new `_NumpyWrapper` placeholder
-      dependency (which will generally be restored immediately).
-    """
-    value = super(_NumpyState, self)._lookup_dependency(name)
-    if value is None:
-      value = _NumpyWrapper(numpy.array([]))
-      new_reference = base.TrackableReference(name=name, ref=value)
-      self._unconditional_checkpoint_dependencies.append(new_reference)
-      self._unconditional_dependency_names[name] = value
-      super(_NumpyState, self).__setattr__(name, value)
-    return value
+  def __init__(self):
+    super(_NumpyState, self).__setattr__("_arrays", module.Module())
 
   def __getattribute__(self, name):
     """Un-wrap `_NumpyWrapper` objects when accessing attributes."""
-    value = super(_NumpyState, self).__getattribute__(name)
+    try:
+      arrays = super(_NumpyState, self).__getattribute__("_arrays")
+    except AttributeError:
+      # _arrays hasn't been assigned yet
+      return super(_NumpyState, self).__getattribute__(name)
+    try:
+      value = getattr(arrays, name)
+    except AttributeError:
+      dummy_array = numpy.array([])
+      setattr(arrays, name, _NumpyWrapper(dummy_array))
+      value = getattr(arrays, name)
+      if value.array is dummy_array:
+        # No set or restored attribute with this name
+        delattr(arrays, name)
+        return super(_NumpyState, self).__getattribute__(name)
+
     if isinstance(value, _NumpyWrapper):
       return value.array
-    return value
+    return super(_NumpyState, self).__getattribute__(name)
 
   def __setattr__(self, name, value):
     """Automatically wrap NumPy arrays assigned to attributes."""
-    # TODO(allenl): Consider supporting lists/tuples, either ad-hoc or by making
-    # ndarrays checkpointable natively and using standard checkpointable list
-    # tracking.
     if isinstance(value, (numpy.ndarray, numpy.generic)):
       try:
-        existing = super(_NumpyState, self).__getattribute__(name)
+        existing = getattr(self._arrays, name)
         existing.array = value
         return
       except AttributeError:
         value = _NumpyWrapper(value)
-        self._track_trackable(value, name=name, overwrite=True)
-    elif (name not in ("_setattr_tracking", "_update_uid")
-          and getattr(self, "_setattr_tracking", True)):
-      # Mixing restore()-created attributes with user-added checkpointable
-      # objects is tricky, since we can't use the `_lookup_dependency` trick to
-      # re-create attributes (we might accidentally steal the restoration for
-      # another checkpointable object). For now `_NumpyState` objects must be
-      # leaf nodes. Theoretically we could add some extra arguments to
-      # `_lookup_dependency` to figure out whether we should create a NumPy
-      # array for the attribute or not.
-      raise NotImplementedError(
-          ("Assigned %s to the %s property of %s, which is not a NumPy array. "
-           "Currently mixing NumPy arrays and other checkpointable objects is "
-           "not supported. File a feature request if this limitation bothers "
-           "you.")
-          % (value, name, self))
+      setattr(self._arrays, name, value)
+      return
     super(_NumpyState, self).__setattr__(name, value)
 
 
@@ -216,13 +193,6 @@ class NumpyStateTests(test.TestCase):
       save_state.a = numpy.zeros([2, 2])
       saver.save(prefix)
       saver.restore(save_path)
-
-  @test_util.run_in_graph_and_eager_modes
-  def testNoMixedNumpyStateTF(self):
-    save_state = _NumpyState()
-    save_state.a = numpy.ones([2, 2])
-    with self.assertRaises(NotImplementedError):
-      save_state.v = variables.Variable(1.)
 
   @test_util.run_in_graph_and_eager_modes
   def testDocstringExample(self):

@@ -1305,11 +1305,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         all_valid = False
       else:
         ver = float(m.group(0))
-        if ver < 3.5:
-          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+        if ver < 3.0:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.0 '
                 'and higher. Please re-specify the list of compute '
                 'capabilities excluding version %s.' % ver)
           all_valid = False
+        if ver < 3.5:
+          print('WARNING: XLA does not support CUDA compute capabilities '
+                'lower than 3.5. Disable XLA when running on older GPUs.')
 
     if all_valid:
       break
@@ -1503,7 +1506,7 @@ def system_specific_test_config(env):
       'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
   write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
   if is_windows():
-    if env.get('TF_NEED_CUDA', None) == 1:
+    if env.get('TF_NEED_CUDA', None) == '1':
       write_to_bazelrc(
           'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
       write_to_bazelrc(
@@ -1515,7 +1518,7 @@ def system_specific_test_config(env):
     write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
     write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
   elif is_linux():
-    if env.get('TF_NEED_CUDA', None) == 1:
+    if env.get('TF_NEED_CUDA', None) == '1':
       write_to_bazelrc('test --test_tag_filters=-no_gpu')
       write_to_bazelrc('test --build_tag_filters=-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
@@ -1547,6 +1550,9 @@ def set_windows_build_flags(environ_cp):
   write_to_bazelrc('build --config monolithic')
   # Suppress warning messages
   write_to_bazelrc('build --copt=-w --host_copt=-w')
+  # Fix winsock2.h conflicts
+  write_to_bazelrc(
+      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN')
   # Output more verbose information when something goes wrong
   write_to_bazelrc('build --verbose_failures')
   # The host and target platforms are the same in Windows build. So we don't
@@ -1608,7 +1614,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.19.0', '0.22.0')
+  check_bazel_version('0.19.0', '0.23.2')
 
   reset_tf_configure_bazelrc()
 
@@ -1751,6 +1757,7 @@ def main():
   config_info_line('gdr', 'Build with GDR support.')
   config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
+  config_info_line('numa', 'Build with NUMA support.')
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')

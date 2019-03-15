@@ -213,6 +213,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "lookup"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "losses"
     mtype: "<type \'module\'>"
   }
@@ -301,10 +305,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "rnn"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "saved_model"
     mtype: "<type \'module\'>"
   }
@@ -338,6 +338,10 @@ tf_module {
   }
   member {
     name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tpu"
     mtype: "<type \'module\'>"
   }
   member {
@@ -901,22 +905,6 @@ tf_module {
     argspec: "args=[\'fn\', \'elems\', \'initializer\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'infer_shape\', \'reverse\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'True\', \'False\', \'None\'], "
   }
   member_method {
-    name: "scatter_div"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
-    name: "scatter_max"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
-    name: "scatter_min"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
-    name: "scatter_mul"
-    argspec: "args=[\'ref\', \'indices\', \'updates\', \'use_locking\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
-  }
-  member_method {
     name: "scatter_nd"
     argspec: "args=[\'indices\', \'updates\', \'shape\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -1017,15 +1005,15 @@ tf_module {
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "tensor_scatter_add"
+    name: "tensor_scatter_nd_add"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "tensor_scatter_sub"
+    name: "tensor_scatter_nd_sub"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "tensor_scatter_update"
+    name: "tensor_scatter_nd_update"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

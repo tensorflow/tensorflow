@@ -193,12 +193,12 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(None, gather_t.shape)
 
   def testBadIndicesCPU(self):
-    with self.session(use_gpu=False):
+    with test_util.force_cpu():
       params = [[0, 1, 2], [3, 4, 5]]
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 2\)"):
-        array_ops.gather(params, [[7]], axis=0).eval()
+        self.evaluate(array_ops.gather(params, [[7]], axis=0))
       with self.assertRaisesOpError(r"indices\[0,0\] = 7 is not in \[0, 3\)"):
-        array_ops.gather(params, [[7]], axis=1).eval()
+        self.evaluate(array_ops.gather(params, [[7]], axis=1))
 
   def _disabledTestBadIndicesGPU(self):
     # TODO disabled due to different behavior on GPU and CPU

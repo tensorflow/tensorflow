@@ -518,7 +518,7 @@ def connected_components(images):
     def has_zero():
       # Insert a zero in the consecutive ids where zero appears in unique_ids.
       # id_is_zero has length 1.
-      zero_id_ind = math_ops.to_int32(id_is_zero[0])
+      zero_id_ind = math_ops.cast(id_is_zero[0], dtypes.int32)
       ids_before = nonzero_consecutive_ids[:zero_id_ind]
       ids_after = nonzero_consecutive_ids[zero_id_ind:]
       return array_ops.concat([ids_before, [0], ids_after], axis=0)

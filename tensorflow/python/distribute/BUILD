@@ -102,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -368,7 +369,6 @@ py_library(
     srcs = ["input_ops.py"],
     deps = [
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -388,6 +388,7 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -405,6 +406,26 @@ py_test(
         "//tensorflow/python/eager:test",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy",
+    srcs = ["tpu_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":one_device_strategy",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/tpu:tpu_lib",
     ],
 )
 
@@ -445,6 +466,16 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "summary_op_util",
+    srcs = ["summary_op_util.py"],
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
     ],
 )
 
