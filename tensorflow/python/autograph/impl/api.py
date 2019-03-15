@@ -377,16 +377,12 @@ def _is_not_callable(obj):
   return False
 
 
-# TODO(mdan): Remove obsolete args.
 @tf_export('autograph.to_graph')
 def to_graph(entity,
              recursive=True,
              arg_values=None,
              arg_types=None,
-             experimental_optional_features=converter.Feature.ALL,
-             experimental_strip_decorators=None,
-             experimental_verbose=converter.Verbosity.BRIEF,
-             experimental_partial_types=None):
+             experimental_optional_features=converter.Feature.ALL):
   """Converts a Python entity into a TensorFlow graph.
 
   Also see: `tf.autograph.to_code`, `tf.function`.
@@ -442,9 +438,6 @@ def to_graph(entity,
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
-    experimental_strip_decorators: Deprecated, unused.
-    experimental_verbose: Deprecated, unused.
-    experimental_partial_types: Deprecated, unused.
 
   Returns:
     Same as `entity`, the converted Python function or class.
@@ -452,10 +445,6 @@ def to_graph(entity,
   Raises:
     ValueError: If the entity could not be converted.
   """
-  del experimental_strip_decorators
-  del experimental_verbose
-  del experimental_partial_types
-
   try:
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
@@ -520,8 +509,7 @@ def to_code(entity,
             arg_values=None,
             arg_types=None,
             indentation='  ',
-            experimental_optional_features=converter.Feature.ALL,
-            experimental_partial_types=None):
+            experimental_optional_features=converter.Feature.ALL):
   """Similar to `to_graph`, but returns Python source code as a string.
 
   Also see: `tf.autograph.to_graph`.
@@ -544,13 +532,10 @@ def to_code(entity,
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
-    experimental_partial_types:  Deprecated, unused.
 
   Returns:
     The converted code as string.
   """
-  del experimental_partial_types
-
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,

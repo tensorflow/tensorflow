@@ -482,8 +482,10 @@ class AutoAddUpdates(object):
       if is_stateful_op and op.type != 'ReadVariableOp':
         new_stateful_ops.add(op)
 
-    explicit_updates = set(
-        [u for u in self.layer._unfiltered_updates if not isinstance(u, tuple)])
+    explicit_updates = set([
+        u for u in self.layer._get_unfiltered_updates(check_trainable=False)
+        if not isinstance(u, tuple)
+    ])
     # pylint: enable=protected-access
 
     # Don't add updates that will already be run by virtue of being consumed by
@@ -542,4 +544,3 @@ def autocast_context_manager(input_list, should_cast):
   var_read_dtype = _get_var_read_dtype(input_list, should_cast)
   return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
       var_read_dtype)
-
