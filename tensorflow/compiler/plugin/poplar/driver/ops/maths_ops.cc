@@ -1,6 +1,7 @@
 #include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/dot_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/classification_predicates.h"
@@ -154,18 +155,18 @@ StatusOr<popops::expr::BinaryOpType> LookupBinaryFn(
       StrCat("[Poplar] Invalid opcode lookup ", HloOpcodeString(opcode)));
 }
 
-static std::string GetMatMulPass(const HloInstruction* inst,
-                                 const CompilerAnnotations& annotations) {
+static dot_graph_caching::MatMulPass GetMatMulPass(
+    const HloInstruction* inst, const CompilerAnnotations& annotations) {
   if (IsForward(inst, annotations)) {
-    return "TRAINING_FWD";
+    return dot_graph_caching::MatMulPass::TRAINING_FWD;
   }
   if (IsBackpropInput(inst, annotations)) {
-    return "TRAINING_BWD";
+    return dot_graph_caching::MatMulPass::TRAINING_BWD;
   }
   if (IsBackpropFilter(inst, annotations)) {
-    return "TRAINING_WU";
+    return dot_graph_caching::MatMulPass::TRAINING_WU;
   }
-  return "INFERENCE_FWD";
+  return dot_graph_caching::MatMulPass::INFERENCE_FWD;
 }
 
 StatusOr<poplar::program::Program> CreateUnaryElementwiseOp(
@@ -499,11 +500,9 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
                       std::multiplies<std::size_t>());
   in1 = in1.reshape({rhs_b, rhs_k, rhs_n});
 
-  poplar::OptionFlags opts;
-  opts.set("fullyConnectedPass", GetMatMulPass(inst, res.annotations));
-
-  poplar::Tensor out = poplin::matMulGrouped(
-      graph, in0, in1, seq, GetDebugName(inst), opts, &res.dot_cache);
+  poplar::Tensor out = dot_graph_caching::DoCachedDot(
+      graph, res, in0, in1, seq, GetMatMulPass(inst, res.annotations),
+      GetShardingDeviceId(inst), GetDebugName(inst));
 
   // Reshape to XLA shape
   out = out.reshape(PoplarShapeFromXlaShape(output_shape));
