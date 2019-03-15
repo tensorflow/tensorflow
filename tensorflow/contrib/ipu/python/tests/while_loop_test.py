@@ -227,8 +227,9 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
     def my_net():
-      def my_model(loss, x, y):
+      def my_model(loss):
         with ipu.ops.ipu_scope("/device:IPU:0"):
+          x, y = infeed_queue.get_next()
 
           lstm_cell = rnn_cell.LSTMCell(128)
           x, _ = rnn.dynamic_rnn(cell=lstm_cell, inputs=x,
@@ -251,6 +252,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 1)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(infeed_queue.initializer)
       sess.run(variables.global_variables_initializer())
       sess.run(out[0], {})
 
