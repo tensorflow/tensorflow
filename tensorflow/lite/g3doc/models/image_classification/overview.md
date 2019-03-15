@@ -33,13 +33,6 @@ experiment with different models to find the optimal balance between
 performance, accuracy, and model size. For guidance, see
 <a href="#choose_a_different_model">Choose a different model</a>.
 
-If you are using a platform other than Android or iOS, or you are already
-familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
-download our starter image classification model and the accompanying labels.
-
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Download
-starter model and labels</a>
-
 ### Example applications
 
 We have example applications for image classification for both Android and iOS.
