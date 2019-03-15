@@ -95,6 +95,7 @@ py_test(
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/pyct/testing:test_modules",
         "@gast_archive//:gast",
     ],
 )

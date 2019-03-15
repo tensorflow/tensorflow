@@ -1597,6 +1597,7 @@ cc_library(
         "framework/function_testlib.h",
         "framework/shape_inference_testutil.h",
         "framework/tensor_testutil.h",
+        "graph/benchmark_testlib.h",
         "graph/testlib.h",
         # TODO(josh11b): Drop this once users are depending on
         # kernels:ops_testutil instead.

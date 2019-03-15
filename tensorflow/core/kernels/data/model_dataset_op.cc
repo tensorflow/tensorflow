@@ -31,18 +31,28 @@ constexpr int kOptimizationPeriodThresholdMs = 60 * EnvTime::kSecondsToMicros;
 class ModelDatasetOp : public UnaryDatasetOpKernel {
  public:
   explicit ModelDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+      : UnaryDatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("cpu_budget", &cpu_budget_));
+    if (cpu_budget_ == 0) {
+      cpu_budget_ = port::NumSchedulableCPUs();
+    }
+    OP_REQUIRES(ctx, cpu_budget_ > 0,
+                errors::InvalidArgument("CPU budget must be positive but is ",
+                                        cpu_budget_, "."));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    *output = new Dataset(ctx, input);
+    *output = new Dataset(ctx, input, cpu_budget_);
   }
 
  private:
   class Dataset : public DatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, const DatasetBase* input)
-        : DatasetBase(DatasetContext(ctx)), input_(input) {
+    Dataset(OpKernelContext* ctx, const DatasetBase* input, int64 cpu_budget)
+        : DatasetBase(DatasetContext(ctx)),
+          input_(input),
+          cpu_budget_(cpu_budget) {
       input_->Ref();
     }
 
@@ -162,7 +172,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
             }
             if (cancelled_) return;
           }
-          model_->Optimize(port::NumSchedulableCPUs());
+          model_->Optimize(dataset()->cpu_budget_);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
           if (optimization_period_ms < kOptimizationPeriodThresholdMs) {
@@ -186,7 +196,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* input_;
+    const int64 cpu_budget_;
   };
+
+  int64 cpu_budget_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ModelDataset").Device(DEVICE_CPU),

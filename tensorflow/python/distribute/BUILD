@@ -102,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -387,6 +388,7 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -464,6 +466,16 @@ py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/eager:test",
+    ],
+)
+
+py_library(
+    name = "summary_op_util",
+    srcs = ["summary_op_util.py"],
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
     ],
 )
 

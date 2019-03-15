@@ -863,16 +863,16 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     // Compute the operand index to visit and evaluate the condition whether the
     // operand index is within the bounds. The unsigned comparison includes
     // checking whether the operand index >= 0.
-    IrArray::Index operand_index(index_type, source_index.size());
+    std::vector<llvm::Value*> operand_multi_index(source_index.size());
     llvm::Value* in_bounds_condition = b_.getInt1(true);
     for (int64 i = 0; i < rank; ++i) {
       llvm::Value* strided_index = NSWMul(
           source_index[i], index_typed_constant(window.dimensions(i).stride()));
-      operand_index[i] =
+      operand_multi_index[i] =
           NSWSub(NSWAdd(strided_index, window_index[i]),
                  index_typed_constant(window.dimensions(i).padding_low()));
       llvm::Value* index_condition = ICmpULT(
-          operand_index[i],
+          operand_multi_index[i],
           index_typed_constant(ShapeUtil::GetDimension(operand->shape(), i)));
       in_bounds_condition = And(in_bounds_condition, index_condition);
     }
@@ -897,6 +897,8 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
       }
     };
     IrArray operand_array = GetIrArray(*operand, *select_and_scatter);
+    IrArray::Index operand_index(operand_multi_index, operand->shape(),
+                                 index_type);
     llvm::Value* operand_data =
         operand_array.EmitReadArrayElement(operand_index, &b_);
     Store(operand_data, selected_value_address);
@@ -947,7 +949,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
     llvm::Value* source_value_address =
         GetIrArray(*source, *select_and_scatter)
             .EmitArrayElementAddress(source_index, &b_);
-    IrArray::Index selected_index(selected_multi_index, /*linear=*/nullptr,
+    IrArray::Index selected_index(selected_multi_index,
                                   select_and_scatter->shape(),
                                   operand_index.GetType());
     llvm::Value* output_value_address =
@@ -1140,8 +1142,7 @@ Status IrEmitterUnnested::EmitScatter(
       raw_scatter_index_multidim[dim_numbers.index_vector_dim()] =
           index.GetConstantWithIndexType(i);
       llvm_ir::IrArray::Index raw_scatter_index_index(
-          raw_scatter_index_multidim, /*linear=*/nullptr, scatter_indices_shape,
-          index.GetType());
+          raw_scatter_index_multidim, scatter_indices_shape, index.GetType());
 
       int64 operand_dim = dim_numbers.scatter_dims_to_operand_dims(i);
       TF_ASSIGN_OR_RETURN(
@@ -2200,7 +2201,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   // kernel *anyway*.
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
   KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
-    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_);
   });
 
   // For multioutput fusion, we need to emit each operand and the root.
@@ -3102,8 +3103,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
   if (!reduction_info && unnested_hlo->IsMultiOutputFusion()) {
     KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(&b_), [&] {
       llvm_ir::EmitTuple(GetIrArray(*unnested_hlo, *unnested_hlo),
-                         ConstructIrArrayForOutputs(*unnested_hlo), &b_,
-                         module_);
+                         ConstructIrArrayForOutputs(*unnested_hlo), &b_);
     });
   }
 

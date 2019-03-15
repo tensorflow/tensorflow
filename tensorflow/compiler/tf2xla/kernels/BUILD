@@ -127,6 +127,7 @@ tf_kernel_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/lib:broadcast",
+        "//tensorflow/compiler/tf2xla/lib:data_format",
         "//tensorflow/compiler/tf2xla/lib:random",
         "//tensorflow/compiler/tf2xla/lib:scatter",
         "//tensorflow/compiler/tf2xla/lib:util",

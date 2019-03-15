@@ -88,8 +88,7 @@ class TestStrategyTest(test.TestCase):
       self.assertDictEqual(expected_value,
                            variable_scope.variable(1.0, name="bar"))
 
-    with self.assertRaises(RuntimeError):
-      dist.extended.call_for_each_replica(run_fn)
+    dist.extended.call_for_each_replica(run_fn)
     with dist.scope():
       dist.extended.call_for_each_replica(run_fn)
     _assert_in_default_state(self)

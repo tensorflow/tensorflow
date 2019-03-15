@@ -40,7 +40,7 @@ class CountingVisitor(cfg.GraphVisitor):
 class GraphVisitorTest(test.TestCase):
 
   def _build_cfg(self, fn):
-    node, _ = parser.parse_entity(fn)
+    node, _, _ = parser.parse_entity(fn)
     cfgs = cfg.build(node)
     return cfgs, node
 
@@ -57,15 +57,14 @@ class GraphVisitorTest(test.TestCase):
     graph, = graphs.values()
     visitor = CountingVisitor(graph)
     visitor.visit_forward()
-    fn_node = node.body[0]
 
-    self.assertEqual(visitor.counts[fn_node.args], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].test], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[0]], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[1]], 1)
+    self.assertEqual(visitor.counts[node.args], 1)
+    self.assertEqual(visitor.counts[node.body[0].test], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[0]], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[1]], 1)
     # The return node should be unreachable in forward direction.
-    self.assertTrue(fn_node.body[0].body[2] not in visitor.counts)
-    self.assertEqual(visitor.counts[fn_node.body[1]], 1)
+    self.assertNotIn(node.body[0].body[2], visitor.counts)
+    self.assertEqual(visitor.counts[node.body[1]], 1)
 
   def test_basic_coverage_reverse(self):
 
@@ -80,20 +79,19 @@ class GraphVisitorTest(test.TestCase):
     graph, = graphs.values()
     visitor = CountingVisitor(graph)
     visitor.visit_reverse()
-    fn_node = node.body[0]
 
-    self.assertEqual(visitor.counts[fn_node.args], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].test], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[0]], 1)
-    self.assertEqual(visitor.counts[fn_node.body[0].body[1]], 1)
-    self.assertTrue(visitor.counts[fn_node.body[0].body[2]], 1)
-    self.assertEqual(visitor.counts[fn_node.body[1]], 1)
+    self.assertEqual(visitor.counts[node.args], 1)
+    self.assertEqual(visitor.counts[node.body[0].test], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[0]], 1)
+    self.assertEqual(visitor.counts[node.body[0].body[1]], 1)
+    self.assertTrue(visitor.counts[node.body[0].body[2]], 1)
+    self.assertEqual(visitor.counts[node.body[1]], 1)
 
 
 class AstToCfgTest(test.TestCase):
 
   def _build_cfg(self, fn):
-    node, _ = parser.parse_entity(fn)
+    node, _, _ = parser.parse_entity(fn)
     cfgs = cfg.build(node)
     return cfgs
 

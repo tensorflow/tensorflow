@@ -602,7 +602,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
       fn_result = fn(ctx, iterator.get_next())
       for (name, output) in ctx.last_step_outputs.items():
         # Convert all outputs to tensors, potentially from `DistributedValues`.
-        ctx.last_step_outputs[name] = self._unwrap(output)
+        ctx.last_step_outputs[name] = self._local_results(output)
       flat_last_step_outputs = nest.flatten(ctx.last_step_outputs)
       with ops.control_dependencies([fn_result]):
         return [i + 1] + flat_last_step_outputs
@@ -741,7 +741,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(replica_local_var, values.Mirrored)
     return array_ops.identity(replica_local_var.get())
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)
@@ -837,6 +837,7 @@ class _MirroredReplicaThread(threading.Thread):
     # parent thread:
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
+    self.record_thread_local_context_fields()
     # pylint: disable=protected-access
     if not ctx._context_handle:
       ctx._initialize_handle_and_devices()
@@ -865,6 +866,7 @@ class _MirroredReplicaThread(threading.Thread):
     try:
       if self.coord.should_stop():
         return
+      self.restore_thread_local_context_fields()
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -883,6 +885,24 @@ class _MirroredReplicaThread(threading.Thread):
         self.done = True
     finally:
       self.has_paused.set()
+
+  def record_thread_local_context_fields(self):
+    """Record thread local fields of context.context() in self."""
+    ctx = context.context()
+    self._summary_writer = ctx.summary_writer
+    self._summary_recording = ctx.summary_recording
+    self._summary_recording_distribution_strategy = (
+        ctx.summary_recording_distribution_strategy)
+    # TODO(b/125892694): record other fields in EagerContext.
+
+  def restore_thread_local_context_fields(self):
+    """Restore thread local fields of context.context() from self."""
+    ctx = context.context()
+    ctx.summary_writer = self._summary_writer
+    ctx.summary_recording = self._summary_recording
+    ctx.summary_recording_distribution_strategy = (
+        self._summary_recording_distribution_strategy)
+    # TODO(b/125892694): restore other fields in EagerContext.
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):

@@ -507,7 +507,7 @@ Status FindCompilationCandidates(
                                XlaOpRegistry::AutoclusteringPolicy::kAlways;
 
     OperationFilter op_filter;
-    op_filter.allow_resource_ops = registration->compile_resource_ops;
+    op_filter.allow_resource_ops = registration->compile_all_resource_ops;
     op_filter.allow_stateful_rng_ops = always_auto_cluster;
     op_filter.allow_control_trigger = always_auto_cluster;
     op_filter.allow_dummy_ops = always_auto_cluster;
@@ -542,7 +542,7 @@ Status FindCompilationCandidates(
       continue;
     }
 
-    if (!op_filter.allow_resource_ops &&
+    if (!registration->compile_all_resource_ops &&
         (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
       // We don't have a way of returning values of type DT_RESOURCE from XLA
       // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
@@ -608,8 +608,8 @@ Status FindCompilationCandidates(
     }
     // We don't auto-cluster functional control flow nodes containing resource
     // operations because safety checks are trickier in this case.
-    // registration->compile_resource_ops is true for XLA_CPU/XLA_GPU but not
-    // for CPU/GPU.
+    // registration->compile_all_resource_ops is true for XLA_CPU/XLA_GPU but
+    // not for CPU/GPU.
     if (node->type_string() == "While" &&
         !IsCompilableWhile(*node, jit_device_type, op_filter, 0, lib_runtime)) {
       continue;
@@ -936,7 +936,7 @@ static Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
     *ignore = true;
   } else {
-    *ignore = registration->compile_resource_ops;
+    *ignore = registration->compile_all_resource_ops;
   }
   return Status::OK();
 }
@@ -1263,12 +1263,23 @@ Status MarkForCompilationPass::RunImpl(
 
   // Count the number of non-trivial elements in each cluster.
   std::vector<int> effective_cluster_sizes(graph->num_node_ids());
+
+  // has_functional_control_flow remembers if a cluster contains a functional
+  // control flow node.
+  std::vector<bool> has_functional_control_flow(graph->num_node_ids());
+
   for (const Node* n : compilation_candidates) {
     int cluster = clusters[n->id()].Get().representative;
-    // Identity nodes will be removed if the node gets marked for compilation.
-    // Therefore we don't want to count them towards the effective cluster size.
-    if (n->def().op() != "Identity") {
+    // We want clusters to be big enough that the benefit from XLA's
+    // optimizations offsets XLA related overhead (for instance we add some
+    // Switch/Merge nodes into the graph to implement lazy compilation).  To
+    // this end, we don't count Identity and Constant nodes because they do not
+    // enable interesting optimizations by themselves.
+    if (!n->IsIdentity() && !n->IsConstant()) {
       effective_cluster_sizes[cluster]++;
+    }
+    if (n->type_string() == "While" || n->type_string() == "If") {
+      has_functional_control_flow[cluster] = true;
     }
   }
 
@@ -1312,11 +1323,13 @@ Status MarkForCompilationPass::RunImpl(
       marked_for_compilation = compile_attr;
     }
 
-    // Compile if this is a cluster of >= min_cluster_size compilable operators.
-    // Also, always compile if it contains at least one op that is marked for
-    // compilation that is not an Identity op.
+    // We assume that functional If and While nodes have at least
+    // min_cluster_size non-trivial nodes in them.  It would be more principled
+    // to (recursively) verify this fact, but that's probably not worth the
+    // trouble.
+
     if (effective_cluster_sizes[cluster_repr] >= min_cluster_size ||
-        (effective_cluster_sizes[cluster_repr] > 0 && marked_for_compilation)) {
+        has_functional_control_flow[cluster_repr] || marked_for_compilation) {
       string& name = cluster_names[cluster_repr];
 
       if (name.empty()) {

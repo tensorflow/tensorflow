@@ -109,8 +109,9 @@ from tensorflow.python.keras.layers.noise import GaussianNoise
 from tensorflow.python.keras.layers.noise import GaussianDropout
 
 # Normalization layers.
-from tensorflow.python.keras.layers.normalization import BatchNormalization
 from tensorflow.python.keras.layers.normalization import LayerNormalization
+from tensorflow.python.keras.layers.normalization import BatchNormalization
+from tensorflow.python.keras.layers.normalization_v2 import BatchNormalization as BatchNormalizationV2
 
 # Kernelized layers.
 from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures

@@ -492,9 +492,8 @@ def make_zip_of_tests(zip_path,
         report["toco"] = report_lib.FAILED
         report["tf"] = report_lib.SUCCESS
         # Convert graph to toco
-        input_tensors = [(input_tensor.name.split(":")[0],
-                          input_tensor.get_shape(), input_tensor.dtype)
-                         for input_tensor in inputs]
+        input_tensors = [(input_tensor.name.split(":")[0], input_tensor.shape,
+                          input_tensor.dtype) for input_tensor in inputs]
         output_tensors = [normalize_output_name(out.name) for out in outputs]
         graph_def = freeze_graph(
             sess,
@@ -4420,6 +4419,79 @@ def make_unidirectional_sequence_lstm_tests(zip_path):
     sess.run(init)
     # Tflite fused kernel takes input as [time, batch, input].
     # For static unidirectional sequence lstm, the input is an array sized of
+    # time, and pack the array together, however, for time = 1, the input is
+    # not packed.
+    tflite_input_values = input_values
+    if not parameters["is_dynamic_rnn"] and parameters["seq_length"] == 1:
+      tflite_input_values = [
+          input_values[0].reshape((1, parameters["batch_size"],
+                                   parameters["units"]))
+      ]
+    return tflite_input_values, sess.run(
+        outputs, feed_dict=dict(zip(inputs, input_values)))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      use_frozen_graph=True)
+
+
+@test_util.enable_control_flow_v2
+def make_unidirectional_sequence_rnn_tests(zip_path):
+  """Make a set of tests to do unidirectional_sequence_rnn."""
+
+  test_parameters = [{
+      "batch_size": [2, 4, 6],
+      "seq_length": [1, 3],
+      "units": [4, 5],
+      "is_dynamic_rnn": [False, True]
+  }]
+
+  def build_graph(parameters):
+    input_values = []
+    if parameters["is_dynamic_rnn"]:
+      shape = [
+          parameters["seq_length"], parameters["batch_size"],
+          parameters["units"]
+      ]
+      input_value = tf.placeholder(dtype=tf.float32, name="input", shape=shape)
+      input_values.append(input_value)
+      rnn_cell = tf.lite.experimental.nn.TfLiteRNNCell(parameters["units"])
+      outs, _ = tf.lite.experimental.nn.dynamic_rnn(
+          rnn_cell, input_value, dtype=tf.float32, time_major=True)
+      outs = tf.unstack(outs, axis=1)
+    else:
+      shape = [parameters["batch_size"], parameters["units"]]
+      for i in range(parameters["seq_length"]):
+        input_value = tf.placeholder(
+            dtype=tf.float32, name=("input_%d" % i), shape=shape)
+        input_values.append(input_value)
+      rnn_cell = tf.lite.experimental.nn.TfLiteRNNCell(parameters["units"])
+      outs, _ = tf.nn.static_rnn(rnn_cell, input_values, dtype=tf.float32)
+
+    real_output = tf.zeros([1], dtype=tf.float32) + outs[-1]
+    return input_values, [real_output]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = []
+    if parameters["is_dynamic_rnn"]:
+      shape = [
+          parameters["seq_length"], parameters["batch_size"],
+          parameters["units"]
+      ]
+      input_value = create_tensor_data(tf.float32, shape)
+      input_values.append(input_value)
+    else:
+      shape = [parameters["batch_size"], parameters["units"]]
+      for i in range(parameters["seq_length"]):
+        input_value = create_tensor_data(tf.float32, shape)
+        input_values.append(input_value)
+    init = tf.global_variables_initializer()
+    sess.run(init)
+    # Tflite fused kernel takes input as [time, batch, input].
+    # For static unidirectional sequence rnn, the input is an array sized of
     # time, and pack the array together, however, for time = 1, the input is
     # not packed.
     tflite_input_values = input_values

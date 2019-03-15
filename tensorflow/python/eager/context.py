@@ -143,6 +143,7 @@ class _ThreadLocalData(threading.local):
     self.scope_name = ""
     self.summary_writer = None
     self.summary_recording = None
+    self.summary_recording_distribution_strategy = True
     self.summary_step = None
     self.scalar_cache = {}
     self._ones_rank_cache = None
@@ -515,6 +516,16 @@ class Context(object):
   def summary_recording(self, condition):
     """Sets summary recording condition."""
     self._thread_local_data.summary_recording = condition
+
+  @property
+  def summary_recording_distribution_strategy(self):
+    """Returns summary recording condition for distribution strategy."""
+    return self._thread_local_data.summary_recording_distribution_strategy
+
+  @summary_recording_distribution_strategy.setter
+  def summary_recording_distribution_strategy(self, condition):
+    """Sets summary recording condition for distribution strategy."""
+    self._thread_local_data.summary_recording_distribution_strategy = condition
 
   @property
   def summary_step(self):

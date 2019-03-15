@@ -226,10 +226,8 @@ TEST(BasicInterpreter, CheckQuantization) {
   ASSERT_EQ(interpreter.tensor(0)->params.scale, scale);
   ASSERT_EQ(interpreter.tensor(0)->params.zero_point, zero_point);
   ASSERT_EQ(interpreter.tensor(0)->quantization.type, rw_quantization.type);
-  ASSERT_EQ(interpreter.tensor(0)->quantization.type, rw_quantization.type);
   ASSERT_EQ(interpreter.tensor(1)->params.scale, scale);
   ASSERT_EQ(interpreter.tensor(1)->params.zero_point, zero_point);
-  ASSERT_EQ(interpreter.tensor(1)->quantization.type, ro_quantization.type);
   ASSERT_EQ(interpreter.tensor(1)->quantization.type, ro_quantization.type);
 }
 

@@ -212,6 +212,7 @@ cc_library(
         "//tensorflow/core/kernels/data:iterator_ops",
         "//tensorflow/core/kernels/data:optional_ops",
         "//tensorflow/core/kernels/data:prefetch_dataset_op",
+        "//tensorflow/stream_executor/platform",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
@@ -630,7 +631,6 @@ tf_cc_test(
     srcs = [
         "build_xla_ops_pass_test.cc",
         "clone_constants_for_better_clustering_test.cc",
-        "compilation_passes_test_main.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",

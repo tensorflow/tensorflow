@@ -286,7 +286,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                                                      absl::string_view name,
                                                      llvm::IRBuilder<>* b,
                                                      int alignment) {
-  llvm::IRBuilder<>::InsertPoint insert_point = b->saveIP();
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
@@ -295,7 +295,6 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   if (alignment != 0) {
     alloca->setAlignment(alignment);
   }
-  b->restoreIP(insert_point);
   return alloca;
 }
 

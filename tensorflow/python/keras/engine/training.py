@@ -2160,7 +2160,7 @@ class Model(network.Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=True,
+                                          repeat=False,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 

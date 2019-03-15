@@ -39,7 +39,6 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
-from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -1478,60 +1477,38 @@ class LossWeightingTest(keras_parameterized.TestCase):
       model.fit(x, y, epochs=1, batch_size=10)
 
 
-class LossMaskingTest(keras_parameterized.TestCase):
+@keras_parameterized.run_all_keras_modes
+class MaskingTest(keras_parameterized.TestCase):
 
-  @keras_parameterized.run_all_keras_modes
-  def test_masking_graph_sequential(self):
-    if testing_utils.should_run_eagerly():
-      self.skipTest('b/120495761')
-    with self.cached_session():
-      x = np.array([[[1], [1]], [[0], [0]]])
-      model = keras.models.Sequential()
-      model.add(keras.layers.Masking(mask_value=0, input_shape=(2, 1)))
-      model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(1, kernel_initializer='one')))
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    run_eagerly=testing_utils.should_run_eagerly())
-      y = np.array([[[1], [1]], [[1], [1]]])
-      loss = model.train_on_batch(x, y)
-      self.assertEqual(float(loss), 0.)
+  def _get_model(self, input_shape=None):
+    layers = [
+        keras.layers.Masking(mask_value=0),
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(1, kernel_initializer='one'))
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape)
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(learning_rate=0.001),
+        run_eagerly=testing_utils.should_run_eagerly())
+    return model
 
-  @keras_parameterized.run_all_keras_modes
-  def test_masking_deferred_sequential(self):
-    if testing_utils.should_run_eagerly():
-      self.skipTest('b/120495761')
-    with self.cached_session():
-      x = np.array([[[1], [1]], [[0], [0]]])
-      model = keras.models.Sequential()
-      model.add(keras.layers.Masking(mask_value=0))
-      model.add(
-          keras.layers.TimeDistributed(
-              keras.layers.Dense(1, kernel_initializer='one')))
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    run_eagerly=testing_utils.should_run_eagerly())
-      y = np.array([[[1], [1]], [[1], [1]]])
-      loss = model.train_on_batch(x, y)
-      self.assertEqual(float(loss), 0.)
+  @keras_parameterized.run_with_all_model_types
+  def test_masking(self):
+    model = self._get_model(input_shape=(2, 1))
+    x = np.array([[[1], [1]], [[0], [0]]])
+    y = np.array([[[1], [1]], [[1], [1]]])
+    loss = model.train_on_batch(x, y)
+    self.assertEqual(loss, 0)
 
-  @keras_parameterized.run_all_keras_modes
-  def test_masking_functional(self):
-    if testing_utils.should_run_eagerly():
-      self.skipTest('b/120495761')
-    with self.cached_session():
-      x = np.array([[[1], [1]], [[0], [0]]])
-      inputs = keras.layers.Input((2, 1))
-      outputs = keras.layers.Masking(mask_value=0)(inputs)
-      outputs = keras.layers.TimeDistributed(
-          keras.layers.Dense(1, kernel_initializer='one'))(outputs)
-      model = keras.Model(inputs, outputs)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    run_eagerly=testing_utils.should_run_eagerly())
-      y = np.array([[[1], [1]], [[1], [1]]])
-      loss = model.train_on_batch(x, y)
-      self.assertEqual(float(loss), 0.)
+  @keras_parameterized.run_with_all_model_types(exclude_models='functional')
+  def test_masking_deferred(self):
+    model = self._get_model()
+    x = np.array([[[1], [1]], [[0], [0]]])
+    y = np.array([[[1], [1]], [[1], [1]]])
+    loss = model.train_on_batch(x, y)
+    self.assertEqual(loss, 0)
 
-  @keras_parameterized.run_all_keras_modes
   def test_mask_argument_in_layer(self):
     # Test that the mask argument gets correctly passed to a layer in the
     # functional API.
@@ -1549,35 +1526,18 @@ class LossMaskingTest(keras_parameterized.TestCase):
       def compute_output_shape(self, input_shape):
         return input_shape
 
-    with self.cached_session():
-      x = np.random.random((5, 3))
-      inputs = keras.layers.Input((3,))
-      masked = keras.layers.Masking(mask_value=0)(inputs)
-      outputs = CustomMaskedLayer()(masked)
+    x = np.random.random((5, 3))
+    inputs = keras.layers.Input((3,))
+    masked = keras.layers.Masking(mask_value=0)(inputs)
+    outputs = CustomMaskedLayer()(masked)
 
-      model = keras.Model(inputs, outputs)
-      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001),
-                    run_eagerly=testing_utils.should_run_eagerly())
-      y = np.random.random((5, 3))
-      model.train_on_batch(x, y)
-
-  def test_loss_masking(self):
-    with self.cached_session():
-      weighted_loss = weighted_masked_objective(keras.losses.get('mae'))
-      shape = (3, 4, 2)
-      x = np.arange(24).reshape(shape)
-      y = 2 * x
-
-      # Normally the trailing 1 is added by standardize_weights
-      weights = np.ones((3,))
-      mask = np.ones((3, 4))
-      mask[1, 0] = 0
-
-      keras.backend.eval(
-          weighted_loss(
-              keras.backend.variable(x),
-              keras.backend.variable(y),
-              keras.backend.variable(weights), keras.backend.variable(mask)))
+    model = keras.Model(inputs, outputs)
+    model.compile(
+        loss='mse',
+        optimizer=RMSPropOptimizer(learning_rate=0.001),
+        run_eagerly=testing_utils.should_run_eagerly())
+    y = np.random.random((5, 3))
+    model.train_on_batch(x, y)
 
 
 class TestDynamicTrainability(keras_parameterized.TestCase):

@@ -135,11 +135,11 @@ llvm::Value* HloToIrBindings::EmitGetTupleElement(const HloInstruction* gte,
   if (gte->operand(0)->opcode() != HloOpcode::kGetTupleElement) {
     return llvm_ir::EmitGetTupleElement(
         gte->shape(), gte->tuple_index(), /*alignment=*/1,
-        GetTypedIrValue(*gte->operand(0), {}, base_ptr), b_, module_);
+        GetTypedIrValue(*gte->operand(0), {}, base_ptr), b_);
   }
   return llvm_ir::EmitGetTupleElement(
       gte->shape(), gte->tuple_index(), /*alignment=*/1,
-      EmitGetTupleElement(gte->operand(0), base_ptr), b_, module_);
+      EmitGetTupleElement(gte->operand(0), base_ptr), b_);
 }
 
 // Returns true if `value` has a name that should not be changed.

@@ -23,6 +23,7 @@ import uuid
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
@@ -269,10 +270,12 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     if dropout_mask is not None:
       inputs *= dropout_mask[0]
-    if ops.executing_eagerly_outside_functions():
-      # Under eager context, the device placement is already known. Prefer the
-      # GPU implementation when GPU is available.
-      if context.num_gpus() > 0:
+    if context.executing_eagerly():
+      device_type = _get_context_device_type()
+      if device_type == _GPU_DEVICE_NAME or (
+          device_type is None and context.num_gpus() > 0):
+        # Under eager context, check the device placement and prefer the
+        # GPU implementation when GPU is available.
         last_output, outputs, new_h, runtime = cudnn_gru(
             inputs=inputs,
             init_h=initial_state[0],
@@ -620,10 +623,12 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       if dropout_mask is not None:
         inputs *= dropout_mask[0]
 
-      if ops.executing_eagerly_outside_functions():
-        # Under eager context, the device placement is already known. Prefer the
-        # GPU implementation here.
-        if context.num_gpus() > 0:
+      if context.executing_eagerly():
+        device_type = _get_context_device_type()
+        if device_type == _GPU_DEVICE_NAME or (
+            device_type is None and context.num_gpus() > 0):
+          # Under eager context, check the device placement and prefer the
+          # GPU implementation when GPU is available.
           last_output, outputs, new_h, new_c, runtime = cudnn_lstm(
               inputs, initial_state[0], initial_state[1], self.cell.kernel,
               self.cell.recurrent_kernel, self.cell.bias, self.time_major)
@@ -815,6 +820,14 @@ def _generate_defun_backend(unique_api_name, preferred_device, func):
   }
   return function.defun_with_attributes(func=func,
                                         attributes=function_attributes)
+
+
+def _get_context_device_type():
+  """Parse the current context and return the device type, eg CPU/GPU."""
+  current_device = context.context().device_name
+  if current_device is None:
+    return None
+  return device.DeviceSpec.from_string(current_device).device_type
 
 
 def _runtime(runtime_name):

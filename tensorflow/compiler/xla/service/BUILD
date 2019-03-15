@@ -719,6 +719,7 @@ cc_library(
         ":compilation_cache",
         ":compiler",
         ":computation_layout",
+        ":computation_placer",
         ":device_memory_allocator",
         ":dump",
         ":dynamic_dimension_inference",
@@ -933,6 +934,7 @@ cc_library(
     hdrs = ["compiler.h"],
     deps = [
         ":buffer_value",
+        ":computation_placer",
         ":executable",
         ":hlo",
         ":hlo_module_config",
