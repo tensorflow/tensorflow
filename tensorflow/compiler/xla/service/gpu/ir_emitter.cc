@@ -115,7 +115,7 @@ Status IrEmitter::HandleGetTupleElement(HloInstruction* get_tuple_element) {
           get_tuple_element->shape(), get_tuple_element->tuple_index(),
           // TODO(b/26344050): tighten the alignment here
           // based on the real element type.
-          /*alignment=*/1, GetBasePointer(*operand), &b_, module_));
+          /*alignment=*/1, GetBasePointer(*operand), &b_));
   return Status::OK();
 }
 
@@ -144,7 +144,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
   for (const HloInstruction* operand : tuple->operands()) {
     base_ptrs.push_back(GetBasePointer(*operand));
   }
-  llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_, module_);
+  llvm_ir::EmitTuple(GetIrArray(*tuple, *tuple), base_ptrs, &b_);
   return Status::OK();
 }
 
@@ -434,7 +434,7 @@ Status IrEmitter::HandleTupleSelect(HloInstruction* tuple_select) {
   llvm_ir::EmitTupleSelect(GetIrArray(*tuple_select, *tuple_select),
                            GetIrArray(*pred, *tuple_select),
                            GetBasePointer(*on_true), GetBasePointer(*on_false),
-                           &b_, module_);
+                           &b_);
   return Status::OK();
 }
 
