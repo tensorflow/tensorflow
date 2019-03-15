@@ -102,7 +102,7 @@ Status Placer::Run() {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_input", *graph_, nullptr, "/tmp");
+    DumpGraphToFile("placer_input", *graph_, nullptr);
     for (const Node* node : graph_->op_nodes()) {
       VLOG(3) << "    " << node->name() << ": requested: '"
               << node->requested_device() << "' assigned: '"
@@ -226,7 +226,7 @@ Status Placer::Run() {
   }
 
   if (VLOG_IS_ON(3)) {
-    DumpGraphToFile("placer_output", *graph_, nullptr, "/tmp");
+    DumpGraphToFile("placer_output", *graph_, nullptr);
   }
   return Status::OK();
 }
