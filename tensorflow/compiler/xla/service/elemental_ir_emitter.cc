@@ -2407,8 +2407,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kCopy:
       return [hlo, &operand_to_generator](
                  const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
-        IrArray::Index source_index = target_index;
-        source_index.ClearLinearIndex();
+        IrArray::Index source_index(target_index.multidim(),
+                                    hlo->operand(0)->shape(),
+                                    target_index.GetType());
         TF_ASSIGN_OR_RETURN(
             llvm::Value * operand_value,
             operand_to_generator.at(hlo->operand(0))(source_index));
