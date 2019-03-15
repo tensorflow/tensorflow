@@ -57,7 +57,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
-#include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
@@ -327,12 +326,22 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   popops::addCodelets(resources.main_graph);
   poprand::addCodelets(resources.main_graph);
 
+  poplar::Graph* sharding_main_graph = &resources.main_graph;
+
+  int replication_count = poplarExecutor->GetNumberOfReplicas();
+  if (replication_count > 1) {
+    resources.replicated_graph =
+        resources.main_graph.createReplicatedGraph(replication_count);
+    VLOG(1) << "Created " << replication_count << " replica IPU graphs";
+    sharding_main_graph = &(resources.replicated_graph.value());
+  }
+
   if (ShardingEnabled(module.get())) {
-    auto numIPUs = resources.main_graph.getTarget().getNumIPUs();
-    auto tilesPerIPU = resources.main_graph.getTarget().getTilesPerIPU();
+    auto numIPUs = sharding_main_graph->getTarget().getNumIPUs();
+    auto tilesPerIPU = sharding_main_graph->getTarget().getTilesPerIPU();
     for (unsigned ipu = 0; ipu < numIPUs; ++ipu) {
       resources.shard_graphs.emplace_back(
-          resources.main_graph.createVirtualGraph(ipu * tilesPerIPU,
+          sharding_main_graph->createVirtualGraph(ipu * tilesPerIPU,
                                                   (ipu + 1) * tilesPerIPU));
     }
     VLOG(1) << "Created " << numIPUs << " IPU shards";
@@ -357,7 +366,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<NotSupportedGatherExpander>();
     pipeline.AddPass<NotSupportedScatterExpander>();
     pipeline.AddPass<DynamicIndexSplitter>();
-    pipeline.AddPass<DotDecomposer>();
     pipeline.AddPass<HloPassFix<ConstantSliceFolding>>();
     pipeline.AddPass<HloPassFix<FuseOpsEarly>>(resources.annotations);
     pipeline.AddPass<HloCSE>(false);
@@ -397,10 +405,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<DependencyReplacer>(true);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
-    pipeline.AddPass<ShardingPass>();
-    pipeline.AddPass<HloDCE>();
     pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
+    pipeline.AddPass<ShardingPass>();
+    pipeline.AddPass<HloDCE>();
+    // Beyond this point non of the passes in the pipeline are allowed to modify
+    // the instructions in the HloModule.
     pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
     pipeline.AddPass<AllocationFinder>(resources.annotations);
     pipeline.AddPass<HloPassFix<ForwardAllocation>>(resources.annotations);
@@ -541,7 +551,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       std::move(profile_index_map), std::move(engine),
       std::move(resources.annotations.input_output_aliasing_map),
       is_constant_graph, std::move(constant_output), is_remap_graph,
-      std::move(remaped_output), std::move(resources.annotations.infeed_infos),
+      std::move(remaped_output), replication_count,
+      std::move(resources.annotations.infeed_infos),
       std::move(resources.annotations.outfeed_infos));
 
   executable.reset(poplar_executable);

@@ -29,6 +29,10 @@ poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
     }
   }
 
+  if (res.replicated_graph.has_value()) {
+    return res.replicated_graph.value();
+  }
+
   return res.main_graph;
 }
 

@@ -42,6 +42,8 @@ using ComputationMap =
 struct CompilerResources {
   poplar::Graph main_graph;
 
+  absl::optional<poplar::Graph> replicated_graph;
+
   std::vector<poplar::Graph> shard_graphs;
 
   ComputationMap computation_map;

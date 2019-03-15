@@ -8,7 +8,12 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib import ipu
+from tensorflow.contrib.ipu.python import ipu_compiler
+from tensorflow.contrib.ipu.python import ipu_infeed_queue
+from tensorflow.contrib.ipu.python import loops
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -16,14 +21,27 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.ops import rnn
+from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.platform import googletest
-from tensorflow.contrib.ipu import ipu_compiler
+
+def create_increasing_dataset(value, data_shape=[1, 32, 32, 4],
+                              label_shape=[1, 8], dtype=np.float32):
+  def _get_one_input(data):
+    return (
+      math_ops.cast(gen_array_ops.broadcast_to(data, shape=data_shape), dtype=dtype),
+      math_ops.cast(gen_array_ops.broadcast_to(data, shape=label_shape), dtype=dtype)
+    )
+
+  dataset = Dataset.range(value).repeat().map(_get_one_input)
+  return dataset
 
 class WhileLoopTest(test_util.TensorFlowTestCase):
 
@@ -200,6 +218,41 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
       c, val = sess.run(r, {})
       self.assertEqual(c, 3)
+
+
+  def testTfLstmInWhileV1(self):
+    dataset = create_increasing_dataset(3, data_shape=[4, 1, 8],
+                                        label_shape=[4, 1, 128])
+
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+    def my_net():
+      def my_model(loss, x, y):
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+
+          lstm_cell = rnn_cell.LSTMCell(128)
+          x, _ = rnn.dynamic_rnn(cell=lstm_cell, inputs=x,
+                                 dtype=dtypes.float32, time_major=True)
+
+          cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+          loss = math_ops.reduce_mean(cross_entropy)
+
+          optim = gradient_descent.GradientDescentOptimizer(0.01)
+          train = optim.minimize(cross_entropy)
+
+          return [loss, train]
+
+      loss = 0.0
+      return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=True)
+
+    out = ipu_compiler.compile(my_net, inputs=[])
+
+    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 1)
+    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(out[0], {})
 
 if __name__ == "__main__":
     googletest.main()
