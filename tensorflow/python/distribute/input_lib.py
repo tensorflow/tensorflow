@@ -648,6 +648,7 @@ class MultiStepContext(object):
       def merge_fn(distribution, value):
         # NOTE(priyag): For non tensor outputs, we simply return all the values
         # in a list as reduction doesn't make sense on non tensors.
-        self._non_tensor_outputs[name] = distribution.unwrap(value)
+        self._non_tensor_outputs[name] = (
+            distribution.experimental_local_results(value))
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=(output,))
