@@ -1139,6 +1139,7 @@ class SingularGradientOpTest(test.TestCase):
         (gen_math_ops.acos, (1.,)),
         (gen_math_ops.atan2, (0., 0.)),
         (gen_math_ops.div, (1., 0.)),
+        (gen_math_ops.real_div, (1., 0.)),
         (math_ops.pow, (0., -1.)),
     ]
     for op, singularity in ops_and_singularity:
