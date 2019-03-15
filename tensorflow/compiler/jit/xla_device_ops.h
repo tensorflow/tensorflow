@@ -199,9 +199,7 @@ class XlaAssignVariableOp : public OpKernel {
       Name("FIFOQueueV2").Device(DEVICE).HostMemory("handle"), FIFOQueueOp);   \
                                                                                \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name(kArgOp).Device(DEVICE).HostMemory("output").TypeConstraint("T",     \
-                                                                      TYPES),  \
-      ArgOp);                                                                  \
+      Name(kArgOp).Device(DEVICE).TypeConstraint("T", TYPES), ArgOp);          \
   REGISTER_KERNEL_BUILDER(Name(kArgOp)                                         \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \
@@ -210,11 +208,8 @@ class XlaAssignVariableOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name(kArgOp).Device(DEVICE).TypeConstraint<Variant>("T"), ArgOp);        \
                                                                                \
-  REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
-                              .Device(DEVICE)                                  \
-                              .TypeConstraint("T", TYPES)                      \
-                              .HostMemory("input"),                            \
-                          RetvalOp);                                           \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name(kRetOp).Device(DEVICE).TypeConstraint("T", TYPES), RetvalOp);       \
   REGISTER_KERNEL_BUILDER(Name(kRetOp)                                         \
                               .Device(DEVICE)                                  \
                               .TypeConstraint<ResourceHandle>("T")             \
