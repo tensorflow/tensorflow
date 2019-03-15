@@ -60,31 +60,25 @@ class AutoMixedPrecisionLists {
         &to_remove);
 
     auto list = std::set<string> {
-#if CUDA_VERSION >= 9010 // Fp16 BatchMatMul is slow before CUDA 9.1.
-        "BatchMatMul",
+#if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
+      "BatchMatMul",
 #endif
-        "Conv2D",
-        "Conv2DBackpropFilter",
-        "Conv2DBackpropInput",
-        // TODO(benbarsdell): Enable these when Tensor Core kernels are
-        // available for 3D convolutions.
-        // "Conv3D",
-        // "Conv3DBackpropFilter",
-        // "Conv3DBackpropFilterV2",
-        // "Conv3DBackpropInput",
-        // "Conv3DBackpropInputV2",
-        "CudnnRNN",
-        "CudnnRNNBackprop",
-        "CudnnRNNBackpropV2",
-        "CudnnRNNBackpropV3",
-        "CudnnRNNV2",
-        "CudnnRNNV3",
-        // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
-        // available for depthwise convolutions.
-        // "DepthwiseConv2dNative",
-        // "DepthwiseConv2dNativeBackpropFilter",
-        // "DepthwiseConv2dNativeBackpropInput",
-        "MatMul",
+          "Conv2D", "Conv2DBackpropFilter", "Conv2DBackpropInput",
+          // TODO(benbarsdell): Enable these when Tensor Core kernels are
+          // available for 3D convolutions.
+          // "Conv3D",
+          // "Conv3DBackpropFilter",
+          // "Conv3DBackpropFilterV2",
+          // "Conv3DBackpropInput",
+          // "Conv3DBackpropInputV2",
+          "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
+          "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3",
+          // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
+          // available for depthwise convolutions.
+          // "DepthwiseConv2dNative",
+          // "DepthwiseConv2dNativeBackpropFilter",
+          // "DepthwiseConv2dNativeBackpropInput",
+          "MatMul",
     };
     UpdateList(&list, to_add, to_remove);
     return list;
@@ -181,14 +175,13 @@ class AutoMixedPrecisionLists {
       return std::set<string>{};
     }
     string to_add, to_remove;
-    ReadStringFromEnvVar(
-        "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD", "",
-        &to_add);
+    ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD",
+                         "", &to_add);
     ReadStringFromEnvVar(
         "TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_REMOVE", "",
         &to_remove);
 
-    auto list = std::set<string> {
+    auto list = std::set<string>{
         "Abs",
         "ArgMax",
         "ArgMin",
@@ -295,7 +288,7 @@ class AutoMixedPrecisionLists {
   }
 };
 
-}
-}
+}  // end namespace grappler
+}  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_AUTO_MIXED_PRECISION_LISTS_H_
