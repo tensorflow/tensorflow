@@ -331,7 +331,8 @@ llvm::Value* IrArray::Index::Linearize(absl::Span<const int64> dimensions,
 
 llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
                                               llvm::IRBuilder<>* b,
-                                              absl::string_view name) const {
+                                              absl::string_view name,
+                                              bool use_linear_index) const {
   if (ShapeUtil::IsScalar(shape_)) {
     // Special handling of scalars: a scalar pretends to have the same value for
     // every index, thus effectively implementing broadcasting of its value
@@ -340,7 +341,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
   }
   CHECK_EQ(index.size(), shape_.rank());
 
-  if (index.LinearValidOnShape(shape_)) {
+  if (use_linear_index && index.LinearValidOnShape(shape_)) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
     return b->CreateInBoundsGEP(
         b->CreateBitCast(base_ptr_,
@@ -389,16 +390,20 @@ void IrArray::AnnotateLoadStoreInstructionWithMetadata(
 
 llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
                                            llvm::IRBuilder<>* b,
-                                           absl::string_view name) const {
-  llvm::Value* element_address = EmitArrayElementAddress(index, b, name);
+                                           absl::string_view name,
+                                           bool use_linear_index) const {
+  llvm::Value* element_address =
+      EmitArrayElementAddress(index, b, name, use_linear_index);
   llvm::LoadInst* load = b->CreateLoad(element_address);
   AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
 
 void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                                    llvm::IRBuilder<>* b) const {
-  llvm::Value* element_address = EmitArrayElementAddress(index, b);
+                                    llvm::IRBuilder<>* b,
+                                    bool use_linear_index) const {
+  llvm::Value* element_address =
+      EmitArrayElementAddress(index, b, "", use_linear_index);
   llvm::StoreInst* store = b->CreateStore(value, element_address);
   AnnotateLoadStoreInstructionWithMetadata(store);
 }
