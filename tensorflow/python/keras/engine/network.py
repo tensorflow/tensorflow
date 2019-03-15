@@ -521,11 +521,12 @@ class Network(base_layer.Layer):
         return layer
     raise ValueError('No such layer: ' + name)
 
-  @property
-  def _unfiltered_updates(self):
+  def _get_unfiltered_updates(self, check_trainable=True):
+    if check_trainable and not self.trainable and not self.stateful:
+      return []
     updates = []
     for layer in self.layers:
-      updates += layer._unfiltered_updates
+      updates += layer._get_unfiltered_updates(check_trainable=check_trainable)
     updates += list(self._updates)
     return updates
 
@@ -605,10 +606,8 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if not self.trainable and not self.stateful:
-      return []
 
-    updates = self._unfiltered_updates
+    updates = self._get_unfiltered_updates(check_trainable=True)
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
