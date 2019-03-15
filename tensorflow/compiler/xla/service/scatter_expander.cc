@@ -134,6 +134,13 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     int64 operand_rank) {
   HloComputation* computation = index_vector->parent();
   const Shape& index_shape = index_vector->shape();
+
+  // Scatter of a scalar. Return a zero-sized vector of indices.
+  if (operand_rank == 0) {
+    return computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateFromDimensions(index_shape.element_type(), {0})));
+  }
+
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));
@@ -174,8 +181,9 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
   HloInstruction* zero_index =
       BroadcastZeros(computation, index->shape().element_type(),
                      AsInt64Slice(index->shape().dimensions()));
-  TF_ASSIGN_OR_RETURN(HloInstruction * negative_index_check,
-                      MakeBinaryHlo(HloOpcode::kLe, zero_index, index));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * negative_index_check,
+      MakeCompareHlo(ComparisonDirection::kLe, zero_index, index));
 
   // Check if the index is OOB w.r.t. the operand dimensions and window sizes.
   std::vector<int64> max_valid_index(operand_dims.size());
@@ -186,9 +194,9 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
       HloInstruction * max_valid_index_constant,
       MakeR1ConstantHlo<int64>(computation, index->shape().element_type(),
                                max_valid_index));
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * oob_index_check,
-      MakeBinaryHlo(HloOpcode::kGe, max_valid_index_constant, index));
+  TF_ASSIGN_OR_RETURN(HloInstruction * oob_index_check,
+                      MakeCompareHlo(ComparisonDirection::kGe,
+                                     max_valid_index_constant, index));
 
   // Combine the results of the two checks above.
   TF_ASSIGN_OR_RETURN(

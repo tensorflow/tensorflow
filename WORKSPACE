@@ -43,17 +43,47 @@ remote_config_workspace()
 # Apple and Swift rules.
 http_archive(
     name = "build_bazel_rules_apple",
-    sha256 = "73b4980a318d203d3307f850e27e66ec5cc8d223147a3475a6f11597eb6438a5",
-    strip_prefix = "rules_apple-0.13.0",
-    urls = ["https://github.com/bazelbuild/rules_apple/archive/0.13.0.tar.gz"],
+    sha256 = "4b90786009fa8df25230442244bad2832ba8d6bc4987f68150a7de59c8827e90",
+    strip_prefix = "rules_apple-0.14.0",
+    urls = ["https://github.com/bazelbuild/rules_apple/archive/0.14.0.tar.gz"],
 )
 http_file(
     name = "xctestrunner",
     executable = 1,
     urls = ["https://github.com/google/xctestrunner/releases/download/0.2.6/ios_test_runner.par"],
 )
-load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
-apple_rules_dependencies()
+
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "2c62d8cd4ab1e65c08647eb4afe38f51591f43f7f0885e7769832fa137633dcb",
+    strip_prefix = "bazel-skylib-0.7.0",
+    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/0.7.0.tar.gz"],
+)
+
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "835663c4bb02f4bf01dce8a2a176df7fa682dbb867d3698ae12258c1628bb8f0",
+    strip_prefix = "apple_support-0.5.0",
+    urls = ["https://github.com/bazelbuild/apple_support/archive/0.5.0.tar.gz"],
+)
+
+http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "32d124878cd49775d84f59ba90440c8b23b7c775aec8fec1978f751c76ddee8a",
+    strip_prefix = "rules_swift-0.7.0",
+    urls = ["https://github.com/bazelbuild/rules_swift/archive/0.7.0.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_apple_swift_swift_protobuf",
+    type = "zip",
+    strip_prefix = "swift-protobuf-1.2.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.2.0.zip"],
+)
+
+# Use swift_rules_dependencies to fetch the tolchains.
+# Since we defined all the "git_repository" rules above, the following call will
+# skip redefining them.
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
 swift_rules_dependencies()
 

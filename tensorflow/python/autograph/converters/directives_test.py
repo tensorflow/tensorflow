@@ -84,9 +84,9 @@ class DirectivesTest(converter_testing.TestCase):
     def call_invalid_directive():
       invalid_directive(1)
 
-    node, _ = parser.parse_entity(call_invalid_directive)
+    node, _, _ = parser.parse_entity(call_invalid_directive)
     # Find the call to the invalid directive
-    node = node.body[0].body[0].value
+    node = node.body[0].value
     with self.assertRaisesRegexp(ValueError, 'Unexpected keyword.*'):
       directives_converter._map_args(node, invalid_directive)
 

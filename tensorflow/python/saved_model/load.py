@@ -126,17 +126,52 @@ class _Loader(object):
 
   def _load_all(self):
     """Load all saved objects and wire their properties."""
-    self._nodes = []
-    node_setters = []
+    # Maps from node ids to recreated objects
+    nodes = {}
+    # Maps from node ids to setter functions (same signature as setattr) for
+    # setting dependencies.
+    node_setters = {}
+
+    # Figure out which objects are slot variables. These objects are created
+    # with Optimizer.add_slot rather than _recreate_variable.
+    slot_variable_node_ids = set()
     for proto in self._proto.nodes:
+      for slot_variable_proto in proto.slot_variables:
+        slot_variable_node_ids.add(slot_variable_proto.slot_variable_node_id)
+
+    # Re-create everything except slot variables.
+    for node_id, proto in enumerate(self._proto.nodes):
+      if node_id in slot_variable_node_ids:
+        # Defer recreating slot variables so we can use the public Optimizer
+        # interface.
+        continue
       node, setter = self._recreate(proto)
-      self._nodes.append(node)
-      node_setters.append(setter)
+      nodes[node_id] = node
+      node_setters[node_id] = setter
+
+    # Now that we have created the variables being optimized, we have enough
+    # information to re-create slot variables for them.
+    for node_id, proto in enumerate(self._proto.nodes):
+      optimizer_object = nodes[node_id]
+      for slot_variable_proto in proto.slot_variables:
+        optimized_variable = nodes[
+            slot_variable_proto.original_variable_node_id]
+        slot_variable = optimizer_object.add_slot(
+            var=optimized_variable,
+            slot_name=slot_variable_proto.slot_name)
+        nodes[slot_variable_proto.slot_variable_node_id] = slot_variable
+        node_setters[slot_variable_proto.slot_variable_node_id] = setattr
+
+    self._nodes = []
+
     # After creating the objects, construct the edges between the objects.
-    for obj, object_proto, setter in zip(self._nodes, self._proto.nodes,
-                                         node_setters):
+    for node_id, object_proto in enumerate(self._proto.nodes):
+      obj = nodes[node_id]
+      setter = node_setters[node_id]
+      self._nodes.append(obj)
+
       for reference in object_proto.children:
-        setter(obj, reference.local_name, self._nodes[reference.node_id])
+        setter(obj, reference.local_name, nodes[reference.node_id])
         # Note: if an object has an attribute `__call__` add a class method
         # that allows `obj()` syntax to work. This is done per-instance to
         # allow `callable` to be used to find out if an object is callable.
@@ -303,8 +338,9 @@ def load(export_dir, tags=None):
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
   """
-  if tags is not None:
-    # Supports e.g. tags=SERVING and tags=[SERVING]
+  if tags is not None and not isinstance(tags, set):
+    # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
+    # sequences for nest.flatten, so we put those through as-is.
     tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
   if (len(saved_model_proto.meta_graphs) == 1

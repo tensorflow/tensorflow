@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/kernels/partitioned_function_ops.h"
 
 namespace tensorflow {
 namespace {
@@ -107,6 +108,10 @@ class SymbolicGradientOp : public AsyncOpKernel {
 };
 
 REGISTER_XLA_OP(Name(kGradientOp), SymbolicGradientOp);
+REGISTER_XLA_OP(Name("PartitionedCall").AllowResourceTypes(),
+                PartitionedCallOp);
+REGISTER_XLA_OP(Name("StatefulPartitionedCall").AllowResourceTypes(),
+                PartitionedCallOp);
 
 }  // namespace
 }  // namespace tensorflow

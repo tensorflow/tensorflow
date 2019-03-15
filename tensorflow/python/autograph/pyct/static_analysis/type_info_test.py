@@ -62,14 +62,13 @@ class TypeInfoResolverTest(test.TestCase):
                          test_fn,
                          namespace,
                          arg_types=None):
-    node, source = parser.parse_entity(test_fn)
+    node, source, _ = parser.parse_entity(test_fn)
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace=namespace,
         arg_values=None,
-        arg_types=arg_types,
-        owner_type=None)
+        arg_types=arg_types)
     node = qual_names.resolve(node)
     graphs = cfg.build(node)
     ctx = transformer.Context(entity_info)
@@ -88,7 +87,7 @@ class TypeInfoResolverTest(test.TestCase):
       return opt
 
     node = self._parse_and_analyze(test_fn, {'training': training})
-    call_node = node.body[0].body[0].value
+    call_node = node.body[0].value
     self.assertTrue(anno.getanno(call_node, 'is_constructor'))
     self.assertEquals(training.GradientDescentOptimizer,
                       anno.getanno(call_node, 'type'))
@@ -102,7 +101,7 @@ class TypeInfoResolverTest(test.TestCase):
       return res
 
     node = self._parse_and_analyze(test_fn, {})
-    call_node = node.body[0].body[0].value
+    call_node = node.body[0].value
     self.assertFalse(anno.hasanno(call_node, 'is_constructor'))
 
   def test_class_members_of_detected_constructor(self):
@@ -112,7 +111,7 @@ class TypeInfoResolverTest(test.TestCase):
       opt.minimize(0)
 
     node = self._parse_and_analyze(test_fn, {'training': training})
-    method_call = node.body[0].body[1].value.func
+    method_call = node.body[1].value.func
     self.assertEquals(training.GradientDescentOptimizer.minimize,
                       anno.getanno(method_call, 'live_val'))
 
@@ -123,12 +122,12 @@ class TypeInfoResolverTest(test.TestCase):
         sess.run(x)
 
     node = self._parse_and_analyze(test_fn, {'session': session})
-    constructor_call = node.body[0].body[0].items[0].context_expr
+    constructor_call = node.body[0].items[0].context_expr
     self.assertEquals(session.Session, anno.getanno(constructor_call, 'type'))
     self.assertEquals((session.__name__, 'Session'),
                       anno.getanno(constructor_call, 'type_fqn'))
 
-    method_call = node.body[0].body[0].body[0].value.func
+    method_call = node.body[0].body[0].value.func
     self.assertEquals(session.Session.run, anno.getanno(method_call,
                                                         'live_val'))
 
@@ -142,7 +141,7 @@ class TypeInfoResolverTest(test.TestCase):
       opt.minimize(0)
 
     node = self._parse_and_analyze(test_fn, {'training': training})
-    method_call = node.body[0].body[1].value.func
+    method_call = node.body[1].value.func
     self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_parameter_class_members(self):
@@ -151,7 +150,7 @@ class TypeInfoResolverTest(test.TestCase):
       opt.minimize(0)
 
     node = self._parse_and_analyze(test_fn, {})
-    method_call = node.body[0].body[0].value.func
+    method_call = node.body[0].value.func
     self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_parameter_class_members_with_value_hints(self):
@@ -166,7 +165,7 @@ class TypeInfoResolverTest(test.TestCase):
                     training.GradientDescentOptimizer)
         })
 
-    method_call = node.body[0].body[0].value.func
+    method_call = node.body[0].value.func
     self.assertEquals(training.GradientDescentOptimizer.minimize,
                       anno.getanno(method_call, 'live_val'))
 
@@ -180,7 +179,7 @@ class TypeInfoResolverTest(test.TestCase):
       foo()
 
     node = self._parse_and_analyze(test_fn, {'bar': bar})
-    method_call = node.body[0].body[1].value.func
+    method_call = node.body[1].value.func
     self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_nested_members(self):
@@ -190,7 +189,7 @@ class TypeInfoResolverTest(test.TestCase):
       foo.bar.baz()
 
     node = self._parse_and_analyze(test_fn, {'training': training})
-    method_call = node.body[0].body[1].value.func
+    method_call = node.body[1].value.func
     self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_nested_unpacking(self):
@@ -206,7 +205,7 @@ class TypeInfoResolverTest(test.TestCase):
       return a, b, c
 
     node = self._parse_and_analyze(test_fn, {'Foo': Foo, 'Bar': Bar})
-    a, b, c = node.body[0].body[1].value.elts
+    a, b, c = node.body[1].value.elts
     self.assertEquals(anno.getanno(a, 'type'), Foo)
     self.assertEquals(anno.getanno(b, 'type'), Bar)
     self.assertEquals(anno.getanno(c, 'type'), Foo)

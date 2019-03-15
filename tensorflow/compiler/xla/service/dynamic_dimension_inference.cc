@@ -19,18 +19,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "tensorflow/compiler/xla/window_util.h"
 
 namespace xla {
-
-namespace {
-bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
-  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
-         window_dimension.padding_low() == 0 &&
-         window_dimension.padding_high() == 0 &&
-         window_dimension.window_dilation() == 1 &&
-         window_dimension.base_dilation() == 1;
-}
-}  // namespace
 
 class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
  public:
@@ -366,7 +357,7 @@ Status DynamicDimensionInferenceVisitor::HandleReduceWindow(
         const WindowDimension& window_dimension =
             reduce_window->window().dimensions(dimension);
 
-        if (!IsTrivialWindowDimension(window_dimension)) {
+        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
           return Unimplemented(
               "Dynamic Spatial reduce window is not supported: %s",
               reduce_window->ToString());
@@ -387,7 +378,7 @@ Status DynamicDimensionInferenceVisitor::HandleSelectAndScatter(
         const WindowDimension& window_dimension =
             select_and_scatter->window().dimensions(dimension);
 
-        if (!IsTrivialWindowDimension(window_dimension)) {
+        if (!window_util::IsTrivialWindowDimension(window_dimension)) {
           return Unimplemented(
               "Dynamic Spatial select and scatter is not supported: %s",
               select_and_scatter->ToString());

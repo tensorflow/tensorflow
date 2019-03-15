@@ -1,4 +1,4 @@
-# TensorFlow Lite GPU Delegate Tutorial
+# TensorFlow Lite GPU delegate
 
 [TensorFlow Lite](https://www.tensorflow.org/lite) supports several hardware
 accelerators. This document describes how to preview the experimental GPU backend using the

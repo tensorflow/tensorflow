@@ -29,14 +29,14 @@ namespace {
 TEST(InputGeneratorTest, LoadModel) {
   InputGenerator input_generator;
   ASSERT_EQ(input_generator.LoadModel(
-                "third_party/tensorflow/lite/testdata/multi_add.bin"),
+                "tensorflow/lite/testdata/multi_add.bin"),
             kTfLiteOk);
 }
 
 TEST(InputGeneratorTest, ReadWriteSimpleFile) {
   InputGenerator input_generator;
   ASSERT_EQ(input_generator.ReadInputsFromFile(
-                "third_party/tensorflow/lite/testdata/test_input.csv"),
+                "tensorflow/lite/testdata/test_input.csv"),
             kTfLiteOk);
 
   std::vector<string> inputs;
@@ -59,7 +59,7 @@ TEST(InputGeneratorTest, ReadWriteSimpleFile) {
 TEST(InputGeneratorTest, GenerateUniformInput) {
   InputGenerator input_generator;
   ASSERT_EQ(input_generator.LoadModel(
-                "third_party/tensorflow/lite/testdata/multi_add.bin"),
+                "tensorflow/lite/testdata/multi_add.bin"),
             kTfLiteOk);
   input_generator.GenerateInput("UNIFORM");
   auto inputs = input_generator.GetInputs();
@@ -69,7 +69,7 @@ TEST(InputGeneratorTest, GenerateUniformInput) {
 TEST(InputGeneratorTest, GenerateGaussianInput) {
   InputGenerator input_generator;
   ASSERT_EQ(input_generator.LoadModel(
-                "third_party/tensorflow/lite/testdata/multi_add.bin"),
+                "tensorflow/lite/testdata/multi_add.bin"),
             kTfLiteOk);
   input_generator.GenerateInput("GAUSSIAN");
   auto inputs = input_generator.GetInputs();

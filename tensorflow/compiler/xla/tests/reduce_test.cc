@@ -27,6 +27,7 @@ limitations under the License.
 
 #include <stdlib.h>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -455,7 +456,7 @@ XLA_TEST_F(ReduceTest, ReduceElementwiseR2_111x50_To_R1) {
   for (int64 colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
-      column_sum += log(input_data(rowno, colno));
+      column_sum += std::log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
   }
@@ -486,7 +487,7 @@ XLA_TEST_F(ReduceTest, TransposeAndReduceElementwiseR2_111x50_To_R1) {
   for (int64 colno = 0; colno < cols; ++colno) {
     float column_sum = 0;
     for (int64 rowno = 0; rowno < rows; ++rowno) {
-      column_sum += log(input_data(rowno, colno));
+      column_sum += std::log(input_data(rowno, colno));
     }
     expected.push_back(column_sum);
   }
@@ -533,7 +534,7 @@ XLA_TEST_F(ReduceTest, Reshape_111x2x25Reduce_111x50_To_R1) {
     for (int64 colno = 0; colno < cols / 2; ++colno) {
       float column_sum = 0;
       for (int64 rowno = 0; rowno < rows; ++rowno) {
-        column_sum += tanh(input_data(rowno, major, colno));
+        column_sum += std::tanh(input_data(rowno, major, colno));
       }
       expected.push_back(column_sum);
     }

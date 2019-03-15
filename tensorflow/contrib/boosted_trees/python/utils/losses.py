@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -43,7 +44,7 @@ def per_example_logistic_loss(labels, weights, predictions):
     loss: A Rank 2 (N, 1) tensor of per-example logistic loss.
     update_op: An update operation to update the loss's internal state.
   """
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
       labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()
@@ -74,7 +75,7 @@ def per_example_quantile_regression_loss(labels, weights, predictions,
     loss: A Rank 2 (N, 1) tensor of per-example quantile loss.
     update_op: An update operation to update the loss's internal state.
   """
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   error = labels - predictions
   square_loss_right = array_ops.where(error * quantile < 1.0,
                                       math_ops.square(quantile * error),
@@ -112,7 +113,7 @@ def per_example_maxent_loss(labels, weights, logits, num_classes, eps=1e-15):
     loss: A Rank 2 (N, 1) tensor of per-example maxent loss
     update_op: An update operation to update the loss's internal state.
   """
-  labels = math_ops.to_int64(labels)
+  labels = math_ops.cast(labels, dtypes.int64)
   # If labels are of rank 1, make them rank 2.
   labels_shape = labels.get_shape()
   if len(labels_shape) != 2:
@@ -120,7 +121,7 @@ def per_example_maxent_loss(labels, weights, logits, num_classes, eps=1e-15):
   # Labels are indices of classes, convert them to one hot encodings.
   target_one_hot = array_ops.one_hot(indices=labels, depth=num_classes)
   labels = math_ops.reduce_sum(input_tensor=target_one_hot, axis=[1])
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
 
   # Calculate softmax probabilities for each class.
   unnormalized_probs = math_ops.exp(logits)
@@ -253,7 +254,7 @@ def per_example_exp_loss(labels, weights, predictions, name=None, eps=0.1):
     preds_converted = min_res
     return math_ops.exp(-preds_converted * labels_converted)
 
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   unweighted_loss = exp_with_logits(
       name=name, eps=eps, labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()
@@ -312,7 +313,7 @@ def per_example_full_exp_loss(labels, weights, predictions, name=None):
 
     return math_ops.exp(-1.0 * logits * labels_converted)
 
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   unweighted_loss = full_exp_with_logits(
       name=name, labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()
