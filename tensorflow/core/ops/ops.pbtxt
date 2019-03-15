@@ -10019,8 +10019,11 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
@@ -20017,8 +20020,11 @@ op {
     type: "type"
     allowed_values {
       list {
+        type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
+        type: DT_COMPLEX64
+        type: DT_COMPLEX128
       }
     }
   }
