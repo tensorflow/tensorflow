@@ -785,11 +785,7 @@ Status DeviceTracerImpl::Collect(StepStatsCollector *collector) {
     CollectKernelRecord(collector, rec);
   }
   for (const auto &rec : memcpy_records_) {
-    // Some memcpy_records are actually kernel_records.
-    // (those that don't have dst_dev)
-    if (dst_dev_correlations_.find(rec.correlation_id) == dst_dev_correlations_.cend()) {
-      CollectKernelRecord(collector, rec);
-    } else {
+    if (dst_dev_correlations_.find(rec.correlation_id) != dst_dev_correlations_.cend()) {
       CollectMemcpyRecord(collector, rec);
     }
   }
