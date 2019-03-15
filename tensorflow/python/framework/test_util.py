@@ -1443,10 +1443,10 @@ def use_deterministic_cudnn(func):
 
   def decorator(f):
 
-    def decorated(self, *args, **kwargs):
+    def decorated(*args, **kwargs):
       original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
       os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
-      result = f(self, *args, **kwargs)
+      result = f(*args, **kwargs)
       os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
       return result
 
