@@ -365,12 +365,12 @@ class MklConcatOp : public OpKernel {
                                 mkl_common_format);
         } else if (dst_dims.size() == 2 &&
                    mkl_common_format == memory::format::nc) {
-          // When memory::format::nc, dst_dims are already in MKLDNN order
+          // When memory::format::nc, dst_dims are already in MKL-DNN order
           dst_md = memory::desc(dst_dims, MklDnnType<T>(), mkl_common_format);
         } else {
           TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
                              "Unsupported tensor dimension or"
-                             "MKLDNN memory format"));
+                             "MKL-DNN memory format"));
         }
       } else {
         // All inputs are TF tensors.
@@ -420,8 +420,7 @@ class MklConcatOp : public OpKernel {
                                   dnn_shape_dst);
         DCHECK(dst_tensor == nullptr) << "Output tensor pointer is NULL";
 
-        dst_md =
-            dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout() : dst_md;
+        if (dnn_shape_dst.IsMklTensor()) dst_md = dnn_shape_dst.GetMklLayout();
         dst.SetUsrMem(dst_md, dst_tensor);
 
         auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
