@@ -42,6 +42,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
     # Only keyword args are handled, so make sure to also put any function in
     # function_reorders to ensure that all args are made into keywords first.
     self.function_keyword_renames = {
+        "tf.string_split": {
+            "delimiter": "sep",
+        },
         "tf.test.assert_equal_graph_def": {
             "checkpoint_v2": None,
         },
@@ -652,6 +655,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.random.stateless_categorical",
         "tf.substr":
             "tf.strings.substr",
+        "tf.string_split":
+            "tf.strings.split",
         "tf.string_to_hash_bucket":
             "tf.strings.to_hash_bucket",
         "tf.string_to_number":
@@ -716,18 +721,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.saved_model.load",
         "tf.saved_model.load_v2":
             "tf.compat.v2.saved_model.load",
-        "tf.zeros_initializer":
-            "tf.compat.v1.initializers.zeros",
-        "tf.ones_initializer":
-            "tf.compat.v1.initializers.ones",
-        "tf.constant_initializer":
-            "tf.compat.v1.initializers.constant",
-        "tf.random_uniform_initializer":
-            "tf.compat.v1.initializers.random_uniform",
-        "tf.random_normal_initializer":
-            "tf.compat.v1.initializers.random_normal",
-        "tf.truncated_normal_initializer":
-            "tf.compat.v1.initializers.truncated_normal",
         "tf.image.resize_images":
             "tf.image.resize",
         "tf.random_poisson":
@@ -780,10 +773,104 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.avg_pool2d",
         "tf.keras.initializers.zeros":
             "tf.compat.v1.keras.initializers.zeros",
+        "tf.keras.initializers.Zeros":
+            "tf.compat.v1.keras.initializers.Zeros",
         "tf.keras.initializers.ones":
             "tf.compat.v1.keras.initializers.ones",
+        "tf.keras.initializers.Ones":
+            "tf.compat.v1.keras.initializers.Ones",
         "tf.keras.initializers.constant":
             "tf.compat.v1.keras.initializers.constant",
+        "tf.keras.initializers.Constant":
+            "tf.compat.v1.keras.initializers.Constant",
+        "tf.keras.initializers.VarianceScaling":
+            "tf.compat.v1.keras.initializers.VarianceScaling",
+        "tf.keras.initializers.Orthogonal":
+            "tf.compat.v1.keras.initializers.Orthogonal",
+        "tf.keras.initializers.orthogonal":
+            "tf.compat.v1.keras.initializers.orthogonal",
+        "tf.keras.initializers.Identity":
+            "tf.compat.v1.keras.initializers.Identity",
+        "tf.keras.initializers.identity":
+            "tf.compat.v1.keras.initializers.identity",
+        "tf.keras.initializers.glorot_uniform":
+            "tf.compat.v1.keras.initializers.glorot_uniform",
+        "tf.keras.initializers.glorot_normal":
+            "tf.compat.v1.keras.initializers.glorot_normal",
+        "tf.keras.initializers.lecun_normal":
+            "tf.compat.v1.keras.initializers.lecun_normal",
+        "tf.keras.initializers.lecun_uniform":
+            "tf.compat.v1.keras.initializers.lecun_uniform",
+        "tf.keras.initializers.he_normal":
+            "tf.compat.v1.keras.initializers.he_normal",
+        "tf.keras.initializers.he_uniform":
+            "tf.compat.v1.keras.initializers.he_uniform",
+        "tf.keras.initializers.TruncatedNormal":
+            "tf.compat.v1.keras.initializers.TruncatedNormal",
+        "tf.keras.initializers.truncated_normal":
+            "tf.compat.v1.keras.initializers.truncated_normal",
+        "tf.keras.initializers.RandomUniform":
+            "tf.compat.v1.keras.initializers.RandomUniform",
+        "tf.keras.initializers.uniform":
+            "tf.compat.v1.keras.initializers.uniform",
+        "tf.keras.initializers.random_uniform":
+            "tf.compat.v1.keras.initializers.random_uniform",
+        "tf.keras.initializers.RandomNormal":
+            "tf.compat.v1.keras.initializers.RandomNormal",
+        "tf.keras.initializers.normal":
+            "tf.compat.v1.keras.initializers.normal",
+        "tf.keras.initializers.random_normal":
+            "tf.compat.v1.keras.initializers.random_normal",
+        "tf.zeros_initializer":
+            "tf.compat.v1.zeros_initializer",
+        "tf.initializers.zeros":
+            "tf.compat.v1.initializers.zeros",
+        "tf.ones_initializer":
+            "tf.compat.v1.ones_initializer",
+        "tf.initializers.ones":
+            "tf.compat.v1.initializers.ones",
+        "tf.constant_initializer":
+            "tf.compat.v1.constant_initializer",
+        "tf.initializers.constant":
+            "tf.compat.v1.initializers.constant",
+        "tf.random_uniform_initializer":
+            "tf.compat.v1.random_uniform_initializer",
+        "tf.initializers.random_uniform":
+            "tf.compat.v1.initializers.random_uniform",
+        "tf.random_normal_initializer":
+            "tf.compat.v1.random_normal_initializer",
+        "tf.initializers.random_normal":
+            "tf.compat.v1.initializers.random_normal",
+        "tf.truncated_normal_initializer":
+            "tf.compat.v1.truncated_normal_initializer",
+        "tf.initializers.truncated_normal":
+            "tf.compat.v1.initializers.truncated_normal",
+        "tf.variance_scaling_initializer":
+            "tf.compat.v1.variance_scaling_initializer",
+        "tf.initializers.variance_scaling":
+            "tf.compat.v1.initializers.variance_scaling",
+        "tf.orthogonal_initializer":
+            "tf.compat.v1.orthogonal_initializer",
+        "tf.initializers.orthogonal":
+            "tf.compat.v1.initializers.orthogonal",
+        "tf.glorot_uniform_initializer":
+            "tf.compat.v1.glorot_uniform_initializer",
+        "tf.initializers.glorot_uniform":
+            "tf.compat.v1.initializers.glorot_uniform",
+        "tf.glorot_normal_initializer":
+            "tf.compat.v1.glorot_normal_initializer",
+        "tf.initializers.glorot_normal":
+            "tf.compat.v1.initializers.glorot_normal",
+        "tf.initializers.identity":
+            "tf.compat.v1.initializers.identity",
+        "tf.initializers.lecun_normal":
+            "tf.compat.v1.initializers.lecun_normal",
+        "tf.initializers.lecun_uniform":
+            "tf.compat.v1.initializers.lecun_uniform",
+        "tf.initializers.he_normal":
+            "tf.compat.v1.initializers.he_normal",
+        "tf.initializers.he_uniform":
+            "tf.compat.v1.initializers.he_uniform",
         "tf.data.experimental.map_and_batch_with_legacy_function":
             "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
         "tf.nn.conv2d_backprop_input":
@@ -839,6 +926,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.feature_column.categorical_column_with_vocabulary_file",
         "tf.shape",
         "tf.size",
+        "tf.string_split",
         "tf.random.poisson",
         "tf.sparse.add",
         "tf.sparse_add",
@@ -1544,6 +1632,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "takes input_layer_partitioner, so the call was converted to "
                 "compat.v1."
             ),
+        "tf.string_split": functools.partial(
+            _rename_if_arg_found_transformer, arg_name="skip_empty",
+            arg_ok_predicate=_is_ast_false, remove_if_ok=True,
+            message="tf.string_split's replacement no longer takes the "
+            "skip_empty argument. Since the argument was present, the call was "
+            "converted to compat.v1."),
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -2083,7 +2177,7 @@ def _add_uniform_scaling_initializer_transformer(
 
   Transforms:
   tf.uniform_unit_scaling_initializer(factor, seed, dtype) to
-  tf.keras.initializers.VarianceScaling(
+  tf.compat.v1.keras.initializers.VarianceScaling(
       scale=factor, distribution="uniform", seed=seed)
 
   Note: to apply this transformation, symbol must be added
@@ -2100,7 +2194,7 @@ def _add_uniform_scaling_initializer_transformer(
 
   lineno = node.func.value.lineno
   col_offset = node.func.value.col_offset
-  node.func.value = ast_edits.full_name_node("tf.keras.initializers")
+  node.func.value = ast_edits.full_name_node("tf.compat.v1.keras.initializers")
   node.func.value.lineno = lineno
   node.func.value.col_offset = col_offset
   node.func.attr = "VarianceScaling"

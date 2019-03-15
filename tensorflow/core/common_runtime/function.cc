@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -1734,6 +1735,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // added above or on all control return nodes (controlled by
   // `options.output_control_src` value). And nodes previously depend on
   // "callee" is changed to depend on "output_control_node".
+  //
+  // If `keep_node_fetchable` is `true` we always add an output control node, to
+  // guarantee that executing a fetchable node will execute all side-effects.
   std::vector<Node*> outputs(caller->num_outputs());
   for (std::size_t i = 0; i < fbody->ret_nodes.size(); ++i) {
     Node* ret = node_map[fbody->ret_nodes[i]->id()];
@@ -1754,29 +1758,53 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     }
     g->RemoveNode(ret);  // 'ret' is disconnected.
   }
+
   Node* output_control_node = nullptr;
+  bool has_control_outputs = absl::c_any_of(
+      caller->out_edges(), [](const Edge* e) { return e->IsControlEdge(); });
+
+  if (has_control_outputs || options.keep_caller_fetchable) {
+    output_control_node = no_op("output_control_node");
+    if (options.output_control_src == OutputControlSrc::kDataOutputs) {
+      for (Node* n : outputs) {
+        g->AddControlEdge(n, output_control_node);
+      }
+    } else {
+      for (Node* fbody_node : fbody->control_ret_nodes) {
+        Node* n = node_map[fbody_node->id()];
+        g->AddControlEdge(n, output_control_node);
+      }
+    }
+  }
+
   for (const Edge* e : caller->out_edges()) {
     if (e->IsControlEdge()) {
-      if (output_control_node == nullptr) {
-        output_control_node = no_op("output_control_node");
-        if (options.output_control_src ==
-            InlineFunctionBodyOptions::OutputControlSource::kDataOutputs) {
-          for (Node* n : outputs) {
-            g->AddControlEdge(n, output_control_node);
-          }
-        } else {
-          for (Node* fbody_node : fbody->control_ret_nodes) {
-            Node* n = node_map[fbody_node->id()];
-            g->AddControlEdge(n, output_control_node);
-          }
-        }
-      }
       g->AddControlEdge(output_control_node, e->dst());
     } else {
       g->AddEdge(outputs[e->src_output()], 0, e->dst(), e->dst_input());
     }
   }
-  g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
+
+  // ------------------------------------------------------------------------ //
+  // Add an IdentityN node in-place of caller node to keep `caller` fetchable.
+
+  if (options.keep_caller_fetchable) {
+    std::vector<NodeBuilder::NodeOut> output_tensors;
+    absl::c_transform(outputs, std::back_inserter(output_tensors),
+                      [](Node* n) { return NodeBuilder::NodeOut(n, 0); });
+
+    Node* fetchable_node;
+    TF_CHECK_OK(NodeBuilder(caller->name(), "IdentityN")
+                    .Device(caller->requested_device())
+                    .Input(output_tensors)
+                    .ControlInput(output_control_node)
+                    .Finalize(g, &fetchable_node));
+  }
+
+  // ------------------------------------------------------------------------ //
+  // 'caller' is replaced with inlined function body nodes and maybe IdentityN
+  // to keep it fetchable.
+  g->RemoveNode(caller);
 
   return Status::OK();
 }

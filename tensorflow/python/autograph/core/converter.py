@@ -88,20 +88,6 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(mdan): Add a test specific to this converter.
 
 
-# TODO(mdan): Remove when updating the API.
-@tf_export('autograph.experimental.Verbosity')
-class Verbosity(enum.IntEnum):
-  """Represents conversion verbosity levels.
-
-  Attributes:
-    BRIEF: No logging, minimal error messages.
-    VERBOSE: Detailed logging of generated code, detailed error messages.
-  """
-
-  BRIEF = 0
-  VERBOSE = 1
-
-
 @tf_export('autograph.experimental.Feature')
 class Feature(enum.Enum):
   """Represents conversion options that can be toggled on or off.
