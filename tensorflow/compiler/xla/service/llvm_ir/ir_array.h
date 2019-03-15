@@ -168,8 +168,6 @@ class IrArray {
       return llvm::ConstantInt::get(index_type_, c);
     }
 
-    void ClearLinearIndex() { linear_ = nullptr; }
-
    private:
     // Constructs an index from both a multi-dimensional index and a linear
     // index. 'shape' is the shape on which the index is used. 'index_type' is
@@ -227,7 +225,8 @@ class IrArray {
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
   llvm::Value* EmitArrayElementAddress(const Index& index, llvm::IRBuilder<>* b,
-                                       absl::string_view name = "") const;
+                                       absl::string_view name = "",
+                                       bool use_linear_index = true) const;
 
   // Attach metadata this IrArray instance knows about to "instruction".
   void AnnotateLoadStoreInstructionWithMetadata(
@@ -240,15 +239,23 @@ class IrArray {
   //
   // The optional name is useful for debugging when looking at
   // the emitted LLVM IR.
+  // 'use_linear_index' can be used to specify whether the linear index (if
+  // available) or the multi-dimensional index should be used.
   llvm::Value* EmitReadArrayElement(const Index& index, llvm::IRBuilder<>* b,
-                                    absl::string_view name = "") const;
+                                    absl::string_view name = "",
+                                    bool use_linear_index = true) const;
 
   // Emit IR to write the given value to the array element at the given index.
+  // 'use_linear_index' can be used to specify whether the linear index (if
+  // available) or the multi-dimensional index should be used.
   void EmitWriteArrayElement(const Index& index, llvm::Value* value,
-                             llvm::IRBuilder<>* b) const;
+                             llvm::IRBuilder<>* b,
+                             bool use_linear_index = true) const;
 
   // Returns a new IrArray whose shape is "new_shape" and base pointer is a
   // bitcast of the base pointer of "this" IrArray.
+  // 'use_linear_index' can be used to specify whether the linear index (if
+  // available) or the multi-dimensional index should be used.
   IrArray CastToShape(const Shape& new_shape, llvm::IRBuilder<>* b) const;
 
   void AddAliasScopeMetadata(llvm::MDNode* alias_scope) {
