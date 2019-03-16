@@ -571,8 +571,8 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        ":auto_mixed_precision",
         ":arithmetic_optimizer",
+        ":auto_mixed_precision",
         ":auto_parallel",
         ":constant_folding",
         ":custom_graph_optimizer_registry",
