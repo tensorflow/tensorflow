@@ -162,7 +162,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
     }
   }
   PrintCantFindCudaMessage(
-      "Can't find directory containing CUDA libevice.  This may result in "
+      "Can't find directory containing CUDA libdevice.  This may result in "
       "compilation or runtime failures, if the program we try to run uses "
       "routines from libdevice.",
       hlo_module_config);
