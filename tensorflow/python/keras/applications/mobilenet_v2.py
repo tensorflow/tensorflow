@@ -86,6 +86,18 @@ def MobileNetV2(*args, **kwargs):
 @keras_export('keras.applications.mobilenet_v2.decode_predictions')
 @keras_modules_injection
 def decode_predictions(*args, **kwargs):
+  """Decodes the prediction of an ImageNet model.
+    # Arguments
+        preds: Numpy tensor encoding a batch of predictions.
+        top: Integer, how many top-guesses to return.
+    # Returns
+        A list of lists of top class prediction tuples
+        `(class_name, class_description, score)`.
+        One list of tuples per sample in batch input.
+    # Raises
+        ValueError: In case of invalid shape of the `pred` array
+            (must be 2D).
+  """
   return mobilenet_v2.decode_predictions(*args, **kwargs)
 
 
