@@ -105,6 +105,9 @@ class PosixWritableFile : public WritableFile {
   }
 
   Status Close() override {
+    if (file_ == nullptr) {
+      return IOError(filename_, EBADF);
+    }
     Status result;
     if (fclose(file_) != 0) {
       result = IOError(filename_, errno);
