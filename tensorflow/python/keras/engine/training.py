@@ -829,11 +829,10 @@ class Model(network.Network):
       y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
       sample_weights, val_sample_weights = (slice_arrays(
           sample_weights, 0, split_at), slice_arrays(sample_weights, split_at))
-    elif validation_steps:
-      val_x = []
-      val_y = []
-      val_sample_weights = []
     else:
+      if validation_steps:
+        raise ValueError('`validation_steps` should not be specified if '
+                         '`validation_data` is None.')
       val_x = None
       val_y = None
       val_sample_weights = None

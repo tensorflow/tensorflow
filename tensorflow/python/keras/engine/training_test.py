@@ -973,6 +973,18 @@ class TrainingTest(keras_parameterized.TestCase):
         callbacks=[val_counter])
     self.assertEqual(val_counter.val_runs, expected_runs)
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_validation_steps_without_data(self):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model = testing_utils.get_small_mlp(2, 1, 10)
+    model.compile('sgd', 'mse')
+
+    with self.assertRaisesRegexp(
+        ValueError, '`validation_steps` should not be specified if '
+        '`validation_data` is None.'):
+      model.fit(x, y, epochs=4, validation_data=None, validation_steps=3)
+
   @keras_parameterized.run_all_keras_modes
   def test_add_loss_correctness(self):
     class Bias(keras.layers.Layer):
@@ -2085,9 +2097,9 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
         out = model.fit(None, None, epochs=1,
                         steps_per_epoch=None,
                         validation_steps=2)
-      out = model.fit(None, None, epochs=1,
-                      steps_per_epoch=2,
-                      validation_steps=2)
+        out = model.fit(None, None, epochs=1,
+                        steps_per_epoch=2,
+                        validation_steps=2)
 
       # test evaluate
       with self.assertRaises(ValueError):
@@ -2121,11 +2133,6 @@ class TestTrainingWithDataTensors(keras_parameterized.TestCase):
       with self.assertRaises(ValueError):
         out = model.fit(None, None, epochs=1, batch_size=10)
       out = model.fit(None, None, epochs=1, steps_per_epoch=1)
-
-      # test fit with validation data
-      out = model.fit(None, None, epochs=1,
-                      steps_per_epoch=2,
-                      validation_steps=2)
 
       # test evaluate
       with self.assertRaises(ValueError):
