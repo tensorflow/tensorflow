@@ -1494,10 +1494,6 @@ def _cuda_autoconf_impl(repository_ctx):
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
-        if (_TF_CUDA_VERSION not in repository_ctx.os.environ or
-            _TF_CUDNN_VERSION not in repository_ctx.os.environ):
-            auto_configure_fail("%s and %s must also be set if %s is specified" %
-                                (_TF_CUDA_VERSION, _TF_CUDNN_VERSION, _TF_CUDA_CONFIG_REPO))
         _create_remote_cuda_repository(
             repository_ctx,
             repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO],
