@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -25,7 +26,9 @@ namespace xla {
 
 namespace {
 
-StatusOr<bool> ReplaceGetSize(HloInstruction* instr) {
+StatusOr<bool> ReplaceGetSize(
+    HloInstruction* instr,
+    const DynamicDimensionInference* dynamic_dimension_inference) {
   if (instr->opcode() != HloOpcode::kGetDimensionSize) {
     return false;
   }
@@ -36,10 +39,18 @@ StatusOr<bool> ReplaceGetSize(HloInstruction* instr) {
                           instr->operand(0)->shape(), instr->dimension()));
   TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), legal_shape));
   TF_RET_CHECK(ShapeUtil::HasPrimitiveType(instr->shape(), U32));
-  uint32 size = instr->operand(0)->shape().dimensions(instr->dimension());
-  HloInstruction* new_instr = computation->AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(size)));
-  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+  HloInstruction* operand = instr->mutable_operand(0);
+  int64 dim = instr->dimension();
+  HloInstruction* dynamic_size =
+      dynamic_dimension_inference->GetDynamicSize(operand, {}, dim);
+  if (dynamic_size != nullptr) {
+    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(dynamic_size));
+  } else {
+    uint32 size = instr->operand(0)->shape().dimensions(dim);
+    HloInstruction* new_instr = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(size)));
+    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+  }
   return true;
 }
 
@@ -48,10 +59,13 @@ StatusOr<bool> ReplaceGetSize(HloInstruction* instr) {
 StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
   bool changed = false;
   HloProto proto;
+  TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
+                      DynamicDimensionInference::Run(module));
   *proto.mutable_hlo_module() = module->ToProto();
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->instructions()) {
-      TF_ASSIGN_OR_RETURN(bool replaced, ReplaceGetSize(instruction));
+      TF_ASSIGN_OR_RETURN(bool replaced,
+                          ReplaceGetSize(instruction, &inference));
       changed = changed || replaced;
     }
   }

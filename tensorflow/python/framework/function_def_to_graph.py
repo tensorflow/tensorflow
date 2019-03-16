@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
@@ -72,8 +73,20 @@ def function_def_to_graph(fdef, input_shapes=None):
     func_graph.outputs = [
         func_graph.get_tensor_by_name(name) for name in output_tensor_names
     ]
+    func_graph.control_outputs = [
+        func_graph.get_operation_by_name(fdef.control_ret[ret_name])
+        for ret_name in fdef.signature.control_output
+    ]
 
   return func_graph
+
+
+def _is_function(fname):
+  """Checks for a function definition with `fname` in the current context."""
+  if context.executing_eagerly():
+    return context.context().has_function(fname)
+  else:
+    return ops.get_default_graph()._is_function(fname)  # pylint: disable=protected-access
 
 
 def function_def_to_graph_def(fdef, input_shapes=None):
@@ -147,12 +160,12 @@ def function_def_to_graph_def(fdef, input_shapes=None):
     for attr in op_def.attr:
       if attr.type == "func":
         fname = node_def.attr[attr.name].func.name
-        if not ops.get_default_graph()._is_function(fname):  # pylint: disable=protected-access
+        if not _is_function(fname):
           raise ValueError("%s function not found." % fname)
       elif attr.type == "list(func)":
         for fn in node_def.attr[attr.name].list.func:
           fname = fn.name
-          if not ops.get_default_graph()._is_function(fname):  # pylint: disable=protected-access
+          if not _is_function(fname):
             raise ValueError("%s function not found." % fname)
 
     # Iterate over output_args in op_def to build the map.
@@ -168,8 +181,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
         flat_name = "{}:{}".format(node_def.name, flattened_index)
         nested_to_flat_tensor_name[nested_name] = flat_name
         flattened_index += 1
-      control_name = "^" + node_def.name
-      nested_to_flat_tensor_name[control_name] = control_name
+    control_name = "^" + node_def.name
+    nested_to_flat_tensor_name[control_name] = control_name
 
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:

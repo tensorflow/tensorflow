@@ -61,6 +61,7 @@ _TENSORFLOW_DOC_SOURCES = {
     'signal': DocSource(docstring_module_name='ops.signal.signal'),
     'sparse': DocSource(docstring_module_name='ops.sparse_ops'),
     'strings': DocSource(docstring_module_name='ops.string_ops'),
+    'summary': DocSource(docstring_module_name='summary.summary'),
     'sysconfig': DocSource(docstring_module_name='platform.sysconfig'),
     'test': DocSource(docstring_module_name='platform.test'),
     'train': DocSource(docstring_module_name='training.training'),

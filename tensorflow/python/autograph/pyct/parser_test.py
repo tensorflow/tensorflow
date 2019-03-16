@@ -31,13 +31,31 @@ class ParserTest(test.TestCase):
     def f(x):
       return x + 1
 
-    mod, _ = parser.parse_entity(f)
-    self.assertEqual('f', mod.body[0].name)
+    node, _, _ = parser.parse_entity(f)
+    self.assertEqual('f', node.name)
 
   def test_parse_str(self):
     mod = parser.parse_str(
         textwrap.dedent("""
             def f(x):
+              return x + 1
+    """))
+    self.assertEqual('f', mod.body[0].name)
+
+  def test_parse_str_print(self):
+    mod = parser.parse_str(
+        textwrap.dedent("""
+            def f(x):
+              print(x)
+              return x + 1
+    """))
+    self.assertEqual('f', mod.body[0].name)
+
+  def test_parse_str_weird_print(self):
+    mod = parser.parse_str(
+        textwrap.dedent("""
+            def f(x):
+              print (x)
               return x + 1
     """))
     self.assertEqual('f', mod.body[0].name)

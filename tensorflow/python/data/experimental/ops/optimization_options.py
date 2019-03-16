@@ -33,7 +33,7 @@ class OptimizationOptions(options.OptionsBase):
   ```python
   options = tf.data.Options()
   options.experimental_optimization.map_vectorization = True
-  options.apply_default_optimizations = False
+  options.experimental_optimization.apply_default_optimizations = False
   dataset = dataset.with_options(options)
   ```
   """
@@ -43,6 +43,22 @@ class OptimizationOptions(options.OptionsBase):
       docstring=
       "Whether to apply default static optimizations. If False, only static "
       "optimizations that have been explicitly enabled will be applied.")
+
+  autotune = options.create_option(
+      name="autotune",
+      ty=bool,
+      docstring=
+      "Whether to automatically tune performance knobs. If None, defaults to "
+      "True.")
+
+  autotune_cpu_budget = options.create_option(
+      name="autotune_cpu_budget",
+      ty=int,
+      docstring=
+      "When autotuning is enabled (through `autotune`), determines the CPU "
+      "budget to use. Values greater than the number of schedulable CPU cores "
+      "are allowed but may result in CPU contention. If None, defaults to the "
+      "number of schedulable CPU cores.")
 
   filter_fusion = options.create_option(
       name="filter_fusion",
@@ -104,18 +120,21 @@ class OptimizationOptions(options.OptionsBase):
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
-    result = []
-    optimizations_to_enable = [
+    result = set()
+    all_optimizations = [
         "filter_fusion",
         "hoist_random_uniform",
+        "map_and_batch_fusion",
         "map_and_filter_fusion",
-        "map_fusion",
         "map_parallelization",
+        "map_fusion",
         "map_vectorization",
+        "noop_elimination",
+        "shuffle_and_repeat_fusion",
     ]
-    for optimization in optimizations_to_enable:
+    for optimization in all_optimizations:
       if getattr(self, optimization):
-        result.append(optimization)
+        result.add(optimization)
 
     if self.apply_default_optimizations is not False:
       # The following optimizations are turned on by default, unless the
@@ -127,5 +146,5 @@ class OptimizationOptions(options.OptionsBase):
       ]
       for optimization in optimizations_to_disable:
         if getattr(self, optimization) is not False:
-          result.append(optimization)
-    return result
+          result.add(optimization)
+    return sorted(list(result))

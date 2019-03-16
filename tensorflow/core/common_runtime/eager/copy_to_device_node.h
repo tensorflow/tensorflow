@@ -30,7 +30,7 @@ class CopyToDeviceNode : public EagerNode {
         src_(src),
         dstd_(dstd),
         ctx_(ctx),
-        dst_(new TensorHandle(id, dstd_, dstd_, src->dtype, ctx)) {
+        dst_(new TensorHandle(id, dstd_, dstd_, nullptr, src->dtype, ctx)) {
     src_->Ref();
     dst_->Ref();
   }

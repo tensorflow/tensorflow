@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "dnn_logit_fn_builder"
-    argspec: "args=[\'units\', \'hidden_units\', \'feature_columns\', \'activation_fn\', \'dropout\', \'input_layer_partitioner\', \'batch_norm\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'units\', \'hidden_units\', \'feature_columns\', \'activation_fn\', \'dropout\', \'batch_norm\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "linear_logit_fn_builder"
@@ -35,5 +35,17 @@ tf_module {
   member_method {
     name: "stop_if_higher_hook"
     argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_lower_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_no_decrease_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'max_steps_without_decrease\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_no_increase_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'max_steps_without_increase\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
   }
 }

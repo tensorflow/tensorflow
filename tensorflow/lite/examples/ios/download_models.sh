@@ -17,42 +17,31 @@
 set -ex
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-MODELS_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_ios_lite_float_2017_11_08.zip"
-QUANTIZED_MODELS_URL="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip"
+FLOAT_MODEL_URL="http://download.tensorflow.org/models/mobilenet_v1_2018_02_22/mobilenet_v1_1.0_224.tgz"
+QUANTIZED_MODEL_URL="http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz"
 DOWNLOADS_DIR=$(mktemp -d)
 
-cd $SCRIPT_DIR
+cd "$SCRIPT_DIR"
 
 download_and_extract() {
-  local usage="Usage: download_and_extract URL DIR"
-  local url="${1:?${usage}}"
-  local dir="${2:?${usage}}"
+  local url="$1"
+  local dir="$2"
   echo "downloading ${url}" >&2
   mkdir -p "${dir}"
   tempdir=$(mktemp -d)
-  tempdir2=$(mktemp -d)
 
-  curl -L ${url} > ${tempdir}/zipped.zip
-  unzip ${tempdir}/zipped.zip -d ${tempdir2}
-
-  # If the zip file contains nested directories, extract the files from the
-  # inner directory.
-  if ls ${tempdir2}/*/* 1> /dev/null 2>&1; then
-    # unzip has no strip components, so unzip to a temp dir, and move the
-    # files we want from the tempdir to destination.
-    cp -R ${tempdir2}/*/* ${dir}/
-  else
-    cp -R ${tempdir2}/* ${dir}/
-  fi
-  rm -rf ${tempdir2} ${tempdir}
+  curl -L ${url} > ${tempdir}/archive.tgz
+  cd ${dir}
+  tar zxvf ${tempdir}/archive.tgz
+  rm -rf ${tempdir}
 }
 
-download_and_extract "${MODELS_URL}" "${DOWNLOADS_DIR}/models"
-download_and_extract "${QUANTIZED_MODELS_URL}" "${DOWNLOADS_DIR}/quantized_models"
+download_and_extract "${FLOAT_MODEL_URL}" "${DOWNLOADS_DIR}/float_model"
+download_and_extract "${QUANTIZED_MODEL_URL}" "${DOWNLOADS_DIR}/quantized_model"
 
-file ${DOWNLOADS_DIR}/models
-
-cp ${DOWNLOADS_DIR}/models/models/* simple/data/
-cp ${DOWNLOADS_DIR}/models/models/* camera/data/
-cp "${DOWNLOADS_DIR}/quantized_models/mobilenet_quant_v1_224.tflite" \
+cd "$SCRIPT_DIR"
+cp "${DOWNLOADS_DIR}/float_model/mobilenet_v1_1.0_224.tflite" "simple/data/mobilenet_v1_1.0_224.tflite"
+cp "${DOWNLOADS_DIR}/float_model/mobilenet_v1_1.0_224.tflite" "camera/data/mobilenet_v1_1.0_224.tflite"
+cp "${DOWNLOADS_DIR}/quantized_model/mobilenet_v1_1.0_224_quant.tflite" \
    'camera/data/mobilenet_quant_v1_224.tflite'
+echo "Done"

@@ -19,10 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
+from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.util import nest
 
 
 def for_stmt(iter_, extra_test, body, init_state):
@@ -61,6 +65,17 @@ def for_stmt(iter_, extra_test, body, init_state):
   if tensor_util.is_tensor(iter_):
     return _known_len_for_stmt(iter_, extra_test, body, init_state)
   elif isinstance(iter_, dataset_ops.DatasetV2):
+    # Check for undefined symbols and report an error. This prevents the error
+    # from propagating into the TF runtime. We have more information here and
+    # can provide a clearer error message.
+    undefined_symbols = _filter_undefined(init_state)
+
+    if undefined_symbols:
+      raise ValueError(
+          'TensorFlow requires that the following symbols must be initialized '
+          'to a Tensor, Variable or TensorArray before the loop: {}'
+          .format(tuple(undefined_symbols)))
+
     return _dataset_for_stmt(iter_, extra_test, body, init_state)
   else:
     return _py_for_stmt(iter_, extra_test, body, init_state)
@@ -70,13 +85,9 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
   """Overload of for_stmt that executes a Python for loop."""
   state = init_state
   for target in iter_:
-    if not extra_test(*state):
+    if extra_test is not None and not extra_test(*state):
       break
     state = body(target, *state)
-
-  # TODO(mdan): Remove this special case.
-  if len(state) == 1:
-    return state[0]
   return state
 
 
@@ -87,13 +98,17 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
   def while_body(iterate_index, *state):
     iterate = iter_[iterate_index]
     new_state = body(iterate, *state)
+
+    state = (iterate_index + 1,)
     if new_state:
-      return (iterate_index + 1,) + new_state
-    else:
-      return iterate_index + 1
+      state += new_state
+
+    return state
 
   def while_cond(iterate_index, *state):
-    return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+    if extra_test is not None:
+      return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+    return iterate_index < n
 
   results = while_stmt(
       while_cond,
@@ -108,9 +123,6 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
     assert len(results) >= 1  # Has at least the iterate.
     if len(results) > 1:
       results = results[1:]
-    if len(results) == 1:
-      # TODO(mdan): Remove this special case.
-      results, = results
   else:
     results = ()
 
@@ -119,20 +131,26 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
 
 def _dataset_for_stmt(ds, extra_test, body, init_state):
   """Overload of for_stmt that iterates over TF Datasets."""
-  if extra_test(*init_state) is not True:
+
+  if extra_test is not None:
     raise NotImplementedError(
-        'break statements are not yet supported in for/Dataset loops')
+        'break and return statements are not yet supported in '
+        'for/Dataset loops.')
 
   def reduce_body(state, iterate):
     new_state = body(iterate, *state)
     return new_state
 
-  results = ds.reduce(init_state, reduce_body)
+  if init_state:
+    return ds.reduce(init_state, reduce_body)
 
-  # TODO(mdan): Remove this special case.
-  if len(results) == 1:
-    return results[0]
-  return results
+  # Workaround for Datset.reduce not allowing empty state tensors - create
+  # a dummy state variable that remains unused.
+  def reduce_body_with_dummy_state(state, iterate):
+    reduce_body((), iterate)
+    return state
+  ds.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
+  return ()
 
 
 def while_stmt(test, body, init_state, extra_deps, opts=None):
@@ -160,17 +178,45 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
   # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
-  if any(tensor_util.is_tensor(v) for v in init_state + extra_deps):
+  if any(
+      tensor_util.is_tensor(v) or isinstance(v, data_flow_ops.QueueBase)
+      for v in nest.flatten(extra_deps)):
+    # Check for undefined symbols and report an error. This prevents the error
+    # from propagating into the TF runtime. We have more information here and
+    # can provide a clearer error message.
+    undefined_symbols = _filter_undefined(init_state)
+
+    if undefined_symbols:
+      raise ValueError(
+          'TensorFlow requires that the following symbols must be initialized '
+          'to a Tensor, Variable or TensorArray before the loop: {}'
+          .format(tuple(undefined_symbols)))
     return _tf_while_stmt(test, body, init_state, opts)
   else:
     return _py_while_stmt(test, body, init_state, opts)
+
+
+def _filter_undefined(all_symbols):
+  """Returns the names of undefined symbols contained in all_symbols."""
+  undefined_symbols = [
+      s.symbol_name
+      for s in all_symbols
+      if special_values.is_undefined(s)
+  ]
+  return undefined_symbols
 
 
 def _tf_while_stmt(test, body, init_state, opts):
   """Overload of while_stmt that stages a TF while_stmt."""
   if opts is None:
     opts = {}
-  return control_flow_ops.while_loop(test, body, init_state, **opts)
+
+  # Non-v2 while_loop unpacks the results when there is only one return value.
+  # This enforces consistency across versions.
+  opts['return_same_structure'] = True
+
+  retval = control_flow_ops.while_loop(test, body, init_state, **opts)
+  return retval
 
 
 def _py_while_stmt(test, body, init_state, opts):
@@ -182,7 +228,7 @@ def _py_while_stmt(test, body, init_state, opts):
   return state
 
 
-def if_stmt(cond, body, orelse):
+def if_stmt(cond, body, orelse, get_state, set_state):
   """Functional form of an if statement.
 
   Args:
@@ -191,19 +237,71 @@ def if_stmt(cond, body, orelse):
         as return type.
     orelse: Callable with no arguments, and outputs of the negative (else)
         branch as return type.
+    get_state: Function that returns a tuple containing the values of all
+        composite symbols modified within the conditional. This allows access to
+        state that branches may mutate through side effects. This function is
+        not needed and should not be called when dispatching to code matching
+        Python's default semantics. This is useful for checkpointing to avoid
+        unintended side-effects when staging requires evaluating all code-paths.
+    set_state: Function to set the values of all composite symbols modified
+        within the conditional. This is the complement to get_state, used to
+        restore checkpointed values. The single argument a tuple containing
+        values for each composite symbol that may be modified in a branch of the
+        conditional. The is usually the result of a call to get_state.
 
   Returns:
     Tuple containing the statement outputs.
   """
   if tensor_util.is_tensor(cond):
-    return tf_if_stmt(cond, body, orelse)
+    return tf_if_stmt(cond, body, orelse, get_state, set_state)
   else:
     return _py_if_stmt(cond, body, orelse)
 
 
-def tf_if_stmt(cond, body, orelse):
+def tf_if_stmt(cond, body, orelse, get_state, set_state):
   """Overload of if_stmt that stages a TF cond."""
-  return control_flow_ops.cond(cond, body, orelse)
+  checkpointed_body = _wrap_in_state_isolation(body, get_state, set_state)
+  checkpointed_orelse = _wrap_in_state_isolation(orelse, get_state,
+                                                 set_state)
+  protected_body = _wrap_in_protection_from_undefined(
+      checkpointed_body, branch_name='if')
+  protected_orelse = _wrap_in_protection_from_undefined(
+      checkpointed_orelse, branch_name='else')
+
+  return control_flow_ops.cond(cond, protected_body, protected_orelse)
+
+
+def _wrap_in_state_isolation(func, get_state, set_state):
+  """Wraps function to checkpoint the value of modified composites."""
+  def checkpoint_func():
+    init_values = get_state()
+    ret_values = func()
+    set_state(init_values)
+    return ret_values
+
+  return checkpoint_func
+
+
+def _wrap_in_protection_from_undefined(func, branch_name):
+  """Wraps function to raise useful error when it returns undefined symbols."""
+  def protected_func():
+    """Calls function and raises an error if undefined symbols are returned."""
+    results = func()
+    undefined_symbols = None
+    if isinstance(results, tuple):
+      undefined_symbols = _filter_undefined(results)
+    elif special_values.is_undefined(results):
+      # Single return value
+      undefined_symbols = results.symbol_name
+
+    if undefined_symbols:
+      message = ('The following symbols must also be initialized in the %s '
+                 'branch: {}. Alternatively, you may initialize them before '
+                 'the if statement.') % branch_name
+      message = message.format(undefined_symbols)
+      raise ValueError(message)
+    return results
+  return protected_func
 
 
 def _py_if_stmt(cond, body, orelse):

@@ -57,6 +57,11 @@ void InitGoogle(const char* usage, int* argc, char*** argv, bool remove_flags) {
   ::InitGoogle(usage, argc, argv, remove_flags);
 }
 
+void InitGoogleWasDoneElsewhere() {
+  // Nothing need be done since ::CheckInitGoogleIsDone() is aware of other
+  // possible initialization entry points.
+}
+
 void CheckInitGoogleIsDone(const char* message) {
   ::CheckInitGoogleIsDone(message);
 }
@@ -151,6 +156,8 @@ constexpr int kFileWriteFlags = O_CREAT | O_WRONLY;
 #endif  // _WIN32
 
 static bool port_initialized = false;
+
+void InitGoogleWasDoneElsewhere() { port_initialized = true; }
 
 void InitGoogle(const char* usage, int* argc, char*** argv, bool remove_flags) {
   if (!port_initialized) {

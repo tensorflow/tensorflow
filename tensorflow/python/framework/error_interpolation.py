@@ -29,10 +29,9 @@ import re
 
 import six
 
-from tensorflow.python.framework.ops import Tensor
 from tensorflow.python.util import tf_stack
 
-_NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
+_NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
 _INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
 _INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
@@ -42,11 +41,13 @@ _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
     os.path.join("tensorflow", "contrib"),
+    os.path.join("tensorflow_estimator", "python"),
+    os.path.join("tensorflow_estimator", "contrib"),
     "<embedded",
 ]
 
 
-def _parse_message(message):
+def parse_message(message):
   """Parses the message.
 
   Splits the message into separators and tags. Tags are named tuples
@@ -178,9 +179,9 @@ def _compute_colocation_summary_from_op(op, prefix=""):
 
 
 def _find_index_of_defining_frame_for_op(op):
-  """Return index in op._traceback with first 'useful' frame.
+  """Return index in op.traceback with first 'useful' frame.
 
-  This method reads through the stack stored in op._traceback looking for the
+  This method reads through the stack stored in op.traceback looking for the
   innermost frame which (hopefully) belongs to the caller.  It accomplishes this
   by rejecting frames whose filename appears to come from TensorFlow (see
   error_interpolation._BAD_FILE_SUBSTRINGS for the list of rejected substrings).
@@ -190,15 +191,13 @@ def _find_index_of_defining_frame_for_op(op):
         location.
 
   Returns:
-    Integer index into op._traceback where the first non-TF file was found
+    Integer index into op.traceback where the first non-TF file was found
     (innermost to outermost), or 0 (for the outermost stack frame) if all files
     came from TensorFlow.
   """
-  # pylint: disable=protected-access
   # Index 0 of tf_traceback is the outermost frame.
-  tf_traceback = tf_stack.convert_stack(op._traceback)
+  tf_traceback = op.traceback
   size = len(tf_traceback)
-  # pylint: enable=protected-access
   filenames = [frame[tf_stack.TB_FILENAME] for frame in tf_traceback]
   # We process the filenames from the innermost frame to outermost.
   for idx, filename in enumerate(reversed(filenames)):
@@ -211,10 +210,40 @@ def _find_index_of_defining_frame_for_op(op):
 def _get_defining_frame_from_op(op):
   """Find and return stack frame where op was defined."""
   frame_index = _find_index_of_defining_frame_for_op(op)
-  # pylint: disable=protected-access
-  frame = op._traceback[frame_index]
-  # pylint: enable=protected-access
-  return frame
+  return op.traceback[frame_index]
+
+def compute_useful_stack(op):
+  """Return a list of line name and lineno pairs, which form a 'useful' stack.
+
+  Starting from the defining frame to the outermost one, this method computes
+  the contiguous portion of the 'useful' stack trace and returns each line as
+  a line name and lineno pair.
+
+  Args:
+    op: op.Operation object having a _traceback member.
+
+  Returns:
+    A list of line name and lineno pairs. Below is an example of returned list:
+    [("tool_utils.py", "124", "func1", "a={}"), ("tool_utils.py", "21", "func2",
+    "for i in range(10):"), ....]
+  """
+  defining_frame_index = _find_index_of_defining_frame_for_op(op)
+  stack_trace = []
+  # The stack trace is collected from the defining (included) to the outermost.
+  # Include `frame_num` frames at most.
+  # Two lines from the TensorFlow library are included to show the node
+  # definition.
+  frame_num = 10
+  innermost_excluded = min(defining_frame_index + 2 + 1, len(op.traceback))
+  outermost_included = max(innermost_excluded - frame_num, 0)
+  for index in reversed(range(outermost_included, innermost_excluded)):
+    frame = op.traceback[index]
+    filename = frame[tf_stack.TB_FILENAME]
+    lineno = frame[tf_stack.TB_LINENO]
+    func = frame[tf_stack.TB_FUNCNAME]
+    code = frame[tf_stack.TB_CODEDICT]
+    stack_trace.append((filename, lineno, func, code))
+  return stack_trace
 
 
 def compute_field_dict(op, strip_file_prefix=""):
@@ -270,7 +299,7 @@ def compute_field_dict(op, strip_file_prefix=""):
   return field_dict
 
 
-def _common_prefix(all_ops):
+def traceback_files_common_prefix(all_ops):
   """Determines the common prefix from the paths of the stacktrace of 'all_ops'.
 
   For example, if the paths are '/foo/bar/baz/' and '/foo/car', this would
@@ -287,52 +316,37 @@ def _common_prefix(all_ops):
     if ops is None:
       continue
     for op in ops:
-      # pylint: disable=protected-access
-      tf_traceback = tf_stack.convert_stack(op._traceback)
-      # pylint: enable=protected-access
-      for frame in tf_traceback:
+      for frame in op.traceback:
         filename = frame[tf_stack.TB_FILENAME]
         if "<embedded" not in filename:
           files.add(filename)
   return os.path.split(os.path.commonprefix(list(files)))[0]
 
 
-def _sources_for_node(name, graph):
-  """Gets the top-level root input nodes for 'name' node.
-
-  We recursively traverse the graph from 'name' node to its inputs and collect
-  all the nodes which don't have any inputs.
+def _sources_for_node(node, graph):
+  """Gets the input op nodes for 'node'.
 
   Args:
-    name: The name of the node.
+    node: The node.
     graph: The graph containing the node.
 
   Returns:
-    The unique top-level root input nodes.
+    The unique input nodes.
   """
-  def _helper(name, graph, seen_names, inputs):
-    """Recursive helper. 'seen_names' and 'inputs' are mutated."""
+  inputs = set()
+  for name in node.node_def.input:
     if name.startswith("^"):
       name = name[1:]
     try:
-      op = graph.as_graph_element(name)
-    except KeyError:
-      return
-    if isinstance(op, Tensor):
-      op = op.op
-    name = op.name
-    if name in seen_names:
-      return
-    seen_names.add(name)
-    if not op.node_def.input:
-      inputs.add(op)
-      return
-    for n in op.node_def.input:
-      _helper(n, graph, seen_names, inputs)
+      tensor = graph.get_tensor_by_name(name)
+      op = tensor.op
+    except (KeyError, ValueError):
+      try:
+        op = graph.get_operation_by_name(name)
+      except KeyError:
+        continue
+    inputs.add(op)
 
-  names = set()
-  inputs = set()
-  _helper(name, graph, names, inputs)
   return list(inputs)
 
 
@@ -383,7 +397,7 @@ def interpolate(error_message, graph):
   Returns:
     The string with tags of the form {{type name}} interpolated.
   """
-  seps, tags = _parse_message(error_message)
+  seps, tags = parse_message(error_message)
   subs = []
   end_msg = collections.defaultdict(list)
   tagged_ops = []
@@ -396,9 +410,9 @@ def interpolate(error_message, graph):
     if op is None:
       tagged_ops.append(None)
     else:
-      tagged_ops.append([op] + _sources_for_node(op.name, graph))
+      tagged_ops.append([op] + _sources_for_node(op, graph))
 
-  common_prefix = _common_prefix(tagged_ops)
+  common_prefix = traceback_files_common_prefix(tagged_ops)
   for tag, ops in zip(tags, tagged_ops):
     msg = "{{%s %s}}" % (tag.type, tag.name)
     if ops is not None:
@@ -411,6 +425,8 @@ def interpolate(error_message, graph):
         msg = "node %s%s placed on device %s " % (
             ops[0].name, field_dict["defined_at"], field_dict["devices"])
         end_msg["colocations"].append(field_dict["devs_and_colocs"])
+    if tag.type == "function_node":
+      msg = ""
     subs.append(msg)
 
   if "source_nodes" in end_msg:

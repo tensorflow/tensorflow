@@ -72,7 +72,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoop(int num_iters) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant({{LOOP_BOUND}})
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
@@ -107,7 +107,7 @@ WhileLoopSimplifierTest::MakeModuleWithSimpleLoopTupleElementLoopBound(
     loop_var.2 = (s32[], s32[3]{0}, s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=2
-    ROOT less-than = pred[] less-than(get-tuple-element.3, get-tuple-element.4)
+    ROOT less-than = pred[] compare(get-tuple-element.3, get-tuple-element.4), direction=LT
   }
   ENTRY SimpleLoopWithIndirectLoopBound {
     constant.3 = s32[] constant(42)
@@ -237,7 +237,7 @@ TEST_F(WhileLoopSimplifierTest, NonTupleShapedLoopNotSimplified) {
  NonTupleShapedLoop.condition {
    loop_var = s32[] parameter(0)
    constant = s32[] constant(100)
-   ROOT less-than = pred[] less-than(s32[] loop_var, s32[] constant)
+   ROOT less-than = pred[] compare(s32[] loop_var, s32[] constant), direction=LT
  }
  ENTRY INonTupleShapedLoop {
    constant.2 = s32[] constant(42)
@@ -387,7 +387,7 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
     param0 = (s32[], s32[], s32[]) parameter(0)
     get-tuple-element = s32[] get-tuple-element((s32[], s32[], s32[]) param0),
       index=2
-    ROOT equal-to = pred[] equal-to(s32[] constant.2, s32[] get-tuple-element)
+    ROOT equal-to = pred[] compare(s32[] constant.2, s32[] get-tuple-element), direction=EQ
   }
   ENTRY RemoveUnusedOperands {
     x = s32[] parameter(0)
@@ -407,13 +407,12 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   // The original while instruction is still left in the module as a dead
   // instruction, find a while instruction with a different name as the new
   // while instruction.
+  const auto& instrs = m->entry_computation()->instructions();
   HloInstruction* new_while_op =
-      *std::find_if(m->entry_computation()->instructions().begin(),
-                    m->entry_computation()->instructions().end(),
-                    [&](const HloInstruction* instr) {
-                      return (instr->opcode() == HloOpcode::kWhile &&
-                              instr->name() != "while");
-                    });
+      *absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kWhile &&
+                instr->name() != "while");
+      });
 
   auto scalar_s32 = ShapeUtil::MakeShape(S32, {});
   EXPECT_TRUE(
@@ -472,7 +471,7 @@ TEST_F(WhileLoopSimplifierTest,
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(44)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
@@ -504,7 +503,7 @@ TEST_F(WhileLoopSimplifierTest, LoopWithArrayConstantNotSimplified) {
     loop_var.2 = (s32[], s32[3]{0}, s32[3]{0}) parameter(0)
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(47)
-    ROOT less-than = pred[] less-than(get-tuple-element.4, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.4, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(42)
@@ -680,7 +679,7 @@ const char* const kSimpleMergeInductionVariablesModule = R"(
     b = TYPE[] get-tuple-element(param), index=1
     sum = TYPE[] power(a, b)
     ten = TYPE[] constant(10)
-    ROOT cond = pred[] less-than(sum, ten)
+    ROOT cond = pred[] compare(sum, ten), direction=LT
   }
   ENTRY Loop {
     a = TYPE[] constant(10)

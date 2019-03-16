@@ -67,8 +67,8 @@ class QrOpTest(test.TestCase):
       val = self.evaluate(all_ops)
       for i in range(8):
         q = 4 * i
-        self.assertAllEqual(val[q], val[q + 2])  # q1 == q2
-        self.assertAllEqual(val[q + 1], val[q + 3])  # r1 == r2
+        self.assertAllClose(val[q], val[q + 2])  # q1 == q2
+        self.assertAllClose(val[q + 1], val[q + 3])  # r1 == r2
 
 
 def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):

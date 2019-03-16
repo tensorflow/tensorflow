@@ -98,7 +98,8 @@ TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
 
 // Clears the internal caches in the TFE context. Useful when reseeding random
 // ops.
-TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
+TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx,
+                                                  TF_Status* status);
 
 // Sets a thread-local device placement policy. After this call, other calls to
 // TFE_Execute in the same thread will use the device policy specified here
@@ -282,8 +283,13 @@ TF_CAPI_EXPORT extern const char* TFE_OpGetDevice(TFE_Op* op,
 TF_CAPI_EXPORT extern void TFE_OpSetXLACompilation(TFE_Op* op,
                                                    unsigned char enable);
 
-TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h,
+TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input,
                                           TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_OpAddInputList(TFE_Op* op,
+                                              TFE_TensorHandle** inputs,
+                                              int num_inputs,
+                                              TF_Status* status);
 
 TF_CAPI_EXPORT extern TF_AttrType TFE_OpGetAttrType(TFE_Op* op,
                                                     const char* attr_name,
@@ -392,6 +398,10 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunctionDef(
 TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
                                                   TF_Function* function,
                                                   TF_Status* status);
+
+// Checks whether a function is registered under `name`.
+TF_CAPI_EXPORT unsigned char TFE_ContextHasFunction(TFE_Context* ctx,
+                                                    const char* name);
 
 // Enables tracing of RunMetadata on the ops executed from this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableRunMetadata(TFE_Context* ctx);

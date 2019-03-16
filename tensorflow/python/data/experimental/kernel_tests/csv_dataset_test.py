@@ -89,14 +89,12 @@ class CsvDatasetTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(nxt())
     else:
-      # Verify that OpError is produced as expected
-      with self.assertRaisesOpError(expected_err_re):
-        nxt = self.getNext(dataset)
-        while True:
-          try:
-            self.evaluate(nxt())
-          except errors.OutOfRangeError:
-            break
+      nxt = self.getNext(dataset)
+      while True:
+        try:
+          self.evaluate(nxt())
+        except errors.OutOfRangeError:
+          break
 
   def _test_dataset(
       self,
@@ -110,8 +108,14 @@ class CsvDatasetTest(test_base.DatasetTestBase):
     # Convert str type because py3 tf strings are bytestrings
     filenames = self._setup_files(inputs, linebreak, compression_type)
     kwargs['compression_type'] = compression_type
-    dataset = readers.CsvDataset(filenames, **kwargs)
-    self._verify_output_or_err(dataset, expected_output, expected_err_re)
+    if expected_err_re is not None:
+      # Verify that OpError is produced as expected
+      with self.assertRaisesOpError(expected_err_re):
+        dataset = readers.CsvDataset(filenames, **kwargs)
+        self._verify_output_or_err(dataset, expected_output, expected_err_re)
+    else:
+      dataset = readers.CsvDataset(filenames, **kwargs)
+      self._verify_output_or_err(dataset, expected_output, expected_err_re)
 
   def testCsvDataset_requiredFields(self):
     record_defaults = [[]] * 4

@@ -36,7 +36,6 @@ from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core.converter import ConversionOptions
 from tensorflow.python.autograph.core.converter import Feature
-from tensorflow.python.autograph.core.converter import Verbosity
 from tensorflow.python.autograph.core.errors import GraphConstructionError
 from tensorflow.python.autograph.core.errors import improved_errors
 from tensorflow.python.autograph.core.errors import TfRuntimeError
@@ -49,8 +48,9 @@ from tensorflow.python.autograph.impl.api import to_graph
 from tensorflow.python.autograph.lang.directives import set_element_type
 from tensorflow.python.autograph.lang.directives import set_loop_options
 from tensorflow.python.autograph.lang.special_functions import stack
+from tensorflow.python.autograph.pyct.errors import AutoGraphError
 from tensorflow.python.autograph.lang.special_functions import tensor_list
-from tensorflow.python.autograph.pyct.transformer import AutographParseError
+from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.util.all_util import remove_undocumented
 
 # TODO(mdan): Revisit this list once we finalize the generated code mechanism.
@@ -70,14 +70,13 @@ _allowed_symbols = [
     'improved_errors',
     'GraphConstructionError',
     'TfRuntimeError',
-    'Verbosity',
     # Python language "extensions"
     'set_element_type',
     'set_loop_options',
     'stack',
     'tensor_list',
     # Exceptions
-    'AutographParseError',
+    'AutoGraphError',
     # Utilities: to be removed
     'utils',
 ]

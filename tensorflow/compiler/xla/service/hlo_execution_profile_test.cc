@@ -45,7 +45,7 @@ TEST_F(HloExecutionProfileTest, Basic) {
 
   auto shape_size_function = [&](const Shape& shape) {
     const int64 pointer_size = 8;
-    if (ShapeUtil::IsOpaque(shape)) {
+    if (shape.IsOpaque()) {
       return pointer_size;
     }
     return ShapeUtil::ByteSizeOf(shape, pointer_size);

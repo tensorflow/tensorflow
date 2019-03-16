@@ -322,6 +322,37 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Cholesky
+
+See also
+[`XlaBuilder::Cholesky`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Computes the
+[Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
+of a batch of symmetric (Hermitian) positive definite matrices.
+
+<b> `Cholesky(a, lower)` </b>
+
+Arguments | Type    | Semantics
+--------- | ------- | -----------------------------------------------------
+`a`       | `XlaOp` | a rank > 2 array of a complex or floating-point type.
+`lower`   | `bool`  | whether to use the upper or lower triangle of `a`.
+
+If `lower` is `true`, computes lower-triangular matrices `l` such that $$ a = l
+. l^T $$. If `lower` is `false`, computes upper-triangular matrices `u` such
+that $$ a = u^T . u $$.
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` is greater than 2, `a` is treated as a batch of matrices,
+where all except the minor 2 dimensions are batch dimensions.
+
+If `a` is not symmetric (Hermitian) positive definite, the result is
+implementation-defined.
+
 ## Clamp
 
 See also
@@ -510,24 +541,48 @@ See also
 false_computation)` </b>
 
 Arguments           | Type             | Semantics
-------------------- | ---------------- | ---------------------------------
+------------------- | ---------------- | --------------------------------------
 `pred`              | `XlaOp`          | Scalar of type `PRED`
-`true_operand`      | `XlaOp`          | Argument of type `T_0`
-`true_computation`  | `XlaComputation` | XlaComputation of type `T_0 -> S`
-`false_operand`     | `XlaOp`          | Argument of type `T_1`
-`false_computation` | `XlaComputation` | XlaComputation of type `T_1 -> S`
+`true_operand`      | `XlaOp`          | Argument of type $$ T_0 $$
+`true_computation`  | `XlaComputation` | XlaComputation of type $$ T_0 \to S$$
+`false_operand`     | `XlaOp`          | Argument of type $$ T_1 $$
+`false_computation` | `XlaComputation` | XlaComputation of type $$ T_1 \to S $$
 
 Executes `true_computation` if `pred` is `true`, `false_computation` if `pred`
 is `false`, and returns the result.
 
-The `true_computation` must take in a single argument of type `T_0` and will be
-invoked with `true_operand` which must be of the same type. The
-`false_computation` must take in a single argument of type `T_1` and will be
+The `true_computation` must take in a single argument of type $$ T_0 $$ and will
+be invoked with `true_operand` which must be of the same type. The
+`false_computation` must take in a single argument of type $$ T_1 $$ and will be
 invoked with `false_operand` which must be of the same type. The type of the
 returned value of `true_computation` and `false_computation` must be the same.
 
 Note that only one of `true_computation` and `false_computation` will be
 executed depending on the value of `pred`.
+
+<b> `Conditional(branch_index, branch_computations, branch_operands)` </b>
+
+| Arguments             | Type                  | Semantics                    |
+| --------------------- | --------------------- | ---------------------------- |
+| `branch_index`        | `XlaOp`               | Scalar of type `PRED` or     |
+:                       :                       : `S32`                        :
+| `branch_computations` | sequence of N         | XlaComputations of type $$   |
+:                       : `XlaComputation`      : T_0 \to S , T_1 \to S , ..., :
+:                       :                       : T_{N-1} \to S $$             :
+| `branch_operands`     | sequence of N `XlaOp` | Arguments of type $$ T_0 ,   |
+:                       :                       : T_1 , ..., T_{N-1} $$        :
+
+Executes `branch_computations[branch_index]`, and returns the result. If
+`branch_index` is a `PRED`, then the `true` branch is in position 0 and the
+`false` branch is in position 1. If `branch_index` is an `S32` which is < 0
+or >= N, then `branch_computations[N-1]` is executed as the default branch.
+
+Each `branch_computations[b]` must take in a single argument of type `T_b` and
+will be invoked with `branch_operands[b]` which must be of the same type. The
+type of the returned value of each `branch_computations[b]` must be the same.
+
+Note that only one of the `branch_computations` will be executed depending on
+the value of `branch_index`.
 
 ## Conv (convolution)
 
@@ -548,17 +603,23 @@ Computes a convolution of the kind used in neural networks. Here, a convolution
 can be thought of as a n-dimensional window moving across a n-dimensional base
 area and a computation is performed for each possible position of the window.
 
-| Arguments             | Type                 | Semantics                     |
-| --------------------- | -------------------- | ----------------------------- |
-| `lhs`                 | `XlaOp`              | rank n+2 array of inputs      |
-| `rhs`                 | `XlaOp`              | rank n+2 array of kernel      |
-:                       :                      : weights                       :
-| `window_strides`      | `ArraySlice<int64>`  | n-d array of kernel strides   |
-| `padding`             | `ArraySlice<         | n-d array of (low, high)      |
-:                       : pair<int64, int64>>` : padding                       :
-| `lhs_dilation`        | `ArraySlice<int64>`  | n-d lhs dilation factor array |
-| `rhs_dilation`        | `ArraySlice<int64>`  | n-d rhs dilation factor array |
-| `feature_group_count` | int64                | the number of feature groups  |
+| Arguments             | Type                     | Semantics                |
+| --------------------- | ------------------------ | ------------------------ |
+| `lhs`                 | `XlaOp`                  | rank n+2 array of inputs |
+| `rhs`                 | `XlaOp`                  | rank n+2 array of kernel |
+:                       :                          : weights                  :
+| `window_strides`      | `ArraySlice<int64>`      | n-d array of kernel      |
+:                       :                          : strides                  :
+| `padding`             | `ArraySlice< pair<int64, | n-d array of (low, high) |
+:                       : int64>>`                 : padding                  :
+| `lhs_dilation`        | `ArraySlice<int64>`      | n-d lhs dilation factor  |
+:                       :                          : array                    :
+| `rhs_dilation`        | `ArraySlice<int64>`      | n-d rhs dilation factor  |
+:                       :                          : array                    :
+| `feature_group_count` | int64                    | the number of feature    |
+:                       :                          : groups                   :
+| `batch_group_count`   | int64                    | the number of batch      |
+:                       :                          : groups                   :
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course
@@ -628,12 +689,25 @@ input feature dimension, and the filter would be reshaped from
 `[filter_height, filter_width, 1, in_channels * channel_multiplier]`. For more
 details, see `tf.nn.depthwise_conv2d`.
 
+The `batch_group_count` (default value 1) argument can be used for depthwise
+filters during backpropagation. `batch_group_count` needs to be a divisor of the
+size of the `lhs` (input) batch dimension. If `batch_group_count` is greater
+than 1, it means that the output batch dimension should be of size
+`batch_group_size` where `batch_group_size = input batch / batch_group_count`.
+For convolutions with `batch_group_count` greater than 1, the input batch size
+must evenly divide into batch_group_size and output feature size, which implies
+that the output feature size must be equal to batch_group_count. Conceptually,
+this can be achieved by performing the usual convolution, and then scraping
+`batch_group_size` number of elements on the diagonal of the matrix formed by
+output batch and output feature.
+
 The output shape has these dimensions, in this order:
 
-*   `batch`: Same size as `batch` on the input (`lhs`).
+*   `batch`: The size of this dimension times `batch_group_count` should equal
+    the size of the `batch` dimension in lhs.
 *   `z`: Same size as `output-z` on the kernel (`rhs`).
 *   `spatial_dims`: One value for each valid placement of the convolutional
-window.
+    window.
 
 The valid placements of the convolutional window are determined by the strides
 and the size of the base area after padding.
@@ -856,9 +930,7 @@ DotGeneral performs the sum of products over contracting dimensions specified
 in 'dimension_numbers'.
 
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
-to be the same, but must be listed in the same order in both
-'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
-There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
+to be the same and but must have the same dimension sizes.
 
 Example with contracting dimension numbers:
 
@@ -877,10 +949,8 @@ DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
 {15.0, 30.0} }
 ```
 
-Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, must
-have the same dimension sizes, and must be ordered before contracting and
-non-contracting/non-batch dimension numbers.
+Associated batch dimension numbers from the 'lhs' and 'rhs' must
+have the same dimension sizes.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
@@ -929,21 +999,21 @@ dimension: [start, start + size). The shape of `start_indices` must be rank ==
 
 <b> `DynamicSlice(operand, start_indices, size_indices)` </b>
 
-| Arguments       | Type                | Semantics                           |
-| --------------- | ------------------- | ----------------------------------- |
-| `operand`       | `XlaOp`             | N dimensional array of type T       |
-| `start_indices` | `XlaOp`             | Rank 1 array of N integers          |
-:                 :                     : containing the starting indices of  :
-:                 :                     : the slice for each dimension. Value :
-:                 :                     : must be greater than or equal to    :
-:                 :                     : zero.                               :
-| `size_indices`  | `ArraySlice<int64>` | List of N integers containing the   |
-:                 :                     : slice size for each dimension. Each :
-:                 :                     : value must be strictly greater than :
-:                 :                     : zero, and start + size must be less :
-:                 :                     : than or equal to the size of the    :
-:                 :                     : dimension to avoid wrapping modulo  :
-:                 :                     : dimension size.                     :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
+| `size_indices`  | `ArraySlice<int64>`   | List of N integers containing the  |
+:                 :                       : slice size for each dimension.     :
+:                 :                       : Each value must be strictly        :
+:                 :                       : greater than zero, and start +     :
+:                 :                       : size must be less than or equal to :
+:                 :                       : the size of the dimension to avoid :
+:                 :                       : wrapping modulo dimension size.    :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -994,19 +1064,22 @@ the rank of `operand`.
 
 <b> `DynamicUpdateSlice(operand, update, start_indices)` </b>
 
-| Arguments       | Type    | Semantics                                        |
-| --------------- | ------- | ------------------------------------------------ |
-| `operand`       | `XlaOp` | N dimensional array of type T                    |
-| `update`        | `XlaOp` | N dimensional array of type T containing the     |
-:                 :         : slice update. Each dimension of update shape     :
-:                 :         : must be strictly greater than zero, and start +  :
-:                 :         : update must be less than or equal to the operand :
-:                 :         : size for each dimension to avoid generating      :
-:                 :         : out-of-bounds update indices.                    :
-| `start_indices` | `XlaOp` | Rank 1 array of N integers containing the        |
-:                 :         : starting indices of the slice for each           :
-:                 :         : dimension. Value must be greater than or equal   :
-:                 :         : to zero.                                         :
+| Arguments       | Type                  | Semantics                          |
+| --------------- | --------------------- | ---------------------------------- |
+| `operand`       | `XlaOp`               | N dimensional array of type T      |
+| `update`        | `XlaOp`               | N dimensional array of type T      |
+:                 :                       : containing the slice update. Each  :
+:                 :                       : dimension of update shape must be  :
+:                 :                       : strictly greater than zero, and    :
+:                 :                       : start + update must be less than   :
+:                 :                       : or equal to the operand size for   :
+:                 :                       : each dimension to avoid generating :
+:                 :                       : out-of-bounds update indices.      :
+| `start_indices` | sequence of N `XlaOp` | List of N scalar integers          |
+:                 :                       : containing the starting indices of :
+:                 :                       : the slice for each dimension.      :
+:                 :                       : Value must be greater than or      :
+:                 :                       : equal to zero.                     :
 
 The effective slice indices are computed by applying the following
 transformation for each index `i` in `[1, N)` before performing the slice:
@@ -1080,7 +1153,7 @@ When `Op` is `Rem`, the sign of the result is taken from the dividend, and the
 absolute value of the result is always less than the divisor's absolute value.
 
 Integer division overflow (signed/unsigned division/remainder by zero or signed
-divison/remainder of `INT_SMIN` with `-1`) produces an implementation defined
+division/remainder of `INT_SMIN` with `-1`) produces an implementation defined
 value.
 
 An alternative variant with different-rank broadcasting support exists for these
@@ -1168,7 +1241,7 @@ if and only if the corresponding input element is finite.
 
 <b>`Sign(operand)`</b> Element-wise sign operation `x -> sgn(x)` where
 
-$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ 0 & x = 0\\ 1 & x > 0 \end{cases}$$
+$$\text{sgn}(x) = \begin{cases} -1 & x < 0\\ -0 & x = -0\\ NaN & x = NaN\\ +0 & x = +0\\ 1 & x > 0 \end{cases}$$
 
 using the comparison operator of the element type of `operand`.
 
@@ -1590,15 +1663,18 @@ Applies a reduction function to one or more arrays in parallel.
 
 <b> `Reduce(operands..., init_values..., computation, dimensions)` </b>
 
-Arguments     | Type                  | Semantics
-------------- | --------------------- | ---------------------------------------
-`operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.
-`init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.
-`computation` | `XlaComputation`      | computation of type
-              :                       : `T_0, ..., T_N, T_0, ..., T_N -> Collate(T_0, ..., T_N)`
-`dimensions`  | `int64` array         | unordered array of dimensions to reduce
+| Arguments     | Type                  | Semantics                            |
+| ------------- | --------------------- | ------------------------------------ |
+| `operands`    | Sequence of N `XlaOp` | N arrays of types `T_0, ..., T_N`.   |
+| `init_values` | Sequence of N `XlaOp` | N scalars of types `T_0, ..., T_N`.  |
+| `computation` | `XlaComputation`      | computation of type `T_0, ..., T_N,  |
+:               :                       : T_0, ..., T_N ->` `Collate(T_0, ..., :
+:               :                       : T_N)`                                :
+| `dimensions`  | `int64` array         | unordered array of dimensions to     |
+:               :                       : reduce                               :
 
 Where:
+
 * N is required to be greater or equal to 1.
 * All input arrays must have the same dimensions.
 * If `N = 1`, `Collate(T)` is `T`.
@@ -1608,10 +1684,10 @@ The output of the op is `Collate(Q_0, ..., Q_N)` where `Q_i` is an array of type
 `T_i`, the dimensions of which are described below.
 
 This operation reduces one or more dimensions of each input array into scalars.
-The rank of each returned array is `rank(operand) - len(dimensions)`.
-`init_value` is the initial value used for every reduction and may be inserted
+The rank of each returned array is `rank(operand) - len(dimensions)`. The
+initial value used for every reduction is `init_value`, and it may be inserted
 anywhere during computation by the back-end. In most cases, `init_value` is an
-identity of the reduction function (for example, 0 for addition). The applied
+identity of the reduction function (for example, `0` for addition). The applied
 `computation` is always passed the `init_value` on the left-hand side.
 
 The evaluation order of the reduction function is arbitrary and may be
@@ -1622,10 +1698,10 @@ Some reduction functions like addition are not strictly associative for floats.
 However, if the range of the data is limited, floating-point addition is close
 enough to being associative for most practical uses. It is possible to conceive
 of some completely non-associative reductions, however, and these will produce
-incorrect or unpredictable results in XLA reductions.
+incorrect or unpredictable results in XLA.
 
 As an example, when reducing across one dimension in a single 1D array with
-values [10, 11, 12, 13], with reduction function `f` (this is `computation`)
+values `[10, 11, 12, 13]`, with reduction function `f` (this is `computation`)
 then that could be computed as
 
 `f(10, f(11, f(12, f(init_value, 13)))`
@@ -1704,16 +1780,27 @@ preserved in the output, but some dimensions may get assigned new numbers (since
 the rank changes).
 
 We can also reduce multiple dimensions. Add-reducing dimensions 0 and 1 produces
-the 1D array `| 20 28 36 |`.
+the 1D array `[20, 28, 36]`.
 
 Reducing the 3D array over all its dimensions produces the scalar `84`.
 
-When `N > 1`, reduce function application is slightly more complex, as it is
-applied simultaneously to all inputs. For example, consider the following
-reduction function, which can be used to compute the max and the argmax of a a
-1-D array in parallel:
+### Variadic Reduce
 
-```
+When `N > 1`, reduce function application is slightly more complex, as it is
+applied simultaneously to all inputs. The operands are supplied to the
+computation in the following order:
+
+*   Running reduced value for the first operand
+*   ...
+*   Running reduced value for the N'th operand
+*   Input value for the first operand
+*   ...
+*   Input value for the N'th operand
+
+For example, consider the following reduction function, which can be used to
+compute the max and the argmax of a 1-D array in parallel:
+
+```python
 f: (Float, Int, Float, Int) -> Float, Int
 f(max, argmax, value, index):
   if value >= argmax:
@@ -1725,6 +1812,7 @@ f(max, argmax, value, index):
 For 1-D Input arrays `V = Float[N], K = Int[N]`, and init values
 `I_V = Float, I_K =  Int`, the result `f_(N-1)` of reducing across the only
 input dimension is equivalent to the following recursive application:
+
 ```
 f_0 = f(I_V, I_K, V_0, K_0)
 f_1 = f(f_0.first, f_0.second, V_1, K_1)
@@ -1854,6 +1942,20 @@ The evaluation order of the reduction function is arbitrary and may be
 non-deterministic. Therefore, the reduction function should not be overly
 sensitive to reassociation. See the discussion about associativity in the
 context of [`Reduce`](#reduce) for more details.
+
+## ReplicaId
+
+See also
+[`XlaBuilder::ReplicaId`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Returns the unique ID (U32 scalar) of the replica.
+
+<b> `ReplicaId()` </b>
+
+The unique ID of each replica is an unsigned integer in the interval `[0, N)`,
+where `N` is the number of replicas. Since all the replicas are running the same
+program, a `ReplicaId()` call in the program will return a different value on
+each replica.
 
 ## Reshape
 
@@ -2406,6 +2508,46 @@ Permutes the operand dimensions with the given permutation, so
 
 This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
+
+## TriangularSolve
+
+See also
+[`XlaBuilder::TriangularSolve`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Solves systems of linear equations with lower or upper triangular coefficient
+matrices by forward- or back-substitution. Broadcasting along leading
+dimensions, this routine solves one of the matrix systems `op(a) * x =
+b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
+either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
+
+<b> `TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)` </b>
+
+| Arguments       | Type        | Semantics                                    |
+| --------------- | ----------- | -------------------------------------------- |
+| `a`             | `XlaOp`     | a rank > 2 array of a complex or             |
+:                 :             : floating-point type with shape `[..., M,     :
+:                 :             : M]`.                                         :
+| `b`             | `XlaOp`     | a rank > 2 array of the same type with shape |
+:                 :             : `[..., M, K]` if `left_side` is true, `[..., :
+:                 :             : K, M]` otherwise.                            :
+| `left_side`     | `bool`      | indicates whether to solve a system of the   |
+:                 :             : form `op(a) * x = b` (`true`) or `x *        :
+:                 :             : op(a) = b` (`false`).                        :
+| `lower`         | `bool`      | whether to use the upper or lower triangle   |
+:                 :             : of `a`.                                      :
+| `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are  |
+:                 :             : assumed to be `1` and not accessed.          :
+| `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or    |
+:                 :             : take its conjugate transpose.                :
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` and `b` are greater than 2, they are treated as batches of
+matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
+`b` must have equal batch dimensions.
 
 ## Tuple
 

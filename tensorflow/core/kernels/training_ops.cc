@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/training_ops.h"
 #include "tensorflow/core/kernels/variable_ops.h"

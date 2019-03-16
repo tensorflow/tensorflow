@@ -83,6 +83,7 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
         optimization.assert_next(
             ["Map", "FilterByLastComponent"])).map(function).filter(predicate)
     options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True
     dataset = dataset.with_options(options)
     self._testMapAndFilter(dataset, function, predicate)
@@ -101,6 +102,7 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
         optimization.assert_next(["Map",
                                   "Filter"])).map(function).filter(predicate)
     options = dataset_ops.Options()
+    options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True
     dataset = dataset.with_options(options)
     self._testMapAndFilter(dataset, function, predicate)

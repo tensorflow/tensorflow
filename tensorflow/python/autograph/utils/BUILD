@@ -20,6 +20,7 @@ py_library(
     name = "utils",
     srcs = [
         "__init__.py",
+        "ag_logging.py",
         "context_managers.py",
         "misc.py",
         "py_func.py",
@@ -33,7 +34,9 @@ py_library(
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python:list_ops",
+        "//tensorflow/python:platform",
         "//tensorflow/python:script_ops",
+        "//tensorflow/python:util",
         "//tensorflow/python/autograph/pyct",
         "//tensorflow/python/data/ops:dataset_ops",
         "@six_archive//:six",

@@ -87,6 +87,8 @@ class RunStepRequestWrapper {
   // truncate long metadata messages.
   virtual bool store_errors_in_response_body() const = 0;
 
+  virtual int64 request_id() const = 0;
+
   // Returns a human-readable representation of this message for debugging.
   virtual string DebugString() const = 0;
 
@@ -127,6 +129,7 @@ class InMemoryRunStepRequest : public MutableRunStepRequestWrapper {
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunStepRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -177,6 +180,7 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
   // MutableRunStepRequestWrapper methods.
   void set_session_handle(const string& handle) override;
@@ -189,6 +193,7 @@ class MutableProtoRunStepRequest : public MutableRunStepRequestWrapper {
 
  private:
   RunStepRequest request_;
+  friend class MasterInterface;
 };
 
 // Wrapper for immutable RunStep requests that use a non-owned
@@ -216,6 +221,7 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
   string DebugString() const override;
   const RunStepRequest& ToProto() const override;
   bool store_errors_in_response_body() const override;
+  int64 request_id() const override;
 
  private:
   const RunStepRequest* const request_;  // Not owned.
@@ -234,7 +240,7 @@ class ProtoRunStepRequest : public RunStepRequestWrapper {
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-// Abstract interface for an immutable RunStepRequest message.
+// Abstract interface for an immutable RunGraphRequest message.
 //
 // This interface is typically used by server-side components in the
 // TensorFlow worker.

@@ -134,6 +134,12 @@ class ScatterNdTest(xla_test.XLATestCase):
     expected = np.array([0, 11, 0, 10, 9, 0, 0, 12], dtype=np.int32)
     self.assertAllEqual(expected, self._runScatterNd(indices, updates, [8]))
 
+  def testRepeatedIndices(self):
+    indices = np.array([[0], [1], [0], [1]], dtype=np.int32)
+    updates = np.array([9, 10, 11, 12], dtype=np.float32)
+    expected = np.array([20, 22], dtype=np.int32)
+    self.assertAllEqual(expected, self._runScatterNd(indices, updates, [2]))
+
   def testSimple2(self):
     indices = np.array([[1, 0], [1, 1]], dtype=np.int32)
     updates = np.array([11., 12.], dtype=np.float32)

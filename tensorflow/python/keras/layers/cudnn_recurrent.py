@@ -26,12 +26,12 @@ from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers import recurrent
+from tensorflow.python.keras.layers import recurrent_v2
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class _CuDNNRNN(RNN):
@@ -158,7 +158,7 @@ class _CuDNNRNN(RNN):
         RNN, self).get_losses_for(inputs=inputs)
 
 
-@tf_export(v1=['keras.layers.CuDNNGRU'])
+@keras_export(v1=['keras.layers.CuDNNGRU'])
 class CuDNNGRU(_CuDNNRNN):
   """Fast GRU implementation backed by cuDNN.
 
@@ -275,7 +275,7 @@ class CuDNNGRU(_CuDNNRNN):
     input_h = initial_state[0]
     input_h = array_ops.expand_dims(input_h, axis=0)
 
-    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, self.units:self.units * 2],
             self.kernel[:, :self.units],
@@ -335,7 +335,7 @@ class CuDNNGRU(_CuDNNRNN):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export(v1=['keras.layers.CuDNNLSTM'])
+@keras_export(v1=['keras.layers.CuDNNLSTM'])
 class CuDNNLSTM(_CuDNNRNN):
   """Fast LSTM implementation backed by cuDNN.
 
@@ -470,7 +470,7 @@ class CuDNNLSTM(_CuDNNRNN):
     input_h = array_ops.expand_dims(input_h, axis=0)
     input_c = array_ops.expand_dims(input_c, axis=0)
 
-    params = recurrent._canonical_to_params(    # pylint: disable=protected-access
+    params = recurrent_v2._canonical_to_params(    # pylint: disable=protected-access
         weights=[
             self.kernel[:, :self.units],
             self.kernel[:, self.units:self.units * 2],

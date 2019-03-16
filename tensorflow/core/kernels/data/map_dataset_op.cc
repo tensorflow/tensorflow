@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -42,6 +41,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                                      &use_inter_op_parallelism_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
+    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -51,12 +51,9 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                                                  use_inter_op_parallelism_,
                                                  &captured_func));
 
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-
     MapIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       map_func = [](IteratorContext* ctx,
                     InstantiatedCapturedFunction* inst_captured_func,
                     std::vector<Tensor> args,
@@ -64,7 +61,8 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
         return inst_captured_func->Run(ctx, std::move(args), out_tensors);
       };
     } else {
-      std::vector<bool> can_move = ComputeMoveVector(indices);
+      std::vector<bool> can_move = ComputeMoveVector(short_circuit_indices_);
+      const auto& indices = short_circuit_indices_;
       map_func = [raw_captured_func, indices, can_move](
                      IteratorContext* ctx,
                      InstantiatedCapturedFunction* inst_captured_func,
@@ -120,7 +118,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<Iterator>(
+      return absl::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Map")}, map_func_);
     }
 
@@ -139,7 +137,6 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
@@ -149,7 +146,13 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -272,6 +275,7 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
   NameAttrList func_;
   bool use_inter_op_parallelism_;
   bool preserve_cardinality_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("MapDataset").Device(DEVICE_CPU), MapDatasetOp);

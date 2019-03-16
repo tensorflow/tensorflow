@@ -1122,7 +1122,7 @@ class StepCounterHookTest(test.TestCase):
         self.assertGreater(summary_value.simple_value, 0)
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_deprecated_v1
 class SummarySaverHookTest(test.TestCase):
 
   def setUp(self):
@@ -1404,7 +1404,7 @@ class FinalOpsHookTest(test.TestCase):
                              hook.final_ops_values.tolist())
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_deprecated_v1
 class ResourceSummarySaverHookTest(test.TestCase):
 
   def setUp(self):

@@ -178,25 +178,37 @@ template <>
 struct unpacket_traits<Packet32q8i> {
   typedef QInt8 type;
   typedef Packet16q8i half;
-  enum { size = 32, alignment = Aligned32 };
+  enum { size = 32, alignment = Aligned32, vectorizable = true };
+};
+template <>
+struct unpacket_traits<Packet16q8i> {
+  typedef QInt8 type;
+  typedef Packet16q8i half;
+  enum { size = 16, alignment = Aligned32, vectorizable = true };
 };
 template <>
 struct unpacket_traits<Packet16q16i> {
   typedef QInt16 type;
   typedef Packet8q16i half;
-  enum { size = 16, alignment = Aligned32 };
+  enum { size = 16, alignment = Aligned32, vectorizable = true };
+};
+template <>
+struct unpacket_traits<Packet8q16i> {
+  typedef QInt16 type;
+  typedef Packet8q16i half;
+  enum { size = 8, alignment = Aligned32, vectorizable = true };
 };
 template <>
 struct unpacket_traits<Packet32q8u> {
   typedef QUInt8 type;
   typedef Packet16q8u half;
-  enum { size = 32, alignment = Aligned32 };
+  enum { size = 32, alignment = Aligned32, vectorizable = true };
 };
 template <>
 struct unpacket_traits<Packet8q32i> {
   typedef QInt32 type;
   typedef Packet4q32i half;
-  enum { size = 8, alignment = Aligned32 };
+  enum { size = 8, alignment = Aligned32, vectorizable = true };
 };
 
 // Unaligned load
@@ -204,6 +216,11 @@ template <>
 EIGEN_STRONG_INLINE Packet32q8i ploadu<Packet32q8i>(const QInt8* from) {
   EIGEN_DEBUG_UNALIGNED_LOAD return _mm256_loadu_si256(
       reinterpret_cast<const __m256i*>(from));
+}
+template <>
+EIGEN_STRONG_INLINE Packet16q8i ploadu<Packet16q8i>(const QInt8* from) {
+  EIGEN_DEBUG_UNALIGNED_LOAD return _mm_loadu_si128(
+      reinterpret_cast<const __m128i*>(from));
 }
 template <>
 EIGEN_STRONG_INLINE Packet32q8u ploadu<Packet32q8u>(const QUInt8* from) {
@@ -214,6 +231,11 @@ template <>
 EIGEN_STRONG_INLINE Packet16q16i ploadu<Packet16q16i>(const QInt16* from) {
   EIGEN_DEBUG_UNALIGNED_LOAD return _mm256_loadu_si256(
       reinterpret_cast<const __m256i*>(from));
+}
+template<>
+EIGEN_STRONG_INLINE Packet8q16i ploadu<Packet8q16i>(const QInt16* from) {
+  EIGEN_DEBUG_UNALIGNED_LOAD return _mm_loadu_si128(
+      reinterpret_cast<const __m128i*>(from));
 }
 template <>
 EIGEN_STRONG_INLINE Packet8q32i ploadu<Packet8q32i>(const QInt32* from) {
@@ -228,6 +250,11 @@ EIGEN_STRONG_INLINE Packet32q8i pload<Packet32q8i>(const QInt8* from) {
       reinterpret_cast<const __m256i*>(from));
 }
 template <>
+EIGEN_STRONG_INLINE Packet16q8i pload<Packet16q8i>(const QInt8* from) {
+  EIGEN_DEBUG_ALIGNED_LOAD return _mm_load_si128(
+      reinterpret_cast<const __m128i*>(from));
+}
+template <>
 EIGEN_STRONG_INLINE Packet32q8u pload<Packet32q8u>(const QUInt8* from) {
   EIGEN_DEBUG_ALIGNED_LOAD return _mm256_load_si256(
       reinterpret_cast<const __m256i*>(from));
@@ -236,6 +263,11 @@ template <>
 EIGEN_STRONG_INLINE Packet16q16i pload<Packet16q16i>(const QInt16* from) {
   EIGEN_DEBUG_ALIGNED_LOAD return _mm256_load_si256(
       reinterpret_cast<const __m256i*>(from));
+}
+template <>
+EIGEN_STRONG_INLINE Packet8q16i pload<Packet8q16i>(const QInt16* from) {
+  EIGEN_DEBUG_ALIGNED_LOAD return _mm_load_si128(
+      reinterpret_cast<const __m128i*>(from));
 }
 template <>
 EIGEN_STRONG_INLINE Packet8q32i pload<Packet8q32i>(const QInt32* from) {
@@ -250,6 +282,11 @@ EIGEN_STRONG_INLINE void pstoreu<QInt8>(QInt8* to, const Packet32q8i& from) {
       reinterpret_cast<__m256i*>(to), from.val);
 }
 template <>
+EIGEN_STRONG_INLINE void pstoreu<QInt8>(QInt8* to, const Packet16q8i& from) {
+  EIGEN_DEBUG_UNALIGNED_STORE _mm_storeu_si128(
+      reinterpret_cast<__m128i*>(to), from.val);
+}
+template <>
 EIGEN_STRONG_INLINE void pstoreu<QUInt8>(QUInt8* to, const Packet32q8u& from) {
   EIGEN_DEBUG_UNALIGNED_STORE _mm256_storeu_si256(
       reinterpret_cast<__m256i*>(to), from.val);
@@ -258,6 +295,11 @@ template <>
 EIGEN_STRONG_INLINE void pstoreu<QInt16>(QInt16* to, const Packet16q16i& from) {
   EIGEN_DEBUG_UNALIGNED_STORE _mm256_storeu_si256(
       reinterpret_cast<__m256i*>(to), from.val);
+}
+template <>
+EIGEN_STRONG_INLINE void pstoreu<QInt16>(QInt16* to, const Packet8q16i& from) {
+  EIGEN_DEBUG_UNALIGNED_STORE _mm_storeu_si128(
+      reinterpret_cast<__m128i*>(to), from.val);
 }
 template <>
 EIGEN_STRONG_INLINE void pstoreu<QInt32>(QInt32* to, const Packet8q32i& from) {
@@ -277,6 +319,11 @@ EIGEN_STRONG_INLINE void pstore<QInt16>(QInt16* to, const Packet16q16i& from) {
                                                from.val);
 }
 template <>
+EIGEN_STRONG_INLINE void pstore<QInt16>(QInt16* to, const Packet8q16i& from) {
+  EIGEN_DEBUG_ALIGNED_STORE _mm_store_si128(reinterpret_cast<__m128i*>(to),
+                                            from.val);
+}
+template <>
 EIGEN_STRONG_INLINE void pstore<QUInt8>(QUInt8* to, const Packet32q8u& from) {
   EIGEN_DEBUG_ALIGNED_STORE _mm256_store_si256(reinterpret_cast<__m256i*>(to),
                                                from.val);
@@ -285,6 +332,11 @@ template <>
 EIGEN_STRONG_INLINE void pstore<QInt8>(QInt8* to, const Packet32q8i& from) {
   EIGEN_DEBUG_ALIGNED_STORE _mm256_store_si256(reinterpret_cast<__m256i*>(to),
                                                from.val);
+}
+template <>
+EIGEN_STRONG_INLINE void pstore<QInt8>(QInt8* to, const Packet16q8i& from) {
+  EIGEN_DEBUG_ALIGNED_STORE _mm_store_si128(reinterpret_cast<__m128i*>(to),
+                                            from.val);
 }
 
 // Extract first element.

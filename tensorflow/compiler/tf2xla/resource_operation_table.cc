@@ -77,10 +77,14 @@ CreateResourceOpInfoMap() {
   add("ResourceScatterMin"                   , kReadWrite, kVariable);
   add("ResourceScatterMul"                   , kReadWrite, kVariable);
   add("ResourceScatterNdAdd"                 , kReadWrite, kVariable);
+  add("ResourceScatterNdSub"                 , kReadWrite, kVariable);
   add("ResourceScatterNdUpdate"              , kReadWrite, kVariable);
   add("ResourceScatterSub"                   , kReadWrite, kVariable);
   add("ResourceScatterUpdate"                , kReadWrite, kVariable);
   add("ResourceStridedSliceAssign"           , kReadWrite, kVariable);
+  add("StatefulStandardNormalV2"             , kReadWrite, kVariable);
+  add("StatefulUniformFullInt"               , kReadWrite, kVariable);
+  add("StatefulUniformInt"                   , kReadWrite, kVariable);
   add("VarIsInitializedOp"                   , kRead,      kVariable);
   add("VariableShape"                        , kRead,      kVariable);
 

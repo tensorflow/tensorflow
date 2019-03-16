@@ -154,7 +154,7 @@ struct QRBlockResult {
 StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int num_dims = ShapeUtil::Rank(a_shape);
+  const int num_dims = a_shape.rank();
   if (num_dims < 2) {
     return InvalidArgument("Argument to QR must have rank >= 2; got shape %s",
                            a_shape.ToString());
@@ -325,7 +325,7 @@ StatusOr<QRDecompositionResult> QRDecomposition(
     PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
-  const int num_dims = ShapeUtil::Rank(a_shape);
+  const int num_dims = a_shape.rank();
   if (num_dims < 2) {
     return InvalidArgument("Arguments to QR must have rank >= 2: got shape %s",
                            a_shape.ToString());

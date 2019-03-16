@@ -80,7 +80,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.name = resource->name();
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString()
+              << " shape: " << arg.HumanString()
               << " initialized: " << arg.initialized;
 
       num_resource_args++;
@@ -89,7 +89,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.type = input_types_[i];
       arg.shape = ctx->InputShape(i + 1);
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString();
+              << " shape: " << arg.HumanString();
     }
   }
 
@@ -150,12 +150,12 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES(ctx, then_result.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape then_input_shape = then_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(then_input_shape),
+  OP_REQUIRES(ctx, then_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx, else_result.xla_input_shapes.size() == 1,
               errors::FailedPrecondition("Expected one input shape"));
   xla::Shape else_input_shape = else_result.xla_input_shapes[0];
-  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(else_input_shape),
+  OP_REQUIRES(ctx, else_input_shape.IsTuple(),
               errors::FailedPrecondition("Expected tuple shape"));
   OP_REQUIRES(ctx,
               xla::ShapeUtil::Compatible(then_input_shape, else_input_shape),
@@ -248,7 +248,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
         xla::GetTupleElement(outputs, output_types_.size() + num_resource_args);
     auto shape_or = b->GetShape(token_output);
     OP_REQUIRES_OK(ctx, shape_or.status());
-    OP_REQUIRES(ctx, xla::ShapeUtil::IsToken(shape_or.ValueOrDie()),
+    OP_REQUIRES(ctx, shape_or.ValueOrDie().IsToken(),
                 errors::FailedPrecondition(
                     "Token output is not token type: ",
                     xla::ShapeUtil::HumanString(shape_or.ValueOrDie())));

@@ -17,89 +17,109 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/grappler/graph_topology_view.h"
 
 namespace tensorflow {
 namespace grappler {
 
 namespace {
 
-template <typename GraphViewType>
-void ReverseDfsInternal(
-    const GraphViewType& graph_view, const std::vector<const NodeDef*>& from,
-    const std::function<void(const NodeDef*)>& pre_order,
-    const std::function<void(const NodeDef*)>& post_order,
-    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
-  // Stack of work to do.
-  struct StackElem {
-    const NodeDef* node;
-    bool children_visited;
-    const NodeDef* src;
-  };
-  std::vector<StackElem> stack;
+struct DfsStackElem {
+  DfsStackElem(int node, bool children_visited, int src)
+      : node(node), children_visited(children_visited), src(src) {}
+  explicit DfsStackElem(int node) : DfsStackElem(node, false, -1) {}
 
-  stack.reserve(from.size());
-  for (const NodeDef* node : from) {
-    stack.push_back(StackElem{node, false});
-  }
+  // Index of the node in the graph ∊ [0, num_nodes).
+  int node;
+  // `True` if visited all the input/output nodes (pushed all input/output nodes
+  // to the stack).
+  bool children_visited;
+  // Index of the node in the graph, from which we entered the `node`.
+  int src;
+};
 
-  enum NodeState { NOT_VISITED = 0, VISITING = 1, DONE = 2 };
-  absl::flat_hash_map<const NodeDef*, NodeState> node_state;
-  while (!stack.empty()) {
-    StackElem w = stack.back();
-    stack.pop_back();
-
-    if (w.children_visited) {
-      // We've processed all the children of this node
-      node_state[w.node] = DONE;
-      if (post_order) {
-        post_order(w.node);
-      }
-      continue;
-    }
-
-    auto& rslt = node_state[w.node];
-    if (rslt == DONE) {
-      continue;
-    } else if (rslt == VISITING) {
-      // Loop detected
-      if (on_back_edge) {
-        on_back_edge(w.src, w.node);
-      }
-      continue;
-    }
-    rslt = VISITING;
-    if (pre_order) {
-      pre_order(w.node);
-    }
-
-    // Enqueue the node again with the children_visited flag set to true.
-    stack.push_back(StackElem{w.node, true, w.src});
-
-    // Now enqueue the node children.
-    for (const auto fanin : graph_view.GetFanins(*w.node, true)) {
-      stack.push_back(StackElem{fanin.node, false, w.node});
-    }
-  }
-}
+enum class NodeState { kNotVisited, kVisiting, kDone };
 
 }  // namespace
 
-void ReverseDfs(
-    const GraphView& graph_view, const std::vector<const NodeDef*>& from,
-    const std::function<void(const NodeDef*)>& pre_order,
-    const std::function<void(const NodeDef*)>& post_order,
-    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
-  ReverseDfsInternal<GraphView>(graph_view, from, pre_order, post_order,
-                                on_back_edge);
+void DfsTraversal(const GraphTopologyView& graph_view,
+                  const absl::Span<const NodeDef* const> from,
+                  const TraversalDirection direction,
+                  const DfsPredicates& predicates,
+                  const DfsCallbacks& callbacks) {
+  std::vector<DfsStackElem> stack;
+  stack.reserve(from.size());
+
+  for (const NodeDef* node : from) {
+    const absl::optional<int> node_idx = graph_view.GetNodeIndex(*node);
+    DCHECK(node_idx.has_value()) << "Illegal start node: " << node->name();
+    if (node_idx.has_value()) {
+      stack.emplace_back(node_idx.value());
+    }
+  }
+
+  absl::flat_hash_map<int, NodeState> node_state;
+  while (!stack.empty()) {
+    DfsStackElem w = stack.back();
+    stack.pop_back();
+
+    NodeState& state = node_state[w.node];
+    if (state == NodeState::kDone) continue;
+
+    // Skip nodes that we should not enter.
+    if (predicates.enter && !predicates.enter(graph_view.GetNode(w.node))) {
+      state = NodeState::kDone;
+      continue;
+    }
+
+    // We've processed all the children of this node.
+    if (w.children_visited) {
+      state = NodeState::kDone;
+      if (callbacks.post_order) {
+        callbacks.post_order(graph_view.GetNode(w.node));
+      }
+      continue;
+    }
+
+    // Loop detected.
+    if (state == NodeState::kVisiting) {
+      if (callbacks.on_back_edge) {
+        callbacks.on_back_edge(graph_view.GetNode(w.src),
+                               graph_view.GetNode(w.node));
+      }
+      continue;
+    }
+
+    state = NodeState::kVisiting;
+    if (callbacks.pre_order) {
+      callbacks.pre_order(graph_view.GetNode(w.node));
+    }
+
+    // Enqueue the node again with the children_visited flag set to true.
+    stack.emplace_back(w.node, true, w.src);
+
+    // Check if we can continue traversal from the current node.
+    if (predicates.advance && !predicates.advance(graph_view.GetNode(w.node))) {
+      continue;
+    }
+
+    // Now enqueue the fanin/fanout nodes.
+    if (direction == TraversalDirection::kFollowInputs) {
+      for (const int fanin : graph_view.GetFanin(w.node)) {
+        stack.emplace_back(fanin, false, w.node);
+      }
+    } else {
+      for (const int fanout : graph_view.GetFanout(w.node)) {
+        stack.emplace_back(fanout, false, w.node);
+      }
+    }
+  }
 }
 
-void ReverseDfs(
-    const MutableGraphView& graph_view, const std::vector<const NodeDef*>& from,
-    const std::function<void(const NodeDef*)>& pre_order,
-    const std::function<void(const NodeDef*)>& post_order,
-    const std::function<void(const NodeDef*, const NodeDef*)>& on_back_edge) {
-  ReverseDfsInternal<MutableGraphView>(graph_view, from, pre_order, post_order,
-                                       on_back_edge);
+void DfsTraversal(const GraphTopologyView& graph_view,
+                  const absl::Span<const NodeDef* const> from,
+                  TraversalDirection direction, const DfsCallbacks& callbacks) {
+  DfsTraversal(graph_view, from, direction, {}, callbacks);
 }
 
 }  // namespace grappler

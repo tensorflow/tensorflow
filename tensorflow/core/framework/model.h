@@ -247,10 +247,13 @@ class Node {
       LOCKS_EXCLUDED(mu_) {
     tf_shared_lock l(mu_);
     std::shared_ptr<Node> result = Clone(output);
-    result->buffered_bytes_ = buffered_bytes_;
-    result->processing_time_ = processing_time_;
-    result->num_elements_ = num_elements_;
-    result->parameters_ = parameters_;
+    {
+      mutex_lock l2(result->mu_);
+      result->buffered_bytes_ = buffered_bytes_;
+      result->processing_time_ = processing_time_;
+      result->num_elements_ = num_elements_;
+      result->parameters_ = parameters_;
+    }
     for (auto& input : inputs_) {
       result->add_input(input->Snapshot(result));
     }
@@ -310,7 +313,7 @@ class Node {
   std::map<string, std::shared_ptr<Parameter>> parameters_ GUARDED_BY(mu_);
   std::list<std::shared_ptr<Node>> inputs_ GUARDED_BY(mu_);
 
-  // The reference to the output node is not owned so that that deletion of a
+  // The reference to the output node is not owned so that deletion of a
   // node results in recursive deletion of the subtree rooted in the node.
   Node* const output_;
 };
@@ -359,7 +362,19 @@ std::shared_ptr<Node> MakeUnknownNode(Node::Args args);
 // implementation of `DatasetBase` and `DatasetBaseIterator` respectively.
 class Model {
  public:
-  Model() : collect_resource_usage_(false) {}
+  using NodeHook = std::function<void(std::shared_ptr<Node>)>;
+
+  // Creates a new model.
+  //
+  // The `remove_node_hook` argument can be used to specify functionality that
+  // should be invoked before a node is removed from the model. The hook can be
+  // used for dependency injection -- to allow the model to invoke functionality
+  // from modules that it could not depend on statically.
+  Model(NodeHook remove_node_hook)
+      : collect_resource_usage_(false),
+        remove_node_hook_(std::move(remove_node_hook)) {
+    DCHECK(remove_node_hook_ != nullptr);
+  }
 
   // Indicates whether to collect resource usage.
   bool collect_resource_usage() const { return collect_resource_usage_; }
@@ -414,6 +429,9 @@ class Model {
   // tunable parameter (because the information is used for for tuning the value
   // of the parameter) and never stops.
   std::atomic<bool> collect_resource_usage_;
+
+  // A hook invoked immediately before a node is removed from the model.
+  const NodeHook remove_node_hook_;
 };
 
 }  // namespace model

@@ -46,6 +46,14 @@ XlaExpression XlaExpression::XlaOp(xla::XlaOp value, DataType dtype) {
   return e;
 }
 
+XlaExpression XlaExpression::TensorList(xla::XlaOp tensor_list) {
+  XlaExpression e;
+  e.kind_ = Kind::kTensorList;
+  e.dtype_ = DT_VARIANT;
+  e.handle_ = tensor_list;
+  return e;
+}
+
 XlaExpression XlaExpression::Resource(XlaResource* resource) {
   XlaExpression e;
   e.kind_ = Kind::kResource;
@@ -64,6 +72,8 @@ string XlaExpression::HumanString() const {
       return "xla_op";
     case Kind::kResource:
       return "resource";
+    case Kind::kTensorList:
+      return "tensor_list";
   }
 }
 
@@ -76,6 +86,8 @@ xla::XlaOp XlaExpression::AsXlaOp(xla::XlaBuilder* builder) const {
             HostTensorToBorrowingLiteral(constant_value_, &literal));
         return xla::ConstantLiteral(builder, literal);
       }
+      case Kind::kTensorList:
+        TF_FALLTHROUGH_INTENDED;
       case Kind::kXlaOp:
         if (builder != handle_.builder()) {
           return errors::InvalidArgument(
@@ -96,7 +108,10 @@ xla::StatusOr<absl::optional<Tensor>> XlaExpression::ResolveConstant(
       return {constant_value()};
     case Kind::kXlaOp:
       break;
+    case Kind::kTensorList:
+      TF_FALLTHROUGH_INTENDED;
     case Kind::kResource:
+      TF_FALLTHROUGH_INTENDED;
     case Kind::kInvalid:
       return errors::InvalidArgument(
           "ResolveConstant called on XlaExpression: ", HumanString());
@@ -134,6 +149,8 @@ xla::StatusOr<TensorShape> XlaExpression::GetShape() const {
       TF_RETURN_IF_ERROR(XLAShapeToTensorShape(xla_shape, &shape));
       return shape;
     }
+    case Kind::kTensorList:
+      return TensorShape({});
     case Kind::kResource:
       return TensorShape({});
     case Kind::kInvalid:

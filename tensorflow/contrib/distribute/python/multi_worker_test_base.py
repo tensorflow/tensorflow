@@ -37,11 +37,15 @@ except ImportError as _error:  # pylint: disable=invalid-name
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.estimator import run_config
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
+
+
+original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
 
 ASSIGNED_PORTS = set()
 lock = threading.Lock()
@@ -68,7 +72,8 @@ def _create_cluster(num_workers,
                     has_eval=False,
                     protocol='grpc',
                     worker_config=None,
-                    ps_config=None):
+                    ps_config=None,
+                    eval_config=None):
   """Creates and starts local servers and returns the cluster_spec dict."""
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
@@ -120,7 +125,7 @@ def _create_cluster(num_workers,
         job_name='evaluator',
         protocol=protocol,
         task_index=0,
-        config=worker_config,
+        config=eval_config,
         start=True)
 
   return cluster_dict
@@ -149,6 +154,9 @@ def create_in_process_cluster(num_workers,
   ps_config = config_pb2.ConfigProto()
   ps_config.device_count['GPU'] = 0
 
+  eval_config = config_pb2.ConfigProto()
+  eval_config.experimental.collective_group_leader = ''
+
   # Create in-process servers. Once an in-process tensorflow server is created,
   # there is no way to terminate it. So we create one cluster per test process.
   # We could've started the server in another process, we could then kill that
@@ -165,6 +173,7 @@ def create_in_process_cluster(num_workers,
       has_eval=has_eval,
       worker_config=worker_config,
       ps_config=ps_config,
+      eval_config=eval_config,
       protocol='grpc')
 
 
@@ -343,9 +352,9 @@ class MockOsEnv(collections.Mapping):
   def __iter__(self):
     if not hasattr(self._thread_local, 'dict'):
       self._thread_local.dict = dict()
-    for x in self._thread_local.dict.items():
+    for x in self._thread_local.dict:
       yield x
-    for x in self._dict.items():
+    for x in self._dict:
       yield x
 
   def __len__(self):
@@ -356,6 +365,22 @@ class MockOsEnv(collections.Mapping):
 
 class IndependentWorkerTestBase(test.TestCase):
   """Testing infra for independent workers."""
+
+  def _make_mock_run_std_server(self):
+    thread_local = threading.local()
+
+    def _mock_run_std_server(*args, **kwargs):
+      ret = original_run_std_server(*args, **kwargs)
+      # Wait for all std servers to be brought up in order to reduce the chance
+      # of remote sessions taking local ports that have been assigned to std
+      # servers. Only call this barrier the first time this function is run for
+      # each thread.
+      if not getattr(thread_local, 'server_started', False):
+        self._barrier.wait()
+      thread_local.server_started = True
+      return ret
+
+    return _mock_run_std_server
 
   def setUp(self):
     self._mock_os_env = MockOsEnv()
@@ -409,3 +434,25 @@ class IndependentWorkerTestBase(test.TestCase):
 
   def join_independent_workers(self, worker_threads):
     self._coord.join(worker_threads)
+
+
+def get_tf_config_task():
+  return json.loads(os.environ['TF_CONFIG'])['task']
+
+
+def get_tf_config_cluster_spec():
+  return json.loads(os.environ['TF_CONFIG'])['cluster']
+
+
+def get_task_type():
+  return get_tf_config_task()['type']
+
+
+def get_task_index():
+  return get_tf_config_task()['index']
+
+
+def is_chief():
+  return ('chief' not in get_tf_config_cluster_spec()
+          and get_task_type() == 'worker'
+          and get_task_index() == 0)

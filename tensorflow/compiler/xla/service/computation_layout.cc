@@ -42,8 +42,8 @@ void ComputationLayout::SetToDefaultLayout() {
 }
 
 bool ComputationLayout::LayoutIsSet() const {
-  return std::all_of(parameter_layouts_.begin(), parameter_layouts_.end(),
-                     [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
          result_layout_.LayoutIsSet();
 }
 

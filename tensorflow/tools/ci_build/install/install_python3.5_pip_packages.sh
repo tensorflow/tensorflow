@@ -52,7 +52,7 @@ pip3.5 install --upgrade absl-py
 pip3.5 install --upgrade six==1.10.0
 
 # Install protobuf.
-pip3.5 install --upgrade protobuf==3.6.0
+pip3.5 install --upgrade protobuf==3.6.1
 
 # Remove obsolete version of six, which can sometimes confuse virtualenv.
 rm -rf /usr/lib/python3/dist-packages/six*
@@ -89,5 +89,8 @@ pip3.5 install --upgrade termcolor
 pip3.5 install keras_applications==1.0.6
 pip3.5 install keras_preprocessing==1.0.5
 pip3.5 install --upgrade h5py==2.8.0
+
+# Estimator
+pip3.5 install tf-estimator-nightly==1.12.0.dev20181203 --no-deps
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

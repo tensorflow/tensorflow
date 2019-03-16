@@ -70,7 +70,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       dim0 = None
     self.assertEqual(
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)],
+        [ts.as_list() for ts in nest.flatten(
+            dataset_ops.get_legacy_output_shapes(dataset))],
         [[dim0] + list(c.shape[1:]) for c in components])
 
     num_full_batches = (count * 7) // batch_size
@@ -91,9 +92,9 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       result = self.evaluate(get_next())
 
   def testBatchDatasetInvalidBatchSize(self):
-    dataset = (dataset_ops.Dataset.range(10).batch(0))
-    self.assertDatasetProduces(
-        dataset, expected_error=(errors.InvalidArgumentError, ''))
+    with self.assertRaises(errors.InvalidArgumentError):
+      dataset = (dataset_ops.Dataset.range(10).batch(0))
+      self.evaluate(dataset._variant_tensor)
 
   def testBatchSparse(self):
 
@@ -116,7 +117,7 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=array_ops.expand_dims(
               math_ops.range(i, dtype=dtypes.int64), 1),
-          values=array_ops.fill([math_ops.to_int32(i)], i),
+          values=array_ops.fill([math_ops.cast(i, dtypes.int32)], i),
           dense_shape=[i])
 
     dataset = dataset_ops.Dataset.range(10).map(_sparse).batch(5)

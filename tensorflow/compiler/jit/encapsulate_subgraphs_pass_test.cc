@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/encapsulate_util.h"
 #include "tensorflow/compiler/jit/extract_outside_compilation_pass.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -32,6 +34,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -303,22 +307,6 @@ REGISTER_OP("XlaHostCompute")
     .Attr("shapes: list(shape) >= 0")
     .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
 
-REGISTER_OP("_XlaSendFromHost")
-    .Input("inputs: Tinputs")
-    .Input("dynamic_key: string")
-    .Attr("Tinputs: list(type) >= 0")
-    .Attr("key: string")
-    .Attr("device_ordinal: int")
-    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
-
-REGISTER_OP("_XlaRecvAtHost")
-    .Input("dynamic_key: string")
-    .Output("outputs: Toutputs")
-    .Attr("Toutputs: list(type) >= 0")
-    .Attr("key: string")
-    .Attr("device_ordinal: int")
-    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
-
 REGISTER_OP("InputTest")
     .Output("o: float")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {
@@ -513,6 +501,18 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
   s = PerformStaticShapeInferenceBeforeEncapsulation(graph.get());
   if (!s.ok()) return s;
 
+  // Create FunctionLibraryRuntime.
+  SessionOptions session_options;
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_CHECK_OK(DeviceFactory::AddDevices(
+      session_options, "/job:localhost/replica:0/task:0", &devices));
+  OptimizerOptions opts;
+  auto device_mgr = absl::make_unique<DeviceMgr>(std::move(devices));
+  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+      device_mgr.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def.get(),
+      opts, /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+  auto flr = pflr->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
+
   std::unique_ptr<Graph> graph_out;
   s = EncapsulateSubgraphsInFunctions(
       "_encapsulate", /*outside_compilation_attribute=*/"", *graph,
@@ -538,7 +538,7 @@ Status Encapsulate(GraphDef* graphdef, FunctionDefLibrary* library,
                                     std::map<string, int>{}});
   }
   s = ExtractOutsideCompilation("_encapsulate", "_outside", clusters,
-                                graph_out.get(), lib_def.get());
+                                graph_out.get(), flr, lib_def.get());
   if (!s.ok()) return s;
 
   GraphDef graphdef_out;
@@ -941,7 +941,9 @@ TEST(EncapsulateSubgraphsTest, OneFunctionOneOutside) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph},
             {"shapes", absl::Span<const DataType>({})},
-            {"_outside_compilation_subgraph", "O1"}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"c"}},
       },
       {{"f_0_retval_retval", "F:o:0"}});
@@ -1101,7 +1103,9 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"key", "host_compute_channel_F1_O2"},
             {"shape_inference_graph", shape_inference_graph2},
             {"shapes", absl::Span<const DataType>({})},
-            {"_outside_compilation_subgraph", "O2"}},
+            {"_outside_compilation_subgraph", "O2"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"F"}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
@@ -1112,7 +1116,9 @@ TEST(EncapsulateSubgraphsTest, OneFunctionTwoOutside) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph1},
             {"shapes", absl::Span<const DataType>({})},
-            {"_outside_compilation_subgraph", "O1"}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"D"}},
       },
       {{"g_0_retval_retval", "outside_compilation_O2_host_compute:outputs:0"},
@@ -1244,7 +1250,9 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"shape_inference_graph", NameAttrList()},
             {"shapes",
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
-            {"_outside_compilation_subgraph", "O1"}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"D"}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
@@ -1269,7 +1277,9 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutside) {
             {"shape_inference_graph", NameAttrList()},
             {"shapes",
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"g_0_retval_retval", "G:o:0"}, {"i_0_retval_retval", "I:o:0"}});
 
@@ -1397,7 +1407,9 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
             {"shape_inference_graph", NameAttrList()},
             {"shapes",
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
-            {"_outside_compilation_subgraph", "O1"}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"D"}},
       },
       {{"f_0_retval_retval", "F:o:0"}});
@@ -1419,7 +1431,9 @@ TEST(EncapsulateSubgraphsTest, TwoFunctionsTwoOutsideDependencyFromOutside) {
             {"shape_inference_graph", NameAttrList()},
             {"shapes",
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"i_0_retval_retval", "I:o:0"}});
 
@@ -1527,7 +1541,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputs) {
             {"shape_inference_graph", NameAttrList()},
             {"shapes",
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"f_0_retval_retval", "F:o:0"}});
 
@@ -1615,7 +1631,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlInput) {
             {"shape_inference_graph", NameAttrList()},
             {"shapes",
              absl::Span<const TensorShapeProto>({shape_proto_expected})},
-            {"_outside_compilation_subgraph", "O1"}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"D"}},
       },
       {{"f_0_retval_retval", "F:o:0"}});
@@ -1716,7 +1734,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoOutputs) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"f_0_retval_retval", "F:o:0"}});
@@ -1821,7 +1841,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationControlOutput) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"f_0_retval_retval", "F:o:0"}});
@@ -1949,7 +1971,9 @@ TEST(EncapsulateSubgraphsTest,
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph1},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
           {{"outside_compilation_O2_host_compute"},
            "XlaHostCompute",
            {"F:o:0"},
@@ -1959,7 +1983,9 @@ TEST(EncapsulateSubgraphsTest,
             {"key", "host_compute_channel_F1_O2"},
             {"shape_inference_graph", shape_inference_graph2},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O2"}}},
+            {"_outside_compilation_subgraph", "O2"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
@@ -2082,7 +2108,9 @@ TEST(EncapsulateSubgraphsTest,
             {"key", "host_compute_channel_F1_O2"},
             {"shape_inference_graph", NameAttrList()},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O2"}}},
+            {"_outside_compilation_subgraph", "O2"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
           {{"outside_compilation_O1_host_compute"},
            "XlaHostCompute",
            {"D:o:0"},
@@ -2092,7 +2120,9 @@ TEST(EncapsulateSubgraphsTest,
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
@@ -2214,7 +2244,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"key", "host_compute_channel_F1_O1"},
          {"shape_inference_graph", shape_inference_graph},
          {"shapes", absl::Span<const TensorShapeProto>({})},
-         {"_outside_compilation_subgraph", "O1"}}},
+         {"_outside_compilation_subgraph", "O1"},
+         {"_xla_token_input_nodes",
+          absl::Span<const string>({"_xla_token_arg_node"})}}},
        {{"outside_compilation_O2_host_compute"},
         "XlaHostCompute",
         {"D:o:0"},
@@ -2224,7 +2256,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"key", "host_compute_channel_F1_O2"},
          {"shape_inference_graph", NameAttrList()},
          {"shapes", absl::Span<const TensorShapeProto>({})},
-         {"_outside_compilation_subgraph", "O2"}},
+         {"_outside_compilation_subgraph", "O2"},
+         {"_xla_token_input_nodes",
+          absl::Span<const string>({"_xla_token_arg_node"})}},
         {}},
        {{"outside_compilation_O3_host_compute"},
         "XlaHostCompute",
@@ -2235,7 +2269,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationClusterDependency) {
          {"key", "host_compute_channel_F1_O3"},
          {"shape_inference_graph", NameAttrList()},
          {"shapes", absl::Span<const TensorShapeProto>({})},
-         {"_outside_compilation_subgraph", "O3"}},
+         {"_outside_compilation_subgraph", "O3"},
+         {"_xla_token_input_nodes",
+          absl::Span<const string>({"_xla_token_arg_node"})}},
         {}}},
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"h_0_retval_retval", "H:o:0"}});
@@ -2354,7 +2390,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationNoInputsOrOutputs) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph},
             {"shapes", absl::Span<const TensorShapeProto>({})},
-            {"_outside_compilation_subgraph", "O1"}}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}}},
       },
       {{"e_0_retval_retval", "outside_compilation_O1_host_compute:outputs:0"},
        {"f_0_retval_retval", "F:o:0"}});
@@ -2465,7 +2503,9 @@ TEST(EncapsulateSubgraphsTest, OutsideCompilationShapeInference) {
             {"key", "host_compute_channel_F1_O1"},
             {"shape_inference_graph", shape_inference_graph},
             {"shapes", absl::Span<const DataType>({})},
-            {"_outside_compilation_subgraph", "O1"}},
+            {"_outside_compilation_subgraph", "O1"},
+            {"_xla_token_input_nodes",
+             absl::Span<const string>({"_xla_token_arg_node"})}},
            {"c"}},
       },
       {{"f_0_retval_retval", "F:o:0"}});

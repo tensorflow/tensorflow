@@ -72,7 +72,7 @@ bool DeleteArrayIfUsedOnce(const string& array_name, Model* model);
 
 // Deletes the op and any of its input and output arrays if they are unused
 // after the op has been deleted.
-void DeleteOpAndArraysIfUnused(Model* model, Operator* op);
+void DeleteOpAndArraysIfUnused(Model* model, const Operator* op);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name);
@@ -250,7 +250,8 @@ void DropMinMax(Model* model, const string& array_name);
 
 bool IsAllocatableTransientArray(const Model& model, const string& array_name);
 
-void CreateOrCheckRnnStateArray(const string& name, int size, Model* model);
+void CreateOrCheckRnnStateArray(const string& name, int size,
+                                int state_num_dims, Model* model);
 
 string AvailableArrayName(const Model& model, const string& name);
 
@@ -267,7 +268,10 @@ void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
 string CreateInt32Array(Model* model, const string& param_name,
                         const std::vector<int>& value);
 
+bool EstimateArithmeticOpsCount(const Model& model, const Operator& op,
+                                int64* result);
 bool EstimateArithmeticOpsCount(const Model& model, int64* result);
+string FormattedNumber(int64 x);
 
 int AxesCount(AxesOrder axes_order);
 

@@ -15,14 +15,14 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #ifdef GOOGLE_CUDA
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -138,9 +138,21 @@ class DynamicStitchOpImplBase : public OpKernel {
 template <typename T>
 void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
                           const int32 slice_size, const int32 first_dim_size,
-                          const CudaDeviceArrayStruct<int>& input_indices,
-                          const CudaDeviceArrayStruct<const T*>& input_ptrs,
+                          const GpuDeviceArrayStruct<int>& input_indices,
+                          const GpuDeviceArrayStruct<const T*>& input_ptrs,
                           T* output);
+#define REGISTER_GPU(T)                                           \
+  extern template void DynamicStitchGPUImpl(                      \
+      const Eigen::GpuDevice& gpu_device, const int32 slice_size, \
+      const int32 first_dim_size,                                 \
+      const GpuDeviceArrayStruct<int32>& input_indices,           \
+      const GpuDeviceArrayStruct<const T*>& input_ptrs, T* output);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_complex64(REGISTER_GPU);
+TF_CALL_complex128(REGISTER_GPU);
+TF_CALL_int64(REGISTER_GPU);
+TF_CALL_int32(REGISTER_GPU);
+#undef REGISTER_GPU
 
 template <class T>
 class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
@@ -167,14 +179,14 @@ class DynamicStitchOpGPU : public DynamicStitchOpImplBase<T> {
     // merged that aren't covered by an index in indices.  What should we do?
     if (first_dim_size > 0) {
       // because the collision requirements, we have to deal with
-      // collion first before send data to gpu kernel.
+      // collision first before send data to gpu kernel.
       // TODO(ekelsen): Instead of doing a serial scan on the CPU to pick the
       // last of duplicated indices, it could instead be done of the GPU
       // implicitly using atomics to make sure the last index is the final
       // write.
       const int slice_size = merged->flat_outer_dims<T>().dimension(1);
-      CudaDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
-      CudaDeviceArrayOnHost<const T*> data_flat(c, data_elements_size);
+      GpuDeviceArrayOnHost<int32> indices_flat(c, first_dim_size);
+      GpuDeviceArrayOnHost<const T*> data_flat(c, data_elements_size);
       OP_REQUIRES_OK(c, indices_flat.Init());
       OP_REQUIRES_OK(c, data_flat.Init());
       // initialize the indices_flat (-1 represents missing indices)

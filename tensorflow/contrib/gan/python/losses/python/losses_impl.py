@@ -28,7 +28,7 @@ wasserstein_gradient_penalty
 All losses must be able to accept 1D or 2D Tensors, so as to be compatible with
 patchGAN style losses (https://arxiv.org/abs/1611.07004).
 
-To make these losses usable in the TFGAN framework, please create a tuple
+To make these losses usable in the TF-GAN framework, please create a tuple
 version of the losses with `losses_utils.py`.
 """
 
@@ -38,6 +38,7 @@ from __future__ import print_function
 
 
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables_lib
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -69,6 +70,10 @@ __all__ = [
 ]
 
 
+def _to_float(tensor):
+  return math_ops.cast(tensor, dtypes.float32)
+
+
 # Wasserstein losses from `Wasserstein GAN` (https://arxiv.org/abs/1701.07875).
 def wasserstein_generator_loss(
     discriminator_gen_outputs,
@@ -98,7 +103,7 @@ def wasserstein_generator_loss(
   """
   with ops.name_scope(scope, 'generator_wasserstein_loss', (
       discriminator_gen_outputs, weights)) as scope:
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
 
     loss = - discriminator_gen_outputs
     loss = losses.compute_weighted_loss(
@@ -144,8 +149,8 @@ def wasserstein_discriminator_loss(
   with ops.name_scope(scope, 'discriminator_wasserstein_loss', (
       discriminator_real_outputs, discriminator_gen_outputs, real_weights,
       generated_weights)) as scope:
-    discriminator_real_outputs = math_ops.to_float(discriminator_real_outputs)
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_real_outputs = _to_float(discriminator_real_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     discriminator_real_outputs.shape.assert_is_compatible_with(
         discriminator_gen_outputs.shape)
 
@@ -320,7 +325,7 @@ def wasserstein_gradient_penalty(
     generated_data: Output of the generator.
     generator_inputs: Exact argument to pass to the generator, which is used
       as optional conditioning to the discriminator.
-    discriminator_fn: A discriminator function that conforms to TFGAN API.
+    discriminator_fn: A discriminator function that conforms to TF-GAN API.
     discriminator_scope: If not `None`, reuse discriminators from this scope.
     epsilon: A small positive number added for numerical stability when
       computing the gradient norm.
@@ -647,7 +652,7 @@ def least_squares_generator_loss(
   """
   with ops.name_scope(scope, 'lsq_generator_loss',
                       (discriminator_gen_outputs, real_label)) as scope:
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     loss = math_ops.squared_difference(
         discriminator_gen_outputs, real_label) / 2.0
     loss = losses.compute_weighted_loss(
@@ -702,8 +707,8 @@ def least_squares_discriminator_loss(
   """
   with ops.name_scope(scope, 'lsq_discriminator_loss',
                       (discriminator_gen_outputs, real_label)) as scope:
-    discriminator_real_outputs = math_ops.to_float(discriminator_real_outputs)
-    discriminator_gen_outputs = math_ops.to_float(discriminator_gen_outputs)
+    discriminator_real_outputs = _to_float(discriminator_real_outputs)
+    discriminator_gen_outputs = _to_float(discriminator_gen_outputs)
     discriminator_real_outputs.shape.assert_is_compatible_with(
         discriminator_gen_outputs.shape)
 

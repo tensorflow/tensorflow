@@ -246,6 +246,14 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowFp16PrecisionForFp32(
 }
 
 JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
+    JNIEnv* env, jclass clazz, jlong handle, jboolean allow) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return;
+  interpreter->SetAllowBufferHandleOutput(allow);
+}
+
+JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_NativeInterpreterWrapper_numThreads(JNIEnv* env,
                                                              jclass clazz,
                                                              jlong handle,

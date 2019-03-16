@@ -1,3 +1,4 @@
+tensorflow/c/kernels/bitcast_op.cc
 tensorflow/contrib/boosted_trees/ops/model_ops.cc
 tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
 tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
@@ -43,7 +44,9 @@ tensorflow/core/kernels/conv_grad_input_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/conv_ops.cc
 tensorflow/core/kernels/conv_ops_3d.cc
-tensorflow/core/kernels/conv_ops_fused.cc
+tensorflow/core/kernels/conv_ops_fused_double.cc
+tensorflow/core/kernels/conv_ops_fused_float.cc
+tensorflow/core/kernels/conv_ops_fused_half.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/crop_and_resize_op.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc
@@ -119,6 +122,7 @@ tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/fifo_queue.cc
 tensorflow/core/kernels/fifo_queue_op.cc
 tensorflow/core/kernels/fill_functor.cc
+tensorflow/core/kernels/fft_ops.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/gather_functor.cc

@@ -498,8 +498,9 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
     }
     // Perform non-maximal suppression on single class
     std::vector<int> selected;
-    NonMaxSuppressionSingleClassHelper(context, node, op_data, class_scores,
-                                       &selected, num_detections_per_class);
+    TF_LITE_ENSURE_STATUS(NonMaxSuppressionSingleClassHelper(
+        context, node, op_data, class_scores, &selected,
+        num_detections_per_class));
     // Add selected indices from non-max suppression of boxes in this class
     int output_index = size_of_sorted_indices;
     for (int selected_index : selected) {
@@ -614,8 +615,8 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   }
   // Perform non-maximal suppression on max scores
   std::vector<int> selected;
-  NonMaxSuppressionSingleClassHelper(context, node, op_data, max_scores,
-                                     &selected, op_data->max_detections);
+  TF_LITE_ENSURE_STATUS(NonMaxSuppressionSingleClassHelper(
+      context, node, op_data, max_scores, &selected, op_data->max_detections));
   // Allocate output tensors
   int output_box_index = 0;
   for (const auto& selected_index : selected) {
@@ -688,11 +689,11 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
       return kTfLiteError;
   }
   if (op_data->use_regular_non_max_suppression)
-    NonMaxSuppressionMultiClassRegularHelper(context, node, op_data,
-                                             GetTensorData<float>(scores));
+    TF_LITE_ENSURE_STATUS(NonMaxSuppressionMultiClassRegularHelper(
+        context, node, op_data, GetTensorData<float>(scores)));
   else
-    NonMaxSuppressionMultiClassFastHelper(context, node, op_data,
-                                          GetTensorData<float>(scores));
+    TF_LITE_ENSURE_STATUS(NonMaxSuppressionMultiClassFastHelper(
+        context, node, op_data, GetTensorData<float>(scores)));
 
   return kTfLiteOk;
 }
@@ -710,12 +711,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // This fills in temporary decoded_boxes
   // by transforming input_box_encodings and input_anchors from
   // CenterSizeEncodings to BoxCornerEncoding
-  DecodeCenterSizeBoxes(context, node, op_data);
+  TF_LITE_ENSURE_STATUS(DecodeCenterSizeBoxes(context, node, op_data));
   // This fills in the output tensors
   // by choosing effective set of decoded boxes
   // based on Non Maximal Suppression, i.e. selecting
   // highest scoring non-overlapping boxes.
-  NonMaxSuppressionMultiClass(context, node, op_data);
+  TF_LITE_ENSURE_STATUS(NonMaxSuppressionMultiClass(context, node, op_data));
 
   return kTfLiteOk;
 }

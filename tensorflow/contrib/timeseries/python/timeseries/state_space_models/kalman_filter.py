@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib import distributions
-
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
 
 from tensorflow.python.framework import dtypes
@@ -137,9 +135,10 @@ class KalmanFilter(object):
     with ops.control_dependencies([non_negative_assert]):
       observation_covariance_cholesky = linalg_ops.cholesky(
           symmetrized_observation_covariance)
-    log_prediction_prob = distributions.MultivariateNormalTriL(
-        predicted_observation, observation_covariance_cholesky).log_prob(
-            observation)
+    log_prediction_prob = math_utils.mvn_tril_log_prob(
+        loc=predicted_observation,
+        scale_tril=observation_covariance_cholesky,
+        x=observation)
     (posterior_state,
      posterior_state_var) = self.posterior_from_prior_state(
          prior_state=estimated_state,

@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -557,6 +558,22 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(tf_result, np_result)
 
 
+class MultiplyNoNanTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_deprecated_v1
+  def testBasic(self):
+    for dtype in [np.float32, np.float64]:
+      values = [0, 1, np.nan, np.inf, np.NINF]
+      x = constant_op.constant(values, dtype=dtype)
+      zeros = constant_op.constant(np.zeros((5,)), dtype=dtype)
+      ones = constant_op.constant(np.ones((5,)), dtype=dtype)
+      with self.cached_session(use_gpu=True):
+        tf_result_zeros = math_ops.multiply_no_nan(x, zeros).eval()
+        self.assertAllEqual(tf_result_zeros, zeros)
+        tf_result_ones = math_ops.multiply_no_nan(x, ones).eval()
+        self.assertAllEqual(tf_result_ones, x)
+
+
 class XlogyTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
@@ -626,6 +643,60 @@ class XdivyTest(test_util.TensorFlowTestCase):
         self.assertAllClose(zeros_np, xdivy_tf_np[0])
         self.assertAllClose(x_over_y, xdivy_tf_np[1])
 
+
+class NextAfterTest(test_util.TensorFlowTestCase):
+
+  # Basic NextAfter tests that replicate numpy nextafter tests.
+  @test_util.run_in_graph_and_eager_modes
+  def testBasic(self):
+
+    for dtype in [dtypes.float32, dtypes.float64]:
+      one = constant_op.constant([1], dtype=dtype)
+      two = constant_op.constant([2], dtype=dtype)
+      zero = constant_op.constant([0], dtype=dtype)
+      nan = constant_op.constant([np.nan], dtype=dtype)
+
+      eps = constant_op.constant([np.finfo(dtype.as_numpy_dtype).eps],
+                                 dtype=dtype)
+
+      self.assertAllEqual(math_ops.nextafter(one, two) - one, eps)
+      self.assertAllLess(math_ops.nextafter(one, zero) - one, 0)
+      self.assertAllEqual(
+          math_ops.is_nan(math_ops.nextafter(nan, one)), [True])
+      self.assertAllEqual(
+          math_ops.is_nan(math_ops.nextafter(one, nan)), [True])
+      self.assertAllEqual(math_ops.nextafter(one, one), one)
+
+  @test_util.run_in_graph_and_eager_modes
+  def testBroadcasting(self):
+
+    for dtype in [dtypes.float32, dtypes.float64]:
+      one = constant_op.constant([1, 1], dtype=dtype)
+      two = constant_op.constant([2], dtype=dtype)
+
+      eps = np.finfo(dtype.as_numpy_dtype).eps
+
+      eps_const = constant_op.constant([eps, eps], dtype=dtype)
+
+      self.assertAllEqual(math_ops.nextafter(one, two) - one, eps_const)
+
+
+class BinaryOpsTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testErrorReceivedIfDtypeMismatchFromOp(self):
+    if context.executing_eagerly():
+      error = errors_impl.InvalidArgumentError
+      error_message = (
+          r"cannot compute Add as input #1\(zero-based\) was expected to be a "
+          r"int32 tensor but is a float tensor \[Op:Add\] name: add/")
+    else:
+      error = TypeError
+      error_message = ("Input 'y' of 'Add' Op has type float32 that does not "
+                       "match type int32 of argument 'x'.")
+    with self.assertRaisesRegexp(error, error_message):
+      a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
+      self.evaluate(a)
 
 if __name__ == "__main__":
   googletest.main()

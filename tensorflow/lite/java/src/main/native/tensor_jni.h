@@ -86,6 +86,16 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_numBytes(JNIEnv* env,
 
 /*
  *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    hasDelegateBufferHandle
+ *  Signature: (J)Z
+ */
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_Tensor_hasDelegateBufferHandle(JNIEnv* env,
+                                                        jclass clazz,
+                                                        jlong handle);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
  *  Method:    readMultiDimensionalArray
  *  Signature: (JLjava/lang/Object;)
  */
@@ -105,6 +115,15 @@ Java_org_tensorflow_lite_Tensor_writeMultiDimensionalArray(JNIEnv* env,
                                                            jclass clazz,
                                                            jlong handle,
                                                            jobject src);
+
+/*
+ *  Class:     org_tensorflow_lite_Tensor
+ *  Method:    index
+ *  Signature: (J)I
+ */
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
+                                                             jclass clazz,
+                                                             jlong handle);
 
 #ifdef __cplusplus
 }  // extern "C"

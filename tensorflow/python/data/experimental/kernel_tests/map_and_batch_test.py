@@ -83,8 +83,10 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     # total number of elements.
     dataset = dataset_fn(14, 28)
     get_next = self.getNext(dataset)
-    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
-                     [shape.as_list() for shape in dataset.output_shapes])
+    self.assertEqual(
+        [[None] + list(c.shape[1:]) for c in components],
+        [shape.as_list()
+         for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     num_batches = (28 * 7) // 14
     for i in range(num_batches):
       result = self.evaluate(get_next())
@@ -120,8 +122,8 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset_fn(8, 0), expected_output=[])
 
     # Empty batch should be an initialization time error.
-    self.assertDatasetProduces(
-        dataset_fn(0, 14), expected_error=(errors.InvalidArgumentError, ""))
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.assertDatasetProduces(dataset_fn(0, 14), expected_output=[])
 
   @parameterized.named_parameters(
       ("Even", False, False),
@@ -143,9 +145,11 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
 
     if drop_remainder:
-      self.assertEqual([4, 1], dataset.output_shapes.as_list())
+      self.assertEqual(
+          [4, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     else:
-      self.assertEqual([None, 1], dataset.output_shapes.as_list())
+      self.assertEqual(
+          [None, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     expected_output = [[[0], [1], [4], [9]], [[16], [25], [36], [49]]]
     if not drop_remainder:
       expected_output.append([[64], [81]])
@@ -164,18 +168,16 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       options = dataset_ops.Options()
       options.experimental_numa_aware = True
       dataset = dataset.with_options(options)
-    self.assertEqual([None, 1], dataset.output_shapes.as_list())
+    self.assertEqual(
+        [None, 1], dataset_ops.get_legacy_output_shapes(dataset).as_list())
     expected_output = [[[0], [1], [4], [9]], [[16], [25], [36], [49]],
                        [[64], [81]]]
     self.assertDatasetProduces(dataset, expected_output=expected_output)
-
-# TODO(b/117581999): eager expected not same as actual, debug.
 
   @parameterized.named_parameters(
       ("Normal", False),
       ("NUMA", True),
   )
-  @test_util.run_deprecated_v1
   def testMapAndBatchParallelGetNext(self, numa_aware):
     dataset = dataset_ops.Dataset.range(50000).apply(
         batching.map_and_batch(lambda x: x, batch_size=100))
@@ -427,27 +429,24 @@ class MapAndBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual([element for _ in range(10)],
                           self.evaluate(get_next()))
 
-  # TODO(b/117581999): add eager coverage.
   @parameterized.named_parameters(
       ("Identity", None, lambda x: x, None),
       ("Replicate", None, lambda x: (x, x), None),
       ("Swap", (None, None), lambda x, y: (y, x), None),
       ("Project", (None, None), lambda x, y: x, None),
   )
-  @test_util.run_deprecated_v1
-  def testSkipEagerShortCircuit(self, structure, map_fn, num_parallel_calls):
+  def testShortCircuit(self, structure, map_fn, num_parallel_calls):
     dataset = self.structuredDataset(structure).repeat().apply(
         batching.map_and_batch(map_fn, batch_size=10))
-    get_next = dataset_ops.make_one_shot_iterator(dataset).get_next()
+    get_next = self.getNext(dataset)
 
-    with self.cached_session() as sess:
-      if isinstance(structure, tuple):
-        expected = map_fn(
-            *sess.run(self.structuredElement(structure, shape=[10])))
-      else:
-        expected = map_fn(
-            sess.run(self.structuredElement(structure, shape=[10])))
-      self.assertAllEqual(expected, self.evaluate(get_next))
+    if isinstance(structure, tuple):
+      expected = map_fn(
+          *self.evaluate(self.structuredElement(structure, shape=[10])))
+    else:
+      expected = map_fn(
+          self.evaluate(self.structuredElement(structure, shape=[10])))
+    self.assertAllEqual(expected, self.evaluate(get_next()))
 
   def testShortCircuitCapturedInput(self):
     captured_t = variables.Variable(42)

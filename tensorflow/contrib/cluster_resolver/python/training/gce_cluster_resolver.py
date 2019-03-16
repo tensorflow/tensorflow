@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Stub file for GceClusterResolver to maintain backwards compatibility."""
+"""Stub file for GCEClusterResolver to maintain backwards compatibility."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,13 +23,14 @@ from __future__ import print_function
 # existing OSS code will not be broken.
 
 # pylint: disable=unused-import
-from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GceClusterResolver
+from tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver import GCEClusterResolver
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
 
+
 _allowed_symbols = [
-    'GceClusterResolver',
+    'GCEClusterResolver',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

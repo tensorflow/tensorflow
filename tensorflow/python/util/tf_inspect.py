@@ -36,6 +36,19 @@ else:
       'annotations'
   ])
 
+
+def _convert_maybe_argspec_to_fullargspec(argspec):
+  if isinstance(argspec, FullArgSpec):
+    return argspec
+  return FullArgSpec(
+      args=argspec.args,
+      varargs=argspec.varargs,
+      varkw=argspec.keywords,
+      defaults=argspec.defaults,
+      kwonlyargs=[],
+      kwonlydefaults=None,
+      annotations={})
+
 if hasattr(_inspect, 'getfullargspec'):
   _getfullargspec = _inspect.getfullargspec  # pylint: disable=invalid-name
 
@@ -74,16 +87,7 @@ else:
     Returns:
       A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
     """
-    argspecs = getargspec(target)
-    fullargspecs = FullArgSpec(
-        args=argspecs.args,
-        varargs=argspecs.varargs,
-        varkw=argspecs.keywords,
-        defaults=argspecs.defaults,
-        kwonlyargs=[],
-        kwonlydefaults=None,
-        annotations={})
-    return fullargspecs
+    return _convert_maybe_argspec_to_fullargspec(getargspec(target))
 
 
 def currentframe():
@@ -194,7 +198,9 @@ def _get_argspec_for_partial(obj):
   # Partial function may give default value to any argument, therefore length
   # of default value list must be len(args) to allow each argument to
   # potentially be given a default value.
-  all_defaults = [None] * len(args)
+  no_default = object()
+  all_defaults = [no_default] * len(args)
+
   if defaults:
     all_defaults[-len(defaults):] = defaults
 
@@ -204,7 +210,8 @@ def _get_argspec_for_partial(obj):
     all_defaults[idx] = default
 
   # Find first argument with default value set.
-  first_default = next((idx for idx, x in enumerate(all_defaults) if x), None)
+  first_default = next(
+      (idx for idx, x in enumerate(all_defaults) if x is not no_default), None)
 
   # If no default values are found, return ArgSpec with defaults=None.
   if first_default is None:
@@ -212,7 +219,8 @@ def _get_argspec_for_partial(obj):
 
   # Checks if all arguments have default value set after first one.
   invalid_default_values = [
-      args[i] for i, j in enumerate(all_defaults) if not j and i > first_default
+      args[i] for i, j in enumerate(all_defaults)
+      if j is no_default and i > first_default
   ]
 
   if invalid_default_values:
@@ -238,7 +246,7 @@ def getfullargspec(obj):
     directly on the callable.
   """
   decorators, target = tf_decorator.unwrap(obj)
-  return next((d.decorator_argspec
+  return next((_convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
                for d in decorators
                if d.decorator_argspec is not None), _getfullargspec(target))
 
@@ -380,3 +388,22 @@ def isroutine(object):  # pylint: disable=redefined-builtin
 def stack(context=1):
   """TFDecorator-aware replacement for inspect.stack."""
   return _inspect.stack(context)[1:]
+
+
+def getsource_no_unwrap(obj):
+  """Return source code for an object. Does not unwrap TFDecorators.
+
+  The source code is returned literally, including indentation for functions not
+  at the top level. This function is analogous to inspect.getsource, with one
+  key difference - it doesn't unwrap decorators. For simplicity, support for
+  some Python object types is dropped (tracebacks, frames, code objects).
+
+  Args:
+      obj: a class, method, or function object.
+
+  Returns:
+      source code as a string
+
+  """
+  lines, lnum = _inspect.findsource(obj)
+  return ''.join(_inspect.getblock(lines[lnum:]))

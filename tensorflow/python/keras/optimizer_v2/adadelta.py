@@ -20,12 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.training import training_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.optimizers.Adadelta', v1=[])
+@keras_export('keras.optimizers.Adadelta')
 class Adadelta(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the Adadelta algorithm.
 
@@ -40,13 +41,14 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
   Initialization:
 
-  $$accum_g_0 := 0 \text{(Initialize gradient 2nd order moment vector)}$$
-  $$accum_x_0 := 0 \text{(Initialize variable update 2nd order moment vector)}$$
+  $$E[g^2]_0 := 0 \text{(Initialize gradient 2nd order moment vector)}$$
+  $$E[\Delta x^2]_0 := 0 \text{(Initialize 2nd order variable update)}$$
 
   $$t := t + 1$$
-  $$accum_g_t := rho * accum_g_{t-1} + (1 - rho) * g * g$$
-  $$delta = -\sqrt{accum_x_{t-1}} / (\sqrt{accum_g_{t-1}} + \epsilon)$$
-  $$accum_x_t := rho * accum_x_{t-1} + (1 - rho) * delta * delta$$
+  $$E[g^2]_t := \rho * E[g^2]_{t-1} + (1 - \rho) * g^2$$
+  $$\Delta x_t = -RMS[\Delta x]_{t-1} * g_t / RMS[g]_t$$
+  $$E[\Delta x^2]_t := \rho * E[\Delta x^2]_{t-1} + (1 - \rho) * \Delta x_t^2$$
+  $$x_t := x_{t-1} + \Delta x_{t}
 
   References
     See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
@@ -77,7 +79,11 @@ class Adadelta(optimizer_v2.OptimizerV2):
                to better conditioning the grad update.
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
-      **kwargs: keyword arguments. Allowed to be {`decay`}
+      **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
+        `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
+        gradients by value, `decay` is included for backward compatibility to
+        allow time inverse decay of learning rate. `lr` is included for backward
+        compatibility, recommended to use `learning_rate` instead.
 
     @compatibility(eager)
     When eager execution is enabled, `learning_rate`, `rho`, and `epsilon` can
@@ -86,6 +92,8 @@ class Adadelta(optimizer_v2.OptimizerV2):
     invocations of optimizer functions.
     @end_compatibility
     """
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     super(Adadelta, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)

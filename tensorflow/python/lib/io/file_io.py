@@ -196,8 +196,14 @@ class FileIO(object):
 
   def tell(self):
     """Returns the current position in the file."""
-    self._preread_check()
-    return self._read_buf.Tell()
+    if self._read_check_passed:
+      self._preread_check()
+      return self._read_buf.Tell()
+    else:
+      self._prewrite_check()
+
+      with errors.raise_exception_on_not_ok_status() as status:
+        return pywrap_tensorflow.TellFile(self._writable_file, status)
 
   def __enter__(self):
     """Make usable with "with" statement."""
@@ -640,7 +646,10 @@ def list_directory_v2(path):
     errors.NotFoundError if directory doesn't exist
   """
   if not is_directory(path):
-    raise errors.NotFoundError(None, None, "Could not find directory")
+    raise errors.NotFoundError(
+        node_def=None,
+        op=None,
+        message="Could not find directory {}".format(path))
   with errors.raise_exception_on_not_ok_status() as status:
     # Convert each element to string, since the return values of the
     # vector of string should be interpreted as strings, not bytes.

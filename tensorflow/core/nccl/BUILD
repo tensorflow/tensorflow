@@ -20,8 +20,10 @@ cc_library(
     name = "nccl_lib",
     srcs = if_cuda([
         "nccl_manager.cc",
-        "nccl_manager.h",
         "nccl_rewrite.cc",
+    ]),
+    hdrs = if_cuda([
+        "nccl_manager.h",
     ]),
     copts = tf_copts(),
     deps = if_cuda([

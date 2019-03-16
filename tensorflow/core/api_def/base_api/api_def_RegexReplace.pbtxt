@@ -6,20 +6,30 @@ op {
   }
   in_arg {
     name: "pattern"
-    description: "The regular expression to match the input."
+    description: "The regular expression to be matched in the `input` strings."
   }
   in_arg {
     name: "rewrite"
-    description: "The rewrite to be applied to the matched expresion."
+    description: <<END
+The rewrite string to be substituted for the `pattern` expression where it is
+matched in the `input` strings.
+END
   }
   out_arg {
     name: "output"
-    description: "The text after applying pattern and rewrite."
+    description: "The text after applying pattern match and rewrite substitution."
   }
   attr {
     name: "replace_global"
-    description: "If True, the replacement is global, otherwise the replacement\nis done only on the first match."
+    description: <<END
+If True, the replacement is global (that is, all matches of the `pattern` regular
+expression in each input string are rewritten), otherwise the `rewrite`
+substitution is only made for the first `pattern` match.
+END
   }
-  summary: "Replaces the match of pattern in input with rewrite."
+  summary: <<END
+Replaces matches of the `pattern` regular expression in `input` with the
+replacement string provided in `rewrite`.
+END
   description: "It follows the re2 syntax (https://github.com/google/re2/wiki/Syntax)"
 }

@@ -23,7 +23,6 @@ namespace xla {
 namespace {
 
 namespace m = ::xla::match;
-using ::testing::Eq;
 using ::testing::Not;
 
 template <typename MatchedTy>

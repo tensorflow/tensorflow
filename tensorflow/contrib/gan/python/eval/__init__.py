@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN evaluation module.
+"""TF-GAN evaluation module.
 
 This module supports techniques such as Inception Score, Frechet Inception
 distance, and Sliced Wasserstein distance.

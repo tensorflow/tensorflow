@@ -59,17 +59,17 @@ class SplitOpTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(array_ops.split(model_input, [4]), {model_input: inp})
 
-    # test that we can pass a scalar Tensor as num_splits
+    # scalar Tensors are not permitted as num_splits
     for axis in [0, -2]:
       with self.cached_session(use_gpu=True) as sess:
-        result = sess.run(
-            array_ops.split(
-                array_ops.ones([4, 4]),
-                num_or_size_splits=array_ops.ones([2, 2]).get_shape()[1],
-                axis=axis))
-
-      self.assertEqual(result[0].shape, (2, 4))
-      self.assertEqual(result[1].shape, (2, 4))
+        with self.assertRaises(ValueError):
+          # pylint: disable=expression-not-assigned
+          sess.run(
+              array_ops.split(
+                  array_ops.ones([4, 4]),
+                  num_or_size_splits=constant_op.constant(2),
+                  axis=axis))
+          # pylint: enable=expression-not-assigned
 
     # test that none split dimensions remain, even if we don't know how
     # the split_dim will be split, but we do know the axis
@@ -113,8 +113,8 @@ class SplitOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testListOfScalarTensors(self):
-    a = math_ops.to_int32(5)
-    b = math_ops.to_int32(6)
+    a = math_ops.cast(5, dtypes.int32)
+    b = math_ops.cast(6, dtypes.int32)
 
     value = np.random.rand(11, 11)
 
@@ -373,6 +373,7 @@ class SplitOpTest(test.TestCase):
     assert s1.shape.as_list() == [1]
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testNonexistentDimTensor(self):
     x = array_ops.placeholder(dtypes.int32)
     values = np.zeros([5, 30])

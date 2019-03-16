@@ -646,6 +646,7 @@ cc_library(
         ":amdgpu_asm_printer",
         ":amdgpu_info",
         ":amdgpu_utils",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -793,12 +794,14 @@ cc_library(
         ":amdgpu_utils",
         ":analysis",
         ":asm_printer",
+        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
         ":global_i_sel",
         ":ipo",
         ":mc",
+        ":mir_parser",
         ":scalar",
         ":selection_dag",
         ":support",
@@ -1486,6 +1489,32 @@ cc_library(
         ":config",
         ":mc",
         ":support",
+    ],
+)
+
+cc_library(
+    name = "mir_parser",
+    srcs = glob([
+        "lib/CodeGen/MIRParser/*.c",
+        "lib/CodeGen/MIRParser/*.cpp",
+        "lib/CodeGen/MIRParser/*.inc",
+        "lib/CodeGen/MIRParser/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/CodeGen/MIRParser/*.h",
+        "include/llvm/CodeGen/MIRParser/*.def",
+        "include/llvm/CodeGen/MIRParser/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":asm_parser",
+        ":binary_format",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":support",
+        ":target",
     ],
 )
 

@@ -65,6 +65,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConstant:
@@ -72,21 +73,15 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kCopy:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
-    case HloOpcode::kEq:
     case HloOpcode::kFloor:
-    case HloOpcode::kGe:
     case HloOpcode::kGetTupleElement:
-    case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kInfeed:
     case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:
@@ -95,6 +90,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kPad:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
@@ -125,9 +121,10 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
+    case HloOpcode::kCholesky:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kCustomCall:
@@ -150,13 +147,16 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelectAndScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
+    case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
       return true;
@@ -174,23 +174,22 @@ bool InstructionFusion::EffectivelyAtMostUnary(HloInstruction* hlo) {
   ShapeUtil::ForEachSubshape(
       hlo->shape(),
       [&output_rank](const Shape& subshape, const ShapeIndex& shape_index) {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           output_rank = std::max(output_rank, ShapeUtil::TrueRank(subshape));
         }
       });
-  return std::count_if(hlo->operands().begin(), hlo->operands().end(),
-                       [output_rank](HloInstruction* operand) {
-                         if (operand->opcode() == HloOpcode::kBroadcast ||
-                             operand->opcode() == HloOpcode::kIota) {
-                           return false;
-                         }
-                         if (operand->opcode() == HloOpcode::kConstant &&
-                             ShapeUtil::IsEffectiveScalar(operand->shape())) {
-                           return false;
-                         }
-                         return ShapeUtil::TrueRank(operand->shape()) >=
-                                output_rank;
-                       }) <= 1;
+  return absl::c_count_if(
+             hlo->operands(), [output_rank](HloInstruction* operand) {
+               if (operand->opcode() == HloOpcode::kBroadcast ||
+                   operand->opcode() == HloOpcode::kIota) {
+                 return false;
+               }
+               if (operand->opcode() == HloOpcode::kConstant &&
+                   ShapeUtil::IsEffectiveScalar(operand->shape())) {
+                 return false;
+               }
+               return ShapeUtil::TrueRank(operand->shape()) >= output_rank;
+             }) <= 1;
 }
 
 bool InstructionFusion::CanFuseOnAllPaths(
@@ -274,7 +273,7 @@ InstructionFusion::ComputeGloballyUnfusible(
         ShapeUtil::ForEachSubshape(
             shape,
             [&size](const Shape& subshape, const ShapeIndex& shape_index) {
-              if (ShapeUtil::IsArray(subshape)) {
+              if (subshape.IsArray()) {
                 size += ShapeUtil::ElementsIn(subshape);
               }
             });
@@ -409,9 +408,8 @@ class ReversePostOrderFusionQueue : public FusionQueue {
       }
       sorted_operand_numbers.push_back(i);
     }
-    std::sort(
-        sorted_operand_numbers.begin(), sorted_operand_numbers.end(),
-        [&](int64 i, int64 j) {
+    absl::c_sort(
+        sorted_operand_numbers, [&](int64 i, int64 j) {
           // Instructions with higher priority in the queue come first.
           return (
               FindOrDie(post_order_index_, instruction->mutable_operand(i)) >

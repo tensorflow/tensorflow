@@ -96,7 +96,7 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
   for (const string& kv_str : kv_split) {
     const std::vector<string> kv =
         str_util::Split(kv_str, "=", str_util::SkipEmpty());
-    if (kv.size() != 2) {
+    if (kv.size() < 2) {
       return tensorflow::Status(
           tensorflow::error::INVALID_ARGUMENT,
           "Visualize format: -output timeline:key=value,key=value,...");
@@ -107,7 +107,8 @@ tensorflow::Status ParseOutput(const string& output_opt, string* output_type,
           strings::Printf("Unrecognized options %s for output_type: %s\n",
                           kv[0].c_str(), output_type->c_str()));
     }
-    (*output_options)[kv[0]] = kv[1];
+    const std::vector<string> kv_without_key(kv.begin() + 1, kv.end());
+    (*output_options)[kv[0]] = str_util::Join(kv_without_key, "=");
   }
 
   for (const string& opt : required_options) {

@@ -535,6 +535,7 @@ message CompleteInstanceRequest {
 message CompleteInstanceResponse {
   int32 instance_key = 1;
   int32 source_rank = 2;
+  bytes communicator_key = 3;
 }
 
 // Request for next agreed-upon step_id for the specified graph_keys.

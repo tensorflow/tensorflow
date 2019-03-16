@@ -53,10 +53,10 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       return var, assign
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign = distribution.call_for_each_replica(replica_fn)
+      var, assign = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
-      sess.run(distribution.unwrap(assign))
+      sess.run(distribution.experimental_local_results(assign))
       # Mean of val across calls to replica_fn().
       average_val = [1.0 + 0.5 * (replica_id[0] - 1),
                      2.0 - 0.5 * (replica_id[0] - 1)]
@@ -79,10 +79,10 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       return var, assign.op
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign_op = distribution.call_for_each_replica(replica_fn)
+      var, assign_op = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([0.0, 0.0], var.eval())
-      sess.run(distribution.unwrap(assign_op))
+      sess.run(distribution.experimental_local_results(assign_op))
       # Mean of val across calls to replica_fn().
       average_val = [1.0 + 0.5 * (replica_id[0] - 1),
                      2.0 - 0.5 * (replica_id[0] - 1)]
@@ -152,10 +152,10 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       return var, assign
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign = distribution.call_for_each_replica(replica_fn)
+      var, assign = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
-      sess.run(distribution.unwrap(assign))
+      sess.run(distribution.experimental_local_results(assign))
       self.assertAllClose(
           [10 * 0.25 + 1. * (1 - 0.25), 11 * 0.25 + 2. * (1 - 0.25)],
           var.eval())

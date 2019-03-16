@@ -22,6 +22,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -58,22 +59,15 @@ struct DupRecvKey {
   int src_output_slot;       // Edge's src node output slot
   GraphDef* dst_graph;       // Edge's dst node is in this subgraph
   bool recv_output_on_host;  // The output of recv is on host
-};
 
-struct DupRecvKeyHash {
-  size_t operator()(const DupRecvKey& k) const {
-    size_t h = Hash64(reinterpret_cast<const char*>(&k.src_node_id),
-                      sizeof(k.src_node_id), k.src_output_slot);
-    h = Hash64(reinterpret_cast<const char*>(&k.dst_graph), sizeof(k.dst_graph),
-               h);
-    h = Hash64(reinterpret_cast<const char*>(&k.recv_output_on_host),
-               sizeof(k.recv_output_on_host), h);
-    return h;
+  template <typename H>
+  friend H AbslHashValue(H h, const DupRecvKey& c) {
+    return H::combine(std::move(h), c.src_node_id, c.src_output_slot,
+                      reinterpret_cast<std::uintptr_t>(c.dst_graph),
+                      c.recv_output_on_host);
   }
-};
 
-struct DupRecvKeyEq {
-  bool operator()(const DupRecvKey& x, const DupRecvKey& y) const {
+  friend bool operator==(const DupRecvKey& x, const DupRecvKey& y) {
     return (x.src_node_id == y.src_node_id) &&
            (x.src_output_slot == y.src_output_slot) &&
            (x.dst_graph == y.dst_graph) &&
@@ -88,19 +82,26 @@ struct RecvInfo {
   int64 start_time;
 };
 
-typedef std::unordered_map<DupRecvKey, RecvInfo, DupRecvKeyHash, DupRecvKeyEq>
-    DupRecvTable;
+typedef absl::flat_hash_map<DupRecvKey, RecvInfo> DupRecvTable;
 
-struct PairIntHash {
- public:
-  std::size_t operator()(const std::pair<int, int>& x) const {
-    return std::hash<int>()(x.first) ^ std::hash<int>()(x.second);
-  }
-};
 // A map used to store memory types for the inputs/outputs of every node.
 // The key is a pair of ints consisting of a node id and input/output index.
-typedef std::unordered_map<std::pair<int, int>, MemoryType, PairIntHash>
-    MemoryTypeMap;
+// TODO(power): migrate back to std::pair when absl::Hash is fixed for MSVC.
+struct NodePort {
+  int node_id;
+  int index;
+
+  friend bool operator==(const NodePort& x, const NodePort& y) {
+    return x.node_id == y.node_id && x.index == y.index;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const NodePort& c) {
+    return H::combine(std::move(h), c.node_id, c.index);
+  }
+};
+
+typedef absl::flat_hash_map<NodePort, MemoryType> MemoryTypeMap;
 
 // We collect the following information about the graph before performing
 // graph partitioning.
@@ -564,10 +565,10 @@ Status BuildMemoryDeviceInfo(const Graph& g, GraphInfo* info) {
 
     int node_id = node->id();
     info->device_types[node_id] = DeviceType(parsed.type);
-    for (size_t i = 0; i < input_memory_types.size(); ++i) {
+    for (int i = 0; i < input_memory_types.size(); ++i) {
       info->input_types[{node_id, i}] = input_memory_types[i];
     }
-    for (size_t i = 0; i < output_memory_types.size(); ++i) {
+    for (int i = 0; i < output_memory_types.size(); ++i) {
       info->output_types[{node_id, i}] = output_memory_types[i];
     }
   }

@@ -462,7 +462,7 @@ class Bijector(object):
 
 
   ```python
-  abs = tf.contrib.distributions.bijectors.AbsoluteValue()
+  abs = tfp.distributions.bijectors.AbsoluteValue()
 
   abs.forward(-1.)
   ==> 1.

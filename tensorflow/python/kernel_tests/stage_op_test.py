@@ -166,6 +166,7 @@ class StageTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testCapacity(self):
+    self.skipTest('b/123423516 this test is flaky on gpu.')
     capacity = 3
 
     with ops.Graph().as_default() as G:

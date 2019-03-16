@@ -79,6 +79,10 @@ TEST(GcsFileSystemTest, NewRandomAccessFile_NoBlockCache) {
   std::unique_ptr<RandomAccessFile> file;
   TF_EXPECT_OK(fs.NewRandomAccessFile("gs://bucket/random_access.txt", &file));
 
+  StringPiece filename;
+  TF_EXPECT_OK(file->Name(&filename));
+  EXPECT_EQ(filename, "gs://bucket/random_access.txt");
+
   char scratch[6];
   StringPiece result;
 
@@ -639,6 +643,9 @@ TEST(GcsFileSystemTest, NewWritableFile) {
   std::unique_ptr<WritableFile> wfile;
   TF_EXPECT_OK(fs.NewWritableFile("gs://bucket/path/writeable", &wfile));
   TF_EXPECT_OK(wfile->Append("content1,"));
+  int64 pos;
+  TF_EXPECT_OK(wfile->Tell(&pos));
+  EXPECT_EQ(9, pos);
   TF_EXPECT_OK(wfile->Append("content2"));
   TF_EXPECT_OK(wfile->Flush());
   // Re-reading the file should trigger another HTTP request to GCS.
@@ -3148,8 +3155,8 @@ TEST(GcsFileSystemTest, AdditionalRequestHeaderTest) {
 TEST(GcsFileSystemTest, OverrideCacheParameters) {
   // Verify defaults are propagated correctly.
   GcsFileSystem fs1;
-  EXPECT_EQ(128 * 1024 * 1024, fs1.block_size());
-  EXPECT_EQ(2 * fs1.block_size(), fs1.max_bytes());
+  EXPECT_EQ(16 * 1024 * 1024, fs1.block_size());
+  EXPECT_EQ(fs1.block_size(), fs1.max_bytes());
   EXPECT_EQ(0, fs1.max_staleness());
   EXPECT_EQ(120, fs1.timeouts().connect);
   EXPECT_EQ(60, fs1.timeouts().idle);

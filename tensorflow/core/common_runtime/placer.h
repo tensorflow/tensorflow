@@ -68,8 +68,10 @@ class Placer {
   //
   // The "graph", "devices", and "default_device" pointer arguments are borrowed
   // by this Placer, and must outlive it.
-  Placer(Graph* graph, const DeviceSet* devices, const SessionOptions* options,
-         const Device* default_device);
+  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device,
+         bool allow_soft_placement, bool log_device_placement);
+
+  Placer(Graph* graph, const DeviceSet* devices, const Device* default_device);
 
   Placer(Graph* graph, const DeviceSet* devices);
 
@@ -88,16 +90,11 @@ class Placer {
   bool CanAssignToDevice(const string& candidate_device_name,
                          const std::vector<Device*>& devices) const;
 
-  // Assigns 'node's devices to 'assigned_device', and logs the
-  // placement if the SessionOptions entry in 'options_' requests it.
-  void AssignAndLog(int assigned_device, Node* node) const;
-  void LogDeviceAssignment(const Node* node) const;
-
   Graph* const graph_;              // Not owned.
   const DeviceSet* const devices_;  // Not owned.
-  const SessionOptions* options_;   // Not owned.
+  const Device* default_device_;    // Not owned.
+  const bool allow_soft_placement_;
   const bool log_device_placement_;
-  const Device* default_device_;  // Not owned.
 
   TF_DISALLOW_COPY_AND_ASSIGN(Placer);
 };

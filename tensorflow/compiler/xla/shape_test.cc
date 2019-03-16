@@ -35,17 +35,21 @@ class ShapeTest : public ::testing::Test {
   const Shape opaque_ = ShapeUtil::MakeOpaqueShape();
   const Shape token_ = ShapeUtil::MakeTokenShape();
   const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_with_tile_ =
+      ShapeUtil::MakeShapeWithLayout(F32, {}, {}, {Tile({256})});
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
   const Shape tuple_ =
       ShapeUtil::MakeTupleShape({opaque_, scalar_, matrix_, matrix2_});
   const Shape nested_tuple_ =
       ShapeUtil::MakeTupleShape({tuple_, matrix_, token_});
+  const Shape dyanmic_matrix_ =
+      ShapeUtil::MakeShape(S32, {5, 2}, {true, false});
 };
 
 TEST_F(ShapeTest, ShapeToFromProto) {
-  for (const Shape& shape :
-       {opaque_, token_, scalar_, matrix_, matrix2_, tuple_, nested_tuple_}) {
+  for (const Shape& shape : {opaque_, token_, scalar_, matrix_, matrix2_,
+                             tuple_, nested_tuple_, dyanmic_matrix_}) {
     Shape shape_copy(shape.ToProto());
     EXPECT_TRUE(ShapeUtil::Equal(shape, shape_copy))
         << shape << " != " << shape_copy;
@@ -64,6 +68,8 @@ TEST_F(ShapeTest, ShapeToString) {
 
   EXPECT_EQ("opaque[]", opaque_.ToString(/*print_layout=*/true));
   EXPECT_EQ("f32[]", scalar_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("f32[]{:T(256)}",
+            scalar_with_tile_.ToString(/*print_layout=*/true));
   EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
   EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
@@ -72,6 +78,65 @@ TEST_F(ShapeTest, ShapeToString) {
       "((opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1}), u32[1,2]{1,0}, "
       "token[])",
       nested_tuple_.ToString(/*print_layout=*/true));
+}
+
+TEST_F(ShapeTest, DynamicShapeToString) {
+  Shape array_shape =
+      ShapeUtil::MakeShape(F32, {23, 44, 55}, {true, false, true});
+  EXPECT_EQ("f32[<=23,44,<=55]", array_shape.ToString());
+
+  array_shape.set_dynamic_dimension(2, false);
+  EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
+}
+
+TEST_F(ShapeTest, EqualityTest) {
+  // Different layouts.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {0, 1}));
+
+  // Different dims.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+
+  // Different elements.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(S32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+
+  // Equal shapes.
+  EXPECT_EQ(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+}
+
+TEST_F(ShapeTest, IsStatic) {
+  EXPECT_TRUE(opaque_.is_static());
+  EXPECT_TRUE(token_.is_static());
+  EXPECT_TRUE(matrix_.is_static());
+  EXPECT_TRUE(tuple_.is_static());
+  EXPECT_TRUE(nested_tuple_.is_static());
+
+  Shape dynamic_matrix = matrix_;
+  EXPECT_TRUE(dynamic_matrix.is_static());
+  dynamic_matrix.set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_matrix.is_static());
+
+  Shape dynamic_tuple = tuple_;
+  EXPECT_TRUE(dynamic_tuple.is_static());
+  ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
+      ->set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_tuple.is_static());
+}
+
+TEST_F(ShapeTest, IsDynamicDimension) {
+  Shape dynamic_matrix = matrix_;
+  dynamic_matrix.set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_matrix.is_dynamic_dimension(0));
+  EXPECT_TRUE(dynamic_matrix.is_dynamic_dimension(1));
+
+  Shape dynamic_tuple = tuple_;
+  EXPECT_TRUE(dynamic_tuple.is_static());
+  ShapeUtil::GetMutableSubshape(&dynamic_tuple, {2})
+      ->set_dynamic_dimension(1, true);
+  EXPECT_FALSE(dynamic_tuple.is_static());
 }
 
 TEST_F(ShapeTest, ProgramShapeToFromProto) {

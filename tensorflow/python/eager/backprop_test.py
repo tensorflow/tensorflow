@@ -132,6 +132,20 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(dx, 2.0)
     self.assertAllEqual(dy, 3.0)
 
+  def testCustomGradientEmptyError(self):
+
+    @custom_gradient.custom_gradient
+    def identity(x):
+      def grad(_):
+        return []  # This return value is wrong!
+      return x, grad
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as t:
+      y = identity(x)
+    with self.assertRaises(ValueError):
+      t.gradient(y, [x])
+
   def testOutputGradUsedInComputation(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)
@@ -270,6 +284,38 @@ class BackpropTest(test.TestCase):
       z = y * y
     self.assertAllEqual(t.gradient([x, y, z], [x, y]), [1.0, 11.0])
 
+  def testTapeGradientStringTarget(self):
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+    x = constant_op.constant(3.0)
+
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(s)
+    grads = t.gradient(s, x)
+    self.assertEqual(grads, None)
+
+  def testTapeNoOpGradientStringSourceAndTarget(self):
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+
+    with backprop.GradientTape() as t:
+      t.watch(s)
+    grads = t.gradient(s, s)
+    self.assertEqual(grads, None)
+
+  def testTapeNoOpGradientWithMultiTargetMultiSourceIncludeString(self):
+    x = constant_op.constant(3.0)
+    y = constant_op.constant(5.0)
+    s = constant_op.constant('unknown', dtype=dtypes.string)
+
+    with backprop.GradientTape() as t:
+      t.watch(x)
+      t.watch(y)
+      t.watch(s)
+      z = y * y
+    grads = t.gradient([x, y, z, s], [x, y, s])
+    self.assertAllEqual(grads[:2], [1.0, 11.0])
+    self.assertEqual(grads[2], None)
+
   def testTapeNoOpOnVariableIsIdentity(self):
     v0 = resource_variable_ops.ResourceVariable(1.0)
     with backprop.GradientTape() as t:
@@ -321,6 +367,16 @@ class BackpropTest(test.TestCase):
       t.reset()
       loss += v * v
     self.assertAllEqual(t.gradient(loss, v), 2.0)
+
+  def testPythonMax(self):
+    x = [resource_variable_ops.ResourceVariable(2.),
+         resource_variable_ops.ResourceVariable(3.),
+         resource_variable_ops.ResourceVariable(5.)]
+    with backprop.GradientTape() as t:
+      f = max(x)
+    grad = t.gradient(f, x)
+    self.assertAllEqual(self.evaluate(f), 5.)
+    self.assertAllEqual(self.evaluate(grad), [None, None, 1.0])
 
   def testAutomaticWatchedVariables(self):
     with backprop.GradientTape() as t:
@@ -642,10 +698,8 @@ class BackpropTest(test.TestCase):
     with backprop.GradientTape() as g:
       x = variables.Variable([3.0])
       y = variables.Variable([2.0])
-    with self.assertRaisesRegexp(
-        ValueError,
-        'GradientTape.gradient is not supported for variable targets.'):
-      g.gradient(x, y)
+    grad = g.gradient(x, y)
+    self.assertAllEqual(grad, None)
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only('b/120545219')

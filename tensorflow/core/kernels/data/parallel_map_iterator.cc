@@ -22,9 +22,9 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/platform/cpu_info.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -58,9 +58,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
             params.num_parallel_calls, mu_, cond_var_)),
         sloppy_(params.sloppy),
         preserve_cardinality_(params.preserve_cardinality) {
-    std::vector<string> components =
-        str_util::Split(base_params.prefix, "::", str_util::SkipEmpty());
-    prefix_end_ = components.back();
+    key_prefix_ = base_params.dataset->node_name();
   }
 
   ~ParallelMapIterator() override {
@@ -193,9 +191,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
     if (!runner_thread_) {
       auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-      runner_thread_.reset(ctx->env()->StartThread(
-          {}, "tf_data_parallel_map",
-          std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy)));
+      runner_thread_ = ctx->StartThread(
+          "tf_data_parallel_map",
+          std::bind(&ParallelMapIterator::RunnerThread, this, ctx_copy));
     }
   }
 
@@ -207,8 +205,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
     const auto& stats_aggregator = ctx->stats_aggregator();
     if (stats_aggregator) {
       stats_aggregator->AddScalar(
-          strings::StrCat(prefix_end_, "::active_parallel_calls"),
-          static_cast<float>(num_calls_));
+          stats_utils::ThreadUtilizationScalarName(key_prefix_),
+          static_cast<float>(num_calls_) /
+              static_cast<float>(num_parallel_calls_->value));
     }
     RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
@@ -300,14 +299,10 @@ class ParallelMapIterator : public DatasetBaseIterator {
         }
         const auto& stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator) {
-          // TODO(shivaniagrawal): add `parallel_calls_utilization` in the
-          // monitoring code or as histogram at fixed time intervals.
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::active_parallel_calls"),
-              static_cast<float>(num_calls_));
-          stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::num_parallel_calls"),
-              static_cast<float>(num_parallel_calls_->value));
+              stats_utils::ThreadUtilizationScalarName(key_prefix_),
+              static_cast<float>(num_calls_) /
+                  static_cast<float>(num_parallel_calls_->value));
         }
         cond_var_->notify_all();
       }
@@ -403,7 +398,7 @@ class ParallelMapIterator : public DatasetBaseIterator {
       GUARDED_BY(*mu_);
   std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
-  string prefix_end_;
+  string key_prefix_;
 };
 
 }  // namespace
@@ -413,7 +408,7 @@ std::unique_ptr<IteratorBase> NewParallelMapIterator(
     const DatasetBase* input_dataset,
     std::unique_ptr<ParallelMapFunctor> parallel_map_functor,
     int32 num_parallel_calls, bool sloppy, bool preserve_cardinality) {
-  return MakeUnique<ParallelMapIterator>(
+  return absl::make_unique<ParallelMapIterator>(
       params, input_dataset,
       ParallelMapIterator::Params{std::move(parallel_map_functor),
                                   num_parallel_calls, sloppy,

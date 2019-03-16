@@ -22,6 +22,7 @@ limitations under the License.
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -52,8 +53,7 @@ namespace cpu {
 class IrFunction {
  public:
   IrFunction(const string& function_name, llvm::Function::LinkageTypes linkage,
-             const bool optimize_for_size_requested,
-             const bool enable_fast_math, llvm::Module* llvm_module,
+             const HloModuleConfig& module_config, llvm::Module* llvm_module,
              llvm::IRBuilder<>* b, int64 num_dynamic_loop_bounds);
   ~IrFunction();
 
@@ -92,7 +92,7 @@ class IrFunction {
   // Initialize an llvm::Function with standard signature based on arguments.
   void Initialize(const string& function_name,
                   llvm::Function::LinkageTypes linkage,
-                  bool optimize_for_size_requested, bool enable_fast_math);
+                  const HloModuleConfig& module_config);
 
   // Emit ir to read and return the ir value for the dynamic loop bound at
   // 'offset' from the "dynamic_loop_bounds" argument of this function.

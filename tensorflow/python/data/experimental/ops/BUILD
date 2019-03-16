@@ -140,24 +140,25 @@ py_library(
 )
 
 py_library(
+    name = "distribute",
+    srcs = [
+        "distribute.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "enumerate_ops",
     srcs = ["enumerate_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:dtypes",
         "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_library(
-    name = "filter_for_shard_ops",
-    srcs = ["filter_for_shard_ops.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:ops",
-        "//tensorflow/python:tensor_util",
     ],
 )
 
@@ -355,6 +356,19 @@ py_library(
 )
 
 py_library(
+    name = "take_while_ops",
+    srcs = ["take_while_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "threading_options",
     srcs = ["threading_options.py"],
     srcs_version = "PY2AND3",
@@ -437,9 +451,9 @@ py_library(
         ":batching",
         ":cardinality",
         ":counter",
+        ":distribute",
         ":enumerate_ops",
         ":error_ops",
-        ":filter_for_shard_ops",
         ":get_single_element",
         ":grouping",
         ":indexed_dataset_ops",
@@ -454,6 +468,7 @@ py_library(
         ":shuffle_ops",
         ":sleep",
         ":stats_ops",
+        ":take_while_ops",
         ":threadpool",
         ":unique",
         ":writers",

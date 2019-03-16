@@ -1,6 +1,7 @@
 path: "tensorflow.RaggedTensor"
 tf_class {
   is_instance: "<class \'tensorflow.python.ops.ragged.ragged_tensor.RaggedTensor\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "dtype"
@@ -37,6 +38,10 @@ tf_class {
   member_method {
     name: "bounding_shape"
     argspec: "args=[\'self\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_nested_row_lengths"
