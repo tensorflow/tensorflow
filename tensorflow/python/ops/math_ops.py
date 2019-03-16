@@ -161,16 +161,15 @@ def argmax_v2(input,
   Returns:
     A `Tensor` of type `output_type`.
 	
-	For example:
-	Usage:
+  Usage:
 
 	```python
 	import tensorflow as tf
 	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
 	b = tf.math.argmax(input = a)
-	c = tf.keras.backend.eval(b)  # c = 4
+	c = tf.keras.backend.eval(b)  
+	# c = 4
 	# here a[4] = 166.32 which is the largest element of a across axis 0
-
 	```
   """
   if axis is None:
@@ -218,15 +217,15 @@ def argmin_v2(input,
   Returns:
     A `Tensor` of type `output_type`.
 	
-	Usage:
+  Usage:
 
 	```python
 	import tensorflow as tf
 	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
 	b = tf.math.argmin(input = a)
-	c = tf.keras.backend.eval(b)  # c = 0
+	c = tf.keras.backend.eval(b)  
+	# c = 0
 	# here a[0] = 1 which is the smallest element of a across axis 0
-
 	```
   """
   if axis is None:
