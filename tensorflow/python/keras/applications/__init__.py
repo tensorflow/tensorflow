@@ -21,6 +21,8 @@ from __future__ import print_function
 
 import keras_applications
 
+from functools import wraps
+
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import engine
 from tensorflow.python.keras import layers
@@ -59,7 +61,7 @@ def keras_modules_injection(base_fun):
       Decorated function that injects keyword argument for the tf.keras
       modules required by the Applications.
   """
-
+  @wraps(base_fun)
   def wrapper(*args, **kwargs):
     if hasattr(keras_applications, 'get_submodules_from_kwargs'):
       kwargs['backend'] = backend
