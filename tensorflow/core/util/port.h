@@ -21,9 +21,19 @@ namespace tensorflow {
 // Returns true if GOOGLE_CUDA is defined.
 bool IsGoogleCudaEnabled();
 
-// Returns true if GOOGLE_CUDA is defined, and the given CUDA version supports
-// half-precision matrix multiplications and convolution operations.
-bool CudaSupportsHalfMatMulAndConv();
+// Returns true if TENSORFLOW_USE_ROCM is defined. (i.e. TF is built with ROCm)
+bool IsBuiltWithROCm();
+
+// Returns true if either
+//
+//   GOOGLE_CUDA is defined, and the given CUDA version supports
+//   half-precision matrix multiplications and convolution operations.
+//
+//     OR
+//
+//   TENSORFLOW_USE_ROCM is defined
+//
+bool GpuSupportsHalfMatMulAndConv();
 
 // Returns true if INTEL_MKL is defined
 bool IsMklEnabled();
