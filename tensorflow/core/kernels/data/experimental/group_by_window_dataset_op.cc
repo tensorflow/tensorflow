@@ -89,8 +89,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::GroupByWindow")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::GroupByWindow")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -117,20 +117,21 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       std::vector<Node*> key_func_other_arguments_node;
       DataTypeVector key_func_other_arguments_types;
       TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_key_func_, &key_func_other_arguments_node,
+          ctx, b, captured_key_func_, &key_func_other_arguments_node,
           &key_func_other_arguments_types));
 
       std::vector<Node*> reduce_func_other_arguments_node;
       DataTypeVector reduce_func_other_arguments_types;
       TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_reduce_func_, &reduce_func_other_arguments_node,
+          ctx, b, captured_reduce_func_, &reduce_func_other_arguments_node,
           &reduce_func_other_arguments_types));
 
       std::vector<Node*> window_size_func_other_arguments_node;
       DataTypeVector window_size_func_other_arguments_types;
-      TF_RETURN_IF_ERROR(OtherArgumentsNodeAndType(
-          b, captured_window_size_func_, &window_size_func_other_arguments_node,
-          &window_size_func_other_arguments_types));
+      TF_RETURN_IF_ERROR(
+          OtherArgumentsNodeAndType(ctx, b, captured_window_size_func_,
+                                    &window_size_func_other_arguments_node,
+                                    &window_size_func_other_arguments_types));
 
       AttrValue key_func;
       b->BuildAttrValue(key_func_, &key_func);
@@ -490,7 +491,7 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
     };
 
     Status OtherArgumentsNodeAndType(
-        DatasetGraphDefBuilder* b,
+        SerializationContext* ctx, DatasetGraphDefBuilder* b,
         const std::unique_ptr<CapturedFunction>& captured_func,
         std::vector<Node*>* other_arguments_node,
         DataTypeVector* other_arguments_types) const {
@@ -498,7 +499,13 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
       other_arguments_types->reserve(captured_func->captured_inputs().size());
       for (const Tensor& t : captured_func->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments_node->emplace_back(node);
         other_arguments_types->emplace_back(t.dtype());
       }

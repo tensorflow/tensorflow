@@ -35,7 +35,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 def function_set_stats_aggregator(dataset,
                                   aggregator,
                                   prefix="",
@@ -53,6 +52,7 @@ def function_apply_options(dataset, aggregator, prefix="", counter_prefix=""):
   return dataset.with_options(options)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 @parameterized.named_parameters(
     ("SetStatsAggregator", function_set_stats_aggregator),
     ("StatsOptions", function_apply_options),
@@ -66,7 +66,6 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
             stats_ops.bytes_produced_stats("bytes_produced"))
     dataset = dataset_transformation(dataset, aggregator)
     next_element = self.getNext(dataset, requires_initialization=True)
-    summary_t = aggregator.get_summary()
 
     expected_sum = 0.0
     for i in range(100):
@@ -78,8 +77,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self._assertSummaryHasSum(summary_str, "bytes_produced", expected_sum)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
-    # TODO(shivaniagrawal): ntentional breaking case
-    summary_str = self.evaluate(summary_t)
+    summary_str = self.evaluate(aggregator.get_summary())
     self._assertSummaryHasCount(summary_str, "bytes_produced", 100.0)
     self._assertSummaryHasSum(summary_str, "bytes_produced", expected_sum)
 
@@ -110,17 +108,24 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self.assertAllEqual(
           np.array([i] * i, dtype=np.int64), self.evaluate(next_element()))
       summary_str = self.evaluate(aggregator.get_summary())
-      self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
-                                  float(i + 1))
-      self._assertSummaryContains(summary_str, "Prefetch::buffer_capacity")
-      self._assertSummaryContains(summary_str, "Prefetch::buffer_size")
-      self._assertSummaryHasRange(summary_str, "Prefetch::buffer_utilization",
-                                  0, 1)
+      self._assertSummaryHasCount(
+          summary_str,
+          self.regexForNodeName("PrefetchDataset", "buffer_utilization"),
+          float(i + 1))
+      self._assertSummaryContains(
+          summary_str,
+          self.regexForNodeName("PrefetchDataset", "buffer_capacity"))
+      self._assertSummaryContains(
+          summary_str, self.regexForNodeName("PrefetchDataset", "buffer_size"))
+      self._assertSummaryHasRange(
+          summary_str,
+          self.regexForNodeName("PrefetchDataset", "buffer_utilization"), 0, 1)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
     summary_str = self.evaluate(aggregator.get_summary())
-    self._assertSummaryHasCount(summary_str, "Prefetch::buffer_utilization",
-                                100)
+    self._assertSummaryHasCount(
+        summary_str,
+        self.regexForNodeName("PrefetchDataset", "buffer_utilization"), 100)
 
   def testPrefetchBufferScalars(self, dataset_transformation):
     aggregator = stats_aggregator.StatsAggregator()
@@ -133,9 +138,12 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self.assertAllEqual(
           np.array([i] * i, dtype=np.int64), self.evaluate(next_element()))
       summary_str = self.evaluate(aggregator.get_summary())
-      self._assertSummaryHasScalarValue(summary_str,
-                                        "Prefetch::buffer_capacity", 1)
-      self._assertSummaryHasScalarValue(summary_str, "Prefetch::buffer_size", 1)
+      self._assertSummaryHasScalarValue(
+          summary_str,
+          self.regexForNodeName("PrefetchDataset", "buffer_capacity"), 1)
+      self._assertSummaryHasScalarValue(
+          summary_str, self.regexForNodeName("PrefetchDataset", "buffer_size"),
+          1)
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
 
@@ -149,19 +157,24 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     for i in range(34):
       self.assertEqual(i * 3, self.evaluate(next_element()))
       summary_str = self.evaluate(aggregator.get_summary())
-      if i is not 0:
-        self._assertSummaryHasScalarValue(summary_str,
-                                          "Filter::dropped_elements",
-                                          float(i * 2))
+      if i != 0:
+        self._assertSummaryHasScalarValue(
+            summary_str,
+            self.regexForNodeName("FilterDataset", "dropped_elements"),
+            float(i * 2))
       self._assertSummaryHasScalarValue(
-          summary_str, "Filter::filtered_elements", float(i + 1))
+          summary_str,
+          self.regexForNodeName("FilterDataset", "filtered_elements"),
+          float(i + 1))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
     summary_str = self.evaluate(aggregator.get_summary())
-    self._assertSummaryHasScalarValue(summary_str, "Filter::dropped_elements",
-                                      67.0)
-    self._assertSummaryHasScalarValue(summary_str, "Filter::filtered_elements",
-                                      34.0)
+    self._assertSummaryHasScalarValue(
+        summary_str, self.regexForNodeName("FilterDataset", "dropped_elements"),
+        67.0)
+    self._assertSummaryHasScalarValue(
+        summary_str, self.regexForNodeName("FilterDataset",
+                                           "filtered_elements"), 34.0)
 
   def testMapBufferUtilization(self, dataset_transformation):
 
@@ -171,8 +184,7 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
           num_parallel_calls=4)
 
     self._testParallelCallsStats(
-        dataset_fn,
-        "ParallelMap",
+        dataset_fn, {self.regexForNodeName("ParallelMapDataset")},
         10,
         dataset_transformation,
         function_processing_time=True)
@@ -180,16 +192,12 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testMapAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
-      dataset = dataset_ops.Dataset.range(10).map(
+      return dataset_ops.Dataset.range(10).map(
           lambda x: array_ops.tile([x], ops.convert_to_tensor([x])),
           num_parallel_calls=optimization.AUTOTUNE)
-      options = dataset_ops.Options()
-      options.experimental_autotune = True
-      return dataset.with_options(options)
 
     self._testParallelCallsStats(
-        dataset_fn,
-        "ParallelMap",
+        dataset_fn, {self.regexForNodeName("ParallelMapDataset")},
         10,
         dataset_transformation,
         function_processing_time=True)
@@ -197,35 +205,32 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testInterleaveAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
-      dataset = dataset_ops.Dataset.range(10).map(
-          lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
-      dataset = dataset_ops.Dataset.range(1).interleave(
-          lambda _: dataset,
+
+      def interleave_fn(_):
+        return dataset_ops.Dataset.range(
+            10).map(lambda x: array_ops.tile([x], ops.convert_to_tensor([x])))
+
+      return dataset_ops.Dataset.range(1).interleave(
+          interleave_fn,
           cycle_length=1,
           num_parallel_calls=optimization.AUTOTUNE)
-      options = dataset_ops.Options()
-      options.experimental_autotune = True
-      return dataset.with_options(options)
 
-    self._testParallelCallsStats(dataset_fn, "ParallelInterleaveV2", 10,
-                                 dataset_transformation)
+    self._testParallelCallsStats(
+        dataset_fn, {self.regexForNodeName("ParallelInterleaveDatasetV2")}, 10,
+        dataset_transformation)
 
   def testMapAndBatchAutoTuneBufferUtilization(self, dataset_transformation):
 
     def dataset_fn():
-      dataset = dataset_ops.Dataset.range(100).apply(
+      return dataset_ops.Dataset.range(100).apply(
           batching.map_and_batch(
               lambda x: array_ops.tile([x], ops.convert_to_tensor([2])),
               num_parallel_calls=optimization.AUTOTUNE,
               batch_size=16))
-      options = dataset_ops.Options()
-      options.experimental_autotune = True
-      return dataset.with_options(options)
 
     num_output = 100 // 16 + 1
     self._testParallelCallsStats(
-        dataset_fn,
-        "MapAndBatch",
+        dataset_fn, {self.regexForNodeName("ExperimentalMapAndBatchDataset")},
         num_output,
         dataset_transformation,
         check_elements=False,
@@ -353,14 +358,38 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
         self.evaluate(aggregator.get_summary()), "dataset2_record_latency",
         100.0)
 
+  def testMultiplePrefetchStats(self, dataset_transformation):
 
+    aggregator = stats_aggregator.StatsAggregator()
+    dataset = dataset_ops.Dataset.range(10).prefetch(
+        2).map(lambda x: math_ops.add(x, 2)).prefetch(1)
+
+    dataset = dataset_transformation(dataset, aggregator)
+    next_element = self.getNext(dataset, requires_initialization=True)
+
+    for i in range(10):
+      self.assertEqual(i + 2, self.evaluate(next_element()))
+      summary_str = self.evaluate(aggregator.get_summary())
+      # TODO(shivaniagarwal): using exact name of prefetch node than the regex,
+      # to differentiate between two prefetch. This might break in future, at
+      # which point, it would be best to disable this test.
+      self._assertSummaryHasScalarValue(
+          summary_str, "PrefetchDataset/_5::buffer_capacity", 2)
+      self._assertSummaryContains(summary_str,
+                                  "PrefetchDataset/_5::buffer_size")
+      self._assertSummaryHasScalarValue(
+          summary_str, "PrefetchDataset/_8::buffer_capacity", 1)
+      self._assertSummaryContains(summary_str,
+                                  "PrefetchDataset/_8::buffer_size")
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(next_element())
+
+
+@test_util.run_all_in_graph_and_eager_modes
 @parameterized.named_parameters(
-    dict(
-        testcase_name="SetStatsAggregator",
-        dataset_transformation=function_set_stats_aggregator),
-    dict(
-        testcase_name="StatsOptions",
-        dataset_transformation=function_apply_options))
+    ("SetStatsAggregator", function_set_stats_aggregator),
+    ("StatsOptions", function_apply_options)
+)
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
@@ -385,8 +414,7 @@ class FeatureStatsDatasetTest(
       num_output = total_records // batch_size + 1
 
     self._testParallelCallsStats(
-        dataset_fn,
-        "ParseExample",
+        dataset_fn, {self.regexForNodeName("ExperimentalParseExampleDataset")},
         num_output,
         dataset_transformation,
         check_elements=False)
@@ -402,16 +430,21 @@ class FeatureStatsDatasetTest(
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
     self._assertSummaryHasCount(
-        self.evaluate(aggregator.get_summary()), "record_stats_features",
-        total_records)
+        self.evaluate(aggregator.get_summary()),
+        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+                              "features_count"), total_records)
     self._assertSummaryHasCount(
-        self.evaluate(aggregator.get_summary()), "record_stats_feature-values",
-        total_records)
+        self.evaluate(aggregator.get_summary()),
+        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+                              "feature_values_count"), total_records)
     self._assertSummaryHasSum(
-        self.evaluate(aggregator.get_summary()), "record_stats_features",
-        total_records * 4)
+        self.evaluate(aggregator.get_summary()),
+        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+                              "features_count"), total_records * 4)
     self._assertSummaryHasSum(
-        self.evaluate(aggregator.get_summary()), "record_stats_feature-values",
+        self.evaluate(aggregator.get_summary()),
+        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+                              "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
 
 

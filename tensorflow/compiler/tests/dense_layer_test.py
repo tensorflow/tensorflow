@@ -72,7 +72,7 @@ class DenseLayerTest(test.TestCase):
       x = array_ops.placeholder(shape=[None, None, 3], dtype=np.float32)
       y = layers.dense(x, 3)
 
-      self.evaluate(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -97,7 +97,7 @@ class DenseLayerTest(test.TestCase):
       with jit_scope():
         y = layers.dense(x, 3)
 
-      self.evaluate(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,
@@ -126,7 +126,7 @@ class DenseLayerTest(test.TestCase):
       with jit_scope():
         y = layers.dense(x, 3)
 
-      self.evaluate(variables.initialize_all_variables())
+      self.evaluate(variables.global_variables_initializer())
       run_metadata = config_pb2.RunMetadata()
       test_utils.RunWithWarmup(
           sess,

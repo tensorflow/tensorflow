@@ -10,7 +10,7 @@ tf_cuda_cc_test(
     name = "profiler_test",
     srcs = ["profiler_test.cc"],
     tags = [
-        "noguitar",  # b/77649654
+        "nogpu",  # b/77649654
     ],
     deps = [
         ":profiler",

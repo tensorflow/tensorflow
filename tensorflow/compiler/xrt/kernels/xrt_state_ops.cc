@@ -37,6 +37,17 @@ REGISTER_KERNEL_BUILDER(Name("XRTAllocate")
                             .HostMemory("handle"),
                         XRTAllocateOp<XRTGenericDeviceAccessor>);
 
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("inputs")
+                            .HostMemory("handle"),
+                        XRTAllocateFromTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTAllocateFromTensor")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("inputs")
+                            .HostMemory("handle"),
+                        XRTAllocateFromTensorOp<XRTGenericDeviceAccessor>);
+
 REGISTER_KERNEL_BUILDER(Name("XRTSubTuple")
                             .Device(DEVICE_XLA_GPU)
                             .HostMemory("base_handle")
@@ -110,6 +121,17 @@ REGISTER_KERNEL_BUILDER(Name("XRTReadLiteralAndRelease")
                             .HostMemory("handle")
                             .HostMemory("literal"),
                         XRTReadLiteralOp<true, XRTGenericDeviceAccessor>);
+
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTGenericDeviceAccessor>);
 
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .Device(DEVICE_XLA_GPU)

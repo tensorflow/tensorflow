@@ -69,11 +69,15 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
     this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
-    if (options.useNNAPI) {
-      setUseNNAPI(options.useNNAPI);
+    if (options.useNNAPI != null) {
+      setUseNNAPI(options.useNNAPI.booleanValue());
     }
-    if (options.allowFp16PrecisionForFp32) {
-      setAllowFp16PrecisionForFp32(options.allowFp16PrecisionForFp32);
+    if (options.allowFp16PrecisionForFp32 != null) {
+      allowFp16PrecisionForFp32(
+          interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
+    }
+    if (options.allowBufferHandleOutput != null) {
+      allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
     for (Delegate delegate : options.delegates) {
       applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
@@ -180,12 +184,13 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     useNNAPI(interpreterHandle, useNNAPI);
   }
 
-  void setAllowFp16PrecisionForFp32(boolean allow) {
-    allowFp16PrecisionForFp32(interpreterHandle, allow);
-  }
-
   void setNumThreads(int numThreads) {
     numThreads(interpreterHandle, numThreads);
+  }
+
+  void modifyGraphWithDelegate(Delegate delegate) {
+    applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
+    delegates.add(delegate);
   }
 
   /** Gets index of an input given its name. */
@@ -355,6 +360,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   private static native void numThreads(long interpreterHandle, int numThreads);
 
   private static native void allowFp16PrecisionForFp32(long interpreterHandle, boolean allow);
+
+  private static native void allowBufferHandleOutput(long interpreterHandle, boolean allow);
 
   private static native long createErrorReporter(int size);
 

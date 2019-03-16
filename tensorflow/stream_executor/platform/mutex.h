@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_MUTEX_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_MUTEX_H_
 
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/types.h"
+#include "tensorflow/stream_executor/platform/platform.h"
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/stream_executor/platform/google/mutex.h"

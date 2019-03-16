@@ -123,7 +123,8 @@ KernelMappingScheme::KernelMappingScheme(
       dims_in_elems_(dims_in_elems.begin(), dims_in_elems.end()),
       tile_sizes_{1, tile_size_y, tile_size_x},
       num_threads_x_(num_threads_x),
-      num_threads_y_(num_threads_y) {
+      num_threads_y_(num_threads_y),
+      dilated_x_(true) {
   DCHECK_EQ(dims_in_elems_.size(), 3);
   DCHECK_EQ(req_block_sizes.size(), 3);
 
@@ -184,15 +185,15 @@ IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
 
 IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
     const IrArray::Index& tile_index) {
-  IrArray::Index elem_index = tile_index;
+  std::vector<llvm::Value*> elem_multi_index = tile_index.multidim();
   for (int i = DimY; i < DimTot; ++i) {
-    elem_index[i] =
+    elem_multi_index[i] =
         b_->CreateMul(tile_index[i],
                       llvm::ConstantInt::get(tile_index[i]->getType(),
                                              GetTileSizeForDimension(i)),
                       "tile_origin." + std::to_string(i));
   }
-  return elem_index;
+  return IrArray::Index(elem_multi_index, tile_index.GetType());
 }
 
 llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(

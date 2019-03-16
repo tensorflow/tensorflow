@@ -219,7 +219,7 @@ bool CudnnConvPaddingLegalization::CanonicalizeBackwardFilterConvolution(
   Window new_backward_conv_window = backward_conv->window();
   // input_padding_config is the config of the kPad to be inserted.
   PaddingConfig input_padding_config =
-      MakeNoPaddingConfig(ShapeUtil::Rank(input->shape()));
+      MakeNoPaddingConfig(input->shape().rank());
   ConvolutionDimensionNumbers backward_conv_dnums =
       backward_conv->convolution_dimension_numbers();
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {

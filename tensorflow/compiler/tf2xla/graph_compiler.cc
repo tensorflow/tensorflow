@@ -19,9 +19,9 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -33,7 +33,9 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -45,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -55,9 +58,9 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   auto client = ctx->compiler()->client();
   std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
 
-  TF_RETURN_IF_ERROR(
-      BackwardsConstAnalysis(*graph, &arg_must_be_compile_time_constant,
-                             /*compile_time_const_nodes=*/nullptr));
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+      *graph, &arg_must_be_compile_time_constant,
+      /*compile_time_const_nodes=*/nullptr, ctx->function_library()));
 
   args->resize(expressions.size());
   for (int i = 0; i < args->size(); ++i) {
@@ -86,8 +89,13 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
         }
         break;
       case XlaExpression::Kind::kResource:
+        // TODO(b/126601755): This is a fairly common use case in TF 2.0 that
+        // we can hit when inlining is disabled or fails.
         return errors::Unimplemented(
             "Resource as function argument is not yet implemented.");
+      case XlaExpression::Kind::kTensorList:
+        return errors::Unimplemented(
+            "TensorList as function argument is not yet implemented.");
       case XlaExpression::Kind::kInvalid:
         return errors::InvalidArgument("Invalid function argument");
     }
@@ -120,6 +128,8 @@ Status GraphCompiler::Compile() {
 
   for (Node* n : topo_sorted_nodes) {
     OpKernel* op_kernel_raw = nullptr;
+    // The kernel is not actually run for functional ops, we just need it
+    // for metadata.
     Status s = flib_->CreateKernel(n->def(), &op_kernel_raw);
     // Transfer ownership of the kernel to a local smart pointer.
     std::unique_ptr<OpKernel> op_kernel(op_kernel_raw);
@@ -153,7 +163,7 @@ Status GraphCompiler::Compile() {
 
     OpKernelContext op_context(&params, n->num_outputs());
     VLOG(3) << "Translating " << params.op_kernel->name();
-    if (IsFunctional(n)) {
+    if (IsFunctionCall(*flib_->GetFunctionLibraryDefinition(), *n)) {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
     } else {
       device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
@@ -178,28 +188,48 @@ Status GraphCompiler::Compile() {
   return Status::OK();
 }
 
-bool GraphCompiler::IsFunctional(Node* n) {
-  return n->type_string() == FunctionLibraryDefinition::kGradientOp ||
-         (flib_->GetFunctionLibraryDefinition()->Find(n->def().op()) !=
-          nullptr);
+namespace {
+
+Status GetFunctionNameAndAttr(const FunctionLibraryRuntime& flib,
+                              const Node& node, NameAttrList* func) {
+  if (node.IsPartitionedCall()) {
+    const AttrValue* attr_value;
+    TF_RETURN_IF_ERROR(
+        node.attrs().Find(FunctionLibraryDefinition::kFuncAttr, &attr_value));
+    if (!attr_value->has_func()) {
+      return errors::InvalidArgument(
+          "The attribute value for attribute 'f' in node ", node.DebugString(),
+          " does not have 'func' field set");
+    }
+    *func = attr_value->func();
+    return Status::OK();
+  }
+
+  if (flib.GetFunctionLibraryDefinition()->Find(node.def().op())) {
+    func->set_name(node.type_string());
+  } else {
+    func->set_name(FunctionLibraryDefinition::kGradientOp);
+  }
+  *func->mutable_attr() = node.def().attr();
+  return Status::OK();
 }
+
+}  // namespace
 
 Status GraphCompiler::CompileFunctionalNode(Node* n,
                                             OpKernelContext* op_context) {
-  TF_RET_CHECK(IsFunctional(n));
+  TF_RET_CHECK(IsFunctionCall(*flib_->GetFunctionLibraryDefinition(), *n));
   // For functional nodes, compile them using compiler from the context and call
   // into the functions.
   XlaOpKernelContext xla_op_context(op_context);
 
+  XlaContext& context = XlaContext::Get(op_context);
+  auto* b = context.builder();
+
   XlaCompiler* compiler = xla_op_context.compiler();
 
   NameAttrList func;
-  if (flib_->GetFunctionLibraryDefinition()->Find(n->def().op())) {
-    func.set_name(n->def().op());
-  } else {
-    func.set_name(FunctionLibraryDefinition::kGradientOp);
-  }
-  *func.mutable_attr() = n->def().attr();
+  TF_RETURN_IF_ERROR(GetFunctionNameAndAttr(*flib_, *n, &func));
 
   std::vector<const XlaExpression*> expressions;
 
@@ -219,8 +249,12 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
   TF_RETURN_IF_ERROR(
       PrepareArguments(&xla_op_context, graph.get(), expressions, &arguments));
 
+  bool add_token_input_output =
+      func.attr().find(kXlaTokenInputNodesAttrName) != func.attr().end();
+
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = false;
+  compile_options.add_token_input_output = add_token_input_output;
   XlaCompiler::CompilationResult result;
   TF_RETURN_IF_ERROR(
       compiler->CompileFunction(compile_options, func, arguments, &result));
@@ -234,9 +268,20 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     }
     handles.push_back(expressions[i]->handle());
   }
-
-  XlaContext& context = XlaContext::Get(op_context);
-  auto* b = context.builder();
+  if (add_token_input_output) {
+    std::vector<string> token_input_nodes;
+    TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(&func.attr()),
+                                   kXlaTokenInputNodesAttrName,
+                                   &token_input_nodes));
+    std::vector<xla::XlaOp> token_inputs;
+    for (const string& node_name : token_input_nodes) {
+      auto token_or = compiler->GetNodeToken(node_name);
+      TF_RETURN_IF_ERROR(token_or.status());
+      token_inputs.push_back(token_or.ConsumeValueOrDie());
+    }
+    xla::XlaOp token_input = xla::AfterAll(b, token_inputs);
+    handles.push_back(token_input);
+  }
 
   auto output_handle = xla::Call(b, *result.computation, handles);
   // The output handle of `Call` computation is a tuple type. Unzip it so
@@ -251,6 +296,10 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
       ++computation_output;
     }
   }
+  if (add_token_input_output) {
+    TF_RETURN_IF_ERROR(compiler->SetNodeToken(
+        n->name(), xla::GetTupleElement(output_handle, computation_output)));
+  }
   return b->first_error();
 }
 
@@ -259,6 +308,7 @@ void GraphCompiler::PartiallySetupParams(OpKernelContext::Params* params) {
   params->inputs = &tensor_inputs_;
   params->step_container = step_container_;
   params->resource_manager = device_->resource_manager();
+  params->function_library = flib_;
 }
 
 }  // namespace tensorflow

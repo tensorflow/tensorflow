@@ -68,7 +68,7 @@ class PriorityQueue
   Status MatchesPriorityNodeDefTypes(const NodeDef& node_def) const;
   Status MatchesPriorityNodeDefShapes(const NodeDef& node_def) const;
 
-  int32 size() override {
+  int32 size() const override {
     mutex_lock lock(mu_);
     return queues_[0].size();
   }

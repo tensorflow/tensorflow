@@ -30,10 +30,12 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -90,15 +92,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("TFRecord", lambda: readers.TFRecordDataset(""), 1),
   )
   def testDatasetSimpleSourceInputs(self, dataset_fn, num_inputs=0):
-    self.assertEqual(num_inputs, len(dataset_fn()._inputs()))
+    self.assertLen(dataset_fn()._inputs(), num_inputs)
 
+  @test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
   def testDatasetComplexSourceInputs(self):
     dataset_fn = dataset_ops.Dataset.from_sparse_tensor_slices(
         sparse_tensor.SparseTensor(
             indices=np.array([[0, 0], [1, 0], [2, 0]]),
             values=np.array([0, 0, 0]),
             dense_shape=np.array([3, 1])))
-    self.assertEqual(0, len(dataset_fn._inputs()))
+    self.assertEmpty(dataset_fn._inputs())
 
   @parameterized.named_parameters(
       ("Batch",
@@ -207,7 +210,6 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(2, inputs.count(ds2))
     self.assertEqual(1, inputs.count(ds3))
 
-  # TODO(b/119882922): use-after-free bug in eager mode.
   # pylint: disable=g-long-lambda
   @parameterized.named_parameters(
       ("Tensor", lambda: constant_op.constant(37.0),
@@ -231,8 +233,7 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  def testSkipEagerDatasetStructure(self, tf_value_fn,
-                                    expected_element_structure):
+  def testDatasetStructure(self, tf_value_fn, expected_element_structure):
     dataset = dataset_ops.Dataset.from_tensors(0).map(lambda _: tf_value_fn())
     dataset_structure = structure.Structure.from_value(dataset)
     self.assertIsInstance(dataset_structure, dataset_ops.DatasetStructure)
@@ -265,6 +266,30 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertDatasetProduces(
           round_trip_dataset, [self.evaluate(tf_value_fn())],
           requires_initialization=True)
+
+  @test_util.run_v1_only("graph mode specific, no eager or V2 test coverage")
+  def testSkipEagerSameGraphErrorOneShot(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        dataset = dataset.batch(2)
+
+  @test_util.run_v1_only("graph mode specific, no eager or V2 test coverage")
+  def testSkipEagerSameGraphErrorOneShotSimple(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with test.mock.patch.object(logging, "warning") as mock_log:
+        _ = dataset_ops.make_one_shot_iterator(dataset)
+        self.assertRegexpMatches(
+            str(mock_log.call_args), "Please ensure that all datasets in the "
+            "pipeline are created in the same graph as the iterator.")
+
+  @test_util.run_v1_only("graph mode specific, no eager or V2 test coverage")
+  def testSkipEagerSameGraphErrorInitializable(self):
+    dataset = dataset_ops.Dataset.range(10)
+    with ops.Graph().as_default():
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        dataset = dataset.batch(2)
 
 
 if __name__ == "__main__":

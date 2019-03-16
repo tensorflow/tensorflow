@@ -28,27 +28,26 @@ namespace profiler {
 
 namespace dynload {
 
-#define LIBCUPTI_WRAP(__name)                                                 \
-  struct DynLoadShim__##__name {                                              \
-    static const char* kName;                                                 \
-    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                             \
-      static auto status =                                                    \
-          stream_executor::internal::CachedDsoLoader::GetLibcuptiDsoHandle(); \
-      return status.ValueOrDie();                                             \
-    }                                                                         \
-    static FuncPointerT DynLoad() {                                           \
-      static void* f;                                                         \
-      TF_CHECK_OK(::tensorflow::Env::Default()->GetSymbolFromLibrary(         \
-          GetDsoHandle(), kName, &f))                                         \
-          << "could not find " << kName << "in libcupti DSO";                 \
-      return reinterpret_cast<FuncPointerT>(f);                               \
-    }                                                                         \
-    template <typename... Args>                                               \
-    CUptiResult operator()(Args... args) {                                    \
-      return DynLoad()(args...);                                              \
-    }                                                                         \
-  } __name;                                                                   \
+#define LIBCUPTI_WRAP(__name)                                                \
+  struct DynLoadShim__##__name {                                             \
+    static const char* kName;                                                \
+    using FuncPointerT = std::add_pointer<decltype(::__name)>::type;         \
+    template <typename... Args>                                              \
+    CUptiResult operator()(Args... args) {                                   \
+      static auto fn = []() -> FuncPointerT {                                \
+        auto handle_or =                                                     \
+            stream_executor::internal::CachedDsoLoader::GetCuptiDsoHandle(); \
+        if (!handle_or.ok()) return nullptr;                                 \
+        void* symbol;                                                        \
+        stream_executor::port::Env::Default()                                \
+            ->GetSymbolFromLibrary(handle_or.ValueOrDie(), kName, &symbol)   \
+            .IgnoreError();                                                  \
+        return reinterpret_cast<FuncPointerT>(symbol);                       \
+      }();                                                                   \
+      if (fn == nullptr) return CUPTI_ERROR_UNKNOWN;                         \
+      return fn(args...);                                                    \
+    }                                                                        \
+  } __name;                                                                  \
   const char* DynLoadShim__##__name::kName = #__name;
 
 LIBCUPTI_WRAP(cuptiActivityDisable);
@@ -62,6 +61,7 @@ LIBCUPTI_WRAP(cuptiEnableCallback);
 LIBCUPTI_WRAP(cuptiEnableDomain);
 LIBCUPTI_WRAP(cuptiSubscribe);
 LIBCUPTI_WRAP(cuptiUnsubscribe);
+LIBCUPTI_WRAP(cuptiGetResultString);
 
 }  // namespace dynload
 
@@ -123,6 +123,11 @@ CUptiResult CuptiWrapper::Subscribe(CUpti_SubscriberHandle* subscriber,
 
 CUptiResult CuptiWrapper::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return dynload::cuptiUnsubscribe(subscriber);
+}
+
+CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
+                                          const char** str) {
+  return dynload::cuptiGetResultString(result, str);
 }
 
 }  // namespace profiler

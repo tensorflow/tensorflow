@@ -56,6 +56,7 @@ class GatherNdTest(test.TestCase):
     self._testSimpleDtype("|S")  # byte strings in python2 + 3
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testEmptyIndicesAndParamsOKButJustEmptyParamsFails(self):
     with self.session(use_gpu=True):
       params = np.ones((3, 3), dtype=np.float32)

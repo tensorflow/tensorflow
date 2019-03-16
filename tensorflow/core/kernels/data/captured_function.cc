@@ -21,11 +21,11 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -102,20 +102,29 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 
 /* static */
 Status CapturedFunction::Create(
-    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
     std::unique_ptr<CapturedFunction>* out_function) {
-  return CapturedFunction::Create(func, ctx, argument, true, out_function);
+  return CapturedFunction::Create(func, ctx, argument_name, true, out_function);
 }
 
 Status CapturedFunction::Create(
-    const NameAttrList& func, OpKernelContext* ctx, const string& argument,
+    const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
     bool use_inter_op_parallelism,
     std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
-  TF_RETURN_IF_ERROR(ctx->input_list(argument, &inputs));
+  TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
   std::vector<Tensor> arguments(inputs.begin(), inputs.end());
-  *out_function = WrapUnique(new CapturedFunction(func, std::move(arguments),
-                                                  use_inter_op_parallelism));
+  *out_function = absl::WrapUnique(new CapturedFunction(
+      func, std::move(arguments), use_inter_op_parallelism));
+  return Status::OK();
+}
+
+Status CapturedFunction::Create(
+    const NameAttrList& func, OpKernelContext* ctx,
+    std::vector<Tensor>&& captured_inputs, bool use_inter_op_parallelism,
+    std::unique_ptr<CapturedFunction>* out_function) {
+  *out_function = absl::WrapUnique(new CapturedFunction(
+      func, std::move(captured_inputs), use_inter_op_parallelism));
   return Status::OK();
 }
 
@@ -144,8 +153,10 @@ Status CapturedFunction::Instantiate(
     ret_types.push_back(ret_type);
   }
 
-  instantiated_captured_function->reset(new InstantiatedCapturedFunction(
-      lib, f_handle, std::move(ret_types), *ctx->runner(), this));
+  *instantiated_captured_function =
+      absl::WrapUnique<InstantiatedCapturedFunction>(
+          new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
+                                           *ctx->runner(), this));
   return Status::OK();
 }
 
@@ -422,11 +433,11 @@ void InstantiatedCapturedFunction::RunAsync(
   // (such as queue kernels) that depend on the non-nullness of
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
-  CancellationManager* c_mgr = new CancellationManager;
+  CancellationManager* c_mgr = new CancellationManager();
   f_opts.cancellation_manager = c_mgr;
   std::shared_ptr<SimpleStepStatsCollector> stats_collector;
   if (ctx->model() || ctx->stats_aggregator()) {
-    stats_collector = MakeUnique<SimpleStepStatsCollector>();
+    stats_collector = absl::make_unique<SimpleStepStatsCollector>();
   }
   f_opts.stats_collector = stats_collector.get();
 
@@ -445,12 +456,14 @@ void InstantiatedCapturedFunction::RunAsync(
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-
+        // TODO(shivaniagrawal): add the dataset name containing this function,
+        // make it dataset()->node_name() + captured_func_->func().name().
         if (stats_aggregator) {
+          string prefix_with_func_name = strings::StrCat(
+              str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
+              "::", captured_func_->func().name());
           stats_aggregator->AddToHistogram(
-              strings::StrCat(
-                  str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
-                  "::", captured_func_->func().name(), "::execution_time"),
+              stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
               {static_cast<float>(stats_collector->processing_time())});
         }
         if (model) {

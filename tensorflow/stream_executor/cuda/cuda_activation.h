@@ -17,13 +17,13 @@ limitations under the License.
 // It reaches into the CUDA implementation to activate an underlying CUDA
 // context.
 //
-// Having this file separate from cuda_gpu_executor.h means that dependent
+// Having this file separate from cuda/cuda_gpu_executor.h means that dependent
 // code does not also have to depend on cuda.h.
 
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_ACTIVATION_H_
 
-#include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/gpu/gpu_activation.h"
 
 namespace stream_executor {
 
@@ -31,29 +31,7 @@ class StreamExecutor;
 
 namespace cuda {
 
-class CUDAExecutor;
-class ScopedActivateContext;
-
-// Activates a CUDA context within an enclosing scope.
-class ScopedActivateExecutorContext {
- public:
-  // Form that takes a CUDA executor implementation.
-  explicit ScopedActivateExecutorContext(CUDAExecutor* cuda_exec);
-
-  // Form that takes a pImpl executor and extracts a CUDA implementation --
-  // fatal failure if it is not CUDA inside.
-  explicit ScopedActivateExecutorContext(StreamExecutor* stream_exec);
-
-  ScopedActivateExecutorContext(ScopedActivateExecutorContext&& other);
-
-  ~ScopedActivateExecutorContext();
-
- private:
-  // The cuda.h-using datatype that we wrap.
-  ScopedActivateContext* driver_scoped_activate_context_;
-
-  SE_DISALLOW_COPY_AND_ASSIGN(ScopedActivateExecutorContext);
-};
+using ScopedActivateExecutorContext = gpu::ScopedActivateExecutorContext;
 
 }  // namespace cuda
 }  // namespace stream_executor

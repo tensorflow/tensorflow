@@ -168,7 +168,7 @@ consult the
 
 Broadcasting of a lower-rank array to a higher-rank array **and** broadcasting
 using degenerate dimensions can both be performed in the same binary operation.
-For example, a vector of size 4 and an matrix of size 1x2 can be added together
+For example, a vector of size 4 and a matrix of size 1x2 can be added together
 using broadcast dimensions value of (0):
 
     |1 2 3 4| + [5 6]    // [5 6] is a 1x2 matrix, not a vector.
@@ -176,7 +176,7 @@ using broadcast dimensions value of (0):
 First the vector is broadcast up to rank 2 (matrix) using the broadcast
 dimensions. The single value (0) in the broadcast dimensions indicates that
 dimension zero of the vector matches to dimension zero of the matrix. This
-produces an matrix of size 4xM where the value M is chosen to match the
+produces a matrix of size 4xM where the value M is chosen to match the
 corresponding dimension size in the 1x2 array. Therefore, a 4x2 matrix is
 produced:
 

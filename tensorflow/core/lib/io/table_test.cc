@@ -96,7 +96,14 @@ class StringSink : public WritableFile {
 
   Status Close() override { return Status::OK(); }
   Status Flush() override { return Status::OK(); }
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("StringSink does not support Name()");
+  }
   Status Sync() override { return Status::OK(); }
+  Status Tell(int64* pos) override {
+    *pos = contents_.size();
+    return Status::OK();
+  }
 
   Status Append(StringPiece data) override {
     contents_.append(data.data(), data.size());
@@ -115,6 +122,10 @@ class StringSource : public RandomAccessFile {
   ~StringSource() override {}
 
   uint64 Size() const { return contents_.size(); }
+
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented("StringSource does not support Name()");
+  }
 
   Status Read(uint64 offset, size_t n, StringPiece* result,
               char* scratch) const override {

@@ -21,7 +21,9 @@ limitations under the License.
 #include <unordered_map>
 #include <unordered_set>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/jit/deadness_analysis.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/flags.h"
@@ -29,11 +31,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -41,14 +43,31 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/kernels/bounds_check.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
 namespace {
+// The clusters we create here are eventually lowered into an
+// _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
+// PartitionedCall op to execute the cluster in the regular graph executor if
+// need be.  PartitionedCall, however, reruns the entire TF graph optimization
+// pipeline over the cluster which includes this mark for compilation pass.  To
+// avoid endlessly recursing we tag nodes that we've already visited with this
+// attribute so that we can bail out if we see them a second time.
+//
+// TODO(sanjoy): This method is not robust since it is possible that the
+// optimizations run by PartitionedCall can mutate the cluster arbitrarily,
+// dropping the kXlaAlreadyClustered attributes from all nodes in the process.
+// The correct fix is to use the ConfigProto to pass in some sort of flag into
+// the PartitionedCall kernel that tells it to not rerun auto-clustering on the
+// cluster.
+const char* kXlaAlreadyClustered = "_XlaAlreadyClustered";
+
 // Aggregates information about what kinds of ops are allowed.
 struct OperationFilter {
   // Whether resource variable ops are allowed.  We do not allow resource
@@ -208,10 +227,9 @@ bool IsCompilableCall(const NodeDef& call_def,
   }
 
   FunctionLibraryRuntime::Handle handle;
-  Status status =
-      lib_runtime->Instantiate(call_def.op(), AttrSlice(call_def), &handle);
+  Status status = InstantiateFunctionCall(call_def, *lib_runtime, &handle);
   if (!status.ok()) {
-    VLOG(2) << "Rejecting " << call_def.op()
+    VLOG(2) << "Rejecting " << call_def.DebugString()
             << ": could not instantiate: " << status;
     return false;
   }
@@ -440,7 +458,7 @@ Status FindCompilationCandidates(
   std::vector<bool> compile_time_const_nodes(graph.num_node_ids(), false);
   TF_RETURN_IF_ERROR(
       BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
-                             &compile_time_const_nodes));
+                             &compile_time_const_nodes, lib_runtime));
 
   int64& fuel = GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
 
@@ -489,7 +507,7 @@ Status FindCompilationCandidates(
                                XlaOpRegistry::AutoclusteringPolicy::kAlways;
 
     OperationFilter op_filter;
-    op_filter.allow_resource_ops = registration->compile_resource_ops;
+    op_filter.allow_resource_ops = registration->compile_all_resource_ops;
     op_filter.allow_stateful_rng_ops = always_auto_cluster;
     op_filter.allow_control_trigger = always_auto_cluster;
     op_filter.allow_dummy_ops = always_auto_cluster;
@@ -524,7 +542,7 @@ Status FindCompilationCandidates(
       continue;
     }
 
-    if (!op_filter.allow_resource_ops &&
+    if (!registration->compile_all_resource_ops &&
         (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
       // We don't have a way of returning values of type DT_RESOURCE from XLA
       // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
@@ -590,8 +608,8 @@ Status FindCompilationCandidates(
     }
     // We don't auto-cluster functional control flow nodes containing resource
     // operations because safety checks are trickier in this case.
-    // registration->compile_resource_ops is true for XLA_CPU/XLA_GPU but not
-    // for CPU/GPU.
+    // registration->compile_all_resource_ops is true for XLA_CPU/XLA_GPU but
+    // not for CPU/GPU.
     if (node->type_string() == "While" &&
         !IsCompilableWhile(*node, jit_device_type, op_filter, 0, lib_runtime)) {
       continue;
@@ -613,34 +631,21 @@ Status FindCompilationCandidates(
   return Status::OK();
 }
 
-// Determine the global jit level which is ON if either the
-// GraphOptimizationPassOptions has the jit ON, or if the --tf_xla_auto_jit flag
-// is true.
-OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
-    const GraphOptimizationPassOptions& options) {
-  OptimizerOptions::GlobalJitLevel global_jit_level =
-      options.session_options->config.graph_options()
-          .optimizer_options()
-          .global_jit_level();
-  if (global_jit_level == OptimizerOptions::DEFAULT) {
-    // To set compilation to be on by default, change the following line.
-    global_jit_level = OptimizerOptions::OFF;
-  }
-  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  if (flags->tf_xla_auto_jit == -1 ||
-      (1 <= flags->tf_xla_auto_jit && flags->tf_xla_auto_jit <= 2)) {
-    // If the flag tf_xla_auto_jit is a valid, non-zero setting, it overrides
-    // the setting in ConfigProto.
-    global_jit_level =
-        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
-  }
-  return global_jit_level;
-}
-
 struct Cluster {
   // Identifies the node that represents this cluster in the cycle detection
   // graph.
   int representative = -1;
+
+  // The set of devices the nodes in this cluster are placed on.
+  absl::flat_hash_set<string> devices;
+
+  // If there are resource operation in the cluster then this is the device that
+  // resource operations are placed on.  All resource operations in a cluster
+  // must be placed on the same device.
+  string resource_op_device;
+
+  // True if any node in the cluster has an _XlaCompile attribute set to true.
+  bool has_xla_compile_attr;
 };
 
 }  // anonymous namespace
@@ -677,10 +682,33 @@ Status MarkForCompilationPass::Run(
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
   const FunctionLibraryDefinition* fld = options.flib_def;
 
+  // Deadness analysis expects a graph with source and sink edges properly
+  // connected but sometimes the incoming graph does not follow this invariant.
+  // So fix up the source and sink edges before calling into deadness analysis.
+  FixupSourceAndSinkEdges(options.graph->get());
+
+  // See explanation on `kXlaAlreadyClustered`.
+  for (Node* n : options.graph->get()->nodes()) {
+    if (n->attrs().Find(kXlaAlreadyClustered)) {
+      return Status::OK();
+    }
+  }
+
   std::unique_ptr<DeadnessAnalysis> deadness;
   {
     XLA_SCOPED_LOGGING_TIMER_LEVEL("DeadnessAnalysis", 1);
     TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(**options.graph, &deadness));
+  }
+
+  bool deadness_analysis_disabled =
+      GetMarkForCompilationPassFlags()
+          ->tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  if (deadness_analysis_disabled) {
+    LOG(WARNING) << "Deadness analysis was manually disabled via "
+                    "--tf_xla_disable_deadness_safety_checks_for_debugging; "
+                    "auto-clustering "
+                    "is unsound!";
   }
 
   auto is_compilable = [&](const Node* node, const DeviceType& device_type) {
@@ -715,9 +743,12 @@ Status MarkForCompilationPass::Run(
     // and some are dead) then don't compile it.  XLA cannot represent the
     // deadness semantics of these nodes correctly and auto-clustering these
     // nodes can cause deadness to propagate to nodes that should be live.
-    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
-      VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
-      return false;
+    if (!deadness_analysis_disabled) {
+      if (node->IsMerge() ||
+          deadness->HasInputsWithMismatchingDeadness(*node)) {
+        VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
+        return false;
+      }
     }
 
     // Check for fusable ops only if requested.
@@ -727,25 +758,9 @@ Status MarkForCompilationPass::Run(
       return false;
     }
 
-    // Otherwise use the value of global_jit_level and the device's
-    // autoclustering policy.
-    bool should_compile =
-        registration->autoclustering_policy ==
-            XlaOpRegistry::AutoclusteringPolicy::kAlways ||
-        (registration->autoclustering_policy ==
-             XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
-         global_jit_level != OptimizerOptions::OFF);
-    if (!should_compile) {
-      if (global_jit_level == OptimizerOptions::OFF) {
-        VLOG(2) << "Rejecting " << node->name() << ": global jit disabled.";
-      } else {
-        VLOG(2)
-            << "Rejecting " << node->name()
-            << ": autoclustering for device only when requested explicitly.";
-      }
-    }
-    return should_compile;
+    return true;
   };
+
   return RunImpl(options, is_compilable);
 }
 
@@ -921,13 +936,141 @@ static Status IgnoreResourceOpForSafetyAnalysis(const Node& n, bool* ignore) {
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
     *ignore = true;
   } else {
-    *ignore = registration->compile_resource_ops;
+    *ignore = registration->compile_all_resource_ops;
   }
   return Status::OK();
 }
 
 // Sequence number generator to ensure clusters have unique names.
 static std::atomic<int64> cluster_sequence_num;
+
+// Returns true if the devices in `cluster_a` and `cluster_b` are compatible and
+// therefore not a hindrance for combining the two clusters into a larger
+// cluster.
+static Status AreDevicesCompatible(
+    const Cluster& cluster_a, const Cluster& cluster_b,
+    OptimizerOptions::GlobalJitLevel global_jit_level, bool* result) {
+  std::vector<string> devices;
+  absl::c_remove_copy(cluster_a.devices, std::back_inserter(devices), "");
+  absl::c_remove_copy(cluster_b.devices, std::back_inserter(devices), "");
+  absl::c_sort(devices);
+
+  if (devices.empty()) {
+    *result = false;
+    return Status::OK();
+  }
+
+  // First check if we will even be able to pick a device for the larger
+  // combined cluster.
+  bool can_pick_device;
+  TF_RETURN_IF_ERROR(CanPickDeviceForXla(
+      devices, /*allow_mixing_unknown_and_cpu=*/false, &can_pick_device));
+  if (!can_pick_device) {
+    *result = false;
+    return Status::OK();
+  }
+
+  string chosen_device;
+  TF_RETURN_IF_ERROR(PickDeviceForXla(
+      devices, /*allow_mixing_unknown_and_cpu=*/false, &chosen_device));
+
+  // If we are able to pick a device `chosen_device` for the larger cluster, the
+  // resource operations in `cluster_a` and `cluster_b` must be placed on the
+  // same device as `chosen_device`.  This is because the _XlaCompile and
+  // _XlaRun kernels are going to run on and therefore try to access the
+  // resource variables from `chosen_device`, which will be an error if the
+  // resource variables are placed on some other device.
+  auto resource_op_device_ok = [&](const string& resource_op_device) {
+    return resource_op_device.empty() || resource_op_device == chosen_device;
+  };
+
+  *result = resource_op_device_ok(cluster_a.resource_op_device) &&
+            resource_op_device_ok(cluster_b.resource_op_device);
+  if (!*result) {
+    return Status::OK();
+  }
+
+  // We will check this again later, but here we prune out clusters that would
+  // never have been sent to XLA to save compile time.  Without this change we
+  // will e.g. create a CPU cluster only to later notice that the user did not
+  // enable the CPU JIT via --tf_xla_cpu_global_jit.  With this change we avoid
+  // creating the cluster to begin with.
+  //
+  // TODO(b/126629785): It is possible that this is just papering over O(n^2)
+  // behavior in our clustering algorithm.
+  const XlaOpRegistry::DeviceRegistration* registration;
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(DeviceToDeviceType(chosen_device, &device_type));
+  TF_RET_CHECK(
+      XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration))
+      << "chosen device = " << chosen_device
+      << "; device type = " << device_type.type() << "; devices ("
+      << devices.size() << ") = " << absl::StrJoin(devices, ", ");
+
+  *result = cluster_a.has_xla_compile_attr || cluster_b.has_xla_compile_attr ||
+            registration->autoclustering_policy ==
+                XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+            (registration->autoclustering_policy ==
+                 XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+             global_jit_level != OptimizerOptions::OFF);
+
+  return Status::OK();
+}
+
+// Returns `true` iff we should compile `cluster`.
+static Status ShouldCompileClusterImpl(
+    const Cluster& cluster, OptimizerOptions::GlobalJitLevel global_jit_level,
+    bool* should_compile, string* device) {
+  std::vector<string> devices;
+  absl::c_remove_copy(cluster.devices, std::back_inserter(devices), "");
+  absl::c_sort(devices);
+
+  string chosen_device;
+  TF_RETURN_IF_ERROR(PickDeviceForXla(
+      devices, /*allow_mixing_unknown_and_cpu=*/false, &chosen_device));
+
+  const XlaOpRegistry::DeviceRegistration* registration;
+  DeviceType device_type("");
+  TF_RETURN_IF_ERROR(DeviceToDeviceType(chosen_device, &device_type));
+  TF_RET_CHECK(
+      XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration))
+      << "chosen device = " << chosen_device
+      << "; device type = " << device_type.type() << "; devices ("
+      << devices.size() << ") = " << absl::StrJoin(devices, ", ");
+
+  *should_compile =
+      cluster.has_xla_compile_attr ||
+      registration->autoclustering_policy ==
+          XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+      (registration->autoclustering_policy ==
+           XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+       global_jit_level != OptimizerOptions::OFF);
+
+  VLOG(3) << (*should_compile ? "Compiling" : "Not compiling")
+          << " cluster with device " << chosen_device;
+
+  *device = std::move(chosen_device);
+  return Status::OK();
+}
+
+static Status ShouldCompileCluster(
+    absl::flat_hash_map<int, std::pair<bool, string>>* cache,
+    OptimizerOptions::GlobalJitLevel global_jit_level, const Cluster& cluster,
+    bool* should_compile, string* device) {
+  auto it = cache->find(cluster.representative);
+  if (it != cache->end()) {
+    *should_compile = it->second.first;
+    *device = it->second.second;
+    return Status::OK();
+  }
+
+  string device_s;
+  TF_RETURN_IF_ERROR(ShouldCompileClusterImpl(cluster, global_jit_level,
+                                              should_compile, &device_s));
+  cache->insert({cluster.representative, {*should_compile, device_s}});
+  *device = std::move(device_s);
+  return Status::OK();
+}
 
 Status MarkForCompilationPass::RunImpl(
     const GraphOptimizationPassOptions& options,
@@ -954,7 +1097,11 @@ Status MarkForCompilationPass::RunImpl(
   }
 
   GraphCycles cycles;
-  TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(graph, &cycles));
+  TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
+                      CreateCycleDetectionGraph(graph, &cycles));
+  if (!cycle_detection_graph_ok) {
+    return Status::OK();
+  }
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
       graph, options.flib_def, IgnoreResourceOpForSafetyAnalysis, &cycles));
 
@@ -966,6 +1113,23 @@ Status MarkForCompilationPass::RunImpl(
   for (Node* node : compilation_candidates) {
     Cluster& cluster = clusters[node->id()].Get();
     cluster.representative = node->id();
+    const string& device = !node->assigned_device_name().empty()
+                               ? node->assigned_device_name()
+                               : node->requested_device();
+    if (HasResourceInput(*node) || HasResourceOutput(*node)) {
+      cluster.resource_op_device = device;
+    }
+    cluster.has_xla_compile_attr = false;
+    bool xla_compile_attr;
+    if (GetNodeAttr(node->attrs(), kXlaCompileAttr, &xla_compile_attr).ok()) {
+      cluster.has_xla_compile_attr |= xla_compile_attr;
+    }
+    if (options.flib_def->GetAttr(*node, kXlaCompileAttr, &xla_compile_attr)
+            .ok()) {
+      cluster.has_xla_compile_attr |= xla_compile_attr;
+    }
+
+    cluster.devices.insert(device);
     worklist.push_back(&clusters[node->id()]);
   }
 
@@ -979,7 +1143,8 @@ Status MarkForCompilationPass::RunImpl(
   // TODO(hpucha): Handle the case where kXlaClusterAttr is already set (for
   // example, from the Grappler fusion pass).
   while (!worklist.empty()) {
-    int from = worklist.front()->Get().representative;
+    Cluster* cluster_from = &worklist.front()->Get();
+    int from = cluster_from->representative;
     worklist.pop_front();
 
     Node* node_from = graph->FindNodeId(from);
@@ -1003,13 +1168,17 @@ Status MarkForCompilationPass::RunImpl(
         // graph. No clustering is possible.
         continue;
       }
+
+      const Cluster& cluster_to = clusters[to].Get();
       Node* node_to = graph->FindNodeId(to);
       if (compilation_candidates.find(node_to) ==
           compilation_candidates.cend()) {
         continue;
       }
-      if (node_from->assigned_device_name() !=
-          node_to->assigned_device_name()) {
+      bool devices_compatible;
+      TF_RETURN_IF_ERROR(AreDevicesCompatible(
+          *cluster_from, cluster_to, global_jit_level, &devices_compatible));
+      if (!devices_compatible) {
         continue;
       }
       if (isolated_nodes.count(node_to)) {
@@ -1058,9 +1227,14 @@ Status MarkForCompilationPass::RunImpl(
         if (in_id >= graph->num_node_ids()) continue;
 
         Node* in = graph->FindNodeId(in_id);
-        if (compilation_candidates.find(in) != compilation_candidates.cend() &&
-            in->assigned_device_name() != node_to->assigned_device_name()) {
-          found_split = true;
+        const Cluster& cluster_in = clusters[in_id].Get();
+        if (compilation_candidates.find(in) != compilation_candidates.cend()) {
+          bool devices_compatible;
+          TF_RETURN_IF_ERROR(AreDevicesCompatible(
+              cluster_to, cluster_in, global_jit_level, &devices_compatible));
+          if (!devices_compatible) {
+            found_split = true;
+          }
         }
       }
       if (found_split) continue;
@@ -1074,6 +1248,12 @@ Status MarkForCompilationPass::RunImpl(
 
       // Merge the clusters. ContractEdge uses 'from' as the number of the
       // merged node, so make sure 'from' is the chosen representative.
+      cluster_from->devices.insert(cluster_to.devices.begin(),
+                                   cluster_to.devices.end());
+      if (!cluster_to.resource_op_device.empty()) {
+        cluster_from->resource_op_device = cluster_to.resource_op_device;
+      }
+      cluster_from->has_xla_compile_attr |= cluster_to.has_xla_compile_attr;
       clusters[from].Merge(&clusters[to]);
 
       worklist.push_back(&clusters[from]);
@@ -1083,12 +1263,23 @@ Status MarkForCompilationPass::RunImpl(
 
   // Count the number of non-trivial elements in each cluster.
   std::vector<int> effective_cluster_sizes(graph->num_node_ids());
+
+  // has_functional_control_flow remembers if a cluster contains a functional
+  // control flow node.
+  std::vector<bool> has_functional_control_flow(graph->num_node_ids());
+
   for (const Node* n : compilation_candidates) {
     int cluster = clusters[n->id()].Get().representative;
-    // Identity nodes will be removed if the node gets marked for compilation.
-    // Therefore we don't want to count them towards the effective cluster size.
-    if (n->def().op() != "Identity") {
+    // We want clusters to be big enough that the benefit from XLA's
+    // optimizations offsets XLA related overhead (for instance we add some
+    // Switch/Merge nodes into the graph to implement lazy compilation).  To
+    // this end, we don't count Identity and Constant nodes because they do not
+    // enable interesting optimizations by themselves.
+    if (!n->IsIdentity() && !n->IsConstant()) {
       effective_cluster_sizes[cluster]++;
+    }
+    if (n->type_string() == "While" || n->type_string() == "If") {
+      has_functional_control_flow[cluster] = true;
     }
   }
 
@@ -1096,9 +1287,12 @@ Status MarkForCompilationPass::RunImpl(
   std::unordered_map<int, string> cluster_names;
 
   if (flags->tf_xla_clustering_debug) {
-    dump_graph::DumpGraphToFile("before_mark_for_compilation", **options.graph,
-                                options.flib_def);
+    DumpGraphToFile("before_mark_for_compilation", **options.graph,
+                    options.flib_def);
   }
+
+  absl::flat_hash_map<int, std::pair<bool, string>>
+      should_compile_cluster_cache;
 
   // Mark clusters for compilation that:
   // * are placed on a device that requires compilation (an XlaDevice),
@@ -1107,7 +1301,17 @@ Status MarkForCompilationPass::RunImpl(
   //   if compilation is enabled, otherwise there will be no such candidates).
   const int min_cluster_size = flags->tf_xla_min_cluster_size;
   for (Node* n : compilation_candidates) {
-    int cluster = clusters[n->id()].Get().representative;
+    const Cluster& cluster = clusters[n->id()].Get();
+    bool should_compile;
+    string device;
+    TF_RETURN_IF_ERROR(ShouldCompileCluster(&should_compile_cluster_cache,
+                                            global_jit_level, cluster,
+                                            &should_compile, &device));
+    if (!should_compile) {
+      continue;
+    }
+
+    int cluster_repr = cluster.representative;
 
     // Compile if the user marked this node _XlaCompile=true
     bool compile_attr = false;
@@ -1119,32 +1323,49 @@ Status MarkForCompilationPass::RunImpl(
       marked_for_compilation = compile_attr;
     }
 
-    // Compile if this operator is placed on a device that requires
-    // compilation.
-    DeviceType device_type("");
-    TF_RETURN_IF_ERROR(
-        DeviceToDeviceType(n->assigned_device_name(), &device_type));
-    const XlaOpRegistry::DeviceRegistration* registration;
-    XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration);
+    // We assume that functional If and While nodes have at least
+    // min_cluster_size non-trivial nodes in them.  It would be more principled
+    // to (recursively) verify this fact, but that's probably not worth the
+    // trouble.
 
-    // Compile if this is a cluster of >= min_cluster_size compilable operators.
-    // Also, always compile if it contains at least one op that is marked for
-    // compilation that is not an Identity op.
-    if (effective_cluster_sizes[cluster] >= min_cluster_size ||
-        (effective_cluster_sizes[cluster] > 0 && marked_for_compilation)) {
-      string& name = cluster_names[cluster];
+    if (effective_cluster_sizes[cluster_repr] >= min_cluster_size ||
+        has_functional_control_flow[cluster_repr] || marked_for_compilation) {
+      string& name = cluster_names[cluster_repr];
 
       if (name.empty()) {
         name = absl::StrCat("cluster_", cluster_sequence_num++);
       }
       n->AddAttr(kXlaClusterAttr, name);
+      n->AddAttr(kXlaAlreadyClustered, true);
       VLOG(3) << "Assigning node " << n->name() << " to cluster " << name;
     }
   }
 
   if (flags->tf_xla_clustering_debug) {
-    dump_graph::DumpGraphToFile("mark_for_compilation", **options.graph,
-                                options.flib_def);
+    DumpGraphToFile("mark_for_compilation", **options.graph, options.flib_def);
+
+    // We also dump out an annoated version of the TF graph where the nodes
+    // names are prefixed with the cluster names.  This can help visualizing the
+    // clustering decisions on TensorBoard.
+    Graph new_graph((*options.graph)->op_registry());
+    CopyGraph(**options.graph, &new_graph);
+
+    for (Node* n : new_graph.nodes()) {
+      if (absl::optional<absl::string_view> cluster_name =
+              GetXlaClusterForNode(*n)) {
+        n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
+      } else if (n->type_string() == "VarHandleOp") {
+        n->set_name(absl::StrCat("varhandle/", n->name()));
+      } else {
+        // There is room for improvement here.  In particular, it may help to
+        // split these unclustered nodes into classes where every node in a
+        // specific class has edges to and from the same set of clusters.
+        n->set_name(absl::StrCat("unclustered/", n->name()));
+      }
+    }
+
+    DumpGraphToFile("mark_for_compilation_annotated", new_graph,
+                    options.flib_def);
   }
 
   VLogClusteringSummary(*graph);

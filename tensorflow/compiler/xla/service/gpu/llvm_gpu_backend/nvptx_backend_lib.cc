@@ -110,11 +110,9 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
 }
 
 // Gets the GPU name as it's known to LLVM for a given compute capability.  If
-// we see an unrecognized compute capability, we return "sm_30".
+// we see an unrecognized compute capability, we return "sm_35".
 static string GetSmName(std::pair<int, int> compute_capability) {
   static auto* m = new std::map<std::pair<int, int>, int>({
-      {{3, 0}, 30},
-      {{3, 2}, 32},
       {{3, 5}, 35},
       {{3, 7}, 37},
       {{5, 0}, 50},
@@ -125,8 +123,9 @@ static string GetSmName(std::pair<int, int> compute_capability) {
       {{6, 2}, 62},
       {{7, 0}, 70},
       {{7, 2}, 72},
+      {{7, 5}, 75},
   });
-  int sm_version = 30;
+  int sm_version = 35;
   auto it = m->find(compute_capability);
   if (it != m->end()) {
     sm_version = it->second;
@@ -141,10 +140,9 @@ static string GetSmName(std::pair<int, int> compute_capability) {
 
 // Convenience function for producing a name of a temporary compilation product
 // from the input filename.
-string MakeNameForTempProduct(const std::string& input_filename,
+string MakeNameForTempProduct(absl::string_view input_filename,
                               absl::string_view extension) {
-  return ReplaceFilenameExtension(absl::string_view(tensorflow::io::Basename(
-                                      llvm_ir::AsString(input_filename))),
+  return ReplaceFilenameExtension(tensorflow::io::Basename(input_filename),
                                   extension);
 }
 
@@ -255,11 +253,8 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
     llvm::buffer_ostream pstream(stream);
     // The extension is stripped by IrDumpingPassManager, so we need to
     // get creative to add a suffix.
-    string module_id(llvm_ir::AsString(module->getModuleIdentifier()));
     IrDumpingPassManager codegen_passes(
-        ReplaceFilenameExtension(
-            absl::string_view(tensorflow::io::Basename(module_id)),
-            "-nvptx.dummy"),
+        MakeNameForTempProduct(module->getModuleIdentifier(), "-nvptx.dummy"),
         "", false);
     codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
         llvm::Triple(module->getTargetTriple())));
@@ -337,7 +332,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
   // If the module has no functions or globals, there's nothing to compile. Just
   // return an empty string.
   if (module->empty() && module->global_empty()) {
-    VLOG(2) << "Module '" << llvm_ir::AsString(module->getName())
+    VLOG(2) << "Module '" << module->getName().str()
             << "' is empty. Skipping compilation.";
     return string();
   }
@@ -493,11 +488,10 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
 
   string ptx;
   {
-    tensorflow::tracing::ScopedActivity activity(
-        "Compiling IR", llvm_ir::AsString(module->getName()),
-        /*is_expensive=*/true);
-    XLA_SCOPED_LOGGING_TIMER("Compile module " +
-                             llvm_ir::AsString(module->getName()));
+    tensorflow::tracing::ScopedActivity activity("Compiling IR",
+                                                 module->getName().str(),
+                                                 /*is_expensive=*/true);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " + module->getName().str());
     TF_ASSIGN_OR_RETURN(
         ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
                                 libdevice_dir_path));

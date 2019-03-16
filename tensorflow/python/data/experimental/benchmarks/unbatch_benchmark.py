@@ -42,6 +42,9 @@ class UnbatchBenchmark(test.Benchmark):
       dataset = dataset.batch(batch_size_placeholder)
       dataset = dataset.apply(batching.unbatch())
       dataset = dataset.skip(elems_per_trial)
+      options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      dataset = dataset.with_options(options)
       iterator = dataset_ops.make_initializable_iterator(dataset)
       next_element = iterator.get_next()
 
@@ -58,8 +61,6 @@ class UnbatchBenchmark(test.Benchmark):
             deltas.append((end - start) / elems_per_trial)
 
           median_wall_time = np.median(deltas)
-          print("Unbatch (native) batch size: %d Median wall time per element:"
-                " %f microseconds" % (batch_size, median_wall_time * 1e6))
           self.report_benchmark(
               iters=10000,
               wall_time=median_wall_time,
@@ -78,6 +79,9 @@ class UnbatchBenchmark(test.Benchmark):
       dataset = dataset.batch(batch_size_placeholder)
       dataset = dataset.flat_map(dataset_ops.Dataset.from_tensor_slices)
       dataset = dataset.skip(elems_per_trial)
+      options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      dataset = dataset.with_options(options)
       iterator = dataset_ops.make_initializable_iterator(dataset)
       next_element = iterator.get_next()
 
@@ -94,8 +98,6 @@ class UnbatchBenchmark(test.Benchmark):
             deltas.append((end - start) / elems_per_trial)
 
           median_wall_time = np.median(deltas)
-          print("Unbatch (unfused) batch size: %d Median wall time per element:"
-                " %f microseconds" % (batch_size, median_wall_time * 1e6))
           self.report_benchmark(
               iters=10000,
               wall_time=median_wall_time,

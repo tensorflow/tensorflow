@@ -241,7 +241,9 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
 // events have recorded, and then retire them.  Initial observations
 // suggest that typical behavior in a TensorFlow program is to have
 // 0-3 events pending most of the time, but there are occasionally
-// spikes of up to several hundred outstanding.
+// spikes of up to several hundred outstanding.  (If GPUKernelTracker
+// is used to cap pending kernels there should never be more than
+// that many.)
 //
 // NOTE: If all events are on the same stream, no later event will
 // complete before an earlier event, except possibly if the earlier
@@ -249,13 +251,10 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
 // looking past the first kPending event.  However, if we're using
 // multiple streams there may be some gain in looking deeper.
 // As a compromise, PollEvent() calls that are triggered by the queueing
-// of a single event never look past the first kPending event.  Calls
-// coming from the dedicated polling thread always sweep the full queue.
-//
-// Note that allowing the queue to grow very long could cause overall
-// GPU memory use to spike needlessly.  An alternative strategy would
-// be to throttle new Op execution until the pending event queue
-// clears.
+// of a single event never look past the first kPending event.  Consequently
+// those calls do an expected constant amount of work, unaffected by the
+// length of the pending queue.  Calls coming from the dedicated
+// polling thread always sweep the full queue.
 void EventMgr::PollEvents(bool is_dedicated_poller,
                           gtl::InlinedVector<InUse, 4>* to_free) {
   VLOG(2) << "PollEvents  free_events_ " << free_events_.size()

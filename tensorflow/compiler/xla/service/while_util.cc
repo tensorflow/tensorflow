@@ -97,7 +97,7 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
     absl::Span<HloInstruction* const> instructions) {
-  CHECK(ShapeUtil::IsTuple(while_instr->shape()));
+  CHECK(while_instr->shape().IsTuple());
 
   int64 elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();
@@ -166,7 +166,7 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * compare,
-      MakeBinaryHlo(HloOpcode::kLt, indvar, trip_count_constant));
+      MakeCompareHlo(ComparisonDirection::kLt, indvar, trip_count_constant));
   cond_computation->set_root_instruction(compare);
   return std::move(cond_computation);
 }

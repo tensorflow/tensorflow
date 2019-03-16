@@ -76,7 +76,7 @@ class ReaderInterface : public ResourceBase {
   // Note: Must Reset on error.
   virtual Status RestoreState(const string& state) = 0;
 
-  string DebugString() override { return "a reader"; }
+  string DebugString() const override { return "a reader"; }
 
  protected:
   virtual ~ReaderInterface() {}

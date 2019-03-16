@@ -288,7 +288,9 @@ class BoostedTreesCenterBiasOp : public OpKernel {
       ensemble_resource->AddNewTreeWithLogits(kLayerByLayerTreeWeight, logits);
       current_bias = logits;
     } else {
-      current_bias = ensemble_resource->node_value(0, 0);
+      const auto& current_biases = ensemble_resource->node_value(0, 0);
+      DCHECK_EQ(current_biases.size(), 1);
+      current_bias = current_biases[0];
       continue_centering =
           std::abs(logits / current_bias) > kMinDeltaForCenterBias;
       current_bias += logits;

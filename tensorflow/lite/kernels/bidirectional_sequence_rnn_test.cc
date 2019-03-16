@@ -654,8 +654,8 @@ const std::initializer_list<float> recurrent_weights = {
 class BidirectionalRNNOpModel : public SingleOpModel {
  public:
   BidirectionalRNNOpModel(int batches, int sequence_len, int fw_units,
-                          int bw_units, int input_size, bool time_major,
-                          bool merge_outputs)
+                          int bw_units, int input_size, bool use_aux_input,
+                          bool time_major, bool merge_outputs)
       : batches_(batches),
         sequence_len_(sequence_len),
         fw_units_(fw_units),
@@ -671,7 +671,13 @@ class BidirectionalRNNOpModel : public SingleOpModel {
     bw_bias_ = AddInput(TensorType_FLOAT32);
     bw_hidden_state_ = AddInput(TensorType_FLOAT32, true);
 
-    aux_input_ = AddNullInput();
+    int aux_input_size = 0;
+    if (use_aux_input) {
+      aux_input_ = AddInput(TensorType_FLOAT32);
+      aux_input_size = input_size_;
+    } else {
+      aux_input_ = AddNullInput();
+    }
     aux_fw_weights_ = AddNullInput();
     aux_bw_weights_ = AddNullInput();
 
@@ -691,18 +697,18 @@ class BidirectionalRNNOpModel : public SingleOpModel {
                      : std::vector<int>({batches_, sequence_len_, input_size_});
 
     BuildInterpreter({
-        input_shape,                   // input
-        {fw_units_, input_size_},      // fw_weights
-        {fw_units_, fw_units_},        // fw_recurrent_weights
-        {fw_units_},                   // fw_bias
-        {batches_, fw_units_},         // fw_hidden_state
-        {bw_units_, input_size_},      // bw_weights
-        {bw_units_, bw_units_},        // bw_recurrent_weights
-        {bw_units_},                   // bw_bias
-        {batches_, bw_units_},         // bw_hidden_state
-        {batches_, sequence_len_, 0},  // aux_input
-        {fw_units_, 0},                // aux_fw_weights
-        {bw_units_, 0},                // aux_bw_weights
+        input_shape,                                // input
+        {fw_units_, input_size_},                   // fw_weights
+        {fw_units_, fw_units_},                     // fw_recurrent_weights
+        {fw_units_},                                // fw_bias
+        {batches_, fw_units_},                      // fw_hidden_state
+        {bw_units_, input_size_},                   // bw_weights
+        {bw_units_, bw_units_},                     // bw_recurrent_weights
+        {bw_units_},                                // bw_bias
+        {batches_, bw_units_},                      // bw_hidden_state
+        {batches_, sequence_len_, aux_input_size},  // aux_input
+        {fw_units_, 0},                             // aux_fw_weights
+        {bw_units_, 0},                             // aux_bw_weights
     });
   }
 
@@ -736,6 +742,10 @@ class BidirectionalRNNOpModel : public SingleOpModel {
 
   void SetInput(int offset, float* begin, float* end) {
     PopulateTensor(input_, offset, begin, end);
+  }
+
+  void SetAuxInput(int offset, float* begin, float* end) {
+    PopulateTensor(aux_input_, offset, begin, end);
   }
 
   std::vector<float> GetFwOutput() { return ExtractVector<float>(fw_output_); }
@@ -775,7 +785,8 @@ class BidirectionalRNNOpModel : public SingleOpModel {
 TEST(BidirectionalRNNOpTest, BlackBoxTest) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
-                              /*input_size=*/8, /*time_major=*/false,
+                              /*input_size=*/8, /*use_aux_input=*/false,
+                              /*time_major=*/false,
                               /*merge_outputs=*/false);
   rnn.SetFwWeights(weights);
   rnn.SetBwWeights(weights);
@@ -813,7 +824,8 @@ TEST(BidirectionalRNNOpTest, BlackBoxTest) {
 TEST(BidirectionalRNNOpTest, BlackBoxTestTimeMajor) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
-                              /*input_size=*/8, /*time_major=*/true,
+                              /*input_size=*/8, /*use_aux_input=*/false,
+                              /*time_major=*/true,
                               /*merge_outputs=*/false);
   rnn.SetFwWeights(weights);
   rnn.SetBwWeights(weights);
@@ -822,7 +834,6 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestTimeMajor) {
   rnn.SetFwRecurrentWeights(recurrent_weights);
   rnn.SetBwRecurrentWeights(recurrent_weights);
 
-  // const int input_sequence_size = rnn.input_size() * rnn.sequence_len();
   // Insert the inputs in time_major format. The batch_major format is:
   // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
   // [b0t0, b1t0, b0t1, b1t1, ..., b0t15, b1t15].
@@ -850,7 +861,8 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestTimeMajor) {
 TEST(BidirectionalRNNOpTest, BlackBoxTestMergeOutputs) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
-                              /*input_size=*/8, /*time_major=*/false,
+                              /*input_size=*/8, /*use_aux_input=*/false,
+                              /*time_major=*/false,
                               /*merge_outputs=*/true);
   rnn.SetFwWeights(weights);
   rnn.SetBwWeights(weights);
@@ -888,7 +900,8 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestMergeOutputs) {
 TEST(BidirectionalRNNOpTest, BlackBoxTestTimeMajorMergeOutputs) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
-                              /*input_size=*/8, /*time_major=*/true,
+                              /*input_size=*/8, /*use_aux_input=*/false,
+                              /*time_major=*/true,
                               /*merge_outputs=*/true);
   rnn.SetFwWeights(weights);
   rnn.SetBwWeights(weights);
@@ -932,7 +945,8 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestTimeMajorMergeOutputs) {
 TEST(BidirectionalRNNOpTest, BlackBoxTestReverseInputs) {
   BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
                               /*fw_units=*/16, /*bw_units=*/16,
-                              /*input_size=*/8, /*time_major=*/false,
+                              /*input_size=*/8, /*use_aux_input=*/false,
+                              /*time_major=*/false,
                               /*merge_outputs=*/false);
   rnn.SetFwWeights(weights);
   rnn.SetBwWeights(weights);
@@ -979,7 +993,8 @@ TEST(BidirectionalRNNOpTest, BlackBoxTestReverseInputs) {
 TEST(BidirectionalRNNOpTest, EndToEndTest) {
   BidirectionalRNNOpModel rnn(/*batches=*/1, /*sequence_len=*/4,
                               /*fw_units=*/16, /*bw_units=*/16,
-                              /*input_size=*/8, /*time_major=*/false,
+                              /*input_size=*/8, /*use_aux_input=*/false,
+                              /*time_major=*/false,
                               /*merge_outputs=*/false);
   const int output_size = 4;
   float dnn_weights[] = {
@@ -1044,6 +1059,137 @@ TEST(BidirectionalRNNOpTest, EndToEndTest) {
     expected.insert(expected.end(), golden_start, golden_end);
     EXPECT_THAT(sequence_result, ElementsAreArray(ArrayFloatNear(expected)));
   }
+}
+
+// Same as BlackBox test, but has aux input.
+TEST(BidirectionalRNNOpTest, BlackBoxTestAuxInput) {
+  BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
+                              /*fw_units=*/16, /*bw_units=*/16,
+                              /*input_size=*/8, /*use_aux_input=*/true,
+                              /*time_major=*/true,
+                              /*merge_outputs=*/false);
+  rnn.SetFwWeights(weights);
+  rnn.SetBwWeights(weights);
+  rnn.SetFwBias(biases);
+  rnn.SetBwBias(biases);
+  rnn.SetFwRecurrentWeights(recurrent_weights);
+  rnn.SetBwRecurrentWeights(recurrent_weights);
+
+  // Insert the inputs in time_major format. The batch_major format is:
+  // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
+  // [b0t0, b1t0, b0t1, b1t1, ..., b0t15, b1t15].
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    // The two batches are identical.
+    // Also make aux input the same as input.
+    rnn.SetInput(2 * i * rnn.input_size(), batch_start, batch_end);
+    rnn.SetAuxInput(2 * i * rnn.input_size(), batch_start, batch_end);
+    rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
+    rnn.SetAuxInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
+  }
+
+  rnn.Invoke();
+
+  std::vector<float> fw_expected;
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* golden_fw_start = rnn_golden_fw_output + i * rnn.num_fw_units();
+    float* golden_fw_end = golden_fw_start + rnn.num_fw_units();
+    fw_expected.insert(fw_expected.end(), golden_fw_start, golden_fw_end);
+    fw_expected.insert(fw_expected.end(), golden_fw_start, golden_fw_end);
+  }
+  EXPECT_THAT(rnn.GetFwOutput(), ElementsAreArray(ArrayFloatNear(fw_expected)));
+}
+
+// Same as previous test, but has aux input is all zeros.
+TEST(BidirectionalRNNOpTest, BlackBoxTestAuxInputZeros) {
+  BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
+                              /*fw_units=*/16, /*bw_units=*/16,
+                              /*input_size=*/8, /*use_aux_input=*/true,
+                              /*time_major=*/true,
+                              /*merge_outputs=*/false);
+  rnn.SetFwWeights(weights);
+  rnn.SetBwWeights(weights);
+  rnn.SetFwBias(biases);
+  rnn.SetBwBias(biases);
+  rnn.SetFwRecurrentWeights(recurrent_weights);
+  rnn.SetBwRecurrentWeights(recurrent_weights);
+
+  // Initialize bw inputs with zeros.
+  std::vector<float> bw_inputs(rnn.sequence_len(), 0);
+
+  // Insert the inputs in time_major format. The batch_major format is:
+  // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
+  // [b0t0, b1t0, b0t1, b1t1, ..., b0t15, b1t15].
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    // The two batches are identical.
+    // Also make aux input the same as input.
+    rnn.SetInput(2 * i * rnn.input_size(), batch_start, batch_end);
+    rnn.SetAuxInput(2 * i * rnn.input_size(), &bw_inputs[0],
+                    &bw_inputs[bw_inputs.size() - 1]);
+    rnn.SetInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
+    rnn.SetAuxInput((2 * i + 1) * rnn.input_size(), &bw_inputs[0],
+                    &bw_inputs[bw_inputs.size() - 1]);
+  }
+
+  rnn.Invoke();
+
+  std::vector<float> fw_expected;
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* golden_fw_start = rnn_golden_fw_output + i * rnn.num_fw_units();
+    float* golden_fw_end = golden_fw_start + rnn.num_fw_units();
+    fw_expected.insert(fw_expected.end(), golden_fw_start, golden_fw_end);
+    fw_expected.insert(fw_expected.end(), golden_fw_start, golden_fw_end);
+  }
+  EXPECT_THAT(rnn.GetFwOutput(), ElementsAreArray(ArrayFloatNear(fw_expected)));
+}
+
+// Same as previous test, but has input is all zeros, and aux input is the real
+// input. This is testing the bw path is functional.
+TEST(BidirectionalRNNOpTest, BlackBoxTestAuxInputInputZeros) {
+  BidirectionalRNNOpModel rnn(/*batches=*/2, /*sequence_len=*/16,
+                              /*fw_units=*/16, /*bw_units=*/16,
+                              /*input_size=*/8, /*use_aux_input=*/true,
+                              /*time_major=*/true,
+                              /*merge_outputs=*/false);
+  rnn.SetFwWeights(weights);
+  rnn.SetBwWeights(weights);
+  rnn.SetFwBias(biases);
+  rnn.SetBwBias(biases);
+  rnn.SetFwRecurrentWeights(recurrent_weights);
+  rnn.SetBwRecurrentWeights(recurrent_weights);
+
+  // Initialize bw inputs with zeros.
+  std::vector<float> fw_inputs(rnn.sequence_len(), 0);
+
+  // Insert the inputs in time_major format. The batch_major format is:
+  // [b0t0, b0t1, ..., b0t15, b1t0, b1t1, ..., b1t15]. This is reshuffled as:
+  // [b0t0, b1t0, b0t1, b1t1, ..., b0t15, b1t15].
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* batch_start = rnn_input + i * rnn.input_size();
+    float* batch_end = batch_start + rnn.input_size();
+    // The two batches are identical.
+    // Also make aux input the same as input.
+    rnn.SetAuxInput(2 * i * rnn.input_size(), batch_start, batch_end);
+    rnn.SetInput(2 * i * rnn.input_size(), &fw_inputs[0],
+                 &fw_inputs[fw_inputs.size() - 1]);
+    rnn.SetAuxInput((2 * i + 1) * rnn.input_size(), batch_start, batch_end);
+    rnn.SetInput((2 * i + 1) * rnn.input_size(), &fw_inputs[0],
+                 &fw_inputs[fw_inputs.size() - 1]);
+  }
+
+  rnn.Invoke();
+
+  std::vector<float> bw_expected;
+  for (int i = 0; i < rnn.sequence_len(); i++) {
+    float* golden_bw_start = rnn_golden_bw_output + i * rnn.num_fw_units();
+    float* golden_bw_end = golden_bw_start + rnn.num_fw_units();
+    bw_expected.insert(bw_expected.end(), golden_bw_start, golden_bw_end);
+    bw_expected.insert(bw_expected.end(), golden_bw_start, golden_bw_end);
+  }
+  EXPECT_THAT(rnn.GetBwOutput(), ElementsAreArray(ArrayFloatNear(bw_expected)));
 }
 
 }  // namespace

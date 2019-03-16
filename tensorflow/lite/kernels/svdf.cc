@@ -176,8 +176,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, output, output_size_array));
 
   // The weights are of consistent type, so it suffices to check one.
-  const bool is_hybrid_op =
-      (input->type == kTfLiteFloat32 && weights_feature->type == kTfLiteUInt8);
+  const bool is_hybrid_op = (input->type == kTfLiteFloat32 &&
+                             (weights_feature->type == kTfLiteUInt8 ||
+                              weights_feature->type == kTfLiteInt8));
 
   // Resize scratch.
   TfLiteIntArrayFree(node->temporaries);
@@ -203,7 +204,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // of input tensors.
     node->temporaries->data[1] = scratch_tensor_index + 1;
     TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
-    input_quantized->type = kTfLiteUInt8;
+    input_quantized->type = weights_feature->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
@@ -297,16 +298,24 @@ TfLiteStatus EvalHybrid(
   // Initialize the pointer to input.
   const float* input_ptr_batch = input->data.f;
 
-  // Initialize the pointer to storage for quantized values and
-  // scaling factors.
-  int8_t* quantized_input_ptr_batch =
-      reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+  // Initialize the pointer to storage for quantized values and the weights
+  // feature.
+  int8_t* quantized_input_ptr_batch;
+  const int8_t* weights_feature_ptr;
+  if (weights_feature->type == kTfLiteUInt8) {
+    quantized_input_ptr_batch =
+        reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+    weights_feature_ptr =
+        reinterpret_cast<int8_t*>(weights_feature->data.uint8);
+  } else {
+    quantized_input_ptr_batch = input_quantized->data.int8;
+    weights_feature_ptr = weights_feature->data.int8;
+  }
 
+  // Initialize the pointer to storage for scaling factors.
   float* scaling_factors_ptr = scaling_factors->data.f;
 
-  // Other initializations.
-  const int8_t* weights_feature_ptr =
-      reinterpret_cast<int8_t*>(weights_feature->data.uint8);
+  // Initialize the weights scale.
   const float weights_feature_scale = weights_feature->params.scale;
 
   // Clear the activation (state left most column).
@@ -374,7 +383,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                        bias, params, scratch, activation_state, output);
       break;
     }
-    case kTfLiteUInt8: {
+    case kTfLiteUInt8:
+    case kTfLiteInt8: {
       TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
       TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/2);
       TfLiteTensor* float_weights_time =
@@ -388,8 +398,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       // TODO(alanchiao): refactor logic out into dequantize function.
       if (!op_data->float_weights_time_initialized) {
         const float dequantization_scale = weights_time->params.scale;
-        const int8_t* weights_time_ptr =
-            reinterpret_cast<int8_t*>(weights_time->data.uint8);
+        const int8_t* weights_time_ptr;
+        if (weights_feature->type == kTfLiteUInt8) {
+          weights_time_ptr =
+              reinterpret_cast<int8_t*>(weights_time->data.uint8);
+        } else {
+          weights_time_ptr = weights_time->data.int8;
+        }
         for (int i = 0; i < NumElements(float_weights_time); ++i) {
           float_weights_time->data.f[i] =
               weights_time_ptr[i] * dequantization_scale;

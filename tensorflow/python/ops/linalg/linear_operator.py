@@ -847,6 +847,51 @@ class LinearOperator(object):
 
       return self._solvevec(rhs, adjoint=adjoint)
 
+  def adjoint(self, name="adjoint"):
+    """Returns the adjoint of the current `LinearOperator`.
+
+    Given `A` representing this `LinearOperator`, return `A*`.
+    Note that calling `self.adjoint()` and `self.H` are equivalent.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      `LinearOperator` which represents the adjoint of this `LinearOperator`.
+    """
+    if self.is_self_adjoint is True:  # pylint: disable=g-bool-id-comparison
+      return self
+    with self._name_scope(name):
+      return linear_operator_algebra.adjoint(self)
+
+  # self.H is equivalent to self.adjoint().
+  H = property(adjoint, None)
+
+  def inverse(self, name="inverse"):
+    """Returns the Inverse of this `LinearOperator`.
+
+    Given `A` representing this `LinearOperator`, return a `LinearOperator`
+    representing `A^-1`.
+
+    Args:
+      name: A name scope to use for ops added by this method.
+
+    Returns:
+      `LinearOperator` representing inverse of this matrix.
+
+    Raises:
+      ValueError: When the `LinearOperator` is not hinted to be `non_singular`.
+    """
+    if self.is_square is False:  # pylint: disable=g-bool-id-comparison
+      raise ValueError("Cannot take the Inverse: This operator represents "
+                       "a non square matrix.")
+    if self.is_non_singular is False:  # pylint: disable=g-bool-id-comparison
+      raise ValueError("Cannot take the Inverse: This operator represents "
+                       "a singular matrix.")
+
+    with self._name_scope(name):
+      return linear_operator_algebra.inverse(self)
+
   def cholesky(self, name="cholesky"):
     """Returns a Cholesky factor as a `LinearOperator`.
 

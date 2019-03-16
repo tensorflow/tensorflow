@@ -176,6 +176,28 @@ TEST(ShapeUtilTest, UnequalIgnoringFpPrecision) {
       ShapeUtil::MakeShapeWithLayout(PRED, {4, 3}, {0, 1})));
 }
 
+TEST(ShapeUtilTest, EqualDynamicShapes) {
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
+                       ShapeUtil::MakeShape(F32, {4, 3}, {true, false})));
+  EXPECT_FALSE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {4, 3}, {true, false}),
+                       ShapeUtil::MakeShape(F32, {4, 3}, {false, false})));
+}
+
+TEST(ShapeUtilTest, CompatibleDynamicShapes) {
+  Shape shape_a = ShapeUtil::MakeShape(F32, {4, 3}, {true, false});
+  *shape_a.mutable_layout() = Layout({1, 0});
+  Shape shape_b = ShapeUtil::MakeShape(F32, {4, 3}, {true, false});
+  *shape_b.mutable_layout() = Layout({0, 1});
+  Shape shape_c = ShapeUtil::MakeShape(F32, {4, 3}, {false, true});
+  *shape_c.mutable_layout() = Layout({0, 1});
+
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_a));
+  EXPECT_TRUE(ShapeUtil::Compatible(shape_a, shape_b));
+  EXPECT_FALSE(ShapeUtil::Compatible(shape_a, shape_c));
+}
+
 TEST(ShapeUtilTest, CompatibleTuples) {
   Shape tuple1 = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(PRED, {4, 5})});
@@ -516,10 +538,6 @@ TEST(ShapeUtilTest, InsertedOrDeleted1SizedDimensions) {
       ShapeUtil::InsertedOrDeleted1SizedDimensions(shape0, shape2)));
 }
 
-TEST(ShapeUtilTest, ShapeIs) {
-  EXPECT_FALSE(ShapeUtil::ShapeIs(ShapeUtil::MakeShape(PRED, {2}), PRED, {}));
-}
-
 TEST(ShapeUtilTest, ForEachIndex) {
   struct ShapeDimensionAndNumberInvocations {
     std::vector<int64> dimensions;
@@ -692,6 +710,26 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
 
+TEST(ShapeUtilTest, PermuteDynamicDimensions) {
+  Shape shape =
+      ShapeUtil::MakeShape(F32, {10, 100, 1000},
+                           /*dynamic_dimensions*/ {false, true, true});
+  SCOPED_TRACE(absl::StrCat("shape=", shape.ToString()));
+
+  std::vector<int64> permutation(3);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  do {
+    SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
+
+    auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
+    for (int i = 0; i < shape.rank(); i++) {
+      EXPECT_EQ(permuted.dimensions(permutation[i]), shape.dimensions(i));
+      EXPECT_EQ(permuted.is_dynamic_dimension(permutation[i]),
+                shape.is_dynamic_dimension(i));
+    }
+  } while (std::next_permutation(permutation.begin(), permutation.end()));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),
@@ -723,8 +761,15 @@ TEST(AlignmentTest, AlignLayoutsWithTrivialDimensions) {
   auto aligned_shape = ShapeUtil::AlignLayouts(
       input, ShapeUtil::MakeShape(xla::F32, {1, 4, 1, 3, 2, 7, 5, 11, 1}));
   EXPECT_TRUE(aligned_shape);
-  EXPECT_THAT(aligned_shape.value().layout().minor_to_major(),
-              ElementsAre(6, 5, 4, 3, 1, 7, 0, 2, 8));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
+}
+
+TEST(AlignmentTest, AlignLayoutsWithAllTrivialDimensions) {
+  Shape input =
+      ShapeUtil::MakeShapeWithLayout(xla::F32, {1, 1, 1, 1}, {0, 1, 3, 2});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {1, 1, 1, 1, 1}));
+  EXPECT_TRUE(aligned_shape);
   EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
 }
 

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
@@ -25,6 +26,11 @@ namespace floor {
 
 constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
+
+enum KernelType {
+  kReference,
+  kGenericOptimized,
+};
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
@@ -37,20 +43,34 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
+template <KernelType type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  optimized_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
+  if (type == kGenericOptimized) {
+    optimized_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
+  } else {
+    reference_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
+  }
 
   return kTfLiteOk;
 }
 }  // namespace floor
 
+TfLiteRegistration* Register_FLOOR_REF() {
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/nullptr, floor::Prepare,
+                                 floor::Eval<floor::kReference>};
+  return &r;
+}
+
 TfLiteRegistration* Register_FLOOR() {
   static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr, floor::Prepare, floor::Eval};
+                                 /*free=*/nullptr, floor::Prepare,
+                                 floor::Eval<floor::kGenericOptimized>};
   return &r;
 }
 

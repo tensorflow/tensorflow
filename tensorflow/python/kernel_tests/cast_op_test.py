@@ -157,7 +157,7 @@ class CastOpTest(test.TestCase):
       # np.float64("np.inf").astype(np.int32) is negative on x86 but positive on ppc64le
       # Numpy link to relevant discussion - https://github.com/numpy/numpy/issues/9040
       # Tensorflow link to relevant discussion - https://github.com/tensorflow/tensorflow/issues/9360
-      if platform.machine() == "ppc64le":
+      if platform.machine() == "ppc64le" or platform.machine() == "aarch64":
         self._compare(-np.inf, np.int32, i4.min, False)
         self._compare(-np.inf, np.int64, i8.min, False)
       else:
@@ -169,8 +169,13 @@ class CastOpTest(test.TestCase):
     self._compare(-np.inf, np.int64, i8.min, False)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float32, False)), True)
     self.assertAllEqual(np.isnan(self._cast(np.nan, np.float64, False)), True)
-    self._compare(np.nan, np.int32, i4.min, False)
-    self._compare(np.nan, np.int64, i8.min, False)
+    # np.float64(np.nan).astype(np.int32) is 0 on ARM
+    if platform.machine() == "aarch64":
+      self._compare(np.nan, np.int32, 0, False)
+      self._compare(np.nan, np.int64, 0, False)
+    else:
+      self._compare(np.nan, np.int32, i4.min, False)
+      self._compare(np.nan, np.int64, i8.min, False)
 
     self._compare(np.inf, np.float32, np.inf, True)
     self._compare(np.inf, np.float64, np.inf, True)

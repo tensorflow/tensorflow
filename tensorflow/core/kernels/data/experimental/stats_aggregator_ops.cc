@@ -108,8 +108,8 @@ class StatsAggregatorHandleOp
  private:
   Status CreateResource(StatsAggregatorResource** ret) override
       EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    *ret = new StatsAggregatorResource(
-        std::unique_ptr<StatsAggregator>(new StatsAggregatorImpl));
+    *ret =
+        new StatsAggregatorResource(absl::make_unique<StatsAggregatorImpl>());
     return Status::OK();
   }
 

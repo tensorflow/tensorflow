@@ -25,11 +25,14 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 #include <sstream>
-#include "tensorflow/lite/nnapi/NeuralNetworksShim.h"
+#include <string>
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 
-string dirname(const string& s) { return s.substr(0, s.find_last_of("/")); }
+std::string dirname(const std::string& s) {
+  return s.substr(0, s.find_last_of("/"));
+}
 
 bool Interpret(const char* examples_filename, bool use_nnapi) {
   std::ifstream tflite_stream(examples_filename);
@@ -65,14 +68,14 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 
-  string base_dir = dirname(argv[1]);
+  std::string base_dir = dirname(argv[1]);
   DIR* dir = opendir(base_dir.c_str());
   if (dir == nullptr) {
     fprintf(stderr, "Can't open dir %s\n", base_dir.c_str());
     return 1;
   }
   while (struct dirent* ent = readdir(dir)) {
-    string name = ent->d_name;
+    std::string name = ent->d_name;
     if (name.rfind(".txt") == name.length() - 4) {
       printf("%s: ", name.c_str());
       if (Interpret((base_dir + "/" + name).c_str(), use_nnapi)) {

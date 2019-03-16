@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_compilation_cache.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
@@ -228,8 +228,27 @@ Status XRTExecuteOp::DoWork(OpKernelContext* context) {
   TF_RETURN_IF_ERROR(XRTTupleAllocation::CreateFromBuffer(
       shaped_buffer, device_ref.backend(), device_ref.device_ordinal(),
       &output_tuple));
+
+  // The ScopedShapedBuffer returned by the executable Run() API, in case of
+  // input/output buffer aliasing, might have holes in it, which need to be
+  // filled using the proper input tuples buffers which are the source of
+  // aliasing.
+  const xla::HloInputOutputAliasConfig& input_output_alias =
+      executable->executable()->module().input_output_alias_config();
+  auto alias_function =
+      [&](const xla::ShapeIndex& output_index,
+          const xla::HloInputOutputAliasConfig::Alias& alias) -> Status {
+    TF_RET_CHECK(alias.parameter_number < input_tuples.size());
+    return alias.kind == xla::HloInputOutputAliasConfig::AliasKind::kUserAlias
+               ? output_tuple->AliasBufferFrom(
+                     *input_tuples[alias.parameter_number],
+                     alias.parameter_index, output_index)
+               : Status::OK();
+  };
+  TF_RETURN_IF_ERROR(input_output_alias.ForEachAliasWithStatus(alias_function));
+
   if (config_proto.return_exploded_tuple() &&
-      xla::ShapeUtil::IsTuple(output_tuple->on_device_shape())) {
+      output_tuple->on_device_shape().IsTuple()) {
     int64 tuple_element_count =
         xla::ShapeUtil::TupleElementCount(output_tuple->on_device_shape());
     Tensor* output_tensor;

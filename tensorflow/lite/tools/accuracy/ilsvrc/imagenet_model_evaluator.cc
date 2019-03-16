@@ -22,6 +22,12 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/public/session.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/tools/accuracy/eval_pipeline.h"
 #include "tensorflow/lite/tools/accuracy/eval_pipeline_builder.h"
 #include "tensorflow/lite/tools/accuracy/file_reader_stage.h"
@@ -29,12 +35,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/accuracy/ilsvrc/inception_preprocessing.h"
 #include "tensorflow/lite/tools/accuracy/run_tflite_model_stage.h"
 #include "tensorflow/lite/tools/accuracy/utils.h"
-#include "tensorflow/core/lib/core/blocking_counter.h"
-#include "tensorflow/core/lib/core/threadpool.h"
-#include "tensorflow/core/platform/init_main.h"
-#include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace {
 using tensorflow::string;
@@ -185,21 +185,17 @@ Status EvaluateModelForShard(const uint64_t shard_id,
   const TensorShape& input_shape = model_info.input_shapes[0];
   const int image_height = input_shape.dim_size(1);
   const int image_width = input_shape.dim_size(2);
-  const bool is_quantized = (model_info.input_types[0] == DT_UINT8);
 
   RunTFLiteModelStage::Params tfl_model_params;
   tfl_model_params.model_file_path = params.model_file_path;
-  if (is_quantized) {
-    tfl_model_params.input_type = {DT_UINT8};
-    tfl_model_params.output_type = {DT_UINT8};
-  } else {
-    tfl_model_params.input_type = {DT_FLOAT};
-    tfl_model_params.output_type = {DT_FLOAT};
-  }
+
+  tfl_model_params.input_type = {model_info.input_types[0]};
+  tfl_model_params.output_type = {model_info.input_types[0]};
 
   Scope root = Scope::NewRootScope();
   FileReaderStage reader;
-  InceptionPreprocessingStage inc(image_height, image_width, is_quantized);
+  InceptionPreprocessingStage inc(image_height, image_width,
+                                  model_info.input_types[0]);
   RunTFLiteModelStage tfl_model_stage(tfl_model_params);
   EvalPipelineBuilder builder;
 

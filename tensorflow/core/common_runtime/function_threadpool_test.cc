@@ -149,9 +149,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        str_util::StrContains(status2.error_message(), "remote execution."));
+    EXPECT_TRUE(errors::IsNotFound(status2));
+    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "Handle"));
+    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "not found"));
 
     return status;
   }

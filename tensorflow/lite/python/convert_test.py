@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.graph_util_impl import _bfs_for_reachable_nodes
 from tensorflow.python.framework.graph_util_impl import _extract_graph_summary
+from tensorflow.python.framework.graph_util_impl import _node_name
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -53,6 +54,17 @@ class ConvertTest(test_util.TensorFlowTestCase):
     # Try running on identity graph (known fail)
     # with self.assertRaisesRegexp(RuntimeError, "!model->operators.empty()"):
     #   result = convert.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
+
+  def testTensorName(self):
+    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
+    # out_tensors should have names: "split:0", "split:1", "split:2", "split:3".
+    out_tensors = array_ops.split(
+        value=in_tensor, num_or_size_splits=[1, 1, 1, 1], axis=0)
+    expect_names = ["split", "split:1", "split:2", "split:3"]
+
+    for i in range(len(expect_names)):
+      got_name = convert.tensor_name(out_tensors[i])
+      self.assertEqual(got_name, expect_names[i])
 
   def testQuantization(self):
     in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
@@ -322,6 +334,7 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
       self.assertEqual(self._get_input_index(a), 0)
       self.assertEqual(self._get_sort_index(a), 0)
       self.assertEqual(self._get_input_index(b), 1)
+      self.assertEqual(self._get_sort_index(b), 0)
       self.assertEqual(self._get_input_index(c), 0)
       self.assertEqual(self._get_sort_index(c), 1)
 
@@ -388,6 +401,29 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
         _types_pb2.COMPLEX64)
     with self.assertRaises(ValueError):
       convert.convert_dtype_to_tflite_type(dtypes.bool)
+
+  def testFindHintedOutputNodes(self):
+    """Test if all hinted output nodes are correctly found."""
+
+    def _build_ophinted_op(name, input1, input2):
+      custom_op = op_hint.OpHint(name)
+      input1 = custom_op.add_input(input1)
+      input2 = custom_op.add_input(input2)
+      output = math_ops.mul(input1, input2)
+      return custom_op.add_output(output)
+
+    output_1 = _build_ophinted_op("custom_op_1", array_ops.constant([1.]),
+                                  array_ops.constant([2.]))
+    output_2 = _build_ophinted_op("custom_op_2", array_ops.constant([3.]),
+                                  array_ops.constant([4.]))
+    with self.cached_session() as sess:
+      hinted_outputs_nodes = op_hint.find_all_hinted_output_nodes(sess)
+      expected_hinted_output_nodes = [
+          _node_name(output_1.name),
+          _node_name(output_2.name)
+      ]
+      self.assertEqual(
+          len(hinted_outputs_nodes), len(expected_hinted_output_nodes))
 
 
 if __name__ == "__main__":

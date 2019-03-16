@@ -1,6 +1,7 @@
 tensorflow/core
 tensorflow/core/kernels/boosted_trees
 tensorflow/core/profiler
+tensorflow/core/protobuf/tpu
 tensorflow/python
 tensorflow/contrib/boosted_trees/proto
 tensorflow/contrib/cloud/kernels
@@ -12,7 +13,6 @@ tensorflow/contrib/mpi_collectives
 tensorflow/contrib/session_bundle
 tensorflow/contrib/tensor_forest/proto
 tensorflow/contrib/tensorboard/plugins/projector
-tensorflow/contrib/tpu/proto
 tensorflow/contrib/tpu/profiler
 tensorflow/contrib/training/python/training
 tensorflow/contrib/verbs

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -26,15 +27,20 @@ namespace {
 
 class TensorDatasetOp : public DatasetOpKernel {
  public:
-  explicit TensorDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit TensorDatasetOp(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutput_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     OpInputList inputs;
     OP_REQUIRES_OK(ctx, ctx->input_list("components", &inputs));
-    // TODO(mrry): Validate that the shapes of the "components" tensors match
-    // the "shapes" attr.;
     std::vector<Tensor> components(inputs.begin(), inputs.end());
     *output = new Dataset(ctx, std::move(components));
+    OP_REQUIRES_OK(ctx,
+                   VerifyTypesMatch((*output)->output_dtypes(), output_types_));
+    OP_REQUIRES_OK(ctx, VerifyShapesCompatible((*output)->output_shapes(),
+                                               output_shapes_));
   }
 
  private:
@@ -50,8 +56,8 @@ class TensorDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::FromTensor")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::FromTensor")});
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -137,6 +143,9 @@ class TensorDatasetOp : public DatasetOpKernel {
     DataTypeVector dtypes_;
     std::vector<PartialTensorShape> shapes_;
   };
+
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorDataset").Device(DEVICE_CPU),

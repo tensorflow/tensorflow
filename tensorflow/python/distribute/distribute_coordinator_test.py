@@ -427,7 +427,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     """Test monitored session in standalone client mode."""
     distribute_coordinator.run_distribute_coordinator(
@@ -601,7 +601,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     cluster_spec = self._create_cluster_spec(
         num_workers=NUM_WORKERS, num_ps=NUM_PS)
@@ -863,6 +863,9 @@ class StrategyConfigureTest(test.TestCase):
   def test_session_config_in_session_creator(self):
     cluster_spec = {"worker": ["localhost:0"]}
     tf_config = {"cluster": cluster_spec}
+
+    # Reset the saved Server state.
+    distribute_coordinator._thread_local = threading.local()  # pylint: disable=protected-access
 
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):

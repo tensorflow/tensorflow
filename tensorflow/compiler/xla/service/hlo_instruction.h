@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -384,6 +386,14 @@ class HloInstruction {
 
   // Creates a random number generation instruction that fills a shape with
   // random numbers from a given distribution.
+  //
+  // The parameters to the instruction are interpreted as follows:
+  //
+  //  - If `distribution` is RNG_UNIFORM, generates a number in range
+  //    [param0, param1).
+  //
+  //  - If `distribution` is RNG_NORMAL, generates a normally-distributed value
+  //    with mean `param0` and standard deviation `param1`.
   static std::unique_ptr<HloInstruction> CreateRng(
       const Shape& shape, RandomDistribution distribution,
       absl::Span<HloInstruction* const> parameters);
@@ -426,7 +436,7 @@ class HloInstruction {
   // and window describes how the filter is applied to lhs.
   static std::unique_ptr<HloInstruction> CreateConvolve(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      int64 feature_group_count, const Window& window,
+      int64 feature_group_count, int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers,
       const PrecisionConfig& precision_config);
 
@@ -434,6 +444,18 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
+
+  // Creates a compare op, performing the comparison specified in direction.
+  static std::unique_ptr<HloInstruction> CreateCompare(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      ComparisonDirection direction);
+
+  static std::unique_ptr<HloInstruction> CreateTriangularSolve(
+      const Shape& shape, HloInstruction* a, HloInstruction* b,
+      const TriangularSolveOptions& options);
+
+  static std::unique_ptr<HloInstruction> CreateCholesky(
+      const Shape& shape, HloInstruction* a, const CholeskyOptions& options);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
@@ -462,9 +484,7 @@ class HloInstruction {
   // `all_reduce_id`: for Allreduce nodes from different modules, if they have
   // the same all_reduce_id, they will be 'Allreduce'd. If empty, Allreduce will
   // not be applied cross modules.
-  //
-  // TODO(b/117564385): Rename this to AllReduce.
-  static std::unique_ptr<HloInstruction> CreateCrossReplicaSum(
+  static std::unique_ptr<HloInstruction> CreateAllReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       HloComputation* reduce_computation,
       const std::vector<ReplicaGroup>& replica_groups,
@@ -491,10 +511,13 @@ class HloInstruction {
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
   // target_replica_id in any pair, the output on that replica is a tensor
-  // conssits of 0(s) in `shape`.
+  // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
+
+  // Creates an instruction that returns a U32 replica ID.
+  static std::unique_ptr<HloInstruction> CreateReplicaId();
 
   // Creates a conversion instruction, where operand is the data to convert and
   // shape is the target shape for the conversion.
@@ -560,13 +583,14 @@ class HloInstruction {
   // 'slice_sizes'.
   static std::unique_ptr<HloInstruction> CreateDynamicSlice(
       const Shape& shape, HloInstruction* operand,
-      HloInstruction* start_indices, absl::Span<const int64> slice_sizes);
+      absl::Span<HloInstruction* const> start_indices,
+      absl::Span<const int64> slice_sizes);
 
   // Creates a dynamic update slice instruction, which updates a slice
   // of 'operand' with 'update' and 'start_indices'.
   static std::unique_ptr<HloInstruction> CreateDynamicUpdateSlice(
       const Shape& shape, HloInstruction* operand, HloInstruction* update,
-      HloInstruction* start_indices);
+      absl::Span<HloInstruction* const> start_indices);
 
   // Creates a concatenate instruction, where the operands are concatenated on
   // the provided dimension.
@@ -596,7 +620,6 @@ class HloInstruction {
   // f_2 = f(f_1.tuple_element(0), ..., f_1.tuple_element(N), input0.value1,
   // ..., inputN.value1)
   // ...
-  // TODO(b/112040122): Add support to this in HLO passes and in backends.
   static std::unique_ptr<HloInstruction> CreateReduce(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
       absl::Span<HloInstruction* const> init_values,
@@ -669,10 +692,15 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       absl::Span<const int64> dimensions);
 
-  // Creates a sort op, with a keys operand, and optional values operands.
+  // Creates a n-ary sort op with a 'compare' computation which is used for
+  // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
+  // where parameters 2 * i and 2 * i + 1 are the values of the i-th operand at
+  // specific index positions which should be compared, and should return a
+  // PRED. 'is_stable' specifies whether stable sorting is required.
   static std::unique_ptr<HloInstruction> CreateSort(
-      const Shape& shape, int64 dimension, HloInstruction* keys,
-      absl::Span<HloInstruction* const> values = {});
+      const Shape& shape, int64 dimension,
+      absl::Span<HloInstruction* const> operands, HloComputation* compare,
+      bool is_stable);
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -688,6 +716,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* pred,
       HloInstruction* true_computation_arg, HloComputation* true_computation,
       HloInstruction* false_computation_arg, HloComputation* false_computation);
+
+  static std::unique_ptr<HloInstruction> CreateConditional(
+      const Shape& shape, HloInstruction* branch_index,
+      absl::Span<HloComputation* const> branch_computations,
+      absl::Span<HloInstruction* const> branch_computation_args);
 
   static std::unique_ptr<HloInstruction> CreateGather(
       const Shape& shape, HloInstruction* operand,
@@ -930,11 +963,20 @@ class HloInstruction {
   // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
-  // Replaces the specified operand with new_operand.
+  // Same as ReplaceUseWith(), but new_producer can have a different shape.
+  Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
+  // Replaces the specified operand with new_operand. The old and new operands
+  // must have compatible shapes ignoring floating-point precision.
   //
   // This function does NOT remove duplicated operands even if this instruction
   // is a fusion, so that the existing operand numbers do not change.
-  Status ReplaceOperandWith(int64 operand_no, HloInstruction* new_operand);
+  Status ReplaceOperandWith(int64 operand_num, HloInstruction* new_operand);
+
+  // Same as ReplaceOperandWith(), but new_operand can have a different shape.
+  Status ReplaceOperandWithDifferentShape(int64 operand_num,
+                                          HloInstruction* new_operand);
 
   // Replaces all uses of this instruction with the new producer. If
   // new_producer is a user of this instruction then new_producer remains a use
@@ -943,9 +985,15 @@ class HloInstruction {
   // If this instruction is the root of its computation, sets the computation's
   // root to new_producer.
   //
+  // The new producer must have a compatible shape ignoring floating-point
+  // precision.
+  //
   // If a user is a fusion instruction, this function will remove any duplicated
   // operands of it which could be created due to this replacement.
   Status ReplaceAllUsesWith(HloInstruction* new_producer);
+
+  // Same as ReplaceAllUsesWith, but new_producer can have a different shape.
+  Status ReplaceAllUsesWithDifferentShape(HloInstruction* new_producer);
 
   // Performs a postorder DFS visit using this node as the root. If
   // call_finish_visit is true, then DfsHloVisitor::FinishVisit is called when
@@ -1020,14 +1068,23 @@ class HloInstruction {
 
   HloInstruction* while_init() const;
 
-  // Gets/sets the true and false HloComputation for Conditional. The setters
-  // should only be called by HloModule or HloComputation methods.
+  // Gets/sets the true and false HloComputation for Conditional.
   //
-  // Precondition: The instruction is a Conditional instruction.
+  // Precondition: The instruction is a predicated Conditional instruction.
   HloComputation* true_computation() const;
   HloComputation* false_computation() const;
-  void set_true_computation(HloComputation* true_computation);
-  void set_false_computation(HloComputation* false_computation);
+
+  // Gets the branch HloComputations for Conditional.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  const std::vector<HloComputation*>& branch_computations() const;
+  int branch_count() const;
+  HloComputation* branch_computation(int b) const;
+  // Sets a branch HloComputation for Conditional.
+  // The setter should only be called by HloModule or HloComputation methods.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  void set_branch_computation(int b, HloComputation* computation);
 
   // Returns a string for the signature of this instruction if considered as a
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
@@ -1169,10 +1226,8 @@ class HloInstruction {
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
-  // after performing necessary implicit broadcast
-  // (cs/IrArray::EmitArrayElementAddress), to compute the output at index
-  // {i_0,i_1,...,i_n}, the only element required from the operand (if any) is
-  // the element at {i_0,i_1,...,i_n}.
+  // to compute the output at index {i_0,i_1,...,i_n}, the only element required
+  // from the operand (if any) is the element at {i_0,i_1,...,i_n}.
   //
   // Note on performance: when this instruction is kFusion, this method, in the
   // worst case, scans all fused instructions. We could speed this up by
@@ -1187,12 +1242,6 @@ class HloInstruction {
 
   // Returns true if this is a cross-replica all-reduce instruction.
   bool IsCrossReplicaAllReduce() const;
-
-  // Returns true if this elementwise instruction implicitly broadcasts operand
-  // `operand_idx`.
-  //
-  // Precondition: this instruction should be an elementwise operation.
-  bool ImplicitlyBroadcastsOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is binary and elementwise.
   bool IsElementwiseBinary() const;
@@ -1229,6 +1278,10 @@ class HloInstruction {
   // on the instruction's existing name.
   void UniquifyName(NameUniquer* name_uniquer);
 
+  // Clear the unique ID of the instruction so that it can be re-assigned, such
+  // as for the purpose of compacting the instruction unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
+
   // Set the unique id for this instruction to "id"
   void SetUniqueId(int id) {
     CHECK_EQ(unique_id_, -1);  // Should not be assigned already
@@ -1261,6 +1314,9 @@ class HloInstruction {
   void set_raw_backend_config_string(string config_str) {
     backend_config_ = std::move(config_str);
   }
+
+  bool is_default_config() const { return is_default_config_; }
+  void set_default_config() { is_default_config_ = true; }
 
   // Returns a string representation of a proto in the format used by
   // raw_backend_config_string.
@@ -1432,6 +1488,15 @@ class HloInstruction {
   // Delegates to HloParameterInstruction::parameter_number.
   int64 parameter_number() const;
 
+  // Delegates to
+  // HloParameterInstruction::set_parameter_replicated_at_leaf_buffers.
+  void set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool> parameter_replicated_at_leaf_buffers);
+
+  // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
+  const absl::optional<std::vector<bool>>&
+  parameter_replicated_at_leaf_buffers() const;
+
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
@@ -1459,9 +1524,9 @@ class HloInstruction {
   // Delegates to HloCollectivePermuteInstruction::source_target_pairs.
   const std::vector<std::pair<int64, int64>>& source_target_pairs() const;
 
-  // Delegates to HloAllReduceInstruction::cross_replica_sum_barrier.
-  string cross_replica_sum_barrier() const;
-  void set_cross_replica_sum_barrier(const string& barrier);
+  // Delegates to HloAllReduceInstruction::all_reduce_barrier.
+  string all_reduce_barrier() const;
+  void set_all_reduce_barrier(const string& barrier);
 
   // Delegates to HloAllReduceInstruction::all_reduce_id.
   absl::optional<int64> all_reduce_id() const;
@@ -1494,6 +1559,11 @@ class HloInstruction {
   int64 feature_group_count() const;
 
   void set_feature_group_count(int64 feature_group_count);
+
+  // The number of batch groups. Must be a divisor of the input batch dimension
+  int64 batch_group_count() const;
+
+  void set_batch_group_count(int64 batch_group_count);
 
   // Delegates to HloSelectAndScatterInstruction::select.
   HloComputation* select() const;
@@ -1535,6 +1605,15 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloCompareInstruction::direction().
+  ComparisonDirection comparison_direction() const;
+
+  // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
+  const TriangularSolveOptions& triangular_solve_options() const;
+
+  // Delegates to HloCholeskyInstruction::cholesky_options().
+  const CholeskyOptions& cholesky_options() const;
 
   // Old methods kept for smooth subclassing transition END.
 
@@ -1702,6 +1781,10 @@ class HloInstruction {
   // HLO. See the documentation on backend_config().
   string backend_config_;
 
+  // This field is assigned to true when backend_config_ is assigned to
+  // a default configuration.
+  bool is_default_config_ = false;
+
   // String identifier for instruction.
   string name_;
 
@@ -1714,6 +1797,10 @@ class HloInstruction {
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
+
+// Explicit instantiations in hlo_instruction.cc.
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(

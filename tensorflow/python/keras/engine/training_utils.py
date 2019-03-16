@@ -12,37 +12,39 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training-related utilities.
-"""
+"""Training-related utilities."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 from collections import OrderedDict
-import copy
 
 import numpy as np
 import six
 
+from tensorflow.python import tf2
+from tensorflow.python.data.experimental.ops import cardinality
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import weights_broadcast_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
 
@@ -68,7 +70,7 @@ class Aggregator(object):
     Arguments:
       batch_outs: A list of batch-level outputs.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def aggregate(self, batch_outs, batch_start=None, batch_end=None):
@@ -81,12 +83,12 @@ class Aggregator(object):
       batch_end: The end index of this batch. Always `None` if `use_steps` is
         `True`.
     """
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
   @abc.abstractmethod
   def finalize(self):
     """Prepares the total results to be returned."""
-    NotImplementedError('Must be implemented in subclasses.')
+    raise NotImplementedError('Must be implemented in subclasses.')
 
 
 class MetricsAggregator(Aggregator):
@@ -105,6 +107,8 @@ class MetricsAggregator(Aggregator):
     self.results[1:] = batch_outs[1:]
 
   def finalize(self):
+    if not self.results:
+      raise ValueError('Empty training data.')
     self.results[0] /= self.num_samples_or_steps
 
 
@@ -180,10 +184,7 @@ def slice_arrays(arrays, indices, contiguous=True):
   return slices
 
 
-def check_num_samples(ins,
-                      batch_size=None,
-                      steps=None,
-                      steps_name='steps'):
+def check_num_samples(ins, batch_size=None, steps=None, steps_name='steps'):
   """Determine the number of samples provided for training and evaluation.
 
   The number of samples is not defined when running with `steps`,
@@ -192,9 +193,8 @@ def check_num_samples(ins,
   Arguments:
       ins: List of tensors to be fed to the Keras function.
       batch_size: Integer batch size or `None` if not defined.
-      steps: Total number of steps (batches of samples)
-          before declaring `_predict_loop` finished.
-          Ignored with the default value of `None`.
+      steps: Total number of steps (batches of samples) before declaring
+        `_predict_loop` finished. Ignored with the default value of `None`.
       steps_name: The public API's parameter name for `steps`.
 
   Raises:
@@ -208,13 +208,10 @@ def check_num_samples(ins,
       processed based on the size of the first dimension of the
       first input numpy array. When steps is not `None` and
       `batch_size` is `None`, returns `None`.
-
-  Raises:
-      ValueError: In case of invalid arguments.
   """
   if steps is not None and batch_size is not None:
-    raise ValueError(
-        'If ' + steps_name + ' is set, the `batch_size` must be None.')
+    raise ValueError('If ' + steps_name +
+                     ' is set, the `batch_size` must be None.')
   if check_steps_argument(ins, steps, steps_name):
     return None
   if hasattr(ins[0], 'shape'):
@@ -227,9 +224,8 @@ def standardize_single_array(x, expected_shape=None):
   if x is None:
     return None
 
-  if (x.shape is not None
-      and len(x.shape) == 1
-      and (expected_shape is None or len(expected_shape) != 1)):
+  if (x.shape is not None and len(x.shape) == 1 and
+      (expected_shape is None or len(expected_shape) != 1)):
     if tensor_util.is_tensor(x):
       x = array_ops.expand_dims(x, axis=1)
     else:
@@ -253,9 +249,8 @@ def standardize_input_data(data,
       data: User-provided input data (polymorphic).
       names: List of expected array names.
       shapes: Optional list of expected array shapes.
-      check_batch_axis: Boolean; whether to check that
-          the batch axis of the arrays matches the expected
-          value found in `shapes`.
+      check_batch_axis: Boolean; whether to check that the batch axis of the
+        arrays matches the expected value found in `shapes`.
       exception_prefix: String prefix used for exception formatting.
 
   Returns:
@@ -267,8 +262,9 @@ def standardize_input_data(data,
   if not names:
     if (data is not None and hasattr(data, '__len__') and len(data) and
         not isinstance(data, dict)):
-      raise ValueError('Error when checking model ' + exception_prefix + ': '
-                       'expected no data, but got:', data)
+      raise ValueError(
+          'Error when checking model ' + exception_prefix + ': '
+          'expected no data, but got:', data)
     return []
   if data is None:
     return [None for _ in range(len(names))]
@@ -296,8 +292,9 @@ def standardize_input_data(data,
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
     data = [data]
   if shapes is not None:
-    data = [standardize_single_array(x, shape)
-            for (x, shape) in zip(data, shapes)]
+    data = [
+        standardize_single_array(x, shape) for (x, shape) in zip(data, shapes)
+    ]
   else:
     data = [standardize_single_array(x) for x in data]
 
@@ -310,11 +307,11 @@ def standardize_input_data(data,
                        'but instead got the following list of ' +
                        str(len(data)) + ' arrays: ' + str(data)[:200] + '...')
     elif len(names) > 1:
-      raise ValueError(
-          'Error when checking model ' + exception_prefix +
-          ': you are passing a list as input to your model, '
-          'but the model expects a list of ' + str(len(names)) +
-          ' Numpy arrays instead. The list you passed was: ' + str(data)[:200])
+      raise ValueError('Error when checking model ' + exception_prefix +
+                       ': you are passing a list as input to your model, '
+                       'but the model expects a list of ' + str(len(names)) +
+                       ' Numpy arrays instead. The list you passed was: ' +
+                       str(data)[:200])
     elif len(data) == 1 and not hasattr(data[0], 'shape'):
       raise TypeError('Error when checking model ' + exception_prefix +
                       ': data should be a Numpy array, or list/dict of '
@@ -344,10 +341,10 @@ def standardize_input_data(data,
           shape = shape[1:]
         for dim, ref_dim in zip(data_shape, shape):
           if ref_dim != dim and ref_dim is not None and dim is not None:
-            raise ValueError(
-                'Error when checking ' + exception_prefix + ': expected ' +
-                names[i] + ' to have shape ' + str(shape) +
-                ' but got array with shape ' + str(data_shape))
+            raise ValueError('Error when checking ' + exception_prefix +
+                             ': expected ' + names[i] + ' to have shape ' +
+                             str(shape) + ' but got array with shape ' +
+                             str(data_shape))
   return data
 
 
@@ -389,10 +386,10 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
       x_weights.append(x_weight.get(name))
     return x_weights
   else:
-    raise TypeError(
-        'The model has multiple outputs, so `' + weight_type + '` '
-        'should be either a list or a dict. '
-        'Provided `' + weight_type + '` type not understood: ' + str(x_weight))
+    raise TypeError('The model has multiple outputs, so `' + weight_type + '` '
+                    'should be either a list or a dict. '
+                    'Provided `' + weight_type + '` type not understood: ' +
+                    str(x_weight))
 
 
 def standardize_class_weights(class_weight, output_names):
@@ -423,8 +420,11 @@ def check_array_lengths(inputs, targets, weights=None):
     if x is None:
       return {}
     else:
-      return set([y.shape[0] for y in x
-                  if y is not None and not tensor_util.is_tensor(y)])
+      return set([
+          y.shape[0]
+          for y in x
+          if y is not None and not tensor_util.is_tensor(y)
+      ])
 
   set_x = set_of_lengths(inputs)
   set_y = set_of_lengths(targets)
@@ -468,17 +468,20 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
       ValueError: if a loss function or target array
           is incompatible with an output.
   """
-  key_losses = {
+  key_loss_fns = {
       losses.mean_squared_error, losses.binary_crossentropy,
       losses.categorical_crossentropy
   }
+  key_loss_classes = (losses.MeanSquaredError, losses.BinaryCrossentropy,
+                      losses.CategoricalCrossentropy)
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
     if y is None or loss is None or tensor_util.is_tensor(y):
       continue
-    if loss is losses.categorical_crossentropy:
+    if losses.is_categorical_crossentropy(loss):
       if y.shape[-1] == 1:
-        raise ValueError('You are passing a target array of shape ' + str(
-            y.shape) + ' while using as loss `categorical_crossentropy`. '
+        raise ValueError('You are passing a target array of shape ' +
+                         str(y.shape) +
+                         ' while using as loss `categorical_crossentropy`. '
                          '`categorical_crossentropy` expects '
                          'targets to be binary matrices (1s and 0s) '
                          'of shape (samples, classes). '
@@ -492,14 +495,20 @@ def check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
                          'Alternatively, you can use the loss function '
                          '`sparse_categorical_crossentropy` instead, '
                          'which does expect integer targets.')
-    if loss in key_losses:
+
+    is_loss_wrapper = isinstance(loss, losses.LossFunctionWrapper)
+    if (isinstance(loss, key_loss_classes) or (is_loss_wrapper and
+                                               (loss.fn in key_loss_fns))):
       for target_dim, out_dim in zip(y.shape[1:], shape[1:]):
         if out_dim is not None and target_dim != out_dim:
+          loss_name = loss.name
+          if loss_name is None:
+            loss_type = loss.fn if is_loss_wrapper else type(loss)
+            loss_name = loss_type.__name__
           raise ValueError('A target array with shape ' + str(y.shape) +
                            ' was passed for an output of shape ' + str(shape) +
-                           ' while using as loss `' + loss.__name__ + '`. '
-                           'This loss expects '
-                           'targets to have the same shape '
+                           ' while using as loss `' + loss_name + '`. '
+                           'This loss expects targets to have the same shape '
                            'as the output.')
 
 
@@ -507,45 +516,57 @@ def collect_per_output_metric_info(metrics,
                                    output_names,
                                    output_shapes,
                                    loss_fns,
-                                   sample_weights=None):
+                                   is_weighted=False):
   """Maps metric names and functions to model outputs.
 
   Arguments:
-      metrics: a list or dict of metric functions.
+      metrics: a list or a list of lists or a dict of metric functions.
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
-      sample_weights: a list of weights to be applied on the model outputs.
+      is_weighted: Boolean indicating whether the given metrics are weighted.
 
   Returns:
       A list (one entry per model output) of dicts.
       For instance, if the model has 2 outputs, and for the first output
       we want to compute "binary_accuracy" and "binary_crossentropy",
       and just "binary_accuracy" for the second output,
-      the list would look like: `[
-        {
-          'acc': (binary_accuracy(), mean_obj_1),
-          'ce': (binary_crossentropy(), mean_obj_2)
-        },
-        {
-          'acc': (binary_accuracy(), mean_obj_3)
-        }
-      ]`
+      the list would look like: `[{
+          'acc': binary_accuracy(),
+          'ce': binary_crossentropy(),
+        }, {
+          'acc': binary_accuracy(),
+        }]`
 
   Raises:
       TypeError: if an incorrect type is passed for the `metrics` argument.
   """
   if not metrics:
     return [{} for _ in output_names]
+
   if isinstance(metrics, list):
-    # we then apply all metrics to all outputs.
-    nested_metrics = [copy.copy(metrics) for _ in output_names]
+    any_sub_list = any(isinstance(m, list) for m in metrics)
+    if any_sub_list:
+      if len(metrics) != len(output_names):
+        raise ValueError('When passing a list of lists as `metrics`, '
+                         'it should have one entry per model output. '
+                         'The model has ' + str(len(output_names)) +
+                         ' outputs, but you passed metrics=' + str(metrics))
+      # User has provided a list of len = len(outputs).
+      nested_metrics = [generic_utils.to_list(m) for m in metrics]
+    else:
+      # If it is a single list we then apply all metrics to all outputs.
+      if len(output_names) > 1:
+        nested_metrics = []
+        for _ in output_names:
+          nested_metrics.append(
+              [metrics_module.clone_metric(m) for m in metrics])
+      else:
+        nested_metrics = [metrics]
   elif isinstance(metrics, dict):
     nested_metrics = []
     for name in output_names:
-      output_metrics = metrics.get(name, [])
-      if not isinstance(output_metrics, list):
-        output_metrics = [output_metrics]
+      output_metrics = generic_utils.to_list(metrics.get(name, []))
       nested_metrics.append(output_metrics)
   else:
     raise TypeError('Type of `metrics` argument not understood. '
@@ -555,24 +576,15 @@ def collect_per_output_metric_info(metrics,
   for i, metrics in enumerate(nested_metrics):
     metrics_dict = OrderedDict()
     for metric in metrics:
-      weighted = False if (sample_weights is None) else (
-          sample_weights[i] is not None)
-      metric_name = get_metric_name(metric, weighted)
+      metric_name = get_metric_name(metric, is_weighted)
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
 
-      # If the metric function is not stateful, we create a stateful version and
-      # return both the stateless and the stateful version together. For batch
-      # APIs like `train_on_batch` we will use the stateless version and for
-      # other APIs like `fit` we will use the stateful version.
-      is_stateful = isinstance(metric_fn,
-                               base_layer.Layer) and metric_fn.stateful
-      stateful_fn = metric_fn
-      if not is_stateful:
-        stateful_fn = metrics_module.MeanMetricWrapper(
-            metric_fn, name=metric_fn.__name__)
-
-      metrics_dict[metric_name] = (metric_fn, stateful_fn)
+      # If the metric function is not stateful, we create a stateful version.
+      if not isinstance(metric_fn, metrics_module.Metric):
+        metric_fn = metrics_module.MeanMetricWrapper(
+            metric_fn, name=metric_name)
+      metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
   return per_output_metrics
@@ -602,71 +614,6 @@ def batch_shuffle(index_array, batch_size):
   return np.append(index_array, last_batch)
 
 
-def weighted_masked_objective(fn):
-  """Adds support for masking and sample-weighting to an objective function.
-
-  It transforms an objective function `fn(y_true, y_pred)`
-  into a sample-weighted, cost-masked objective function
-  `fn(y_true, y_pred, weights, mask)`.
-
-  Arguments:
-      fn: The objective function to wrap,
-          with signature `fn(y_true, y_pred)`.
-
-  Returns:
-      A function with signature `fn(y_true, y_pred, weights, mask)`.
-  """
-  if fn is None:
-    return None
-
-  def weighted(y_true, y_pred, weights, mask=None):
-    """Wrapper function.
-
-    Arguments:
-        y_true: `y_true` argument of `fn`.
-        y_pred: `y_pred` argument of `fn`.
-        weights: Weights tensor.
-        mask: Mask tensor.
-
-    Returns:
-        Scalar tensor.
-    """
-    # score_array has ndim >= 2
-    score_array = fn(y_true, y_pred)
-    if mask is not None:
-      mask = math_ops.cast(mask, y_pred.dtype)
-      # Update weights with mask.
-      if weights is None:
-        weights = mask
-      else:
-        # Update dimensions of weights to match with mask if possible.
-        mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-        weights *= mask
-
-    # Apply sample weighting.
-    if weights is not None:
-
-      # Update dimensions of weights to match with values if possible.
-      score_array, _, weights = squeeze_or_expand_dimensions(
-          score_array, None, weights)
-      try:
-        # Broadcast weights if possible.
-        weights = weights_broadcast_ops.broadcast_weights(weights, score_array)
-      except ValueError:
-        # Reduce values to same ndim as weight array.
-        ndim = K.ndim(score_array)
-        weight_ndim = K.ndim(weights)
-        score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
-
-      score_array = math_ops.multiply(score_array, weights)
-      score_array = math_ops.reduce_sum(score_array)
-      weights = math_ops.reduce_sum(weights)
-      score_array = math_ops.div_no_nan(score_array, weights)
-    return K.mean(score_array)
-
-  return weighted
-
-
 def standardize_weights(y,
                         sample_weight=None,
                         class_weight=None,
@@ -674,16 +621,17 @@ def standardize_weights(y,
   """Performs sample weight validation and standardization.
 
   Everything gets normalized to a single sample-wise (or timestep-wise)
-  weight array.
+  weight array. If both `sample_weight` and `class_weight` are provided,
+  the weights are multiplied.
 
   Arguments:
       y: Numpy array of model targets to be weighted.
       sample_weight: User-provided `sample_weight` argument.
       class_weight: User-provided `class_weight` argument.
-      sample_weight_mode: One of `None` or `"temporal"`.
-          `"temporal"` indicated that we expect 2D weight data
-          that will be applied to the last 2 dimensions of
-          the targets (i.e. we are weighting timesteps, not samples).
+      sample_weight_mode: One of `None` or `"temporal"`. `"temporal"` indicated
+        that we expect 2D weight data that will be applied to the last 2
+        dimensions of the targets (i.e. we are weighting timesteps, not
+        samples).
 
   Returns:
       A numpy array of target weights, one entry per sample to weight.
@@ -724,43 +672,53 @@ def standardize_weights(y,
 
   if sample_weight is not None:
     if len(sample_weight.shape) > len(y.shape):
-      raise ValueError(
-          'Found a sample_weight with shape' + str(sample_weight.shape) + '.'
-          'Expected sample_weight with rank '
-          'less than or equal to ' + str(len(y.shape)))
+      raise ValueError('Found a sample_weight with shape' +
+                       str(sample_weight.shape) + '.'
+                       'Expected sample_weight with rank '
+                       'less than or equal to ' + str(len(y.shape)))
 
     if (not tensor_util.is_tensor(sample_weight) and
         y.shape[:sample_weight.ndim] != sample_weight.shape):
-      raise ValueError(
-          'Found a sample_weight array with shape ' + str(sample_weight.shape) +
-          ' for an input with shape ' + str(y.shape) + '. '
-          'sample_weight cannot be broadcast.')
-    return sample_weight
-  elif isinstance(class_weight, dict):
+      raise ValueError('Found a sample_weight array with shape ' +
+                       str(sample_weight.shape) + ' for an input with shape ' +
+                       str(y.shape) + '. '
+                       'sample_weight cannot be broadcast.')
+
+  # Class weights applied per-sample.
+  class_sample_weight = None
+  if isinstance(class_weight, dict):
     if len(y.shape) > 2:
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
-    if y.shape[1] > 1:
-      y_classes = np.argmax(y, axis=1)
-    elif y.shape[1] == 1:
-      y_classes = np.reshape(y, y.shape[0])
+
+    if len(y.shape) == 2:
+      if y.shape[1] > 1:
+        y_classes = np.argmax(y, axis=1)
+      elif y.shape[1] == 1:
+        y_classes = np.reshape(y, y.shape[0])
     else:
       y_classes = y
 
-    weights = np.asarray(
+    class_sample_weight = np.asarray(
         [class_weight[cls] for cls in y_classes if cls in class_weight])
 
-    if len(weights) != len(y_classes):
+    if len(class_sample_weight) != len(y_classes):
       # subtract the sets to pick all missing classes
       existing_classes = set(y_classes)
       existing_class_weight = set(class_weight.keys())
-      raise ValueError('`class_weight` must contain all classes in the data.'
-                       ' The classes %s exist in the data but not in '
-                       '`class_weight`.' %
-                       (existing_classes - existing_class_weight))
-    return weights
-  else:
-    return None
+      raise ValueError(
+          '`class_weight` must contain all classes in the data.'
+          ' The classes %s exist in the data but not in '
+          '`class_weight`.' % (existing_classes - existing_class_weight))
+
+  if class_sample_weight is not None and sample_weight is not None:
+    # Multiply weights if both are provided.
+    return class_sample_weight * sample_weight
+  if sample_weight is not None:
+    return sample_weight
+  if class_sample_weight is not None:
+    return class_sample_weight
+  return None
 
 
 def has_symbolic_tensors(ls):
@@ -787,21 +745,29 @@ def get_metric_name(metric, weighted=False):
   Returns:
       The metric name.
   """
-  metric_name_prefix = 'weighted_' if weighted else ''
-  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-    if metric in ('accuracy', 'acc'):
-      suffix = 'acc'
-    elif metric in ('crossentropy', 'ce'):
-      suffix = 'ce'
+  if tf2.enabled():
+    # We keep the string that the user has set in compile as the metric name.
+    if isinstance(metric, six.string_types):
+      return metric
+
+    metric = metrics_module.get(metric)
+    return metric.name if hasattr(metric, 'name') else metric.__name__
   else:
-    metric_fn = metrics_module.get(metric)
-    # Get metric name as string
-    if hasattr(metric_fn, 'name'):
-      suffix = metric_fn.name
+    metric_name_prefix = 'weighted_' if weighted else ''
+    if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
+      if metric in ('accuracy', 'acc'):
+        suffix = 'acc'
+      elif metric in ('crossentropy', 'ce'):
+        suffix = 'ce'
     else:
-      suffix = metric_fn.__name__
-  metric_name = metric_name_prefix + suffix
-  return metric_name
+      metric_fn = metrics_module.get(metric)
+      # Get metric name as string
+      if hasattr(metric_fn, 'name'):
+        suffix = metric_fn.name
+      else:
+        suffix = metric_fn.__name__
+    metric_name = metric_name_prefix + suffix
+    return metric_name
 
 
 def get_metric_function(metric, output_shape=None, loss_fn=None):
@@ -809,29 +775,41 @@ def get_metric_function(metric, output_shape=None, loss_fn=None):
 
   Arguments:
       metric: Metric function name or reference.
-      output_shape: The shape of the output that this metric
-          will be calculated for.
+      output_shape: The shape of the output that this metric will be calculated
+        for.
       loss_fn: The loss function used.
 
   Returns:
       The metric function.
   """
+  if metric not in ['accuracy', 'acc', 'crossentropy', 'ce']:
+    return metrics_module.get(metric)
+
+  is_sparse_categorical_crossentropy = (
+      isinstance(loss_fn, losses.SparseCategoricalCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.sparse_categorical_crossentropy))
+
+  is_binary_crossentropy = (
+      isinstance(loss_fn, losses.BinaryCrossentropy) or
+      (isinstance(loss_fn, losses.LossFunctionWrapper) and
+       loss_fn.fn == losses.binary_crossentropy))
+
   if metric in ['accuracy', 'acc']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_accuracy  # case: binary accuracy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical accuracy with sparse targets
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_accuracy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_accuracy
-    return metrics_module.categorical_accuracy  # case: categorical accuracy
-  elif metric in ['crossentropy', 'ce']:
-    if output_shape[-1] == 1 or loss_fn == losses.binary_crossentropy:
-      return metrics_module.binary_crossentropy  # case: binary cross-entropy
-    elif loss_fn == losses.sparse_categorical_crossentropy:
-      # case: categorical cross-entropy with sparse targets
+    # If the output_shape[-1] is not 1, then we know output is `categorical`.
+    # We assume it is sparse categorical only if loss is explicitly given
+    # as sparse categorical crossentropy loss.
+    return metrics_module.categorical_accuracy
+  else:
+    if output_shape[-1] == 1 or is_binary_crossentropy:
+      return metrics_module.binary_crossentropy
+    elif is_sparse_categorical_crossentropy:
       return metrics_module.sparse_categorical_crossentropy
-    # case: categorical cross-entropy
     return metrics_module.categorical_crossentropy
-  return metrics_module.get(metric)
 
 
 def call_metric_function(metric_fn, y_true, y_pred, weights=None, mask=None):
@@ -855,25 +833,33 @@ def get_loss_function(loss):
   if loss is None or isinstance(loss, losses.Loss):
     return loss
 
-  # TODO(psv): After we have added all V2 losses, update this function.
-  if loss in ['mse', 'MSE', 'mean_squared_error']:
-    return losses.MeanSquaredError()
-  return losses.get(loss)
+  # Deserialize loss configuration, if needed.
+  if isinstance(loss, collections.Mapping):
+    loss = losses.get(loss)
+
+  # Custom callable class.
+  if callable(loss) and not hasattr(loss, '__name__'):
+    return loss
+
+  # Wrap loss function with signature `(y_true, y_pred, **kwargs)`
+  # in `LossFunctionWrapper` class.
+  loss_fn = losses.get(loss)
+  return losses.LossFunctionWrapper(loss_fn, name=loss_fn.__name__)
 
 
-def validate_iterator_input(x, y, sample_weight, validation_split=None):
+def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 
   Arguments:
-    x: Input data. A `tf.data` dataset iterator.
+    x: Input data. A `tf.data` dataset or iterator.
     y: Target data. It could be either Numpy array(s) or TensorFlow tensor(s).
-        Expected to be `None` when `x` is a dataset iterator.
-    sample_weight: An optional sample-weight array passed by the user to
-        weight the importance of each sample in `x`. Expected to be `None` when
-        `x` is a dataset iterator
-    validation_split: Float between 0 and 1. Fraction of the training data to
-        be used as validation data. Expected to be `None` when `x` is a dataset
-        iterator.
+      Expected to be `None` when `x` is a dataset iterator.
+    sample_weight: An optional sample-weight array passed by the user to weight
+      the importance of each sample in `x`. Expected to be `None` when `x` is a
+      dataset iterator
+    validation_split: Float between 0 and 1. Fraction of the training data to be
+      used as validation data. Expected to be `None` when `x` is a dataset
+      iterator.
 
   Raises:
     ValueError: if argument `y` or `sample_weight` or `validation_split` are
@@ -899,7 +885,8 @@ def validate_iterator_input(x, y, sample_weight, validation_split=None):
         'Received: x=%s, validation_split=%f' % (x, validation_split))
 
 
-def check_generator_arguments(y=None, sample_weight=None):
+def check_generator_arguments(y=None, sample_weight=None,
+                              validation_split=None):
   """Validates arguments passed when using a generator."""
   if y is not None:
     raise ValueError('`y` argument is not supported when data is'
@@ -909,6 +896,9 @@ def check_generator_arguments(y=None, sample_weight=None):
     raise ValueError('`sample_weight` argument is not supported when data is'
                      'a generator or Sequence instance. Instead pass sample'
                      ' weights as the third element of the generator.')
+  if validation_split:
+    raise ValueError('If your data is in the form of a Python generator, '
+                     'you cannot use `validation_split`.')
 
 
 def check_steps_argument(input_data, steps, steps_name):
@@ -934,15 +924,13 @@ def check_steps_argument(input_data, steps, steps_name):
       ValueError: if `steps` argument is required for given input data type
         but not provided.
   """
-
-  is_x_iterator = (
-      isinstance(input_data, iterator_ops.Iterator) or
-      isinstance(input_data, iterator_ops.EagerIterator))
-
+  # TODO(fchollet): allow datasets with steps=None if cardinality is known.
+  is_x_iterator = isinstance(
+      input_data, (iterator_ops.Iterator, iterator_ops.EagerIterator))
   if (input_data is None or is_x_iterator or has_symbolic_tensors(input_data) or
       (isinstance(input_data, list) and not input_data)):
     if steps is None:
-      input_type_str = 'iterators' if is_x_iterator else 'data tensors'
+      input_type_str = 'a Dataset iterator' if is_x_iterator else 'data tensors'
       raise ValueError('When using {input_type} as input to a model, you should'
                        ' specify the `{steps_name}` argument.'.format(
                            input_type=input_type_str, steps_name=steps_name))
@@ -1056,11 +1044,349 @@ def prepare_sample_weights(output_names, sample_weight_mode,
   return sample_weights, sample_weight_modes
 
 
+def prepare_loss_functions(loss, output_names):
+  """Converts loss to a list of loss functions.
+
+  Arguments:
+      loss: String (name of objective function), objective function or
+        `tf.losses.Loss` instance. See `tf.losses`. If the model has multiple
+        outputs, you can use a different loss on each output by passing a
+        dictionary or a list of losses. The loss value that will be minimized by
+        the model will then be the sum of all individual losses.
+      output_names: List of model output names.
+
+  Returns:
+      A list of loss objective functions.
+
+  Raises:
+      ValueError: If loss is a dict with keys not in model output names,
+          or if loss is a list with len not equal to model outputs.
+  """
+  if isinstance(loss, collections.Mapping):
+    for name in loss:
+      if name not in output_names:
+        raise ValueError('Unknown entry in loss dictionary: {}. Only expected '
+                         'following keys: {}'.format(name, output_names))
+    loss_functions = []
+    for name in output_names:
+      if name not in loss:
+        logging.warning(
+            'Output {0} missing from loss dictionary. We assume '
+            'this was done on purpose. The fit and evaluate APIs will not be '
+            'expecting any data to be passed to {0}.'.format(name))
+      loss_functions.append(get_loss_function(loss.get(name, None)))
+  elif isinstance(loss, six.string_types):
+    loss_functions = [get_loss_function(loss) for _ in output_names]
+  elif isinstance(loss, collections.Sequence):
+    if len(loss) != len(output_names):
+      raise ValueError('When passing a list as loss, it should have one entry '
+                       'per model outputs. The model has {} outputs, but you '
+                       'passed loss={}'.format(len(output_names), loss))
+    loss_functions = nest.map_structure(get_loss_function, loss)
+  else:
+    loss_functions = [get_loss_function(loss) for _ in range(len(output_names))]
+
+  return loss_functions
+
+
+def prepare_loss_weights(output_names, loss_weights=None):
+  """Converts loss weights to a list of loss weights.
+
+  Arguments:
+      output_names: List of model output names.
+      loss_weights: Optional list or dictionary specifying scalar coefficients
+        (Python floats) to weight the loss contributions of different model
+        outputs. The loss value that will be minimized by the model will then be
+        the *weighted sum* of all individual losses, weighted by the
+          `loss_weights` coefficients. If a list, it is expected to have a 1:1
+            mapping to the model's outputs. If a dict, it is expected to map
+            output names (strings) to scalar coefficients.
+
+  Returns:
+      A list of loss weights of python floats.
+
+  Raises:
+      ValueError: If loss weight is a dict with key not in model output names,
+          or if loss is a list with len not equal to model outputs.
+  """
+  if loss_weights is None:
+    weights_list = [1.] * len(output_names)
+  elif isinstance(loss_weights, dict):
+    for name in loss_weights:
+      if name not in output_names:
+        raise ValueError('Unknown entry in loss_weights dictionary: {}. '
+                         'Only expected the following keys: {}'.format(
+                             name, output_names))
+    weights_list = [loss_weights.get(name, 1.) for name in output_names]
+  elif isinstance(loss_weights, list):
+    if len(loss_weights) != len(output_names):
+      raise ValueError('When passing a list as loss_weights, '
+                       'it should have one entry per model output. '
+                       'The model has ' + str(len(output_names)) +
+                       ' outputs, but you passed loss_weights=' +
+                       str(loss_weights))
+    weights_list = loss_weights
+  else:
+    raise TypeError('Could not interpret loss_weights argument: ' +
+                    str(loss_weights) + ' - expected a list of dicts.')
+
+  return weights_list
+
+
 # TODO(rohanj): This is a hack to get around not depending on feature_column and
 # create a cyclical dependency. Figure out a cleaner solution
 def is_feature_layer(layer):
   """Returns whether `layer` is a FeatureLayer or not."""
   return getattr(layer, '_is_feature_layer', False)
+
+
+def is_eager_dataset_or_iterator(data):
+  return context.executing_eagerly() and isinstance(
+      data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+             iterator_ops.EagerIterator))
+
+
+# pylint: disable=protected-access
+def assert_not_batched(dataset):
+  """Asserts that `dataset` is not batched.
+
+  The algorithm used by this method is sound but not complete. In other words,
+  if the method fails to establish the assertion, it does not mean the dataset
+  is batched.
+
+  Example usage:
+  ```python
+  try:
+    assert_not_batched(dataset)
+    # safe to assume `dataset` it not batched here
+  expect ValueError:
+    # make no assumptions about `dataset`
+  ```
+
+  Args:
+    dataset: The dataset to analyze.
+
+  Raises:
+    ValueError: If the method cannot establish the assertion.
+  """
+  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+    return assert_not_batched(dataset._dataset)
+  else:
+    whitelisted_types = [
+        dataset_ops._OptionsDataset,
+        dataset_ops.ConcatenateDataset,
+        dataset_ops.CacheDataset,
+        dataset_ops.FilterDataset,
+        dataset_ops.MapDataset,
+        dataset_ops.ParallelMapDataset,
+        dataset_ops.PrefetchDataset,
+        dataset_ops.RangeDataset,
+        dataset_ops.RepeatDataset,
+        dataset_ops.ShuffleDataset,
+        dataset_ops.SkipDataset,
+        dataset_ops.SparseTensorSliceDataset,
+        dataset_ops.TakeDataset,
+        dataset_ops.TensorDataset,
+        dataset_ops.TensorSliceDataset,
+        dataset_ops.ZipDataset,
+        readers.FixedLengthRecordDatasetV2,
+        readers.TextLineDatasetV2,
+        readers.TFRecordDatasetV2,
+    ]
+    for ty in whitelisted_types:
+      if isinstance(dataset, ty):
+        for input_dataset in dataset._inputs():
+          assert_not_batched(input_dataset)
+        return
+    raise ValueError('Could not assert that dataset is not batched.')
+
+
+# pylint: disable=protected-access
+def assert_not_shuffled(dataset):
+  """Asserts that `dataset` is not shuffled.
+
+  The algorithm used by this method is sound but not complete. In other words,
+  if the method fails to establish the assertion, it does not mean the dataset
+  is shuffled.
+
+  Example usage:
+  ```python
+  try:
+    assert_not_shuffled(dataset)
+    # safe to assume `dataset` it not shuffled here
+  expect ValueError:
+    # make no assumptions about `dataset`
+  ```
+
+  Args:
+    dataset: The dataset to analyze.
+
+  Raises:
+    ValueError: If the method cannot establish the assertion.
+  """
+  if isinstance(dataset, dataset_ops.DatasetV1Adapter):
+    return assert_not_shuffled(dataset._dataset)
+  else:
+    whitelisted_types = [
+        dataset_ops._OptionsDataset,
+        dataset_ops.BatchDataset,
+        dataset_ops.ConcatenateDataset,
+        dataset_ops.CacheDataset,
+        dataset_ops.FilterDataset,
+        dataset_ops.MapDataset,
+        dataset_ops.PaddedBatchDataset,
+        dataset_ops.ParallelMapDataset,
+        dataset_ops.PrefetchDataset,
+        dataset_ops.RangeDataset,
+        dataset_ops.RepeatDataset,
+        dataset_ops.SkipDataset,
+        dataset_ops.SparseTensorSliceDataset,
+        dataset_ops.TakeDataset,
+        dataset_ops.TensorDataset,
+        dataset_ops.TensorSliceDataset,
+        dataset_ops.WindowDataset,
+        dataset_ops.ZipDataset,
+        readers.FixedLengthRecordDatasetV2,
+        readers.TextLineDatasetV2,
+        readers.TFRecordDatasetV2,
+    ]
+    for ty in whitelisted_types:
+      if isinstance(dataset, ty):
+        for input_dataset in dataset._inputs():
+          assert_not_shuffled(input_dataset)
+        return
+    raise ValueError('Could not assert that dataset is not shuffled.')
+
+
+def verify_dataset_shuffled(x):
+  """Verifies that the dataset is shuffled.
+
+  Args:
+    x: Dataset passed as an input to the model.
+
+  Raises:
+    ValueError: if the dataset is not already shuffled.
+  """
+  assert isinstance(x, dataset_ops.DatasetV2)
+  try:
+    assert_not_shuffled(x)
+  except ValueError:
+    # Dataset may or may not be shuffled.
+    return
+  else:
+    logging.warning('Expected a shuffled dataset but input dataset `x` is '
+                    'not shuffled. Please invoke `shuffle()` on input dataset.')
+
+
+def is_dataset_or_iterator(data):
+  return isinstance(data, (dataset_ops.DatasetV1, dataset_ops.DatasetV2,
+                           iterator_ops.EagerIterator, iterator_ops.Iterator))
+
+
+def get_iterator(dataset):
+  """Create and initialize an iterator from a dataset."""
+  iterator = dataset_ops.make_initializable_iterator(dataset)
+  initialize_iterator(iterator)
+  return iterator
+
+
+def initialize_iterator(iterator):
+  init_op = iterator.initializer
+  if not context.executing_eagerly():
+    K.get_session((init_op,)).run(init_op)
+
+
+def extract_tensors_from_dataset(dataset):
+  """Extract a tuple of tensors `inputs, targets, sample_weight` from a dataset.
+
+  Arguments:
+    dataset: Dataset instance.
+
+  Returns:
+    Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
+  """
+  iterator = get_iterator(dataset)
+  inputs, targets, sample_weight = unpack_iterator_input(iterator)
+  return inputs, targets, sample_weight
+
+
+def unpack_iterator_input(iterator):
+  """Convert a dataset iterator to a tuple of tensors `x, y, sample_weights`.
+
+  Arguments:
+    iterator: Instance of a dataset iterator.
+
+  Returns:
+    Tuple of tensors `x, y, weights`. `y` and `weights` entry may be None.
+  """
+  try:
+    next_element = iterator.get_next()
+  except errors.OutOfRangeError:
+    raise RuntimeError('Your dataset iterator ran out of data; '
+                       'Make sure that your dataset can generate '
+                       'required number of samples.')
+
+  if isinstance(next_element, (list, tuple)):
+    if len(next_element) not in [2, 3]:
+      raise ValueError(
+          'Please provide model inputs as a list or tuple of 2 or 3 '
+          'elements: (input, target) or (input, target, sample_weights) '
+          'Received %s' % next_element)
+    if len(next_element) == 2:
+      x, y = next_element
+      weights = None
+    else:
+      x, y, weights = next_element
+  else:
+    x = next_element
+    y = None
+    weights = None
+  return x, y, weights
+
+
+def infer_steps_for_dataset(dataset, steps, epochs=1, steps_name='steps'):
+  """Infers steps_per_epoch needed to loop through a dataset.
+
+  Arguments:
+      dataset: Input data of type tf.data.Dataset.
+      steps: Number of steps to draw from the dataset (may be None if unknown).
+      epochs: Number of times to iterate over the dataset.
+      steps_name: The string name of the steps argument, either `steps`,
+        `validation_steps`, or `steps_per_epoch`. Only used for error message
+        formatting.
+
+  Returns:
+    Integer or `None`. Inferred number of steps to loop through the dataset.
+    `None` is returned if the size of the dataset is unknown and `steps` was
+    not specified.
+
+  Raises:
+    ValueError: In case of invalid argument values.
+  """
+  assert isinstance(dataset, dataset_ops.DatasetV2)
+  size = K.get_value(cardinality.cardinality(dataset))
+  if size == cardinality.INFINITE and steps is None:
+    raise ValueError('When passing an infinitely repeating dataset, you '
+                     'must specify the `%s` argument.' % (steps_name,))
+  if size >= 0:
+    if steps is not None and steps * epochs > size:
+      if epochs > 1:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `epochs=%s` and `%s=%s`, which is a total of '
+                         '%s steps. We cannot draw that many steps from this '
+                         'dataset. We suggest to set `%s=%s`.' %
+                         (size, epochs, steps_name, steps, steps * epochs,
+                          steps_name, size // epochs))
+      else:
+        raise ValueError('The dataset you passed contains %s batches, but you '
+                         'passed `%s=%s`. We cannot draw that many steps from '
+                         'this dataset. We suggest to set `%s=%s`.' %
+                         (size, steps_name, steps, steps_name, size))
+  if steps is None:
+    if size >= 0:
+      return size
+    return None
+  return steps
 
 
 class ModelInputs(object):
@@ -1114,7 +1440,10 @@ class ModelInputs(object):
         # we have. The user should call `model._set_inputs(placeholders)`
         # to specify custom placeholders if the need arises.
         shape = (None,) + tuple(v.shape[1:])
-        v = K.placeholder(shape=shape, name=k)
+        dtype = dtypes.as_dtype(v.dtype)
+        if dtype.is_floating:
+          dtype = K.floatx()
+        v = K.placeholder(shape=shape, name=k, dtype=dtype)
       elif isinstance(v, tensor_shape.TensorShape):
         shape = (None,) + tuple(v.as_list()[1:])
         v = K.placeholder(shape=shape, name=k)
@@ -1150,7 +1479,7 @@ def get_input_shape_and_dtype(layer):
       does not have a defined input shape.
 
   Raises:
-    ValueError: in case an empty Sequential or Graph Network is passed.
+    ValueError: in case an empty Sequential or Functional model is passed.
   """
 
   def _is_graph_model(layer):
@@ -1192,55 +1521,50 @@ def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
 
 
-def trace_model_call(model, input_signature=None):
-  """Trace the model call to create a tf.function for exporting a Keras model.
+def convert_eager_tensors_to_numpy(structure):
+  """Convert every EagerTensor in `structure` to NumPy.
 
-  Args:
-    model: A Keras model.
-    input_signature: optional, a list of tf.TensorSpec objects specifying the
-      inputs to the model.
+  Arguments:
+    structure: An arbitrary structure of elements to be converted to NumPy
+      arrays.
 
   Returns:
-    A tf.function wrapping the model's call function with input signatures set.
+    An identical structure with EagerTensors converted to NumPy arrays.
+  """
+
+  def _convert(element):
+    if isinstance(element, ops.EagerTensor):
+      return element.numpy()
+    return element
+
+  return nest.map_structure(_convert, structure)
+
+
+def should_run_validation(validation_freq, epoch):
+  """Checks if validation should be run this epoch.
+
+  Arguments:
+    validation_freq: Integer or list. If an integer, specifies how many training
+      epochs to run before a new validation run is performed. If a list,
+      specifies the epochs on which to run validation.
+    epoch: Integer, the number of the training epoch just completed.
+
+  Returns:
+    Bool, True if validation should be run.
 
   Raises:
-    ValueError: if input signature cannot be inferred from the model.
+    ValueError: if `validation_freq` is an Integer and less than 1, or if
+    it is neither an Integer nor a Sequence.
   """
-  if input_signature is None:
-    if isinstance(model.call, def_function.PolymorphicFunction):
-      input_signature = model.call.input_signature
+  # `epoch` is 0-indexed internally but 1-indexed in the public API.
+  one_indexed_epoch = epoch + 1
 
-  if input_signature is None:
-    try:
-      inputs = model.inputs
-      input_names = model.input_names
-    except AttributeError:
-      raise ValueError(
-          'Model {} cannot be saved because the input shapes have not been '
-          'set. Usually, input shapes are automatically determined from calling'
-          ' .fit() or .predict(). To manually set the shapes, call '
-          'model._set_inputs(inputs).'.format(model))
-    input_specs = []
-    for input_tensor, input_name in zip(inputs, input_names):
-      input_specs.append(tensor_spec.TensorSpec(
-          shape=input_tensor.shape, dtype=input_tensor.dtype,
-          name=input_name))
-    # The input signature of the call function is a list with one element, since
-    # all tensor inputs must be passed in as the first argument.
-    input_signature = [input_specs] if len(input_specs) > 1 else input_specs
+  if isinstance(validation_freq, int):
+    if validation_freq < 1:
+      raise ValueError('`validation_freq` can not be less than 1.')
+    return one_indexed_epoch % validation_freq == 0
 
-  @def_function.function(input_signature=input_signature)
-  def _wrapped_model(*args):
-    """A concrete tf.function that wraps the model's call function."""
-    # When given a single input, Keras models will call the model on the tensor
-    # rather than a list consisting of the single tensor.
-    inputs = args[0] if len(input_signature) == 1 else list(args)
-    outputs_list = nest.flatten(model(inputs=inputs))
-    try:
-      output_names = model.output_names
-    except AttributeError:
-      output_names = generic_output_names(outputs_list)
-    return {name: output for name, output in zip(output_names, outputs_list)}
-
-  return _wrapped_model
-
+  if not isinstance(validation_freq, collections.Container):
+    raise ValueError('`validation_freq` must be an Integer or '
+                     '`collections.Container` (e.g. list, tuple, etc.)')
+  return one_indexed_epoch in validation_freq

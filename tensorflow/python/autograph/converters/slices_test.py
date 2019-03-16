@@ -23,7 +23,6 @@ from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.autograph.lang import directives
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import parser
-from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import list_ops
@@ -68,7 +67,7 @@ class SliceTest(converter_testing.TestCase):
     def_.directives[directives.set_element_type] = {
         'dtype': parser.parse_expression('tf.float32')
     }
-    with self.assertRaises(transformer.AutographParseError):
+    with self.assertRaises(ValueError):
       slices.transform(node, ctx)
 
 

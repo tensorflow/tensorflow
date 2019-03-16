@@ -85,6 +85,15 @@ const std::unordered_map<string, Node::NodeClass>& Node::kNodeClassTable =
         {"CollectiveBcastSend", NC_COLLECTIVE},
         {"CollectiveBcastRecv", NC_COLLECTIVE},
         {"FakeParam", NC_FAKE_PARAM},
+        {"PartitionedCall", NC_PARTITIONED_CALL},
+        {"StatefulPartitionedCall", NC_PARTITIONED_CALL},
+        // Not using the constants defined in FunctionLibraryDefinition for the
+        // 4 ops below because android inference library does not link
+        // tf.function related files.
+        {"_Arg", NC_ARG},
+        {"_DeviceArg", NC_ARG},
+        {"_Retval", NC_RETVAL},
+        {"_DeviceRetval", NC_RETVAL},
     });
 
 #undef REF_CLASS
@@ -306,17 +315,12 @@ Status Node::input_tensor(int idx, OutputTensor* t) const {
 // NodeDebugInfo
 
 NodeDebugInfo::NodeDebugInfo(const Node& n) : NodeDebugInfo(n.def()) {}
-NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef)
-    : name(ndef.name()),
-      original_node_names(
-          ndef.has_experimental_debug_info()
-              ? std::vector<string>({ndef.experimental_debug_info()
-                                         .original_node_names()
-                                         .begin(),
-                                     ndef.experimental_debug_info()
-                                         .original_node_names()
-                                         .end()})
-              : std::vector<string>()) {}
+NodeDebugInfo::NodeDebugInfo(const NodeDef& ndef) : name(ndef.name()) {
+  if (ndef.has_experimental_debug_info()) {
+    const auto& names = ndef.experimental_debug_info().original_node_names();
+    original_node_names.assign(names.begin(), names.end());
+  }
+}
 
 // InputTensor
 

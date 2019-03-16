@@ -1356,7 +1356,7 @@ class DropoutTest(test.TestCase):
     with self.cached_session():
       images = np.random.uniform(size=(5, height, width, 3))
       output = _layers.dropout(images)
-      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul')
+      self.assertEqual(output.op.name, 'Dropout/dropout_1/mul_1')
       output.get_shape().assert_is_compatible_with(
           ops.convert_to_tensor(images).get_shape())
 
@@ -1399,9 +1399,10 @@ class DropoutTest(test.TestCase):
     with self.cached_session() as sess:
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(images > 0, dtypes.float32))
       output = _layers.dropout(images)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
       self.assertGreater(num_elem, num_elem_initial / 2 - 0.1)
@@ -1421,9 +1422,10 @@ class DropoutTest(test.TestCase):
     with self.cached_session() as sess:
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(images > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(images > 0, dtypes.float32))
       output = _layers.dropout(images, is_training=False)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertEqual(num_elem, num_elem_initial)
       outputs, inputs = sess.run([output, images])
@@ -1435,9 +1437,10 @@ class DropoutTest(test.TestCase):
       images = random_ops.random_uniform(
           (5, height, width, 3), seed=1, name='images')
       output = _layers.fully_connected(images, 50)
-      num_elem_initial = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem_initial = math_ops.reduce_mean(
+          math_ops.cast(output > 0, dtypes.float32))
       output = _layers.dropout(output)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       sess.run(variables_lib.global_variables_initializer())
       num_elem, num_elem_initial = sess.run([num_elem, num_elem_initial])
       self.assertLess(num_elem, num_elem_initial / 2 + 0.1)
@@ -1450,7 +1453,7 @@ class DropoutTest(test.TestCase):
           (5, height, width, 3), seed=1, name='images')
       output = _layers.fully_connected(
           images, 50, normalizer_fn=_layers.dropout)
-      num_elem = math_ops.reduce_mean(math_ops.to_float(output > 0))
+      num_elem = math_ops.reduce_mean(math_ops.cast(output > 0, dtypes.float32))
       sess.run(variables_lib.global_variables_initializer())
       num_elem = sess.run(num_elem)
       self.assertLess(num_elem, 0.5)
@@ -2869,10 +2872,19 @@ class LayerNormTest(test.TestCase):
                    tol=1e-5,
                    begin_norm_axis=1,
                    dtype=dtypes.float64):
+    eps = 1e-12 if dtype != dtypes.float16 else 1e-3
     expected_mean = np.zeros(input_shape[:begin_norm_axis])
-    expected_var = np.ones(input_shape[:begin_norm_axis])
-    for mu in [0.0, 1e2]:
-      for sigma in [1.0, 0.1]:
+    expected_var_uncorrected = np.ones(input_shape[:begin_norm_axis])
+    sigma_list = [1.0, 0.1]
+    if dtype == dtypes.float16:
+      # This causes the variance to underflow in float16, and requires that
+      # variance_epsilon be set appropriately to avoid NaNs in the output.
+      sigma_list.append(1e-4)
+    # Note that the mean:variance ratio must be limited to the representable
+    # range for float16.
+    for mu in [0.0, 1e2 if dtype != dtypes.float16 else 1e1]:
+      for sigma in sigma_list:
+        expected_var = expected_var_uncorrected / (1.0 + eps / sigma**2)
         input_values = np.random.randn(*input_shape) * sigma + mu
         with ops.Graph().as_default() as g:
           with self.session(graph=g) as sess:
@@ -2893,10 +2905,13 @@ class LayerNormTest(test.TestCase):
             outputs, beta, gamma = sess.run((output_t, beta_var, gamma_var))
             # Make sure that there are no NaNs
             self.assertFalse(np.isnan(outputs).any())
+            if outputs.dtype != np.float64:
+              # Cast to float64 before computing mean/variance to avoid
+              # overflow and precision issues.
+              outputs = outputs.astype(np.float64)
             mean = np.mean(outputs, axis=moments_axis)
             var = np.var(outputs, axis=moments_axis)
             # Layer-norm implemented in numpy
-            eps = 1e-12
             expected_out = (
                 (gamma * (input_values - np.mean(
                     input_values, axis=moments_axis, keepdims=True)) /
@@ -2932,6 +2947,12 @@ class LayerNormTest(test.TestCase):
 
   def testOutputBigInput(self):
     self.doOutputTest((1, 100, 100, 1))
+
+  def testOutputBigInputFloat32(self):
+    self.doOutputTest((1, 100, 1000, 1), tol=1e-4, dtype=dtypes.float32)
+
+  def testOutputBigInputFloat16(self):
+    self.doOutputTest((1, 100, 1000, 1), tol=5e-2, dtype=dtypes.float16)
 
 
 class GDNTest(test.TestCase):

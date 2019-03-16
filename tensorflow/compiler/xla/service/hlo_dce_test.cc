@@ -43,9 +43,7 @@ class HloDceTest : public HloTestBase {
   // Returns whether the given instruction exists in the given computation.
   bool HasInstruction(const HloComputation& computation,
                       const HloInstruction* instruction) {
-    return std::find(computation.instructions().begin(),
-                     computation.instructions().end(),
-                     instruction) != computation.instructions().end();
+    return absl::c_linear_search(computation.instructions(), instruction);
   }
 };
 
@@ -225,8 +223,9 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
         HloInstruction::CreateParameter(0, shape, "cond_param"));
     auto constant = cond_builder.AddInstruction(
         HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
-    cond_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kLt, param, constant));
+    cond_builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), param,
+                                      constant, ComparisonDirection::kLt));
   }
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
 

@@ -1,6 +1,10 @@
 path: "tensorflow.strings"
 tf_module {
   member_method {
+    name: "as_string"
+    argspec: "args=[\'input\', \'precision\', \'scientific\', \'shortest\', \'width\', \'fill\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'False\', \'False\', \'-1\', \'\', \'None\'], "
+  }
+  member_method {
     name: "format"
     argspec: "args=[\'template\', \'inputs\', \'placeholder\', \'summarize\', \'name\'], varargs=None, keywords=None, defaults=[\'{}\', \'3\', \'None\'], "
   }

@@ -63,12 +63,12 @@ bool IsControlFlowOp(const string& tensorflow_op) {
   return false;
 }
 
-// Check if a TensorFlow Op is unsupportred by the Flex runtime.
+// Check if a TensorFlow Op is unsupported by the Flex runtime.
 bool IsUnsupportedFlexOp(const string& tensorflow_op) {
   if (IsControlFlowOp(tensorflow_op)) {
     return true;
   }
-  // `HashTableV2` isn't supported for now since it requires an additinonal
+  // `HashTableV2` isn't supported for now since it requires an additional
   // initialization step.
   // TODO(b/117651199): Support `HashTableV2` with Flex runtime.
   if (tensorflow_op == "HashTableV2") {
@@ -106,16 +106,17 @@ void WriteModelToString(const flatbuffers::FlatBufferBuilder& builder,
 namespace details {
 
 OperatorKey::OperatorKey(
-    const ::toco::Operator& op,
+    const ::toco::OperatorSignature& op_signature,
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
     bool enable_select_tf_ops) {
   // Get the op name (by Toco definition).
+  const ::toco::Operator& op = *op_signature.op;
   string name = HelpfulOperatorTypeName(op);
 
   bool is_builtin = false;
   const auto& builtin_ops = GetBuiltinOpsMap();
   if (ops_by_type.count(op.type) != 0) {
-    version_ = ops_by_type.at(op.type)->GetVersion(op);
+    version_ = ops_by_type.at(op.type)->GetVersion(op_signature);
     name = ops_by_type.at(op.type)->name();
     is_builtin = (builtin_ops.count(name) > 0);
   }
@@ -156,7 +157,7 @@ OperatorKey::OperatorKey(
         string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
   } else {
     // If Flex is disabled or the original TensorFlow NodeDef isn't available,
-    // we produce a custom op. This gives developers a chance to implemenr
+    // we produce a custom op. This gives developers a chance to implement
     // custom ops.
     custom_code_ = name;
   }
@@ -190,7 +191,8 @@ void LoadOperatorsMap(
   // First find a list of unique operator types.
   std::set<OperatorKey> keys;
   for (const auto& op : model.operators) {
-    keys.insert(OperatorKey(*op, ops_by_type, enable_select_tf_ops));
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    keys.insert(OperatorKey(op_signature, ops_by_type, enable_select_tf_ops));
   }
   // Now assign indices to them and fill in the map.
   int index = 0;
@@ -220,7 +222,8 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
 
     std::vector<int> shape;
     if (array.has_shape()) {
-      for (int d : array.shape().dims()) {
+      shape.reserve(array.shape().dims().size());
+      for (const auto& d : array.shape().dims()) {
         shape.push_back(d);
       }
     }
@@ -301,8 +304,9 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
   std::map<int, Offset<OperatorCode>> ordered_opcodes;
 
   for (const auto& op : model.operators) {
-    const details::OperatorKey operator_key =
-        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const details::OperatorKey operator_key = details::OperatorKey(
+        op_signature, ops_by_type, params.enable_select_tf_ops);
     int op_index = operators_map.at(operator_key);
 
     flatbuffers::Offset<flatbuffers::String> custom_code = 0;
@@ -349,9 +353,9 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
     for (const string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
     }
-
-    const auto key =
-        details::OperatorKey(*op, ops_by_type, params.enable_select_tf_ops);
+    const toco::OperatorSignature op_signature = {op.get(), &model};
+    const auto key = details::OperatorKey(op_signature, ops_by_type,
+                                          params.enable_select_tf_ops);
     int op_index = operators_map.at(key);
 
     auto tflite_op_it = ops_by_type.find(op->type);
@@ -381,7 +385,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
       if (!mutating_input_variables.empty()) {
-        for (int i = 0; i < op->inputs.size(); ++i) {
+        for (size_t i = 0; i < op->inputs.size(); ++i) {
           if (!mutating_input_variables[i]) {
             continue;
           }

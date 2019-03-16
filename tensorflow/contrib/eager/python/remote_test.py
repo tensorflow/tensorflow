@@ -24,12 +24,12 @@ import os
 import numpy as np
 
 from tensorflow.contrib.eager.python import parameter_server
-from tensorflow.contrib.eager.python import remote
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.eager import remote
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops

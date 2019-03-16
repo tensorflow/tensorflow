@@ -210,7 +210,7 @@ bool TryOneSkyscraperSoftmax(bool small_depth) {
 }
 
 TEST(TestQuantizedSoftmax, UniformSoftmaxTests) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneUniformSoftmax()) {
     }
@@ -218,7 +218,7 @@ TEST(TestQuantizedSoftmax, UniformSoftmaxTests) {
 }
 
 TEST(TestQuantizedSoftmax, SkyscraperSoftmaxTests) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneSkyscraperSoftmax(false)) {
     }
@@ -226,7 +226,7 @@ TEST(TestQuantizedSoftmax, SkyscraperSoftmaxTests) {
 }
 
 TEST(TestQuantizedSoftmax, SmallSkyscraperSoftmaxTests) {
-  const int kTestsToRun = 1000;
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneSkyscraperSoftmax(true)) {
     }

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -113,8 +112,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          {this, strings::StrCat(prefix, "::ParallelInterleave")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::ParallelInterleave")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -154,7 +153,13 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -488,8 +493,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           worker_threads_.reserve(dataset()->num_threads());
           for (size_t i = 0; i < dataset()->num_threads(); ++i) {
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
+            worker_threads_.emplace_back(ctx->StartThread(
+                strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           }
         }
@@ -587,8 +592,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
             }
             workers_[i].SetInputs(s, std::move(args));
             std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
-            worker_threads_.emplace_back(ctx->env()->StartThread(
-                {}, strings::StrCat("tf_data_parallel_interleave_worker_", i),
+            worker_threads_.push_back(ctx->StartThread(
+                strings::StrCat("tf_data_parallel_interleave_worker_", i),
                 [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
             if (i < dataset()->cycle_length_) {
               interleave_indices_.push_back(i);

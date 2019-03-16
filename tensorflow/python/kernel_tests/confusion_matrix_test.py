@@ -21,7 +21,6 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -173,7 +172,7 @@ class ConfusionMatrixTest(test.TestCase):
   def testWeighted(self):
     labels = np.arange(5, dtype=np.int32)
     predictions = np.arange(5, dtype=np.int32)
-    weights = constant_op.constant(np.arange(5, dtype=np.int32))
+    weights = np.arange(5, dtype=np.int32)
 
     truth = np.asarray(
         [[0, 0, 0, 0, 0],
@@ -470,9 +469,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
           labels_placeholder: label_values,
           predictions_placeholder: prediction_values
       }
-      with self.assertRaisesRegexp(
-          errors_impl.InvalidArgumentError,
-          "Can not squeeze dim\[2\]"):
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   r"Can not squeeze dim\[2\]"):
         dynamic_labels.eval(feed_dict=feed_dict)
       self.assertAllEqual(
           prediction_values, dynamic_predictions.eval(feed_dict=feed_dict))
@@ -498,9 +496,8 @@ class RemoveSqueezableDimensionsTest(test.TestCase):
       }
       self.assertAllEqual(
           label_values, dynamic_labels.eval(feed_dict=feed_dict))
-      with self.assertRaisesRegexp(
-          errors_impl.InvalidArgumentError,
-          "Can not squeeze dim\[2\]"):
+      with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
+                                   r"Can not squeeze dim\[2\]"):
         dynamic_predictions.eval(feed_dict=feed_dict)
 
 

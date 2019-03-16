@@ -17,6 +17,7 @@ sh_test(
         ":all_files",  # Go sources
         "//tensorflow:libtensorflow.so",  # C library
         "//tensorflow/c:headers",  # C library header
+        "//tensorflow/c/eager:headers",  # Eager C library header
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",  # Testdata for LoadSavedModel
     ],
 )

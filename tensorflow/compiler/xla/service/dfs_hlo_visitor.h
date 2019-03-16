@@ -103,11 +103,20 @@ class DfsHloVisitorBase {
   virtual Status HandlePower(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);
   }
+  virtual Status HandleSqrt(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
+  virtual Status HandleRsqrt(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleConvolution(HloInstructionPtr hlo) = 0;
   virtual Status HandleFft(HloInstructionPtr fft) = 0;
-  virtual Status HandleCrossReplicaSum(HloInstructionPtr hlo) = 0;
+  virtual Status HandleTriangularSolve(HloInstructionPtr hlo) = 0;
+  virtual Status HandleCholesky(HloInstructionPtr hlo) = 0;
+  virtual Status HandleAllReduce(HloInstructionPtr hlo) = 0;
   virtual Status HandleAllToAll(HloInstructionPtr hlo) = 0;
   virtual Status HandleCollectivePermute(HloInstructionPtr hlo) = 0;
+  virtual Status HandleReplicaId(HloInstructionPtr hlo) = 0;
   virtual Status HandleGetDimensionSize(HloInstructionPtr hlo) = 0;
   virtual Status HandleCompare(HloInstructionPtr hlo) {
     return HandleElementwiseBinary(hlo);

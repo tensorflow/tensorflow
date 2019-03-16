@@ -26,53 +26,19 @@ import six
 
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
-from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import naming
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import compiler
-from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
 
-
-def imported_decorator(f):
-  return lambda a: f(a) + 1
-
-
-# TODO(mdan): We should use the real namer here.
-class FakeNamer(object):
-  """A fake namer that uses a global counter to generate unique names."""
-
-  def __init__(self):
-    self.i = 0
-
-  def new_symbol(self, name_root, used):
-    while True:
-      self.i += 1
-      name = '%s%d' % (name_root, self.i)
-      if name not in used:
-        return name
-
-  def compiled_function_name(self,
-                             original_fqn,
-                             live_entity=None,
-                             owner_type=None):
-    if inspect_utils.islambda(live_entity):
-      return None, False
-    if owner_type is not None:
-      return None, False
-    return ('renamed_%s' % '_'.join(original_fqn)), True
-
-
-class FakeNoRenameNamer(FakeNamer):
-
-  def compiled_function_name(self, original_fqn, **_):
-    return str(original_fqn), False
+RESULT_OF_MOCK_CONVERTED_CALL = 7
 
 
 class TestCase(test.TestCase):
@@ -95,8 +61,8 @@ class TestCase(test.TestCase):
     self.dynamic_calls = []
     def converted_call(*args):
       """Mock version of api.converted_call."""
-      self.dynamic_calls.append(args)
-      return 7
+      self.dynamic_calls.append(args[3:])  # args only; see api.converted_call
+      return RESULT_OF_MOCK_CONVERTED_CALL
 
     try:
       result, source = compiler.ast_to_object(node, include_source_map=True)
@@ -107,11 +73,13 @@ class TestCase(test.TestCase):
                                    converter.ConversionOptions)
       fake_ag.__dict__.update(operators.__dict__)
       fake_ag.__dict__.update(special_functions.__dict__)
-      fake_ag.__dict__['utils'] = utils
-      fake_ag.__dict__['rewrite_graph_construction_error'] = (
+      fake_ag.ConversionOptions = converter.ConversionOptions
+      fake_ag.Feature = converter.Feature
+      fake_ag.utils = utils
+      fake_ag.rewrite_graph_construction_error = (
           errors.rewrite_graph_construction_error)
-      fake_ag.__dict__['function_scope'] = function_wrapping.function_scope
-      result.__dict__['ag__'] = fake_ag
+      fake_ag.function_scope = function_wrapping.function_scope
+      result.ag__ = fake_ag
       for k, v in namespace.items():
         result.__dict__[k] = v
       yield result
@@ -151,35 +119,20 @@ class TestCase(test.TestCase):
     for k, v in ns.items():
       setattr(module, k, v)
 
-  def prepare(self,
-              test_fn,
-              namespace,
-              namer=None,
-              arg_types=None,
-              owner_type=None,
-              recursive=True,
-              strip_decorators=()):
+  def prepare(self, test_fn, namespace, arg_types=None, recursive=True):
     namespace['ConversionOptions'] = converter.ConversionOptions
 
-    node, source = parser.parse_entity(test_fn)
-    node = node.body[0]
-    if namer is None:
-      namer = FakeNamer()
+    node, source, _ = parser.parse_entity(test_fn)
+    namer = naming.Namer(namespace)
     program_ctx = converter.ProgramContext(
-        options=converter.ConversionOptions(
-            recursive=recursive,
-            strip_decorators=strip_decorators,
-            verbose=True),
-        partial_types=None,
-        autograph_module=None,
-        uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
+        options=converter.ConversionOptions(recursive=recursive),
+        autograph_module=None)
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file='<fragment>',
         namespace=namespace,
         arg_values=None,
-        arg_types=arg_types,
-        owner_type=owner_type)
+        arg_types=arg_types)
     ctx = converter.EntityContext(namer, entity_info, program_ctx)
     origin_info.resolve(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)

@@ -279,7 +279,7 @@ class SummaryToEventTransformer(object):
     self.event_writer.add_event(event)
 
 
-@tf_export("summary.FileWriter")
+@tf_export(v1=["summary.FileWriter"])
 class FileWriter(SummaryToEventTransformer):
   """Writes `Summary` protocol buffers to event files.
 

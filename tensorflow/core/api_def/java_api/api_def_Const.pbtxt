@@ -1,4 +1,4 @@
 op {
-  graph_op_name: "Const" #TODO(karllessard) escape that reserved name
-  visibility: HIDDEN
+  graph_op_name: "Const"
+  visibility: SKIP
 }

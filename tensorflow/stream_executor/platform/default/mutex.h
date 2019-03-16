@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DEFAULT_MUTEX_H_
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_DEFAULT_MUTEX_H_
 
-#include "tensorflow/stream_executor/platform/mutex.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace stream_executor {
 

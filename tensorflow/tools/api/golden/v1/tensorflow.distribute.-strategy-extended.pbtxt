@@ -51,6 +51,10 @@ tf_class {
     argspec: "args=[\'self\', \'colocate_with_variable\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "experimental_make_numpy_dataset"
+    argspec: "args=[\'self\', \'numpy_input\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "experimental_run_steps_on_iterator"
     argspec: "args=[\'self\', \'fn\', \'iterator\', \'iterations\', \'initial_loop_values\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
@@ -77,5 +81,9 @@ tf_class {
   member_method {
     name: "value_container"
     argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "variable_created_in_scope"
+    argspec: "args=[\'self\', \'v\'], varargs=None, keywords=None, defaults=None"
   }
 }

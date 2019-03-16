@@ -81,16 +81,33 @@ public final class Tensor {
   }
 
   /**
+   * Returns the (global) index of the tensor within the owning {@link Interpreter}.
+   *
+   * @hide
+   */
+  public int index() {
+    return index(nativeHandle);
+  }
+
+  /**
    * Copies the contents of the provided {@code src} object to the Tensor.
    *
    * <p>The {@code src} should either be a (multi-dimensional) array with a shape matching that of
-   * this tensor, or a {@link ByteByffer} of compatible primitive type with a matching flat size.
+   * this tensor, a {@link ByteByffer} of compatible primitive type with a matching flat size, or
+   * {@code null} iff the tensor has an underlying delegate buffer handle.
    *
    * @throws IllegalArgumentException if the tensor is a scalar or if {@code src} is not compatible
    *     with the tensor (for example, mismatched data types or shapes).
    */
   void setTo(Object src) {
-    throwExceptionIfTypeIsIncompatible(src);
+    if (src == null) {
+      if (hasDelegateBufferHandle(nativeHandle)) {
+        return;
+      }
+      throw new IllegalArgumentException(
+          "Null inputs are allowed only if the Tensor is bound to a buffer handle.");
+    }
+    throwIfDataIsIncompatible(src);
     if (isByteBuffer(src)) {
       ByteBuffer srcBuffer = (ByteBuffer) src;
       // For direct ByteBuffer instances we support zero-copy. Note that this assumes the caller
@@ -108,12 +125,20 @@ public final class Tensor {
   /**
    * Copies the contents of the tensor to {@code dst} and returns {@code dst}.
    *
-   * @param dst the destination buffer, either an explicitly-typed array or a {@link ByteBuffer}.
+   * @param dst the destination buffer, either an explicitly-typed array, a {@link ByteBuffer} or
+   *     {@code null} iff the tensor has an underlying delegate buffer handle.
    * @throws IllegalArgumentException if {@code dst} is not compatible with the tensor (for example,
    *     mismatched data types or shapes).
    */
   Object copyTo(Object dst) {
-    throwExceptionIfTypeIsIncompatible(dst);
+    if (dst == null) {
+      if (hasDelegateBufferHandle(nativeHandle)) {
+        return dst;
+      }
+      throw new IllegalArgumentException(
+          "Null outputs are allowed only if the Tensor is bound to a buffer handle.");
+    }
+    throwIfDataIsIncompatible(dst);
     if (dst instanceof ByteBuffer) {
       ByteBuffer dstByteBuffer = (ByteBuffer) dst;
       dstByteBuffer.put(buffer());
@@ -126,11 +151,15 @@ public final class Tensor {
   /** Returns the provided buffer's shape if specified and different from this Tensor's shape. */
   // TODO(b/80431971): Remove this method after deprecating multi-dimensional array inputs.
   int[] getInputShapeIfDifferent(Object input) {
+    if (input == null) {
+      return null;
+    }
     // Implicit resizes based on ByteBuffer capacity isn't supported, so short-circuit that path.
     // The ByteBuffer's size will be validated against this Tensor's size in {@link #setTo(Object)}.
     if (isByteBuffer(input)) {
       return null;
     }
+    throwIfTypeIsIncompatible(input);
     int[] inputShape = computeShapeOf(input);
     if (Arrays.equals(shapeCopy, inputShape)) {
       return null;
@@ -215,7 +244,27 @@ public final class Tensor {
     }
   }
 
-  private void throwExceptionIfTypeIsIncompatible(Object o) {
+  private void throwIfDataIsIncompatible(Object o) {
+    throwIfTypeIsIncompatible(o);
+    throwIfShapeIsIncompatible(o);
+  }
+
+  private void throwIfTypeIsIncompatible(Object o) {
+    // ByteBuffer payloads can map to any type, so exempt it from the check.
+    if (isByteBuffer(o)) {
+      return;
+    }
+    DataType oType = dataTypeOf(o);
+    if (oType != dtype) {
+      throw new IllegalArgumentException(
+          String.format(
+              "Cannot convert between a TensorFlowLite tensor with type %s and a Java "
+                  + "object of type %s (which is compatible with the TensorFlowLite type %s).",
+              dtype, o.getClass().getName(), oType));
+    }
+  }
+
+  private void throwIfShapeIsIncompatible(Object o) {
     if (isByteBuffer(o)) {
       ByteBuffer oBuffer = (ByteBuffer) o;
       if (oBuffer.capacity() != numBytes()) {
@@ -227,15 +276,6 @@ public final class Tensor {
       }
       return;
     }
-    DataType oType = dataTypeOf(o);
-    if (oType != dtype) {
-      throw new IllegalArgumentException(
-          String.format(
-              "Cannot convert between a TensorFlowLite tensor with type %s and a Java "
-                  + "object of type %s (which is compatible with the TensorFlowLite type %s).",
-              dtype, o.getClass().getName(), oType));
-    }
-
     int[] oShape = computeShapeOf(o);
     if (!Arrays.equals(oShape, shapeCopy)) {
       throw new IllegalArgumentException(
@@ -278,9 +318,13 @@ public final class Tensor {
 
   private static native int numBytes(long handle);
 
+  private static native boolean hasDelegateBufferHandle(long handle);
+
   private static native void readMultiDimensionalArray(long handle, Object dst);
 
   private static native void writeMultiDimensionalArray(long handle, Object src);
+
+  private static native int index(long handle);
 
   static {
     TensorFlowLite.init();

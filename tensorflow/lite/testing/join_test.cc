@@ -26,6 +26,11 @@ TEST(JoinTest, JoinInt) {
   EXPECT_EQ(Join(data.data(), data.size(), ","), "1,2,3");
 }
 
+TEST(JoinDefaultTest, JoinFloat) {
+  float data[] = {1.0, -3, 2.3, 1e-5};
+  EXPECT_EQ(JoinDefault(data, 4, " "), "1 -3 2.3 1e-05");
+}
+
 TEST(JoinTest, JoinFloat) {
   float data[] = {1.0, -3, 2.3, 1e-5};
   EXPECT_EQ(Join(data, 4, " "), "1 -3 2.29999995 9.99999975e-06");

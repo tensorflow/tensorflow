@@ -56,9 +56,9 @@ TEST_F(HloCreationUtilsTest, CollapseFirst1Dim) {
   entry_computation->set_root_instruction(first_1_dims_collapsed);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          evaluator.Evaluate<Literal>(
-                              *module, {LiteralUtil::CreateR1<int32>({3, 4})}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({3, 4})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR1<int32>({3, 4}));
 }
 
@@ -77,10 +77,9 @@ TEST_F(HloCreationUtilsTest, CollapseFirst2Dims) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(
-          *module,
-          {LiteralUtil::CreateR3<int32>(
-              {{{1, 2}, {3, 4}, {5, 6}}, {{-1, -2}, {-3, -4}, {-5, -6}}})}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR3<int32>(
+                                      {{{1, 2}, {3, 4}, {5, 6}},
+                                       {{-1, -2}, {-3, -4}, {-5, -6}}})}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR2<int32>(
                {{1, 2}, {3, 4}, {5, 6}, {-1, -2}, {-3, -4}, {-5, -6}}));
@@ -101,8 +100,7 @@ TEST_F(HloCreationUtilsTest, Prepend1DegenerateDim) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module,
-                                  {LiteralUtil::CreateR1<int32>({9, 10})}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({9, 10})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{9, 10}}));
 }
 
@@ -121,8 +119,7 @@ TEST_F(HloCreationUtilsTest, Prepend2DegenerateDims) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module,
-                                  {LiteralUtil::CreateR1<int32>({9, 10})}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({9, 10})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR3<int32>({{{9, 10}}}));
 }
 
@@ -141,7 +138,7 @@ TEST_F(HloCreationUtilsTest, Prepend2DegenerateDimsToScalar) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module, {LiteralUtil::CreateR0<int32>(9)}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(9)}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{9}}));
 }
 
@@ -160,8 +157,8 @@ TEST_F(HloCreationUtilsTest, ExpandFirstDimInto3Dims) {
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(
-          *module, {LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6})}));
+      evaluator.Evaluate(*module,
+                         {LiteralUtil::CreateR1<int32>({1, 2, 3, 4, 5, 6})}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR3<int32>({{{1, 2}}, {{3, 4}}, {{5, 6}}}));
 }
@@ -180,9 +177,9 @@ TEST_F(HloCreationUtilsTest, PadVectorWithZeros) {
   entry_computation->set_root_instruction(zero_padded_param);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          evaluator.Evaluate<Literal>(
-                              *module, {LiteralUtil::CreateR1<int32>({3, 4})}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR1<int32>({3, 4})}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR1<int32>({0, 0, 0, 3, 4, 0}));
 }
 
@@ -194,15 +191,14 @@ TEST_F(HloCreationUtilsTest, BroadcastZeros_S32) {
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloInstruction * zeros,
-      BroadcastZeros(module->entry_computation(), S32, {2, 2}));
+  HloInstruction* zeros =
+      BroadcastZeros(module->entry_computation(), S32, {2, 2});
   entry_computation->set_root_instruction(zeros);
 
   HloEvaluator evaluator;
   TF_ASSERT_OK_AND_ASSIGN(
       Literal result_literal,
-      evaluator.Evaluate<Literal>(*module, {LiteralUtil::CreateR0<int32>(0)}));
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<int32>(0)}));
   CHECK_EQ(result_literal, LiteralUtil::CreateR2<int32>({{0, 0}, {0, 0}}));
 }
 
@@ -214,15 +210,14 @@ TEST_F(HloCreationUtilsTest, BroadcastZeros_F32) {
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloInstruction * zeros,
-      BroadcastZeros(module->entry_computation(), F32, {2, 2}));
+  HloInstruction* zeros =
+      BroadcastZeros(module->entry_computation(), F32, {2, 2});
   entry_computation->set_root_instruction(zeros);
 
   HloEvaluator evaluator;
-  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
-                          evaluator.Evaluate<Literal>(
-                              *module, {LiteralUtil::CreateR0<float>(0.0f)}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result_literal,
+      evaluator.Evaluate(*module, {LiteralUtil::CreateR0<float>(0.0f)}));
   CHECK_EQ(result_literal,
            LiteralUtil::CreateR2<float>({{0.0f, 0.0f}, {0.0f, 0.0f}}));
 }

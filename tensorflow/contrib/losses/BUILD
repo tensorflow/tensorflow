@@ -82,10 +82,11 @@ py_library(
 
 py_test(
     name = "metric_loss_ops_test",
-    size = "large",
+    size = "medium",
     srcs = [
         "python/metric_learning/metric_loss_ops_test.py",
     ],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     deps = [
         ":metric_learning_py",

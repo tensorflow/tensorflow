@@ -29,7 +29,8 @@ Status DynamicParameterBinding::Bind(
 }
 
 absl::optional<DynamicParameterBinding::DynamicParameter>
-DynamicParameterBinding::GetBinding(const DynamicDimension& dynamic_dimension) {
+DynamicParameterBinding::GetBinding(
+    const DynamicDimension& dynamic_dimension) const {
   auto param_iter = bindings_.find(dynamic_dimension);
   if (param_iter == bindings_.end()) {
     return absl::nullopt;
@@ -70,7 +71,7 @@ StatusOr<DynamicParameterBinding> DynamicParameterBinding::CreateFromProto(
     int64 target_param_num = binding.target_param_num();
     ShapeIndex target_param_index(binding.target_param_index().begin(),
                                   binding.target_param_index().end());
-    int64 target_dim_num = binding.target_param_num();
+    int64 target_dim_num = binding.target_param_dim_num();
 
     TF_RETURN_IF_ERROR(
         result.Bind(DynamicParameter{dynamic_param_num, dynamic_param_index},
@@ -111,7 +112,8 @@ Status DynamicParameterBinding::Verify(const HloModule& module) const {
   return ForEachBinding([&](const DynamicParameter& dynamic_parameter,
                             const DynamicDimension& dynamic_dimension)
                             -> Status {
-    TF_RET_CHECK(dynamic_parameter.parameter_num < entry->num_parameters());
+    TF_RET_CHECK(dynamic_parameter.parameter_num >= 0 &&
+                 dynamic_parameter.parameter_num < entry->num_parameters());
     TF_RET_CHECK(dynamic_dimension.parameter_num < entry->num_parameters());
     TF_RET_CHECK(ShapeUtil::IndexIsValid(
         entry->parameter_instruction(dynamic_parameter.parameter_num)->shape(),
@@ -121,10 +123,11 @@ Status DynamicParameterBinding::Verify(const HloModule& module) const {
         dynamic_dimension.parameter_index));
     TF_RET_CHECK(
         dynamic_dimension.dimension <
-        ShapeUtil::Rank(ShapeUtil::GetSubshape(
+        ShapeUtil::GetSubshape(
             entry->parameter_instruction(dynamic_dimension.parameter_num)
                 ->shape(),
-            dynamic_dimension.parameter_index)));
+            dynamic_dimension.parameter_index)
+            .rank());
     return Status::OK();
   });
 }

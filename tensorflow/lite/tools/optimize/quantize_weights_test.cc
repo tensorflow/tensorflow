@@ -12,215 +12,346 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/quantize_weights.h"
-
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 
-#include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
+#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/quantize_weights.h"
+#include "tensorflow/lite/tools/optimize/test_util.h"
+
+namespace {
+tensorflow::string* g_test_model_dir = nullptr;
+}  // namespace
 
 namespace tflite {
 namespace optimize {
 namespace {
 
-class QuantizeWeightsTest : public ::testing::Test {
+std::unique_ptr<FlatBufferModel> ReadTestModel() {
+  auto model_path = tensorflow::io::JoinPath(
+      *g_test_model_dir, internal::kConvModelWith0Plus10Weights);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
+}
+
+std::unique_ptr<FlatBufferModel> ReadSharedWeightsTestModel() {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir,
+                                             internal::kModelWithSharedWeights);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
+}
+
+template <typename T>
+std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
+  return std::vector<T>(vec->begin(), vec->end());
+}
+
+class QuantizeWeightsTest : public testing::Test {
  protected:
-  int GetElementsNum(const TensorT* tensor) {
-    int tensor_size = 1;
-    for (const int dim : tensor->shape) {
-      tensor_size *= dim;
-    }
-    return tensor_size;
+  QuantizeWeightsTest() {}
+
+  void LoadBasicModel() {
+    input_model_ = ReadTestModel();
+    model_ = input_model_->GetModel();
   }
 
-  const OperatorT* GetOpWithOutput(const SubGraphT* subgraph,
-                                   int32_t output_tensor_idx) {
-    for (int i = 0; i < subgraph->operators.size(); ++i) {
-      OperatorT* op = subgraph->operators[i].get();
-      if (std::find(op->outputs.begin(), op->outputs.end(),
-                    output_tensor_idx) != op->outputs.end()) {
-        return op;
-      }
-    }
-    return nullptr;
+  void LoadSharedWeightsModel() {
+    input_model_ = ReadSharedWeightsTestModel();
+    model_ = input_model_->GetModel();
   }
 
-  void SymmetricDequantizeAndCompare(const BufferT* input_buffer,
-                                     const BufferT* output_buffer,
-                                     float scale) {
-    const float* input_buffer_data =
-        reinterpret_cast<const float*>(input_buffer->data.data());
-    const int8_t* output_buffer_data =
-        reinterpret_cast<const int8_t*>(output_buffer->data.data());
-    for (int i = 0; i < output_buffer->data.size(); i++) {
-      float diff = input_buffer_data[i] - (output_buffer_data[i] * scale);
-      ASSERT_TRUE(std::abs(diff) <= scale);
+  std::unique_ptr<FlatBufferModel> input_model_;
+  const Model* model_;
+
+  bool IsModelInputOrOutput(const Model* model, uint32_t tensor_idx) {
+    for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+         ++subgraph_idx) {
+      const auto subgraph = model->subgraphs()->Get(subgraph_idx);
+      for (size_t i = 0; i < subgraph->inputs()->size(); ++i) {
+        if (subgraph->inputs()->Get(i) == tensor_idx) {
+          return true;
+        }
+      }
+      for (size_t i = 0; i < subgraph->outputs()->size(); ++i) {
+        if (subgraph->outputs()->Get(i) == tensor_idx) {
+          return true;
+        }
+      }
     }
+    return false;
   }
 
-  void AsymmetricDequantizeAndCompare(const BufferT* input_buffer,
-                                      const BufferT* output_buffer, float scale,
-                                      int64_t zero_point) {
-    const float* input_buffer_data =
-        reinterpret_cast<const float*>(input_buffer->data.data());
-    const uint8_t* output_buffer_data = output_buffer->data.data();
-    for (int i = 0; i < output_buffer->data.size(); i++) {
-      float diff =
-          input_buffer_data[i] - ((output_buffer_data[i] - zero_point) * scale);
-      ASSERT_TRUE(std::abs(diff) <= scale);
-    }
-  }
-
-  void CheckWeights(const Model* input_model_packed,
-                    const Model* output_model_packed,
-                    bool use_hybrid_evaluation,
-                    uint64_t weights_min_num_elements = 1024) {
-    std::unique_ptr<ModelT> input_model;
-    input_model.reset(input_model_packed->UnPack());
-
-    std::unique_ptr<ModelT> output_model;
-    output_model.reset(output_model_packed->UnPack());
-
-    SubGraphT* subgraph = output_model->subgraphs.at(0).get();
-
-    for (int i = 0; i < subgraph->operators.size(); ++i) {
-      OperatorT* op = subgraph->operators[i].get();
-      const BuiltinOperator op_code =
-          output_model->operator_codes[op->opcode_index]->builtin_code;
-
-      // These are the operations that should be quantized.
-      // TODO(suharshs): Right now this test only checks the relevant operations
-      // for the mobilenet v1 model used in the tests below.
-      int32_t tensor_idx;
-      if (op_code == BuiltinOperator_CONV_2D ||
-          op_code == BuiltinOperator_DEPTHWISE_CONV_2D ||
-          op_code == BuiltinOperator_FULLY_CONNECTED) {
-        tensor_idx = op->inputs[1];
-      } else {
-        continue;
-      }
-
-      bool eval_hybrid = false;
-      // These are the ops that support hybrid evaluation.
-      if (op_code == BuiltinOperator_FULLY_CONNECTED ||
-          op_code == BuiltinOperator_CONV_2D) {
-        eval_hybrid = true;
-      }
-
-      const TensorT* tensor = subgraph->tensors[tensor_idx].get();
-      int tensor_size = GetElementsNum(tensor);
-      // If the tensor_size is less than 1024 we expect the tensor to remain
-      // unquantized.
-      if (tensor_size < weights_min_num_elements) {
-        ASSERT_TRUE(tensor->type == TensorType_FLOAT32)
-            << tensor->name << " of type " << tensor->type;
-        const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
-        // The weight tensor should not come from a dequantize op.
-        ASSERT_TRUE(preceding_op == nullptr);
-      } else if (use_hybrid_evaluation && eval_hybrid) {
-        // The input to the op should still be uint8.
-        ASSERT_TRUE(tensor->type == TensorType_UINT8) << tensor->name;
-        // The weight tensor should not come from a dequantize op.
-        const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
-        ASSERT_TRUE(preceding_op == nullptr);
-
-        // Test symmetric quantization.
-        SymmetricDequantizeAndCompare(
-            input_model->buffers[tensor->buffer].get(),
-            output_model->buffers[tensor->buffer].get(),
-            tensor->quantization->scale[0]);
-
-      } else {
-        // The input to the op should still be float.
-        ASSERT_TRUE(tensor->type == TensorType_FLOAT32) << tensor->name;
-        const OperatorT* preceding_op = GetOpWithOutput(subgraph, tensor_idx);
-        ASSERT_TRUE(preceding_op != nullptr);
-        // The float input should be the dequantize output.
-        ASSERT_TRUE(output_model->operator_codes[preceding_op->opcode_index]
-                        ->builtin_code == BuiltinOperator_DEQUANTIZE);
-        // Finally, ensure that the input to the dequantize operation is
-        // quantized.
-        const TensorT* quantized_tensor =
-            subgraph->tensors[preceding_op->inputs[0]].get();
-        ASSERT_TRUE(quantized_tensor->type == TensorType_UINT8);
-
-        // Test the assymetric quantization.
-        AsymmetricDequantizeAndCompare(
-            input_model->buffers[quantized_tensor->buffer].get(),
-            output_model->buffers[quantized_tensor->buffer].get(),
-            quantized_tensor->quantization->scale[0],
-            quantized_tensor->quantization->zero_point[0]);
+  // Returns the producer op code of the specified tensor_idx.
+  bool GetProducerOpCode(const Model* model, uint32_t subgraph_idx,
+                         uint32_t tensor_idx,
+                         tflite::BuiltinOperator* op_code) {
+    const auto subgraph = model->subgraphs()->Get(subgraph_idx);
+    for (size_t op_idx = 0; op_idx < subgraph->operators()->size(); ++op_idx) {
+      const auto op = subgraph->operators()->Get(op_idx);
+      for (size_t i = 0; i < op->outputs()->size(); ++i) {
+        if (op->outputs()->Get(i) == tensor_idx) {
+          const uint32_t op_code_idx = op->opcode_index();
+          *op_code = model->operator_codes()->Get(op_code_idx)->builtin_code();
+          return true;
+        }
       }
     }
+    return false;
   }
 };
 
-TEST_F(QuantizeWeightsTest, SimpleTestWithHybrid) {
-  string model_path =
-      "third_party/tensorflow/lite/tools/optimize/testdata/"
-      "mobilenet_v1_0.25_128.tflite";
-  std::unique_ptr<FlatBufferModel> input_fb =
-      FlatBufferModel::BuildFromFile(model_path.data());
-  const Model* input_model = input_fb->GetModel();
-
+TEST_F(QuantizeWeightsTest, QuantizationSucceeds) {
+  LoadBasicModel();
   flatbuffers::FlatBufferBuilder builder;
-  EXPECT_EQ(QuantizeWeights(&builder, input_model), kTfLiteOk);
+  auto status = QuantizeWeights(&builder, model_, 0);
+  EXPECT_EQ(status, kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
-
-  CheckWeights(input_model, output_model, true);
+  ASSERT_TRUE(output_model);
 }
 
-TEST_F(QuantizeWeightsTest, SimpleTestWithoutHybrid) {
-  string model_path =
-      "third_party/tensorflow/lite/tools/optimize/testdata/"
-      "mobilenet_v1_0.25_128.tflite";
-  std::unique_ptr<FlatBufferModel> input_fb =
-      FlatBufferModel::BuildFromFile(model_path.data());
-  const Model* input_model = input_fb->GetModel();
-
-  flatbuffers::FlatBufferBuilder builder;
-  // Disable hybrid evaluation.
-  EXPECT_EQ(internal::QuantizeWeights(&builder, input_model, false), kTfLiteOk);
-
-  const uint8_t* buffer = builder.GetBufferPointer();
-  const Model* output_model = GetModel(buffer);
-
-  CheckWeights(input_model, output_model, false);
-}
-
-TEST_F(QuantizeWeightsTest, SimpleTestWithWeightsMinNumElements) {
-  string model_path =
-      "third_party/tensorflow/lite/tools/optimize/testdata/"
-      "mobilenet_v1_0.25_128.tflite";
-  std::unique_ptr<FlatBufferModel> input_fb =
-      FlatBufferModel::BuildFromFile(model_path.data());
-  const Model* input_model = input_fb->GetModel();
-
-  flatbuffers::FlatBufferBuilder builder;
+TEST_F(QuantizeWeightsTest, WeightsMinNumElements) {
+  LoadBasicModel();
   // Make weights_min_size sufficiently large such that no quantization should
   // happen, i.e. the original model is the same size as the old one.
+  flatbuffers::FlatBufferBuilder builder;
   const uint64_t kWeightsMinNumElements = 1000000;
-  EXPECT_EQ(QuantizeWeights(&builder, input_model, kWeightsMinNumElements),
+  EXPECT_EQ(QuantizeWeights(&builder, model_, kWeightsMinNumElements),
             kTfLiteOk);
 
   const uint8_t* buffer = builder.GetBufferPointer();
   const Model* output_model = GetModel(buffer);
-  CheckWeights(input_model, output_model, true, kWeightsMinNumElements);
+  ASSERT_TRUE(output_model);
+
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       subgraph_idx++) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    const auto float_graph = model_->subgraphs()->Get(subgraph_idx);
+    ASSERT_EQ(quantized_graph->tensors()->size(),
+              float_graph->tensors()->size());
+    for (size_t i = 0; i < quantized_graph->tensors()->size(); i++) {
+      const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      const auto float_tensor = float_graph->tensors()->Get(i);
+      // Everything should remain equal between the two graphs.
+      EXPECT_EQ(quant_tensor->buffer(), float_tensor->buffer());
+      EXPECT_EQ(quant_tensor->is_variable(), float_tensor->is_variable());
+      EXPECT_EQ(GetAsVector(quant_tensor->shape()),
+                GetAsVector(float_tensor->shape()));
+      EXPECT_EQ(quant_tensor->name()->str(), float_tensor->name()->str());
+      EXPECT_EQ(quant_tensor->type(), float_tensor->type());
+    }
+  }
 }
 
-// TODO(suharshs): Add tests that run the resulting model.
+TEST_F(QuantizeWeightsTest, HybridConv) {
+  LoadBasicModel();
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = QuantizeWeights(&builder, model_, 0);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  // Nothing should change.
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       subgraph_idx++) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    const auto float_graph = model_->subgraphs()->Get(subgraph_idx);
+    ASSERT_EQ(quantized_graph->tensors()->size(),
+              float_graph->tensors()->size());
+    // Make sure the graph only has one Conv operation.
+    ASSERT_EQ(quantized_graph->operators()->size(), 1);
+    const auto op = quantized_graph->operators()->Get(0);
+    const uint32_t op_code_idx = op->opcode_index();
+    ASSERT_EQ(output_model->operator_codes()->Get(op_code_idx)->builtin_code(),
+              BuiltinOperator_CONV_2D);
+    for (size_t i = 0; i < quantized_graph->tensors()->size(); i++) {
+      const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      const auto float_tensor = float_graph->tensors()->Get(i);
+      EXPECT_EQ(quant_tensor->buffer(), float_tensor->buffer());
+      EXPECT_EQ(quant_tensor->is_variable(), float_tensor->is_variable());
+      EXPECT_EQ(GetAsVector(quant_tensor->shape()),
+                GetAsVector(float_tensor->shape()));
+      EXPECT_EQ(quant_tensor->name()->str(), float_tensor->name()->str());
+      // If the tensor is a weight, it should have type INT8, otherwise it
+      // should stay with type FLOAT32.
+      // If the tensor is a bias, it should have type FLOAT32.
+      if (quant_tensor->name()->str() == "conv_bias") {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (IsModelInputOrOutput(output_model, i)) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (quant_tensor->buffer() != 0) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_INT8)
+            << quant_tensor->name()->str();
+      } else {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      }
+    }
+  }
+}
+
+TEST_F(QuantizeWeightsTest, DequantizeConv) {
+  LoadBasicModel();
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = internal::QuantizeWeights(&builder, model_, 0,
+                                          /*use_hybrid_evaluation=*/false);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       ++subgraph_idx) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    const auto float_graph = model_->subgraphs()->Get(subgraph_idx);
+    // The output graph should have an extra tensor from the added dequantize
+    // op.
+    ASSERT_EQ(quantized_graph->tensors()->size(),
+              float_graph->tensors()->size() + 1);
+    // Check that a dequantize op exists.
+    int32_t dequant_input_idx = -1;
+    int32_t dequant_output_idx = -1;
+    for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+      const auto op = quantized_graph->operators()->Get(i);
+      const uint32_t op_code_idx = op->opcode_index();
+      if (output_model->operator_codes()->Get(op_code_idx)->builtin_code() ==
+          BuiltinOperator_DEQUANTIZE) {
+        dequant_input_idx = op->inputs()->Get(0);
+        dequant_output_idx = op->outputs()->Get(0);
+      }
+    }
+    ASSERT_GT(dequant_input_idx, -1);
+    ASSERT_GT(dequant_output_idx, -1);
+    for (size_t i = 0; i < quantized_graph->tensors()->size(); ++i) {
+      const auto quant_tensor = quantized_graph->tensors()->Get(i);
+      // If the tensor is a weight, it should have type INT8.
+      // If the tensor is a bias, it should have type FLOAT32.
+      // If the tensor is an input or output it should have type FLOAT32.
+      // The input to dequantize should be INT8, and all other tensors should be
+      // FLOAT32.
+      if (i == dequant_input_idx) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_INT8);
+      } else if (i == dequant_output_idx) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (IsModelInputOrOutput(output_model, i)) {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (quant_tensor->name()->str() == "conv_bias") {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      } else if (quant_tensor->buffer() != 0) {
+        // If its a non-bias constant tensor, is must be the weight.
+        EXPECT_EQ(quant_tensor->type(), TensorType_INT8);
+      } else {
+        EXPECT_EQ(quant_tensor->type(), TensorType_FLOAT32);
+      }
+    }
+  }
+}
+
+TEST_F(QuantizeWeightsTest, SharedWeights_Hybrid) {
+  LoadSharedWeightsModel();
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = QuantizeWeights(&builder, model_, 0);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  uint32_t num_conv_ops = 0;
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       ++subgraph_idx) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+      const auto op = quantized_graph->operators()->Get(i);
+      const uint32_t op_code_idx = op->opcode_index();
+      const auto op_code =
+          output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+      if (op_code == BuiltinOperator_CONV_2D) {
+        num_conv_ops++;
+        // Ensure that each convolution's weights tensor is now INT8.
+        const auto weights_tensor =
+            quantized_graph->tensors()->Get(op->inputs()->Get(1));
+        EXPECT_EQ(weights_tensor->type(), TensorType_INT8);
+      }
+    }
+  }
+  // Ensure that there were exactly two convolutions in the model.
+  EXPECT_EQ(num_conv_ops, 2);
+}
+
+TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
+  LoadSharedWeightsModel();
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = internal::QuantizeWeights(&builder, model_, 0,
+                                          /*use_hybrid_evaluation*/ false);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  uint32_t num_conv_ops = 0;
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       ++subgraph_idx) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+      const auto op = quantized_graph->operators()->Get(i);
+      const uint32_t op_code_idx = op->opcode_index();
+      const auto op_code =
+          output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+      if (op_code == BuiltinOperator_CONV_2D) {
+        num_conv_ops++;
+        // Ensure that each convolution's weights tensor is still FLOAT
+        // (the output of the dequantize).
+        uint32_t weights_tensor_index = op->inputs()->Get(1);
+        const auto weights_tensor =
+            quantized_graph->tensors()->Get(weights_tensor_index);
+        EXPECT_EQ(weights_tensor->type(), TensorType_FLOAT32);
+
+        // Check that it comes from a dequantize operation.
+        BuiltinOperator producer_op_code;
+        ASSERT_TRUE(GetProducerOpCode(output_model, subgraph_idx,
+                                      weights_tensor_index, &producer_op_code));
+        EXPECT_EQ(producer_op_code, BuiltinOperator_DEQUANTIZE);
+      }
+    }
+  }
+  // Ensure that there were exactly two convolutions in the model.
+  EXPECT_EQ(num_conv_ops, 2);
+}
 
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: FLAGS_logtostderr = true;
-  ::testing::InitGoogleTest(&argc, argv);
+  tensorflow::string model_file;
+  const std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("test_model_file", &model_file,
+                       "Path to test tflite model file."),
+  };
+
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
+  g_test_model_dir =
+      new tensorflow::string(tensorflow::io::Dirname(model_file));
+  ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }

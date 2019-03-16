@@ -86,6 +86,7 @@ class ReluTest(test.TestCase):
     self.assertAllClose(np_relu, tf_relu)
     self.assertShapeEqual(np_relu, tf_relu)
 
+  @test_util.disable_xla("b/123338077")  # Passes with XLA
   def testReluInt8x4BadShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")
@@ -521,7 +522,7 @@ class SeluTest(test.TestCase):
     for t in [np.float16, np.float32, np.float64]:
       self._testSelu(
           np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))
-      # Force executed on CPU in case GPU kernels are avaiable.
+      # Force executed on CPU in case GPU kernels are available.
       with ops.device("/device:CPU:0"):
         self._testSelu(
             np.array([[-9, 7, -5, 3, -1], [1, -3, 5, -7, 9]]).astype(t))

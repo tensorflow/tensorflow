@@ -143,11 +143,12 @@ class LinSpaceOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({num}), &out));
     auto flat = out->flat<T>();
-    if (num == 1) {
-      flat(0) = start;
-    } else {
+    flat(0) = start;
+    if (num > 1) {
       const T step = (stop - start) / (num - 1);
-      for (Tnum i = 0; i < num; ++i) flat(i) = start + step * i;
+      for (Tnum i = 1; i < num - 1; ++i) flat(i) = start + step * i;
+      // Ensure final value == stop; float arithmetic won't guarantee this.
+      flat(num - 1) = stop;
     }
   }
 };

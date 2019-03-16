@@ -26,7 +26,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
@@ -235,7 +235,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
                        expected_ragged_rank=None,
                        expected_shape=None):
     rt_inputs = self._rt_inputs_to_tensors(rt_inputs, ragged_ranks)
-    concatenated = ragged_array_ops.concat(rt_inputs, axis)
+    concatenated = ragged_concat_ops.concat(rt_inputs, axis)
     if expected_ragged_rank is not None:
       self.assertEqual(concatenated.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
@@ -276,7 +276,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
                       message=None,
                       ragged_ranks=None):
     rt_inputs = self._rt_inputs_to_tensors(rt_inputs, ragged_ranks)
-    self.assertRaisesRegexp(error, message, ragged_array_ops.concat, rt_inputs,
+    self.assertRaisesRegexp(error, message, ragged_concat_ops.concat, rt_inputs,
                             axis)
 
   @parameterized.parameters([
@@ -294,7 +294,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
     rt_inputs = [
         array_ops.placeholder_with_default(rt, shape=None) for rt in rt_inputs
     ]
-    concatenated = ragged_array_ops.concat(rt_inputs, axis)
+    concatenated = ragged_concat_ops.concat(rt_inputs, axis)
     with self.assertRaisesRegexp(error, message):
       self.evaluate(concatenated)
 
@@ -307,7 +307,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
     ]
     self.assertRaisesRegexp(
         ValueError, r'axis may only be negative if ndims is statically known.',
-        ragged_array_ops.concat, rt_inputs, -1)
+        ragged_concat_ops.concat, rt_inputs, -1)
 
   def testSingleTensorInput(self):
     """Tests ragged_concat with a single tensor input.
@@ -317,7 +317,7 @@ class RaggedConcatOpTest(ragged_test_util.RaggedTensorTestCase,
     returns that tensor.  This test exercises that path.
     """
     rt_inputs = ragged_factory_ops.constant([[1, 2], [3, 4]])
-    concatenated = ragged_array_ops.concat(rt_inputs, 0)
+    concatenated = ragged_concat_ops.concat(rt_inputs, 0)
     self.assertRaggedEqual(concatenated, [[1, 2], [3, 4]])
 
 

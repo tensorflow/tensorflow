@@ -25,6 +25,7 @@ from tensorflow.python.keras import activations
 from tensorflow.python.keras import applications
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras import callbacks_v1
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import datasets
 from tensorflow.python.keras import estimator
@@ -33,6 +34,7 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics
 from tensorflow.python.keras import models
+from tensorflow.python.keras import ops
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras import preprocessing
 from tensorflow.python.keras import regularizers
@@ -41,14 +43,12 @@ from tensorflow.python.keras import wrappers
 from tensorflow.python.keras.layers import Input
 from tensorflow.python.keras.models import Model
 from tensorflow.python.keras.models import Sequential
-from tensorflow.python.keras.saving.saved_model import export
-from tensorflow.python.keras.saving.saved_model import load_from_saved_model
 
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 __version__ = '2.2.4-tf'
 
-tf_export('keras.__version__').export_constant(__name__, '__version__')
+keras_export('keras.__version__').export_constant(__name__, '__version__')
 
 del absolute_import
 del division

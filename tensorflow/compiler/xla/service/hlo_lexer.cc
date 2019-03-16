@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_split.h"
@@ -37,8 +38,8 @@ constexpr int kError = -2;
 
 // [a-zA-Z0-9_.-]
 bool IsIdentifierChar(char c) {
-  return isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '.' ||
-         c == '_';
+  return absl::ascii_isalnum(static_cast<unsigned char>(c)) || c == '-' ||
+         c == '.' || c == '_';
 }
 
 }  // namespace
@@ -105,7 +106,7 @@ TokKind HloLexer::LexToken() {
     switch (current_char) {
       default:
         // [a-zA-Z_]
-        if (isalpha(static_cast<unsigned char>(current_char)) ||
+        if (absl::ascii_isalpha(static_cast<unsigned char>(current_char)) ||
             current_char == '_') {
           return LexIdentifier();
         }
@@ -140,12 +141,20 @@ TokKind HloLexer::LexToken() {
         return LexNumberOrPattern();
       case '=':
         return TokKind::kEqual;
+      case '<':
+        if (current_char == '<' && PeekCurrentChar() == '=') {
+          current_ptr_++;
+          return TokKind::kLeq;
+        }
+        return TokKind::kError;
       case ',':
         return TokKind::kComma;
       case '%':
         return LexPercent();
       case ':':
         return TokKind::kColon;
+      case '*':
+        return TokKind::kAsterisk;
       case '[':
         return TokKind::kLsquare;
       case ']':
@@ -205,6 +214,15 @@ TokKind HloLexer::LexToken() {
         // A lone '/' is an error.
         return TokKind::kError;
       }
+      case '.':
+        if (PeekCurrentChar() == '.') {
+          current_ptr_++;
+          if (PeekCurrentChar() == '.') {
+            current_ptr_++;
+            return TokKind::kDots;
+          }
+        }
+        return TokKind::kError;
       case '"':
         return LexString();
     }
@@ -294,7 +312,7 @@ TokKind HloLexer::LexIdentifier() {
 // name ::= [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexPercent() {
   const char* name_start = current_ptr_;
-  if (isalpha(static_cast<unsigned char>(PeekCurrentChar())) ||
+  if (absl::ascii_isalpha(static_cast<unsigned char>(PeekCurrentChar())) ||
       PeekCurrentChar() == '_') {
     current_ptr_++;
     while (IsIdentifierChar(PeekCurrentChar())) {
@@ -448,6 +466,8 @@ string TokKindToString(TokKind kind) {
       return "kComma";
     case TokKind::kColon:
       return "kColon";
+    case TokKind::kAsterisk:
+      return "kAsterisk";
     case TokKind::kLsquare:
       return "kLsquare";
     case TokKind::kRsquare:
@@ -462,6 +482,8 @@ string TokKindToString(TokKind kind) {
       return "kRparen";
     case TokKind::kArrow:
       return "kArrow";
+    case TokKind::kLeq:
+      return "kLeq";
     case TokKind::kw_HloModule:
       return "kw_HloModule";
     case TokKind::kw_ENTRY:
@@ -504,6 +526,8 @@ string TokKindToString(TokKind kind) {
       return "kInt";
     case TokKind::kDecimal:
       return "kDecimal";
+    case TokKind::kDots:
+      return "kDots";
   }
 }
 

@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 
 namespace tensorflow {
-
 namespace {
 
 class BigtableClientOp : public OpKernel {
@@ -277,9 +276,7 @@ class ToBigtableOp : public AsyncOpKernel {
             LOG(ERROR) << "Failure applying mutation on row ("
                        << failure.original_index()
                        << "): " << failure.mutation().row_key()
-                       << " - error: " << failure.status().error_message()
-                       << " (Details: " << failure.status().error_details()
-                       << ").";
+                       << " - error: " << failure.status().message() << ".";
           }
         }
         OP_REQUIRES_ASYNC(
@@ -341,8 +338,8 @@ class ToBigtableOp : public AsyncOpKernel {
   }
 
   template <typename T>
-  Status ParseScalarArgument(OpKernelContext* ctx,
-                             const StringPiece& argument_name, T* output) {
+  Status ParseScalarArgument(OpKernelContext* ctx, StringPiece argument_name,
+                             T* output) {
     const Tensor* argument_t;
     TF_RETURN_IF_ERROR(ctx->input(argument_name, &argument_t));
     if (!TensorShapeUtils::IsScalar(argument_t->shape())) {
@@ -360,5 +357,4 @@ REGISTER_KERNEL_BUILDER(Name("DatasetToBigtable").Device(DEVICE_CPU),
 
 }  // namespace
 }  // namespace data
-
 }  // namespace tensorflow

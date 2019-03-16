@@ -512,6 +512,13 @@ library {
         }
       }
       attr {
+        key: "explicit_paddings"
+        value {
+          list {
+          }
+        }
+      }
+      attr {
         key: "strides"
         value {
           list {

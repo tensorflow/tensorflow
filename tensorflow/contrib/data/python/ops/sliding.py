@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
@@ -30,7 +29,6 @@ class _SlideDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, window_size, window_shift, window_stride):
     """See `sliding_window_batch` for details."""
-    super(_SlideDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
         window_size, dtype=dtypes.int64, name="window_stride")
@@ -39,18 +37,15 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     self._window_shift = ops.convert_to_tensor(
         window_shift, dtype=dtypes.int64, name="window_shift")
 
-    input_structure = structure.convert_legacy_structure(
-        input_dataset.output_types, input_dataset.output_shapes,
-        input_dataset.output_classes)
+    input_structure = dataset_ops.get_structure(input_dataset)
     self._structure = input_structure._batch(None)  # pylint: disable=protected-access
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_sliding_window_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_sliding_window_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         window_size=self._window_size,
         window_shift=self._window_shift,
         window_stride=self._window_stride,
         **dataset_ops.flat_structure(self))
+    super(_SlideDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
   def _element_structure(self):
@@ -61,7 +56,7 @@ class _SlideDataset(dataset_ops.UnaryDataset):
     None, "stride is deprecated, use window_shift instead", "stride")
 @deprecation.deprecated(
     None, "Use `tf.data.Dataset.window(size=window_size, shift=window_shift, "
-    "stride=window_stride).flat_map(lambda x: x.batch(window.size))` "
+    "stride=window_stride).flat_map(lambda x: x.batch(window_size))` "
     "instead.")
 def sliding_window_batch(window_size,
                          stride=None,

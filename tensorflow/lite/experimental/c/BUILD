@@ -19,16 +19,14 @@ load(
 tflite_cc_shared_object(
     name = "libtensorflowlite_c.so",
     linkopts = select({
-        "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow/lite/experimental/c:exported_symbols.lds)",
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/lite/experimental/c:exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflowlite_c.so",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow/lite/experimental/c:version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow/lite/experimental/c:version_script.lds)",
         ],
     }),
     deps = [
@@ -66,7 +64,6 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:context",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
@@ -94,7 +91,6 @@ cc_test(
     deps = [
         ":c_api",
         "//tensorflow/lite:context",
-        "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

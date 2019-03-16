@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
@@ -83,7 +84,7 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     r"""Initialize a `LinearOperatorAdjoint`.
 
     `LinearOperatorAdjoint` is initialized with an operator `A`.  The `solve`
-    and `matmul` methods effectively flip the `adjoint` argument.  E.g.
+    and `matmul` methods  effectively flip the `adjoint` argument.  E.g.
 
     ```
     A = MyLinearOperator(...)
@@ -175,13 +176,22 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     return self.operator.assert_self_adjoint()
 
   def _shape(self):
-    return self.operator.shape
+    # Rotate last dimension
+    shape = self.operator.shape
+    return shape[:-2].concatenate([shape[-1], shape[-2]])
 
   def _shape_tensor(self):
-    return self.operator.shape_tensor()
+    # Rotate last dimension
+    shape = self.operator.shape_tensor()
+    return array_ops.concat([
+        shape[:-2], [shape[-1], shape[-2]]], axis=-1)
 
   def _matmul(self, x, adjoint=False, adjoint_arg=False):
     return self.operator.matmul(
+        x, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
+
+  def _matvec(self, x, adjoint=False, adjoint_arg=False):
+    return self.operator.matvec(
         x, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
 
   def _determinant(self):
@@ -201,7 +211,14 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     return self.operator.solve(
         rhs, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
 
+  def _solvevec(self, rhs, adjoint=False, adjoint_arg=False):
+    return self.operator.solvevec(
+        rhs, adjoint=(not adjoint), adjoint_arg=adjoint_arg)
+
   def _to_dense(self):
     if self.is_self_adjoint:
       return self.operator.to_dense()
     return linalg.adjoint(self.operator.to_dense())
+
+  def _add_to_tensor(self, x):
+    return self.to_dense() + x

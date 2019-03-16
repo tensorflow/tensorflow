@@ -23,6 +23,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":xla",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
@@ -63,29 +64,37 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary_op_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "xla_test",
     srcs = ["xla_test.py"],
     additional_deps = [
         ":xla",
-        "@six_archive//:six",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/contrib/tpu:tpu_estimator",
+        "//tensorflow/contrib/tpu:tpu_lib",
+        "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/contrib/tpu:tpu_lib",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
-    tags = ["no_pip"],
+    tags = [
+        "no_mac",
+        "no_windows",
+    ],
+    xla_enabled = True,
 )

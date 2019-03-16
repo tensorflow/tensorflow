@@ -64,7 +64,7 @@ class Dense(keras_layers.Dense, base.Layer):
       `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
     name: String, the name of the layer. Layers with the same name will
       share weights, but to avoid mistakes we require reuse=True in such cases.
-    reuse: Boolean, whether to reuse the weights of a previous layer
+    _reuse: Boolean, whether to reuse the weights of a previous layer
       by the same name.
 
   Properties:

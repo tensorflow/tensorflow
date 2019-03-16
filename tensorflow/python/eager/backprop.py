@@ -80,6 +80,8 @@ def make_attr(attr_type, value):
     return tensor_shape.as_shape(value).as_proto()
   elif attr_type == [pywrap_tensorflow.TF_ATTR_SHAPE]:
     return [tensor_shape.as_shape(v).as_proto() for v in value]
+  elif isinstance(value, str):
+    return value.encode()
   return value
 
 
@@ -465,14 +467,16 @@ def val_and_grad_function(f, params=None):
 
 
 def make_vjp(f, params=None, persistent=True):
-  """Returns a function that computes f and is vjp w.r.t. params.
+  """Returns a function that computes f and its vjp w.r.t.
+
+  params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
 
   Args:
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
-       A value of None will differentiate with respect to all parameters.
+      A value of None will differentiate with respect to all parameters.
     persistent: Boolean controlling whether the VJP function can be re-used.
       Must be True or False.
 
@@ -595,7 +599,9 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Helper to return (possibly cached) zero tensors in eager mode."""
-  if dtype == dtypes.variant:
+  if (dtype == dtypes.variant
+      or dtype == dtypes.string
+      or dtype == dtypes.resource):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
@@ -618,10 +624,14 @@ def _zeros(shape, dtype):
 
 
 def _ones(shape, dtype):
+  as_dtype = dtypes.as_dtype(dtype)
+  if as_dtype == dtypes.string:
+    return None
+
   if not context.context().executing_eagerly():
     return array_ops.ones(shape, dtype)
 
-  if dtypes.as_dtype(dtype).is_bool:
+  if as_dtype.is_bool:
     value = True
   else:
     value = 1
@@ -925,11 +935,12 @@ class GradientTape(object):
                             "gradient in order to compute higher order "
                             "derrivatives.", 1)
 
-    flat_targets = nest.flatten(target)
-    for t in flat_targets:
+    flat_targets = []
+    for t in nest.flatten(target):
       if resource_variable_ops.is_resource_variable(t):
-        raise ValueError("GradientTape.gradient is not supported for variable "
-                         "targets.")
+        with self:
+          t = ops.convert_to_tensor(t)
+      flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
     flat_sources = [_handle_or_self(x) for x in flat_sources]
@@ -963,13 +974,15 @@ class GradientTape(object):
     definition of a Jacobian.
 
     Example usage:
-
+    
+    ```python
     with tf.GradientTape() as g:
       x  = tf.constant([1.0, 2.0])
       g.watch(x)
       y = x * x
     jacobian = g.jacobian(y, x)
     # jacobian value is [[2., 0.], [0., 4.]]
+    ```
 
     Args:
       target: Tensor to be differentiated.
@@ -1072,12 +1085,14 @@ class GradientTape(object):
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+    ```python
     with tf.GradientTape() as g:
       x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
       g.watch(x)
       y = x * x
     batch_jacobian = g.batch_jacobian(y, x)
     # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
+    ```
 
     Args:
       target: A tensor with rank 2 or higher and with shape [b, y1, ..., y_n].

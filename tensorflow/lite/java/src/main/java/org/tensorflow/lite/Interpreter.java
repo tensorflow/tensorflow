@@ -116,9 +116,26 @@ public final class Interpreter implements AutoCloseable {
       return this;
     }
 
+    /**
+     * Advanced: Set if buffer handle output is allowed.
+     *
+     * <p>When a {@link Delegate} supports hardware acceleration, the interpreter will make the data
+     * of output tensors available in the CPU-allocated tensor buffers by default. If the client can
+     * consume the buffer handle directly (e.g. reading output from OpenGL texture), it can set this
+     * flag to false, avoiding the copy of data to the CPU buffer. The delegate documentation should
+     * indicate whether this is supported and how it can be used.
+     *
+     * <p>WARNING: This is an experimental interface that is subject to change.
+     */
+    public Options setAllowBufferHandleOutput(boolean allow) {
+      this.allowBufferHandleOutput = allow;
+      return this;
+    }
+
     int numThreads = -1;
-    boolean useNNAPI = false;
-    boolean allowFp16PrecisionForFp32 = false;
+    Boolean useNNAPI;
+    Boolean allowFp16PrecisionForFp32;
+    Boolean allowBufferHandleOutput;
     final List<Delegate> delegates = new ArrayList<>();
   }
 
@@ -217,11 +234,15 @@ public final class Interpreter implements AutoCloseable {
    *     including int, float, long, and byte. {@link ByteBuffer} is the preferred way to pass large
    *     input data for primitive types, whereas string types require using the (multi-dimensional)
    *     array input path. When {@link ByteBuffer} is used, its content should remain unchanged
-   *     until model inference is done.
+   *     until model inference is done. A {@code null} value is allowed only if the caller is using
+   *     a {@link Delegate} that allows buffer handle interop, and such a buffer has been bound to
+   *     the input {@link Tensor}.
    * @param output a multidimensional array of output data, or a {@link ByteBuffer} of primitive
-   *     types including int, float, long, and byte.
+   *     types including int, float, long, and byte. A null value is allowed only if the caller is
+   *     using a {@link Delegate} that allows buffer handle interop, and such a buffer has been
+   *     bound to the output {@link Tensor}. See also {@link Options#setAllowBufferHandleOutput()}.
    */
-  public void run(@NonNull Object input, @NonNull Object output) {
+  public void run(Object input, Object output) {
     Object[] inputs = {input};
     Map<Integer, Object> outputs = new HashMap<>();
     outputs.put(0, output);
@@ -233,6 +254,10 @@ public final class Interpreter implements AutoCloseable {
    *
    * <p>Warning: The API runs much faster if {@link ByteBuffer} is used as input data type. Please
    * consider using {@link ByteBuffer} to feed primitive input data for better performance.
+   *
+   * <p>Note: {@code null} values for invididual elements of {@code inputs} and {@code outputs} is
+   * allowed only if the caller is using a {@link Delegate} that allows buffer handle interop, and
+   * such a buffer has been bound to the corresponding input or output {@link Tensor}(s).
    *
    * @param inputs an array of input data. The inputs should be in the same order as inputs of the
    *     model. Each input can be an array or multidimensional array, or a {@link ByteBuffer} of
@@ -347,6 +372,20 @@ public final class Interpreter implements AutoCloseable {
   public void setNumThreads(int numThreads) {
     checkNotClosed();
     wrapper.setNumThreads(numThreads);
+  }
+
+  /**
+   * Advanced: Modifies the graph with the provided {@link Delegate}.
+   *
+   * <p>Note: The typical path for providing delegates is via {@link Options#addDelegate}, at
+   * creation time. This path should only be used when a delegate might require coordinated
+   * interaction between Interpeter creation and delegate application.
+   *
+   * <p>WARNING: This is an experimental API and subject to change.
+   */
+  public void modifyGraphWithDelegate(Delegate delegate) {
+    checkNotClosed();
+    wrapper.modifyGraphWithDelegate(delegate);
   }
 
   /** Release resources associated with the {@code Interpreter}. */

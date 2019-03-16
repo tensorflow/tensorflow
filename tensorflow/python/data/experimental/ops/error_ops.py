@@ -57,10 +57,9 @@ class _IgnoreErrorsDataset(dataset_ops.UnaryUnchangedStructureDataset):
 
   def __init__(self, input_dataset):
     """See `Dataset.ignore_errors()` for details."""
-    super(_IgnoreErrorsDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
-
-  def _as_variant_tensor(self):
-    return gen_experimental_dataset_ops.experimental_ignore_errors_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        **dataset_ops.flat_structure(self))
+    variant_tensor = (
+        gen_experimental_dataset_ops.experimental_ignore_errors_dataset(
+            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+            **dataset_ops.flat_structure(self)))
+    super(_IgnoreErrorsDataset, self).__init__(input_dataset, variant_tensor)

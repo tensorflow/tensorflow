@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "BoostedTreesEstimator"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "BoostedTreesRegressor"
     mtype: "<type \'type\'>"
   }
@@ -178,10 +182,6 @@ tf_module {
   }
   member {
     name: "export"
-    mtype: "<type \'module\'>"
-  }
-  member {
-    name: "inputs"
     mtype: "<type \'module\'>"
   }
   member_method {

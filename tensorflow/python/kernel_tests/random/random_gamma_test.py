@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import math
-
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -27,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
+from tensorflow.python.kernel_tests.random import util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -69,16 +68,6 @@ class RandomGammaTest(test.TestCase):
       tf_logging.warn("Cannot test moments: %s" % e)
       return
 
-    # Check the given array of samples matches the given theoretical moment
-    # function at different orders. The test is considered passing if the
-    # z-tests of all statistical moments are all below z_limit.
-    # Parameters:
-    #   max_moments: the largest moments of the distribution to be tested
-    #   stride: the distance between samples to check for statistical properties
-    #       0 means the n-th moment of each sample
-    #       any other strides tests for spatial correlation between samples;
-    #   z_limit: the maximum z-test we would consider the test to pass;
-
     # The moments test is a z-value test.  This is the largest z-value
     # we want to tolerate. Since the z-test approximates a unit normal
     # distribution, it should almost definitely never exceed 6.
@@ -94,46 +83,13 @@ class RandomGammaTest(test.TestCase):
           max_moment = min(6, scale // 2)
           sampler = self._Sampler(
               20000, alpha, 1 / scale, dt, use_gpu=False, seed=12345)
-          moments = [0] * (max_moment + 1)
-          moments_sample_count = [0] * (max_moment + 1)
-          x = np.array(sampler().flat)  # sampler does 10x samples
-          for k in range(len(x)):
-            moment = 1.
-            for i in range(max_moment + 1):
-              index = k + i * stride
-              if index >= len(x):
-                break
-              moments[i] += moment
-              moments_sample_count[i] += 1
-              moment *= x[index]
-          for i in range(max_moment + 1):
-            moments[i] /= moments_sample_count[i]
-          for i in range(1, max_moment + 1):
-            g = stats.gamma(alpha, scale=scale)
-            if stride == 0:
-              moments_i_mean = g.moment(i)
-              moments_i_squared = g.moment(2 * i)
-            else:
-              moments_i_mean = pow(g.moment(1), i)
-              moments_i_squared = pow(g.moment(2), i)
-            # Calculate moment variance safely:
-            # This is just
-            #  (moments_i_squared - moments_i_mean**2) / moments_sample_count[i]
-            normalized_moments_i_var = (
-                moments_i_mean / moments_sample_count[i] *
-                (moments_i_squared / moments_i_mean - moments_i_mean))
-            # Assume every operation has a small numerical error.
-            # It takes i multiplications to calculate one i-th moment.
-            error_per_moment = i * np.finfo(dt.as_numpy_dtype).eps
-            total_variance = (normalized_moments_i_var + error_per_moment)
-            tiny = np.finfo(dt.as_numpy_dtype).tiny
-            self.assertGreaterEqual(total_variance, 0)
-            if total_variance < tiny:
-              total_variance = tiny
-            # z_test is approximately a unit normal distribution.
-            z_test = abs(
-                (moments[i] - moments_i_mean) / math.sqrt(total_variance))
-            self.assertLess(z_test, z_limit)
+          z_scores = util.test_moment_matching(
+              sampler(),
+              max_moment,
+              stats.gamma(alpha, scale=scale),
+              stride=stride,
+          )
+          self.assertAllLess(z_scores, z_limit)
 
   def _testZeroDensity(self, alpha):
     """Zero isn't in the support of the gamma distribution.

@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.utils.misc import alias_tensors
+from tensorflow.python.autograph.utils import misc
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops.variables import Variable
@@ -27,11 +27,20 @@ from tensorflow.python.platform import test
 
 class MiscTest(test.TestCase):
 
+  def test_capitalize_initial(self):
+    self.assertEqual('', misc.capitalize_initial(''))
+    self.assertEqual('A', misc.capitalize_initial('A'))
+    self.assertEqual('Ab', misc.capitalize_initial('Ab'))
+    self.assertEqual('AbC', misc.capitalize_initial('AbC'))
+    self.assertEqual('A', misc.capitalize_initial('a'))
+    self.assertEqual('Ab', misc.capitalize_initial('ab'))
+    self.assertEqual('AbC', misc.capitalize_initial('abC'))
+
   @test_util.run_deprecated_v1
   def test_alias_single_tensor(self):
     a = constant(1)
 
-    new_a = alias_tensors(a)
+    new_a = misc.alias_tensors(a)
     self.assertFalse(new_a is a)
     with self.cached_session() as sess:
       self.assertEqual(1, self.evaluate(new_a))
@@ -43,7 +52,7 @@ class MiscTest(test.TestCase):
     s = 'a'
     l = [1, 2, 3]
 
-    new_a, new_v, new_s, new_l = alias_tensors(a, v, s, l)
+    new_a, new_v, new_s, new_l = misc.alias_tensors(a, v, s, l)
 
     self.assertFalse(new_a is a)
     self.assertTrue(new_v is v)

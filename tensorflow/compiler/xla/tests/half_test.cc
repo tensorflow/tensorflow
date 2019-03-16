@@ -73,7 +73,7 @@ half sign_imp(half value) {
 }
 
 half round_imp(half value) {
-  return half(round(static_cast<float>(std::move(value))));
+  return half(std::round(static_cast<float>(std::move(value))));
 }
 
 INSTANTIATE_TEST_CASE_P(

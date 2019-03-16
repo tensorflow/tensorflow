@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -57,18 +56,48 @@ int BackendOptions::intra_op_parallelism_threads() const {
   return intra_op_parallelism_threads_;
 }
 
+BackendOptions& BackendOptions::set_allowed_devices(
+    const absl::optional<std::set<int>>& allowed_devices) {
+  allowed_devices_ = allowed_devices;
+  return *this;
+}
+
+const absl::optional<std::set<int>>& BackendOptions::allowed_devices() const {
+  return allowed_devices_;
+}
+
+namespace {
+
+class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
+ public:
+  explicit EigenThreadPoolWrapper(tensorflow::thread::ThreadPool* pool)
+      : pool_(pool) {}
+  ~EigenThreadPoolWrapper() override {}
+
+  void Schedule(std::function<void()> fn) override {
+    pool_->Schedule(std::move(fn));
+  }
+  int NumThreads() const override { return pool_->NumThreads(); }
+  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
+
+ private:
+  tensorflow::thread::ThreadPool* pool_ = nullptr;
+};
+
+}  // namespace
+
 // Define this in .cc file to avoid having to include eigen or forward declare
 // these types in the header.
-struct Backend::EigenThreadPoolWrapper {
-  explicit EigenThreadPoolWrapper(const int num_threads)
+struct Backend::IntraOpThreadPool {
+  explicit IntraOpThreadPool(const int num_threads)
       : pool(new tensorflow::thread::ThreadPool(tensorflow::Env::Default(),
                                                 "XLAEigen", num_threads)),
-        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
+        wrapper(new EigenThreadPoolWrapper(pool.get())),
         device(new Eigen::ThreadPoolDevice(wrapper.get(),
                                            wrapper->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
+  std::unique_ptr<EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
@@ -76,8 +105,9 @@ struct Backend::EigenThreadPoolWrapper {
     const BackendOptions& options) {
   se::Platform* platform = options.platform();
   TF_ASSIGN_OR_RETURN(auto compiler, Compiler::GetForPlatform(platform));
-  TF_ASSIGN_OR_RETURN(auto stream_executors,
-                      PlatformUtil::GetStreamExecutors(platform));
+  TF_ASSIGN_OR_RETURN(
+      auto stream_executors,
+      PlatformUtil::GetStreamExecutors(platform, options.allowed_devices()));
   TF_ASSIGN_OR_RETURN(auto transfer_manager,
                       TransferManager::GetForPlatform(platform));
   TF_ASSIGN_OR_RETURN(auto computation_placer,
@@ -104,12 +134,10 @@ StatusOr<StreamPool::Ptr> Backend::BorrowStream(int device_ordinal) {
 
 StatusOr<StreamPool::Ptr> Backend::BorrowStream(se::StreamExecutor* executor) {
   tensorflow::mutex_lock l(mu_);
-  if (0 == stream_pools_.count(executor)) {
-    stream_pools_.emplace(std::piecewise_construct,
-                          std::forward_as_tuple(executor),
-                          std::forward_as_tuple());
+  if (!stream_pools_.contains(executor)) {
+    stream_pools_.emplace(executor, absl::make_unique<StreamPool>());
   }
-  return stream_pools_.at(executor).BorrowStream(executor);
+  return stream_pools_.at(executor)->BorrowStream(executor);
 }
 
 Backend::Backend(se::Platform* platform, Compiler* compiler,
@@ -137,8 +165,7 @@ Backend::Backend(se::Platform* platform, Compiler* compiler,
     const int num_threads = intra_op_parallelism_threads > 0
                                 ? intra_op_parallelism_threads
                                 : tensorflow::port::NumSchedulableCPUs();
-    intra_op_thread_pool_wrapper_.reset(
-        new EigenThreadPoolWrapper(num_threads));
+    intra_op_thread_pool_.reset(new IntraOpThreadPool(num_threads));
   }
 }
 
@@ -150,17 +177,17 @@ int Backend::default_device_ordinal() const {
 
 const Eigen::ThreadPoolDevice* Backend::eigen_intra_op_thread_pool_device()
     const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) {
+  if (intra_op_thread_pool_ == nullptr) {
     return nullptr;
   }
-  return intra_op_thread_pool_wrapper_->device.get();
+  return intra_op_thread_pool_->device.get();
 }
 
 tensorflow::thread::ThreadPool* Backend::eigen_intra_op_thread_pool() const {
-  if (intra_op_thread_pool_wrapper_ == nullptr) {
+  if (intra_op_thread_pool_ == nullptr) {
     return nullptr;
   }
-  return intra_op_thread_pool_wrapper_->pool.get();
+  return intra_op_thread_pool_->pool.get();
 }
 
 StatusOr<se::StreamExecutor*> Backend::stream_executor(

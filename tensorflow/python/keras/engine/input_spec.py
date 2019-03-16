@@ -21,11 +21,12 @@ from __future__ import print_function
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('keras.layers.InputSpec',
-           v1=['keras.layers.InputSpec', 'layers.InputSpec'])
+@keras_export('keras.layers.InputSpec', v1=['keras.layers.InputSpec'])
+@tf_export(v1=['layers.InputSpec'])
 class InputSpec(object):
   """Specifies the ndim, dtype and shape of every input to a layer.
 

@@ -203,17 +203,30 @@ class SVDFOpModel : public BaseSVDFOpModel {
 class HybridSVDFOpModel : public BaseSVDFOpModel {
  public:
   HybridSVDFOpModel(int batches, int units, int input_size, int memory_size,
-                    int rank)
+                    int rank, TensorType tensor_type)
       : BaseSVDFOpModel(batches, units, input_size, memory_size, rank,
-                        TensorType_UINT8, TensorType_UINT8) {}
+                        tensor_type, tensor_type) {
+    tensor_type_ = tensor_type;
+  }
+
+  void SetWeights(int weights_idx, const std::vector<float>& f) {
+    if (tensor_type_ == TensorType_UINT8) {
+      SymmetricQuantizeAndPopulate(weights_idx, f);
+    } else {
+      SignedSymmetricQuantizeAndPopulate(weights_idx, f);
+    }
+  }
 
   void SetWeightsFeature(std::initializer_list<float> f) {
-    SymmetricQuantizeAndPopulate(weights_feature_, f);
+    SetWeights(weights_feature_, f);
   }
 
   void SetWeightsTime(std::initializer_list<float> f) {
-    SymmetricQuantizeAndPopulate(weights_time_, f);
+    SetWeights(weights_time_, f);
   }
+
+ protected:
+  TensorType tensor_type_;
 };
 
 class SVDFOpTest : public ::testing::Test {
@@ -312,9 +325,9 @@ TEST_F(SVDFOpTest, BlackBoxTestRank2) {
                 &svdf);
 }
 
-TEST_F(SVDFOpTest, BlackBoxTestHybridRank1) {
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank1Uint8) {
   HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
-                         /*memory_size=*/10, /*rank=*/1);
+                         /*memory_size=*/10, /*rank=*/1, TensorType_UINT8);
   svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
                           0.22197971, 0.12416199, 0.27901134, 0.27557442,
                           0.3905206, -0.36137494, -0.06634006, -0.10640851});
@@ -337,9 +350,74 @@ TEST_F(SVDFOpTest, BlackBoxTestHybridRank1) {
                 /*tolerance=*/0.002945);
 }
 
-TEST_F(SVDFOpTest, BlackBoxTestHybridRank2) {
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank2Uint8) {
   HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
-                         /*memory_size=*/10, /*rank=*/2);
+                         /*memory_size=*/10, /*rank=*/2, TensorType_UINT8);
+  svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
+                          0.12416199,  0.15785322,  0.27901134,  0.3905206,
+                          0.21931258,  -0.36137494, -0.10640851, 0.31053296,
+                          -0.36118156, -0.0976817,  -0.36916667, 0.22197971,
+                          0.15294972,  0.38031587,  0.27557442,  0.39635518,
+                          -0.21580373, -0.06634006, -0.02702999, 0.27072677});
+
+  svdf.SetWeightsTime(
+      {-0.31930989, 0.37613347,  0.27901134,  -0.36137494, -0.36118156,
+       0.22197971,  0.27557442,  -0.06634006, 0.0079667,   0.12416199,
+
+       0.3905206,   -0.10640851, -0.0976817,  0.15294972,  0.39635518,
+       -0.02702999, 0.39296314,  0.15785322,  0.21931258,  0.31053296,
+
+       -0.36916667, 0.38031587,  -0.21580373, 0.27072677,  0.23622236,
+       0.34936687,  0.18174365,  0.35907319,  -0.17493086, 0.324846,
+
+       -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
+       -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657,
+
+       -0.14884081, 0.19931212,  -0.36002168, 0.34663299,  -0.11405486,
+       0.12672701,  0.39463779,  -0.07886535, -0.06384811, 0.08249187,
+
+       -0.26816407, -0.19905911, 0.29211238,  0.31264046,  -0.28664589,
+       0.05698794,  0.11613581,  0.14078894,  0.02187902,  -0.21781836,
+
+       -0.15567942, 0.08693647,  -0.38256618, 0.36580828,  -0.22922277,
+       -0.0226903,  0.12878349,  -0.28122205, -0.10850525, -0.11955214,
+
+       0.27179423,  -0.04710215, 0.31069002,  0.22672787,  0.09580326,
+       0.08682203,  0.1258215,   0.1851041,   0.29228821,  0.12366763});
+
+  VerifyGoldens(svdf_input, svdf_golden_output_rank_2, sizeof(svdf_input),
+                &svdf,
+                /*tolerance=*/0.00625109);
+}
+
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank1Int8) {
+  HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
+                         /*memory_size=*/10, /*rank=*/1, TensorType_INT8);
+  svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
+                          0.22197971, 0.12416199, 0.27901134, 0.27557442,
+                          0.3905206, -0.36137494, -0.06634006, -0.10640851});
+
+  svdf.SetWeightsTime(
+      {-0.31930989, 0.37613347,  0.27901134,  -0.36137494, -0.36118156,
+       0.22197971,  0.27557442,  -0.06634006, 0.0079667,   0.12416199,
+
+       0.3905206,   -0.10640851, -0.0976817,  0.15294972,  0.39635518,
+       -0.02702999, 0.39296314,  0.15785322,  0.21931258,  0.31053296,
+
+       -0.36916667, 0.38031587,  -0.21580373, 0.27072677,  0.23622236,
+       0.34936687,  0.18174365,  0.35907319,  -0.17493086, 0.324846,
+
+       -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
+       -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657});
+
+  VerifyGoldens(svdf_input, svdf_golden_output_rank_1, sizeof(svdf_input),
+                &svdf,
+                /*tolerance=*/0.002945);
+}
+
+TEST_F(SVDFOpTest, BlackBoxTestHybridRank2Int8) {
+  HybridSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
+                         /*memory_size=*/10, /*rank=*/2, TensorType_INT8);
   svdf.SetWeightsFeature({-0.31930989, 0.0079667,   0.39296314,  0.37613347,
                           0.12416199,  0.15785322,  0.27901134,  0.3905206,
                           0.21931258,  -0.36137494, -0.10640851, 0.31053296,
