@@ -24,6 +24,7 @@
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/DenseMap.h"
+#include <numeric>
 
 using namespace mlir;
 
@@ -508,6 +509,22 @@ auto Instruction::getNonSuccessorOperands() const -> const_operand_range {
 auto Instruction::getNonSuccessorOperands() -> operand_range {
   return {operand_iterator(this, 0),
           operand_iterator(this, getSuccessorOperandIndex(0))};
+}
+
+/// Get the index of the first operand of the successor at the provided
+/// index.
+unsigned Instruction::getSuccessorOperandIndex(unsigned index) const {
+  assert(!isKnownNonTerminator() && "only terminators may have successors");
+  assert(index < getNumSuccessors());
+
+  // Count the number of operands for each of the successors after, and
+  // including, the one at 'index'. This is based upon the assumption that all
+  // non successor operands are placed at the beginning of the operand list.
+  auto *successorOpCountBegin = getTrailingObjects<unsigned>();
+  unsigned postSuccessorOpCount =
+      std::accumulate(successorOpCountBegin + index,
+                      successorOpCountBegin + getNumSuccessors(), 0);
+  return getNumOperands() - postSuccessorOpCount;
 }
 
 auto Instruction::getSuccessorOperands(unsigned index) const

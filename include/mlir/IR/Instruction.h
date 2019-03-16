@@ -28,7 +28,6 @@
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
-#include <numeric>
 
 namespace mlir {
 class BlockAndValueMapping;
@@ -365,19 +364,7 @@ public:
 
   /// Get the index of the first operand of the successor at the provided
   /// index.
-  unsigned getSuccessorOperandIndex(unsigned index) const {
-    assert(!isKnownNonTerminator() && "only terminators may have successors");
-    assert(index < getNumSuccessors());
-
-    // Count the number of operands for each of the successors after, and
-    // including, the one at 'index'. This is based upon the assumption that all
-    // non successor operands are placed at the beginning of the operand list.
-    auto *successorOpCountBegin = getTrailingObjects<unsigned>();
-    unsigned postSuccessorOpCount =
-        std::accumulate(successorOpCountBegin + index,
-                        successorOpCountBegin + getNumSuccessors(), 0);
-    return getNumOperands() - postSuccessorOpCount;
-  }
+  unsigned getSuccessorOperandIndex(unsigned index) const;
 
   //===--------------------------------------------------------------------===//
   // Accessors for various properties of operations
