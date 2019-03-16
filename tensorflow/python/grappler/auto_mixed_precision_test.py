@@ -14,8 +14,7 @@
 # ==============================================================================
 """Tests for Grappler AutoMixedPrecision."""
 
-import numpy as np
-
+from __future__ import absolute_import, print_function
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2 as rwcpb2
 from tensorflow.core.protobuf import config_pb2 as cpb2
@@ -24,7 +23,6 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -69,7 +67,7 @@ def _max_pool_2x2(x):
 def _fused_batchnorm(x, scale, offset):
   """Batchnorm."""
   return nn_impl.fused_batch_norm(
-        x, scale=scale, offset=offset, is_training=True)
+      x, scale=scale, offset=offset, is_training=True)
 
 
 def _conv_bn(x):
@@ -79,7 +77,7 @@ def _conv_bn(x):
   x = _conv2d(i, f)
   s = _weight([6])
   o = _weight([6])
-  y, m, v = _fused_batchnorm(x, s, o)
+  y, _, _ = _fused_batchnorm(x, s, o)
   y = array_ops.identity(y)
   return y
 
@@ -151,7 +149,10 @@ def _lstm_cell(prev_c, prev_h, x):
 def _recurrent_lstm(c, h):
   """ Dynamic single-layer LSTM with TensorArray """
   def cond(i, c, h, ta_x):
-    return i<4
+    del c
+    del h
+    del ta_x
+    return i < 4
 
   def body(i, c, h, ta_x):
     x = ta_x.read(i)
@@ -159,52 +160,53 @@ def _recurrent_lstm(c, h):
     return (i+1, next_c, next_h, ta_x)
 
   ta_x = tensor_array_ops.TensorArray(
-           dtype=dtypes.float32,
-           size=4)
+      dtype=dtypes.float32,
+      size=4)
   for i in range(0, 4):
     ta_x = ta_x.write(
-               i, constant_op.constant(0.1, shape=[8, 4],
-                                       dtype=dtypes.float32))
+        i, constant_op.constant(0.1, shape=[8, 4],
+                                dtype=dtypes.float32))
   init = (constant_op.constant(0), c, h, ta_x)
   r = control_flow_ops.while_loop(cond, body, init)
   return r
 
 
 def _make_node_with_color(color, input_tensor, name=None):
+  """ Returns a node representative of the specified list type """
   color = color.lower()
   if color == 'w': # White node
     weights = _weight(input_tensor.get_shape().as_list())
     return math_ops.matmul(input_tensor, weights, name=name)
-  elif color == 'g': # Gray node
+  if color == 'g': # Gray node
     return math_ops.sqrt(input_tensor, name=name)
-  elif color == 'c': # Clear node
+  if color == 'c': # Clear node
     return nn.relu(input_tensor, name=name)
-  elif color == 'b': # Black node
+  if color == 'b': # Black node
     return math_ops.log(input_tensor, name=name)
-  else:
-    raise ValueError("Invalid node color: " + str(color))
+  raise ValueError("Invalid node color: " + str(color))
 
 
-def _build_intertwined_loop_graph(inpA_colors, inpB_colors, bodyA_colors,
-                                  bodyB_colors, outA_colors, outB_colors):
+def _build_intertwined_loop_graph(inp_a_colors, inp_b_colors, body_a_colors,
+                                  body_b_colors, out_a_colors, out_b_colors):
+  """ Builds a test graph with intertwined loops """
   a = _input([8, 8])
-  for i, color in enumerate(inpA_colors):
+  for i, color in enumerate(inp_a_colors):
     a = _make_node_with_color(color, a, 'inputA_%i' % i)
   b = _input([8, 8])
-  for i, color in enumerate(inpB_colors):
+  for i, color in enumerate(inp_b_colors):
     b = _make_node_with_color(color, b, 'inputB_%i' % i)
-  def bodyA(x):
-    for i, color in enumerate(bodyA_colors):
+  def body_a(x):
+    for i, color in enumerate(body_a_colors):
       x = _make_node_with_color(color, x, 'bodyA_%i' % i)
     return x
-  def bodyB(x):
-    for i, color in enumerate(bodyB_colors):
+  def body_b(x):
+    for i, color in enumerate(body_b_colors):
       x = _make_node_with_color(color, x, 'bodyB_%i' % i)
     return x
-  a, b = _loop_vars_intertwined(a, b, bodyA, bodyB)[2:]
-  for i, color in enumerate(outA_colors):
+  a, b = _loop_vars_intertwined(a, b, body_a, body_b)[2:]
+  for i, color in enumerate(out_a_colors):
     a = _make_node_with_color(color, a, 'outputA_%i' % i)
-  for i, color in enumerate(outB_colors):
+  for i, color in enumerate(out_b_colors):
     b = _make_node_with_color(color, b, 'outputB_%i' % i)
   a = array_ops.identity(a)
   b = array_ops.identity(b)
@@ -212,6 +214,8 @@ def _build_intertwined_loop_graph(inpA_colors, inpB_colors, bodyA_colors,
 
 
 def _get_config(auto_mixed_precision=True):
+  """ Returns a config object with automatic mixed precision
+      activated if appropriate """
   if auto_mixed_precision:
     rewrite_config = rwcpb2.RewriterConfig(
         auto_mixed_precision=rwcpb2.RewriterConfig.ON,
@@ -261,10 +265,11 @@ class AutoMixedPrecisionTest(test.TestCase):
   MIN_GPU_ARCH = (7, 0)
 
   def _assert_output_fp16(self, node_map, node_name, output_port=0):
-      self.assertEqual(node_map[node_name].output_info[output_port].dtype,
-                       types_pb2.DT_HALF)
+    self.assertEqual(node_map[node_name].output_info[output_port].dtype,
+                     types_pb2.DT_HALF)
 
   def _run(self, fetches):
+    """ Runs the graph and returns the evaluation of the fetches """
     with session.Session(config=_get_config(False)) as sess:
       sess.run(variables.global_variables_initializer())
       output_val_ref = self.evaluate(fetches)
@@ -276,8 +281,9 @@ class AutoMixedPrecisionTest(test.TestCase):
 
     return output_val_ref, output_val, metadata.cost_graph
 
-  def _run_intertwined_loop_test(self, inpA, inpB, bodyA, bodyB, outA, outB,
-                                 expected_num_to_fp16, expected_num_to_fp32):
+  def _run_intertwined_loop_test(self, inp_a, inp_b, body_a, body_b, out_a,
+                                 out_b, expected_num_to_fp16,
+                                 expected_num_to_fp32):
     """Runs a test of an intertwined loop with different node colors in
     different sections of the graph. The arguments must be strings where each
     character represents the color of a node in that section of the graph:
@@ -285,17 +291,17 @@ class AutoMixedPrecisionTest(test.TestCase):
     that the node is expected to be changed to DT_HALF during graph
     optimization.
 
-    inpA -> loop [ bodyA ] -> outA
-              :            |
-               =====<<=====
-              |            :
-    inpB -> loop [ bodyB ] -> outB
+    inp_a -> loop [ body_a ] -> out_a
+               :             |
+                ======<<=====
+               |             :
+    inp_b -> loop [ body_b ] -> out_b
     """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
       expected_types = []
-      for section in [inpA, inpB, bodyA, bodyB, outA, outB]:
+      for section in [inp_a, inp_b, body_a, body_b, out_a, out_b]:
         section_expected_types = []
         for color in section:
           if color.isupper():
@@ -305,7 +311,8 @@ class AutoMixedPrecisionTest(test.TestCase):
           section_expected_types.append(expected_type)
         expected_types.append(section_expected_types)
 
-      a, b = _build_intertwined_loop_graph(inpA, inpB, bodyA, bodyB, outA, outB)
+      a, b = _build_intertwined_loop_graph(inp_a, inp_b, body_a, body_b,
+                                           out_a, out_b)
       output_val_ref, output_val, cost_graph = self._run((a, b))
       node_map = _build_node_map(cost_graph.node)
       num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
@@ -318,7 +325,7 @@ class AutoMixedPrecisionTest(test.TestCase):
           node_name = section_name + '_%i' % i
           output_port = 0
           optimized_type = node_map[node_name].output_info[output_port].dtype
-          if (optimized_type != expected_type):
+          if optimized_type != expected_type:
             print("Expected node %s to have type %s but got type %s" %
                   (node_name, expected_type, optimized_type))
             all_types_correct = False
@@ -327,7 +334,8 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertEqual(num_to_fp32, expected_num_to_fp32)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testConvBN(self):
+  def test_conv_bn(self):
+    """ Test graph with convolution followed by batch norm """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
@@ -346,7 +354,8 @@ class AutoMixedPrecisionTest(test.TestCase):
       self.assertEqual(num_to_fp32, 1) # After FusedBatchNorm:0
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testConvBNDropout(self):
+  def test_conv_bn_dropout(self):
+    """ Test dropout precision of convolution batch norm graph """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
@@ -370,9 +379,12 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'Conv2D_1')
 
       output_val_ref, output_val, cost_graph = self._run(output)
+      self.assertEqual(num_to_fp16, 3) # Before Conv2D:0, Conv2D:1, Conv2D_1:1
+      self.assertEqual(num_to_fp32, 1) # After Conv2D_1:0
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testConvPool(self):
+  def test_conv_pool(self):
+    """ Test graph with convolution followed by pooling """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
@@ -387,9 +399,12 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'Relu')
       self._assert_output_fp16(node_map, 'MaxPool')
       self._assert_output_fp16(node_map, 'Conv2D_1')
+      self.assertEqual(num_to_fp16, 4)
+      self.assertEqual(num_to_fp32, 1)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testSimpleLoop(self):
+  def test_simple_loop(self):
+    """ Test graph with while loop """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
@@ -406,13 +421,14 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'while/Relu')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testLoopWithVarsIntertwined(self):
+  def test_loop_with_vars_intertwined(self):
+    """ Test graph with intertwined while loops """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
       x = _input([8, 8])
-      i, j, k, l = _loop_vars_intertwined(array_ops.ones(array_ops.shape(x)),
-                                             x, _matmul_act, _matmul_act)
+      _, _, k, l = _loop_vars_intertwined(array_ops.ones(array_ops.shape(x)),
+                                          x, _matmul_act, _matmul_act)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
       g = optimizer.compute_gradients(k, [x])
       output = (k, l, g)
@@ -426,7 +442,8 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'while/Relu_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testMultiPaths(self):
+  def test_multi_paths(self):
+    """ Test graph with multiple paths """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
@@ -452,7 +469,8 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'concat')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testMultiPaths2(self):
+  def test_multi_paths_2(self):
+    """ Test graph with multiple paths """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
@@ -473,13 +491,14 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'Relu_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testRecurrentLSTM(self):
+  def test_recurrent_lstm(self):
+    """ Test graph with recurrent lstm """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
       init_c = _input([8, 4])
       init_h = _input([8, 4])
-      i, c, h, ta = _recurrent_lstm(init_c, init_h)
+      _, _, h, _ = _recurrent_lstm(init_c, init_h)
       optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
       g = optimizer.compute_gradients(h, [init_c, init_h])
       output = (h, g)
@@ -497,36 +516,36 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'while/Tanh_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def testPropagationThroughIntertwinedLoop1(self):
+  def test_propagation_through_intertwined_loop_1(self):
     self._run_intertwined_loop_test('C', 'C', 'bgW', 'C', 'g', 'b', 4, 3)
 
-  def testPropagationThroughIntertwinedLoop2(self):
+  def test_propagation_through_intertwined_loop_2(self):
     # Note that this results in NextIteration and Merge being painted different
     # colors, requiring NextIteration to be forced to match.
     self._run_intertwined_loop_test('b', 'g', 'gW', 'C', 'c', 'C', 3, 2)
 
-  def testPropagationThroughIntertwinedLoop3(self):
+  def test_propagation_through_intertwined_loop_3(self):
     self._run_intertwined_loop_test('g', 'g', 'g', 'g', 'W', 'c', 3, 2)
 
-  def testPropagationThroughIntertwinedLoop4(self):
+  def test_propagation_through_intertwined_loop_4(self):
     self._run_intertwined_loop_test('W', 'g', 'g', 'g', 'g', 'g', 3, 2)
 
-  def testPropagationThroughIntertwinedLoop5(self):
+  def test_propagation_through_intertwined_loop_5(self):
     self._run_intertwined_loop_test('W', 'c', 'b', 'c', 'c', 'W', 4, 2)
 
-  def testPropagationThroughIntertwinedLoop6(self):
+  def test_propagation_through_intertwined_loop_6(self):
     self._run_intertwined_loop_test('b', 'g', 'g', 'g', 'g', 'W', 2, 1)
 
-  def testPropagationThroughIntertwinedLoop7(self):
+  def test_propagation_through_intertwined_loop_7(self):
     self._run_intertwined_loop_test('c', 'c', 'bWg', 'c', 'g', 'b', 2, 1)
 
-  def testPropagationThroughIntertwinedLoop8(self):
+  def test_propagation_through_intertwined_loop_8(self):
     self._run_intertwined_loop_test('C', 'C', 'C', 'C', 'W', 'g', 3, 2)
 
-  def testPropagationThroughIntertwinedLoop9(self):
+  def test_propagation_through_intertwined_loop_9(self):
     self._run_intertwined_loop_test('W', 'g', 'G', 'G', 'g', 'W', 4, 2)
 
-  def testPropagationThroughIntertwinedLoop10(self):
+  def test_propagation_through_intertwined_loop_10(self):
     self._run_intertwined_loop_test('g', 'g', 'GWG', 'G', 'g', 'g', 3, 2)
 
 if __name__ == '__main__':
