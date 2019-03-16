@@ -422,16 +422,16 @@ $ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing -pass-tim
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
 ===-------------------------------------------------------------------------===
-  Total Execution Time: 0.0269 seconds (0.0269 wall clock)
+  Total Execution Time: 0.0203 seconds
 
-   ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
-   0.0102 ( 42.6%)   0.0017 ( 60.2%)   0.0119 ( 44.4%)   0.0120 ( 44.5%)  Canonicalizer
-   0.0043 ( 17.9%)   0.0000 (  0.0%)   0.0043 ( 16.0%)   0.0043 ( 16.0%)  LLVMLowering
-   0.0036 ( 14.9%)   0.0006 ( 22.8%)   0.0042 ( 15.8%)   0.0042 ( 15.7%)  FunctionVerifier
-   0.0038 ( 15.6%)   0.0000 (  0.0%)   0.0038 ( 14.0%)   0.0038 ( 14.0%)  ModuleVerifier
-   0.0013 (  5.5%)   0.0003 ( 10.4%)   0.0016 (  6.1%)   0.0016 (  6.1%)  CSE
-   0.0008 (  3.4%)   0.0002 (  6.6%)   0.0010 (  3.7%)   0.0010 (  3.7%)  DominanceInfo
-   0.0240 (100.0%)   0.0028 (100.0%)   0.0269 (100.0%)   0.0269 (100.0%)  Total
+   ---Wall Time---  --- Name ---
+   0.0062 ( 30.5%)  Canonicalizer
+   0.0053 ( 25.9%)  LLVMLowering
+   0.0036 ( 17.8%)  ModuleVerifier
+   0.0036 ( 17.7%)  FunctionVerifier
+   0.0017 (  8.1%)  CSE
+   0.0007 (  3.3%)  (A) DominanceInfo
+   0.0203 (100.0%)  Total
 ```
 
 ##### Pipeline Display Mode
@@ -448,19 +448,19 @@ $ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing
 ===-------------------------------------------------------------------------===
                       ... Pass execution timing report ...
 ===-------------------------------------------------------------------------===
-  Total Execution Time: 0.0272 seconds (0.0272 wall clock)
+  Total Execution Time: 0.0249 seconds
 
-   ---User Time---   --System Time--   --User+System--   ---Wall Time---  --- Name ---
-   0.0119 ( 59.8%)   0.0066 ( 91.1%)   0.0185 ( 68.2%)   0.0185 ( 68.2%)  Function Pipeline
-   0.0010 (  5.3%)   0.0006 (  8.3%)   0.0017 (  6.1%)   0.0016 (  6.1%)    CSE
-   0.0006 (  3.2%)   0.0004 (  5.4%)   0.0010 (  3.8%)   0.0010 (  3.8%)      (A) DominanceInfo
-   0.0013 (  6.4%)   0.0008 ( 10.4%)   0.0020 (  7.4%)   0.0020 (  7.4%)    FunctionVerifier
-   0.0075 ( 37.9%)   0.0041 ( 55.9%)   0.0116 ( 42.7%)   0.0116 ( 42.8%)    Canonicalizer
-   0.0014 (  7.0%)   0.0008 ( 11.2%)   0.0022 (  8.1%)   0.0022 (  8.1%)    FunctionVerifier
-   0.0017 (  8.7%)   0.0000 (  0.0%)   0.0017 (  6.4%)   0.0017 (  6.4%)  ModuleVerifier
-   0.0047 ( 23.5%)   0.0000 (  0.0%)   0.0047 ( 17.2%)   0.0047 ( 17.2%)  LLVMLowering
-   0.0016 (  7.9%)   0.0006 (  8.9%)   0.0022 (  8.2%)   0.0022 (  8.2%)  ModuleVerifier
-   0.0199 (100.0%)   0.0073 (100.0%)   0.0272 (100.0%)   0.0272 (100.0%)  Total
+   ---Wall Time---  --- Name ---
+   0.0140 ( 56.1%)  Function Pipeline
+   0.0020 (  8.0%)    CSE
+   0.0008 (  3.2%)      (A) DominanceInfo
+   0.0022 (  8.7%)    FunctionVerifier
+   0.0076 ( 30.5%)    Canonicalizer
+   0.0022 (  8.8%)    FunctionVerifier
+   0.0022 (  9.0%)  ModuleVerifier
+   0.0065 ( 25.9%)  LLVMLowering
+   0.0022 (  9.0%)  ModuleVerifier
+   0.0249 (100.0%)  Total
 ```
 
 #### IR Printing

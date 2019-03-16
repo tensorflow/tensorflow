@@ -22,7 +22,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "llvm/Support/Timer.h"
+#include <chrono>
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -31,6 +31,50 @@ constexpr llvm::StringLiteral kPassTimingDescription =
     "... Pass execution timing report ...";
 
 namespace {
+struct Timer {
+  explicit Timer(std::string &&name) : name(std::move(name)) {}
+
+  /// Start the timer.
+  void start() { startTime = std::chrono::system_clock::now(); }
+
+  /// Stop the timer.
+  void stop() { total += (std::chrono::system_clock::now() - startTime); }
+
+  /// Get or create a child timer with the provided name and id.
+  Timer *getChildTimer(const void *id,
+                       std::function<std::string()> &&nameBuilder) {
+    auto &child = children[id];
+    if (!child)
+      child.reset(new Timer(nameBuilder()));
+    return child.get();
+  }
+
+  /// Returns the total time for this timer in seconds.
+  double getTotalTime() {
+    // If the total has a count, then we directly compute the seconds.
+    if (total.count()) {
+      return std::chrono::duration_cast<std::chrono::duration<double>>(total)
+          .count();
+    }
+
+    // Otheriwse, accumulate the timing from each of the children.
+    double totalTime = 0.0;
+    for (auto &child : children)
+      totalTime += child.second->getTotalTime();
+    return totalTime;
+  }
+
+  /// Raw timing information.
+  std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
+  std::chrono::nanoseconds total = std::chrono::nanoseconds(0);
+
+  /// A map of unique identifiers to child timers.
+  llvm::MapVector<const void *, std::unique_ptr<Timer>> children;
+
+  /// A descriptive name for this timer.
+  std::string name;
+};
+
 struct PassTiming : public PassInstrumentation {
   PassTiming(PassTimingDisplayMode displayMode) : displayMode(displayMode) {}
   ~PassTiming() { print(); }
@@ -39,20 +83,16 @@ struct PassTiming : public PassInstrumentation {
   void runBeforePass(Pass *pass, const llvm::Any &) override {
     startPassTimer(pass);
   }
-  void runAfterPass(Pass *pass, const llvm::Any &) override {
-    stopPassTimer(pass);
-  }
-  void runAfterPassFailed(Pass *pass, const llvm::Any &) override {
-    stopPassTimer(pass);
+  void runAfterPass(Pass *pass, const llvm::Any &) override;
+  void runAfterPassFailed(Pass *pass, const llvm::Any &ir) override {
+    runAfterPass(pass, ir);
   }
   void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
                          const llvm::Any &) override {
     startAnalysisTimer(name, id);
   }
-  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
-                        const llvm::Any &) override {
-    stopAnalysisTimer(name, id);
-  }
+  void runAfterAnalysis(llvm::StringRef, AnalysisID *,
+                        const llvm::Any &) override;
 
   /// Print and clear the timing results.
   void print();
@@ -60,227 +100,173 @@ struct PassTiming : public PassInstrumentation {
   /// Start a new timer for the given pass.
   void startPassTimer(Pass *pass);
 
-  /// Stop a timer for the given pass.
-  void stopPassTimer(Pass *pass);
-
   /// Start a new timer for the given analysis.
   void startAnalysisTimer(llvm::StringRef name, AnalysisID *id);
 
-  /// Stop a timer for the given analysis.
-  void stopAnalysisTimer(llvm::StringRef name, AnalysisID *id);
+  /// Stop a pass timer.
+  void stopPassTimer(Pass *pass);
+
+  /// Stop the last active timer.
+  void stopTimer();
 
   /// Print the timing result in list mode.
-  void printResultsAsList(llvm::raw_ostream &os);
+  void printResultsAsList(llvm::raw_ostream &os, double totalTime);
 
   /// Print the timing result in pipeline mode.
-  void printResultsAsPipeline(llvm::raw_ostream &os);
+  void printResultsAsPipeline(llvm::raw_ostream &os, double totalTime);
 
-  /// Mapping between pass and a respective timer.
-  llvm::MapVector<Pass *, std::unique_ptr<llvm::Timer>> passTimers;
+  /// Returns a timer for the provided identifier and name.
+  Timer *getTimer(const void *id, std::function<std::string()> &&nameBuilder) {
+    if (activeTimers.empty())
+      return rootTimer.getChildTimer(id, std::move(nameBuilder));
+    return activeTimers.back()->getChildTimer(id, std::move(nameBuilder));
+  }
 
-  /// Mapping between [analysis id, pass] and a respective timer.
-  llvm::DenseMap<std::pair<AnalysisID *, Pass *>, std::unique_ptr<llvm::Timer>>
-      analysisTimers;
+  /// The root top level timer.
+  Timer rootTimer = Timer("root");
 
-  /// A pointer to the currently active pass, or null.
-  Pass *activePass = nullptr;
+  /// A stack of the currently active pass timers.
+  SmallVector<Timer *, 4> activeTimers;
 
   /// The display mode to use when printing the timing results.
   PassTimingDisplayMode displayMode;
 };
 } // end anonymous namespace
 
-/// Print out the current timing information.
-void PassTiming::print() {
-  // Don't print anything if there is no timing data.
-  if (passTimers.empty() && analysisTimers.empty())
-    return;
-
-  switch (displayMode) {
-  case PassTimingDisplayMode::List:
-    printResultsAsList(*llvm::CreateInfoOutputFile());
-    break;
-  case PassTimingDisplayMode::Pipeline:
-    printResultsAsPipeline(*llvm::CreateInfoOutputFile());
-    break;
-  }
-
-  // Reset and clear the timers.
-  for (auto &timerPair : passTimers)
-    timerPair.second->clear();
-  for (auto &timerPair : analysisTimers)
-    timerPair.second->clear();
-  passTimers.clear();
-  analysisTimers.clear();
-}
-
 /// Start a new timer for the given pass.
 void PassTiming::startPassTimer(Pass *pass) {
-  std::unique_ptr<llvm::Timer> &timer = passTimers[pass];
+  Timer *timer = getTimer(pass, [pass] {
+    if (isa<ModuleToFunctionPassAdaptor>(pass))
+      return StringRef("Function Pipeline");
+    return pass->getName();
+  });
+  activeTimers.push_back(timer);
 
-  /// If the timer doesn't exist then create a new one.
-  if (!timer) {
-    auto passName = pass->getName();
-    timer.reset(new llvm::Timer(passName, passName));
-  }
-
-  activePass = pass;
-  timer->startTimer();
-}
-
-/// Stop a timer for the given pass.
-void PassTiming::stopPassTimer(Pass *pass) {
-  std::unique_ptr<llvm::Timer> &timer = passTimers[pass];
-  assert(timer && "expected valid timer to stop");
-  timer->stopTimer();
-  activePass = nullptr;
+  // We don't actually want to time the adaptor passes, they gather their total
+  // from their held passes.
+  if (!isAdaptorPass(pass))
+    timer->start();
 }
 
 /// Start a new timer for the given analysis.
 void PassTiming::startAnalysisTimer(llvm::StringRef name, AnalysisID *id) {
-  auto &timer = analysisTimers[std::make_pair(id, activePass)];
-
-  /// If the timer doesn't exist then create a new one.
-  if (!timer)
-    timer.reset(new llvm::Timer(name, Twine("(A) " + name).str()));
-  timer->startTimer();
+  Timer *timer = getTimer(id, [name] { return "(A) " + name.str(); });
+  activeTimers.push_back(timer);
+  timer->start();
 }
 
-/// Stop a timer for the given analysis.
-void PassTiming::stopAnalysisTimer(llvm::StringRef name, AnalysisID *id) {
-  auto &timer = analysisTimers[std::make_pair(id, activePass)];
-  assert(timer && "expected a valid timer to stop");
-  timer->stopTimer();
+/// Stop a pass timer.
+void PassTiming::runAfterPass(Pass *pass, const llvm::Any &) {
+  assert(!activeTimers.empty() && "expected active timer");
+  Timer *timer = activeTimers.pop_back_val();
+
+  // Adapator passes aren't timed directly, so we don't need to stop their
+  // timers.
+  if (!isAdaptorPass(pass))
+    timer->stop();
 }
 
-/// Print the timing result in list mode.
-void PassTiming::printResultsAsList(llvm::raw_ostream &os) {
-  // Build a map of timer records uniqued by the timer name.
-  llvm::StringMap<llvm::TimeRecord> records;
-  auto addTimer = [&](llvm::Timer *timer) {
-    auto it = records.try_emplace(timer->getName(), timer->getTotalTime());
-    if (!it.second)
-      it.first->second += timer->getTotalTime();
-  };
-
-  // Add all non-adaptor classes to the time records.
-  for (auto &timerPair : passTimers)
-    if (!isAdaptorPass(timerPair.first))
-      addTimer(timerPair.second.get());
-
-  // Add the analysis timers.
-  for (auto &timerPair : analysisTimers)
-    addTimer(timerPair.second.get());
-
-  // Create a timer group for the records and print it out.
-  llvm::TimerGroup timerGroup("pass", kPassTimingDescription, records);
-  timerGroup.print(os);
+/// Stop a timer.
+void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *,
+                                  const llvm::Any &) {
+  assert(!activeTimers.empty() && "expected active timer");
+  Timer *timer = activeTimers.pop_back_val();
+  timer->stop();
 }
 
-/// Utility to print the heading information for the pipeline timer.
-/// Note: This is a replication of the header generated by llvm::TimerGroup.
-static void printPipelineTimerHeader(llvm::raw_ostream &os,
-                                     llvm::TimeRecord &pipelineTotal) {
+/// Utility to print the timer heading information.
+static void printTimerHeader(llvm::raw_ostream &os, double total) {
   os << "===" << std::string(73, '-') << "===\n";
   // Figure out how many spaces to description name.
   unsigned Padding = (80 - kPassTimingDescription.size()) / 2;
   os.indent(Padding) << kPassTimingDescription << '\n';
   os << "===" << std::string(73, '-') << "===\n";
 
-  // Print the total time.
-  os << llvm::format(
-      "  Total Execution Time: %5.4f seconds (%5.4f wall clock)\n\n",
-      pipelineTotal.getProcessTime(), pipelineTotal.getWallTime());
+  // Print the total time followed by the section headers.
+  os << llvm::format("  Total Execution Time: %5.4f seconds\n\n", total);
+  os << "   ---Wall Time---  --- Name ---\n";
+}
 
-  // Add the headers for each time section.
-  if (pipelineTotal.getUserTime())
-    os << "   ---User Time---";
-  if (pipelineTotal.getSystemTime())
-    os << "   --System Time--";
-  if (pipelineTotal.getProcessTime())
-    os << "   --User+System--";
-  os << "   ---Wall Time---";
-  if (pipelineTotal.getMemUsed())
-    os << "  ---Mem---";
-  os << "  --- Name ---\n";
+/// Utility to print a single line entry in the timer output.
+static void printTimeEntry(raw_ostream &os, unsigned indent, StringRef name,
+                           double time, double totalTime) {
+  os << llvm::format("  %7.4f (%5.1f%%)  ", time, 100.0 * time / totalTime);
+  os.indent(indent) << name << "\n";
+}
+
+/// Print out the current timing information.
+void PassTiming::print() {
+  // Don't print anything if there is no timing data.
+  if (rootTimer.children.empty())
+    return;
+  auto os = llvm::CreateInfoOutputFile();
+
+  // Print the timer header.
+  double totalTime = rootTimer.getTotalTime();
+  printTimerHeader(*os, totalTime);
+
+  // Defer to a specialized printer for each display mode.
+  switch (displayMode) {
+  case PassTimingDisplayMode::List:
+    printResultsAsList(*os, totalTime);
+    break;
+  case PassTimingDisplayMode::Pipeline:
+    printResultsAsPipeline(*os, totalTime);
+    break;
+  }
+  printTimeEntry(*os, 0, "Total", totalTime, totalTime);
+  os->flush();
+
+  // Reset root timer.
+  rootTimer.children.clear();
+}
+
+/// Print the timing result in list mode.
+void PassTiming::printResultsAsList(llvm::raw_ostream &os, double totalTime) {
+  llvm::StringMap<double> mergedTimings;
+
+  std::function<void(Timer *)> addTimer = [&](Timer *timer) {
+    // Check for timing information.
+    if (timer->total.count())
+      mergedTimings[timer->name] += timer->getTotalTime();
+    for (auto &children : timer->children)
+      addTimer(children.second.get());
+  };
+
+  // Add each of the top level timers.
+  for (auto &topLevelTimer : rootTimer.children)
+    addTimer(topLevelTimer.second.get());
+
+  // Sort the timing information.
+  std::vector<std::pair<StringRef, double>> timerNameAndTime;
+  for (auto &it : mergedTimings)
+    timerNameAndTime.emplace_back(it.first(), it.second);
+  llvm::array_pod_sort(timerNameAndTime.begin(), timerNameAndTime.end(),
+                       [](const std::pair<StringRef, double> *lhs,
+                          const std::pair<StringRef, double> *rhs) {
+                         return llvm::array_pod_sort_comparator<double>(
+                             &rhs->second, &lhs->second);
+                       });
+
+  // Print the timing information sequentially.
+  for (auto &timeData : timerNameAndTime)
+    printTimeEntry(os, 0, timeData.first, timeData.second, totalTime);
 }
 
 /// Print the timing result in pipeline mode.
-void PassTiming::printResultsAsPipeline(llvm::raw_ostream &os) {
-  // Collect the total time information for each of the non-adaptor passes.
-  llvm::TimeRecord pipelineTotal;
-  for (auto &timerPair : passTimers)
-    if (!isAdaptorPass(timerPair.first))
-      pipelineTotal += timerPair.second->getTotalTime();
-
-  // Collect the analysis time records for each pass.
-  llvm::DenseMap<Pass *, std::vector<llvm::Timer *>> passAnalyses;
-  for (auto &timerPair : analysisTimers) {
-    passAnalyses[timerPair.first.second].push_back(timerPair.second.get());
-    pipelineTotal += timerPair.second->getTotalTime();
-  }
-  // Sort each of the analysis timers.
-  for (auto &analysisPair : passAnalyses) {
-    llvm::array_pod_sort(
-        analysisPair.second.begin(), analysisPair.second.end(),
-        [](llvm::Timer *const *lhsTimer, llvm::Timer *const *rhsTimer) -> int {
-          return (*lhsTimer)->getDescription().compare(
-              (*rhsTimer)->getDescription());
-        });
-  }
-
-  // Print out timing header.
-  printPipelineTimerHeader(os, pipelineTotal);
-
-  // Print the formatted timing record.
-  unsigned currentIndent = 0;
-  auto printTimer = [&](llvm::StringRef name, llvm::TimeRecord timeRecord) {
-    timeRecord.print(pipelineTotal, os);
-    os.indent(currentIndent) << name;
-    os << "\n";
+void PassTiming::printResultsAsPipeline(llvm::raw_ostream &os,
+                                        double totalTime) {
+  std::function<void(unsigned, Timer *)> printTimer = [&](unsigned indent,
+                                                          Timer *timer) {
+    // Check for timing information.
+    printTimeEntry(os, indent, timer->name, timer->getTotalTime(), totalTime);
+    for (auto &children : timer->children)
+      printTimer(indent + 2, children.second.get());
   };
 
-  // Utility to print the timing information for a pass and its analyses.
-  auto printPassTimer = [&](Pass *pass, llvm::Timer *passTimer) {
-    printTimer(passTimer->getDescription(), passTimer->getTotalTime());
-
-    // Print the computed analyses for this pass.
-    currentIndent += 2;
-    for (llvm::Timer *timer : passAnalyses[pass])
-      printTimer(timer->getDescription(), timer->getTotalTime());
-    currentIndent -= 2;
-  };
-
-  // Print the total execution time.
-  for (auto it = passTimers.begin(), e = passTimers.end(); it != e;) {
-    // Handle a ModuleToFunctionAdaptor pass.
-    if (isa<ModuleToFunctionPassAdaptor>(it->first)) {
-      // Print the time for this adaptor as the accumulation of each of the
-      // nested function passes.
-      llvm::TimeRecord total;
-      for (auto fpIt = ++it; fpIt != e && isa<FunctionPassBase>(fpIt->first);) {
-        total += fpIt->second->getTotalTime();
-        for (llvm::Timer *timer : passAnalyses[(fpIt++)->first])
-          total += timer->getTotalTime();
-      }
-      printTimer("Function Pipeline", total);
-
-      // Update the indent and print the time for each of the function passes
-      // within the pipeline.
-      currentIndent += 2;
-      for (; it != e && isa<FunctionPassBase>(it->first); ++it)
-        printPassTimer(it->first, it->second.get());
-      currentIndent -= 2;
-      continue;
-    }
-
-    // Otherwise, we print the pass timer directly.
-    printPassTimer(it->first, it->second.get());
-    ++it;
-  }
-
-  printTimer("Total\n", pipelineTotal);
-  os.flush();
+  // Print each of the top level timers.
+  for (auto &topLevelTimer : rootTimer.children)
+    printTimer(0, topLevelTimer.second.get());
 }
 
 //===----------------------------------------------------------------------===//
