@@ -324,7 +324,7 @@ def standardize_input_data(data,
     for i in range(len(names)):
       if shapes[i] is not None:
         if tensor_util.is_tensor(data[i]):
-          tensorshape = data[i].get_shape()
+          tensorshape = data[i].shape
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
