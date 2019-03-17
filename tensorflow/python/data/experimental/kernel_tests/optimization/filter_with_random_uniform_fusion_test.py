@@ -31,7 +31,6 @@ class FilterWithRandomUniformFusionTest(test_base.DatasetTestBase):
   def testFilterWithRandomUniformFusion(self):
     dataset = dataset_ops.Dataset.range(10000000).apply(
         optimization.assert_next(["Sampling"]))
-    #dataset = dataset.filter(lambda x: math_ops.less(random_ops.random_uniform([1]), 0.05)[0])
     dataset = dataset.filter(lambda _: random_ops.random_uniform([]) < 0.05)
 
     options = dataset_ops.Options()
