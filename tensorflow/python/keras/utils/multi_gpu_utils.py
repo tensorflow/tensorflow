@@ -223,7 +223,7 @@ def multi_gpu_model(model, gpus, cpu_merge=True, cpu_relocation=False):
         inputs = []
         # Retrieve a slice of the input.
         for x in model.inputs:
-          input_shape = tuple(x.get_shape().as_list())[1:]
+          input_shape = tuple(x.shape.as_list())[1:]
           slice_i = Lambda(
               get_slice,
               output_shape=input_shape,
