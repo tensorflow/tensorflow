@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
@@ -177,7 +178,9 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
   # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
-  if any(tensor_util.is_tensor(v) for v in nest.flatten(extra_deps)):
+  if any(
+      tensor_util.is_tensor(v) or isinstance(v, data_flow_ops.QueueBase)
+      for v in nest.flatten(extra_deps)):
     # Check for undefined symbols and report an error. This prevents the error
     # from propagating into the TF runtime. We have more information here and
     # can provide a clearer error message.
@@ -225,7 +228,7 @@ def _py_while_stmt(test, body, init_state, opts):
   return state
 
 
-def if_stmt(cond, body, orelse):
+def if_stmt(cond, body, orelse, get_state, set_state):
   """Functional form of an if statement.
 
   Args:
@@ -234,23 +237,49 @@ def if_stmt(cond, body, orelse):
         as return type.
     orelse: Callable with no arguments, and outputs of the negative (else)
         branch as return type.
+    get_state: Function that returns a tuple containing the values of all
+        composite symbols modified within the conditional. This allows access to
+        state that branches may mutate through side effects. This function is
+        not needed and should not be called when dispatching to code matching
+        Python's default semantics. This is useful for checkpointing to avoid
+        unintended side-effects when staging requires evaluating all code-paths.
+    set_state: Function to set the values of all composite symbols modified
+        within the conditional. This is the complement to get_state, used to
+        restore checkpointed values. The single argument a tuple containing
+        values for each composite symbol that may be modified in a branch of the
+        conditional. The is usually the result of a call to get_state.
 
   Returns:
     Tuple containing the statement outputs.
   """
   if tensor_util.is_tensor(cond):
-    return tf_if_stmt(cond, body, orelse)
+    return tf_if_stmt(cond, body, orelse, get_state, set_state)
   else:
     return _py_if_stmt(cond, body, orelse)
 
 
-def tf_if_stmt(cond, body, orelse):
+def tf_if_stmt(cond, body, orelse, get_state, set_state):
   """Overload of if_stmt that stages a TF cond."""
-  protected_body = _wrap_in_protection_from_undefined(body, branch_name='if')
-  protected_orelse = _wrap_in_protection_from_undefined(orelse,
-                                                        branch_name='else')
+  checkpointed_body = _wrap_in_state_isolation(body, get_state, set_state)
+  checkpointed_orelse = _wrap_in_state_isolation(orelse, get_state,
+                                                 set_state)
+  protected_body = _wrap_in_protection_from_undefined(
+      checkpointed_body, branch_name='if')
+  protected_orelse = _wrap_in_protection_from_undefined(
+      checkpointed_orelse, branch_name='else')
 
   return control_flow_ops.cond(cond, protected_body, protected_orelse)
+
+
+def _wrap_in_state_isolation(func, get_state, set_state):
+  """Wraps function to checkpoint the value of modified composites."""
+  def checkpoint_func():
+    init_values = get_state()
+    ret_values = func()
+    set_state(init_values)
+    return ret_values
+
+  return checkpoint_func
 
 
 def _wrap_in_protection_from_undefined(func, branch_name):

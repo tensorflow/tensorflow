@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Activation
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.lib.io import tf_record
@@ -167,8 +168,145 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
 
   @test_util.also_run_as_tf_function
   def testWrite_noDefaultWriter(self):
-    with context.eager_mode():
-      self.assertFalse(summary_ops.write('tag', 42, step=0))
+    # Use assertAllEqual instead of assertFalse since it works in a defun.
+    self.assertAllEqual(False, summary_ops.write('tag', 42, step=0))
+
+  @test_util.also_run_as_tf_function
+  def testWrite_noStep_okayIfAlsoNoDefaultWriter(self):
+    # Use assertAllEqual instead of assertFalse since it works in a defun.
+    self.assertAllEqual(False, summary_ops.write('tag', 42))
+
+  @test_util.also_run_as_tf_function
+  def testWrite_noStep(self):
+    logdir = self.get_temp_dir()
+    with summary_ops.create_file_writer(logdir).as_default():
+      with self.assertRaisesRegex(ValueError, 'No step set'):
+        summary_ops.write('tag', 42)
+
+  def testWrite_usingDefaultStep(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        with summary_ops.create_file_writer(logdir).as_default():
+          summary_ops.set_step(1)
+          summary_ops.write('tag', 1.0)
+          summary_ops.set_step(2)
+          summary_ops.write('tag', 1.0)
+          mystep = variables.Variable(10, dtype=dtypes.int64)
+          summary_ops.set_step(mystep)
+          summary_ops.write('tag', 1.0)
+          mystep.assign_add(1)
+          summary_ops.write('tag', 1.0)
+      events = events_from_logdir(logdir)
+      self.assertEqual(5, len(events))
+      self.assertEqual(1, events[1].step)
+      self.assertEqual(2, events[2].step)
+      self.assertEqual(10, events[3].step)
+      self.assertEqual(11, events[4].step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepConstant_fromFunction(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        @def_function.function
+        def f():
+          with writer.as_default():
+            summary_ops.write('tag', 1.0)
+        summary_ops.set_step(1)
+        f()
+        summary_ops.set_step(2)
+        f()
+      events = events_from_logdir(logdir)
+      self.assertEqual(3, len(events))
+      self.assertEqual(1, events[1].step)
+      # The step value will still be 1 because the value was captured at the
+      # time the function was first traced.
+      self.assertEqual(1, events[2].step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepVariable_fromFunction(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        @def_function.function
+        def f():
+          with writer.as_default():
+            summary_ops.write('tag', 1.0)
+        mystep = variables.Variable(0, dtype=dtypes.int64)
+        summary_ops.set_step(mystep)
+        f()
+        mystep.assign_add(1)
+        f()
+        mystep.assign(10)
+        f()
+      events = events_from_logdir(logdir)
+      self.assertEqual(4, len(events))
+      self.assertEqual(0, events[1].step)
+      self.assertEqual(1, events[2].step)
+      self.assertEqual(10, events[3].step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepConstant_fromLegacyGraph(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.graph_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        summary_ops.set_step(1)
+        with writer.as_default():
+          write_op = summary_ops.write('tag', 1.0)
+        summary_ops.set_step(2)
+        with self.cached_session() as sess:
+          sess.run(writer.init())
+          sess.run(write_op)
+          sess.run(write_op)
+          sess.run(writer.flush())
+      events = events_from_logdir(logdir)
+      self.assertEqual(3, len(events))
+      self.assertEqual(1, events[1].step)
+      # The step value will still be 1 because the value was captured at the
+      # time the graph was constructed.
+      self.assertEqual(1, events[2].step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testWrite_usingDefaultStepVariable_fromLegacyGraph(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.graph_mode():
+        writer = summary_ops.create_file_writer(logdir)
+        mystep = variables.Variable(0, dtype=dtypes.int64)
+        summary_ops.set_step(mystep)
+        with writer.as_default():
+          write_op = summary_ops.write('tag', 1.0)
+        first_assign_op = mystep.assign_add(1)
+        second_assign_op = mystep.assign(10)
+        with self.cached_session() as sess:
+          sess.run(writer.init())
+          sess.run(mystep.initializer)
+          sess.run(write_op)
+          sess.run(first_assign_op)
+          sess.run(write_op)
+          sess.run(second_assign_op)
+          sess.run(write_op)
+          sess.run(writer.flush())
+      events = events_from_logdir(logdir)
+      self.assertEqual(4, len(events))
+      self.assertEqual(0, events[1].step)
+      self.assertEqual(1, events[2].step)
+      self.assertEqual(10, events[3].step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
 
   def testWrite_recordIf_constant(self):
     logdir = self.get_temp_dir()
@@ -268,6 +406,59 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, events[1].step)
     self.assertEqual(2, events[2].step)
     self.assertEqual(4, events[3].step)
+
+  @test_util.also_run_as_tf_function
+  def testGetSetStep(self):
+    try:
+      self.assertIsNone(summary_ops.get_step())
+      summary_ops.set_step(1)
+      # Use assertAllEqual instead of assertEqual since it works in a defun.
+      self.assertAllEqual(1, summary_ops.get_step())
+      summary_ops.set_step(constant_op.constant(2))
+      self.assertAllEqual(2, summary_ops.get_step())
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  def testGetSetStep_variable(self):
+    with context.eager_mode():
+      try:
+        mystep = variables.Variable(0)
+        summary_ops.set_step(mystep)
+        self.assertAllEqual(0, summary_ops.get_step().read_value())
+        mystep.assign_add(1)
+        self.assertAllEqual(1, summary_ops.get_step().read_value())
+        # Check that set_step() properly maintains reference to variable.
+        del mystep
+        self.assertAllEqual(1, summary_ops.get_step().read_value())
+        summary_ops.get_step().assign_add(1)
+        self.assertAllEqual(2, summary_ops.get_step().read_value())
+      finally:
+        # Reset to default state for other tests.
+        summary_ops.set_step(None)
+
+  def testGetSetStep_variable_fromFunction(self):
+    with context.eager_mode():
+      try:
+        @def_function.function
+        def set_step(step):
+          summary_ops.set_step(step)
+          return summary_ops.get_step()
+        @def_function.function
+        def get_and_increment():
+          summary_ops.get_step().assign_add(1)
+          return summary_ops.get_step()
+        mystep = variables.Variable(0)
+        self.assertAllEqual(0, set_step(mystep))
+        self.assertAllEqual(0, summary_ops.get_step().read_value())
+        self.assertAllEqual(1, get_and_increment())
+        self.assertAllEqual(2, get_and_increment())
+        # Check that set_step() properly maintains reference to variable.
+        del mystep
+        self.assertAllEqual(3, get_and_increment())
+      finally:
+        # Reset to default state for other tests.
+        summary_ops.set_step(None)
 
   @test_util.also_run_as_tf_function
   def testSummaryScope(self):
@@ -384,6 +575,22 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     # Even though we didn't use it, an event file will have been created.
     self.assertEqual(1, len(gfile.Glob(os.path.join(logdir, '*'))))
 
+  def testCreate_immediateSetAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        summary_ops.create_file_writer_v2(logdir).set_as_default()
+        summary_ops.flush()
+    finally:
+      # Ensure we clean up no matter how the test executes.
+      context.context().summary_writer_resource = None
+
+  def testCreate_immediateAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        summary_ops.flush()
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
@@ -497,7 +704,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=999999, flush_millis=999999)
-      with writer.as_default(), summary_ops.always_record_summaries():
+      with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
         # Note: First tf.Event is always file_version.
         self.assertEqual(1, get_total())
@@ -575,7 +782,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
 class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
-    summary_ops.disable_trace()
+    summary_ops.trace_off()
 
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
@@ -585,7 +792,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       summary_ops.run_metadata(*args, **kwargs)
     writer.close()
     events = events_from_logdir(logdir)
-    return events[1].summary
+    return events[1]
 
   def run_metadata_graphs(self, *args, **kwargs):
     assert context.executing_eagerly()
@@ -595,7 +802,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       summary_ops.run_metadata_graphs(*args, **kwargs)
     writer.close()
     events = events_from_logdir(logdir)
-    return events[1].summary
+    return events[1]
 
   def create_run_metadata(self):
     step_stats = step_stats_pb2.StepStats(dev_stats=[
@@ -620,27 +827,27 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     events = events_from_logdir(logdir)
     # The first event contains no summary values. The written content goes to
     # the second event.
-    return events[1].summary
+    return events[1]
 
-  def run_trace(self, f):
+  def run_trace(self, f, step=1):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
     writer = summary_ops.create_file_writer(logdir)
-    summary_ops.enable_trace(graph=True, profiler=False)
+    summary_ops.trace_on(graph=True, profiler=False)
     with writer.as_default():
       f()
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=step)
     writer.close()
     events = events_from_logdir(logdir)
-    return events[1].summary
+    return events[1]
 
   @test_util.run_v2_only
   def testRunMetadata_usesNameAsTag(self):
     meta = config_pb2.RunMetadata()
 
     with ops.name_scope('foo'):
-      summary = self.run_metadata(name='my_name', data=meta, step=1)
-      first_val = summary.value[0]
+      event = self.run_metadata(name='my_name', data=meta, step=1)
+      first_val = event.summary.value[0]
 
     self.assertEqual('foo/my_name', first_val.tag)
 
@@ -653,8 +860,8 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       }
     """
     meta = config_pb2.RunMetadata()
-    summary = self.run_metadata(name='my_name', data=meta, step=1)
-    actual_summary_metadata = summary.value[0].metadata
+    event = self.run_metadata(name='my_name', data=meta, step=1)
+    actual_summary_metadata = event.summary.value[0].metadata
     self.assertProtoEquals(expected_summary_metadata, actual_summary_metadata)
 
   @test_util.run_v2_only
@@ -677,20 +884,31 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       }
     """
     meta = self.create_run_metadata()
-    summary = self.run_metadata(name='my_name', data=meta, step=1)
-    first_val = summary.value[0]
+    event = self.run_metadata(name='my_name', data=meta, step=1)
+    first_val = event.summary.value[0]
 
     actual_run_metadata = config_pb2.RunMetadata.FromString(
         first_val.tensor.string_val[0])
     self.assertProtoEquals(expected_run_metadata, actual_run_metadata)
 
   @test_util.run_v2_only
+  def testRunMetadata_usesDefaultStep(self):
+    meta = config_pb2.RunMetadata()
+    try:
+      summary_ops.set_step(42)
+      event = self.run_metadata(name='my_name', data=meta)
+      self.assertEqual(42, event.step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  @test_util.run_v2_only
   def testRunMetadataGraph_usesNameAsTag(self):
     meta = config_pb2.RunMetadata()
 
     with ops.name_scope('foo'):
-      summary = self.run_metadata_graphs(name='my_name', data=meta, step=1)
-      first_val = summary.value[0]
+      event = self.run_metadata_graphs(name='my_name', data=meta, step=1)
+      first_val = event.summary.value[0]
 
     self.assertEqual('foo/my_name', first_val.tag)
 
@@ -703,8 +921,8 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       }
     """
     meta = config_pb2.RunMetadata()
-    summary = self.run_metadata_graphs(name='my_name', data=meta, step=1)
-    actual_summary_metadata = summary.value[0].metadata
+    event = self.run_metadata_graphs(name='my_name', data=meta, step=1)
+    actual_summary_metadata = event.summary.value[0].metadata
     self.assertProtoEquals(expected_summary_metadata, actual_summary_metadata)
 
   @test_util.run_v2_only
@@ -720,21 +938,79 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     """
     meta = self.create_run_metadata()
 
-    summary = self.run_metadata_graphs(name='my_name', data=meta, step=1)
-    first_val = summary.value[0]
+    event = self.run_metadata_graphs(name='my_name', data=meta, step=1)
+    first_val = event.summary.value[0]
 
     actual_run_metadata = config_pb2.RunMetadata.FromString(
         first_val.tensor.string_val[0])
     self.assertProtoEquals(expected_run_metadata, actual_run_metadata)
 
   @test_util.run_v2_only
+  def testRunMetadataGraph_usesDefaultStep(self):
+    meta = config_pb2.RunMetadata()
+    try:
+      summary_ops.set_step(42)
+      event = self.run_metadata_graphs(name='my_name', data=meta)
+      self.assertEqual(42, event.step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  @test_util.run_v2_only
   def testKerasModel(self):
     model = Sequential(
         [Dense(10, input_shape=(100,)),
          Activation('relu', name='my_relu')])
-    summary = self.keras_model(name='my_name', data=model, step=1)
-    first_val = summary.value[0]
-    self.assertEqual(model.to_json(), first_val.tensor.string_val[0])
+    event = self.keras_model(name='my_name', data=model, step=1)
+    first_val = event.summary.value[0]
+    self.assertEqual(model.to_json(), first_val.tensor.string_val[0].decode())
+
+  @test_util.run_v2_only
+  def testKerasModel_usesDefaultStep(self):
+    model = Sequential(
+        [Dense(10, input_shape=(100,)),
+         Activation('relu', name='my_relu')])
+    try:
+      summary_ops.set_step(42)
+      event = self.keras_model(name='my_name', data=model)
+      self.assertEqual(42, event.step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
+
+  @test_util.run_v2_only
+  def testKerasModel_subclass(self):
+
+    class SimpleSubclass(Model):
+
+      def __init__(self):
+        super(SimpleSubclass, self).__init__(name='subclass')
+        self.dense = Dense(10, input_shape=(100,))
+        self.activation = Activation('relu', name='my_relu')
+
+      def call(self, inputs):
+        x = self.dense(inputs)
+        return self.activation(x)
+
+    model = SimpleSubclass()
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      self.assertFalse(
+          summary_ops.keras_model(name='my_name', data=model, step=1))
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Model failed to serialize as JSON.')
+
+  @test_util.run_v2_only
+  def testKerasModel_otherExceptions(self):
+    model = Sequential()
+
+    with test.mock.patch.object(model, 'to_json') as mock_to_json:
+      with test.mock.patch.object(logging, 'warn') as mock_log:
+        mock_to_json.side_effect = Exception('oops')
+        self.assertFalse(
+            summary_ops.keras_model(name='my_name', data=model, step=1))
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Model failed to serialize as JSON. Ignoring... oops')
 
   @test_util.run_v2_only
   def testTrace(self):
@@ -745,9 +1021,9 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       y = constant_op.constant(3)
       return x**y
 
-    summary = self.run_trace(f)
+    event = self.run_trace(f)
 
-    first_val = summary.value[0]
+    first_val = event.summary.value[0]
     actual_run_metadata = config_pb2.RunMetadata.FromString(
         first_val.tensor.string_val[0])
 
@@ -759,13 +1035,21 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def f():
-      summary_ops.enable_trace(graph=True, profiler=False)
+      summary_ops.trace_on(graph=True, profiler=False)
       x = constant_op.constant(2)
       y = constant_op.constant(3)
       return x**y
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Cannot enable trace inside a tf.function.')
+
+  @test_util.run_v2_only
+  def testTrace_cannotEnableTraceInGraphMode(self):
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      with context.graph_mode():
+        summary_ops.trace_on(graph=True, profiler=False)
       self.assertRegexpMatches(
           str(mock_log.call_args), 'Must enable trace in eager mode.')
 
@@ -773,24 +1057,50 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def testTrace_cannotExportTraceWithoutTrace(self):
     with six.assertRaisesRegex(self, ValueError,
                                'Must enable trace before export.'):
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=1)
 
   @test_util.run_v2_only
   def testTrace_cannotExportTraceInFunction(self):
-    summary_ops.enable_trace(graph=True, profiler=False)
+    summary_ops.trace_on(graph=True, profiler=False)
 
     @def_function.function
     def f():
       x = constant_op.constant(2)
       y = constant_op.constant(3)
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=1)
       return x**y
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
       self.assertRegexpMatches(
           str(mock_log.call_args),
+          'Cannot export trace inside a tf.function.')
+
+  @test_util.run_v2_only
+  def testTrace_cannotExportTraceInGraphMode(self):
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      with context.graph_mode():
+        summary_ops.trace_export(name='foo', step=1)
+      self.assertRegexpMatches(
+          str(mock_log.call_args),
           'Can only export trace while executing eagerly.')
+
+  @test_util.run_v2_only
+  def testTrace_usesDefaultStep(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    try:
+      summary_ops.set_step(42)
+      event = self.run_trace(f, step=None)
+      self.assertEqual(42, event.step)
+    finally:
+      # Reset to default state for other tests.
+      summary_ops.set_step(None)
 
 
 def events_from_file(filepath):

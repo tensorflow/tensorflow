@@ -59,9 +59,12 @@ limitations under the License.
 #include "cuda/include/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
+
+class AutotuneResult;
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
@@ -496,10 +499,11 @@ inline int64 ConvolveScratchSize() {
 // convolution on the stream) and parameters, by running all possible
 // algorithms and measuring execution time.
 // TODO(ezhulenev): Move it to conv_ops_gpu.h and share with conv_ops.cc.
-template <typename T, typename ConvLaunch>
+template <typename T, typename ConvLaunch, typename LogFunc>
 Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
                                  const ConvLaunch launch,
                                  OpKernelContext* context, se::Stream* stream,
+                                 const LogFunc& log,
                                  se::dnn::AlgorithmConfig* algorithm_config) {
   // Check if we already have an algorithm selected for the given parameters.
   if (AutoTuneFusedConv::GetInstance()->Find(params, algorithm_config)) {
@@ -517,9 +521,7 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
         "see if a warning log message was printed above.");
   }
 
-  se::dnn::ProfileResult best_result;
-  se::dnn::ProfileResult best_result_no_scratch;
-
+  std::vector<tensorflow::AutotuneResult> results;
   for (auto profile_algorithm : algorithms) {
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);
     se::dnn::ProfileResult profile_result;
@@ -529,29 +531,21 @@ Status FindBestConvolveAlgorithm(const FusedConvParameters& params,
                &profile_result);
 
     if (cudnn_launch_status && profile_result.is_valid()) {
-      if (profile_result.elapsed_time_in_ms() <
-          best_result.elapsed_time_in_ms()) {
-        best_result = profile_result;
-      }
-      if (scratch_allocator.TotalByteSize() == 0 &&
-          profile_result.elapsed_time_in_ms() <
-              best_result_no_scratch.elapsed_time_in_ms()) {
-        best_result_no_scratch = profile_result;
-      }
+      results.emplace_back();
+      auto& result = results.back();
+      result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+      result.mutable_conv()->set_tensor_ops_enabled(
+          profile_algorithm.tensor_ops_enabled());
+      result.mutable_success()->set_scratch_bytes(
+          scratch_allocator.TotalByteSize());
+      *result.mutable_success()->mutable_run_time() =
+          proto_utils::ToDurationProto(
+              absl::Milliseconds(profile_result.elapsed_time_in_ms()));
     }
   }
-
-  if (!best_result.is_valid() && !best_result_no_scratch.is_valid()) {
-    return errors::NotFound("No algorithm worked!");
-  }
-  if (best_result.is_valid()) {
-    algorithm_config->set_algorithm(best_result.algorithm());
-  }
-  if (best_result_no_scratch.is_valid()) {
-    algorithm_config->set_algorithm_no_scratch(
-        best_result_no_scratch.algorithm());
-  }
-
+  // Only log on an AutoTuneFusedConv cache miss.
+  log(results);
+  TF_RETURN_IF_ERROR(BestCudnnConvAlgorithm(results, algorithm_config));
   AutoTuneFusedConv::GetInstance()->Insert(params, *algorithm_config);
   return Status::OK();
 }
@@ -798,9 +792,15 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
     se::dnn::AlgorithmConfig algorithm_config;
     if (cudnn_use_autotune) {
-      OP_REQUIRES_OK(context, FindBestConvolveAlgorithm<T>(
-                                  conv_parameters, launch, context, stream,
-                                  &algorithm_config));
+      auto status = FindBestConvolveAlgorithm<T>(
+          conv_parameters, launch, context, stream,
+          [&](absl::Span<const tensorflow::AutotuneResult> results) {
+            LogFusedConvAutotuneResults(
+                context->op_kernel().def(), input, transformed_filter,
+                transformed_output, bias, nullptr, stream->parent(), results);
+          },
+          &algorithm_config);
+      OP_REQUIRES_OK(context, status);
     }
 
     DnnScratchAllocator scratch_allocator(ConvolveScratchSize(), context);

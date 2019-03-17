@@ -661,6 +661,11 @@ class FunctionLibraryRuntime {
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
 
+  // Returns the default runner in which the ops should be launched. If the
+  // device on which the function executes has a private thread pool, return
+  // runner on the device local thread pool.
+  virtual std::function<void(std::function<void()>)>* runner() = 0;
+
   // Get the DeviceMgr from which the device was obtained.
   virtual const DeviceMgr* device_mgr() const = 0;
 

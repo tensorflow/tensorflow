@@ -413,7 +413,7 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
           config.virtual_thread_count, grads_image.data());
     }
 
-    // Configurate interpolation method.
+    // Configure interpolation method.
     InterpolationMethod method = BILINEAR;
     if (method_name == "nearest") {
       method = NEAREST;

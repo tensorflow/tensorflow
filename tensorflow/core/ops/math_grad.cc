@@ -593,6 +593,20 @@ Status XdivyGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Xdivy", XdivyGrad);
 
+Status SquaredDifferenceGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      FDH::Const("c", 2LL),
+      {{"two"}, "Cast", {"c"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+      {{"x_sub_y"}, "Sub", {"x", "y"}},
+      {{"two_x_sub_y"}, "Mul", {"two", "x_sub_y"}},  // 2 * (x - y)
+      {{"gx"}, "Mul", {"two_x_sub_y", "dz"}},
+      {{"gy"}, "Neg", {"gx"}}
+    });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("SquaredDifference", SquaredDifferenceGrad);
+
 Status MaximumMinimumGradHelper(const string& comparator,
                                 const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off

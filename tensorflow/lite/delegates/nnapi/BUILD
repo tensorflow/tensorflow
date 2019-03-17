@@ -2,7 +2,6 @@ package(default_visibility = [
     "//visibility:public",
 ])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 licenses(["notice"])  # Apache 2.0
@@ -20,7 +19,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "nnapi_delegate_test",
     size = "small",
     srcs = ["nnapi_delegate_test.cc"],

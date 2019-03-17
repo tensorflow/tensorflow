@@ -53,6 +53,20 @@ struct MultinomialFunctor {
                   typename TTypes<OutputType>::Matrix output);
 };
 
+#if GOOGLE_CUDA
+extern template struct MultinomialFunctor<GPUDevice, Eigen::half, int32>;
+extern template struct MultinomialFunctor<GPUDevice, float, int32>;
+extern template struct MultinomialFunctor<GPUDevice, double, int32>;
+extern template struct MultinomialFunctor<GPUDevice, int32, int32>;
+extern template struct MultinomialFunctor<GPUDevice, int64, int32>;
+
+extern template struct MultinomialFunctor<GPUDevice, Eigen::half, int64>;
+extern template struct MultinomialFunctor<GPUDevice, float, int64>;
+extern template struct MultinomialFunctor<GPUDevice, double, int64>;
+extern template struct MultinomialFunctor<GPUDevice, int32, int64>;
+extern template struct MultinomialFunctor<GPUDevice, int64, int64>;
+#endif  // GOOGLE_CUDA
+
 template <typename T, typename OutputType>
 struct MultinomialFunctor<CPUDevice, T, OutputType> {
   void operator()(OpKernelContext* ctx, const CPUDevice& d,

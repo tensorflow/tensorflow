@@ -7,6 +7,7 @@ load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -87,7 +88,13 @@ pkg_tar(
 
 pkg_tar(
     name = "clib",
-    files = ["//tensorflow:libtensorflow.so"],
+    files = select({
+        "//tensorflow:windows": [
+            "//tensorflow:tensorflow.dll",
+            "//tensorflow:tensorflow_dll_import_lib",
+        ],
+        "//conditions:default": ["//tensorflow:libtensorflow.so"],
+    }),
     package_dir = "lib",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -130,9 +137,9 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
-        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -141,7 +148,9 @@ genrule(
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ] + select({
+    ] + if_not_windows([
+        "@llvm//:LICENSE.TXT",
+    ]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
@@ -199,9 +208,9 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
         "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@jpeg//:LICENSE.md",
-        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -212,7 +221,9 @@ genrule(
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
-    ] + select({
+    ] + if_not_windows([
+        "@llvm//:LICENSE.TXT",
+    ]) + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],

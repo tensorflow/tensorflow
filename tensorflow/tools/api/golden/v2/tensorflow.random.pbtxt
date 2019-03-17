@@ -1,5 +1,9 @@
 path: "tensorflow.random"
 tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "all_candidate_sampler"
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "

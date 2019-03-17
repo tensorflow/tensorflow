@@ -66,7 +66,7 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
   template void DynamicStitchGPUImpl(                             \
       const Eigen::GpuDevice& gpu_device, const int32 slice_size, \
       const int32 first_dim_size,                                 \
-      const GpuDeviceArrayStruct<int32>& input_indices,          \
+      const GpuDeviceArrayStruct<int32>& input_indices,           \
       const GpuDeviceArrayStruct<const T*>& input_ptrs, T* output);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);

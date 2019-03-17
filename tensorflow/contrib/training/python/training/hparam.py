@@ -353,8 +353,10 @@ class HParams(object):
   def my_program():
     # Create a HParams object specifying the names and values of the
     # model hyperparameters:
-    hparams = tf.HParams(learning_rate=0.1, num_hidden_units=100,
-                         activations=['relu', 'tanh'])
+    hparams = tf.contrib.training.HParams(
+        learning_rate=0.1,
+        num_hidden_units=100,
+        activations=['relu', 'tanh'])
 
     # Override hyperparameters values by parsing the command line
     hparams.parse(args.hparams)
@@ -387,7 +389,7 @@ class HParams(object):
     # Define 3 hyperparameters: 'learning_rate' is a float parameter,
     # 'num_hidden_units' an integer parameter, and 'activation' a string
     # parameter.
-    hparams = tf.HParams(
+    hparams = tf.contrib.training.HParams(
         learning_rate=0.1, num_hidden_units=100, activation='relu')
 
     hparams.activation ==> 'relu'

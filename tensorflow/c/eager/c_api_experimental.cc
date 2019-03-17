@@ -39,7 +39,7 @@ void TFE_DeleteProfiler(TFE_Profiler* profiler) { delete profiler; }
 void TFE_ProfilerSerializeToString(TFE_Context* ctx, TFE_Profiler* profiler,
                                    TF_Buffer* buf, TF_Status* status) {
   TFE_ContextAsyncWait(ctx, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   string content;
   status->status = profiler->profiler->SerializeToString(&content);
   void* data = tensorflow::port::Malloc(content.length());
@@ -78,9 +78,10 @@ void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   ctx->context.SetShouldStoreGraphs(false);
 }
 
-bool TFE_ProfilerClientStartTracing(char* service_addr, char* logdir,
-                                    char* worker_list, bool include_dataset_ops,
-                                    int duration_ms, int num_tracing_attempts) {
+bool TFE_ProfilerClientStartTracing(const char* service_addr,
+                                    const char* logdir, const char* worker_list,
+                                    bool include_dataset_ops, int duration_ms,
+                                    int num_tracing_attempts) {
   tensorflow::Status s =
       tensorflow::profiler::client::ValidateHostPortPair(service_addr);
   if (!s.ok()) {

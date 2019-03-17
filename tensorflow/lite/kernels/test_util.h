@@ -204,7 +204,7 @@ class SingleOpModel {
     const int channel_index = params->quantized_dimension;
 
     std::vector<int32_t> shape(t->dims->size);
-    for (int i = 0; i < shape.size(); ++i) {
+    for (size_t i = 0; i < shape.size(); ++i) {
       shape[i] = t->dims->data[i];
     }
     const int32_t num_inputs = input_data.size();
@@ -324,6 +324,10 @@ class SingleOpModel {
       result.push_back(t->dims->data[i]);
     }
     return result;
+  }
+
+  void SetNumThreads(int num_threads) {
+    interpreter_->SetNumThreads(num_threads);
   }
 
   void SetResolver(std::unique_ptr<OpResolver> resolver) {

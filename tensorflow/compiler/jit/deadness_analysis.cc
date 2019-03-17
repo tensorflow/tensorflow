@@ -768,7 +768,8 @@ Status DeadnessAnalysisImpl::GetInputPreds(
       auto it = predicate_map_.find(InputEdgeToTensorId(in_edge));
       if (it == predicate_map_.end()) {
         GraphCycles graph_cycles;
-        TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(&graph_, &graph_cycles));
+        TF_RETURN_IF_ERROR(
+            CreateCycleDetectionGraph(&graph_, &graph_cycles).status());
 
         // If we didn't return with an error above then the graph is probably
         // fine and we have a bug in deadness analysis.

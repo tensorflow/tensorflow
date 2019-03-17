@@ -200,8 +200,7 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
   static void CUDART_CB asyncFree(gpuStream_t stream, cudaError_t status,
                                   void* userData) {
 #elif TENSORFLOW_USE_ROCM
-  static void asyncFree(gpuStream_t stream, hipError_t status,
-                                  void* userData) {
+  static void asyncFree(gpuStream_t stream, hipError_t status, void* userData) {
 #endif
     AsyncFreeData* data = static_cast<AsyncFreeData*>(userData);
     if (LogMemory::IsEnabled()) {
@@ -214,8 +213,8 @@ class EigenGpuStreamDevice : public ::Eigen::StreamInterface {
 
   string operation_;
   int64 step_id_;
-  const gpuStream_t* stream_;          // Not owned.
-  const gpuDeviceProp_t* device_prop_;   // Not owned.
+  const gpuStream_t* stream_;           // Not owned.
+  const gpuDeviceProp_t* device_prop_;  // Not owned.
   ::tensorflow::Allocator* allocator_;  // Not owned.
   mutable char* scratch_;
   mutable unsigned int* semaphore_;
@@ -1046,16 +1045,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
 #elif TENSORFLOW_USE_ROCM
       err = hipSetDevice(platform_gpu_id.value());
       if (err != hipSuccess) {
-        return errors::Internal("hipSetDevice() on GPU:",
-                                platform_gpu_id.value(),
-                                " failed. Status: ", hipGetErrorString(err));
+        return errors::Internal(
+            "hipSetDevice() on GPU:", platform_gpu_id.value(),
+            " failed. Status: ", hipGetErrorString(err));
       }
       err = hipFree(nullptr);
       if (err != hipSuccess) {
-        return errors::Internal(
-            "ROCm runtime implicit initialization on GPU:",
-            platform_gpu_id.value(), " failed. Status: ",
-            hipGetErrorString(err));
+        return errors::Internal("ROCm runtime implicit initialization on GPU:",
+                                platform_gpu_id.value(),
+                                " failed. Status: ", hipGetErrorString(err));
       }
 #endif
     }
@@ -1175,8 +1173,9 @@ static string GetShortDeviceDescription(PlatformGpuId platform_gpu_id,
                          ", compute capability: ", cc_major, ".", cc_minor);
   // LINT.ThenChange(//tensorflow/python/platform/test.py)
 #elif TENSORFLOW_USE_ROCM
-  return strings::StrCat("device: ", platform_gpu_id.value(), ", name: ",
-                         desc.name(), ", pci bus id: ", desc.pci_bus_id());
+  return strings::StrCat("device: ", platform_gpu_id.value(),
+                         ", name: ", desc.name(),
+                         ", pci bus id: ", desc.pci_bus_id());
 #endif
 }
 
@@ -1455,15 +1454,15 @@ std::vector<CudaVersion> GetSupportedCudaComputeCapabilities() {
 #endif
   return cuda_caps;
 }
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #if TENSORFLOW_USE_ROCM
-std::vector<int> supported_amdgpu_isa_versions = { 803, 900, 906 };
+std::vector<int> supported_amdgpu_isa_versions = {803, 900, 906};
 
 std::vector<int> GetSupportedAMDGPUISAVersions() {
   return supported_amdgpu_isa_versions;
 }
-#endif // TENSORFLOW_USE_ROCM
+#endif  // TENSORFLOW_USE_ROCM
 
 Status EnablePeerAccess(se::Platform* platform,
                         const std::vector<PlatformGpuId>& visible_gpu_order) {
@@ -1563,11 +1562,10 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       isa_version = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description.name()
-              << "\nAMDGPU ISA: gfx" << isa_version
-              << "\nmemoryClockRate (GHz) " << description.clock_rate_ghz()
-              << "\npciBusID " << description.pci_bus_id()
-              << "\nTotal memory: "
+              << "\nname: " << description.name() << "\nAMDGPU ISA: gfx"
+              << isa_version << "\nmemoryClockRate (GHz) "
+              << description.clock_rate_ghz() << "\npciBusID "
+              << description.pci_bus_id() << "\nTotal memory: "
               << strings::HumanReadableNumBytes(total_bytes)
               << "\nFree memory: "
               << strings::HumanReadableNumBytes(free_bytes);
@@ -1593,8 +1591,8 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
     return errors::FailedPrecondition(
         "No supported rocm capabilities in binary.");
   }
-  int min_supported_isa = *std::min_element(
-      rocm_supported_isas.begin(), rocm_supported_isas.end());
+  int min_supported_isa =
+      *std::min_element(rocm_supported_isas.begin(), rocm_supported_isas.end());
 #endif
 
   int min_gpu_core_count =

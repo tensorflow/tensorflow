@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -82,12 +83,24 @@ class AotCompilationOptions {
   const DebugOptions& debug_options() const { return debug_options_; }
   DebugOptions* mutable_debug_options() { return &debug_options_; }
 
+  bool has_static_device_assignment() const {
+    return static_device_assignment_.has_value();
+  }
+  const DeviceAssignment& static_device_assignment() const {
+    CHECK(static_device_assignment_.has_value());
+    return *static_device_assignment_;
+  }
+  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
+    static_device_assignment_ = device_assignment;
+  }
+
  protected:
   AotCompilationOptions();
 
  private:
   DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
+  absl::optional<DeviceAssignment> static_device_assignment_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time

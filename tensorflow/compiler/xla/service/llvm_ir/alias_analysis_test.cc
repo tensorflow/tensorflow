@@ -46,7 +46,7 @@ condition {
   condition.state = f32[] parameter(0)
   addend = f32[] custom-call(condition.state), custom_call_target="FakeCustomCallTarget"
   add = f32[] add(addend, condition.state)
-  ROOT greater-than = pred[] greater-than(const.100, add)
+  ROOT greater-than = pred[] compare(const.100, add), direction=GT
 }
 
 ENTRY while3 {

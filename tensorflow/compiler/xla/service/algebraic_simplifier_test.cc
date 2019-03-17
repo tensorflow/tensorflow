@@ -505,6 +505,30 @@ TEST_F(AlgebraicSimplifierTest, InlineTrivialMap) {
                                       m::Broadcast(m::Op().Is(zero)))));
 }
 
+TEST_F(AlgebraicSimplifierTest, KeepNontrivialMap) {
+  const char* kModuleStr = R"(
+    HloModule m
+    fusion {
+      x = f32[] parameter(0)
+      c = f32[] constant(42)
+      m = f32[] multiply(x, x)
+      ROOT a = f32[] add(m, c)
+    }
+
+    map {
+      x = f32[] parameter(0)
+      ROOT f = f32[] fusion(x), kind=kLoop, calls=fusion
+    }
+
+    ENTRY test {
+      p = f32[2,2] parameter(0)
+      ROOT map = f32[2,2] map(p), dimensions={0,1}, to_apply=map
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+}
+
 TEST_F(AlgebraicSimplifierTest, AddBroadcastZeroR1Operand) {
   auto m = CreateNewVerifiedModule();
   Shape r2f32 = ShapeUtil::MakeShape(F32, {3, 2});
@@ -2692,6 +2716,33 @@ TEST_F(AlgebraicSimplifierTest, SliceOfSliceToSlice) {
   EXPECT_EQ(computation->root_instruction()->slice_starts(1), 5);
   EXPECT_EQ(computation->root_instruction()->slice_limits(0), dim0 - 2);
   EXPECT_EQ(computation->root_instruction()->slice_limits(1), dim1 - 4);
+}
+
+TEST_F(AlgebraicSimplifierTest, SliceOfBroadcastToBroadcast) {
+  HloComputation::Builder builder(TestName());
+  const int64 dim0 = 11;
+  const int64 dim1 = 12;
+  HloInstruction* param =
+      builder.AddInstruction(HloInstruction::CreateParameter(
+          0, ShapeUtil::MakeShape(F32, {dim0}), "param"));
+  HloInstruction* broadcast =
+      builder.AddInstruction(HloInstruction::CreateBroadcast(
+          ShapeUtil::MakeShape(F32, {dim0, dim1}), param, {0}));
+  builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {dim0, dim1 - 9}), broadcast,
+      /*start_indices=*/{0, 3},
+      /*limit_indices=*/{dim0, dim1 - 6}, /*strides=*/{1, 1}));
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Slice(m::Broadcast(m::Parameter(0)))));
+
+  AlgebraicSimplifier simplifier(default_options_);
+  ASSERT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+
+  EXPECT_THAT(computation->root_instruction(),
+              GmockMatch(m::Broadcast(m::Parameter(0))));
 }
 
 TEST_F(AlgebraicSimplifierTest, SliceOfReshapeToReshapeOfSlice) {

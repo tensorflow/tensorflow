@@ -295,8 +295,36 @@ def self_adjoint_eig(a, lower, max_iter, epsilon):
   return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
 
 
+def svd(a, max_iter, epsilon, precision_config=None):
+  precision_config_proto = ""
+  if precision_config:
+    precision_config_proto = precision_config.SerializeToString()
+  return gen_xla_ops.xla_svd(a, max_iter, epsilon, precision_config_proto)
+
+
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
 dynamic_update_slice = gen_xla_ops.xla_dynamic_update_slice
+einsum = gen_xla_ops.xla_einsum
+
+
+@ops.RegisterGradient('XlaEinsum')
+def _einsum_grad(op, grad):
+  equation = op.get_attr('equation')
+  inputs, output = equation.split('->')
+  left, right = inputs.split(',')
+
+  return [
+      gen_xla_ops.xla_einsum(
+          grad,
+          op.inputs[1],
+          equation='{},{}->{}'.format(output, right, left),
+          name=None),
+      gen_xla_ops.xla_einsum(
+          grad,
+          op.inputs[0],
+          equation='{},{}->{}'.format(output, left, right),
+          name=None)
+  ]
 
 # TODO(phawkins): generalize tf.pad to support interior padding, and then remove
 # the XLA-specific pad operator.

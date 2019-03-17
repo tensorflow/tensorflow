@@ -99,12 +99,24 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
+struct TFE_OpInferenceContext {
+  explicit TFE_OpInferenceContext(const tensorflow::OpDef* op_def)
+      : op_def(op_def) {}
+
+  const tensorflow::OpDef* op_def;  // op definition from protobuf
+  int input_arg_idx = 0;  // arg definition index for the next input to be added
+  tensorflow::gtl::FlatSet<std::string> attrs;  // attributes inferred so far
+};
+
 struct TFE_Op {
   TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
-         const tensorflow::AttrTypeMap* t)
-      : operation(&ctx->context, op, is_function, t) {}
+         const tensorflow::AttrTypeMap* t,
+         TFE_OpInferenceContext* inference_ctx)
+      : operation(&ctx->context, op, is_function, t),
+        inference_ctx(inference_ctx) {}
 
   tensorflow::EagerOperation operation;
+  std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
 };
 
 struct TFE_ProfilerContext {

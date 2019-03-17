@@ -35,8 +35,8 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: x).apply(
         optimization.assert_next(["Model"]))
     options = dataset_ops.Options()
-    options.experimental_autotune = True
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = True
     dataset = dataset.with_options(options)
     get_next = self.getNext(dataset)
 

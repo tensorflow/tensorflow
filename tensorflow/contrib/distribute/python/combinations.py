@@ -45,23 +45,23 @@ import types
 import unittest
 from absl.testing import parameterized
 import six
-
-from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
-from tensorflow.contrib.distribute.python import one_device_strategy as one_device_lib
 from tensorflow.contrib.distribute.python import parameter_server_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy as tpu_lib
 from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.contrib.optimizer_v2 import adam as adam_v2
 from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
-from tensorflow.contrib.tpu.python.tpu import device_assignment as device_assignment_lib
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import one_device_strategy as one_device_lib
+from tensorflow.python.distribute import tpu_strategy as tpu_lib
+from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
+from tensorflow.python.tpu import device_assignment as device_assignment_lib
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.training import adagrad
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -329,8 +329,8 @@ class NamedDistribution(object):
 
 def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
   def _create_tpu_strategy():
-    resolver = cluster_resolver.TPUClusterResolver("")
-    topology = tpu_lib.initialize_tpu_system(resolver)
+    resolver = tpu_cluster_resolver.TPUClusterResolver("")
+    topology = tpu_strategy_util.initialize_tpu_system(resolver)
     device_assignment = None
     if use_single_core:
       device_assignment = device_assignment_lib.DeviceAssignment(

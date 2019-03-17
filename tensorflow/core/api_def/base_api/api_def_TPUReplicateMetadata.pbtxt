@@ -1,5 +1,6 @@
 op {
   graph_op_name: "TPUReplicateMetadata"
+  visibility: HIDDEN
   attr {
     name: "num_replicas"
     description: <<END

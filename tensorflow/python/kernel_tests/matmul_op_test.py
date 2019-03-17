@@ -51,7 +51,7 @@ def _AddTest(test, op_name, testcase_name, fn):
   test_name = "_".join(["test", op_name, testcase_name])
   if hasattr(test, test_name):
     raise RuntimeError("Test %s defined more than once" % test_name)
-  setattr(test, test_name, fn)
+  setattr(test, test_name, test_util.deprecated_graph_mode_only(fn))
 
 
 def _GetTransposedMatrices(x, x_name, kwargs):
@@ -127,7 +127,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.session(), test_util.use_gpu():
+    with self.session():
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           lambda x: math_ops.matmul(x, effective_b_np, **kwargs_),
           [effective_a_np],

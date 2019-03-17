@@ -143,6 +143,8 @@ bool GetIntAttr(PyObject* o, const char* field, int64* result);
 // Returns "ok"; true if there is no error, false if there was an error.
 bool HandleStringAttribute(PyObject* o, const char* attr_name,
                            std::function<void(string s)> f);
+bool HandleBoolAttribute(PyObject* o, const char* attr_name,
+                         std::function<void(bool b)> f);
 
 bool HandleRepeatedInt64Attribute(
     PyObject* o, const char* attr_name,

@@ -20,15 +20,19 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#ifndef __ANDROID__
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"  // NOLINT
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #include "tensorflow/core/kernels/logging_ops.h"
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/eval_const_tensor.h"
@@ -364,7 +368,7 @@ static Status TF_StringDecode_Impl(const char* src, size_t src_len,
 size_t TF_StringDecode(const char* src, size_t src_len, const char** dst,
                        size_t* dst_len, TF_Status* status) {
   status->status = TF_StringDecode_Impl(src, src_len, dst, dst_len);
-  if (!status->status.ok()) return 0;
+  if (TF_GetCode(status) != TF_OK) return 0;
   return static_cast<size_t>(*dst - src) + *dst_len;
 }
 
@@ -419,7 +423,7 @@ TF_DeprecatedSession* TF_NewDeprecatedSession(const TF_SessionOptions* opt,
                                               TF_Status* status) {
   Session* session;
   status->status = NewSession(opt->options, &session);
-  if (status->status.ok()) {
+  if (TF_GetCode(status) == TF_OK) {
     return new TF_DeprecatedSession({session});
   } else {
     DCHECK_EQ(nullptr, session);
@@ -611,7 +615,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
     offsets++;
     const string& s = srcarray(i);
     size_t consumed = TF_StringEncode(s.data(), s.size(), dst, dst_len, status);
-    if (!status->status.ok()) {
+    if (TF_GetCode(status) != TF_OK) {
       status->status = InvalidArgument(
           "invalid string tensor encoding (string #", i, " of ",
           srcarray.size(), "): ", status->status.error_message());
@@ -771,7 +775,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
       // TODO(nolivia): check this on a subset of the graph instead of all of
       // it.
       status->status = graph::ValidateGraphHasNoCycle(session->graph->graph);
-      if (!status->status.ok()) {
+      if (TF_GetCode(status) != TF_OK) {
         session->graph->mu.unlock();
         return false;
       }
@@ -791,7 +795,7 @@ bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status) {
       *graph_def.mutable_library() = graph.flib_def().ToProto();
       session->graph->mu.unlock();
       status->status = session->session->Extend(graph_def);
-      if (!status->status.ok()) {
+      if (TF_GetCode(status) != TF_OK) {
         // Contract is we always delete input_values[i].
         return false;
       }
@@ -821,7 +825,7 @@ static bool TF_Run_Inputs(TF_Tensor* const* c_inputs,
   const int ninputs = input_pairs->size();
   for (int i = 0; i < ninputs; ++i) {
     status->status = TF_TensorToTensor(c_inputs[i], &(*input_pairs)[i].second);
-    if (!status->status.ok()) return false;
+    if (TF_GetCode(status) != TF_OK) return false;
   }
   return true;
 }
@@ -859,7 +863,7 @@ static void TF_Run_Helper(
     // Serialize back to upstream client, who now owns the new buffer
     if (run_metadata != nullptr) {
       status->status = MessageToBuffer(run_metadata_proto, run_metadata);
-      if (!status->status.ok()) return;
+      if (TF_GetCode(status) != TF_OK) return;
     }
   } else {
     // NOTE(zongheng): PRun does not support RunOptions yet.
@@ -879,7 +883,7 @@ static void TF_Run_Helper(
       continue;
     }
     c_outputs[i] = TF_TensorFromTensor(src, status);
-    if (!status->status.ok()) return;
+    if (TF_GetCode(status) != TF_OK) return;
   }
 }
 
@@ -936,7 +940,7 @@ void TF_PRunSetup(TF_DeprecatedSession* s,
   string new_handle;
   status->status = s->session->PRunSetup(input_names, output_names,
                                          target_oper_names, &new_handle);
-  if (status->status.ok()) {
+  if (TF_GetCode(status) == TF_OK) {
     char* buf = new char[new_handle.size() + 1];
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
     *handle = buf;
@@ -975,7 +979,7 @@ TF_Library* TF_LoadLibrary(const char* library_filename, TF_Status* status) {
   status->status = tensorflow::LoadLibrary(
       library_filename, &lib_handle->lib_handle, &lib_handle->op_list.data,
       &lib_handle->op_list.length);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     delete lib_handle;
     return nullptr;
   }
@@ -1079,7 +1083,7 @@ TensorId ToTensorId(const TF_Output& output) {
   return TensorId(output.oper->node.name(), output.index);
 }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 std::vector<tensorflow::Output> OutputsFromTFOutputs(TF_Output* tf_outputs,
                                                      int n) {
   std::vector<tensorflow::Output> outputs(n);
@@ -1097,7 +1101,7 @@ void TFOutputsFromOutputs(const std::vector<tensorflow::Output>& outputs,
     tf_outputs[i].index = outputs[i].index();
   }
 }
-#endif  // __ANDROID__
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 }  // namespace
 
@@ -1403,7 +1407,7 @@ void TF_SetAttrTensor(TF_OperationDescription* desc, const char* attr_name,
                       TF_Tensor* value, TF_Status* status) {
   Tensor t;
   status->status = TF_TensorToTensor(value, &t);
-  if (status->status.ok()) desc->node_builder.Attr(attr_name, t);
+  if (TF_GetCode(status) == TF_OK) desc->node_builder.Attr(attr_name, t);
 }
 
 void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
@@ -1413,13 +1417,13 @@ void TF_SetAttrTensorList(TF_OperationDescription* desc, const char* attr_name,
   std::vector<Tensor> t;
   t.reserve(num_values);
 
-  for (int i = 0; i < num_values && status->status.ok(); ++i) {
+  for (int i = 0; i < num_values && TF_GetCode(status) == TF_OK; ++i) {
     Tensor v;
     status->status = TF_TensorToTensor(values[i], &v);
     t.emplace_back(v);
   }
 
-  if (status->status.ok()) desc->node_builder.Attr(attr_name, t);
+  if (TF_GetCode(status) == TF_OK) desc->node_builder.Attr(attr_name, t);
 }
 
 void TF_SetAttrValueProto(TF_OperationDescription* desc, const char* attr_name,
@@ -1467,11 +1471,11 @@ static TF_Operation* TF_FinishOperationLocked(TF_OperationDescription* desc,
     }
     status->status = desc->node_builder.Finalize(&desc->graph->graph, &ret);
 
-    if (status->status.ok()) {
+    if (TF_GetCode(status) == TF_OK) {
       // Run shape inference function for newly added node.
       status->status = desc->graph->refiner.AddNode(ret);
     }
-    if (status->status.ok()) {
+    if (TF_GetCode(status) == TF_OK) {
       // Add the node to the name-to-node mapping.
       desc->graph->name_map[ret->name()] = ret;
     } else if (ret != nullptr) {
@@ -1520,7 +1524,7 @@ int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
   NameRangeMap name_ranges;
   status->status =
       NameRangesForNode(oper->node, oper->node.op_def(), nullptr, &name_ranges);
-  if (!status->status.ok()) return -1;
+  if (TF_GetCode(status) != TF_OK) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
     status->status = InvalidArgument("Input arg '", arg_name, "' not found");
@@ -1542,7 +1546,7 @@ int TF_OperationInputListLength(TF_Operation* oper, const char* arg_name,
   NameRangeMap name_ranges;
   status->status =
       NameRangesForNode(oper->node, oper->node.op_def(), &name_ranges, nullptr);
-  if (!status->status.ok()) return -1;
+  if (TF_GetCode(status) != TF_OK) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
     status->status = InvalidArgument("Input arg '", arg_name, "' not found");
@@ -1640,7 +1644,7 @@ TF_AttrMetadata TF_OperationGetAttrMetadata(TF_Operation* oper,
                                             TF_Status* status) {
   TF_AttrMetadata metadata;
   const auto* attr = GetAttrValue(oper, attr_name, status);
-  if (!status->status.ok()) return metadata;
+  if (TF_GetCode(status) != TF_OK) return metadata;
   switch (attr->value_case()) {
 #define SINGLE_CASE(kK, attr_type, size_expr) \
   case tensorflow::AttrValue::kK:             \
@@ -1747,7 +1751,7 @@ void TF_OperationGetAttrString(TF_Operation* oper, const char* attr_name,
                                void* value, size_t max_length,
                                TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   if (attr->value_case() != tensorflow::AttrValue::kS) {
     status->status =
         InvalidArgument("Attribute '", attr_name, "' is not a string");
@@ -1765,7 +1769,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
                                    int max_values, void* storage,
                                    size_t storage_size, TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   if (attr->value_case() != tensorflow::AttrValue::kList) {
     status->status =
         InvalidArgument("Value for '", attr_name, "' is not a list");
@@ -1798,7 +1802,7 @@ void TF_OperationGetAttrStringList(TF_Operation* oper, const char* attr_name,
   void func##List(TF_Operation* oper, const char* attr_name, c_type* values, \
                   int max_values, TF_Status* status) {                       \
     const auto* attr = GetAttrValue(oper, attr_name, status);                \
-    if (!status->status.ok()) return;                                        \
+    if (TF_GetCode(status) != TF_OK) return;                                 \
     if (attr->value_case() != tensorflow::AttrValue::kList) {                \
       status->status =                                                       \
           InvalidArgument("Value for '", attr_name, "' is not a list.");     \
@@ -1820,7 +1824,7 @@ void TF_OperationGetAttrShape(TF_Operation* oper, const char* attr_name,
   PartialTensorShape shape;
   status->status =
       tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shape);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   auto len = std::min(shape.dims(), num_dims);
   for (int i = 0; i < len; ++i) {
     value[i] = shape.dim_size(i);
@@ -1834,7 +1838,7 @@ void TF_OperationGetAttrShapeList(TF_Operation* oper, const char* attr_name,
   std::vector<PartialTensorShape> shapes;
   status->status =
       tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &shapes);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   auto len = std::min(static_cast<int>(shapes.size()), max_values);
   int64_t* p = storage;
   int storage_left = storage_size;
@@ -1862,7 +1866,7 @@ void TF_OperationGetAttrTensorShapeProto(TF_Operation* oper,
                                          const char* attr_name,
                                          TF_Buffer* value, TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   if (attr->value_case() != tensorflow::AttrValue::kShape) {
     status->status =
         InvalidArgument("Value for '", attr_name, "' is not a shape.");
@@ -1876,7 +1880,7 @@ void TF_OperationGetAttrTensorShapeProtoList(TF_Operation* oper,
                                              TF_Buffer** values, int max_values,
                                              TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   if (attr->value_case() != tensorflow::AttrValue::kList) {
     status->status =
         InvalidArgument("Value for '", attr_name, "' is not a list");
@@ -1886,7 +1890,7 @@ void TF_OperationGetAttrTensorShapeProtoList(TF_Operation* oper,
   for (int i = 0; i < len; ++i) {
     values[i] = TF_NewBuffer();
     status->status = MessageToBuffer(attr->list().shape(i), values[i]);
-    if (!status->status.ok()) {
+    if (TF_GetCode(status) != TF_OK) {
       // Delete everything allocated to far, the operation has failed.
       for (int j = 0; j <= i; ++j) {
         TF_DeleteBuffer(values[j]);
@@ -1901,7 +1905,7 @@ void TF_OperationGetAttrTensor(TF_Operation* oper, const char* attr_name,
   *value = nullptr;
   Tensor t;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &t);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   *value = TF_TensorFromTensor(t, status);
 }
 
@@ -1910,7 +1914,7 @@ void TF_OperationGetAttrTensorList(TF_Operation* oper, const char* attr_name,
                                    TF_Status* status) {
   std::vector<Tensor> ts;
   status->status = tensorflow::GetNodeAttr(oper->node.attrs(), attr_name, &ts);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   const auto len = std::min(max_values, static_cast<int>(ts.size()));
   for (int i = 0; i < len; ++i) {
     values[i] = TF_TensorFromTensor(ts[i], status);
@@ -1921,7 +1925,7 @@ void TF_OperationGetAttrValueProto(TF_Operation* oper, const char* attr_name,
                                    TF_Buffer* output_attr_value,
                                    TF_Status* status) {
   const auto* attr = GetAttrValue(oper, attr_name, status);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
   status->status = MessageToBuffer(*attr, output_attr_value);
 }
 
@@ -1999,7 +2003,7 @@ void TF_GraphGetOpDef(TF_Graph* graph, const char* op_name,
   {
     mutex_lock l(graph->mu);
     status->status = graph->graph.op_registry()->LookUpOpDef(op_name, &op_def);
-    if (!status->status.ok()) return;
+    if (TF_GetCode(status) != TF_OK) return;
   }
   status->status = MessageToBuffer(*op_def, output_op_def);
 }
@@ -2117,7 +2121,7 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
   tensorflow::ImportGraphDefResults results;
   status->status = tensorflow::ImportGraphDef(opts->opts, def, &graph->graph,
                                               &graph->refiner, &results);
-  if (!status->status.ok()) return;
+  if (TF_GetCode(status) != TF_OK) return;
 
   // Add new nodes to name_map
   for (int i = last_node_id; i < graph->graph.num_node_ids(); ++i) {
@@ -2171,7 +2175,7 @@ TF_ImportGraphDefResults* TF_GraphImportGraphDefWithResults(
   auto results = new TF_ImportGraphDefResults();
   mutex_lock l(graph->mu);
   GraphImportGraphDefLocked(graph, def, options, results, status);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     delete results;
     return nullptr;
   }
@@ -2219,7 +2223,7 @@ void TF_GraphImportGraphDef(TF_Graph* graph, const TF_Buffer* graph_def,
 
 namespace {
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 // Creates a placeholder representing an input to the cond or body graph.
 // TODO(skyewm): remove these from final graph
@@ -2229,7 +2233,7 @@ bool CreateInput(const TF_Output& parent_input, TF_Graph* g, const char* name,
   TF_SetAttrType(desc, "dtype", TF_OperationOutputType(parent_input));
   // TODO(skyewm): set placeholder shape
   TF_Operation* oper = TF_FinishOperation(desc, status);
-  if (!status->status.ok()) return false;
+  if (TF_GetCode(status) != TF_OK) return false;
   *input = {oper, 0};
   return true;
 }
@@ -2313,7 +2317,7 @@ bool ValidateInputWhileParams(const TF_WhileParams& params, TF_Status* s) {
   return true;
 }
 
-#endif  // __ANDROID__
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 void FreeWhileResources(const TF_WhileParams* params) {
   TF_DeleteGraph(params->cond_graph);
@@ -2332,9 +2336,9 @@ TF_WhileParams EmptyWhileParams() {
 
 TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
                            TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Creating while loops is not supported in Android. File a bug at "
+      "Creating while loops is not supported on mobile. File a bug at "
       "https://github.com/tensorflow/tensorflow/issues if this feature is "
       "important to you");
   return EmptyWhileParams();
@@ -2374,15 +2378,15 @@ TF_WhileParams TF_NewWhile(TF_Graph* g, TF_Output* inputs, int ninputs,
   TF_WhileParams params = {ninputs,    cond_graph,  cond_inputs,  cond_output,
                            body_graph, body_inputs, body_outputs, name};
 
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     FreeWhileResources(&params);
     return EmptyWhileParams();
   }
   return params;
-#endif  // __ANDROID__
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 namespace {
 
 // TODO(skyewm): make nodes in while loop unfetchable like in Python version
@@ -2457,13 +2461,13 @@ void TF_FinishWhileHelper(const TF_WhileParams* params, TF_Status* status,
 }
 
 }  // namespace
-#endif  // __ANDROID__
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
                     TF_Output* outputs) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Creating while loops is not supported in Android. File a bug at "
+      "Creating while loops is not supported on mobile. File a bug at "
       "https://github.com/tensorflow/tensorflow/issues if this feature is "
       "important to you");
 #else
@@ -2471,7 +2475,7 @@ void TF_FinishWhile(const TF_WhileParams* params, TF_Status* status,
   if (!ValidateConstWhileParams(*params, status)) return;
   TF_FinishWhileHelper(params, status, outputs);
   FreeWhileResources(params);
-#endif  // __ANDROID__
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 void TF_AbortWhile(const TF_WhileParams* params) { FreeWhileResources(params); }
@@ -2484,9 +2488,9 @@ void TF_AddGradients(TF_Graph* g, TF_Output* y, int ny, TF_Output* x, int nx,
 void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
                                int ny, TF_Output* x, int nx, TF_Output* dx,
                                TF_Status* status, TF_Output* dy) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Adding gradients is not supported in Android. File a bug at "
+      "Adding gradients is not supported on mobile. File a bug at "
       "https://github.com/tensorflow/tensorflow/issues if this feature is "
       "important to you");
 #else
@@ -2566,7 +2570,7 @@ void TF_AddGradientsWithPrefix(TF_Graph* g, const char* prefix, TF_Output* y,
 
   // Unpack the results from grad_outputs_arg.
   TFOutputsFromOutputs(dy_arg, dy);
-#endif  // __ANDROID__
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 // TF_Session functions ----------------------------------------------
@@ -2578,7 +2582,7 @@ TF_Session* TF_NewSession(TF_Graph* graph, const TF_SessionOptions* opt,
                           TF_Status* status) {
   Session* session;
   status->status = NewSession(opt->options, &session);
-  if (status->status.ok()) {
+  if (TF_GetCode(status) == TF_OK) {
     TF_Session* new_session = new TF_Session(session, graph);
     if (graph != nullptr) {
       mutex_lock l(graph->mu);
@@ -2595,11 +2599,11 @@ TF_Session* TF_LoadSessionFromSavedModel(
     const TF_SessionOptions* session_options, const TF_Buffer* run_options,
     const char* export_dir, const char* const* tags, int tags_len,
     TF_Graph* graph, TF_Buffer* meta_graph_def, TF_Status* status) {
-// TODO(ashankar): Remove the __ANDROID__ guard. This will require ensuring that
-// the tensorflow/cc/saved_model:loader build target is Android friendly.
-#ifdef __ANDROID__
+// TODO(sjr): Remove the IS_MOBILE_PLATFORM guard. This will require ensuring
+// that the tensorflow/cc/saved_model:loader build target is mobile friendly.
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Loading a SavedModel is not supported in Android. File a bug at "
+      "Loading a SavedModel is not supported on mobile. File a bug at "
       "https://github.com/tensorflow/tensorflow/issues if this feature is "
       "important to you");
   return nullptr;
@@ -2626,7 +2630,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
   status->status =
       tensorflow::LoadSavedModel(session_options->options, run_options_proto,
                                  export_dir, tag_set, &bundle);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   // Create a TF_Graph from the MetaGraphDef. This is safe as long as Session
   // extends using GraphDefs. The Graph instance is different, but equivalent
@@ -2643,7 +2647,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
 
   if (meta_graph_def != nullptr) {
     status->status = MessageToBuffer(bundle.meta_graph_def, meta_graph_def);
-    if (!status->status.ok()) return nullptr;
+    if (TF_GetCode(status) != TF_OK) return nullptr;
   }
 
   TF_Session* session = new TF_Session(bundle.session.release(), graph);
@@ -2651,7 +2655,7 @@ TF_Session* TF_LoadSessionFromSavedModel(
   graph->sessions[session] = "";
   session->last_num_graph_nodes = graph->graph.num_node_ids();
   return session;
-#endif  // __ANDROID__
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 void TF_CloseSession(TF_Session* s, TF_Status* status) {
@@ -2743,7 +2747,7 @@ void TF_SessionPRunSetup(TF_Session* session, const TF_Output* inputs,
   string new_handle;
   status->status = session->session->PRunSetup(input_names, output_names,
                                                target_names, &new_handle);
-  if (status->status.ok()) {
+  if (TF_GetCode(status) == TF_OK) {
     char* buf = new char[new_handle.size() + 1];
     memcpy(buf, new_handle.c_str(), new_handle.size() + 1);
     *handle = buf;
@@ -2805,9 +2809,9 @@ unsigned char TF_TryEvaluateConstant(TF_Graph* graph, TF_Output output,
       tensor, graph->refiner, *graph->graph.op_registry(),
       graph->graph.versions().producer(), &evaluated, &result_tensor);
   if (evaluated) {
-    DCHECK(status->status.ok());
+    DCHECK(TF_GetCode(status) == TF_OK);
     *result = TF_TensorFromTensor(result_tensor, status);
-    if (!status->status.ok()) evaluated = false;
+    if (TF_GetCode(status) != TF_OK) evaluated = false;
   }
   return evaluated;
 }
@@ -2826,9 +2830,9 @@ void TF_DeleteApiDefMap(TF_ApiDefMap* apimap) { delete apimap; }
 
 void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map, const char* text,
                      size_t text_len, TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "ApiDefMap is not supported in Android.");
+      "ApiDefMap is not supported on mobile.");
 #else
   mutex_lock l(api_def_map->lock);
   if (api_def_map->update_docs_called) {
@@ -2839,14 +2843,14 @@ void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map, const char* text,
   }
   string api_def_text(text, text_len);
   status->status = api_def_map->api_def_map.LoadApiDef(api_def_text);
-#endif  // __ANDROID__
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
                            size_t name_len, TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "ApiDefMap is not supported in Android.");
+      "ApiDefMap is not supported on mobile.");
   return nullptr;
 #else
   mutex_lock l(api_def_map->lock);
@@ -2862,19 +2866,19 @@ TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
 
   TF_Buffer* ret = TF_NewBuffer();
   status->status = MessageToBuffer(*api_def, ret);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     TF_DeleteBuffer(ret);
     return nullptr;
   }
   return ret;
-#endif  // __ANDROID__
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 TF_Buffer* TF_GetAllRegisteredKernels(TF_Status* status) {
   tensorflow::KernelList kernel_list = tensorflow::GetAllRegisteredKernels();
   TF_Buffer* ret = TF_NewBuffer();
   status->status = MessageToBuffer(kernel_list, ret);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     TF_DeleteBuffer(ret);
     return nullptr;
   }
@@ -2886,7 +2890,7 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
       tensorflow::GetRegisteredKernelsForOp(name);
   TF_Buffer* ret = TF_NewBuffer();
   status->status = MessageToBuffer(kernel_list, ret);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     TF_DeleteBuffer(ret);
     return nullptr;
   }
@@ -2895,16 +2899,16 @@ TF_Buffer* TF_GetRegisteredKernelsForOp(const char* name, TF_Status* status) {
 
 // TF_Server functions ----------------------------------------------
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 TF_Server::TF_Server(std::unique_ptr<tensorflow::ServerInterface> server)
     : target(server->target()), server(std::move(server)) {}
-#endif  // __ANDROID__
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 TF_Server* TF_NewServer(const void* proto, size_t proto_len,
                         TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Server functionality is not supported in Android");
+      "Server functionality is not supported on mobile");
   return nullptr;
 #else
   tensorflow::ServerDef server_def;
@@ -2916,41 +2920,41 @@ TF_Server* TF_NewServer(const void* proto, size_t proto_len,
 
   std::unique_ptr<tensorflow::ServerInterface> out_server;
   status->status = tensorflow::NewServer(server_def, &out_server);
-  if (!status->status.ok()) return nullptr;
+  if (TF_GetCode(status) != TF_OK) return nullptr;
 
   return new TF_Server(std::move(out_server));
-#endif
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 void TF_ServerStart(TF_Server* server, TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Server functionality is not supported in Android");
+      "Server functionality is not supported on mobile");
 #else
   status->status = server->server->Start();
-#endif
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 void TF_ServerStop(TF_Server* server, TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Server functionality is not supported in Android");
+      "Server functionality is not supported on mobile");
 #else
   status->status = server->server->Stop();
-#endif
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 void TF_ServerJoin(TF_Server* server, TF_Status* status) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   status->status = tensorflow::errors::Unimplemented(
-      "Server functionality is not supported in Android");
+      "Server functionality is not supported on mobile");
 #else
   status->status = server->server->Join();
-#endif
+#endif  // defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
 }
 
 const char* TF_ServerTarget(TF_Server* server) {
-#ifdef __ANDROID__
+#if defined(IS_MOBILE_PLATFORM) || defined(IS_SLIM_BUILD)
   return nullptr;
 #else
   return server->target.c_str();
@@ -2958,15 +2962,15 @@ const char* TF_ServerTarget(TF_Server* server) {
 }
 
 void TF_DeleteServer(TF_Server* server) {
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   delete server;
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 }
 
 void TF_RegisterLogListener(void (*listener)(const char*)) {
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   tensorflow::logging::RegisterListener(listener);
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 }
 
 }  // end extern "C"

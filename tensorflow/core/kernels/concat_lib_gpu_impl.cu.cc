@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/bfloat16.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/concat_lib_gpu.h"
 #include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
 
@@ -197,16 +198,16 @@ void ConcatGPUImpl(const Eigen::GpuDevice& gpu_device,
           inputs_flat,                                                        \
       typename TTypes<T, 2>::Matrix* output);
 
-#define REGISTER_GPU32(T)                                               \
-  template void ConcatGPUImpl<T, int32>(                                \
-      const Eigen::GpuDevice& d,                                        \
+#define REGISTER_GPU32(T)                                              \
+  template void ConcatGPUImpl<T, int32>(                               \
+      const Eigen::GpuDevice& d,                                       \
       const GpuDeviceArrayStruct<const T*>& input_ptrs,                \
       const GpuDeviceArrayStruct<int32>& ptr_offsets, bool fixed_size, \
       int split_size, typename TTypes<T, 2>::Matrix* output);
 
-#define REGISTER_GPU64(T)                                               \
-  template void ConcatGPUImpl<T, int64>(                                \
-      const Eigen::GpuDevice& d,                                        \
+#define REGISTER_GPU64(T)                                              \
+  template void ConcatGPUImpl<T, int64>(                               \
+      const Eigen::GpuDevice& d,                                       \
       const GpuDeviceArrayStruct<const T*>& input_ptrs,                \
       const GpuDeviceArrayStruct<int64>& ptr_offsets, bool fixed_size, \
       int split_size, typename TTypes<T, 2>::Matrix* output);

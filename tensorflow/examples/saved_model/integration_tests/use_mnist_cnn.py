@@ -28,7 +28,7 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.examples.saved_model.integration_tests import util
@@ -90,7 +90,7 @@ def main(argv):
   arguments = {}
   if FLAGS.dropout_rate is not None:
     arguments['dropout_rate'] = FLAGS.dropout_rate
-  feature_extractor = util.CustomLayer(obj, output_shape=[128],
+  feature_extractor = util.CustomLayer(obj, output_shape=[10],
                                        trainable=FLAGS.retrain,
                                        arguments=arguments)
 
@@ -103,20 +103,17 @@ def main(argv):
       fake_tiny_data=FLAGS.fast_test_mode)
   model.compile(loss=tf.keras.losses.categorical_crossentropy,
                 optimizer=tf.keras.optimizers.SGD(),
-                metrics=['accuracy'],
-                # TODO(arnoegw): Remove after investigating huge allocs.
-                run_eagerly=True)
+                metrics=['accuracy'])
   print('Training on %s with %d trainable and %d untrainable variables.' %
         ('Fashion MNIST' if FLAGS.use_fashion_mnist else 'MNIST',
          len(model.trainable_variables), len(model.non_trainable_variables)))
   model.fit(x_train, y_train,
             batch_size=128,
             epochs=FLAGS.epochs,
-            steps_per_epoch=3,
             verbose=1,
             validation_data=(x_test, y_test))
 
 
 if __name__ == '__main__':
-  # tf.enable_v2_behavior()
+  tf.enable_v2_behavior()
   app.run(main)
