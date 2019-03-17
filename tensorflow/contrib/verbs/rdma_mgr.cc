@@ -203,8 +203,6 @@ bool IsGDRAvailable() {
   return false;
 #elif defined(PLATFORM_WINDOWS)
   return false;
-#elif TENSORFLOW_USE_ROCM
-  return true;
 #else
   std::ifstream ifs("/proc/modules");
   string line;
@@ -278,9 +276,9 @@ void RdmaMgr::InitAllocators() {
   ProcessState::singleton()->AddCPUAllocVisitor(alloc_visitor);
   ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-  GPUProcessState::singleton()->AddGpuHostAllocVisitor(0, alloc_visitor);
-  GPUProcessState::singleton()->AddGpuHostFreeVisitor(0, free_visitor);
+#if GOOGLE_CUDA
+  GPUProcessState::singleton()->AddCUDAHostAllocVisitor(0, alloc_visitor);
+  GPUProcessState::singleton()->AddCUDAHostFreeVisitor(0, free_visitor);
 
   if (IsGDRAvailable()) {
     // Note we don't free allocated GPU memory so there is no free visitor
@@ -301,7 +299,7 @@ void RdmaMgr::InitAllocators() {
                                                      cuda_alloc_visitor);
     LOG(INFO) << "Instrumenting GPU allocator with bus_id " << bus_id;
   }
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 }
 
 }  // end namespace tensorflow

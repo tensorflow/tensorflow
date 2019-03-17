@@ -167,7 +167,6 @@ struct no_nan_op {
   }
 };
 
-
 template <typename T>
 struct div_no_nan_op : public no_nan_op<T, scalar_quotient_op<T>> {
   EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
@@ -177,11 +176,7 @@ template <typename T>
 struct functor_traits<div_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else
-    PacketAccess = true,
-#endif // TENSORFLOW_USE_ROCM
+   PacketAccess = false,
   };
 };
 
@@ -194,11 +189,7 @@ template <typename T>
 struct functor_traits<mul_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_product_op<T>>::Cost + NumTraits<T>::AddCost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else    
     PacketAccess = true,
-#endif // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -236,11 +227,7 @@ template <typename Tout, typename Tin, typename Binary>
 struct functor_traits<scalar_left<Tout, Tin, Binary>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else    
     PacketAccess = functor_traits<Binary>::PacketAccess,
-#endif // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -270,11 +257,7 @@ template <typename Tout, typename Tin, typename Binary>
 struct functor_traits<scalar_right<Tout, Tin, Binary>> {
   enum {
     Cost = functor_traits<Binary>::Cost,
-#if TENSORFLOW_USE_ROCM
-    PacketAccess = false,
-#else    
     PacketAccess = functor_traits<Binary>::PacketAccess,
-#endif // TENSORFLOW_USE_ROCM
   };
 };
 
@@ -367,30 +350,12 @@ struct google_floor_div {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     if ((x < T(0)) != (y < T(0))) {
-#if defined(__HIP_DEVICE_COMPILE__)
-      T abs_x = (x < T(0)) ? -x : x;
-      T abs_y = (y < T(0)) ? -y : y;
-#else
       T abs_x = std::abs(x);
       T abs_y = std::abs(y);
-#endif
       return -(abs_x + abs_y - 1) / abs_y;
     } else {
       return x / y;
     }
-  }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x, const Packet& y) const {
-    Packet zeros = pzero(x);
-    Packet x_mask = pcmp_lt(x, zeros);
-    Packet y_mask = pcmp_lt(y, zeros);
-    Packet x_div_y = pdiv(x, y);
-    Packet abs_x = pabs(x);
-    Packet abs_y = pabs(y);
-    Packet ones = pones(x);
-    Packet ratio_rounded = pdiv(pnegate(psub(padd(abs_x, abs_y), ones)), abs_y);
-    return pselect(pxor(x_mask, y_mask), ratio_rounded, x_div_y);
   }
 };
 
@@ -401,49 +366,36 @@ struct google_floor_div<
                                                            const T& y) const {
     return x / y;
   }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x, const Packet& y) const {
-    return pdiv(x, y);
-  }
 };
 
 template <typename Scalar>
 struct functor_traits<google_floor_div<Scalar>> {
   enum {
-    Cost = 2 * Eigen::internal::scalar_div_cost<
-                   Scalar, packet_traits<Scalar>::HasDiv>::value +
-           NumTraits<Scalar>::AddCost,
-    //PacketAccess = packet_traits<Scalar>::HasDiv
-    PacketAccess = false,
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
+           2 * NumTraits<Scalar>::AddCost,
+    PacketAccess = false
   };
 };
 
+// TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
 template <typename T, typename Enable = void>
 struct google_floor_div_real {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
                                                            const T& y) const {
     return Eigen::numext::floor(x / y);
   }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x, const Packet& y) const {
-    return pfloor(pdiv(x, y));
-  }
 };
 
 template <typename Scalar>
 struct functor_traits<google_floor_div_real<Scalar>> {
   enum {
-    Cost = 2 * Eigen::internal::scalar_div_cost<
-                   Scalar, packet_traits<Scalar>::HasDiv>::value +
+    Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
            2 * NumTraits<Scalar>::AddCost,
-    PacketAccess = false,
-     //   packet_traits<Scalar>::HasDiv && packet_traits<Scalar>::HasFloor
+    PacketAccess = false
   };
 };
 
-// TODO(rmlarsen): Add vectorized mod & fmod in Eigen and use it here.
+// TODO(b//32239616): This kernel should be moved into Eigen and vectorized.
 template <typename T>
 struct google_floor_fmod {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
@@ -459,11 +411,11 @@ struct functor_traits<google_floor_fmod<Scalar>> {
   enum {
     Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
            2 * NumTraits<Scalar>::AddCost,
-    PacketAccess = false,
+    PacketAccess = false
   };
 };
 
-// TODO(rmlarsen): Add vectorized mod & fmod in Eigen and use it here.
+// TODO(b/32239616): This kernel should be moved into Eigen and vectorized.
 template <typename T>
 struct google_floor_mod {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& x,
@@ -479,7 +431,7 @@ struct functor_traits<google_floor_mod<Scalar>> {
   enum {
     Cost = 2 * Eigen::internal::scalar_div_cost<Scalar, false>::value +
            2 * NumTraits<Scalar>::AddCost,
-    PacketAccess = false,
+    PacketAccess = false
   };
 };
 
@@ -493,7 +445,7 @@ struct functor_traits<google_floor_mod<Scalar>> {
 #define ENABLE_FLOAT_EQUALITY_WARNING
 #endif
 
-template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger>
+template <typename Scalar>
 struct scalar_round_op_google {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
   operator()(const Scalar& x) const {
@@ -517,65 +469,29 @@ struct scalar_round_op_google {
 };
 
 template <typename Scalar>
-struct scalar_round_op_google<Scalar, true> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
-  operator()(const Scalar& x) const {
-    return x;
-  }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x) const {
-    return x;
-  }
+struct functor_traits<scalar_round_op_google<Scalar>> {
+  enum { Cost = 4 * NumTraits<Scalar>::AddCost, PacketAccess = false };
 };
 
 template <typename Scalar>
-struct functor_traits<scalar_round_op_google<Scalar>> {
-  enum {
-    Cost = Eigen::NumTraits<Scalar>::IsInteger ? 0
-                                               : 4 * NumTraits<Scalar>::AddCost,
-    //PacketAccess = Eigen::NumTraits<Scalar>::IsInteger
-    PacketAccess = false,
-  };
-};
-
-template <typename Scalar, bool IsInteger = Eigen::NumTraits<Scalar>::IsInteger>
 struct scalar_round_up_op {
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
   operator()(const Scalar& x) const {
     EIGEN_STATIC_ASSERT((!NumTraits<Scalar>::IsComplex),
                         NUMERIC_TYPE_MUST_BE_REAL)
-    return Eigen::numext::floor(x + Scalar(0.5));
-  }
 
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x) const {
-    return pfloor(padd(x, pset1<Packet>(0.5)));
+    Scalar round_val = Eigen::numext::floor(x);
+    const Scalar fraction = x - round_val;
+    if (fraction >= Scalar(.5)) {
+      round_val += Scalar(1.0);
+    }
+    return round_val;
   }
 };
 
 template <typename Scalar>
-struct scalar_round_up_op<Scalar, true> {
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
-  operator()(const Scalar& x) const {
-    return x;
-  }
-
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x) const {
-    return x;
-  }
-};
-
-template <typename Scalar, bool IsInteger>
-struct functor_traits<scalar_round_up_op<Scalar, IsInteger>> {
-  enum {
-    Cost = IsInteger ? 0 : 4 * NumTraits<Scalar>::AddCost,
-    //PacketAccess = IsInteger || packet_traits<Scalar>::HasFloor
-    PacketAccess = false,
-  };
+struct functor_traits<scalar_round_up_op<Scalar>> {
+  enum { Cost = 4 * NumTraits<Scalar>::AddCost, PacketAccess = false };
 };
 
 #undef ENABLE_FLOAT_EQUALITY_WARNING
@@ -588,23 +504,19 @@ struct bitwise_xor_op {
   operator()(const Scalar& x, const Scalar& y) const {
     return x ^ y;
   }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& a, const Packet& b) const {
+  typedef typename Eigen::internal::packet_traits<Scalar>::type Packet;
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Packet packetOp(const Packet& a,
+                                                        const Packet& b) const {
     return Eigen::internal::pxor(a, b);
   }
 };
 
 template <typename Scalar>
 struct functor_traits<bitwise_xor_op<Scalar>> {
-  enum { 
-
-     Cost = Eigen::NumTraits<Scalar>::AddCost,
-    PacketAccess = true,
-
-    };
+  enum { Cost = Eigen::NumTraits<Scalar>::AddCost, PacketAccess = true };
 };
 
+// TODO(srvasude): Add packet versions of this operation.
 template <typename Scalar>
 struct xlogy_op {
   EIGEN_EMPTY_STRUCT_CTOR(xlogy_op)
@@ -615,29 +527,18 @@ struct xlogy_op {
     }
     return x * numext::log(y);
   }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x, const Packet& y) const {
-    Packet zeros = pzero(x);
-    Packet mask = pcmp_eq(x, zeros);
-    scalar_log_op<Scalar> log_op;
-    Packet log_y = log_op.packetOp(y);
-    Packet x_log_y = pmul(x, log_y);
-    return pselect(mask, x, x_log_y);
-  }
 };
 
 template <typename Scalar>
 struct functor_traits<xlogy_op<Scalar>> {
   enum {
-    Cost = functor_traits<scalar_log_op<Scalar>>::Cost +
-           Eigen::NumTraits<Scalar>::MulCost,
-    //PacketAccess = functor_traits<scalar_log_op<Scalar>>::PacketAccess
-    PacketAccess = false,
+    Cost = (sizeof(Scalar) == 4 ? 40 : 85) + Eigen::NumTraits<Scalar>::MulCost,
+    PacketAccess = false
   };
 };
 
 template <typename Scalar>
+// TODO(srvasude): Add packet versions of this operation.
 struct xdivy_op {
   EIGEN_EMPTY_STRUCT_CTOR(xdivy_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
@@ -647,26 +548,11 @@ struct xdivy_op {
     }
     return x / y;
   }
-  template <typename Packet>
-  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
-  packetOp(const Packet& x, const Packet& y) const {
-    Packet zeros = pzero(x);
-    Packet mask = pcmp_eq(x, zeros);
-    Packet x_div_y = pdiv(x, y);
-    return pselect(mask, x, x_div_y);
-  }
 };
 
 template <typename Scalar>
 struct functor_traits<xdivy_op<Scalar>> {
-  enum {
-    Cost =
-        Eigen::NumTraits<Scalar>::AddCost +
-        Eigen::internal::scalar_div_cost<Scalar,
-                                         packet_traits<Scalar>::HasDiv>::value,
-   // PacketAccess = packet_traits<Scalar>::HasDiv
-    PacketAccess = false,
-  };
+  enum { Cost = Eigen::NumTraits<Scalar>::MulCost, PacketAccess = false };
 };
 
 }  // end namespace internal
@@ -885,7 +771,7 @@ struct scalar_rint_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_rint_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Scalar
   operator()(const Scalar& a) const {
-#if defined(__CUDACC__) || defined(__HIPCC__)
+#if defined(__CUDACC__)
     return ::rint(a);
 #elif defined(__ANDROID__)
     return rint(a);
@@ -1013,7 +899,7 @@ struct scalar_atan2_op {
   EIGEN_EMPTY_STRUCT_CTOR(scalar_atan2_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE Scalar
   operator()(const Scalar& y, const Scalar& x) const {
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
     return ::atan2(y, x);
 #else
     return std::atan2(y, x);

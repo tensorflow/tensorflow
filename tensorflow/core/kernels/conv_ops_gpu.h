@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA
 
 #include <tuple>
 #include <unordered_map>
@@ -32,6 +32,52 @@ namespace tensorflow {
 // default value.
 int64 GetDnnWorkspaceLimit(const string& envvar_in_mb,
                            int64 default_value_in_bytes);
+
+// A class to provide scratch-space allocator for Stream-Executor Cudnn
+// callback. TensorFlow is responsible for releasing the temporary buffers after
+// the kernel finishes.
+class DnnScratchAllocator : public se::ScratchAllocator {
+ public:
+  virtual ~DnnScratchAllocator() {}
+  DnnScratchAllocator(int64 memory_limit, OpKernelContext* context)
+      : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
+  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
+    return memory_limit_;
+  }
+  se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
+      se::Stream* stream, int64 byte_size) override {
+    Tensor temporary_memory;
+    if (byte_size < 0) {
+      return se::port::Status{se::port::error::INVALID_ARGUMENT,
+                              "Requested negative byte size!"};
+    }
+    if (byte_size > memory_limit_) {
+      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+    }
+    AllocationAttributes allocation_attr;
+    allocation_attr.no_retry_on_failure = true;
+    Status allocation_status(context_->allocate_temp(
+        DT_UINT8, TensorShape({byte_size}), &temporary_memory,
+        AllocatorAttributes(), allocation_attr));
+    if (!allocation_status.ok()) {
+      return se::port::StatusOr<se::DeviceMemory<uint8>>();
+    }
+    // Hold the reference of the allocated tensors until the end of the
+    // allocator.
+    allocated_tensors_.push_back(temporary_memory);
+    total_byte_size_ += byte_size;
+    return se::port::StatusOr<se::DeviceMemory<uint8>>(
+        AsDeviceMemory(temporary_memory.flat<uint8>().data(),
+                       temporary_memory.flat<uint8>().size()));
+  }
+  int64 TotalByteSize() { return total_byte_size_; }
+
+ private:
+  int64 memory_limit_;
+  int64 total_byte_size_;
+  OpKernelContext* context_;
+  std::vector<Tensor> allocated_tensors_;
+};
 
 // Encapsulate all the shape information that is used in both forward and
 // backward conv operations.
@@ -105,7 +151,7 @@ class ConvParameters {
     if (version.ok() && version.ValueOrDie().major_version() >= 7) {
       return true;
     }
-    return ShouldIncludeWinogradNonfusedAlgoPreDnn7<T>();
+    return ShouldIncludeWinogradNonfusedAlgoPreCudnn7<T>();
   }
 
  protected:
@@ -130,7 +176,7 @@ class ConvParameters {
   }
 
   template <typename T>
-  bool ShouldIncludeWinogradNonfusedAlgoPreDnn7() const {
+  bool ShouldIncludeWinogradNonfusedAlgoPreCudnn7() const {
     int64 total_size = 16 * std::ceil(batch_ / 16.0) *
                        std::max(in_depths_, out_depths_) * in_[0] * in_[1] *
                        sizeof(T);
@@ -159,6 +205,6 @@ typedef Eigen::GpuDevice GPUDevice;
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_GPU_H_

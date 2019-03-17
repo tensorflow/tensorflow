@@ -24,6 +24,7 @@
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 
@@ -118,11 +119,11 @@ struct Resampler2DFunctor<GPUDevice, T> {
     const int output_data_size =
         batch_size * num_sampling_points * data_channels;
     ::tensorflow::GpuLaunchConfig config =
-        ::tensorflow::GetGpuLaunchConfig(output_data_size, d);
-    TF_CHECK_OK(CudaLaunchKernel(
+        GetGpuLaunchConfig(output_data_size, d);
+     GPU_LAUNCH_KERNEL(
         Resampler2DKernel<T>, config.block_count, config.thread_per_block, 0,
         d.stream(), data, warp, output, batch_size, data_height, data_width,
-        data_channels, num_sampling_points));
+        data_channels, num_sampling_points);
   }
 };
 
@@ -252,25 +253,25 @@ struct ResamplerGrad2DFunctor<GPUDevice, T> {
     const int grad_data_size =
         batch_size * data_height * data_width * data_channels;
 
-    ::tensorflow::GpuLaunchConfig config =
-        ::tensorflow::GetGpuLaunchConfig(grad_warp_size, d);
-    TF_CHECK_OK(::tensorflow::CudaLaunchKernel(
+    GpuLaunchConfig config =
+       GetGpuLaunchConfig(grad_warp_size, d);
+     GPU_LAUNCH_KERNEL(
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
-        grad_warp_size, grad_warp));
+        grad_warp_size, grad_warp);
 
     config = ::tensorflow::GetGpuLaunchConfig(grad_data_size, d);
-    TF_CHECK_OK(::tensorflow::CudaLaunchKernel(
+    GPU_LAUNCH_KERNEL(
         SetZero<T>, config.block_count, config.thread_per_block, 0, d.stream(),
-        grad_data_size, grad_data));
+        grad_data_size, grad_data);
 
     const int resampler_output_size =
         batch_size * num_sampling_points * data_channels;
     config = ::tensorflow::GetGpuLaunchConfig(resampler_output_size, d);
-    TF_CHECK_OK(CudaLaunchKernel(ResamplerGrad2DKernel<T>, config.block_count,
+    GPU_LAUNCH_KERNEL(ResamplerGrad2DKernel<T>, config.block_count,
                                  config.thread_per_block, 0, d.stream(), data,
                                  warp, grad_output, grad_data, grad_warp,
                                  batch_size, data_height, data_width,
-                                 data_channels, num_sampling_points));
+                                 data_channels, num_sampling_points);
   }
 };
 

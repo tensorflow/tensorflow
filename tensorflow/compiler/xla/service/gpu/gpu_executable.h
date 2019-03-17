@@ -50,6 +50,7 @@ namespace gpu {
 class GpuExecutable : public Executable {
  public:
   GpuExecutable(const string& text, const std::vector<uint8>& binary,
+                std::pair<int, int> compute_capability,
                 std::unique_ptr<const ThunkSchedule> thunk_schedule,
                 std::unique_ptr<HloModule> hlo_module,
                 std::unique_ptr<const BufferAssignment> assignment,

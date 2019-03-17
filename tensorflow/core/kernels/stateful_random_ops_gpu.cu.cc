@@ -18,8 +18,9 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
-#include "tensorflow/core/kernels/stateful_random_ops.h"
+#include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -74,10 +75,10 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 
   int zero = 0;
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
-  TF_CHECK_OK(CudaLaunchKernel(FillKernel<Distribution>, cfg.block_count,
+  GPU_LAUNCH_KERNEL(FillKernel<Distribution>, cfg.block_count,
                                cfg.thread_per_block, 0, d.stream(),
                                Distribution(), state_size, output_size,
-                               state_data, output_data));
+                               state_data, output_data);
 }
 
 // Explicit instantiation of the GPU distributions functors.

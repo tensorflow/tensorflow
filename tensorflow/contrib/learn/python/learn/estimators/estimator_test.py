@@ -220,7 +220,7 @@ def _build_estimator_for_export_tests(tmpdir):
     hashtable = lookup.HashTable(
         lookup.TextFileStringTableInitializer(vocab_file_name), 'x')
     features['bogus_lookup'] = hashtable.lookup(
-        math_ops.cast(features['feature'], dtypes.int64))
+        math_ops.to_int64(features['feature']))
 
     return input_fn_utils.InputFnOps(features, labels, inputs)
 

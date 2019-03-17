@@ -154,7 +154,7 @@ __global__ void LegacyResizeBilinearKernel(const int32 nthreads,
                                            int in_height, int in_width,
                                            int channels, int out_height,
                                            int out_width, float* output) {
-    CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+    GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = c + channels * (x + out_width * (y + out_height * b))
     int idx = out_idx;
     const int c = idx % channels;

@@ -49,6 +49,7 @@ using tensorflow::tracing::ScopedAnnotation;
 // since we can use timers around thunks.
 GpuExecutable::GpuExecutable(
     const string& text, const std::vector<uint8>& binary,
+    std::pair<int, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,

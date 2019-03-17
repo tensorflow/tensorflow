@@ -72,8 +72,7 @@ def _create_cluster(num_workers,
                     has_eval=False,
                     protocol='grpc',
                     worker_config=None,
-                    ps_config=None,
-                    eval_config=None):
+                    ps_config=None):
   """Creates and starts local servers and returns the cluster_spec dict."""
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
@@ -125,7 +124,7 @@ def _create_cluster(num_workers,
         job_name='evaluator',
         protocol=protocol,
         task_index=0,
-        config=eval_config,
+        config=worker_config,
         start=True)
 
   return cluster_dict
@@ -154,9 +153,6 @@ def create_in_process_cluster(num_workers,
   ps_config = config_pb2.ConfigProto()
   ps_config.device_count['GPU'] = 0
 
-  eval_config = config_pb2.ConfigProto()
-  eval_config.experimental.collective_group_leader = ''
-
   # Create in-process servers. Once an in-process tensorflow server is created,
   # there is no way to terminate it. So we create one cluster per test process.
   # We could've started the server in another process, we could then kill that
@@ -173,7 +169,6 @@ def create_in_process_cluster(num_workers,
       has_eval=has_eval,
       worker_config=worker_config,
       ps_config=ps_config,
-      eval_config=eval_config,
       protocol='grpc')
 
 

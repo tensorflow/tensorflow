@@ -47,8 +47,6 @@ bool IsGDRAvailable() {
   return false;
 #elif defined(PLATFORM_WINDOWS)
   return false;
-#elif TENSORFLOW_USE_ROCM
-  return true;
 #else
   std::ifstream ifs("/proc/modules");
   string line;
@@ -252,9 +250,10 @@ Status GdrMemoryManager::Init() {
   LOG(INFO) << "Instrumenting CPU allocator(s)";
 
   for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
-    GPUProcessState::singleton()->AddGpuHostAllocVisitor(numa_idx,
-                                                         alloc_visitor);
-    GPUProcessState::singleton()->AddGpuHostFreeVisitor(numa_idx, free_visitor);
+    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
+                                                          alloc_visitor);
+    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
+                                                         free_visitor);
   }
 
   if (IsGDRAvailable()) {

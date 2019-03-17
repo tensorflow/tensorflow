@@ -77,9 +77,6 @@ class OneDeviceStrategyTest(
   def testNumpyIterator(self, distribution):
     self._test_numpy_iterator(distribution)
 
-  def testRun(self, distribution):
-    self._test_run(distribution)
-
   def testAllReduceSum(self, distribution):
     self._test_all_reduce_sum(distribution)
 

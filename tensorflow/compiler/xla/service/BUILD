@@ -834,7 +834,7 @@ cc_library(
     deps = [
         ":service",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
-        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
+        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
     ]
     + if_cuda_is_configured(["//tensorflow/core/platform/default/build_config:stream_executor_cuda",])

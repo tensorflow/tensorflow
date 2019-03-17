@@ -225,7 +225,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
 
-#if 0
   optional<F16BufferComparator> comparator;
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm sufficies. It doesn't make

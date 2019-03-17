@@ -28,7 +28,6 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -75,7 +74,7 @@ def _laplacian_pyramid(batch, num_levels):
     res = spatial_conv(res, 4)
     return res
 
-  pyramid = [math_ops.cast(batch, dtypes.float32)]
+  pyramid = [math_ops.to_float(batch)]
   for _ in range(1, num_levels):
     pyramid.append(pyr_down(pyramid[-1]))
     pyramid[-2] -= pyr_up(pyramid[-1])

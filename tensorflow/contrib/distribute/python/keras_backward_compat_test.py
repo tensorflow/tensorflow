@@ -28,7 +28,6 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.eager import test
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
@@ -356,7 +355,6 @@ def strategy_for_numpy_input_combinations():
       mode=['graph'])
 
 
-@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithNumpyArrays(test.TestCase,
                                               parameterized.TestCase):
 
@@ -465,7 +463,6 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertAllEqual([6, 7], outs[1].shape)
 
 
-@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithDatasets(test.TestCase,
                                            parameterized.TestCase):
 
@@ -749,7 +746,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0,
                 callbacks=[keras.callbacks.LearningRateScheduler(schedule)])
-      grouped_models = distribution.experimental_local_results(
+      grouped_models = distribution.unwrap(
           distributed_training_utils.get_distributed_model(
               model, ModeKeys.TRAIN))
       with distribution.scope():
@@ -758,7 +755,6 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
               m.optimizer.lr), atol=1e-05, rtol=1e-05)
 
 
-@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(combinations.combine(
@@ -846,7 +842,6 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
                   callbacks=[keras.callbacks.ReduceLROnPlateau()])
 
 
-@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithLossMasking(test.TestCase,
                                               parameterized.TestCase):
 
@@ -877,7 +872,6 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
       self.assertEqual(hist.history['loss'][0], 0)
 
 
-@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyWithNormalizationLayer(
     test.TestCase, parameterized.TestCase):
 
@@ -910,7 +904,6 @@ class TestDistributionStrategyWithNormalizationLayer(
       np.testing.assert_allclose(out.std(), 1.0, atol=1e-1)
 
 
-@test_util.run_v1_only('model.compile(..distribute=..) only works in TF v1')
 class TestDistributionStrategyCorrectness(test.TestCase,
                                           parameterized.TestCase):
 
