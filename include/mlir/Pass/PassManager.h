@@ -123,6 +123,14 @@ private:
   std::unique_ptr<PassInstrumentor> instrumentor;
 };
 
+/// Register a set of useful command-line options that can be used to configure
+/// a pass manager. The values of these options can be applied via the
+/// 'applyPassManagerCLOptions' method below.
+void registerPassManagerCLOptions();
+
+/// Apply any values provided to the pass manager options that were registered
+/// with 'registerPassManagerOptions'.
+void applyPassManagerCLOptions(PassManager &pm);
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASSMANAGER_H

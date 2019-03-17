@@ -68,87 +68,9 @@ static cl::opt<bool>
                  cl::desc("Run the verifier after each transformation pass"),
                  cl::init(true));
 
-static cl::opt<bool>
-    passTiming("pass-timing",
-               cl::desc("Display the execution times of each pass"));
-
-static cl::opt<PassTimingDisplayMode> passTimingDisplayMode(
-    "pass-timing-display", cl::desc("Display method for pass timing data"),
-    cl::init(PassTimingDisplayMode::Pipeline),
-    cl::values(clEnumValN(PassTimingDisplayMode::List, "list",
-                          "display the results in a list sorted by total time"),
-               clEnumValN(PassTimingDisplayMode::Pipeline, "pipeline",
-                          "display the results with a nested pipeline view")));
-
-namespace {
-typedef llvm::cl::list<const mlir::PassRegistryEntry *, bool, PassNameParser>
-    PassOptionList;
-}
-
-// Print IR out before/after specified passes.
-static PassOptionList
-    printBefore("print-ir-before",
-                llvm::cl::desc("Print IR before specified passes"));
-
-static PassOptionList
-    printAfter("print-ir-after",
-               llvm::cl::desc("Print IR after specified passes"));
-
-static cl::opt<bool> printBeforeAll("print-ir-before-all",
-                                    llvm::cl::desc("Print IR before each pass"),
-                                    cl::init(false));
-static cl::opt<bool> printAfterAll("print-ir-after-all",
-                                   llvm::cl::desc("Print IR after each pass"),
-                                   cl::init(false));
-
-static cl::opt<bool> printModuleScope(
-    "print-ir-module-scope",
-    cl::desc("When printing IR for print-ir-[before|after]{-all} always print "
-             "a module IR"),
-    cl::init(false));
-
 static std::vector<const mlir::PassRegistryEntry *> *passList;
 
 enum OptResult { OptSuccess, OptFailure };
-
-/// Add an IR printing instrumentation if enabled by any 'print-ir' flags.
-static void addPrinterInstrumentation(PassManager &pm) {
-  std::function<bool(Pass *)> shouldPrintBeforePass, shouldPrintAfterPass;
-
-  // Handle print-before.
-  if (printBeforeAll) {
-    // If we are printing before all, then just return true for the filter.
-    shouldPrintBeforePass = [](Pass *) { return true; };
-  } else if (printBefore.getNumOccurrences() != 0) {
-    // Otherwise if there are specific passes to print before, then check to see
-    // if the pass info for the current pass is included in the list.
-    shouldPrintBeforePass = [&](Pass *pass) {
-      auto *passInfo = pass->lookupPassInfo();
-      return passInfo && llvm::is_contained(printBefore, passInfo);
-    };
-  }
-
-  // Handle print-after.
-  if (printAfterAll) {
-    // If we are printing after all, then just return true for the filter.
-    shouldPrintAfterPass = [](Pass *) { return true; };
-  } else if (printAfter.getNumOccurrences() != 0) {
-    // Otherwise if there are specific passes to print after, then check to see
-    // if the pass info for the current pass is included in the list.
-    shouldPrintAfterPass = [&](Pass *pass) {
-      auto *passInfo = pass->lookupPassInfo();
-      return passInfo && llvm::is_contained(printAfter, passInfo);
-    };
-  }
-
-  // If there are no valid printing filters, then just return.
-  if (!shouldPrintBeforePass && !shouldPrintAfterPass)
-    return;
-
-  // Otherwise, add the IR printing instrumentation.
-  pm.enableIRPrinting(shouldPrintBeforePass, shouldPrintAfterPass,
-                      printModuleScope, llvm::dbgs());
-}
 
 /// Given a MemoryBuffer along with a line and column within it, return the
 /// location being referenced.
@@ -208,17 +130,10 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
   for (const auto *passEntry : *passList)
     passEntry->addToPipeline(pm);
 
-  // Add any necessary instrumentations.
+  // Apply any pass manager command line options.
+  applyPassManagerCLOptions(pm);
 
-  // Add the IR printing instrumentation.
-  addPrinterInstrumentation(pm);
-
-  // Note: The pass timing instrumentation should be added last to avoid any
-  // potential "ghost" timing from other instrumentations being unintentionally
-  // included in the timing results.
-  if (passTiming)
-    pm.enableTiming(passTimingDisplayMode);
-
+  // Run the pipeline.
   if (failed(pm.run(module.get())))
     return OptFailure;
 
@@ -452,8 +367,12 @@ int main(int argc, char **argv) {
   llvm::PrettyStackTraceProgram x(argc, argv);
   InitLLVM y(argc, argv);
 
+  // Register any pass manager command line options.
+  registerPassManagerCLOptions();
+
   // Parse pass names in main to ensure static initialization completed.
-  PassOptionList passList("", llvm::cl::desc("Compiler passes to run"));
+  llvm::cl::list<const mlir::PassRegistryEntry *, bool, PassNameParser>
+      passList("", llvm::cl::desc("Compiler passes to run"));
   ::passList = &passList;
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
