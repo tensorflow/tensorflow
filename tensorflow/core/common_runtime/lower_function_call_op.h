@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,26 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_IF_WHILE_H_
-#define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_IF_WHILE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTION_CALL_OP_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTION_CALL_OP_H_
 
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 
-// Rewrite If and While ops to use lower level control flow primitives instead.
-class LowerIfWhilePass : public GraphOptimizationPass {
- public:
-  Status Run(const GraphOptimizationPassOptions& options) override;
-#if defined(_MSC_VER)
-  static constexpr char* kLowerUsingSwitchMergeAttr =
-#else
-  static constexpr char kLowerUsingSwitchMergeAttr[] =
-#endif
-      "_lower_using_switch_merge";
-};
+// Replaces function call node `n` with its function body. Uses
+// InlineFunctionBody from `common_runtime/function.{h,cc}`. If function
+// inlining is not possible or safe (see ValidateInlining), leaves the graph in
+// unmodified state and returns Status::OK();
+Status RewriteFunctionCallNode(Node* n, Graph* g,
+                               const FunctionLibraryDefinition& flib_def,
+                               bool keep_caller_fetchable);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_IF_WHILE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_LOWER_FUNCTION_CALL_OP_H_
