@@ -38,8 +38,73 @@ using ::testing::ElementsAreArray;
 
 class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
  public:
-  // TODO(ahentz): Also test different activation types, bias, padding types,
-  // stride values.
+  BaseDepthwiseConvolutionOpModel(
+      TfLiteRegistration* registration, const TensorData& input,
+      const TensorData& filter, const TensorData& output, Padding padding_type,
+      int stride_width, int stride_height,
+      const ActivationFunctionType& fused_activation_function,
+      int dilation_factor = 1) {
+    input_ = AddInput(input);
+    filter_ = AddInput(filter);
+
+    int bias_size = GetShape(filter_)[3];
+    if (input.type == TensorType_FLOAT32) {
+      bias_ = AddInput({TensorType_FLOAT32, {bias_size}});
+    } else {
+      // This is a quantized version. The scale of 'bias' depends on the scales
+      // of input and filter. Supposedly this is correctly set during quantized
+      // training.
+      if (filter.per_channel_quantization) {
+        // per channel quantization.
+        std::vector<float> bias_scale(
+            filter.per_channel_quantization_scales.size());
+        std::vector<int64_t> bias_zero_points(
+            filter.per_channel_quantization_scales.size());
+        for (int i = 0; i < filter.per_channel_quantization_scales.size();
+             ++i) {
+          bias_scale[i] =
+              input.scale * filter.per_channel_quantization_scales[i];
+          bias_zero_points[i] = 0;
+        }
+        TensorData bias{TensorType_INT32,
+                        {bias_size},
+                        /*min=*/0,
+                        /*max=*/0,
+                        /*scale=*/0,
+                        /*zero_point=*/0,
+                        true,
+                        /*per_channel_scale=*/bias_scale,
+                        /*per_channel_zero_point=*/bias_zero_points,
+                        /*channel_index==*/0};
+        bias_ = AddInput(bias);
+      } else {
+        // per tensor quantization.
+        auto bias_scale = GetScale(input_) * GetScale(filter_);
+        TensorData bias{TensorType_INT32, {bias_size}, 0, 0, bias_scale};
+        bias_ = AddInput(bias);
+      }
+    }
+
+    output_ = AddOutput(output);
+
+    int input_depth = GetShape(input_)[3];
+    int output_depth = GetShape(filter_)[3];
+    int depth_mul = output_depth / input_depth;
+
+    SetBuiltinOp(
+        BuiltinOperator_DEPTHWISE_CONV_2D,
+        BuiltinOptions_DepthwiseConv2DOptions,
+        CreateDepthwiseConv2DOptions(
+            builder_, padding_type, stride_width, stride_height, depth_mul,
+            fused_activation_function, dilation_factor, dilation_factor)
+            .Union());
+
+    resolver_ = absl::make_unique<SingleOpResolver>(
+        BuiltinOperator_DEPTHWISE_CONV_2D, registration);
+
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+  }
+
   BaseDepthwiseConvolutionOpModel(TfLiteRegistration* registration,
                                   const TensorData& input,
                                   const TensorData& filter,
@@ -142,6 +207,215 @@ class DepthwiseConvolutionOpTest : public SingleOpTest {
     return *kKernelMap;
   }
 };
+
+TEST_P(DepthwiseConvolutionOpTest, ActivationReluTest) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_VALID,
+      /*stride_width*/ 1,
+      /*stride_height*/ 1,
+      /*ActivationFunctionType*/ ActivationFunctionType_RELU);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 11, 12,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 71, 0, 99, 0,   //
+                                 91, 0, 127, 0,  //
+                             }));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, ActivationReluN1Test) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_VALID,
+      /*stride_width*/ 1,
+      /*stride_height*/ 1,
+      /*ActivationFunctionType*/ ActivationFunctionType_RELU_N1_TO_1);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 11, 12,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 1, -1, 1, -1,  //
+                                 1, -1, 1, -1,  //
+                             }));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, ActivationRelu6Test) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_VALID,
+      /*stride_width*/ 1,
+      /*stride_height*/ 1,
+      /*ActivationFunctionType*/ ActivationFunctionType_RELU6);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 11, 12,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 6, 0, 6, 0,  //
+                                 6, 0, 6, 0,  //
+                             }));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, ActivationTanhTest) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_VALID,
+      /*stride_width*/ 1,
+      /*stride_height*/ 1,
+      /*ActivationFunctionType*/ ActivationFunctionType_TANH);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 11, 12,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 71, -34, 99, -20,  //
+                                 91, -26, 127, -4,  //
+                             }));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, ActivationSignTest) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_VALID,
+      /*stride_width*/ 1,
+      /*stride_height*/ 1,
+      /*ActivationFunctionType*/ ActivationFunctionType_SIGN_BIT);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 10, 11,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 71, -34, 99, -20,  //
+                                 78, -12, 112, 12,  //
+                             }));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, StrideTest) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_VALID,
+      /*stride_width*/ 2,
+      /*stride_height*/ 2,
+      /*ActivationFunctionType*/ ActivationFunctionType_NONE);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 11, 12,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 71, -34, 99, -20,  //
+                             }));
+}
+
+TEST_P(DepthwiseConvolutionOpTest, PaddingTest) {
+  DepthwiseConvolutionOpModel m(
+      GetRegistration(), {TensorType_FLOAT32, {1, 3, 2, 2}},
+      {TensorType_FLOAT32, {1, 2, 2, 4}}, {TensorType_FLOAT32, {}},
+      Padding_SAME,
+      /*stride_width*/ 2,
+      /*stride_height*/ 2,
+      /*ActivationFunctionType*/ ActivationFunctionType_NONE);
+
+  m.SetInput({
+      1, 2, 7, 8,    // column 1
+      3, 4, 9, 10,   // column 2
+      5, 6, 11, 12,  // column 3
+  });
+  m.SetFilter({
+      1, 2, 3, 4,        //
+      -9, 10, -11, 12,   //
+      5, 6, 7, 8,        //
+      13, -14, 15, -16,  //
+  });
+  m.SetBias({1, 2, 3, 4});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 71, -34, 99, -20,     //
+                                 -93, 122, -111, 172,  //
+                             }));
+}
 
 TEST_P(DepthwiseConvolutionOpTest, SimpleTest) {
   DepthwiseConvolutionOpModel m(GetRegistration(),
