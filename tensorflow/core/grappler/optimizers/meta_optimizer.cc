@@ -45,7 +45,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/util/dump_graph.h"
-#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
