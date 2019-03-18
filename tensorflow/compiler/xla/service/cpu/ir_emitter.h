@@ -197,23 +197,17 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
 
+  // Convenience functions to generate a GEP into the profile counter parameter
+  // which would correspond to the index for a given HLO instruction or
+  // computation.
+  llvm::Value* GetProfileCounterFor(const HloInstruction& instruction);
+  llvm::Value* GetProfileCounterFor(const HloComputation& computation);
+
+  // Helper function template for the implementation of the above two functions.
   template <typename T>
   llvm::Value* GetProfileCounterCommon(
       const T& hlo,
       const std::unordered_map<const T*, int64>& profile_index_map);
-
-  // Convenience functions to generate a GEP into the profile counter parameter
-  // which would correspond to the index for a given HLO instruction or
-  // computation.
-  llvm::Value* GetProfileCounterFor(const HloInstruction& instruction) {
-    return GetProfileCounterCommon<HloInstruction>(instruction,
-                                                   instruction_to_profile_idx_);
-  }
-
-  llvm::Value* GetProfileCounterFor(const HloComputation& computation) {
-    return GetProfileCounterCommon<HloComputation>(computation,
-                                                   computation_to_profile_idx_);
-  }
 
   // Gets the IR Value emitted previously for the given hlo.
   //

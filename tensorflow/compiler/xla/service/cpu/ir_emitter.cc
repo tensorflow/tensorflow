@@ -2709,6 +2709,18 @@ llvm::Value* IrEmitter::GetProfileCounterCommon(
              counter_name);
 }
 
+llvm::Value* IrEmitter::GetProfileCounterFor(
+    const HloInstruction& instruction) {
+  return GetProfileCounterCommon<HloInstruction>(instruction,
+                                                 instruction_to_profile_idx_);
+}
+
+llvm::Value* IrEmitter::GetProfileCounterFor(
+    const HloComputation& computation) {
+  return GetProfileCounterCommon<HloComputation>(computation,
+                                                 computation_to_profile_idx_);
+}
+
 void IrEmitter::ProfilingState::UpdateProfileCounter(llvm::IRBuilder<>* b,
                                                      llvm::Value* prof_counter,
                                                      llvm::Value* cycle_end,
