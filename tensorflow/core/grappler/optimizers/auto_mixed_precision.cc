@@ -570,6 +570,7 @@ Status GraphTypeTopologyView::InitializeFromGraph(
                                            input_type_attr.DebugString(),
                                            " in node ", input_node.name());
           }
+          continue;
         }
         int input_node_type_idx = it2->second;
         fanins_[node_type_idx].push_back(input_node_type_idx);
