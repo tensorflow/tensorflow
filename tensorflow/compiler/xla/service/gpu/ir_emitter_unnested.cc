@@ -2191,7 +2191,7 @@ Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
   // kernel *anyway*.
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(hlo);
   KernelSupportLibrary{&b_}.If("emit_mof_tuple", IsBlock0Thread0(GetTargetIRBuilder()), [&] {
-    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_, module_);
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), output_arrays, &b_);
   });
 
   // For multioutput fusion, we need to emit each operand and the root.

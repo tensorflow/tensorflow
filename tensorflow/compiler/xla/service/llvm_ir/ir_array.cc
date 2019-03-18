@@ -343,10 +343,10 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
 
   if (use_linear_index && index.LinearValidOnShape(shape_)) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();
+    llvm::Type* element_type = ShapeToIrType(shape_, module);
     return b->CreateInBoundsGEP(
         b->CreatePointerBitCastOrAddrSpaceCast(base_ptr_,
-                         PrimitiveTypeToIrType(shape_->element_type(), module)
-                             ->getPointerTo()),
+                             element_type->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
   }
 

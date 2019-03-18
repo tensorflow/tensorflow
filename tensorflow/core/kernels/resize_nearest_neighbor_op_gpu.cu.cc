@@ -70,7 +70,7 @@ __global__ void LegacyResizeNearestNeighborNHWC(
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
     T* top_data) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
     n /= channels;
@@ -132,7 +132,7 @@ __global__ void LegacyResizeNearestNeighborBackwardNHWC(
     const int in_width, const int channels, const int out_height,
     const int out_width, const float height_scale, const float width_scale,
     T* bottom_diff) {
-  CUDA_1D_KERNEL_LOOP(index, nthreads) {
+  GPU_1D_KERNEL_LOOP(index, nthreads) {
     int n = index;
     int c = n % channels;
     n /= channels;
