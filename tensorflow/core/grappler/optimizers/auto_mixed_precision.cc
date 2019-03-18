@@ -1374,8 +1374,7 @@ void AutoMixedPrecisionImpl::AddClearAndGrayToWhiteIfBetweenWhite(
   absl::flat_hash_set<int> downstream_of_white_set;
   for (int root_idx = 0; root_idx < graph_type_view_.num_nodes(); ++root_idx) {
     const NodeTypeId& root = *graph_type_view_.GetNode(root_idx);
-    if (!ShouldProcess(*root.node) || downstream_of_white_set.count(root_idx) ||
-        !fp16_whitelist_.count(root.node->op())) {
+    if (!ShouldProcess(*root.node) || !fp16_whitelist_.count(root.node->op())) {
       continue;
     }
     DfsTypeTraversal(
