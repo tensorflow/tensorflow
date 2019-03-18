@@ -533,11 +533,11 @@ template <typename T>
 struct TypeUnion;
 
 template <>
-struct TypeUnion<float_t> {
+struct TypeUnion<float> {
  public:
   static const TensorType tensor_type = TensorType::TensorType_FLOAT32;
   static const TfLiteType tflite_type = TfLiteType::kTfLiteFloat32;
-  typedef float_t ScalarType;
+  typedef float ScalarType;
 };
 
 template <>

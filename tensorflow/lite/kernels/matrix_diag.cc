@@ -112,7 +112,7 @@ void FillDiagHelper(const TfLiteTensor* input, TfLiteTensor* output) {
       return FillDiag<uint8_t>(input, output, batch_size, row_size, col_size);
     }
     default:
-      return FillDiag<float_t>(input, output, batch_size, row_size, col_size);
+      return FillDiag<float>(input, output, batch_size, row_size, col_size);
   }
 }
 

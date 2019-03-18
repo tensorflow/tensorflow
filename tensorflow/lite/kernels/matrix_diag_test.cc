@@ -57,7 +57,7 @@ template <typename T>
 class MatrixDiagOpTest : public ::testing::Test {};
 
 using TypesUnderTest =
-    ::testing::Types<TypeUnion<int32_t>, TypeUnion<float_t>, TypeUnion<int16_t>,
+    ::testing::Types<TypeUnion<int32_t>, TypeUnion<float>, TypeUnion<int16_t>,
                      TypeUnion<int8_t>, TypeUnion<uint8_t>>;
 TYPED_TEST_SUITE(MatrixDiagOpTest, TypesUnderTest);
 
