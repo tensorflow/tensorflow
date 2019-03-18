@@ -629,6 +629,16 @@ Status FindCompilationCandidates(
     if (node->type_string() == "_Retval") {
       continue;
     }
+
+    if (node->attrs().Find("_scoped_allocator") ||
+        node->attrs().Find("_forward_from")) {
+      // TODO(b/128858118): XLA does not support _scoped_allocator and
+      // _forward_from.
+      VLOG(2) << "Not clustering " << node->name()
+              << " because of _scoped_allocator or _forward_from attribute.";
+      continue;
+    }
+
     candidates->insert(node);
     --fuel;
   }
