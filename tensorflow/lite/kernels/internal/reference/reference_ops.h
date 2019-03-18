@@ -18,13 +18,13 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 #include <algorithm>
+#include <cfenv>
 #include <cmath>
 #include <cstring>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <type_traits>
-#include <fenv.h>
 
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"

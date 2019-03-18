@@ -85,13 +85,13 @@ using reference_ops::RankOneSelect;
 using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;
+using reference_ops::Round;
 using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Sub16;
 using reference_ops::Transpose;
-using reference_ops::Round;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
