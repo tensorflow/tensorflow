@@ -180,6 +180,8 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
 
   const FunctionBody* GetFunctionBody(Handle h) override;
 
+  Status GetRetTypes(Handle h, DataTypeVector* ret_types) override;
+
   void Run(const Options& opts, Handle handle, gtl::ArraySlice<Tensor> args,
            std::vector<Tensor>* rets, DoneCallback done) override;
 
@@ -232,6 +234,11 @@ Status FunctionLibraryRuntimeOverlay::ReleaseHandle(Handle handle) {
 
 const FunctionBody* FunctionLibraryRuntimeOverlay::GetFunctionBody(Handle h) {
   return base_flr_->GetFunctionBody(h);
+}
+
+Status FunctionLibraryRuntimeOverlay::GetRetTypes(Handle h,
+                                                  DataTypeVector* ret_types) {
+  return base_flr_->GetRetTypes(h, ret_types);
 }
 
 void FunctionLibraryRuntimeOverlay::Run(const Options& opts, Handle handle,
@@ -322,6 +329,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Status ReleaseHandle(Handle handle) override;
 
   const FunctionBody* GetFunctionBody(Handle handle) override;
+
+  Status GetRetTypes(Handle handle, DataTypeVector* ret_types) override;
 
   Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) override;
 
@@ -528,6 +537,20 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
   auto iter = items_.find(local_handle);
   CHECK(iter != items_.end());
   return iter->second->func_graph;
+}
+
+Status FunctionLibraryRuntimeImpl::GetRetTypes(Handle h,
+                                               DataTypeVector* ret_types) {
+  if (parent_->IsMultiDevice(h)) {
+    return parent_->GetRetTypes(h, ret_types);
+  }
+  LocalHandle local_handle = parent_->GetHandleOnDevice(device_name_, h);
+  if (local_handle == kInvalidLocalHandle) {
+    return errors::InvalidArgument("Handle ", h, " not found.");
+  }
+  const FunctionBody* fbody = GetFunctionBody(h);
+  *ret_types = fbody->ret_types;
+  return Status::OK();
 }
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -103,28 +104,21 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
 /* static */
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
-    std::unique_ptr<CapturedFunction>* out_function) {
-  return CapturedFunction::Create(func, ctx, argument_name, true, out_function);
-}
-
-Status CapturedFunction::Create(
-    const NameAttrList& func, OpKernelContext* ctx, const string& argument_name,
-    bool use_inter_op_parallelism,
-    std::unique_ptr<CapturedFunction>* out_function) {
+    Params params, std::unique_ptr<CapturedFunction>* out_function) {
   OpInputList inputs;
   TF_RETURN_IF_ERROR(ctx->input_list(argument_name, &inputs));
   std::vector<Tensor> arguments(inputs.begin(), inputs.end());
-  *out_function = absl::WrapUnique(new CapturedFunction(
-      func, std::move(arguments), use_inter_op_parallelism));
+  *out_function = absl::WrapUnique(
+      new CapturedFunction(func, std::move(arguments), params));
   return Status::OK();
 }
 
 Status CapturedFunction::Create(
     const NameAttrList& func, OpKernelContext* ctx,
-    std::vector<Tensor>&& captured_inputs, bool use_inter_op_parallelism,
+    std::vector<Tensor>&& captured_inputs, Params params,
     std::unique_ptr<CapturedFunction>* out_function) {
-  *out_function = absl::WrapUnique(new CapturedFunction(
-      func, std::move(captured_inputs), use_inter_op_parallelism));
+  *out_function = absl::WrapUnique(
+      new CapturedFunction(func, std::move(captured_inputs), params));
   return Status::OK();
 }
 
@@ -139,19 +133,54 @@ Status CapturedFunction::Instantiate(
   if (!use_inter_op_parallelism_) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
+  inst_opts.is_multi_device_function = is_multi_device_function_;
+
+  // We infer the target device from the function library runtime.
+  DCHECK(lib->device() != nullptr);
+  inst_opts.target = lib->device()->name();
+
+  if (is_multi_device_function_) {
+    // Compute devices of non-captured inputs.
+    //
+    // We infer the number of non-captured inputs by subtracting the number
+    // of captured inputs from the number of input arguments and we infer the
+    // input devices from the function library runtime.
+    const FunctionDef* fdef =
+        lib->GetFunctionLibraryDefinition()->Find(func_.name());
+    if (fdef == nullptr) {
+      return errors::InvalidArgument(
+          "Failed to find function ", func_.name(),
+          " in function library: ", lib->GetFunctionLibraryDefinition());
+    }
+    size_t num_non_captured_inputs =
+        fdef->signature().input_arg_size() - captured_inputs_.size();
+    for (size_t i = 0; i < num_non_captured_inputs; ++i) {
+      inst_opts.input_devices.push_back(inst_opts.target);
+    }
+    // Compute devices of captured inputs.
+    Device* cpu_device;
+    TF_RETURN_IF_ERROR(lib->device_mgr()->LookupDevice("CPU:0", &cpu_device));
+    for (auto& input : captured_inputs_) {
+      DataType dtype = input.dtype();
+      if (dtype == DT_RESOURCE) {
+        const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
+        inst_opts.input_devices.push_back(handle.device());
+      } else if (MTypeFromDType(dtype) == HOST_MEMORY) {
+        // TODO(jsimsa): Correctly handle tensors on devices other than CPU:0.
+        inst_opts.input_devices.push_back(cpu_device->name());
+      } else {
+        // Fall back to using the function library runtime device.
+        inst_opts.input_devices.push_back(inst_opts.target);
+      }
+    }
+  }
 
   FunctionLibraryRuntime::Handle f_handle;
   TF_RETURN_IF_ERROR(ctx->function_handle_cache()->Instantiate(
       func_.name(), AttrSlice(&func_.attr()), inst_opts, &f_handle));
-  const FunctionBody* fbody = lib->GetFunctionBody(f_handle);
-  if (fbody == nullptr) {
-    return errors::Internal("Failed to instantiate function body.");
-  }
 
   DataTypeVector ret_types;
-  for (const auto& ret_type : fbody->ret_types) {
-    ret_types.push_back(ret_type);
-  }
+  TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
   *instantiated_captured_function =
       absl::WrapUnique<InstantiatedCapturedFunction>(
@@ -308,7 +337,8 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
       });
   f_opts.step_container = &step_container;
   f_opts.runner = ctx->runner();
-  if (lib_->device()->device_type() != DEVICE_CPU) {
+  if (lib_->device()->device_type() != DEVICE_CPU ||
+      captured_func_->is_multi_device_function()) {
     f_opts.create_rendezvous = true;
   }
   // TODO(mrry): Add cancellation manager support to IteratorContext
@@ -320,17 +350,34 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager c_mgr;
   f_opts.cancellation_manager = &c_mgr;
 
-  OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
-                           ret_types_);
-  Notification n;
-  Status s;
-  lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
-    s.Update(func_status);
-    n.Notify();
-  });
-  n.WaitForNotification();
-  TF_RETURN_IF_ERROR(s);
-  return frame.ConsumeRetvals(rets);
+  if (captured_func_->is_multi_device_function()) {
+    std::vector<Tensor> inputs = std::move(args);
+    inputs.reserve(inputs.size() + captured_func_->captured_inputs().size());
+    for (auto& input : captured_func_->captured_inputs()) {
+      inputs.push_back(input);
+    }
+
+    Notification n;
+    Status s;
+    lib_->Run(f_opts, f_handle_, inputs, rets, [&n, &s](Status func_status) {
+      s.Update(func_status);
+      n.Notify();
+    });
+    n.WaitForNotification();
+    return s;
+  } else {
+    OwnedArgsCallFrame frame(std::move(args),
+                             &captured_func_->captured_inputs(), ret_types_);
+    Notification n;
+    Status s;
+    lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
+      s.Update(func_status);
+      n.Notify();
+    });
+    n.WaitForNotification();
+    TF_RETURN_IF_ERROR(s);
+    return frame.ConsumeRetvals(rets);
+  }
 }
 
 Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
@@ -483,10 +530,11 @@ void InstantiatedCapturedFunction::RunAsync(
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,
                                    std::vector<Tensor> captured_inputs,
-                                   bool use_inter_op_parallelism)
+                                   Params params)
     : func_(func),
       captured_inputs_(std::move(captured_inputs)),
-      use_inter_op_parallelism_(use_inter_op_parallelism) {}
+      use_inter_op_parallelism_(params.use_inter_op_parallelism),
+      is_multi_device_function_(params.is_multi_device_function) {}
 
 }  // namespace data
 }  // namespace tensorflow
