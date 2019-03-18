@@ -377,6 +377,9 @@ struct NodeTypeIdEdge {
 
 // This is just like GraphTopologyView but with (NodeDef, TypeAttrId) pairs as
 // the vertices instead of just NodeDef.
+// For example, if node A has output A:0 with TypeAttrId 'T', and node B has
+// input B:0 with TypeAttrId 'U', and input B:0 connects to output A:0, there
+// will be an edge from (A, T) to (B, U).
 class GraphTypeTopologyView {
  public:
   GraphTypeTopologyView() = default;
