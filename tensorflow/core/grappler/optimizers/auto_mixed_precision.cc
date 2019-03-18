@@ -1577,7 +1577,7 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
 
 bool AutoMixedPrecisionImpl::IsIdentityAfterVariable(
     const NodeDef& node) const {
-  if (node.op() == "Identity" && node.input_size() == 1) {
+  if (node.op() == "Identity") {
     GraphView::InputPort node_input(&node, 0);
     MutableGraphView::OutputPort prev_output =
         graph_view_.GetRegularFanin(node_input);
