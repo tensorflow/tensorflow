@@ -811,10 +811,8 @@ DataTypeSet AllowedDataTypes(const OpDef::AttrDef& attr_def) {
     return AllTypes();
   }
   uint32 dtype_mask = 0;
-  int counter = 0;
   for (int dtype : allowed_types) {
     dtype_mask |= 1u << dtype;
-    counter++;
   }
   return DataTypeSet(dtype_mask);
 }
