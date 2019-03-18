@@ -162,7 +162,6 @@ def argmax_v2(input,
     A `Tensor` of type `output_type`.
 	
   Usage:
-
 	```python
 	import tensorflow as tf
 	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
@@ -218,7 +217,6 @@ def argmin_v2(input,
     A `Tensor` of type `output_type`.
 	
   Usage:
-
 	```python
 	import tensorflow as tf
 	a = [1, 10, 26.9, 2.8, 166.32, 62.3]
