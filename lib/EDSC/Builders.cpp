@@ -386,6 +386,8 @@ static ValueHandle createComparisonExpr(CmpIPredicate predicate,
                                         ValueHandle lhs, ValueHandle rhs) {
   auto lhsType = lhs.getType();
   auto rhsType = rhs.getType();
+  (void)lhsType;
+  (void)rhsType;
   assert(lhsType == rhsType && "cannot mix types in operators");
   assert((lhsType.isa<IndexType>() || lhsType.isa<IntegerType>()) &&
          "only integer comparisons are supported");

@@ -38,9 +38,9 @@ using namespace mlir;
 using llvm::DenseSet;
 using llvm::SetVector;
 
-void mlir::getForwardSlice(Instruction *inst,
-                           SetVector<Instruction *> *forwardSlice,
-                           TransitiveFilter filter, bool topLevel) {
+static void getForwardSliceImpl(Instruction *inst,
+                                SetVector<Instruction *> *forwardSlice,
+                                TransitiveFilter filter) {
   if (!inst) {
     return;
   }
@@ -56,8 +56,7 @@ void mlir::getForwardSlice(Instruction *inst,
     for (auto &u : forOp->getInductionVar()->getUses()) {
       auto *ownerInst = u.getOwner();
       if (forwardSlice->count(ownerInst) == 0) {
-        getForwardSlice(ownerInst, forwardSlice, filter,
-                        /*topLevel=*/false);
+        getForwardSliceImpl(ownerInst, forwardSlice, filter);
       }
     }
   } else {
@@ -66,28 +65,33 @@ void mlir::getForwardSlice(Instruction *inst,
       for (auto &u : inst->getResult(0)->getUses()) {
         auto *ownerInst = u.getOwner();
         if (forwardSlice->count(ownerInst) == 0) {
-          getForwardSlice(ownerInst, forwardSlice, filter,
-                          /*topLevel=*/false);
+          getForwardSliceImpl(ownerInst, forwardSlice, filter);
         }
       }
     }
   }
 
-  // At the top level we reverse to get back the actual topological order.
-  if (topLevel) {
-    // std::reverse does not work out of the box on SetVector and I want an
-    // in-place swap based thing (the real std::reverse, not the LLVM adapter).
-    // TODO(clattner): Consider adding an extra method?
-    std::vector<Instruction *> v(forwardSlice->takeVector());
-    forwardSlice->insert(v.rbegin(), v.rend());
-  } else {
-    forwardSlice->insert(inst);
-  }
+  forwardSlice->insert(inst);
 }
 
-void mlir::getBackwardSlice(Instruction *inst,
-                            SetVector<Instruction *> *backwardSlice,
-                            TransitiveFilter filter, bool topLevel) {
+void mlir::getForwardSlice(Instruction *inst,
+                           SetVector<Instruction *> *forwardSlice,
+                           TransitiveFilter filter) {
+  getForwardSliceImpl(inst, forwardSlice, filter);
+  // Don't insert the top level instruction, we just queried on it and don't
+  // want it in the results.
+  forwardSlice->remove(inst);
+
+  // Reverse to get back the actual topological order.
+  // std::reverse does not work out of the box on SetVector and I want an
+  // in-place swap based thing (the real std::reverse, not the LLVM adapter).
+  std::vector<Instruction *> v(forwardSlice->takeVector());
+  forwardSlice->insert(v.rbegin(), v.rend());
+}
+
+static void getBackwardSliceImpl(Instruction *inst,
+                                 SetVector<Instruction *> *backwardSlice,
+                                 TransitiveFilter filter) {
   if (!inst) {
     return;
   }
@@ -102,16 +106,21 @@ void mlir::getBackwardSlice(Instruction *inst,
   for (auto *operand : inst->getOperands()) {
     auto *inst = operand->getDefiningInst();
     if (backwardSlice->count(inst) == 0) {
-      getBackwardSlice(inst, backwardSlice, filter,
-                       /*topLevel=*/false);
+      getBackwardSliceImpl(inst, backwardSlice, filter);
     }
   }
 
+  backwardSlice->insert(inst);
+}
+
+void mlir::getBackwardSlice(Instruction *inst,
+                            SetVector<Instruction *> *backwardSlice,
+                            TransitiveFilter filter) {
+  getBackwardSliceImpl(inst, backwardSlice, filter);
+
   // Don't insert the top level instruction, we just queried on it and don't
   // want it in the results.
-  if (!topLevel) {
-    backwardSlice->insert(inst);
-  }
+  backwardSlice->remove(inst);
 }
 
 SetVector<Instruction *> mlir::getSlice(Instruction *inst,

@@ -50,8 +50,8 @@ using TransitiveFilter = std::function<bool(Instruction *)>;
 ///
 /// Upon return to the root call, `forwardSlice` is filled with a
 /// postorder list of uses (i.e. a reverse topological order). To get a proper
-/// topological order, we just just reverse the order in `forwardSlice` at
-/// the topLevel before returning.
+/// topological order, we just just reverse the order in `forwardSlice` before
+/// returning.
 ///
 /// Example starting from node 0
 /// ============================
@@ -79,8 +79,7 @@ using TransitiveFilter = std::function<bool(Instruction *)>;
 void getForwardSlice(
     Instruction *inst, llvm::SetVector<Instruction *> *forwardSlice,
     TransitiveFilter filter = /* pass-through*/
-    [](Instruction *) { return true; },
-    bool topLevel = true);
+    [](Instruction *) { return true; });
 
 /// Fills `backwardSlice` with the computed backward slice (i.e.
 /// all the transitive defs of inst), **without** including that instruction.
@@ -119,8 +118,7 @@ void getForwardSlice(
 void getBackwardSlice(
     Instruction *inst, llvm::SetVector<Instruction *> *backwardSlice,
     TransitiveFilter filter = /* pass-through*/
-    [](Instruction *) { return true; },
-    bool topLevel = true);
+    [](Instruction *) { return true; });
 
 /// Iteratively computes backward slices and forward slices until
 /// a fixed point is reached. Returns an `llvm::SetVector<Instruction *>` which
