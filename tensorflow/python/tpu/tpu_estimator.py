@@ -1495,12 +1495,21 @@ class _ModelFnWrapper(object):
       # outfeed.
       with ops.control_dependencies([train_op] + apply_sparse_grads):
         host_call_outfeed_ops = []
+        host_call_fn, host_call_args = None, []
+
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
-          host_call.record({'host_call': estimator_spec.host_call})
-          host_call_outfeed_ops = host_call.create_enqueue_op()
+          host_call_fn, host_call_args = estimator_spec.host_call
+
+        if host_call_fn:
+          # Ignore dummy hostcalls (no arguments)
+          if host_call_args:
+            host_call.record({'host_call': estimator_spec.host_call})
+            host_call_outfeed_ops = host_call.create_enqueue_op()
         else:
-          # Create a dummy outfeed for the loss to track execution progress
+          # Create a host call for the loss to track execution progress
+          # Without this, we don't have any indication of the state of the
+          # TPU program.
           host_call.record({
               'host_call': (lambda loss_t: loss_t,
                             [array_ops.reshape(loss, [1])])
