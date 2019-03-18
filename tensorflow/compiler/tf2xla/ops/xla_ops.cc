@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/algorithm/container.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
@@ -548,6 +549,19 @@ REGISTER_OP("XlaEinsum")
         return errors::InvalidArgument("Expected one \",\" in equation. Got: ",
                                        equation);
       }
+
+      if (rank_a != lhs_rhs_split[0].size()) {
+        return errors::InvalidArgument(absl::StrCat(
+            "Expected equation[0] with size: ", rank_a, " Got '",
+            lhs_rhs_split[0], "'", " with size: ", lhs_rhs_split[0].size()));
+      }
+
+      if (rank_b != lhs_rhs_split[1].size()) {
+        return errors::InvalidArgument(absl::StrCat(
+            "Expected equation[1] with size: ", rank_b, " Got '",
+            lhs_rhs_split[1], "'", " with size: ", lhs_rhs_split[1].size()));
+      }
+
       for (const char& c : lhs_rhs_split[0]) {
         left_map[c] = context->Dim(input_a, left_map.size());
       }

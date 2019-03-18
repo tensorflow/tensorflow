@@ -335,9 +335,8 @@ def _add_self_references(namespace, autograph_module):
 def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
   """Specialization of `entity_to_graph` for callable functions."""
 
-  node, source = parser.parse_entity(f)
+  node, source, _ = parser.parse_entity(f)
   logging.log(3, 'Source code of %s:\n\n%s\n', f, source)
-  node = node.body[0]
 
   # In general, the output of inspect.getsource is inexact for lambdas because
   # it uses regex matching to adjust the exact location around the line number

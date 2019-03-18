@@ -64,9 +64,9 @@ py_library(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
-        "//tensorflow/python:summary_op_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/distribute:summary_op_util",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )

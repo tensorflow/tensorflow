@@ -159,13 +159,13 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
     return array_ops.identity(replica_local_var)
 
-  def _unwrap(self, value):
+  def _local_results(self, value):
     return (value,)
 
   def value_container(self, value):

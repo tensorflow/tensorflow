@@ -2508,10 +2508,6 @@ class LSTM(RNN):
       logging.warning('`implementation=0` has been deprecated, '
                       'and now defaults to `implementation=1`.'
                       'Please update your layer call.')
-    if context.executing_eagerly() and context.num_gpus() > 0:
-      logging.warn('%s: Note that this layer is not optimized for performance. '
-                   'Please use tf.keras.layers.CuDNNLSTM for better '
-                   'performance on GPU.', self)
     cell = LSTMCell(
         units,
         activation=activation,

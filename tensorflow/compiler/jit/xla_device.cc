@@ -290,17 +290,17 @@ xla::StatusOr<XlaDeviceContext*> XlaDevice::GetDeviceContextLocked() {
     TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "host_to_device_stream",
                                             &host_to_device_stream_,
                                             &need_new_device_context));
-    TF_RETURN_IF_ERROR(EnsureStreamOkLocked(backend, "device_to_host_stream",
-                                            &device_to_host_stream_,
-                                            &need_new_device_context));
     for (std::shared_ptr<se::Stream>& stream : device_to_device_streams_) {
       TF_RETURN_IF_ERROR(
           EnsureStreamOkLocked(backend, "device_to_device_stream", &stream,
                                &need_new_device_context));
     }
     host_to_device_stream = host_to_device_stream_;
-    device_to_host_stream = device_to_host_stream_;
     device_to_device_streams = device_to_device_streams_;
+    // The data transfer requests from device to host could arrive out of order,
+    // so a single stream would cause deadlock. For this case,
+    // xla_device_context would borrow a stream for each transfer request.
+    device_to_host_stream = nullptr;
   } else {
     host_to_device_stream = stream_;
     device_to_host_stream = stream_;

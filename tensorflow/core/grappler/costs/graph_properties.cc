@@ -686,7 +686,7 @@ class SymbolicShapeRefiner {
 
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
-    TF_RETURN_IF_ERROR(gp.InferStatically(true));
+    TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
 
     // Add return nodes for output shapes.
     int output = 0;

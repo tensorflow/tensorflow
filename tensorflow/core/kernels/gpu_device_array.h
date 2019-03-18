@@ -15,20 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
 #define TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/cuda_device_array_gpu.h"
+#include "tensorflow/core/kernels/gpu_device_array_gpu.h"
 
 namespace tensorflow {
 
 // Create an array of value on the host, to be sent to kernel using
-// CudaDeviceArrayStruct.
+// GpuDeviceArrayStruct.
 //
 // Usage:
 //   int size = ...;
-//   CudaDeviceArrayOnHost ptrs(context, size);
+//   GpuDeviceArrayOnHost ptrs(context, size);
 //   OP_REQUIRES_OK(ptrs.Init());
 //   for (int i = 0; i < size; ++i) {
 //     ptrs.Set(i, ...);
@@ -38,9 +38,9 @@ namespace tensorflow {
 //
 // ValueType must be memcopyable.
 template <typename ValueType, int MaxInlineValues = 8>
-class CudaDeviceArrayOnHost {
+class GpuDeviceArrayOnHost {
  public:
-  CudaDeviceArrayOnHost(OpKernelContext* context, int32 size)
+  GpuDeviceArrayOnHost(OpKernelContext* context, int32 size)
       : context_(context),
         total_bytes_(static_cast<int64>(size) * sizeof(ValueType)) {
     data_.size = size;
@@ -93,7 +93,7 @@ class CudaDeviceArrayOnHost {
     return Status::OK();
   }
 
-  const CudaDeviceArrayStruct<ValueType, MaxInlineValues>& data() const {
+  const GpuDeviceArrayStruct<ValueType, MaxInlineValues>& data() const {
     // Ensure Finalize is called.
     DCHECK(inlined() || out_of_line_values_on_gpu_.IsInitialized());
     return data_;
@@ -105,16 +105,16 @@ class CudaDeviceArrayOnHost {
   OpKernelContext* const context_;
   const int64 total_bytes_;  // total size of all pointers.
   ValueType* values_ = nullptr;
-  CudaDeviceArrayStruct<ValueType, MaxInlineValues> data_;
+  GpuDeviceArrayStruct<ValueType, MaxInlineValues> data_;
 
   Tensor out_of_line_values_on_host_;
   Tensor out_of_line_values_on_gpu_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CudaDeviceArrayOnHost);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuDeviceArrayOnHost);
 };
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_

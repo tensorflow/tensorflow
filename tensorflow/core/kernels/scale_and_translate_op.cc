@@ -82,10 +82,8 @@ Status ComputeSpansCore(OpKernelContext* context, const Kernel& kernel,
     const float col_f = x + 0.5f;
     const float sample_f = col_f * inv_scale + inv_translate;
 
-    // Don't sample when the sampling *kernel* is completely outside the
-    // source image.
-    if (sample_f < 0 - kernel.Radius() * kernel_scale ||
-        sample_f > input_size + kernel.Radius() * kernel_scale) {
+    // Don't sample when the sampling location is outside the source image.
+    if (sample_f < 0 || sample_f > input_size) {
       // Add an empty span.
       starts_vec(x) = 0;
       continue;
@@ -169,11 +167,15 @@ Status ComputeGradSpansCore(OpKernelContext* context, const Spans& spans,
   auto grad_weights_vec = grad_spans->weights.vec<float>();
   grad_weights_vec.setZero();
   for (int input_index = 0; input_index < forward_input_size; ++input_index) {
-    const int start_span = grad_components[input_index].front().index;
-    grad_starts_vec(input_index) = start_span;
-    for (const GradComponent& gc : grad_components[input_index]) {
-      grad_weights_vec(input_index * grad_spans->span_size + gc.index -
-                       start_span) += gc.weight;
+    if (!grad_components[input_index].empty()) {
+      const int start_span = grad_components[input_index].front().index;
+      grad_starts_vec(input_index) = start_span;
+      for (const GradComponent& gc : grad_components[input_index]) {
+        grad_weights_vec(input_index * grad_spans->span_size + gc.index -
+                         start_span) += gc.weight;
+      }
+    } else {
+      grad_starts_vec(input_index) = 0;
     }
   }
   return Status::OK();
