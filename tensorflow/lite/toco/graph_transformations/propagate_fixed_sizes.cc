@@ -2060,6 +2060,24 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
   idx_output_array.copy_shape(input_array.shape());
 }
 
+void ProcessMatrixDiagOperator(Model* model, MatrixDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 1);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+  // Get the input_shape
+  auto& input_array = model->GetArray(op->inputs[0]);
+  Shape* mutable_shape = input_array.mutable_shape();
+  std::vector<int>* dims = mutable_shape->mutable_dims();
+  int dims_size = dims->size();
+  int last_dim = (*dims)[dims_size - 1];
+  dims->push_back(last_dim);
+  output_array.copy_shape(*mutable_shape);
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2362,6 +2380,9 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
       // The size of the output can only be known after evaluating the cond
       // tensor. Ignore shape propagation here and defer that to the
       // interpreter.
+      break;
+    case OperatorType::kMatrixDiag:
+      ProcessMatrixDiagOperator(model, static_cast<MatrixDiagOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

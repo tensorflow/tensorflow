@@ -427,6 +427,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Cos)
     HANDLE_OPERATORTYPENAME_CASE(Where)
     HANDLE_OPERATORTYPENAME_CASE(ReverseSequence)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiag)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
