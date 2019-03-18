@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "optimizer"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "threading"
     mtype: "<type \'module\'>"
   }
