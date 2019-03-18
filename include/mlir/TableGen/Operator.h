@@ -69,11 +69,13 @@ public:
   int getNumResults() const;
 
   // Returns the op result at the given `index`.
-  Value &getResult(int index) { return results[index]; }
-  const Value &getResult(int index) const { return results[index]; }
+  NamedTypeConstraint &getResult(int index) { return results[index]; }
+  const NamedTypeConstraint &getResult(int index) const {
+    return results[index];
+  }
 
-  // Returns the `index`-th result's type.
-  Type getResultType(int index) const;
+  // Returns the `index`-th result's type constraint.
+  TypeConstraint getResultTypeConstraint(int index) const;
   // Returns the `index`-th result's name.
   StringRef getResultName(int index) const;
 
@@ -96,14 +98,16 @@ public:
   const NamedAttribute &getAttribute(int index) const;
 
   // Op operand iterators.
-  using operand_iterator = Value *;
+  using operand_iterator = NamedTypeConstraint *;
   operand_iterator operand_begin();
   operand_iterator operand_end();
   llvm::iterator_range<operand_iterator> getOperands();
 
   int getNumOperands() const { return operands.size(); }
-  Value &getOperand(int index) { return operands[index]; }
-  const Value &getOperand(int index) const { return operands[index]; }
+  NamedTypeConstraint &getOperand(int index) { return operands[index]; }
+  const NamedTypeConstraint &getOperand(int index) const {
+    return operands[index];
+  }
 
   // Returns true if this operation has a variadic operand.
   bool hasVariadicOperand() const;
@@ -142,7 +146,7 @@ private:
   SmallVector<StringRef, 2> splittedDefName;
 
   // The operands of the op.
-  SmallVector<Value, 4> operands;
+  SmallVector<NamedTypeConstraint, 4> operands;
 
   // The attributes of the op.  Contains native attributes (corresponding to the
   // actual stored attributed of the operation) followed by derived attributes
@@ -154,7 +158,7 @@ private:
   SmallVector<Argument, 4> arguments;
 
   // The results of the op.
-  SmallVector<Value, 4> results;
+  SmallVector<NamedTypeConstraint, 4> results;
 
   // The traits of the op.
   SmallVector<OpTrait, 4> traits;

@@ -257,7 +257,7 @@ void OpEmitter::emitNamedOperands() {
   for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
     const auto &operand = op.getOperand(i);
     if (!operand.name.empty()) {
-      if (operand.type.isVariadic()) {
+      if (operand.constraint.isVariadic()) {
         assert(i == e - 1 && "only the last operand can be variadic");
         os << formatv(variadicOperandMethods, operand.name, i);
       } else {
@@ -277,7 +277,7 @@ void OpEmitter::emitNamedResults() {
 )";
   for (int i = 0, e = op.getNumResults(); i != e; ++i) {
     const auto &result = op.getResult(i);
-    if (!result.type.isVariadic() && !result.name.empty())
+    if (!result.constraint.isVariadic() && !result.name.empty())
       os << formatv(resultMethods, result.name, i);
   }
 }
@@ -297,7 +297,8 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
       if (resultName.empty())
         resultName = formatv("resultType{0}", i);
 
-      os << (op.getResultType(i).isVariadic() ? ", ArrayRef<Type> " : ", Type ")
+      os << (op.getResultTypeConstraint(i).isVariadic() ? ", ArrayRef<Type> "
+                                                        : ", Type ")
          << resultName;
 
       resultNames.emplace_back(std::move(resultName));
@@ -309,9 +310,10 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   int numAttrs = 0;
   for (int i = 0, e = op.getNumArgs(); i < e; ++i) {
     auto argument = op.getArg(i);
-    if (argument.is<tblgen::Value *>()) {
+    if (argument.is<tblgen::NamedTypeConstraint *>()) {
       auto &operand = op.getOperand(numOperands);
-      os << (operand.type.isVariadic() ? ", ArrayRef<Value *> " : ", Value *")
+      os << (operand.constraint.isVariadic() ? ", ArrayRef<Value *> "
+                                             : ", Value *")
          << getArgumentName(op, numOperands);
       ++numOperands;
     } else {
@@ -558,18 +560,18 @@ void OpEmitter::emitVerifier() {
   }
 
   // Emits verification code for an operand or result.
-  auto verifyValue = [this](const tblgen::Value &value, int index,
+  auto verifyValue = [this](const tblgen::NamedTypeConstraint &value, int index,
                             bool isOperand) -> void {
     // TODO: Handle variadic operand/result verification.
-    if (value.type.isVariadic())
+    if (value.constraint.isVariadic())
       return;
 
     // TODO: Commonality between matchers could be extracted to have a more
     // concise code.
     if (value.hasPredicate()) {
-      auto description = value.type.getDescription();
+      auto description = value.constraint.getDescription();
       OUT(4) << "if (!("
-             << formatv(value.type.getConditionTemplate(),
+             << formatv(value.constraint.getConditionTemplate(),
                         "this->getInstruction()->get" +
                             Twine(isOperand ? "Operand" : "Result") + "(" +
                             Twine(index) + ")->getType()")

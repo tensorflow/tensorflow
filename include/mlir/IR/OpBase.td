@@ -104,13 +104,13 @@ class TypeConstraint<Pred condition, string descr> {
 class Type<Pred condition, string descr = "">
     : TypeConstraint<condition, descr>;
 
-// A variadic type. It expands to zero or more of the base type.
-// This class is used for supporting variadic operands/results. An op can
-// declare no more than one variadic operand/result, and that operand/result
-// must be the last one in the operand/result list.
+// A variadic type constraint. It expands to zero or more of the base type. This
+// class is used for supporting variadic operands/results. An op can declare no
+// more than one variadic operand/result, and that operand/result must be the
+// last one in the operand/result list.
 class Variadic<Type type, string descr = "">
     // TODO: support variadic type conditions
-    : Type<CPred<"true">, descr> {
+    : TypeConstraint<CPred<"true">, descr> {
   Type baseType = type;
 }
 

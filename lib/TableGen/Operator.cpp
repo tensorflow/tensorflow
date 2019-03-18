@@ -63,9 +63,10 @@ int tblgen::Operator::getNumResults() const {
   return results->getNumArgs();
 }
 
-tblgen::Type tblgen::Operator::getResultType(int index) const {
+tblgen::TypeConstraint
+tblgen::Operator::getResultTypeConstraint(int index) const {
   DagInit *results = def.getValueAsDag("results");
-  return Type(cast<DefInit>(results->getArg(index)));
+  return TypeConstraint(*cast<DefInit>(results->getArg(index)));
 }
 
 StringRef tblgen::Operator::getResultName(int index) const {
@@ -74,7 +75,7 @@ StringRef tblgen::Operator::getResultName(int index) const {
 }
 
 bool tblgen::Operator::hasVariadicResult() const {
-  return !results.empty() && results.back().type.isVariadic();
+  return !results.empty() && results.back().constraint.isVariadic();
 }
 
 int tblgen::Operator::getNumNativeAttributes() const {
@@ -90,7 +91,7 @@ const tblgen::NamedAttribute &tblgen::Operator::getAttribute(int index) const {
 }
 
 bool tblgen::Operator::hasVariadicOperand() const {
-  return !operands.empty() && operands.back().type.isVariadic();
+  return !operands.empty() && operands.back().constraint.isVariadic();
 }
 
 StringRef tblgen::Operator::getArgName(int index) const {
@@ -165,7 +166,8 @@ void tblgen::Operator::populateOpStructure() {
     Record *argDef = argDefInit->getDef();
 
     if (argDef->isSubClassOf(typeConstraintClass)) {
-      operands.push_back(Value{givenName, Type(argDefInit)});
+      operands.push_back(
+          NamedTypeConstraint{givenName, TypeConstraint(*argDefInit)});
       arguments.emplace_back(&operands.back());
     } else if (argDef->isSubClassOf(attrClass)) {
       if (givenName.empty())
@@ -204,7 +206,7 @@ void tblgen::Operator::populateOpStructure() {
 
   // Verify that only the last operand can be variadic.
   for (int i = 0, e = operands.size() - 1; i < e; ++i) {
-    if (operands[i].type.isVariadic())
+    if (operands[i].constraint.isVariadic())
       PrintFatalError(def.getLoc(),
                       "only the last operand allowed to be variadic");
   }
@@ -223,12 +225,12 @@ void tblgen::Operator::populateOpStructure() {
       PrintFatalError(def.getLoc(),
                       Twine("undefined type for result #") + Twine(i));
     }
-    results.push_back({name, Type(resultDef)});
+    results.push_back({name, TypeConstraint(*resultDef)});
   }
 
   // Verify that only the last result can be variadic.
   for (int i = 0, e = results.size() - 1; i < e; ++i) {
-    if (results[i].type.isVariadic())
+    if (results[i].constraint.isVariadic())
       PrintFatalError(def.getLoc(),
                       "only the last result allowed to be variadic");
   }

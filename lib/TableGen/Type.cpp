@@ -53,6 +53,10 @@ llvm::StringRef tblgen::TypeConstraint::getDescription() const {
 tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit &init)
     : TypeConstraint(*init.getDef()) {}
 
+bool tblgen::TypeConstraint::isVariadic() const {
+  return def->isSubClassOf("Variadic");
+}
+
 tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
   assert(def->isSubClassOf("Type") &&
          "must be subclass of TableGen 'Type' class");
@@ -62,9 +66,7 @@ tblgen::Type::Type(const llvm::DefInit *init) : Type(*init->getDef()) {}
 
 StringRef tblgen::Type::getTableGenDefName() const { return def->getName(); }
 
-bool tblgen::Type::isVariadic() const { return def->isSubClassOf("Variadic"); }
-
 tblgen::Type tblgen::Type::getVariadicBaseType() const {
-  assert(isVariadic() && "must be variadic type");
-  return Type(def->getValueAsDef("baseType"));
+  assert(isVariadic() && "must be variadic type constraint");
+  return Type(*def->getValueAsDef("baseType"));
 }

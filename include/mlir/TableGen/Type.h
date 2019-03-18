@@ -57,6 +57,9 @@ public:
   // is not provided, returns the TableGen def name.
   StringRef getDescription() const;
 
+  // Returns true if this is a variadic type constraint.
+  bool isVariadic() const;
+
 protected:
   // The TableGen definition of this type.
   const llvm::Record *def;
@@ -71,15 +74,13 @@ public:
   explicit Type(const llvm::Record *record) : Type(*record) {}
   explicit Type(const llvm::DefInit *init);
 
-  // Returns true if this is a variadic type.
-  bool isVariadic() const;
-
-  // Gets the base type of this variadic type.
-  // Precondition: This type is a variadic type.
-  Type getVariadicBaseType() const;
-
   // Returns the TableGen def name for this type.
   StringRef getTableGenDefName() const;
+
+  // Gets the base type of this variadic type constraint.
+  // Precondition: This type constraint is a variadic type constraint.
+  Type getVariadicBaseType() const;
+
 };
 
 } // end namespace tblgen

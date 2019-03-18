@@ -52,16 +52,16 @@ struct NamedAttribute {
 };
 
 // A struct wrapping an op operand/result and its name together
-struct Value {
+struct NamedTypeConstraint {
   // Returns true if this operand has constraint that need to be satisfied.
   bool hasPredicate() const;
 
   llvm::StringRef name;
-  Type type;
+  TypeConstraint constraint;
 };
 
 // Operation argument: either attribute or operand
-using Argument = llvm::PointerUnion<NamedAttribute *, Value *>;
+using Argument = llvm::PointerUnion<NamedAttribute *, NamedTypeConstraint *>;
 
 } // end namespace tblgen
 } // end namespace mlir

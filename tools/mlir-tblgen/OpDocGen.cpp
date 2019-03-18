@@ -105,7 +105,7 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
         os << "`" << operand.name << "`: ";
       else
         os << "&laquo;unnamed&raquo;: ";
-      os << operand.type.getDescription() << "\n";
+      os << operand.constraint.getDescription() << "\n";
     }
 
     // Emit attributes.
@@ -131,7 +131,7 @@ static void emitOpDoc(const RecordKeeper &recordKeeper, raw_ostream &os) {
         os << "&laquo;unnamed&raquo;: ";
       else
         os << "`" << name << "`: ";
-      os << op.getResultType(i).getDescription() << "\n";
+      os << op.getResultTypeConstraint(i).getDescription() << "\n";
     }
 
     os << "\n";
