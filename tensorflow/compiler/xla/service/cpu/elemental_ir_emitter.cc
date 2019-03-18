@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
@@ -135,10 +136,19 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
       };
     case HloOpcode::kReduce:
       return [this, hlo, &operand_to_generator](const IrArray::Index& index) {
+        auto reduce_instr = Cast<HloReduceInstruction>(hlo);
+        std::vector<llvm_ir::ElementGenerator> input_generators;
+        for (const HloInstruction* instr : reduce_instr->inputs()) {
+          input_generators.push_back(operand_to_generator.at(instr));
+        }
+
+        std::vector<llvm_ir::ElementGenerator> initial_value_generators;
+        for (const HloInstruction* instr : reduce_instr->init_values()) {
+          initial_value_generators.push_back(operand_to_generator.at(instr));
+        }
         return ir_emitter_->EmitElementalReduce(
-            Cast<HloReduceInstruction>(hlo),
-            operand_to_generator.at(hlo->operand(0)),
-            operand_to_generator.at(hlo->operand(1)), index);
+            reduce_instr, std::move(input_generators),
+            std::move(initial_value_generators), index);
       };
     default:
       return ElementalIrEmitter::MakeElementGenerator(hlo,
