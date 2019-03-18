@@ -1026,10 +1026,10 @@ Status AutoMixedPrecisionImpl::PrintDebugLogs(bool preop, size_t timestamp) {
 
 void AutoMixedPrecisionImpl::LogSkippedNode(const NodeDef& node) const {
   VLOG(2) << "Skipping " << node.op() << " node " << node.name()
-          << " because it is "
+          << " because it "
           << (MustPreserve(node)
-                  ? "on the fetch list"
-                  : "not on the GPU, or the GPU arch is not suitable");
+                  ? "must be preserved"
+                  : "is not on the GPU, or the GPU arch is not suitable");
 }
 
 bool AutoMixedPrecisionImpl::MustPreserve(const NodeDef& node) const {
