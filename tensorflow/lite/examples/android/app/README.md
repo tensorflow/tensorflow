@@ -1,6 +1,6 @@
-# TF Lite Android App Example
+# TFLite Android App Example
 
-A simple Android example that demonstrates image classification and object
+A TFLite End-to-End Android example that demonstrates image classification and object
 detection using the camera, as well as speech recognition using the microphone.
 
 ## Building in Android Studio with TensorFlow Lite AAR from JCenter.
@@ -17,9 +17,9 @@ for our external and internal code to merge.
 1. Follow the [Bazel steps for the TF Demo App](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#bazel):
 
   1. [Install Bazel and Android Prerequisites](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#install-bazel-and-android-prerequisites).
-     It's easiest with Android Studio.
+     It's easy with Android Studio.
 
-      - You'll need at least SDK version 23.
+      - You'll need atleast SDK version 23.
       - Make sure to install the latest version of Bazel. Some distributions
         ship with Bazel 0.5.4, which is too old.
       - Bazel requires Android Build Tools `26.0.1` or higher.
@@ -34,12 +34,12 @@ for our external and internal code to merge.
      script will create these rules for you. Answer "Yes" when the script asks
      to automatically configure the `./WORKSPACE`.
 
-      - Make sure the `api_level` in `WORKSPACE` is set to an SDK version that
+      - Make sure the `api_level` in `WORKSPACE` is set to a SDK version that
         you have installed.
       - By default, Android Studio will install the SDK to `~/Android/Sdk` and
         the NDK to `~/Android/Sdk/ndk-bundle`.
 
-2. Build this demo app with Bazel. The demo needs C++11. We configure the fat_apk_cpu flag to package support for 4 hardware variants. You may replace it with --config=android_arm64 on a 64-bit device and --config=android_arm for 32-bit device:
+2. Build this demo app with Bazel. The demo needs C++11. We configure the fat_apk_cpu flag to package support for 4 hardware variants. You may replace it with --config=android_arm64 on a 64-bit device and --config=android_arm for a 32-bit device:
 
   ```shell
   bazel build -c opt --cxxopt='--std=c++11' --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
