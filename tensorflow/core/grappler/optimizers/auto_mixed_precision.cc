@@ -1441,6 +1441,9 @@ void AutoMixedPrecisionImpl::PropagateWhiteThroughClear(
                   ShouldProcess(*item.node) && IsFloat32(item) &&
                   SupportsFloat16(item) &&
                   (fp16_clearlist_.count(item.node->op())) &&
+                  // We don't propagate (backwards) through Identity nodes when
+                  // they immediately follow Variable nodes because otherwise it
+                  // breaks TensorBoard visualization.
                   !IsIdentityAfterVariable(*item.node));
         }),
         DfsTypeCallbacks::PreOrder([&](int idx) {
