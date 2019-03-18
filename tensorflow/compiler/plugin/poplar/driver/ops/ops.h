@@ -307,6 +307,10 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
+StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
+
 StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
                                               const HloInstruction* inst,
                                               TensorMap& tensor_map);
