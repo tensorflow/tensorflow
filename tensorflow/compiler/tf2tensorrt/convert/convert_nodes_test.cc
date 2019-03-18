@@ -2709,8 +2709,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(node_def);
   }
-// TRT 5.1+ supports strides
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+// TRT 5.1+ supports strides (disabled until 5.1.3.1 due to bugs)
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
   {
     // Negative strides, should fail.
     Reset();
@@ -2773,7 +2773,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Same input is used for all tests.
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
   const int kStridedSliceOKCases = 23;
 #else
   const int kStridedSliceOKCases = 19;
@@ -2900,7 +2900,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
                /*end_mask=*/get_mask({1, 0, 0, 0}),
                /*expected_output_dims=*/{1, 2, 3},
                /*expected_output=*/{1, 2, 3, 4, 5, 6}},
-#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
     // Strides
     TestParams{/*input_dims=*/{6},
                /*begin=*/{0, 0}, /*end=*/{0, 5}, /*strides=*/{1, 2},
