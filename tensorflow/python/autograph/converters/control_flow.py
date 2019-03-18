@@ -127,26 +127,9 @@ class ControlFlowTransformer(converter.Base):
     else:
       block_live_in = set()
 
-    # For the purpose of aliasing, composite symbols with live owners are live
-    # as well. Otherwise this would leak tensors from the conditional's body.
-    #
-    # For example:
-    #
-    #   obj = some_obj
-    #   if cond:
-    #     obj.a = val
-    #
-    # Thanslating to the code below would be incorrect:
-    #
-    #   def true_fn():
-    #     obj.a = val()  # Wrong! leaks ops owned by true_fn
-    #     return obj.a
-    for s in scope.modified:
-      if s.is_composite():
-        live_parents = block_live_in & s.owner_set
-        if live_parents:
-          block_live_in.add(s)
-    return scope.modified & node_defined_in & block_live_in
+    modified_live = scope.modified & node_defined_in & block_live_in
+    # Composite symbols are handled elsewhere see _create_state_functions
+    return {s for s in modified_live if not s.is_composite()}
 
   def _create_state_functions(self, composites,
                               state_getter_name, state_setter_name):
@@ -209,14 +192,13 @@ class ControlFlowTransformer(converter.Base):
     returned_from_cond = set()
     composites = set()
     for s in modified_in_cond:
-      if s in live_out:
+      if s in live_out and not s.is_composite():
         returned_from_cond.add(s)
       if s.is_composite():
         # Special treatment for compound objects, always return them.
         # This allows special handling within the if_stmt itself.
         # For example, in TensorFlow we need to restore the state of composite
         # symbols to ensure that only effects from the executed branch are seen.
-        returned_from_cond.add(s)
         composites.add(s)
 
     created_in_body = body_scope.modified & returned_from_cond - defined_in
