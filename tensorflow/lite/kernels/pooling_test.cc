@@ -215,6 +215,7 @@ TEST(FloatPoolingOpTest, AveragePoolPaddingValidStride1) {
 TEST(QuantizedPoolingOpTest, AveragePool) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{0}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -234,11 +235,12 @@ TEST(QuantizedPoolingOpTest, AveragePool) {
 TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.9375] --> [Scale{0.125}, zero_point{128}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -15.9375, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_UINT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_UINT8, {}, -15.9375, 15.9375}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU);
   m.SetInput({
       0, -6, 2, 4,   //
@@ -247,18 +249,19 @@ TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({1.25, 3.25})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({20, 52}));
+              ElementsAreArray(ArrayFloatNear({0.0, 0.75})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128, 134}));
 }
 
 TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.9375] --> [Scale{0.125}, zero_point{128}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -15.9375, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_UINT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_UINT8, {}, -15.9375, 15.9375}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU_N1_TO_1);
   m.SetInput({
       0, -6, 2, 4,     //
@@ -267,8 +270,8 @@ TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 1.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 16}));
+              ElementsAreArray(ArrayFloatNear({-1.0, 0.75})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({120, 134}));
 
   m.SetInput({
       0, -6, -2, -4,   //
@@ -277,18 +280,19 @@ TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 1.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 16}));
+              ElementsAreArray(ArrayFloatNear({-1.0, -0.75})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({120, 122}));
 }
 
 TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu6) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.9375] --> [Scale{0.125}, zero_point{128}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -15.9375, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_UINT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_UINT8, {}, -15.9375, 15.9375}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU6);
   m.SetInput({
       0, -6, 12, 4,   //
@@ -298,7 +302,7 @@ TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu6) {
 
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({0.0, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 96}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128, 176}));
 
   m.SetInput({
       0, 6, 12, 4,  //
@@ -308,12 +312,13 @@ TEST(QuantizedPoolingOpTest, AveragePoolActivationRelu6) {
 
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({2.75, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({44, 96}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({150, 176}));
 }
 
 TEST(QuantizedPoolingOpTest, AveragePoolPaddingSameStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{0}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -335,6 +340,7 @@ TEST(QuantizedPoolingOpTest, AveragePoolPaddingSameStride1) {
 TEST(QuantizedPoolingOpTest, AveragePoolPaddingValidStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{0}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -401,6 +407,7 @@ TEST(QuantizedPoolingOpTest, AveragePoolLargeDepth) {
 TEST(QuantizedPoolingOpTest, SymmetricAveragePool) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{-128}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
       /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -424,11 +431,12 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePool) {
 TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.8130] --> [Scale{0.124512}, zero_point{0}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -15.9375, 15.8130},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_INT8, {}, -15.9375, 15.8130}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU);
   m.SetInput({
       0, -6, 2, 4,   //
@@ -437,22 +445,19 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({1.25, 3.25})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({20 - 128, 52 - 128}));
+              ElementsAreArray(ArrayFloatNear({0.0, 0.75}, 0.0030)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128 - 128, 134 - 128}));
 }
 
-// Test quantized AveragePool with int8 input and output. The input is the same
-// as the uint8 test QuantizedPoolingOpTest.AveragePool. The float output is
-// identical to uint8 test and quantized output is identical to uint8 test with
-// a 128 shift.
 TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.8130] --> [Scale{0.124512}, zero_point{0}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -15.9375, 15.8130},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_INT8, {}, -15.9375, 15.8130}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU_N1_TO_1);
   m.SetInput({
       0, -6, 2, 4,     //
@@ -461,8 +466,8 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 1.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 16 - 128}));
+              ElementsAreArray(ArrayFloatNear({-1.0, 0.75}, 0.0040)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({120 - 128, 134 - 128}));
 
   m.SetInput({
       0, -6, -2, -4,   //
@@ -471,8 +476,8 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 1.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 16 - 128}));
+              ElementsAreArray(ArrayFloatNear({-1.0, -0.75}, 0.0040)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({120 - 128, 122 - 128}));
 }
 
 // Test quantized AveragePool with int8 input and output. The input is the same
@@ -482,11 +487,12 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu1) {
 TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu6) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.8130] --> [Scale{0.124512}, zero_point{0}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -15.9375, 15.8130},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_INT8, {}, -15.9375, 15.8130}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU6);
   m.SetInput({
       0, -6, 12, 4,   //
@@ -495,8 +501,8 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu6) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 96 - 128}));
+              ElementsAreArray(ArrayFloatNear({0.0, 6.0}, 0.025)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128 - 128, 176 - 128}));
 
   m.SetInput({
       0, 6, 12, 4,  //
@@ -505,13 +511,14 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolActivationRelu6) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({2.75, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({44 - 128, 96 - 128}));
+              ElementsAreArray(ArrayFloatNear({2.75, 6.0}, 0.025)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({150 - 128, 176 - 128}));
 }
 
 TEST(QuantizedPoolingOpTest, SymmetricAveragePoolPaddingSameStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{-128}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
       /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -534,6 +541,7 @@ TEST(QuantizedPoolingOpTest, SymmetricAveragePoolPaddingSameStride1) {
 TEST(QuantizedPoolingOpTest, SymmetricAveragePoolPaddingValidStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{-128}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_AVERAGE_POOL_2D,
       /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -671,6 +679,7 @@ TEST(FloatPoolingOpTest, MaxPoolPaddingValidStride1) {
 TEST(QuantizedUInt8PoolingOpTest, MaxPool) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{0}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -690,11 +699,12 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPool) {
 TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.9375] --> [Scale{0.125}, zero_point{128}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -15.9375, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_UINT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_UINT8, {}, -15.9375, 15.9375}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU);
   m.SetInput({
       -1.5, -6, 2, 4,  //
@@ -704,17 +714,18 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu) {
 
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({0, 10})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 160}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128, 208}));
 }
 
 TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.9375] --> [Scale{0.125}, zero_point{128}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -15.9375, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_UINT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_UINT8, {}, -15.9375, 15.9375}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU_N1_TO_1);
   m.SetInput({
       -1.7, -6, 2, 4,  //
@@ -723,8 +734,8 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 1.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 16}));
+              ElementsAreArray(ArrayFloatNear({-1.0, 1.0})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({120, 136}));
 
   m.SetInput({
       0, -6, -0.2, -0.4,    //
@@ -734,17 +745,18 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu1) {
 
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({0.0, 0.75})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 12}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128, 134}));
 }
 
 TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu6) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.9375] --> [Scale{0.125}, zero_point{128}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, -15.9375, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_UINT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_UINT8, {}, -15.9375, 15.9375}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU6);
   m.SetInput({
       0, -6, 12, 4,   //
@@ -754,7 +766,7 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu6) {
 
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({0.0, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 96}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128, 176}));
 
   m.SetInput({
       0, 4.5, 12, 4,  //
@@ -764,12 +776,13 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPoolActivationRelu6) {
 
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({4.5, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({72, 96}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({164, 176}));
 }
 
 TEST(QuantizedUInt8PoolingOpTest, MaxPoolPaddingSameStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{0}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -790,6 +803,7 @@ TEST(QuantizedUInt8PoolingOpTest, MaxPoolPaddingSameStride1) {
 TEST(QuantizedUInt8PoolingOpTest, MaxPoolPaddingValidStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{0}]
   QuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
       /*input=*/{TensorType_UINT8, {1, 2, 4, 1}, 0, 15.9375},
@@ -834,30 +848,32 @@ TEST(QuantizedPoolingOpTest, MaxPoolLargeDepth) {
 TEST(QuantizedInt8PoolingOpTest, MaxPool) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{-128}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
       /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
       /*output=*/{TensorType_INT8, {}, 0, 15.9375});
   m.SetInput({
-      0, -6, 2, 4,   //
-      3, 2, -10, 7,  //
+      0, 6, 2, 4,   //
+      3, 2, 10, 7,  //
   });
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({3, 7})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-80, -16}));
+              ElementsAreArray(ArrayFloatNear({6, 10})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({96 - 128, 160 - 128}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.8130] --> [Scale{0.124512}, zero_point{0}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -15.9375, 15.8130},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_INT8, {}, -15.9375, 15.8130}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU);
   m.SetInput({
       -1.5, -6, 2, 4,  //
@@ -866,18 +882,19 @@ TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0, 10})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 160 - 128}));
+              ElementsAreArray(ArrayFloatNear({0, 10}, 0.04)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128 - 128, 208 - 128}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.8130] --> [Scale{0.124512}, zero_point{0}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -15.9375, 15.8130},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_INT8, {}, -15.9375, 15.8130}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU_N1_TO_1);
   m.SetInput({
       -1.7, -6, 2, 4,  //
@@ -886,8 +903,8 @@ TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 1.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 16 - 128}));
+              ElementsAreArray(ArrayFloatNear({-1.0, 1.0}, 0.004)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({120 - 128, 136 - 128}));
 
   m.SetInput({
       0, -6, -0.2, -0.4,    //
@@ -896,18 +913,19 @@ TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu1) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 0.75})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 12 - 128}));
+              ElementsAreArray(ArrayFloatNear({0.0, 0.75}, 0.004)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128 - 128, 134 - 128}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu6) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[-15.9375, 15.8130] --> [Scale{0.124512}, zero_point{0}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
-      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, -15.9375, 15.8130},
       /*filter_width=*/2, /*filter_height=*/2,
-      /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 2, 2,
+      /*output=*/{TensorType_INT8, {}, -15.9375, 15.8130}, Padding_VALID, 2, 2,
       ActivationFunctionType_RELU6);
   m.SetInput({
       0, -6, 12, 4,   //
@@ -916,8 +934,8 @@ TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu6) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({0.0, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-128, 96 - 128}));
+              ElementsAreArray(ArrayFloatNear({0.0, 6.0}, 0.025)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({128 - 128, 176 - 128}));
 
   m.SetInput({
       0, 4.5, 12, 4,  //
@@ -926,47 +944,51 @@ TEST(QuantizedInt8PoolingOpTest, MaxPoolActivationRelu6) {
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({4.5, 6.0})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({72 - 128, 96 - 128}));
+              ElementsAreArray(ArrayFloatNear({4.5, 6.0}, 0.025)));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({164 - 128, 176 - 128}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolPaddingSameStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{-128}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
       /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
       /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_SAME, 1, 1);
   m.SetInput({
-      0, -6, 2, 4,   //
-      3, 2, -10, 7,  //
+      0, 6, 2, 4,   //
+      3, 2, 10, 7,  //
   });
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({3, 2, 7, 7, 3, 2, 7, 7})));
+              ElementsAreArray(ArrayFloatNear({6, 10, 10, 7, 3, 10, 10, 7})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({-80, -96, -16, -16, -80, -96, -16, -16}));
+              ElementsAreArray({96 - 128, 160 - 128, 160 - 128, 112 - 128,
+                                48 - 128, 160 - 128, 160 - 128, 112 - 128}));
 }
 
 TEST(QuantizedInt8PoolingOpTest, MaxPoolPaddingValidStride1) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
+  // Input Range[0, 15.9375] --> [Scale{0.0625}, zero_point{-128}]
   SymmetricQuantizedPoolingOpModel m(
       BuiltinOperator_MAX_POOL_2D,
       /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
       /*filter_width=*/2, /*filter_height=*/2,
       /*output=*/{TensorType_INT8, {}, 0, 15.9375}, Padding_VALID, 1, 1);
   m.SetInput({
-      0, -6, 2, 4,   //
-      3, 2, -10, 7,  //
+      0, 6, 2, 4,   //
+      3, 2, 10, 7,  //
   });
   m.Invoke();
 
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({3, 2, 7})));
-  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-80, -96, -16}));
+              ElementsAreArray(ArrayFloatNear({6, 10, 10})));
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({96 - 128, 160 - 128, 160 - 128}));
 }
 
 TEST(FloatPoolingOpTest, L2Pool) {
