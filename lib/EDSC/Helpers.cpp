@@ -22,21 +22,21 @@
 using namespace mlir;
 using namespace mlir::edsc;
 
-static SmallVector<IndexHandle, 8> getMemRefSizes(Value *memRef) {
+static SmallVector<ValueHandle, 8> getMemRefSizes(Value *memRef) {
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
 
   auto maps = memRefType.getAffineMaps();
   (void)maps;
   assert((maps.empty() || (maps.size() == 1 && maps[0].isIdentity())) &&
          "Layout maps not supported");
-  SmallVector<IndexHandle, 8> res;
+  SmallVector<ValueHandle, 8> res;
   res.reserve(memRefType.getShape().size());
   const auto &shape = memRefType.getShape();
   for (unsigned idx = 0, n = shape.size(); idx < n; ++idx) {
     if (shape[idx] == -1) {
-      res.push_back(IndexHandle(ValueHandle::create<DimOp>(memRef, idx)));
+      res.push_back(ValueHandle::create<DimOp>(memRef, idx));
     } else {
-      res.push_back(IndexHandle(static_cast<index_t>(shape[idx])));
+      res.push_back(static_cast<index_t>(shape[idx]));
     }
   }
   return res;
@@ -47,8 +47,18 @@ mlir::edsc::MemRefView::MemRefView(Value *v) : base(v) {
 
   auto memrefSizeValues = getMemRefSizes(v);
   for (auto &size : memrefSizeValues) {
-    lbs.push_back(IndexHandle(static_cast<index_t>(0)));
+    lbs.push_back(static_cast<index_t>(0));
     ubs.push_back(size);
+    steps.push_back(1);
+  }
+}
+
+mlir::edsc::VectorView::VectorView(Value *v) : base(v) {
+  auto vectorType = v->getType().cast<VectorType>();
+
+  for (auto s : vectorType.getShape()) {
+    lbs.push_back(static_cast<index_t>(0));
+    ubs.push_back(static_cast<index_t>(s));
     steps.push_back(1);
   }
 }
@@ -86,24 +96,4 @@ InstructionHandle mlir::edsc::IndexedValue::operator*=(ValueHandle e) {
 InstructionHandle mlir::edsc::IndexedValue::operator/=(ValueHandle e) {
   using op::operator/;
   return intrinsics::STORE(*this / e, getBase(), indices);
-}
-
-ValueHandle mlir::edsc::operator+(ValueHandle v, IndexedValue i) {
-  using op::operator+;
-  return v + static_cast<ValueHandle>(i);
-}
-
-ValueHandle mlir::edsc::operator-(ValueHandle v, IndexedValue i) {
-  using op::operator-;
-  return v - static_cast<ValueHandle>(i);
-}
-
-ValueHandle mlir::edsc::operator*(ValueHandle v, IndexedValue i) {
-  using op::operator*;
-  return v * static_cast<ValueHandle>(i);
-}
-
-ValueHandle mlir::edsc::operator/(ValueHandle v, IndexedValue i) {
-  using op::operator/;
-  return v / static_cast<ValueHandle>(i);
 }

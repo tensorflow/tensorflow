@@ -25,7 +25,8 @@
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
-#include "mlir/EDSC/MLIREmitter.h"
+#include "mlir/EDSC/Builders.h"
+#include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
@@ -43,82 +44,14 @@
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/SetVector.h"
-#include "llvm/Support/Allocator.h"
-#include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 
 ///
 /// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
 /// proper abstraction for the hardware.
 ///
-/// For now only a simple loop nest is emitted.
+/// For now, we only emit a simple loop nest that performs clipped pointwise
+/// copies from a remote to a locally allocated memory.
 ///
-
-using llvm::dbgs;
-using llvm::SetVector;
-
-using namespace mlir;
-
-#define DEBUG_TYPE "lower-vector-transfers"
-
-namespace {
-/// Helper structure to hold information about loop nest, clipped accesses to
-/// the original scalar MemRef as well as full accesses to temporary MemRef in
-/// local storage.
-struct VectorTransferAccessInfo {
-  // `ivs` are bound for `For` Stmt at `For` Stmt construction time.
-  llvm::SmallVector<edsc::Expr, 8> ivs;
-  llvm::SmallVector<edsc::Expr, 8> lowerBoundsExprs;
-  llvm::SmallVector<edsc::Expr, 8> upperBoundsExprs;
-  llvm::SmallVector<edsc::Expr, 8> stepExprs;
-  llvm::SmallVector<edsc::Expr, 8> clippedScalarAccessExprs;
-  llvm::SmallVector<edsc::Expr, 8> tmpAccessExprs;
-};
-
-template <typename VectorTransferOpTy> class VectorTransferRewriter {
-public:
-  /// Perform the rewrite using the `emitter`.
-  VectorTransferRewriter(VectorTransferOpTy *transfer,
-                         MLFuncLoweringRewriter *rewriter,
-                         MLFuncGlobalLoweringState *state);
-
-  /// Perform the rewrite using the `emitter`.
-  void rewrite();
-
-  /// Helper class which creates clipped memref accesses to support lowering of
-  /// the vector_transfer operation.
-  VectorTransferAccessInfo makeVectorTransferAccessInfo();
-
-private:
-  VectorTransferOpTy *transfer;
-  MLFuncLoweringRewriter *rewriter;
-  MLFuncGlobalLoweringState *state;
-
-  MemRefType memrefType;
-  ArrayRef<int64_t> memrefShape;
-  VectorType vectorType;
-  ArrayRef<int64_t> vectorShape;
-  AffineMap permutationMap;
-
-  /// Used for staging the transfer in a local scalar buffer.
-  MemRefType tmpMemRefType;
-  /// View of tmpMemRefType as one vector, used in vector load/store to tmp
-  /// buffer.
-  MemRefType vectorMemRefType;
-
-  // EDSC `emitter` and Exprs that are pre-bound at construction time.
-  edsc::MLIREmitter emitter;
-  // vectorSizes are bound to the actual constant sizes of vectorType.
-  llvm::SmallVector<edsc::Expr, 8> vectorSizes;
-  // accesses are bound to transfer->getIndices()
-  llvm::SmallVector<edsc::Expr, 8> accesses;
-  // `zero` and `one` are bound emitter.zero() and emitter.one().
-  // `scalarMemRef` is bound to `transfer->getMemRef()`.
-  edsc::Expr zero, one, scalarMemRef;
-};
-
-} // end anonymous namespace
-
 /// Consider the case:
 ///
 /// ```mlir {.mlir}
@@ -134,141 +67,160 @@ private:
 ///    }}}
 /// ```
 ///
-/// The following constructs the `loadAccessExpr` that supports the emission of
-/// MLIR resembling:
+/// The rewriters construct loop and indices that access MemRef A in a pattern
+/// resembling the following (while guaranteeing an always full-tile
+/// abstraction):
 ///
-/// ```mlir
-///    for %d1 = 0 to 256 {
-///      for %d2 = 0 to 32 {
+/// ```mlir {.mlir}
+///    for %d2 = 0 to 256 {
+///      for %d1 = 0 to 32 {
 ///        %s = %A[%i0, %i1 + %d1, %i2 + %d2] : f32
 ///        %tmp[%d2, %d1] = %s
 ///      }
 ///    }
 /// ```
 ///
-/// Notice in particular the order of loops iterating over the vector size
-/// (i.e. 256x32 instead of 32x256). This results in contiguous accesses along
-/// the most minor dimension of the original scalar tensor. On many hardware
-/// architectures this will result in better utilization of the underlying
-/// memory subsystem (e.g. prefetchers, DMAs, #memory transactions, etc...).
-///
-/// This additionally performs clipping as described in
-/// `VectorTransferRewriter<VectorTransferReadOp>::rewrite` by emitting:
+/// In the current state, only a clipping transfer is implemented by `clip`,
+/// which creates individual indexing expressions of the form:
 ///
 /// ```mlir-dsc
-///    select(i + ii < zero, zero, select(i + ii < N, i + ii, N - one))
+///    SELECT(i + ii < zero, zero, SELECT(i + ii < N, i + ii, N - one))
 /// ```
-template <typename VectorTransferOpTy>
-VectorTransferAccessInfo
-VectorTransferRewriter<VectorTransferOpTy>::makeVectorTransferAccessInfo() {
-  using namespace mlir::edsc;
-  using namespace edsc::op;
 
-  // Create new Exprs for ivs, they will be bound at `For` Stmt
-  // construction.
-  auto ivs = makeNewExprs(vectorShape.size(), this->rewriter->getIndexType());
+using namespace mlir;
 
-  // Create and bind Exprs to refer to the Value for memref sizes.
-  auto memRefSizes = emitter.makeBoundMemRefShape(transfer->getMemRef());
+#define DEBUG_TYPE "lower-vector-transfers"
 
-  // Create the edsc::Expr for the clipped and transposes access expressions
-  // using the permutationMap. Additionally, capture the index accessing the
-  // most minor dimension.
-  int coalescingIndex = -1;
-  auto clippedScalarAccessExprs = copyExprs(accesses);
-  auto tmpAccessExprs = copyExprs(ivs);
-  llvm::DenseSet<unsigned> clipped;
-  for (auto it : llvm::enumerate(permutationMap.getResults())) {
-    if (auto affineExpr = it.value().template dyn_cast<AffineDimExpr>()) {
-      auto pos = affineExpr.getPosition();
-      auto i = clippedScalarAccessExprs[pos];
-      auto ii = ivs[it.index()];
-      auto N = memRefSizes[pos];
-      clippedScalarAccessExprs[pos] =
-          select(i + ii < zero, zero, select(i + ii < N, i + ii, N - one));
-      if (pos == clippedScalarAccessExprs.size() - 1) {
-        // If a result of the permutation_map accesses the most minor dimension
-        // then we record it.
-        coalescingIndex = it.index();
-      }
-      // Temporarily record already clipped accesses to avoid double clipping.
-      // TODO(ntv): remove when fully unrolled dimensions are clipped properly.
-      clipped.insert(pos);
-    } else {
-      // Sanity check.
-      assert(it.value().template cast<AffineConstantExpr>().getValue() == 0 &&
-             "Expected dim or 0 in permutationMap");
-    }
+namespace {
+
+/// Lowers VectorTransferOp into a combination of:
+///   1. local memory allocation;
+///   2. perfect loop nest over:
+///      a. scalar load/stores from local buffers (viewed as a scalar memref);
+///      a. scalar store/load to original memref (with clipping).
+///   3. vector_load/store
+///   4. local memory deallocation.
+/// Minor variations occur depending on whether a VectorTransferReadOp or
+/// a VectorTransferWriteOp is rewritten.
+template <typename VectorTransferOpTy> class VectorTransferRewriter {
+public:
+  VectorTransferRewriter(VectorTransferOpTy *transfer,
+                         MLFuncLoweringRewriter *rewriter,
+                         MLFuncGlobalLoweringState *state);
+
+  /// Used for staging the transfer in a local scalar buffer.
+  MemRefType tmpMemRefType() {
+    auto vectorType = transfer->getVectorType();
+    return MemRefType::get(vectorType.getShape(), vectorType.getElementType(),
+                           {}, 0);
   }
+  /// View of tmpMemRefType as one vector, used in vector load/store to tmp
+  /// buffer.
+  MemRefType vectorMemRefType() {
+    return MemRefType::get({1}, transfer->getVectorType(), {}, 0);
+  }
+  /// Performs the rewrite.
+  void rewrite();
 
-  // At this point, fully unrolled dimensions have not been clipped because they
-  // do not appear in the permutation map. As a consequence they may access out
-  // of bounds. We currently do not have enough information to determine which
-  // of those access dimensions have been fully unrolled.
-  // Clip one more time to ensure correctness for fully-unrolled dimensions.
-  // TODO(ntv): clip just what is needed once we pass the proper information.
-  // TODO(ntv): when we get there, also ensure we only clip when dimensions are
-  // not divisible (i.e. simple test that can be hoisted outside loop).
-  for (unsigned pos = 0; pos < clippedScalarAccessExprs.size(); ++pos) {
-    if (clipped.count(pos) > 0) {
+private:
+  VectorTransferOpTy *transfer;
+  MLFuncLoweringRewriter *rewriter;
+  MLFuncGlobalLoweringState *state;
+};
+} // end anonymous namespace
+
+/// Analyzes the `transfer` to find an access dimension along the fastest remote
+/// MemRef dimension. If such a dimension with coalescing properties is found,
+/// `pivs` and `vectorView` are swapped so that the invocation of
+/// LoopNestBuilder captures it in the innermost loop.
+template <typename VectorTransferOpTy>
+void coalesceCopy(VectorTransferOpTy *transfer,
+                  SmallVectorImpl<edsc::ValueHandle *> *pivs,
+                  edsc::VectorView *vectorView) {
+  // rank of the remote memory access, coalescing behavior occurs on the
+  // innermost memory dimension.
+  auto remoteRank = transfer->getMemRefType().getRank();
+  // Iterate over the results expressions of the permutation map to determine
+  // the loop order for creating pointwise copies between remote and local
+  // memories.
+  int coalescedIdx = -1;
+  auto exprs = transfer->getPermutationMap().getResults();
+  for (auto en : llvm::enumerate(exprs)) {
+    auto dim = en.value().template dyn_cast<AffineDimExpr>();
+    if (!dim) {
       continue;
     }
-    auto i = clippedScalarAccessExprs[pos];
-    auto N = memRefSizes[pos];
-    clippedScalarAccessExprs[pos] =
-        select(i < zero, zero, select(i < N, i, N - one));
+    auto memRefDim = dim.getPosition();
+    if (memRefDim == remoteRank - 1) {
+      // memRefDim has coalescing properties, it should be swapped in the last
+      // position.
+      assert(coalescedIdx == -1 && "Unexpected > 1 coalesced indices");
+      coalescedIdx = en.index();
+    }
+  }
+  if (coalescedIdx >= 0) {
+    std::swap(pivs->back(), (*pivs)[coalescedIdx]);
+    vectorView->swapRanges(pivs->size() - 1, coalescedIdx);
+  }
+}
+
+/// Emits remote memory accesses that are clipped to the boundaries of the
+/// MemRef.
+template <typename VectorTransferOpTy>
+static llvm::SmallVector<edsc::ValueHandle, 8>
+clip(VectorTransferOpTy *transfer, edsc::MemRefView &view,
+     ArrayRef<edsc::IndexHandle> ivs) {
+  using namespace mlir::edsc;
+  using namespace edsc::op;
+  using edsc::intrinsics::select;
+
+  IndexHandle zero(index_t(0)), one(index_t(1));
+  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer->getIndices());
+  llvm::SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
+      memRefAccess.size(), edsc::IndexHandle());
+
+  // Indices accessing to remote memory are clipped and their expressions are
+  // returned in clippedScalarAccessExprs.
+  for (unsigned memRefDim = 0; memRefDim < clippedScalarAccessExprs.size();
+       ++memRefDim) {
+    // Linear search on a small number of entries.
+    int loopIndex = -1;
+    auto exprs = transfer->getPermutationMap().getResults();
+    for (auto en : llvm::enumerate(exprs)) {
+      auto expr = en.value();
+      auto dim = expr.template dyn_cast<AffineDimExpr>();
+      // Sanity check.
+      assert(dim || expr.template cast<AffineConstantExpr>().getValue() == 0 &&
+                        "Expected dim or 0 in permutationMap");
+      if (dim && memRefDim == dim.getPosition()) {
+        loopIndex = en.index();
+        break;
+      }
+    }
+
+    // We cannot distinguish atm between unrolled dimensions that implement
+    // the "always full" tile abstraction and need clipping from the other
+    // ones. So we conservatively clip everything.
+    auto N = view.ub(memRefDim);
+    auto i = memRefAccess[memRefDim];
+    if (loopIndex < 0) {
+      clippedScalarAccessExprs[memRefDim] =
+          select(i < zero, zero, select(i < N, i, N - one));
+    } else {
+      auto ii = ivs[loopIndex];
+      clippedScalarAccessExprs[memRefDim] =
+          select(i + ii < zero, zero, select(i + ii < N, i + ii, N - one));
+    }
   }
 
-  // Create the proper bindables for lbs, ubs and steps. Additionally, if we
-  // recorded a coalescing index, permute the loop informations.
-  auto lbs = makeNewExprs(ivs.size(), this->rewriter->getIndexType());
-  auto ubs = copyExprs(vectorSizes);
-  auto steps = makeNewExprs(ivs.size(), this->rewriter->getIndexType());
-  if (coalescingIndex >= 0) {
-    std::swap(ivs[coalescingIndex], ivs.back());
-    std::swap(lbs[coalescingIndex], lbs.back());
-    std::swap(ubs[coalescingIndex], ubs.back());
-    std::swap(steps[coalescingIndex], steps.back());
-  }
-  emitter
-      .template bindZipRangeConstants<ConstantIndexOp>(
-          llvm::zip(lbs, SmallVector<int64_t, 8>(ivs.size(), 0)))
-      .template bindZipRangeConstants<ConstantIndexOp>(
-          llvm::zip(steps, SmallVector<int64_t, 8>(ivs.size(), 1)));
-
-  return VectorTransferAccessInfo{ivs,
-                                  copyExprs(lbs),
-                                  ubs,
-                                  copyExprs(steps),
-                                  clippedScalarAccessExprs,
-                                  tmpAccessExprs};
+  return clippedScalarAccessExprs;
 }
 
 template <typename VectorTransferOpTy>
 VectorTransferRewriter<VectorTransferOpTy>::VectorTransferRewriter(
     VectorTransferOpTy *transfer, MLFuncLoweringRewriter *rewriter,
     MLFuncGlobalLoweringState *state)
-    : transfer(transfer), rewriter(rewriter), state(state),
-      memrefType(transfer->getMemRefType()), memrefShape(memrefType.getShape()),
-      vectorType(transfer->getVectorType()), vectorShape(vectorType.getShape()),
-      permutationMap(transfer->getPermutationMap()),
-      tmpMemRefType(
-          MemRefType::get(vectorShape, vectorType.getElementType(), {}, 0)),
-      vectorMemRefType(MemRefType::get({1}, vectorType, {}, 0)),
-      emitter(edsc::MLIREmitter(rewriter->getBuilder(), transfer->getLoc())),
-      vectorSizes(
-          edsc::makeNewExprs(vectorShape.size(), rewriter->getIndexType())),
-      zero(emitter.zero()), one(emitter.one()),
-      scalarMemRef(transfer->getMemRefType()) {
-  // Bind the Bindable.
-  SmallVector<Value *, 8> transferIndices(transfer->getIndices());
-  accesses = edsc::makeNewExprs(transferIndices.size(),
-                                this->rewriter->getIndexType());
-  emitter.bind(edsc::Bindable(scalarMemRef), transfer->getMemRef())
-      .template bindZipRangeConstants<ConstantIndexOp>(
-          llvm::zip(vectorSizes, vectorShape))
-      .template bindZipRange(llvm::zip(accesses, transfer->getIndices()));
-};
+    : transfer(transfer), rewriter(rewriter), state(state){};
 
 /// Lowers VectorTransferReadOp into a combination of:
 ///   1. local memory allocation;
@@ -313,38 +265,39 @@ VectorTransferRewriter<VectorTransferOpTy>::VectorTransferRewriter(
 /// TODO(ntv): support non-data-parallel operations.
 template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   using namespace mlir::edsc;
+  using namespace mlir::edsc::op;
+  using namespace mlir::edsc::intrinsics;
 
-  // Build the AccessInfo which contain all the information needed to build the
-  // perfectly nest loop nest to perform clipped reads and local writes.
-  auto accessInfo = makeVectorTransferAccessInfo();
+  // 1. Setup all the captures.
+  ScopedContext scope(FuncBuilder(transfer->getInstruction()),
+                      transfer->getLoc());
+  IndexedValue remote(transfer->getMemRef());
+  MemRefView view(transfer->getMemRef());
+  VectorView vectorView(transfer->getVector());
+  SmallVector<IndexHandle, 8> ivs(vectorView.rank());
+  SmallVector<ValueHandle *, 8> pivs;
+  for (auto &idx : ivs) {
+    pivs.push_back(&idx);
+  }
+  coalesceCopy(transfer, &pivs, &vectorView);
 
-  // clang-format off
-  auto &ivs = accessInfo.ivs;
-  auto &lbs = accessInfo.lowerBoundsExprs;
-  auto &ubs = accessInfo.upperBoundsExprs;
-  auto &steps = accessInfo.stepExprs;
+  auto lbs = vectorView.getLbs();
+  auto ubs = vectorView.getUbs();
+  auto steps = vectorView.getSteps();
 
-  auto vectorType = this->transfer->getVectorType();
-  auto scalarType = this->transfer->getMemRefType().getElementType();
-
-  Expr scalarValue(scalarType), vectorValue(vectorType), tmpAlloc(tmpMemRefType), tmpDealloc(Type{}), vectorView(vectorMemRefType);
-  auto block = edsc::block({
-    tmpAlloc = alloc(tmpMemRefType),
-    vectorView = vector_type_cast(Expr(tmpAlloc), vectorMemRefType),
-    For(ivs, lbs, ubs, steps, {
-      scalarValue = load(scalarMemRef, accessInfo.clippedScalarAccessExprs),
-      store(scalarValue, tmpAlloc, accessInfo.tmpAccessExprs),
-    }),
-    vectorValue = load(vectorView, {zero}),
-    tmpDealloc = dealloc(tmpAlloc)
+  // 2. Emit alloc-copy-load-dealloc.
+  ValueHandle tmp = alloc(tmpMemRefType());
+  IndexedValue local(tmp);
+  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType());
+  LoopNestBuilder(pivs, lbs, ubs, steps)({
+      // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
+      local(ivs) = remote(clip(transfer, view, ivs)),
   });
-  // clang-format on
+  ValueHandle vectorValue = LOAD(vec, {index_t(0)});
+  (dealloc(tmp)); // vexing parse
 
-  // Emit the MLIR.
-  emitter.emitStmts(block.getBody());
-
-  // Finalize rewriting.
-  transfer->replaceAllUsesWith(emitter.getValue(vectorValue));
+  // 3. Propagate.
+  transfer->replaceAllUsesWith(vectorValue.getValue());
   transfer->erase();
 }
 
@@ -368,37 +321,38 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
 /// TODO(ntv): support non-data-parallel operations.
 template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   using namespace mlir::edsc;
+  using namespace mlir::edsc::op;
+  using namespace mlir::edsc::intrinsics;
 
-  // Build the AccessInfo which contain all the information needed to build the
-  // perfectly nest loop nest to perform local reads and clipped writes.
-  auto accessInfo = makeVectorTransferAccessInfo();
+  // 1. Setup all the captures.
+  ScopedContext scope(FuncBuilder(transfer->getInstruction()),
+                      transfer->getLoc());
+  IndexedValue remote(transfer->getMemRef());
+  MemRefView view(transfer->getMemRef());
+  ValueHandle vectorValue(transfer->getVector());
+  VectorView vectorView(transfer->getVector());
+  SmallVector<IndexHandle, 8> ivs(vectorView.rank());
+  SmallVector<ValueHandle *, 8> pivs;
+  for (auto &idx : ivs) {
+    pivs.push_back(&idx);
+  }
+  coalesceCopy(transfer, &pivs, &vectorView);
 
-  // Bind vector value for the vector_transfer_write.
-  Expr vectorValue(transfer->getVectorType());
-  emitter.bind(Bindable(vectorValue), transfer->getVector());
+  auto lbs = vectorView.getLbs();
+  auto ubs = vectorView.getUbs();
+  auto steps = vectorView.getSteps();
 
-  // clang-format off
-  auto &ivs = accessInfo.ivs;
-  auto &lbs = accessInfo.lowerBoundsExprs;
-  auto &ubs = accessInfo.upperBoundsExprs;
-  auto &steps = accessInfo.stepExprs;
-  auto scalarType = tmpMemRefType.getElementType();
-  Expr scalarValue(scalarType), tmpAlloc(tmpMemRefType), tmpDealloc(Type{}), vectorView(vectorMemRefType);
-  auto block = edsc::block({
-    tmpAlloc = alloc(tmpMemRefType),
-    vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
-    store(vectorValue, vectorView, MutableArrayRef<Expr>{zero}),
-    For(ivs, lbs, ubs, steps, {
-      scalarValue = load(tmpAlloc, accessInfo.tmpAccessExprs),
-      store(scalarValue, scalarMemRef, accessInfo.clippedScalarAccessExprs),
-    }),
-    tmpDealloc = dealloc(tmpAlloc)});
-  // clang-format on
+  // 2. Emit alloc-store-copy-dealloc.
+  ValueHandle tmp = alloc(tmpMemRefType());
+  IndexedValue local(tmp);
+  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType());
+  STORE(vectorValue, vec, {index_t(0)});
+  LoopNestBuilder(pivs, lbs, ubs, steps)({
+      // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
+      remote(clip(transfer, view, ivs)) = local(ivs),
+  });
+  (dealloc(tmp)); // vexing parse...
 
-  // Emit the MLIR.
-  emitter.emitStmts(block.getBody());
-
-  // Finalize rewriting.
   transfer->erase();
 }
 
@@ -430,9 +384,6 @@ struct LowerVectorTransfersPass
     applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
                             VectorTransferExpander<VectorTransferWriteOp>>(f);
   }
-
-  // Thread-safe RAII context with local scope. BumpPtrAllocator freed on exit.
-  edsc::ScopedEDSCContext raiiContext;
 };
 
 } // end anonymous namespace

@@ -26,6 +26,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/StandardOps/Ops.h"
+#include "mlir/SuperVectorOps/SuperVectorOps.h"
 
 namespace mlir {
 
@@ -291,6 +292,14 @@ public:
   /// assigning.
   ValueHandle &operator=(const ValueHandle &other);
 
+  /// Provide a swap operator.
+  void swap(ValueHandle &other) {
+    if (this == &other)
+      return;
+    std::swap(t, other.t);
+    std::swap(v, other.v);
+  }
+
   /// Implicit conversion useful for automatic conversion to Container<Value*>.
   operator Value *() const { return getValue(); }
 
@@ -310,11 +319,14 @@ public:
                             ArrayRef<NamedAttribute> attributes = {});
 
   bool hasValue() const { return v != nullptr; }
-  Value *getValue() const { return v; }
+  Value *getValue() const {
+    assert(hasValue() && "Unexpected null value;");
+    return v;
+  }
   bool hasType() const { return t != Type(); }
   Type getType() const { return t; }
 
-private:
+protected:
   ValueHandle() : t(), v(nullptr) {}
 
   Type t;
@@ -442,6 +454,12 @@ ValueHandle operator!(ValueHandle value);
 ValueHandle operator&&(ValueHandle lhs, ValueHandle rhs);
 ValueHandle operator||(ValueHandle lhs, ValueHandle rhs);
 ValueHandle operator^(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator==(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator!=(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator<(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator<=(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator>(ValueHandle lhs, ValueHandle rhs);
+ValueHandle operator>=(ValueHandle lhs, ValueHandle rhs);
 
 } // namespace op
 } // namespace edsc

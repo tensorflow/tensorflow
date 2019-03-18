@@ -338,10 +338,10 @@ TEST_FUNC(builder_helpers) {
   step2 = vA.step(2);
   LoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})({
     LoopBuilder(&k1, lb2, ub2, step2)({
-      C({i, j, k1}) = f7 + A({i, j, k1}) + B({i, j, k1}),
+      C(i, j, k1) = f7 + A(i, j, k1) + B(i, j, k1),
     }),
     LoopBuilder(&k2, lb2, ub2, step2)({
-      C({i, j, k2}) += A({i, j, k2}) + B({i, j, k2}),
+      C(i, j, k2) += A(i, j, k2) + B(i, j, k2),
     }),
   });
 

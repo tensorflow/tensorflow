@@ -381,3 +381,36 @@ ValueHandle mlir::edsc::op::operator&&(ValueHandle lhs, ValueHandle rhs) {
 ValueHandle mlir::edsc::op::operator||(ValueHandle lhs, ValueHandle rhs) {
   return !(!lhs && !rhs);
 }
+
+static ValueHandle createComparisonExpr(CmpIPredicate predicate,
+                                        ValueHandle lhs, ValueHandle rhs) {
+  auto lhsType = lhs.getType();
+  auto rhsType = rhs.getType();
+  assert(lhsType == rhsType && "cannot mix types in operators");
+  assert((lhsType.isa<IndexType>() || lhsType.isa<IntegerType>()) &&
+         "only integer comparisons are supported");
+
+  auto op = ScopedContext::getBuilder()->create<CmpIOp>(
+      ScopedContext::getLocation(), predicate, lhs.getValue(), rhs.getValue());
+  return ValueHandle(op->getResult());
+}
+
+ValueHandle mlir::edsc::op::operator==(ValueHandle lhs, ValueHandle rhs) {
+  return createComparisonExpr(CmpIPredicate::EQ, lhs, rhs);
+}
+ValueHandle mlir::edsc::op::operator!=(ValueHandle lhs, ValueHandle rhs) {
+  return createComparisonExpr(CmpIPredicate::NE, lhs, rhs);
+}
+ValueHandle mlir::edsc::op::operator<(ValueHandle lhs, ValueHandle rhs) {
+  // TODO(ntv,zinenko): signed by default, how about unsigned?
+  return createComparisonExpr(CmpIPredicate::SLT, lhs, rhs);
+}
+ValueHandle mlir::edsc::op::operator<=(ValueHandle lhs, ValueHandle rhs) {
+  return createComparisonExpr(CmpIPredicate::SLE, lhs, rhs);
+}
+ValueHandle mlir::edsc::op::operator>(ValueHandle lhs, ValueHandle rhs) {
+  return createComparisonExpr(CmpIPredicate::SGT, lhs, rhs);
+}
+ValueHandle mlir::edsc::op::operator>=(ValueHandle lhs, ValueHandle rhs) {
+  return createComparisonExpr(CmpIPredicate::SGE, lhs, rhs);
+}

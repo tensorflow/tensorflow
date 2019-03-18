@@ -23,9 +23,13 @@
 #ifndef MLIR_EDSC_INTRINSICS_H_
 #define MLIR_EDSC_INTRINSICS_H_
 
+#include "mlir/EDSC/Builders.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {
+
+class MemRefType;
+class Type;
 
 namespace edsc {
 
@@ -94,9 +98,34 @@ InstructionHandle COND_BR(ValueHandle cond, BlockHandle *trueBranch,
                           ArrayRef<ValueHandle *> falseCaptures,
                           ArrayRef<ValueHandle> falseOperands);
 
-////////////////////////////////////////////////////////////////////////////////
-// TODO(ntv): Intrinsics below this line should be TableGen'd.
-////////////////////////////////////////////////////////////////////////////////
+/// Helper variadic abstraction to allow extending to any MLIR op without
+/// boilerplate or Tablegen.
+/// Arguably a builder is not a ValueHandle but in practice it is only used as
+/// an alias to a notional ValueHandle<Op>.
+/// Implementing it as a subclass allows it to compose all the way to Value*.
+/// Without subclassing, implicit conversion to Value* would fail when composing
+/// in patterns such as: `select(a, b, select(c, d, e))`.
+template <typename Op> struct EDSCValueBuilder : public ValueHandle {
+  template <typename... Args>
+  EDSCValueBuilder(Args... args)
+      : ValueHandle(ValueHandle::create<Op>(std::forward<Args>(args)...)) {}
+  EDSCValueBuilder() = delete;
+};
+
+template <typename Op>
+struct EDSCInstructionBuilder : public InstructionHandle {
+  template <typename... Args>
+  EDSCInstructionBuilder(Args... args)
+      : InstructionHandle(
+            InstructionHandle::create<Op>(std::forward<Args>(args)...)) {}
+  EDSCInstructionBuilder() = delete;
+};
+
+using alloc = EDSCValueBuilder<AllocOp>;
+using dealloc = EDSCInstructionBuilder<DeallocOp>;
+using select = EDSCValueBuilder<SelectOp>;
+using vector_type_cast = EDSCValueBuilder<VectorTypeCastOp>;
+
 /// Builds an mlir::LoadOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
 /// Returns a ValueHandle to the produced mlir::Value*.
@@ -104,19 +133,16 @@ ValueHandle LOAD(ValueHandle base, llvm::ArrayRef<ValueHandle> indices);
 
 /// Builds an mlir::ReturnOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
-/// Returns an empty ValueHandle.
+/// Returns an InstructionHandle.
 InstructionHandle RETURN(llvm::ArrayRef<ValueHandle> operands);
 
 /// Builds an mlir::StoreOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
-/// Returns an empty ValueHandle.
+/// Returns an InstructionHandle.
 InstructionHandle STORE(ValueHandle value, ValueHandle base,
                         llvm::ArrayRef<ValueHandle> indices);
-
 } // namespace intrinsics
-
 } // namespace edsc
-
 } // namespace mlir
 
 #endif // MLIR_EDSC_INTRINSICS_H_
