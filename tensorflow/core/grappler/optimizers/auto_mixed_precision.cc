@@ -93,6 +93,8 @@ struct TypeAttrId {
   }
 
   string attr_name;
+  // If attr_name is a list(type), this is the index into the list. Otherwise
+  // this is kSingleType.
   int type_index;
   DataType fixed_type;
 };
