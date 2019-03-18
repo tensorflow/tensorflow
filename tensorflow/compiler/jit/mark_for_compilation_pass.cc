@@ -513,9 +513,14 @@ Status FindCompilationCandidates(
     op_filter.allow_dummy_ops = always_auto_cluster;
     op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
 
-    if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
-                          lib_runtime)) {
+    if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), *node)) {
+      if (!IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
+                            lib_runtime)) {
+        VLOG(2) << "Rejecting " << node->name() << ": unsupported function "
+                << node->type_string();
+        continue;
+      }
+    } else if (!HasXLAKernel(*node, jit_device_type)) {
       VLOG(2) << "Rejecting " << node->name() << ": unsupported op "
               << node->type_string();
       continue;

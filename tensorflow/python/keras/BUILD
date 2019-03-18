@@ -800,6 +800,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -827,6 +828,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -841,6 +843,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
