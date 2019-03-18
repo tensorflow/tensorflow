@@ -231,14 +231,12 @@ class NodeTypeAttrMap {
   bool is_initialized() const { return graph_ != nullptr; }
 
   // Returns the set of all type attributes in the given node.
-  absl::flat_hash_set<TypeAttrId> GetTypeAttrs(
-      const NodeDef& node, bool exclude_if_used_as_ref = true) const {
+  absl::flat_hash_set<TypeAttrId> GetTypeAttrs(const NodeDef& node) const {
     DCHECK(is_initialized()) << "NodeTypeAttrMap is not initialized";
     absl::flat_hash_set<TypeAttrId> type_attrs;
     const auto iter = type2io_.find(&node);
     CHECK(iter != type2io_.end());
     for (const auto& key_value : iter->second) {
-      TypeAttrId type_attr = key_value.first;
       type_attrs.insert(key_value.first);
     }
     return type_attrs;
