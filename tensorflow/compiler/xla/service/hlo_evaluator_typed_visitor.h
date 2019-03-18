@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
+#include <bitset>
 #include <cmath>
 #include <type_traits>
 
@@ -2480,6 +2481,37 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleClz(HloInstruction* clz) override {
     return HandleClz<ElementwiseT>(clz);
+  }
+
+  // Enable Popcnt only for int32, uint32, int64 and uint64.
+  template <typename NativeT,
+            typename std::enable_if<
+                !(std::is_same<NativeT, uint32>::value ||
+                  std::is_same<NativeT, int32>::value ||
+                  std::is_same<NativeT, uint64>::value ||
+                  std::is_same<NativeT, int64>::value)>::type* = nullptr>
+  Status HandlePopulationCount(HloInstruction* popcnt) {
+    return UnsupportedTypeError(popcnt);
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, uint32>::value ||
+                std::is_same<NativeT, int32>::value ||
+                std::is_same<NativeT, uint64>::value ||
+                std::is_same<NativeT, int64>::value>::type* = nullptr>
+  Status HandlePopulationCount(HloInstruction* popcnt) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[popcnt],
+        ElementWiseUnaryOp(popcnt, [](ElementwiseT elem_operand) {
+          return std::bitset<CHAR_BIT * sizeof elem_operand>(elem_operand)
+              .count();
+        }));
+    return Status::OK();
+  }
+
+  Status HandlePopulationCount(HloInstruction* popcnt) override {
+    return HandlePopulationCount<ElementwiseT>(popcnt);
   }
 
   template <typename NativeT, typename std::enable_if<std::is_floating_point<

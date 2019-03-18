@@ -2016,6 +2016,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kPad:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
