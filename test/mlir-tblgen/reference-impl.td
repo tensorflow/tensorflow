@@ -9,22 +9,13 @@ def X_AddOp : Op<"x.add">,
     Arguments<(ins Tensor:$A, Tensor:$B)>,
     Results<(outs Tensor: $C)> {
     // TODO: extract referenceImplementation to Op.
-    // TODO: shrink the reference implementation
   code referenceImplementation = [{
-    auto ivs = makeNewExprs(view_A.rank(), builder.getIndexType());
-    // TODO(jpienaar@): automate the positional/named extraction. Need to be a
-    // bit careful about things memref (from which a "view" can be extracted)
-    // and the rest (see ReferenceImplGen.cpp).
-    Indexed A = args[0], B = args[1], C = args[2];
-    if (ivs.size() > 0) {
-      block.set(
-        For(ivs, view_A.lbs, view_A.ubs, view_A.steps, {
-          C(ivs) = A(ivs) + B(ivs)
-        }));
-    } else {
-      // 0-D case is always important to get right for composability.
-      block.set(C() = A() + B());
-    }
+    auto ivs = IndexHandle::makeIndexHandles(view_A.rank());
+    auto pivs = IndexHandle::makePIndexHandles(ivs);
+    IndexedValue A(arg_A), B(arg_B), C(arg_C);
+    LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())({
+      C(ivs) = A(ivs) + B(ivs)
+    });
   }];
 }
 

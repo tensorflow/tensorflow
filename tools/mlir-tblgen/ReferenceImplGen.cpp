@@ -41,38 +41,41 @@ static void emitReferenceImplementations(const RecordKeeper &recordKeeper,
 
   os << "void printRefImplementation(StringRef opName, mlir::Function *f) {\n"
      << "  using namespace ::mlir::edsc;\n"
-     << "  edsc::ScopedEDSCContext raiiContext;\n"
-     << "  Stmt block;\n"
-     << "  FuncBuilder builder(f);\n"
      << "if (false) {}";
   for (auto *def : defs) {
     Operator op(def);
-    auto ref = def->getValueInit("referenceImplementation");
-    if (!ref)
+    auto referenceImplGenerator = def->getValueInit("referenceImplementation");
+    if (!referenceImplGenerator)
       continue;
     os << " else if (opName == \"" << op.getOperationName() << "\") {\n"
-       << "  edsc::ScopedEDSCContext raiiContext;\n"
-       << "  Stmt block;\n"
-       << "  edsc::MLIREmitter emitter(&builder, f->getLoc());\n"
-       << "  auto zero = emitter.zero(); (void)zero;\n"
-       << "  auto one = emitter.one(); (void)one;\n"
-       << "  auto args = emitter.makeBoundFunctionArguments(f);\n"
-       // TODO(jpienaar): this is generally incorrect, not all args are memref
-       // in the general case.
-       << "  auto views = emitter.makeBoundMemRefViews(args.begin(), "
-          "args.end());\n";
+       << "  edsc::ScopedContext scope(f);\n";
 
     for (auto en : llvm::enumerate(op.getOperands())) {
-      os.indent(2) << formatv("auto &view_{0} = views[{1}]; "
+      os.indent(2) << formatv("ValueHandle arg_{0}(f->getArgument({1})); "
+                              "(void)arg_{0};\n",
+                              en.value().name, en.index());
+      // TODO(jpienaar): this is generally incorrect, not all args are memref
+      // in the general case.
+      os.indent(2) << formatv("MemRefView view_{0}(f->getArgument({1})); "
                               "(void)view_{0};\n",
                               en.value().name, en.index());
     }
+    unsigned numOperands = op.getNumOperands();
+    unsigned numResults = op.getNumResults();
+    for (unsigned idx = 0; idx < numResults; ++idx) {
+      os.indent(2) << formatv("ValueHandle arg_{0}(f->getArgument({1})); "
+                              "(void)arg_{0};\n",
+                              op.getResult(idx).name, numOperands + idx);
+      // TODO(jpienaar): this is generally incorrect, not all args are memref
+      // in the general case.
+      os.indent(2) << formatv("MemRefView view_{0}(f->getArgument({1})); "
+                              "(void)view_{0};\n",
+                              op.getResult(idx).name, numOperands + idx);
+    }
 
     // Print the EDSC.
-    os << ref->getAsUnquotedString() << "\n";
-    os.indent(2) << "block.print(llvm::outs());\n\n";
-    os.indent(2) << "emitter.emitStmt(block);\n\n";
-    os.indent(2) << "llvm::outs() << \"\\n\";\n\n";
+    os << referenceImplGenerator->getAsUnquotedString() << "\n";
+    os.indent(2) << "f->print(llvm::outs());\n\n";
     os << "}";
   }
   os << " else {\n";

@@ -272,11 +272,9 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   IndexedValue remote(transfer->getMemRef());
   MemRefView view(transfer->getMemRef());
   VectorView vectorView(transfer->getVector());
-  SmallVector<IndexHandle, 8> ivs(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs;
-  for (auto &idx : ivs) {
-    pivs.push_back(&idx);
-  }
+  SmallVector<IndexHandle, 8> ivs =
+      IndexHandle::makeIndexHandles(vectorView.rank());
+  SmallVector<ValueHandle *, 8> pivs = IndexHandle::makePIndexHandles(ivs);
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -329,11 +327,9 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   MemRefView view(transfer->getMemRef());
   ValueHandle vectorValue(transfer->getVector());
   VectorView vectorView(transfer->getVector());
-  SmallVector<IndexHandle, 8> ivs(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs;
-  for (auto &idx : ivs) {
-    pivs.push_back(&idx);
-  }
+  SmallVector<IndexHandle, 8> ivs =
+      IndexHandle::makeIndexHandles(vectorView.rank());
+  SmallVector<ValueHandle *, 8> pivs = IndexHandle::makePIndexHandles(ivs);
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();

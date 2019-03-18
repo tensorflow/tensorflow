@@ -16,8 +16,8 @@
 // =============================================================================
 
 #include "mlir/AffineOps/AffineOps.h"
-#include "mlir/EDSC/MLIREmitter.h"
-#include "mlir/EDSC/Types.h"
+#include "mlir/EDSC/Helpers.h"
+#include "mlir/EDSC/Intrinsics.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"

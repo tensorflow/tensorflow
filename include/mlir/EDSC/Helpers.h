@@ -58,6 +58,17 @@ struct IndexHandle : public ValueHandle {
     this->v = v.getValue();
     return *this;
   }
+  static SmallVector<IndexHandle, 8> makeIndexHandles(unsigned rank) {
+    return SmallVector<IndexHandle, 8>(rank);
+  }
+  static SmallVector<ValueHandle *, 8>
+  makePIndexHandles(SmallVectorImpl<IndexHandle> &ivs) {
+    SmallVector<ValueHandle *, 8> pivs;
+    for (auto &iv : ivs) {
+      pivs.push_back(&iv);
+    }
+    return pivs;
+  }
 };
 
 /// Helper structure to be used with EDSCValueBuilder / EDSCInstructionBuilder.
