@@ -274,6 +274,7 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_diag",
         "max_pool",
         "maximum",
         "mean",

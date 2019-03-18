@@ -168,7 +168,8 @@ enum class OperatorType : uint8 {
   kGatherNd,
   kWhere,
   kElu,
-  kReverseSequence
+  kReverseSequence,
+  kMatrixDiag
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -2073,6 +2074,14 @@ struct UnidirectionalSequenceRnnOperator : Operator {
 //  TensorFlow equivalent: Where
 struct WhereOperator : Operator {
   WhereOperator() : Operator(OperatorType::kWhere) {}
+};
+
+// Matrix Diag Operator:
+// Construct a batched diagonal tensor with given batched diagonal values.
+// Inputs: A tensor of values that will be on the diagonal of the returned
+//         tensor.
+struct MatrixDiagOperator : Operator {
+  MatrixDiagOperator() : Operator(OperatorType::kMatrixDiag) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

@@ -373,6 +373,10 @@ typedef struct {
   int batch_dim;
 } TfLiteReverseSequenceParams;
 
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixDiagParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
