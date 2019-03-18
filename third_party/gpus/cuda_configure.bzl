@@ -144,7 +144,7 @@ def _get_python_bin(repository_ctx):
     )
 
 def _get_nvcc_tmp_dir_for_windows(repository_ctx):
-    """Return the tmp directory for nvcc to generate intermediate source files."""
+    """Return the Windows tmp directory for nvcc to generate intermediate source files."""
     escaped_tmp_dir = escape_string(
         get_env_var(repository_ctx, "TMP", "C:\\Windows\\Temp").replace(
             "\\",
@@ -152,6 +152,13 @@ def _get_nvcc_tmp_dir_for_windows(repository_ctx):
         ),
     )
     return escaped_tmp_dir + "\\\\nvcc_inter_files_tmp_dir"
+
+def _get_nvcc_tmp_dir_for_unix(repository_ctx):
+    """Return the UNIX tmp directory for nvcc to generate intermediate source files."""
+    escaped_tmp_dir = escape_string(
+        get_env_var(repository_ctx, "TMPDIR", "/tmp"),
+    )
+    return escaped_tmp_dir + "/nvcc_inter_files_tmp_dir"
 
 def _get_msvc_compiler(repository_ctx):
     vc_path = find_vc_path(repository_ctx)
@@ -1521,6 +1528,8 @@ cuda_configure = repository_rule(
         _TF_CUDA_CONFIG_REPO,
         "NVVMIR_LIBRARY_DIR",
         _PYTHON_BIN_PATH,
+        "TMP",
+        "TMPDIR",
     ],
 )
 
