@@ -656,7 +656,9 @@ class DatasetBase : public core::RefCounted {
                       IteratorStateWriter* writer) const;
 
  protected:
-  friend class DatasetToGraphOp;  // For access to graph related members.
+  friend Status AsGraphDef(
+      OpKernelContext* ctx, DatasetBase* dataset,
+      GraphDef* graph_def);  // For access to graph related members.
 
   class DatasetGraphDefBuilder : public GraphDefBuilderWrapper {
    public:
