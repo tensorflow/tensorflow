@@ -818,6 +818,9 @@ DataTypeSet AllowedDataTypes(const OpDef::AttrDef& attr_def) {
 }
 
 DataTypeSet AllowedDataTypes(const OpDef& op_def, const TypeAttrId& t_attr_id) {
+  if (t_attr_id.attr_name.empty()) {
+    return ToSet(t_attr_id.fixed_type);
+  }
   const OpDef::AttrDef* attr_def = FindAttr(t_attr_id.attr_name, op_def);
   CHECK(attr_def);
   return AllowedDataTypes(*attr_def);
