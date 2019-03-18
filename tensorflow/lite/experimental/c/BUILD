@@ -64,6 +64,7 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:context",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:version",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
 )
