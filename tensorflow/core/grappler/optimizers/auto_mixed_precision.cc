@@ -902,10 +902,11 @@ class AutoMixedPrecisionImpl {
   Status Optimize();
 
  private:
-  typedef absl::flat_hash_set<NodeTypeId> NodeSet;
+  typedef absl::flat_hash_set<NodeTypeId> NodeTypeIdSet;
   // Maps data structure object ops (e.g., StackV2) to the sets of nodes that
   // write (e.g., StackPushV2) and read (e.g., StackPopV2) from them.
-  typedef absl::flat_hash_map<NodeTypeId, std::pair<NodeSet, NodeSet>>
+  typedef absl::flat_hash_map<NodeTypeId,
+                              std::pair<NodeTypeIdSet, NodeTypeIdSet>>
       DataStructureOpsMap;
 
   Status PrintDebugLogs(bool preop, size_t timestamp);
@@ -1526,7 +1527,7 @@ void AutoMixedPrecisionImpl::ForceColorMatchBetweenDataStructureOps(
   for (const auto& object_clients : object_clients_map) {
     const NodeTypeId& object_node_type = object_clients.first;
     const auto& client_nodes = object_clients.second;
-    NodeSet all_client_nodes = client_nodes.first;
+    NodeTypeIdSet all_client_nodes = client_nodes.first;
     all_client_nodes.insert(client_nodes.second.begin(),
                             client_nodes.second.end());
     bool any_black = false;
