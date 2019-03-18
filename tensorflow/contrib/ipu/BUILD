@@ -22,6 +22,7 @@ py_library(
       "python/popnn_normalization.py",
       "python/popnn_rnn.py",
       "python/sharded_optimizer.py",
+      "python/popops_cross_replica_sum.py",
       "python/sharding.py",
       "python/utils.py",
     ],
@@ -29,6 +30,7 @@ py_library(
     deps = [
         "//tensorflow/compiler/plugin/poplar:ipu_ops_py",
         "//tensorflow/compiler/plugin/poplar:popnn_ops_py",
+        "//tensorflow/compiler/plugin/poplar:popops_ops_py",
         "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/layers:layers_py",
@@ -187,6 +189,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "popops_cross_replica_sum_test",
+    size = "medium",
+    srcs = ["python/tests/popops_cross_replica_sum_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_py_test(
     name = "infeed_outfeed_test",
     size = "medium",
     srcs = ["python/tests/infeed_outfeed_test.py"],
@@ -240,6 +258,7 @@ test_suite(
         "multi_ipu_test",
         "infeed_outfeed_test",
         "popnn_normalization_test",
+        "popops_cross_replica_sum_test",
     ],
 )
 

@@ -283,6 +283,7 @@ cc_library(
         "kernels/popnn/norm.cc",
         "kernels/popnn/pooling.cc",
         "kernels/poprand/random.cc",
+        "kernels/popops/all_reduce.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -345,6 +346,29 @@ tf_custom_op_py_library(
 )
 
 cc_library(
+    name = "popop_ops",
+    srcs = [
+        "ops/popops/cross_replica_sum.cc",
+    ],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "popops_ops_wrapper_py",
+    out = "ops/gen_popops_ops.py",
+    deps = [":popop_ops"],
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_custom_op_py_library(
+    name = "popops_ops_py",
+    kernels = [":popop_ops"],
+    deps = [":popops_ops_wrapper_py"],
+    srcs_version = "PY2AND3",
+)
+
+cc_library(
     name = "pop_datastream_ops",
     srcs = ["ops/datastream/feeds.cc"],
     deps = ["//tensorflow/core:framework"],
@@ -378,6 +402,7 @@ cc_library(
         ":poplar_backend",
         ":ipu_ops",
         ":popnn_ops",
+        ":popop_ops",
         ":pop_datastream_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
