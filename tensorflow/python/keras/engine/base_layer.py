@@ -193,10 +193,7 @@ class Layer(trackable.Trackable):
     self._outbound_nodes = []
 
     call_argspec = tf_inspect.getfullargspec(self.call)
-    if 'training' in call_argspec.args:
-      self._expects_training_arg = True
-    else:
-      self._expects_training_arg = False
+    self._expects_training_arg = 'training' in call_argspec.args
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
