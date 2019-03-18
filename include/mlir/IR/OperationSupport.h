@@ -35,7 +35,7 @@ namespace mlir {
 class Block;
 class Dialect;
 class Instruction;
-class OperationState;
+struct OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;

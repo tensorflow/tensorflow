@@ -56,7 +56,7 @@ protected:
   bool properlyDominates(const Block *a, const Block *b);
 
   /// A mapping of regions to their base dominator tree.
-  DenseMap<const Region *, std::unique_ptr<base>> dominanceInfos;
+  llvm::DenseMap<const Region *, std::unique_ptr<base>> dominanceInfos;
 };
 } // end namespace detail
 

@@ -218,7 +218,7 @@ static OptResult processFile(std::unique_ptr<MemoryBuffer> ownedBuffer) {
     unsigned lineNo;
     StringRef substring;
     SMLoc fileLoc;
-    bool matched = false;
+    bool matched;
   };
   SmallVector<ExpectedDiag, 2> expectedDiags;
 

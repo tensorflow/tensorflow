@@ -24,6 +24,7 @@
 #define MLIR_TRANSFORMS_PASSES_H
 
 #include "mlir/Support/LLVM.h"
+#include <functional>
 #include <limits>
 
 namespace mlir {

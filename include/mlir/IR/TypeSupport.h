@@ -154,7 +154,6 @@ public:
       !std::is_same<typename T::ImplType, DefaultTypeStorage>::value, T>::type
   get(MLIRContext *ctx, unsigned kind, Args &&... args) {
     using ImplType = typename T::ImplType;
-    using KeyTy = typename ImplType::KeyTy;
 
     // Construct a value of the derived key type.
     auto derivedKey = getKey<ImplType>(args...);
