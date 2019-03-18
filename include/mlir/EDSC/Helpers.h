@@ -25,8 +25,6 @@
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Intrinsics.h"
 
-#include "llvm/Support/raw_ostream.h"
-
 namespace mlir {
 namespace edsc {
 
@@ -62,6 +60,27 @@ struct IndexHandle : public ValueHandle {
   }
 };
 
+/// Helper structure to be used with EDSCValueBuilder / EDSCInstructionBuilder.
+/// It serves the purpose of removing boilerplate specialization for the sole
+/// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value*>.
+class ValueHandleArray {
+public:
+  ValueHandleArray(ArrayRef<ValueHandle> vals) {
+    values.append(vals.begin(), vals.end());
+  }
+  ValueHandleArray(ArrayRef<IndexHandle> vals) {
+    values.append(vals.begin(), vals.end());
+  }
+  ValueHandleArray(ArrayRef<index_t> vals) {
+    llvm::SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
+    values.append(tmp.begin(), tmp.end());
+  }
+  operator ArrayRef<Value *>() { return values; }
+
+private:
+  llvm::SmallVector<Value *, 8> values;
+};
+
 // Base class for MemRefView and VectorView.
 class View {
 public:
@@ -73,7 +92,6 @@ public:
     return std::make_tuple(lbs[idx], ubs[idx], steps[idx]);
   }
   void swapRanges(unsigned i, unsigned j) {
-    llvm::errs() << "\nSWAP: " << i << " " << j;
     if (i == j)
       return;
     lbs[i].swap(lbs[j]);
@@ -167,20 +185,20 @@ struct IndexedValue {
     ValueHandle rrhs(rhs);
     assert(getBase().getType().cast<MemRefType>().getRank() == indices.size() &&
            "Unexpected number of indices to store in MemRef");
-    return intrinsics::STORE(rrhs, getBase(), indices);
+    return intrinsics::store(rrhs, getBase(), ValueHandleArray(indices));
   }
   // NOLINTNEXTLINE: unconventional-assign-operator
   InstructionHandle operator=(ValueHandle rhs) {
     assert(getBase().getType().cast<MemRefType>().getRank() == indices.size() &&
            "Unexpected number of indices to store in MemRef");
-    return intrinsics::STORE(rhs, getBase(), indices);
+    return intrinsics::store(rhs, getBase(), ValueHandleArray(indices));
   }
 
   /// Emits a `load` when converting to a ValueHandle.
   operator ValueHandle() const {
     assert(getBase().getType().cast<MemRefType>().getRank() == indices.size() &&
            "Unexpected number of indices to store in MemRef");
-    return intrinsics::LOAD(getBase(), indices);
+    return intrinsics::load(getBase(), ValueHandleArray(indices));
   }
 
   ValueHandle getBase() const { return base; }

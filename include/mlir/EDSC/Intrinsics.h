@@ -41,12 +41,43 @@ class ValueHandle;
 /// In the future, most of intrinsics reated to Instruction that don't contain
 /// other instructions should be Tablegen'd.
 namespace intrinsics {
+/// Helper variadic abstraction to allow extending to any MLIR op without
+/// boilerplate or Tablegen.
+/// Arguably a builder is not a ValueHandle but in practice it is only used as
+/// an alias to a notional ValueHandle<Op>.
+/// Implementing it as a subclass allows it to compose all the way to Value*.
+/// Without subclassing, implicit conversion to Value* would fail when composing
+/// in patterns such as: `select(a, b, select(c, d, e))`.
+template <typename Op> struct EDSCValueBuilder : public ValueHandle {
+  template <typename... Args>
+  EDSCValueBuilder(Args... args)
+      : ValueHandle(ValueHandle::create<Op>(std::forward<Args>(args)...)) {}
+  EDSCValueBuilder() : ValueHandle(ValueHandle::create<Op>()) {}
+};
+
+template <typename Op>
+struct EDSCInstructionBuilder : public InstructionHandle {
+  template <typename... Args>
+  EDSCInstructionBuilder(Args... args)
+      : InstructionHandle(
+            InstructionHandle::create<Op>(std::forward<Args>(args)...)) {}
+  EDSCInstructionBuilder()
+      : InstructionHandle(InstructionHandle::create<Op>()) {}
+};
+
+using alloc = EDSCValueBuilder<AllocOp>;
+using dealloc = EDSCInstructionBuilder<DeallocOp>;
+using load = EDSCValueBuilder<LoadOp>;
+using ret = EDSCInstructionBuilder<ReturnOp>;
+using select = EDSCValueBuilder<SelectOp>;
+using store = EDSCInstructionBuilder<StoreOp>;
+using vector_type_cast = EDSCValueBuilder<VectorTypeCastOp>;
 
 /// Branches into the mlir::Block* captured by BlockHandle `b` with `operands`.
 ///
 /// Prerequisites:
 ///   All Handles have already captured previously constructed IR objects.
-InstructionHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
+InstructionHandle br(BlockHandle bh, ArrayRef<ValueHandle> operands);
 
 /// Creates a new mlir::Block* and branches to it from the current block.
 /// Argument types are specified by `operands`.
@@ -61,7 +92,7 @@ InstructionHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
 ///   All `operands` have already captured an mlir::Value*
 ///   captures.size() == operands.size()
 ///   captures and operands are pairwise of the same type.
-InstructionHandle BR(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
+InstructionHandle br(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
                      ArrayRef<ValueHandle> operands);
 
 /// Branches into the mlir::Block* captured by BlockHandle `trueBranch` with
@@ -70,7 +101,7 @@ InstructionHandle BR(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
 ///
 /// Prerequisites:
 ///   All Handles have captured previouly constructed IR objects.
-InstructionHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
+InstructionHandle cond_br(ValueHandle cond, BlockHandle trueBranch,
                           ArrayRef<ValueHandle> trueOperands,
                           BlockHandle falseBranch,
                           ArrayRef<ValueHandle> falseOperands);
@@ -91,56 +122,12 @@ InstructionHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
 ///   `falseCaptures`.size() == `falseOperands`.size()
 ///   `trueCaptures` and `trueOperands` are pairwise of the same type
 ///   `falseCaptures` and `falseOperands` are pairwise of the same type.
-InstructionHandle COND_BR(ValueHandle cond, BlockHandle *trueBranch,
+InstructionHandle cond_br(ValueHandle cond, BlockHandle *trueBranch,
                           ArrayRef<ValueHandle *> trueCaptures,
                           ArrayRef<ValueHandle> trueOperands,
                           BlockHandle *falseBranch,
                           ArrayRef<ValueHandle *> falseCaptures,
                           ArrayRef<ValueHandle> falseOperands);
-
-/// Helper variadic abstraction to allow extending to any MLIR op without
-/// boilerplate or Tablegen.
-/// Arguably a builder is not a ValueHandle but in practice it is only used as
-/// an alias to a notional ValueHandle<Op>.
-/// Implementing it as a subclass allows it to compose all the way to Value*.
-/// Without subclassing, implicit conversion to Value* would fail when composing
-/// in patterns such as: `select(a, b, select(c, d, e))`.
-template <typename Op> struct EDSCValueBuilder : public ValueHandle {
-  template <typename... Args>
-  EDSCValueBuilder(Args... args)
-      : ValueHandle(ValueHandle::create<Op>(std::forward<Args>(args)...)) {}
-  EDSCValueBuilder() = delete;
-};
-
-template <typename Op>
-struct EDSCInstructionBuilder : public InstructionHandle {
-  template <typename... Args>
-  EDSCInstructionBuilder(Args... args)
-      : InstructionHandle(
-            InstructionHandle::create<Op>(std::forward<Args>(args)...)) {}
-  EDSCInstructionBuilder() = delete;
-};
-
-using alloc = EDSCValueBuilder<AllocOp>;
-using dealloc = EDSCInstructionBuilder<DeallocOp>;
-using select = EDSCValueBuilder<SelectOp>;
-using vector_type_cast = EDSCValueBuilder<VectorTypeCastOp>;
-
-/// Builds an mlir::LoadOp with the proper `operands` that each must have
-/// captured an mlir::Value*.
-/// Returns a ValueHandle to the produced mlir::Value*.
-ValueHandle LOAD(ValueHandle base, llvm::ArrayRef<ValueHandle> indices);
-
-/// Builds an mlir::ReturnOp with the proper `operands` that each must have
-/// captured an mlir::Value*.
-/// Returns an InstructionHandle.
-InstructionHandle RETURN(llvm::ArrayRef<ValueHandle> operands);
-
-/// Builds an mlir::StoreOp with the proper `operands` that each must have
-/// captured an mlir::Value*.
-/// Returns an InstructionHandle.
-InstructionHandle STORE(ValueHandle value, ValueHandle base,
-                        llvm::ArrayRef<ValueHandle> indices);
 } // namespace intrinsics
 } // namespace edsc
 } // namespace mlir

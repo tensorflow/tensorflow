@@ -956,7 +956,7 @@ PYBIND11_MODULE(pybind, m) {
       "ret",
       [](const std::vector<PythonValueHandle> &args) {
         std::vector<ValueHandle> values(args.begin(), args.end());
-        intrinsics::RETURN(values);
+        (intrinsics::ret(ValueHandleArray(values))); // vexing parse
         return PythonValueHandle(nullptr);
       },
       py::arg("args") = std::vector<PythonValueHandle>());
@@ -965,7 +965,7 @@ PYBIND11_MODULE(pybind, m) {
       [](const PythonBlockHandle &dest,
          const std::vector<PythonValueHandle> &args) {
         std::vector<ValueHandle> values(args.begin(), args.end());
-        intrinsics::BR(dest, values);
+        intrinsics::br(dest, values);
         return PythonValueHandle(nullptr);
       },
       py::arg("dest"), py::arg("args") = std::vector<PythonValueHandle>());
@@ -979,7 +979,7 @@ PYBIND11_MODULE(pybind, m) {
                                                trueArgs.end());
         std::vector<ValueHandle> falseArguments(falseArgs.begin(),
                                                 falseArgs.end());
-        intrinsics::COND_BR(condition, trueDest, trueArguments, falseDest,
+        intrinsics::cond_br(condition, trueDest, trueArguments, falseDest,
                             falseArguments);
         return PythonValueHandle(nullptr);
       });

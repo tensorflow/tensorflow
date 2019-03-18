@@ -23,7 +23,7 @@
 using namespace mlir;
 using namespace mlir::edsc;
 
-InstructionHandle mlir::edsc::intrinsics::BR(BlockHandle bh,
+InstructionHandle mlir::edsc::intrinsics::br(BlockHandle bh,
                                              ArrayRef<ValueHandle> operands) {
   assert(bh && "Expected already captured BlockHandle");
   for (auto &o : operands) {
@@ -47,7 +47,7 @@ static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
   }
 }
 
-InstructionHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
+InstructionHandle mlir::edsc::intrinsics::br(BlockHandle *bh,
                                              ArrayRef<ValueHandle *> captures,
                                              ArrayRef<ValueHandle> operands) {
   assert(!*bh && "Unexpected already captured BlockHandle");
@@ -58,7 +58,7 @@ InstructionHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
 }
 
 InstructionHandle
-mlir::edsc::intrinsics::COND_BR(ValueHandle cond, BlockHandle trueBranch,
+mlir::edsc::intrinsics::cond_br(ValueHandle cond, BlockHandle trueBranch,
                                 ArrayRef<ValueHandle> trueOperands,
                                 BlockHandle falseBranch,
                                 ArrayRef<ValueHandle> falseOperands) {
@@ -68,7 +68,7 @@ mlir::edsc::intrinsics::COND_BR(ValueHandle cond, BlockHandle trueBranch,
       cond, trueBranch.getBlock(), trueOps, falseBranch.getBlock(), falseOps);
 }
 
-InstructionHandle mlir::edsc::intrinsics::COND_BR(
+InstructionHandle mlir::edsc::intrinsics::cond_br(
     ValueHandle cond, BlockHandle *trueBranch,
     ArrayRef<ValueHandle *> trueCaptures, ArrayRef<ValueHandle> trueOperands,
     BlockHandle *falseBranch, ArrayRef<ValueHandle *> falseCaptures,
@@ -83,28 +83,4 @@ InstructionHandle mlir::edsc::intrinsics::COND_BR(
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
   return InstructionHandle::create<CondBranchOp>(
       cond, trueBranch->getBlock(), trueOps, falseBranch->getBlock(), falseOps);
-}
-
-////////////////////////////////////////////////////////////////////////////////
-// TODO(ntv): Intrinsics below this line should be TableGen'd.
-////////////////////////////////////////////////////////////////////////////////
-ValueHandle
-mlir::edsc::intrinsics::LOAD(ValueHandle base,
-                             llvm::ArrayRef<ValueHandle> indices = {}) {
-  SmallVector<Value *, 4> ops(indices.begin(), indices.end());
-  return ValueHandle::create<LoadOp>(base.getValue(), ops);
-}
-
-InstructionHandle
-mlir::edsc::intrinsics::RETURN(ArrayRef<ValueHandle> operands) {
-  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
-  return InstructionHandle::create<ReturnOp>(ops);
-}
-
-InstructionHandle
-mlir::edsc::intrinsics::STORE(ValueHandle value, ValueHandle base,
-                              llvm::ArrayRef<ValueHandle> indices = {}) {
-  SmallVector<Value *, 4> ops(indices.begin(), indices.end());
-  return InstructionHandle::create<StoreOp>(value.getValue(), base.getValue(),
-                                            ops);
 }

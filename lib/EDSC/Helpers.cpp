@@ -83,17 +83,17 @@ ValueHandle mlir::edsc::IndexedValue::operator/(ValueHandle e) {
 
 InstructionHandle mlir::edsc::IndexedValue::operator+=(ValueHandle e) {
   using op::operator+;
-  return intrinsics::STORE(*this + e, getBase(), indices);
+  return intrinsics::store(*this + e, getBase(), ValueHandleArray(indices));
 }
 InstructionHandle mlir::edsc::IndexedValue::operator-=(ValueHandle e) {
   using op::operator-;
-  return intrinsics::STORE(*this - e, getBase(), indices);
+  return intrinsics::store(*this - e, getBase(), ValueHandleArray(indices));
 }
 InstructionHandle mlir::edsc::IndexedValue::operator*=(ValueHandle e) {
   using op::operator*;
-  return intrinsics::STORE(*this * e, getBase(), indices);
+  return intrinsics::store(*this * e, getBase(), ValueHandleArray(indices));
 }
 InstructionHandle mlir::edsc::IndexedValue::operator/=(ValueHandle e) {
   using op::operator/;
-  return intrinsics::STORE(*this / e, getBase(), indices);
+  return intrinsics::store(*this / e, getBase(), ValueHandleArray(indices));
 }

@@ -43,8 +43,6 @@
 #include "mlir/Transforms/MLPatternLoweringPass.h"
 #include "mlir/Transforms/Passes.h"
 
-#include "llvm/ADT/SetVector.h"
-
 ///
 /// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
 /// proper abstraction for the hardware.
@@ -293,7 +291,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
       // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
       local(ivs) = remote(clip(transfer, view, ivs)),
   });
-  ValueHandle vectorValue = LOAD(vec, {index_t(0)});
+  ValueHandle vectorValue = load(vec, ValueHandleArray{index_t(0)});
   (dealloc(tmp)); // vexing parse
 
   // 3. Propagate.
@@ -346,7 +344,7 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   ValueHandle tmp = alloc(tmpMemRefType());
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType());
-  STORE(vectorValue, vec, {index_t(0)});
+  store(vectorValue, vec, ValueHandleArray{index_t(0)});
   LoopNestBuilder(pivs, lbs, ubs, steps)({
       // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
       remote(clip(transfer, view, ivs)) = local(ivs),

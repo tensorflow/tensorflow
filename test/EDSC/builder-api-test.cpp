@@ -138,7 +138,7 @@ TEST_FUNC(builder_max_min_for) {
   ValueHandle i(indexType), lb1(f->getArgument(0)), lb2(f->getArgument(1)),
       ub1(f->getArgument(2)), ub2(f->getArgument(3));
   LoopBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)({});
-  RETURN({});
+  ret({});
 
   // clang-format off
   // CHECK-LABEL: func @builder_max_min_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
@@ -166,18 +166,18 @@ TEST_FUNC(builder_blocks) {
       // This is a byproduct of non-structured control-flow.
   });
   BlockBuilder(&b2, {&arg3, &arg4})({
-      BR(b1, {arg3, arg4}),
+      br(b1, {arg3, arg4}),
   });
   // The insertion point within the toplevel function is now past b2, we will
   // need to get back the entry block.
   // This is what happens with unstructured control-flow..
   BlockBuilder(b1, Append())({
       r = arg1 + arg2,
-      BR(b2, {arg1, r}),
+      br(b2, {arg1, r}),
   });
   // Get back to entry block and add a branch into b1
   BlockBuilder(functionBlock, Append())({
-      BR(b1, {c1, c2}),
+      br(b1, {c1, c2}),
   });
 
   // clang-format off
@@ -211,15 +211,15 @@ TEST_FUNC(builder_blocks_eager) {
   BlockHandle b1, b2;
   { // Toplevel function scope.
     // Build a new block for b1 eagerly.
-    BR(&b1, {&arg1, &arg2}, {c1, c2});
+    br(&b1, {&arg1, &arg2}, {c1, c2});
     // Construct a new block b2 explicitly with a branch into b1.
     BlockBuilder(&b2, {&arg3, &arg4})({
-        BR(b1, {arg3, arg4}),
+        br(b1, {arg3, arg4}),
     });
     /// And come back to append into b1 once b2 exists.
     BlockBuilder(b1, Append())({
         r = arg1 + arg2,
-        BR(b2, {arg1, r}),
+        br(b2, {arg1, r}),
     });
   }
 
@@ -252,14 +252,14 @@ TEST_FUNC(builder_cond_branch) {
 
   BlockHandle b1, b2, functionBlock(&f->front());
   BlockBuilder(&b1, {&arg1})({
-      RETURN({}),
+      ret({}),
   });
   BlockBuilder(&b2, {&arg2, &arg3})({
-      RETURN({}),
+      ret({}),
   });
   // Get back to entry block and add a conditional branch
   BlockBuilder(functionBlock, Append())({
-      COND_BR(funcArg, b1, {c32}, b2, {c64, c42}),
+      cond_br(funcArg, b1, {c32}, b2, {c64, c42}),
   });
 
   // clang-format off
@@ -292,12 +292,12 @@ TEST_FUNC(builder_cond_branch_eager) {
 
   // clang-format off
   BlockHandle b1, b2;
-  COND_BR(funcArg, &b1, {&arg1}, {c32}, &b2, {&arg2, &arg3}, {c64, c42});
+  cond_br(funcArg, &b1, {&arg1}, {c32}, &b2, {&arg2, &arg3}, {c64, c42});
   BlockBuilder(b1, Append())({
-      RETURN({}),
+      ret({}),
   });
   BlockBuilder(b2, Append())({
-      RETURN({}),
+      ret({}),
   });
 
   // CHECK-LABEL: @builder_cond_branch_eager
