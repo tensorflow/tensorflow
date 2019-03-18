@@ -363,6 +363,44 @@ TEST_P(QuantizedDepthwiseConvolutionOpTest,
               ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
+TEST_P(QuantizedDepthwiseConvolutionOpTest,
+       SimpleTestQuantizedOutputMultiplierGreaterThan1) {
+  QuantizedDepthwiseConvolutionOpModel quant_op(
+      GetRegistration(), {TensorType_UINT8, {1, 3, 2, 2}, -128.5, 128},
+      {TensorType_UINT8, {1, 2, 2, 4}, -128.5, 128},
+      {TensorType_UINT8, {}, -127, 128}, Padding_VALID);
+  DepthwiseConvolutionOpModel float_op(GetRegistration(),
+                                       {TensorType_FLOAT32, {1, 3, 2, 2}},
+                                       {TensorType_FLOAT32, {1, 2, 2, 4}},
+                                       {TensorType_FLOAT32, {}}, Padding_VALID);
+
+  std::initializer_list<float> input = {
+      1, 2, 7,  8,   // column 1
+      3, 4, 9,  10,  // column 2
+      5, 6, 11, 12,  // column 3
+  };
+  std::initializer_list<float> filter = {
+      1,  2,   3,   4,    //
+      -9, 10,  -11, 12,   //
+      5,  6,   7,   8,    //
+      13, -14, 15,  -16,  //
+  };
+  std::initializer_list<float> bias = {1, 2, 3, 4};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
+}
+
 TEST_P(QuantizedDepthwiseConvolutionOpTest, SimpleDilatedTestPaddingValid) {
   const int depth = 1;
   const int image_width = 9;
