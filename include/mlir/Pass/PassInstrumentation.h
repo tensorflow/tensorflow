@@ -26,6 +26,10 @@ namespace mlir {
 struct AnalysisID;
 class Pass;
 
+namespace detail {
+struct PassInstrumentorImpl;
+} // end namespace detail
+
 /// PassInstrumentation provdes several entry points into the pass manager
 /// infrastructure. Instrumentations should be added directly to a PassManager
 /// before running a pipeline.
@@ -66,51 +70,61 @@ public:
 /// their respective call backs.
 class PassInstrumentor {
 public:
+  PassInstrumentor();
+  PassInstrumentor(PassInstrumentor &&) = delete;
+  PassInstrumentor(const PassInstrumentor &) = delete;
+  ~PassInstrumentor();
+
   /// See PassInstrumentation::runBeforePass for details.
   template <typename IRUnitT> void runBeforePass(Pass *pass, IRUnitT *ir) {
-    llvm::Any irAny(ir);
-    for (auto &instr : instrumentations)
-      instr->runBeforePass(pass, irAny);
+    runBeforePass(pass, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runAfterPass for details.
   template <typename IRUnitT> void runAfterPass(Pass *pass, IRUnitT *ir) {
-    llvm::Any irAny(ir);
-    for (auto &instr : llvm::reverse(instrumentations))
-      instr->runAfterPass(pass, irAny);
+    runAfterPass(pass, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runAfterPassFailed for details.
   template <typename IRUnitT> void runAfterPassFailed(Pass *pass, IRUnitT *ir) {
-    llvm::Any irAny(ir);
-    for (auto &instr : llvm::reverse(instrumentations))
-      instr->runAfterPassFailed(pass, irAny);
+    runAfterPassFailed(pass, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runBeforeAnalysis for details.
   template <typename IRUnitT>
   void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT *ir) {
-    llvm::Any irAny(ir);
-    for (auto &instr : instrumentations)
-      instr->runBeforeAnalysis(name, id, irAny);
+    runBeforeAnalysis(name, id, llvm::Any(ir));
   }
 
   /// See PassInstrumentation::runAfterAnalysis for details.
   template <typename IRUnitT>
   void runAfterAnalysis(llvm::StringRef name, AnalysisID *id, IRUnitT *ir) {
-    llvm::Any irAny(ir);
-    for (auto &instr : llvm::reverse(instrumentations))
-      instr->runAfterAnalysis(name, id, irAny);
+    runAfterAnalysis(name, id, llvm::Any(ir));
   }
 
   /// Add the given instrumentation to the collection. This takes ownership over
   /// the given pointer.
-  void addInstrumentation(PassInstrumentation *pi) {
-    instrumentations.emplace_back(pi);
-  }
+  void addInstrumentation(PassInstrumentation *pi);
 
 private:
-  std::vector<std::unique_ptr<PassInstrumentation>> instrumentations;
+  /// See PassInstrumentation::runBeforePass for details.
+  void runBeforePass(Pass *pass, const llvm::Any &ir);
+
+  /// See PassInstrumentation::runAfterPass for details.
+  void runAfterPass(Pass *pass, const llvm::Any &ir);
+
+  /// See PassInstrumentation::runAfterPassFailed for details.
+  void runAfterPassFailed(Pass *pass, const llvm::Any &ir);
+
+  /// See PassInstrumentation::runBeforeAnalysis for details.
+  void runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
+                         const llvm::Any &ir);
+
+  /// See PassInstrumentation::runAfterAnalysis for details.
+  void runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
+                        const llvm::Any &ir);
+
+  std::unique_ptr<detail::PassInstrumentorImpl> impl;
 };
 
 } // end namespace mlir

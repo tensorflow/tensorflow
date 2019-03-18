@@ -23,6 +23,7 @@
 #include "PassDetail.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassManager.h"
+#include "llvm/Support/Mutex.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -279,3 +280,66 @@ void ModuleAnalysisManager::invalidate(const detail::PreservedAnalyses &pa) {
 //===----------------------------------------------------------------------===//
 
 PassInstrumentation::~PassInstrumentation() {}
+
+//===----------------------------------------------------------------------===//
+// PassInstrumentor
+//===----------------------------------------------------------------------===//
+
+namespace mlir {
+namespace detail {
+struct PassInstrumentorImpl {
+  /// Mutex to keep instrumentation access thread-safe.
+  llvm::sys::SmartMutex<true> mutex;
+
+  /// Set of registered instrumentations.
+  std::vector<std::unique_ptr<PassInstrumentation>> instrumentations;
+};
+} // end namespace detail
+} // end namespace mlir
+
+PassInstrumentor::PassInstrumentor() : impl(new PassInstrumentorImpl()) {}
+PassInstrumentor::~PassInstrumentor() {}
+
+/// See PassInstrumentation::runBeforePass for details.
+void PassInstrumentor::runBeforePass(Pass *pass, const llvm::Any &ir) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : impl->instrumentations)
+    instr->runBeforePass(pass, ir);
+}
+
+/// See PassInstrumentation::runAfterPass for details.
+void PassInstrumentor::runAfterPass(Pass *pass, const llvm::Any &ir) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : llvm::reverse(impl->instrumentations))
+    instr->runAfterPass(pass, ir);
+}
+
+/// See PassInstrumentation::runAfterPassFailed for details.
+void PassInstrumentor::runAfterPassFailed(Pass *pass, const llvm::Any &ir) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : llvm::reverse(impl->instrumentations))
+    instr->runAfterPassFailed(pass, ir);
+}
+
+/// See PassInstrumentation::runBeforeAnalysis for details.
+void PassInstrumentor::runBeforeAnalysis(llvm::StringRef name, AnalysisID *id,
+                                         const llvm::Any &ir) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : impl->instrumentations)
+    instr->runBeforeAnalysis(name, id, ir);
+}
+
+/// See PassInstrumentation::runAfterAnalysis for details.
+void PassInstrumentor::runAfterAnalysis(llvm::StringRef name, AnalysisID *id,
+                                        const llvm::Any &ir) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  for (auto &instr : llvm::reverse(impl->instrumentations))
+    instr->runAfterAnalysis(name, id, ir);
+}
+
+/// Add the given instrumentation to the collection. This takes ownership over
+/// the given pointer.
+void PassInstrumentor::addInstrumentation(PassInstrumentation *pi) {
+  llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
+  impl->instrumentations.emplace_back(pi);
+}

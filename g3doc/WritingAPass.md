@@ -367,9 +367,9 @@ that counts the number of times DominanceInfo is computed:
 
 ```c++
 struct DominanceCounterInstrumentation : public PassInstrumentation {
-  std::atomic<int> &count;
+  unsigned &count;
 
-  DominanceCounterInstrumentation(std::atomic<int> &count) : count(count) {}
+  DominanceCounterInstrumentation(unsigned &count) : count(count) {}
   void runAfterAnalysis(llvm::StringRef, AnalysisID *id,
                         const llvm::Any &) override {
     if (id == AnalysisID::getID<DominanceInfo>())
@@ -380,7 +380,7 @@ struct DominanceCounterInstrumentation : public PassInstrumentation {
 PassManager pm;
 
 // Add the instrumentation to the pass manager.
-std::atomic<int> domInfoCount;
+unsigned domInfoCount;
 pm.addInstrumentation(new DominanceCounterInstrumentation(domInfoCount));
 
 // Run the pass manager on a module.
