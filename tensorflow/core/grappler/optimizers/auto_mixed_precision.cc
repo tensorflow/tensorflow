@@ -57,13 +57,13 @@ const char kCastToFp32[] = "CastToFp32";
 struct TypeAttrId {
   static const int kSingleType = -1;
 
-  explicit TypeAttrId(const string& _attr_name = "",
-                      int _type_index = kSingleType)
+  explicit TypeAttrId(const string& _attr_name, int _type_index = kSingleType)
       : attr_name(_attr_name),
         type_index(_type_index),
         fixed_type(DT_INVALID) {}
 
-  explicit TypeAttrId(DataType _fixed_type) : fixed_type(_fixed_type) {}
+  explicit TypeAttrId(DataType _fixed_type)
+      : attr_name(), type_index(kSingleType), fixed_type(_fixed_type) {}
 
   bool operator==(const TypeAttrId& other) const {
     return attr_name == other.attr_name && type_index == other.type_index &&
