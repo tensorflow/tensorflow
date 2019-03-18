@@ -919,7 +919,7 @@ class AutoMixedPrecisionImpl {
   bool IsIdentityAfterVariable(const NodeDef& node) const;
   void ConvertBatchNormOpsToV2();
   bool SupportsFloat16(const NodeTypeId& node_type) const;
-  NodeDef* GetTailOfChain(const NodeDef& node, const string& op) const;
+  const NodeDef* GetTailOfChain(const NodeDef& node, const string& op) const;
   Status AddDataStructureOpsToMap(
       const string& data_structure_op, TypeAttrId data_structure_type_attr,
       const absl::flat_hash_map<string, TypeAttrId>& write_ops,
@@ -1282,7 +1282,7 @@ Status AutoMixedPrecisionImpl::AddDataStructureOpsToMap(
     bool is_writer = write_iter != write_ops.end();
     bool is_reader = read_iter != read_ops.end();
     if (is_writer || is_reader) {
-      NodeDef* object_node = GetTailOfChain(node, data_structure_op);
+      const NodeDef* object_node = GetTailOfChain(node, data_structure_op);
       if (!object_node) {
         return errors::FailedPrecondition("No ", data_structure_op,
                                           " found upstream of ", node.op(),
@@ -1506,9 +1506,9 @@ Status AutoMixedPrecisionImpl::ForceColorMatchOnRecurrentEdges(
 // Returns the last node in the simple chain starting at node and traversing
 // backwards through the input(0) edge from each node until one with a matching
 // op is found, or nullptr if no matching node is found.
-NodeDef* AutoMixedPrecisionImpl::GetTailOfChain(const NodeDef& node,
-                                                const string& op) const {
-  NodeDef* node_ptr = const_cast<NodeDef*>(&node);
+const NodeDef* AutoMixedPrecisionImpl::GetTailOfChain(const NodeDef& node,
+                                                      const string& op) const {
+  const NodeDef* node_ptr = &node;
   do {
     GraphView::InputPort node_input(node_ptr, 0);
     MutableGraphView::OutputPort prev_output =
