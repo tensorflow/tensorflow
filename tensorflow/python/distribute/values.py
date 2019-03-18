@@ -545,6 +545,17 @@ class DistributedVariable(DistributedDelegate):
     return self.primary.shape
 
   @property
+  def handle(self):
+    device = None
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is None:
+      device = distribute_lib.get_update_device()
+      if device is None:
+        raise ValueError("`handle` is not available outside the replica context"
+                         " or a `tf.distribute.Strategy.update()` call.")
+    return self.get(device=device).handle
+
+  @property
   def trainable(self):
     return self.primary.trainable
 
