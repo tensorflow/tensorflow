@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/lower_if_while.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
@@ -43,12 +43,22 @@ static void AssertHasSubstr(StringPiece s, StringPiece expected) {
       << "'" << s << "' does not contain '" << expected << "'";
 }
 
+SessionOptions SessionOptionsWithInlining() {
+  SessionOptions session_options;
+  session_options.config.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+  return session_options;
+}
+
 Status Rewrite(std::unique_ptr<Graph>* graph) {
   FunctionLibraryDefinition flib_def((*graph)->flib_def());
   GraphOptimizationPassOptions opt_options;
+  SessionOptions session_options = SessionOptionsWithInlining();
+  opt_options.session_options = &session_options;
   opt_options.graph = graph;
   opt_options.flib_def = &flib_def;
-  LowerIfWhilePass pass;
+  LowerFunctionalOpsPass pass;
   return pass.Run(opt_options);
 }
 
@@ -100,7 +110,7 @@ FunctionDef WhileWithIfBody() {
             {"Tcond", DT_BOOL},
             {"Tin", input_types},
             {"Tout", output_types},
-            {LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true}}},
+            {LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true}}},
           {{"one"}, "Const", {}, {{"value", kOne}, {"dtype", DT_INT32}}},
           {{"updated_counter"}, "Add", {"counter", "one"}, {{"T", DT_INT32}}},
       });
@@ -147,13 +157,14 @@ TEST(LowerIfWhileTest, CondInWhile) {
   cond_func.mutable_func()->set_name("WhileWithIfCond");
   AttrValue body_func;
   body_func.mutable_func()->set_name("WhileWithIfBody");
-  TF_ASSERT_OK(NodeBuilder("while", "While", &root.graph()->flib_def())
-                   .Input(inputs)
-                   .Attr("T", {DT_INT32, DT_BOOL, DT_INT32})
-                   .Attr("cond", cond_func)
-                   .Attr("body", body_func)
-                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
-                   .Finalize(root.graph(), &while_node));
+  TF_ASSERT_OK(
+      NodeBuilder("while", "While", &root.graph()->flib_def())
+          .Input(inputs)
+          .Attr("T", {DT_INT32, DT_BOOL, DT_INT32})
+          .Attr("cond", cond_func)
+          .Attr("body", body_func)
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(root.graph(), &while_node));
   TF_ASSERT_OK(root.DoShapeInference(while_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
   TF_ASSERT_OK(Rewrite(&graph));
@@ -165,7 +176,7 @@ TEST(LowerIfWhileTest, CondInWhile) {
   }
 
   // Verify execution.
-  ClientSession session(root);
+  ClientSession session(root, SessionOptionsWithInlining());
   {
     ClientSession::FeedType feeds;
     feeds.emplace(Output(counter.node()), Input::Initializer(0));
@@ -217,7 +228,7 @@ FunctionDef IfWithWhileThen() {
             {"body", body_func},
             {"T", input_and_output_types},
             {"output_shapes", output_shapes},
-            {LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true}}},
+            {LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true}}},
       });
 }
 
@@ -252,14 +263,15 @@ TEST(LowerIfWhileTest, WhileInCond) {
   AttrValue else_func;
   else_func.mutable_func()->set_name("XTimesTwo");
   Node* if_node;
-  TF_ASSERT_OK(NodeBuilder("if", "If", &root.graph()->flib_def())
-                   .Input(pred.node())
-                   .Input(inputs)
-                   .Attr("then_branch", then_func)
-                   .Attr("else_branch", else_func)
-                   .Attr("Tout", {DT_INT32})
-                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
-                   .Finalize(root.graph(), &if_node));
+  TF_ASSERT_OK(
+      NodeBuilder("if", "If", &root.graph()->flib_def())
+          .Input(pred.node())
+          .Input(inputs)
+          .Attr("then_branch", then_func)
+          .Attr("else_branch", else_func)
+          .Attr("Tout", {DT_INT32})
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(root.graph(), &if_node));
   TF_ASSERT_OK(root.DoShapeInference(if_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
@@ -292,7 +304,7 @@ TEST(LowerIfWhileTest, WhileInCond) {
   ASSERT_EQ(node_called_if_count, 1);
 
   // Verify execution.
-  ClientSession session(root);
+  ClientSession session(root, SessionOptionsWithInlining());
   {
     ClientSession::FeedType feeds;
     feeds.emplace(Output(pred.node()), Input::Initializer(true));
@@ -320,11 +332,12 @@ TEST(LowerIfWhileTest, RaisesWhenLoweringUnhandledOpType) {
   Node* const_node;
   Tensor const_val(DT_INT32, TensorShape({}));
   const_val.scalar<int32>()() = 1;
-  TF_ASSERT_OK(NodeBuilder("const", "Const")
-                   .Attr("value", const_val)
-                   .Attr("dtype", const_val.dtype())
-                   .Attr(LowerIfWhilePass::kLowerUsingSwitchMergeAttr, true)
-                   .Finalize(root.graph(), &const_node));
+  TF_ASSERT_OK(
+      NodeBuilder("const", "Const")
+          .Attr("value", const_val)
+          .Attr("dtype", const_val.dtype())
+          .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
+          .Finalize(root.graph(), &const_node));
   TF_ASSERT_OK(root.DoShapeInference(const_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 

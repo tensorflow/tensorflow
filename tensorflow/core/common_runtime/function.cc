@@ -1684,7 +1684,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
     // If there is an input control node, and one of:
     // a) the node has no data or control inputs, or
-    // b) the node is a function call or SymbolicGradient,
+    // b) the node is a function call (including SymbolicGradient),
     // then add a control edge from the input control node to the clone.
     //
     // We must not execute any nodes if the original function call would not
@@ -1695,14 +1695,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     // The purpose of case (b) is to ensure that instances of case (a) created
     // by further inlining steps also receive the control dependency.
     //
-    // TODO(ezhulenev): If caller has no control inputs, should we add a control
-    // edge from one of the inputs to ensure that function body node will
-    // execute in correct frame?
+    // This edge is required to transfer execution frame down to all function
+    // body nodes of inlined nested function calls.
     if (input_control_node) {
       bool has_inputs = absl::c_any_of(
           n->in_edges(), [](const Edge* e) { return !e->src()->IsSource(); });
-      if (!has_inputs || flib_def.Find(clone->type_string()) != nullptr ||
-          clone->type_string() == kGradientOp) {
+      if (!has_inputs || IsFunctionCall(flib_def, *n)) {
         g->AddControlEdge(input_control_node, clone);
       }
     }
@@ -1800,6 +1798,21 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     }
   }
 
+  // We can't leave output control node without incoming control edges, because
+  // in this case outgoing control edge will loose execution frame information.
+  // We connect input_control_node and output_control_node with a control edge
+  // to forward execution frame to the controlled nodes. Above we add a control
+  // edge to all function calls inside function body, to guarantee that we will
+  // always have input_control_node when we need it.
+  if (output_control_node && output_control_node->in_edges().empty()) {
+    if (input_control_node) {
+      g->AddControlEdge(input_control_node, output_control_node);
+    } else {
+      VLOG(3) << "Function inlining potentially dropped execution frame "
+                 "information from outgoing control edges.";
+    }
+  }
+
   for (const Edge* e : caller->out_edges()) {
     if (e->IsControlEdge()) {
       g->AddControlEdge(output_control_node, e->dst());
@@ -1809,7 +1822,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   }
 
   // ------------------------------------------------------------------------ //
-  // Add an IdentityN node in-place of caller node to keep `caller` fetchable.
+  // Add an IdentityN or NoOp node in-place of caller node to keep `caller`
+  // fetchable.
 
   if (options.keep_caller_fetchable) {
     std::vector<NodeBuilder::NodeOut> output_tensors;
@@ -1817,11 +1831,20 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                       [](Node* n) { return NodeBuilder::NodeOut(n, 0); });
 
     Node* fetchable_node;
-    TF_CHECK_OK(NodeBuilder(caller->name(), "IdentityN")
-                    .Device(caller->requested_device())
-                    .Input(output_tensors)
-                    .ControlInput(output_control_node)
-                    .Finalize(g, &fetchable_node));
+    if (output_tensors.empty()) {
+      // IdentityN node must have at least one data input. If function has no
+      // data outputs, it still could be used as a callable target.
+      TF_CHECK_OK(NodeBuilder(caller->name(), "NoOp")
+                      .Device(caller->requested_device())
+                      .ControlInput(output_control_node)
+                      .Finalize(g, &fetchable_node));
+    } else {
+      TF_CHECK_OK(NodeBuilder(caller->name(), "IdentityN")
+                      .Device(caller->requested_device())
+                      .Input(output_tensors)
+                      .ControlInput(output_control_node)
+                      .Finalize(g, &fetchable_node));
+    }
   }
 
   // ------------------------------------------------------------------------ //
