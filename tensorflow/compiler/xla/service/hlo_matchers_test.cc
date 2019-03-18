@@ -220,5 +220,33 @@ ENTRY DotOperationFusion_TransposeFusion {
       "rhs_contracting_dimensions (got {0} want {1})");
 }
 
+TEST(HloMatchersTest, ComparisonMatcher) {
+  auto shape = ShapeUtil::MakeShape(F32, {1});
+  auto p0 = HloInstruction::CreateParameter(0, shape, "param.0");
+  auto p1 = HloInstruction::CreateParameter(1, shape, "param.1");
+  auto eq = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
+                                          ComparisonDirection::kEq);
+  auto ne = HloInstruction::CreateCompare(shape, p0.get(), p1.get(),
+                                          ComparisonDirection::kNe);
+  auto add =
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, p0.get(), p1.get());
+  auto le = HloInstruction::CreateCompare(shape, p0.get(), add.get(),
+                                          ComparisonDirection::kLe);
+
+  EXPECT_THAT(eq.get(), op::Compare());
+  EXPECT_THAT(eq.get(), op::Eq());
+  EXPECT_THAT(ne.get(), op::Compare());
+  EXPECT_THAT(ne.get(), op::Ne());
+  EXPECT_THAT(le.get(),
+              op::Compare(op::Parameter(0),
+                          op::Add(op::Parameter(0), op::Parameter(1))));
+  EXPECT_THAT(le.get(), op::Le(op::Parameter(0),
+                               op::Add(op::Parameter(0), op::Parameter(1))));
+
+  EXPECT_THAT(Explain(eq.get(), op::Add()), Eq(""));
+  EXPECT_THAT(Explain(eq.get(), op::Ne()),
+              Eq("has wrong comparison direction (got EQ, want NE)"));
+}
+
 }  // namespace
 }  // namespace xla

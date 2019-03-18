@@ -10,6 +10,7 @@ load(
     "tf_additional_xla_deps_py",
     "tf_cuda_tests_tags",
     "tf_exec_compatible_with",
+    "tf_gpu_tests_tags",
     "tf_sycl_tests_tags",
 )
 load(
@@ -908,7 +909,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_cc_test(
+def tf_gpu_cc_test(
         name,
         srcs = [],
         deps = [],
@@ -950,18 +951,29 @@ def tf_cuda_cc_test(
             "//conditions:default": 0,
         }),
         suffix = "_gpu",
-        tags = tags + tf_cuda_tests_tags(),
-        deps = deps + if_cuda([
+        tags = tags + tf_gpu_tests_tags(),
+        deps = deps + if_cuda_is_configured([
+            clean_dep("//tensorflow/core:gpu_runtime"),
+        ]) + if_rocm_is_configured([
             clean_dep("//tensorflow/core:gpu_runtime"),
         ]),
     )
+
+register_extension_info(
+    extension_name = "tf_gpu_cc_test",
+    label_regex_for_dep = "{extension_name}",
+)
+
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_cc_test(*args, **kwargs):
+    tf_gpu_cc_test(*args, **kwargs)
 
 register_extension_info(
     extension_name = "tf_cuda_cc_test",
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_only_cc_test(
+def tf_gpu_only_cc_test(
         name,
         srcs = [],
         deps = [],
@@ -972,7 +984,7 @@ def tf_cuda_only_cc_test(
         args = [],
         kernels = [],
         linkopts = []):
-    tags = tags + tf_cuda_tests_tags()
+    tags = tags + tf_gpu_tests_tags()
     native.cc_test(
         name = "%s%s" % (name, "_gpu"),
         srcs = srcs + tf_binary_additional_srcs(),
@@ -998,6 +1010,15 @@ def tf_cuda_only_cc_test(
         tags = tags,
         exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
     )
+
+register_extension_info(
+    extension_name = "tf_gpu_only_cc_test",
+    label_regex_for_dep = "{extension_name}_gpu",
+)
+
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_only_cc_test(*args, **kwargs):
+    tf_gpu_only_cc_test(*args, **kwargs)
 
 register_extension_info(
     extension_name = "tf_cuda_only_cc_test",
@@ -1080,7 +1101,7 @@ def tf_cc_tests_gpu(
         args = None):
     tf_cc_tests(srcs, deps, linkstatic, size = size, args = args, kernels = kernels, tags = tags)
 
-def tf_cuda_cc_tests(
+def tf_gpu_cc_tests(
         srcs,
         deps,
         name = "",
@@ -1091,7 +1112,7 @@ def tf_cuda_cc_tests(
         kernels = [],
         linkopts = []):
     for src in srcs:
-        tf_cuda_cc_test(
+        tf_gpu_cc_test(
             name = src_to_test_name(src),
             size = size,
             srcs = [src],
@@ -1102,6 +1123,10 @@ def tf_cuda_cc_tests(
             tags = tags,
             deps = deps,
         )
+
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_cc_tests(*args, **kwargs):
+    tf_gpu_cc_tests(*args, **kwargs)
 
 def tf_java_test(
         name,
@@ -1179,7 +1204,7 @@ register_extension_info(
     label_regex_for_dep = "{extension_name}",
 )
 
-def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
+def tf_gpu_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs):
     """Generate a cc_library with a conditional set of CUDA dependencies.
 
     When the library is built with --config=cuda:
@@ -1208,11 +1233,20 @@ def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs)
             clean_dep("//tensorflow/stream_executor/cuda:cudart_stub"),
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(cuda_deps + [
-            # rocm_header placeholder
+            "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
     )
+
+register_extension_info(
+    extension_name = "tf_gpu_library",
+    label_regex_for_dep = "{extension_name}",
+)
+
+# terminology changes: saving tf_cuda_* definition for compatibility
+def tf_cuda_library(*args, **kwargs):
+    tf_gpu_library(*args, **kwargs)
 
 register_extension_info(
     extension_name = "tf_cuda_library",
@@ -1232,7 +1266,7 @@ def tf_kernel_library(
         **kwargs):
     """A rule to build a TensorFlow OpKernel.
 
-    May either specify srcs/hdrs or prefix.  Similar to tf_cuda_library,
+    May either specify srcs/hdrs or prefix.  Similar to tf_gpu_library,
     but with alwayslink=1 by default.  If prefix is specified:
       * prefix*.cc (except *.cu.cc) is added to srcs
       * prefix*.h (except *.cu.h) is added to hdrs
@@ -1303,7 +1337,7 @@ def tf_kernel_library(
         "req_dep=%s" % clean_dep("//tensorflow/core:gpu_lib"),
         "req_dep=@local_config_cuda//cuda:cuda_headers",
     ]
-    tf_cuda_library(
+    tf_gpu_library(
         name = name,
         srcs = srcs,
         hdrs = hdrs,
@@ -1917,7 +1951,7 @@ register_extension_info(
     label_regex_map = {"additional_deps": "deps:{extension_name}"},
 )
 
-def cuda_py_test(
+def gpu_py_test(
         name,
         srcs,
         size = "medium",
@@ -1942,7 +1976,7 @@ def cuda_py_test(
         test_tags = tags
         if config == "gpu":
             test_name += "_gpu"
-            test_tags = test_tags + tf_cuda_tests_tags()
+            test_tags = test_tags + tf_gpu_tests_tags()
         tf_py_test(
             name = test_name,
             size = size,
@@ -1959,6 +1993,15 @@ def cuda_py_test(
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = False,
         )
+
+register_extension_info(
+    extension_name = "gpu_py_test",
+    label_regex_map = {"additional_deps": "additional_deps:{extension_name}"},
+)
+
+# terminology changes: saving cuda_* definition for compatibility
+def cuda_py_test(*args, **kwargs):
+    gpu_py_test(*args, **kwargs)
 
 register_extension_info(
     extension_name = "cuda_py_test",
@@ -2033,7 +2076,7 @@ def py_tests(
             xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
         )
 
-def cuda_py_tests(
+def gpu_py_tests(
         name,
         srcs,
         size = "medium",
@@ -2049,7 +2092,7 @@ def cuda_py_tests(
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
-    test_tags = tags + tf_cuda_tests_tags()
+    test_tags = tags + tf_gpu_tests_tags()
     py_tests(
         name = name,
         size = size,
@@ -2064,6 +2107,10 @@ def cuda_py_tests(
         xla_enabled = xla_enabled,
         xla_enable_strict_auto_jit = False,
     )
+
+# terminology changes: saving cuda_* definition for compatibility
+def cuda_py_tests(*args, **kwargs):
+    gpu_py_tests(*args, **kwargs)
 
 # Creates a genrule named <name> for running tools/proto_text's generator to
 # make the proto_text functions, for the protos passed in <srcs>.

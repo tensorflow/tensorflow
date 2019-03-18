@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -39,12 +38,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.util.tf_export import tf_export
 
 
-@keras_export('keras.layers.BatchNormalization', v1=[])
-class BatchNormalizationV2(Layer):
-  """Batch normalization layer (Ioffe and Szegedy, 2014).
+class BatchNormalizationBase(Layer):
+  """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
@@ -132,7 +129,8 @@ class BatchNormalizationV2(Layer):
       Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
-  # The BatchNormalizationV1 subclass sets this to False to use the V1 behavior.
+  # By default, the base class uses V2 behavior. The BatchNormalization V1
+  # subclass sets this to False to use the V1 behavior.
   _USE_V2_BEHAVIOR = True
 
   def __init__(self,
@@ -158,7 +156,7 @@ class BatchNormalizationV2(Layer):
                adjustment=None,
                name=None,
                **kwargs):
-    super(BatchNormalizationV2, self).__init__(
+    super(BatchNormalizationBase, self).__init__(
         name=name, trainable=trainable, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
@@ -772,22 +770,22 @@ class BatchNormalizationV2(Layer):
                       'layer cannot be serialized and has been omitted from '
                       'the layer config. It will not be included when '
                       're-creating the layer from the saved config.')
-    base_config = super(BatchNormalizationV2, self).get_config()
+    base_config = super(BatchNormalizationBase, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _replace_in_v2_docstring(old, new):
-  string = BatchNormalizationV2.__doc__
+def _replace_in_base_docstring(old, new):
+  string = BatchNormalizationBase.__doc__
   if old not in string:
-    raise ValueError('Could not find following string in BatchNormalizationV2 '
-                     'docstring: "{}"'.format(old))
+    raise ValueError('Could not find following string in BatchNormalizationBase'
+                     ' docstring: "{}"'.format(old))
   return string.replace(old, new)
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
-class BatchNormalizationV1(BatchNormalizationV2):
+class BatchNormalization(BatchNormalizationBase):
 
-  __doc__ = _replace_in_v2_docstring(
+  __doc__ = _replace_in_base_docstring(
       '''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
@@ -799,27 +797,6 @@ class BatchNormalizationV1(BatchNormalizationV2):
       If `False`, use the system recommended implementation.''')
 
   _USE_V2_BEHAVIOR = False
-
-
-BatchNormalization = None  # pylint: disable=invalid-name
-
-
-@tf_export(v1=['enable_v2_batch_normalization'])
-def enable_v2_batch_normalization():
-  global BatchNormalization  # pylint: disable=invalid-name
-  BatchNormalization = BatchNormalizationV2
-
-
-@tf_export(v1=['disable_v2_batch_normalization'])
-def disable_v2_batch_normalization():
-  global BatchNormalization  # pylint: disable=invalid-name
-  BatchNormalization = BatchNormalizationV1
-
-
-if tf2.enabled():
-  enable_v2_batch_normalization()
-else:
-  disable_v2_batch_normalization()
 
 
 @keras_export('keras.layers.experimental.LayerNormalization')

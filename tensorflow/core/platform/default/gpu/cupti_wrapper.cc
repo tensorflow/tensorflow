@@ -61,6 +61,7 @@ LIBCUPTI_WRAP(cuptiEnableCallback);
 LIBCUPTI_WRAP(cuptiEnableDomain);
 LIBCUPTI_WRAP(cuptiSubscribe);
 LIBCUPTI_WRAP(cuptiUnsubscribe);
+LIBCUPTI_WRAP(cuptiGetResultString);
 
 }  // namespace dynload
 
@@ -122,6 +123,11 @@ CUptiResult CuptiWrapper::Subscribe(CUpti_SubscriberHandle* subscriber,
 
 CUptiResult CuptiWrapper::Unsubscribe(CUpti_SubscriberHandle subscriber) {
   return dynload::cuptiUnsubscribe(subscriber);
+}
+
+CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
+                                          const char** str) {
+  return dynload::cuptiGetResultString(result, str);
 }
 
 }  // namespace profiler

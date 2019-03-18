@@ -286,8 +286,8 @@ class MultiDeviceIterator(object):
     # TODO(jsimsa): Enable auto-tuning and optimizations when supported for
     # non-CPU devices.
     options = dataset_ops.Options()
-    options.experimental_autotune = False
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.autotune = False
     ds = ds.with_options(options)
     return ds
 

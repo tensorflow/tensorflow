@@ -205,6 +205,10 @@ Status XlaCompilationCache::CompileSingleOp(
   NameAttrList name;
   name.set_name(def.op());
   *name.mutable_attr() = def.attr();
+  // Remove the "_class" attribute from the attribute set used to create the
+  // compilation cache key. This attribute is information for the colocator
+  // and causes false uniqueness between nodes.
+  name.mutable_attr()->erase("_class");
   auto compile_op = [&](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
     std::vector<DataType> result_dtypes(ctx->num_outputs());

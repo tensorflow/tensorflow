@@ -54,7 +54,7 @@ both floating point and quantized inference.
 ### Train a custom model
 
 A developer may choose to train a custom model using Tensorflow (see the
-[TensorFlow tutorials](../tutorials/) for examples of building and training
+[TensorFlow tutorials](https://www.tensorflow.org/tutorials/) for examples of building and training
 models). If you have already written a model, the first step is to export this
 to a `tf.GraphDef` file. This is required because some formats do not store the
 model structure outside the code, and we must communicate with other parts of
@@ -69,7 +69,7 @@ grow in future Tensorflow Lite releases.
 
 ## 2. Convert the model format
 
-The [TensorFlow Lite Converter](../convert.md) accepts the following file
+The [TensorFlow Lite Converter](../convert/index.md) accepts the following file
 formats:
 
 *   `SavedModel` — A `GraphDef` and checkpoint with a signature that labels
@@ -154,7 +154,7 @@ the arguments for specifying the output nodes for inference in the
 
 ### Full converter reference
 
-The [TensorFlow Lite Converter](../convert.md) can be
+The [TensorFlow Lite Converter](../convert/index.md) can be
 [Python](../convert/python_api.md) or from the
 [command line](../convert/cmdline_examples.md). This allows you to integrate the
 conversion step into the model design workflow, ensuring the model is easy to
@@ -162,7 +162,7 @@ convert to a mobile inference graph.
 
 ### Ops compatibility
 
-Refer to the [ops compatibility guide](tf_ops_compatibility.md) for
+Refer to the [ops compatibility guide](ops_compatibility.md) for
 troubleshooting help, and if that doesn't help, please
 [file an issue](https://github.com/tensorflow/tensorflow/issues).
 

@@ -523,8 +523,8 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       self.assertEqual(len(model.inputs), 2)
       self.assertEqual(g.name, 'model/dense_2/BiasAdd:0')
 
-      self.assertListEqual(g.shape.as_list(), c.get_shape().as_list())
-      self.assertListEqual(h.shape.as_list(), d.get_shape().as_list())
+      self.assertListEqual(g.shape.as_list(), c.shape.as_list())
+      self.assertListEqual(h.shape.as_list(), d.shape.as_list())
 
       # test separate manipulation of different layer outputs
       i = keras.layers.Dense(7, name='dense_4')(h)
@@ -1179,6 +1179,18 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
       mask_outputs_val = func([model_input])
       self.assertAllClose(mask_outputs_val[0], np.any(model_input, axis=-1))
       self.assertAllClose(mask_outputs_val[1], np.any(model_input, axis=-1))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_external_keras_serialization_compat(self):
+    inputs = keras.Input(shape=(10,))
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    config = model.get_config()
+    # Checks that single inputs and outputs are still saved as 1-element lists.
+    # Saving as 1-element lists or not is equivalent in TF Keras, but only the
+    # 1-element list format is supported in TF.js and keras-team/Keras.
+    self.assertLen(config['input_layers'], 1)
+    self.assertLen(config['output_layers'], 1)
 
 
 class GraphUtilsTest(test.TestCase):

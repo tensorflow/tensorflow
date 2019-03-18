@@ -59,6 +59,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
@@ -192,8 +193,17 @@ class DatasetV2(object):
       else:
         dataset = _OptimizeDataset(dataset, static_optimizations)
 
-    if options.experimental_autotune is not False:
-      dataset = _ModelDataset(dataset)
+    autotune = True
+    cpu_budget = 0  # Indicates that all CPU cores should be used.
+    if options.experimental_optimization is not None:
+      if options.experimental_optimization.autotune is False:  # pylint: disable=g-bool-id-comparison
+        autotune = False
+      if options.experimental_optimization.autotune_cpu_budget is not None:
+        cpu_budget = options.experimental_optimization.autotune_cpu_budget
+
+    if autotune:
+      dataset = _ModelDataset(dataset, cpu_budget)
+
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
       dataset = _SetStatsAggregatorDataset(  # pylint: disable=protected-access
           dataset, options.experimental_stats.aggregator,
@@ -1178,7 +1188,9 @@ class DatasetV2(object):
     """
     dataset = transformation_func(self)
     if not isinstance(dataset, DatasetV2):
-      raise TypeError("`transformation_func` must return a Dataset.")
+      raise TypeError(
+          "`transformation_func` must return a Dataset. Got {}.".format(
+              dataset))
     dataset._input_datasets = [self]  # pylint: disable=protected-access
     return dataset
 
@@ -1945,13 +1957,6 @@ class Options(options_lib.OptionsBase):
   `tf.data.Dataset.interleave`.
   """
 
-  experimental_autotune = options_lib.create_option(
-      name="experimental_autotune",
-      ty=bool,
-      docstring=
-      "Whether to dynamically adjust the values of tunable parameters (e.g. "
-      "degrees of parallelism). If None, defaults to True.")
-
   experimental_deterministic = options_lib.create_option(
       name="experimental_deterministic",
       ty=bool,
@@ -2118,7 +2123,9 @@ class SparseTensorSliceDataset(DatasetSource):
   def __init__(self, sparse_tensor):
     """See `Dataset.from_sparse_tensor_slices()` for details."""
     if not isinstance(sparse_tensor, sparse_tensor_lib.SparseTensor):
-      raise TypeError("`sparse_tensor` must be a `tf.SparseTensor` object.")
+      raise TypeError(
+          "`sparse_tensor` must be a `tf.SparseTensor` object. Was {}.".format(
+              sparse_tensor))
     self._sparse_tensor = sparse_tensor
 
     indices_shape = self._sparse_tensor.indices.get_shape()
@@ -2297,25 +2304,21 @@ class StructuredFunctionWrapper(object):
         [readable_transformation_name,
          function_utils.get_func_name(func)])
 
-    def _warn_if_collections(transformation_name, graph, initial_length):
+    def _warn_if_collections(transformation_name):
       """Prints a warning if the given graph uses common graph collections.
 
-      NOTE(mrry): Currently a warning is only generated for lookup tables. Any
+      NOTE(mrry): Currently a warning is only generated for resources. Any
       variables created will be automatically hoisted out to the outermost scope
       using `init_scope()`. Some collections (such as for control-flow contexts)
       are benign and should not generate a warning.
 
       Args:
         transformation_name: A human-readable name for the transformation.
-        graph: The graph to check for collections.
-        initial_length: The initial length of the lookup table collection.
       """
-      length = len(graph.get_collection(ops.GraphKeys.TABLE_INITIALIZERS))
-      if length != initial_length:
-        warnings.warn("Creating lookup tables inside a function passed to %s "
-                      "is not supported. Create each table outside the "
-                      "function, and capture it inside the function to use it."
-                      % transformation_name)
+      warnings.warn("Creating resources inside a function passed to %s "
+                    "is not supported. Create each resource outside the "
+                    "function, and capture it inside the function to use it." %
+                    transformation_name, stacklevel=5)
 
     def _wrapper_helper(*args):
       """Wrapper for passing nested structures to and from tf.data functions."""
@@ -2353,16 +2356,21 @@ class StructuredFunctionWrapper(object):
           **defun_kwargs)
       def wrapper_fn(*args):
         ret = _wrapper_helper(*args)
-        _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
+        # _warn_if_collections(transformation_name, ops.get_default_graph(), 0)
         return self._output_structure._to_tensor_list(ret)
 
       self._function = wrapper_fn
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-      else:
-        # Use the private method that will execute `wrapper_fn` but delay adding
-        # it to the graph in case (e.g.) we need to rerun the function.
-        self._function._create_definition_if_needed()
+      resource_tracker = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker):
+        if add_to_graph:
+          self._function.add_to_graph(ops.get_default_graph())
+        else:
+          # Use the private method that will execute `wrapper_fn` but delay
+          # adding it to the graph in case (e.g.) we need to rerun the function.
+          self._function._create_definition_if_needed()
+      if resource_tracker.resources:
+        _warn_if_collections(transformation_name)
+
     else:
       defun_kwargs.update({"func_name": func_name})
 
@@ -2382,24 +2390,22 @@ class StructuredFunctionWrapper(object):
         ret = self._output_structure._to_tensor_list(ret)
         return [ops.convert_to_tensor(t) for t in ret]
 
-      initial_length = len(ops.get_default_graph().get_collection(
-          ops.GraphKeys.TABLE_INITIALIZERS))
-
-      self._function = wrapper_fn._get_concrete_function_internal()
-      if add_to_graph:
-        self._function.add_to_graph(ops.get_default_graph())
-
-      _warn_if_collections(transformation_name, self._function.graph,
-                           initial_length)
+      resource_tracker = tracking.ResourceTracker()
+      with tracking.resource_tracker_scope(resource_tracker):
+        self._function = wrapper_fn._get_concrete_function_internal()
+        if add_to_graph:
+          self._function.add_to_graph(ops.get_default_graph())
+      if resource_tracker.resources:
+        _warn_if_collections(transformation_name)
 
       outer_graph_seed = ops.get_default_graph().seed
       if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
         if self._function.graph._seed_used:
           warnings.warn(
-              "Seed %s from outer graph might be getting used by function %s,"
-              " if you have not provided any seed to the random op. "
-              "Explicitly set the seed in the function if this is not "
-              "the intended behavior." % (outer_graph_seed, func_name))
+              "Seed %s from outer graph might be getting used by function %s, "
+              "if the random op has not been provided any seed. Explicitly set "
+              "the seed in the function if this is not the intended behavior."
+              %(outer_graph_seed, func_name), stacklevel=4)
   # pylint: enable=protected-access
 
   @property
@@ -2883,7 +2889,11 @@ def _default_padding(input_dataset):
     if t.base_dtype == dtypes.string:
       return ""
     elif t.base_dtype == dtypes.variant:
-      raise TypeError("Unable to create padding for field of type 'variant'")
+      error_msg = ("Unable to create padding for field of type 'variant' "
+                   "because t.base_type == dtypes.variant == "
+                   "{}.".format(
+                       t.base_dtype))
+      raise TypeError(error_msg)
     else:
       return np.zeros_like(t.as_numpy_dtype())
 
@@ -3064,7 +3074,9 @@ class FlatMapDataset(UnaryDataset):
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetStructure):
-      raise TypeError("`map_func` must return a `Dataset` object.")
+      raise TypeError(
+          "`map_func` must return a `Dataset` object. Got {}".format(
+              type(self._map_func.output_structure)))
     self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
     variant_tensor = gen_dataset_ops.flat_map_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3094,7 +3106,9 @@ class InterleaveDataset(UnaryDataset):
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetStructure):
-      raise TypeError("`map_func` must return a `Dataset` object.")
+      raise TypeError(
+          "`map_func` must return a `Dataset` object. Got {}".format(
+              type(self._map_func.output_structure)))
     self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -3122,8 +3136,7 @@ class InterleaveDataset(UnaryDataset):
 
 
 class ParallelInterleaveDataset(UnaryDataset):
-  """A `Dataset` that maps a function over its input and interleaves the result.
-  """
+  """A `Dataset` that maps a function over its input and interleaves the result."""
 
   def __init__(self, input_dataset, map_func, cycle_length, block_length,
                num_parallel_calls):
@@ -3132,7 +3145,9 @@ class ParallelInterleaveDataset(UnaryDataset):
     self._map_func = StructuredFunctionWrapper(
         map_func, self._transformation_name(), dataset=input_dataset)
     if not isinstance(self._map_func.output_structure, DatasetStructure):
-      raise TypeError("`map_func` must return a `Dataset` object.")
+      raise TypeError(
+          "`map_func` must return a `Dataset` object. Got {}".format(
+              type(self._map_func.output_structure)))
     self._structure = self._map_func.output_structure._element_structure  # pylint: disable=protected-access
     self._cycle_length = ops.convert_to_tensor(
         cycle_length, dtype=dtypes.int64, name="cycle_length")
@@ -3175,7 +3190,10 @@ class FilterDataset(UnaryUnchangedStructureDataset):
         use_legacy_function=use_legacy_function)
     if not wrapped_func.output_structure.is_compatible_with(
         structure_lib.TensorStructure(dtypes.bool, [])):
-      raise ValueError("`predicate` must return a scalar boolean tensor.")
+      error_msg = ("`predicate` return type must be convertible to a scalar "
+                   "boolean tensor. Was {}.").format(
+                       wrapped_func.output_structure)
+      raise ValueError(error_msg)
     self._predicate = wrapped_func
     variant_tensor = gen_dataset_ops.filter_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -3265,10 +3283,11 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
-  def __init__(self, input_dataset):
+  def __init__(self, input_dataset, cpu_budget):
     self._input_dataset = input_dataset
     variant_tensor = gen_dataset_ops.model_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
+        cpu_budget=cpu_budget,
         **flat_structure(self))
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 

@@ -26,8 +26,6 @@
 #   CONTAINER_TYPE:      (CPU | GPU)
 #   OS_TYPE:             (UBUNTU | MACOS)
 #   TF_PYTHON_VERSION:   (python2 | python2.7 | python3.5 | python3.7)
-#
-# Optional environment variables. If provided, overwrites any default values.
 #   TF_BUILD_FLAGS:      Bazel build flags.
 #                          e.g. TF_BUILD_FLAGS="--config=opt"
 #   TF_TEST_FLAGS:       Bazel test flags.
@@ -40,13 +38,15 @@
 #                          e.g. TF_TEST_TARGETS="//tensorflow/... \
 #                               -//tensorflow/contrib/... \
 #                               -//tensorflow/python/..."
+#   IS_NIGHTLY:          Nightly run flag.
+#                          e.g. IS_NIGHTLY=1  # nightly runs
+#                          e.g. IS_NIGHTLY=0  # non-nightly runs
+#
+# Optional environment variables. If provided, overwrites any default values.
 #   TF_PIP_TESTS:        PIP tests to run. If NOT specified, skips all tests.
 #                          e.g. TF_PIP_TESTS="test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_oss_serial"
-#   IS_NIGHTLY:          Nightly run flag.
-#                          e.g. IS_NIGHTLY=1  # nightly runs
-#                          e.g. IS_NIGHTLY=0  # non-nightly runs
 #   TF_PROJECT_NAME:     Name of the project. This string will be pass onto
 #                        the wheel file name. For nightly builds, it will be
 #                        overwritten to 'tf_nightly'. For gpu builds, '_gpu'
@@ -59,9 +59,11 @@
 # To-be-deprecated variable(s).
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
 #                        in as `--action_env` for bazel build and tests.
-#   TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES
+#   TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES:
 #                        Additonal pip packages to be installed.
 #                        Caveat: pip version needs to be checked prior.
+#
+# ==============================================================================
 
 # set bash options
 set -e
@@ -95,7 +97,27 @@ check_global_vars() {
   # Check OS type
   if ! [[ ${OS_TYPE} == "ubuntu" ]] && \
      ! [[ ${OS_TYPE} == "macos" ]]; then
-    die"Error: Provided OS_TYPE \"${OS_TYPE}\" is not supported."
+    die "Error: Provided OS_TYPE \"${OS_TYPE}\" is not supported."
+  fi
+  # Check build flags
+  if [[ -z ${TF_BUILD_FLAGS} ]]; then
+    die "Error: TF_BUILD_FLAGS is not specified."
+  fi
+  # Check test flags
+  if [[ -z ${TF_TEST_FLAGS} ]]; then
+    die "Error: TF_TEST_FLAGS is not specified."
+  fi
+  # Check test filter tags
+  if [[ -z ${TF_TEST_FILTER_TAGS} ]]; then
+    die "Error: TF_TEST_FILTER_TAGS is not specified."
+  fi
+  # Check test targets
+  if [[ -z ${TF_TEST_TARGETS} ]]; then
+    die "Error: TF_TEST_TARGETS is not specified."
+  fi
+  # Check nightly status
+  if [[ -z ${IS_NIGHTLY} ]]; then
+    die "Error: IS_NIGHTLY is not specified."
   fi
 }
 
@@ -103,8 +125,8 @@ add_test_filter_tag() {
   EMPTY=""
   while true; do
     FILTER="${1:$EMPTY}"
-    if ! [[ $BAZEL_TEST_FILTER_TAGS == *"${FILTER}"* ]]; then
-      BAZEL_TEST_FILTER_TAGS="${FILTER},${BAZEL_TEST_FILTER_TAGS}"
+    if ! [[ $TF_TEST_FILTER_TAGS == *"${FILTER}"* ]]; then
+      TF_TEST_FILTER_TAGS="${FILTER},${TF_TEST_FILTER_TAGS}"
     fi
     shift
     if [[ -z "${1}" ]]; then
@@ -117,7 +139,7 @@ remove_test_filter_tag() {
   EMPTY=""
   while true; do
     FILTER="${1:$EMPTY}"
-    BAZEL_TEST_FILTER_TAGS="$(echo ${BAZEL_TEST_FILTER_TAGS} | sed -e 's/^'${FILTER}',//g' -e 's/,'${FILTER}'//g')"
+    TF_TEST_FILTER_TAGS="$(echo ${TF_TEST_FILTER_TAGS} | sed -e 's/^'${FILTER}',//g' -e 's/,'${FILTER}'//g')"
     shift
     if [[ -z "${1}" ]]; then
       break
@@ -130,15 +152,15 @@ update_bazel_flags() {
   # Add git tag override flag if necessary.
   GIT_TAG_STR=" --action_env=GIT_TAG_OVERRIDE"
   if [[ -z "${GIT_TAG_OVERRIDE}" ]] && \
-    ! [[ ${BAZEL_BUILD_FLAGS} = *${GIT_TAG_STR}* ]]; then
-    BAZEL_BUILD_FLAGS+="${GIT_TAG_STR}"
+    ! [[ ${TF_BUILD_FLAGS} = *${GIT_TAG_STR}* ]]; then
+    TF_BUILD_FLAGS+="${GIT_TAG_STR}"
   fi
   # Clean up whitespaces
-  BAZEL_BUILD_FLAGS=$(str_strip "${BAZEL_BUILD_FLAGS}")
-  BAZEL_TEST_FLAGS=$(str_strip "${BAZEL_TEST_FLAGS}")
+  TF_BUILD_FLAGS=$(str_strip "${TF_BUILD_FLAGS}")
+  TF_TEST_FLAGS=$(str_strip "${TF_TEST_FLAGS}")
   # Cleaned bazel flags
-  echo "Bazel build flags (cleaned):\n" "${BAZEL_BUILD_FLAGS}"
-  echo "Bazel test flags (cleaned):\n" "${BAZEL_TEST_FLAGS}"
+  echo "Bazel build flags (cleaned):\n" "${TF_BUILD_FLAGS}"
+  echo "Bazel test flags (cleaned):\n" "${TF_TEST_FLAGS}"
 }
 
 update_test_filter_tags() {
@@ -150,7 +172,7 @@ update_test_filter_tags() {
     remove_test_filter_tag nomac no_mac
     add_test_filter_tag -nomac -no_mac
   fi
-  echo "Final test filter tags: ${BAZEL_TEST_FILTER_TAGS}"
+  echo "Final test filter tags: ${TF_TEST_FILTER_TAGS}"
 }
 
 # Check currently running python and pip version
@@ -208,24 +230,12 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "Error: PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 
-# Default values for optional global variables in case they are not user
-# defined.
-DEFAULT_BAZEL_BUILD_FLAGS='--config=opt'
-DEFAULT_BAZEL_TEST_FLAGS='--test_output=errors --verbose_failures=true'
-DEFAULT_BAZEL_TEST_FILTERS='-no_oss,-oss_serial'
-DEFAULT_BAZEL_TEST_TARGETS='//tensorflow/python/... -//tensorflow/core/... -//tensorflow/compiler/... '
+# Set optional environment variables; set to default in case not user defined.
 DEFAULT_PIP_TESTS="" # Do not run any tests by default
-DEFAULT_IS_NIGHTLY=0 # Not nightly by default
 DEFAULT_PROJECT_NAME="tensorflow"
 DEFAULT_PIP_TEST_ROOT="pip_test"
-
 # Take in optional global variables
-BAZEL_BUILD_FLAGS=${TF_BUILD_FLAGS:-$DEFAULT_BAZEL_BUILD_FLAGS}
-BAZEL_TEST_FLAGS=${TF_TEST_FLAGS:-$DEFAULT_BAZEL_TEST_FLAGS}
-BAZEL_TEST_TARGETS=${TF_TEST_TARGETS:-$DEFAULT_BAZEL_TEST_TARGETS}
-BAZEL_TEST_FILTER_TAGS=${TF_TEST_FILTER_TAGS:-$DEFAULT_BAZEL_TEST_FILTERS}
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
-IS_NIGHTLY=${IS_NIGHTLY:-$DEFAULT_IS_NIGHTLY}
 PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
 PIP_TEST_ROOT=${TF_PIP_TEST_ROOT:-$DEFAULT_PIP_TEST_ROOT}
 
@@ -283,55 +293,36 @@ bazel clean
 # Clean up and update bazel flags
 update_bazel_flags
 # Build. This outputs the file `build_pip_package`.
-bazel build ${BAZEL_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
+bazel build ${TF_BUILD_FLAGS} ${PIP_BUILD_TARGET} || \
   die "Error: Bazel build failed for target: '${PIP_BUILD_TARGET}'"
 
 ###########################################################################
 # Test function(s)
 ###########################################################################
 
-test_pip_virtualenv_clean() {
-  # Create a clean directory.
-  CLEAN_VENV_DIR="${PIP_TEST_ROOT}/venv_clean"
+test_pip_virtualenv() {
+  # Get args
+  VENV_DIR_NAME=$1
+  shift
+  TEST_TYPE_FLAG=$1
 
-  # activate virtual environment and install tensorflow with PIP.
-  create_activate_virtualenv --clean "${CLEAN_VENV_DIR}"
-  # Install TF with pip
-  install_tensorflow_pip "${WHL_PATH}"
-
-  # cd to a temporary directory to avoid picking up Python files in the source
-  # tree.
-  TMP_DIR=$(mktemp -d)
-  pushd "${TMP_DIR}"
-
-  # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
-
-  # Deactivate virtualenv.
-  deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
-
-  # Return to original directory. Remove temp dirs.
-  popd
-  sudo rm -rf "${TMP_DIR}" "${CLEAN_VENV_DIR}"
-
-  # Check result to see if tensorflow is properly installed.
-  if [[ ${RET_VAL} == *'(4,)'* ]]; then
-    echo "PIP test on clean virtualenv PASSED."
-    return 0
-  else
-    echo "PIP test on clean virtualenv FAILED."
-    return 1
+  # Check test type args
+  if ! [[ ${TEST_TYPE_FLAG} == "--oss_serial" ]] && \
+     ! [[ ${TEST_TYPE_FLAG} == "--clean" ]] && \
+     ! [[ ${TEST_TYPE_FLAG} == "" ]]; then
+     die "Error: Wrong test type given. TEST_TYPE_FLAG=${TEST_TYPE_FLAG}"
   fi
-}
 
-test_pip_virtualenv_non_clean() {
-  # Create virtualenv directory for install test
-  VENV_DIR="${PIP_TEST_ROOT}/venv"
+  # Create virtualenv directory for test
+  VENV_DIR="${PIP_TEST_ROOT}/${VENV_DIR_NAME}"
 
   # Activate virtualenv
-  create_activate_virtualenv "${VENV_DIR}"
+  create_activate_virtualenv ${TEST_TYPE_FLAG} ${VENV_DIR}
   # Install TF with pip
+  TIME_START=$SECONDS
   install_tensorflow_pip "${WHL_PATH}"
+  TIME_ELAPSED=$(($SECONDS - $TIME_START))
+  echo "Time elapsed installing tensorflow = ${TIME_ELAPSED} seconds"
 
   # cd to a temporary directory to avoid picking up Python files in the source
   # tree.
@@ -364,40 +355,14 @@ test_pip_virtualenv_non_clean() {
   done
 
   # Run bazel test.
-  run_test_with_bazel
+  run_test_with_bazel ${TEST_TYPE_FLAG}
   RESULT=$?
 
   # Deactivate from virtualenv.
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
   sudo rm -rf "${VENV_DIR}"
 
-  if [[ $RESULT -ne 0 ]]; then
-    echo "PIP test on virtualenv (non-clean) FAILED."
-    return 1
-  else
-    echo "PIP test on virtualenv (non-clean) PASSED."
-    return 0
-  fi
-}
-
-test_pip_virtualenv_oss_serial() {
-  # Create virtualenv directory
-  VENV_DIR="${PIP_TEST_ROOT}/venv"
-
-  create_activate_virtualenv "${VENV_DIR}"
-  run_test_with_bazel --oss_serial
-  RESULT=$?
-
-  # deactivate virtualenv
-  deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
-
-  if [[ ${RESULT} -ne 0 ]]; then
-    echo "PIP test on virtualenv (oss-serial) FAILED."
-    return 1
-  else
-    echo "PIP test on virtualenv (oss-serial) PASSED."
-    return 0
-  fi
+  return $RESULT
 }
 
 ###########################################################################
@@ -407,6 +372,9 @@ test_pip_virtualenv_oss_serial() {
 create_activate_virtualenv() {
   VIRTUALENV_FLAGS="--system-site-packages"
   if [[ "${1}" == "--clean" ]]; then
+    VIRTUALENV_FLAGS=""
+    shift
+  elif [[ "{1}" == "--oss_serial" ]]; then
     shift
   fi
 
@@ -539,14 +507,14 @@ run_test_with_bazel() {
   fi
 
   TEST_TARGETS_SYMLINK=""
-  for TARGET in ${BAZEL_TEST_TARGETS[@]}; do
+  for TARGET in ${TF_TEST_TARGETS[@]}; do
     TARGET_NEW=$(echo ${TARGET} | sed -e "s/\/\//\/\/${PIP_TEST_PREFIX}\//g")
     TEST_TARGETS_SYMLINK+="${TARGET_NEW} "
   done
   echo "Test targets (symlink): ${TEST_TARGETS_SYMLINK}"
 
   # Run the test.
-  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- ${TEST_TARGETS_SYMLINK}
+  bazel test --build_tests_only ${TF_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${TF_TEST_FILTER_TAGS} -k -- ${TEST_TARGETS_SYMLINK}
 
   unlink ${TEST_ROOT}/tensorflow
 }
@@ -563,13 +531,13 @@ run_all_tests() {
     # Run tests.
     case "${TEST}" in
     "test_pip_virtualenv_clean")
-      test_pip_virtualenv_clean
+      test_pip_virtualenv venv_clean --clean
       ;;
     "test_pip_virtualenv_non_clean")
-      test_pip_virtualenv_non_clean
+      test_pip_virtualenv venv
       ;;
     "test_pip_virtualenv_oss_serial")
-      test_pip_virtualenv_oss_serial
+      test_pip_virtualenv venv_oss --oss_serial
       ;;
     *)
       die "No matching test ${TEST} was found. Stopping test."
@@ -661,18 +629,16 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     echo "Copied manylinux1 wheel file at ${WHL_PATH}"
   else
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
-      # Repair the wheels for cpu manylinux1
-      echo "auditwheel repairing ${WHL_PATH}"
-
-      # Get pip binary name again
-      PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
-
-      ${PIP_BIN_PATH} show auditwheel
+      # Avoid Python3.6 abnormality by installing auditwheel here.
+      pip3 show auditwheel
       set +e
-      ${PIP_BIN_PATH} install auditwheel==1.5.0
-      sudo ${PIP_BIN_PATH} install auditwheel==1.5.0
+      pip3 install auditwheel==1.5.0
+      sudo pip3 install auditwheel==1.5.0
       set -e
       auditwheel --version
+
+      # Repair the wheels for cpu manylinux1
+      echo "auditwheel repairing ${WHL_PATH}"
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
       if [[ -f ${AUDITED_WHL_NAME} ]]; then

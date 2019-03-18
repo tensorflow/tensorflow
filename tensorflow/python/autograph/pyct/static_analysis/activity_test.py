@@ -112,14 +112,13 @@ class ScopeTest(test.TestCase):
 class ActivityAnalyzerTest(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, source = parser.parse_entity(test_fn)
+    node, source, _ = parser.parse_entity(test_fn)
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace={},
         arg_values=None,
-        arg_types=None,
-        owner_type=None)
+        arg_types=None)
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)
@@ -150,7 +149,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return c
 
     node, _ = self._parse_and_analyze(test_fn)
-    print_node = node.body[0].body[2]
+    print_node = node.body[2]
     if isinstance(print_node, gast.Print):
       # Python 2
       print_args_scope = anno.getanno(print_node, NodeAnno.ARGS_SCOPE)
@@ -173,7 +172,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return c
 
     node, _ = self._parse_and_analyze(test_fn)
-    call_node = node.body[0].body[2].value
+    call_node = node.body[2].value
     # We basically need to detect which variables are captured by the call
     # arguments.
     self.assertScopeIs(
@@ -190,7 +189,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return a.d
 
     node, _ = self._parse_and_analyze(test_fn)
-    call_node = node.body[0].body[1].value
+    call_node = node.body[1].value
     self.assertScopeIs(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE), ('a', 'a.b', 'a.c'), ())
 
@@ -206,7 +205,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return a[c]
 
     node, _ = self._parse_and_analyze(test_fn)
-    call_node = node.body[0].body[2].value
+    call_node = node.body[2].value
     self.assertScopeIs(
         anno.getanno(call_node, NodeAnno.ARGS_SCOPE),
         ('a', 'a[0]', 'a[b]', 'b'), ())
@@ -221,7 +220,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return b, c
 
     node, _ = self._parse_and_analyze(test_fn)
-    while_node = node.body[0].body[1]
+    while_node = node.body[1]
     self.assertScopeIs(
         anno.getanno(while_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'))
     self.assertScopeIs(
@@ -240,7 +239,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return b, c
 
     node, _ = self._parse_and_analyze(test_fn)
-    for_node = node.body[0].body[1]
+    for_node = node.body[1]
     self.assertScopeIs(
         anno.getanno(for_node, NodeAnno.BODY_SCOPE), ('b',), ('b', 'c'))
     self.assertScopeIs(
@@ -261,7 +260,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return z, u
 
     node, _ = self._parse_and_analyze(test_fn)
-    if_node = node.body[0].body[0]
+    if_node = node.body[0]
     self.assertScopeIs(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('x', 'y', 'z'))
     self.assertScopeIs(
@@ -286,7 +285,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return d
 
     node, _ = self._parse_and_analyze(test_fn)
-    if_node = node.body[0].body[0]
+    if_node = node.body[0]
     self.assertScopeIs(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('a', 'a.c'), ('a.b', 'd'))
     self.assertScopeIs(
@@ -308,7 +307,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return d
 
     node, _ = self._parse_and_analyze(test_fn)
-    if_node = node.body[0].body[0]
+    if_node = node.body[0]
     self.assertScopeIs(
         anno.getanno(if_node, NodeAnno.BODY_SCOPE), ('a', 'b', 'c', 'a[c]'),
         ('a[b]', 'd'))
@@ -330,7 +329,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return a
 
     node, _ = self._parse_and_analyze(test_fn)
-    inner_if_node = node.body[0].body[0].body[0]
+    inner_if_node = node.body[0].body[0]
     self.assertScopeIs(
         anno.getanno(inner_if_node, NodeAnno.BODY_SCOPE), ('b',), ('a',))
     self.assertScopeIs(
@@ -351,7 +350,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return b, c
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_def_node = node.body[0].body[0]
+    fn_def_node = node.body[0]
 
     self.assertScopeIs(
         anno.getanno(fn_def_node, NodeAnno.BODY_SCOPE), ('x', 'y'), ('y',))
@@ -365,7 +364,7 @@ class ActivityAnalyzerTest(test.TestCase):
         self.b.c = 1
 
     node, _ = self._parse_and_analyze(TestClass)
-    init_node = node.body[0].body[0]
+    init_node = node.body[0]
     self.assertScopeIs(
         anno.getanno(init_node, NodeAnno.BODY_SCOPE), ('self', 'a', 'self.b'),
         ('self', 'self.b', 'self.b.c'))
@@ -376,7 +375,7 @@ class ActivityAnalyzerTest(test.TestCase):
       a[0] += 1
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     self.assertScopeIs(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('a', 'a[0]'), ('a[0]',))
 
@@ -386,7 +385,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return c
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     self.assertScopeIs(anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('c',), ())
 
   def test_aug_assign(self):
@@ -395,7 +394,7 @@ class ActivityAnalyzerTest(test.TestCase):
       a += b
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     self.assertScopeIs(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('a', 'b'), ('a'))
 
@@ -410,7 +409,7 @@ class ActivityAnalyzerTest(test.TestCase):
       foo()['bar'] += x
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     self.assertScopeIs(
         anno.getanno(fn_node, NodeAnno.BODY_SCOPE), ('foo', 'x'), ())
 
@@ -420,7 +419,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return b
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('b',), ())
     self.assertScopeIs(body_scope.parent, ('b',), ('a', 'b'))
@@ -434,7 +433,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return lambda: a + b
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('a', 'b'), ())
     # Nothing local to the lambda is tracked.
@@ -446,7 +445,7 @@ class ActivityAnalyzerTest(test.TestCase):
       return lambda a: a + b
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('b',), ())
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
@@ -457,7 +456,7 @@ class ActivityAnalyzerTest(test.TestCase):
       a = (lambda a, b, c: a + b + c)(d, 1, 2) + b
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('b', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')
@@ -468,7 +467,7 @@ class ActivityAnalyzerTest(test.TestCase):
       a = lambda a, b: d(lambda b: a + b + c)  # pylint: disable=undefined-variable
 
     node, _ = self._parse_and_analyze(test_fn)
-    fn_node = node.body[0]
+    fn_node = node
     body_scope = anno.getanno(fn_node, NodeAnno.BODY_SCOPE)
     self.assertScopeIs(body_scope, ('c', 'd'), ('a',))
     self.assertSymbolSetsAre((), body_scope.params.keys(), 'params')

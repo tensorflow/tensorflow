@@ -372,7 +372,7 @@ cc_library(
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
-        ":nccl_all_reduce_thunk",
+        ":nccl_all_reduce_thunk",  # fixdeps: keep
         ":outfeed_manager",
         ":partition_assignment",
         ":stream_assignment",
@@ -407,6 +407,7 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -582,6 +583,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:instruction_fusion",
         "//tensorflow/compiler/xla/service:pattern_matcher",
+        "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
@@ -703,6 +705,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_cost_analysis",
         "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/compiler/xla/service/llvm_ir:fused_ir_emitter",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
@@ -776,8 +779,8 @@ cc_library(
     srcs = ["gpu_transfer_manager.cc"],
     hdrs = ["gpu_transfer_manager.h"],
     deps = [
-        ":gpu_compiler",
         ":infeed_manager",
+        ":nvptx_compiler",
         ":outfeed_manager",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -799,7 +802,7 @@ cc_library(
 )
 
 cc_library(
-    name = "gpu_compiler",
+    name = "nvptx_compiler",
     srcs = ["nvptx_compiler.cc"],
     hdrs = ["nvptx_compiler.h"],
     deps = [
@@ -839,6 +842,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:conditional_simplifier",
         "//tensorflow/compiler/xla/service:convolution_group_converter",
         "//tensorflow/compiler/xla/service:dot_decomposer",
+        "//tensorflow/compiler/xla/service:dump",
         "//tensorflow/compiler/xla/service:dynamic_index_splitter",
         "//tensorflow/compiler/xla/service:executable",
         "//tensorflow/compiler/xla/service:flatten_call_graph",
@@ -1100,6 +1104,7 @@ cc_library(
     hdrs = ["gpu_fusible.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
     ],
 )

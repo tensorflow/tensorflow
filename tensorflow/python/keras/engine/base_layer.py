@@ -465,13 +465,9 @@ class Layer(trackable.Trackable):
       with context.graph_mode():
         graph = func_graph.FuncGraph('graph')
         with graph.as_default():
-          if isinstance(input_shape, list):
-            inputs = [base_layer_utils.generate_placeholders_from_shape(shape)
-                      for shape in input_shape]
-          else:
-            inputs = base_layer_utils.generate_placeholders_from_shape(
-                input_shape)
-
+          input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
+          inputs = nest.map_structure(
+              base_layer_utils.generate_placeholders_from_shape, input_shape)
           try:
             if self._expects_training_arg:
               outputs = self(inputs, training=False)
@@ -483,10 +479,7 @@ class Layer(trackable.Trackable):
                                       ' Please implement the '
                                       '`compute_output_shape` method on your '
                                       'layer (%s).' % self.__class__.__name__)
-      if isinstance(outputs, list):
-        return [output.shape for output in outputs]
-      else:
-        return outputs.shape
+      return nest.map_structure(lambda t: t.shape, outputs)
     raise NotImplementedError
 
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
@@ -721,9 +714,7 @@ class Layer(trackable.Trackable):
 
   @property
   def updates(self):
-    if not self.trainable and not self.stateful:
-      return []
-    return self._updates + self._gather_children_attribute('updates')
+    return self._get_unfiltered_updates(check_trainable=True)
 
   @property
   def losses(self):
@@ -826,10 +817,11 @@ class Layer(trackable.Trackable):
       value: Metric tensor.
       aggregation: Sample-wise metric reduction function. If `aggregation=None`,
         it indicates that the metric tensor provided has been aggregated
-        already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
-        y_pred))`. If aggregation='mean', the given metric tensor will be
-        sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
+        already. eg, `bin_acc = BinaryAccuracy(name='acc')` followed by
+        `model.add_metric(bin_acc(y_true, y_pred))`. If aggregation='mean', the
+        given metric tensor will be sample-wise reduced using `mean` function.
+        eg, `model.add_metric(tf.reduce_sum(outputs), name='output_mean',
+        aggregation='mean')`.
       name: String metric name.
 
     Raises:
@@ -851,7 +843,8 @@ class Layer(trackable.Trackable):
 
       # We will not raise this error in the foll use case for the sake of
       # consistency as name in provided in the metric constructor.
-      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      # mean = metrics.Mean(name='my_metric')
+      # model.add_metric(mean(outputs))
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
@@ -972,13 +965,15 @@ class Layer(trackable.Trackable):
 
     if inputs is None:
       # Requesting unconditional updates.
-      return [x for x in self._unfiltered_updates if x._unconditional_update]  # pylint: disable=protected-access
+      return [
+          x for x in self._get_unfiltered_updates() if x._unconditional_update  # pylint: disable=protected-access
+      ]
 
     # Requesting input-conditional updates.
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(inputs,
-                                                   self._unfiltered_updates)
-    return [u for u in self._unfiltered_updates if u in reachable]  # pylint: disable=protected-access
+    reachable = tf_utils.get_reachable_from_inputs(
+        inputs, self._get_unfiltered_updates())
+    return [u for u in self._get_unfiltered_updates() if u in reachable]  # pylint: disable=protected-access
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1852,10 +1847,10 @@ class Layer(trackable.Trackable):
   def _is_layer(self):
     return True
 
-  @property
-  def _unfiltered_updates(self):
-    # Overridden in `Network`.
-    return self.updates
+  def _get_unfiltered_updates(self, check_trainable=True):
+    if check_trainable and not self.trainable and not self.stateful:
+      return []
+    return self._updates + self._gather_children_attribute('updates')
 
 
 class Node(object):

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
 
 namespace xla {
 namespace cpu {
@@ -114,6 +115,14 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   // Output fusion is not currently supported on CPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
     VLOG(2) << "Not fusing: producer is itself a fusion node.";
+    return false;
+  }
+
+  // Don't fuse if fusing would cause too much code duplication because of
+  // inefficiencies in the fusion emitter.
+  // TODO(b/119692968): Remove this once the fusion emitter can handle
+  // arbitrary fusion nodes.
+  if (FusedIrEmitter::IsFusedIrEmitterInefficient(consumer, producer)) {
     return false;
   }
 

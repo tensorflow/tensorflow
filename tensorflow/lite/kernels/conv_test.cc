@@ -364,6 +364,18 @@ TEST_P(ConvolutionOpTest, HandCalculatedFloat32) {
   // |  187  |  234  |  261  |  121  |
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({105, 150, 183, 95, 235, 312, 357,
                                                178, 187, 234, 261, 121}));
+
+  // Add an additional test for the multi-threaded case, ensuring stability
+  // under different thread counts.
+  if (GetParam() == "MultithreadedOptimized") {
+    for (int i = 1; i < 4; ++i) {
+      m.SetNumThreads(i);
+      m.Invoke();
+      EXPECT_THAT(m.GetOutput(),
+                  ElementsAreArray({105, 150, 183, 95, 235, 312, 357, 178, 187,
+                                    234, 261, 121}));
+    }
+  }
 }
 
 TEST_P(ConvolutionOpTest, HandCalculatedWithBiasFloat32) {

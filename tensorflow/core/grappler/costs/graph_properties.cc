@@ -686,7 +686,7 @@ class SymbolicShapeRefiner {
 
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
-    TF_RETURN_IF_ERROR(gp.InferStatically(true));
+    TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
 
     // Add return nodes for output shapes.
     int output = 0;
@@ -1244,11 +1244,11 @@ class SymbolicShapeRefiner {
         const DataType& data_type = c->input_types[i];
         int32 rank = ic->Rank(shape_handle);
         if (rank < 1) {
-          input_tensor_vector->emplace_back(Tensor(data_type, {}));
+          input_tensor_vector->at(i) = Tensor(data_type, {});
         } else {
-          input_tensor_vector->emplace_back(Tensor(data_type, {rank}));
+          input_tensor_vector->at(i) = Tensor(data_type, {rank});
         }
-        auto* tensor = &input_tensor_vector->back();
+        auto* tensor = &input_tensor_vector->at(i);
         if (data_type == DT_INT32) {
           auto flat = tensor->flat<int32>();
           for (int j = 0; j < rank; j++) {

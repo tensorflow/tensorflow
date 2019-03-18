@@ -55,8 +55,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_
-          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                lhs->getType(), lhs->getType(), rhs->getType())
+          ->getOrInsertFunction(function_name, lhs->getType(), lhs->getType(),
+                                rhs->getType())
           .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
@@ -90,8 +90,8 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
   // Create a function declaration.
   llvm::Function* function = llvm::dyn_cast<llvm::Function>(
       module_
-          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                value->getType(), value->getType())
+          ->getOrInsertFunction(function_name, value->getType(),
+                                value->getType())
           .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
@@ -114,8 +114,7 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
         std::vector<llvm::Value*> operands;
         for (int i = 0; i < hlo->operand_count(); i++) {
           TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                              operand_to_generator.at(hlo->operand(i))(
-                                  ElementwiseSourceIndex(index, *hlo, i)));
+                              operand_to_generator.at(hlo->operand(i))(index));
           operands.push_back(operand_value);
         }
         return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),

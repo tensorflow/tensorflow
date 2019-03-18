@@ -289,6 +289,21 @@ def getmethodclass(m):
   return None
 
 
+def getfutureimports(entity):
+  """Detects what future imports are necessary to safely execute entity source.
+
+  Args:
+    entity: Any object
+
+  Returns:
+    A tuple of future strings
+  """
+  if not tf_inspect.isfunction(entity):
+    return tuple()
+  return tuple(sorted(name for name, value in entity.__globals__.items()
+                      if getattr(value, '__module__', None) == '__future__'))
+
+
 class SuperWrapperForDynamicAttrs(object):
   """A wrapper that supports dynamic attribute lookup on the super object.
 

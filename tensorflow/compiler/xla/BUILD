@@ -58,6 +58,24 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "comparison_util",
+    srcs = [
+        "comparison_util.cc",
+    ],
+    hdrs = [
+        "comparison_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":statusor",
+        ":types",
+        ":util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "execution_options_util",
     srcs = [
         "execution_options_util.cc",
@@ -828,6 +846,7 @@ cc_library(
     deps =
         [
             ":parse_flags_from_env",
+            ":status",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",

@@ -36,21 +36,12 @@ py_library(
 )
 
 py_library(
-    name = "trt_ops_py",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/compiler/tf2tensorrt:trt_ops",
-        "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
-    ],
-)
-
-py_library(
     name = "trt_convert_py",
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":trt_ops_py",
         ":wrap_conversion",
+        "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
@@ -67,19 +58,12 @@ py_library(
     ],
 )
 
-# TODO(aaroey): this wrapper has been causing troubles of double linking, so
-# either get rid of it, or split to make it contain minimum dependencies.
 tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
     copts = tf_copts(),
-    swig_includes = [
-        "//tensorflow/python:platform/base.i",
-    ],
     deps = [
         "//tensorflow/compiler/tf2tensorrt:py_utils",
-        "//tensorflow/compiler/tf2tensorrt:trt_conversion",
-        "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
         "//third_party/python_runtime:headers",
     ],
 )
@@ -99,7 +83,6 @@ cuda_py_test(
     srcs = ["trt_convert_test.py"],
     additional_deps = [
         ":trt_convert_py",
-        ":trt_ops_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",

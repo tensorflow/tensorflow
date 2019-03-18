@@ -623,7 +623,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
 
     parallel_iterations = parallel_iterations or 32
     if sequence_length is not None:
-      sequence_length = math_ops.to_int32(sequence_length)
+      sequence_length = math_ops.cast(sequence_length, dtypes.int32)
       if sequence_length.get_shape().rank not in (None, 1):
         raise ValueError(
             "sequence_length must be a vector of length batch_size, "
@@ -1367,7 +1367,7 @@ def static_rnn(cell,
       zero_output = nest.pack_sequence_as(
           structure=output_size, flat_sequence=flat_zero_output)
 
-      sequence_length = math_ops.to_int32(sequence_length)
+      sequence_length = math_ops.cast(sequence_length, dtypes.int32)
       min_sequence_length = math_ops.reduce_min(sequence_length)
       max_sequence_length = math_ops.reduce_max(sequence_length)
 

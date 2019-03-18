@@ -276,9 +276,7 @@ class ToBigtableOp : public AsyncOpKernel {
             LOG(ERROR) << "Failure applying mutation on row ("
                        << failure.original_index()
                        << "): " << failure.mutation().row_key()
-                       << " - error: " << failure.status().error_message()
-                       << " (Details: " << failure.status().error_details()
-                       << ").";
+                       << " - error: " << failure.status().message() << ".";
           }
         }
         OP_REQUIRES_ASYNC(

@@ -79,6 +79,24 @@ static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(DivNoNan,
                 DivNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
+// Implementation of MulNoNan. Pseudo-code:
+// if (y == 0) {
+//   return 0
+// } else {
+//   return x * y;
+// }
+static xla::XlaOp MulNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto y_equals_0 = xla::Eq(y, zero);
+  auto zeros = xla::ZerosLike(x);
+  auto result = xla::Select(y_equals_0, zeros, xla::Mul(x, y));
+  return result;
+}
+XLA_MAKE_BINARY(MulNoNan,
+                MulNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+
 // Implementation of FloorDiv.
 //
 // For floating-point values, simply returns floor(x / y).  For integers, does:
@@ -161,7 +179,7 @@ XLA_MAKE_BINARY(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(ReciprocalGrad, xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
-    xla::Mul(xla::Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
+    xla::Mul((lhs * lhs) * lhs,
              xla::Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
              extend_dimensions));
 XLA_MAKE_BINARY(
