@@ -48,7 +48,7 @@ class GradientDescentOptimizer(optimizer.Optimizer):
     functions.
     @end_compatibility
     """
-    super(GradientDescentOptimizer, self).__init__(use_locking, name)
+    super().__init__(use_locking, name)
     self._learning_rate = learning_rate
     self._learning_rate_tensor = None
 
