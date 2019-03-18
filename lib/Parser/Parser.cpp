@@ -1086,6 +1086,8 @@ Attribute Parser::parseAttribute(Type type) {
     switch (getToken().getKind()) {
     case Token::floatliteral:
     case Token::integer:
+    case Token::kw_false:
+    case Token::kw_true:
     case Token::minus: {
       auto scalar = parseAttribute(type.getElementType());
       if (!scalar)

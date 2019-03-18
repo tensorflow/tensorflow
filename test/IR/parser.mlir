@@ -574,13 +574,19 @@ func @funcsimplemap(%arg0: index, %arg1: index) -> () {
 // CHECK-LABEL: func @splattensorattr
 func @splattensorattr() -> () {
 ^bb0:
-// CHECK: "splatIntTensor"() {bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
+  // CHECK: "splatBoolTensor"() {bar: splat<tensor<i1>, false>} : () -> ()
+  "splatBoolTensor"(){bar: splat<tensor<i1>, false>} : () -> ()
+
+  // CHECK: "splatIntTensor"() {bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
   "splatIntTensor"(){bar: splat<tensor<2x1x4xi32>, 5>} : () -> ()
-// CHECK: "splatFloatTensor"() {bar: splat<tensor<2x1x4xf32>, -5.000000e+00>} : () -> ()
+
+  // CHECK: "splatFloatTensor"() {bar: splat<tensor<2x1x4xf32>, -5.000000e+00>} : () -> ()
   "splatFloatTensor"(){bar: splat<tensor<2x1x4xf32>, -5.0>} : () -> ()
-// CHECK: "splatIntVector"() {bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
+
+  // CHECK: "splatIntVector"() {bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
   "splatIntVector"(){bar: splat<vector<2x1x4xi64>, 5>} : () -> ()
-// CHECK: "splatFloatVector"() {bar: splat<vector<2x1x4xf16>, -5.000000e+00>} : () -> ()
+
+  // CHECK: "splatFloatVector"() {bar: splat<vector<2x1x4xf16>, -5.000000e+00>} : () -> ()
   "splatFloatVector"(){bar: splat<vector<2x1x4xf16>, -5.0>} : () -> ()
   return
 }
@@ -592,7 +598,6 @@ func @opaquetensorattr() -> () {
   "opaqueIntTensor"(){bar: opaque<"tf", tensor<2x1x4xi32>, "0x68656C6C6F">} : () -> ()
 // CHECK: "opaqueFloatTensor"() {bar: opaque<"tf", tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
   "opaqueFloatTensor"(){bar: opaque<"tf", tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
-  
 // CHECK: "opaqueStringTensor"() {bar: opaque<"tf", tensor<2x1x4x!tf<"string">>, "0x68656C6C6F">} : () -> ()
   "opaqueStringTensor"(){bar: opaque<"tf", tensor<2x1x4x!tf<"string">>, "0x68656C6C6F">} : () -> ()
 // CHECK: "opaqueResourceTensor"() {bar: opaque<"tf", tensor<2x1x4x!tf<"resource">>, "0x68656C6C6F">} : () -> ()
