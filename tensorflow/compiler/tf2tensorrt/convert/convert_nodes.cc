@@ -2185,40 +2185,24 @@ Status ConvertExpandDims(OpConverterParams* params) {
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dim back.
-  input_dims.insert(input_dims.begin(), -1);
-  const int input_rank = input_dims.size();
   // Get axis to expand on.
-  TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (weights.count() != 1) {
+  auto axis = inputs.at(1).weights().GetSpan<int>();
+  if (axis.size() != 1) {
     return errors::InvalidArgument("ExpandDims axis must be a scalar, at ",
                                    node_def.name());
   }
-  const int* weights_ptr =
-      static_cast<int*>(const_cast<void*>(weights.GetValues()));
-  int axis = weights_ptr[0];
-  // Make sure axis is valid.
-  if ((axis < (-input_rank - 1)) || (axis > input_rank)) {
-    return errors::InvalidArgument(
-        "Axis for ExpandDims is invalid, must be in the range "
-        "[-rank(input) - 1, rank(input)], at ",
-        node_def.name());
-  }
-  // Convert negative axis to corresponding positive axis.
-  if (axis < 0) axis += input_rank + 1;
-  if (axis == 0) {
-    return errors::Unimplemented(
-        "Modifying batch dimension is not supported for ExpandDims, at ",
-        node_def.name());
-  }
+  // Use rank = nbDims + 1 for ConvertAxis's bounds checking to account for
+  // ExpandDim's ability to add an axis at end of the shape.
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(axis[0], dims.nbDims + 1, node_def.name(), &trt_axis));
   if (params->validation_only) return Status::OK();
 
   // ExpandDims: Insert new dim of size 1.
-  input_dims.insert(input_dims.begin() + axis, 1);
+  input_dims.insert(input_dims.begin() + trt_axis, 1);
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
-                                               /*ignore_first_dim=*/true));
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
@@ -2237,9 +2221,6 @@ Status ConvertSqueeze(OpConverterParams* params) {
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dim back.
-  input_dims.insert(input_dims.begin(), -1);
-  const int input_rank = input_dims.size();
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
@@ -2247,29 +2228,20 @@ Status ConvertSqueeze(OpConverterParams* params) {
     return errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
   }
-  for (int axis : squeeze_dims) {
+  for (int tf_axis : squeeze_dims) {
     // Make sure axis is valid.
-    if ((axis < -input_rank) || (axis >= input_rank)) {
+    int trt_axis;
+    TF_RETURN_IF_ERROR(
+        ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+    // Make sure target dimension is size 1.
+    if (input_dims[trt_axis] != 1) {
       return errors::InvalidArgument(
-          "Axis for Squeeze is invalid, must be in the range "
-          "[-rank(input), rank(input)), at ",
+          "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
+          " cannot be squeezed because it must be size 1, at ",
           node_def.name());
     }
-    // Convert negative axis to corresponding positive axis.
-    if (axis < 0) axis += input_rank;
-    // Don't squeeze batch dim.
-    if (axis == 0) {
-      return errors::Unimplemented("Cannot squeeze batch dimension, at ",
-                                   node_def.name());
-    }
-    // Make sure target dimension is size 1.
-    if (input_dims[axis] != 1) {
-      return errors::InvalidArgument(
-          "Cannot squeeze ", axis, "th dimension ", input_dims[axis],
-          " which isn't size 1, at ", node_def.name());
-    }
     // Mark dim for removal by setting to 0.
-    input_dims[axis] = 0;
+    input_dims[trt_axis] = 0;
   }
   if (params->validation_only) return Status::OK();
 
@@ -2278,8 +2250,7 @@ Status ConvertSqueeze(OpConverterParams* params) {
                    input_dims.end());
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
-                                               /*ignore_first_dim=*/true));
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
@@ -3332,7 +3303,7 @@ Status ConvertReduce(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  TRT_ShapedWeights index_list = inputs.at(1).weights();
+  auto tf_axes_list = inputs.at(1).weights().GetSpan<int>();
 
   TFAttrs attrs(node_def);
   // Only expect to handle INT32 as attributes for now
@@ -3341,22 +3312,17 @@ Status ConvertReduce(OpConverterParams* params) {
   }
 
   int axes = 0;
-  if (index_list.count() == 0) {
+  if (tf_axes_list.size() == 0) {
     return errors::InvalidArgument(
         "TRT cannot support reduce on all (batch) dimensions, at",
         node_def.name());
-  } else {
-    auto index_list_data =
-        static_cast<int*>(const_cast<void*>(index_list.GetValues()));
-    for (int i = 0; i < index_list.count(); i++) {
-      int axis = index_list_data[i];
-      if (axis < 0) axis += tensor->getDimensions().nbDims + 1;
-      if (axis == 0) {
-        return errors::InvalidArgument(
-            "TRT cannot reduce at batch dimension, at", node_def.name());
-      }
-      axes |= (1 << (axis - 1));
-    }
+  }
+  for (int i = 0; i < tf_axes_list.size(); i++) {
+    int trt_axis;
+    TF_RETURN_IF_ERROR(ConvertAxis(tf_axes_list[i],
+                                   tensor->getDimensions().nbDims,
+                                   node_def.name(), &trt_axis));
+    axes |= (1 << trt_axis);
   }
 
   nvinfer1::ReduceOperation reduce_operation;
