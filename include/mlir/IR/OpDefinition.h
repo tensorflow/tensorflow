@@ -939,13 +939,7 @@ private:
     }
   };
 
-  template <typename First> struct BaseVerifier<First> {
-    static bool verifyTrait(const Instruction *op) {
-      return First::verifyTrait(op);
-    }
-  };
-
-  template <> struct BaseVerifier<> {
+  template <typename...> struct BaseVerifier {
     static bool verifyTrait(const Instruction *op) { return false; }
   };
 
@@ -959,13 +953,7 @@ private:
     }
   };
 
-  template <typename First> struct BaseProperties<First> {
-    static AbstractOperation::OperationProperties getTraitProperties() {
-      return First::getTraitProperties();
-    }
-  };
-
-  template <> struct BaseProperties<> {
+  template <typename...> struct BaseProperties {
     static AbstractOperation::OperationProperties getTraitProperties() {
       return 0;
     }
