@@ -494,7 +494,7 @@ class CheckpointManager(object):
   """
 
   def __init__(self, checkpoint, directory,
-               max_to_keep, keep_checkpoint_every_n_hours=None, checkpoint_name=None):
+               max_to_keep, keep_checkpoint_every_n_hours=None, checkpoint_name="ckpt"):
     """Configure a `CheckpointManager` for use in `directory`.
 
     If a `CheckpointManager` was previously used in `directory`, its
@@ -547,7 +547,7 @@ class CheckpointManager(object):
     self._max_to_keep = max_to_keep
     self._keep_checkpoint_every_n_hours = keep_checkpoint_every_n_hours
     self._directory = directory
-    self._checkpoint_prefix = os.path.join(directory, checkpoint_name or "ckpt")
+    self._checkpoint_prefix = os.path.join(directory, checkpoint_name)
     recovered_state = get_checkpoint_state(directory)
     current_clock = time.time()
     self._maybe_delete = collections.OrderedDict()
