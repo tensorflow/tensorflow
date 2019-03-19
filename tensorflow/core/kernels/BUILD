@@ -5951,7 +5951,6 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "rpc_op.cc",
-            "partitioned_function_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",
