@@ -4,7 +4,7 @@
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
-    "tf_cuda_tests_tags",
+    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
@@ -2113,7 +2113,6 @@ tf_cc_test(
     name = "sample_file_test",
     srcs = ["sample_file_test.cc"],
     data = ["isolated_convolution.hlo"],
-    tags = tf_cuda_tests_tags(),
     deps = [
         ":hlo_test_base",
         "//tensorflow/compiler/xla:test",
