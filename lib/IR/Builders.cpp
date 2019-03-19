@@ -96,6 +96,10 @@ UnrankedTensorType Builder::getTensorType(Type elementType) {
   return UnrankedTensorType::get(elementType);
 }
 
+TupleType Builder::getTupleType(ArrayRef<Type> elementTypes) {
+  return TupleType::get(elementTypes, context);
+}
+
 //===----------------------------------------------------------------------===//
 // Attributes.
 //===----------------------------------------------------------------------===//

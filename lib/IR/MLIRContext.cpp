@@ -105,7 +105,8 @@ namespace {
 struct BuiltinDialect : public Dialect {
   BuiltinDialect(MLIRContext *context) : Dialect(/*namePrefix=*/"", context) {
     addTypes<FunctionType, UnknownType, FloatType, IndexType, IntegerType,
-             VectorType, RankedTensorType, UnrankedTensorType, MemRefType>();
+             VectorType, RankedTensorType, UnrankedTensorType, MemRefType,
+             TupleType>();
   }
 };
 

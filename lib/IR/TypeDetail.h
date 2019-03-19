@@ -26,6 +26,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
+#include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
 
@@ -253,6 +254,39 @@ struct MemRefTypeStorage : public TypeStorage {
   AffineMap const *affineMapList;
   /// Memory space in which data referenced by memref resides.
   const unsigned memorySpace;
+};
+
+/// A type representing a collection of other types.
+struct TupleTypeStorage final
+    : public TypeStorage,
+      public llvm::TrailingObjects<TupleTypeStorage, Type> {
+  using KeyTy = ArrayRef<Type>;
+
+  TupleTypeStorage(unsigned numTypes) : TypeStorage(numTypes) {}
+
+  /// Construction.
+  static TupleTypeStorage *construct(TypeStorageAllocator &allocator,
+                                     const ArrayRef<Type> &key) {
+    // Allocate a new storage instance.
+    auto byteSize = TupleTypeStorage::totalSizeToAlloc<Type>(key.size());
+    auto rawMem = allocator.allocate(byteSize, alignof(TupleTypeStorage));
+    auto result = ::new (rawMem) TupleTypeStorage(key.size());
+
+    // Copy in the element types into the trailing storage.
+    std::uninitialized_copy(key.begin(), key.end(),
+                            result->getTrailingObjects<Type>());
+    return result;
+  }
+
+  bool operator==(const KeyTy &key) const { return key == getTypes(); }
+
+  /// Return the number of held types.
+  unsigned size() const { return getSubclassData(); }
+
+  /// Return the held types.
+  ArrayRef<Type> getTypes() const {
+    return {getTrailingObjects<Type>(), size()};
+  }
 };
 
 } // namespace detail

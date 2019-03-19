@@ -42,6 +42,7 @@ struct TensorTypeStorage;
 struct RankedTensorTypeStorage;
 struct UnrankedTensorTypeStorage;
 struct MemRefTypeStorage;
+struct TupleTypeStorage;
 
 } // namespace detail
 
@@ -64,6 +65,7 @@ enum Kind {
   RankedTensor,
   UnrankedTensor,
   MemRef,
+  Tuple,
 };
 
 } // namespace StandardTypes
@@ -419,6 +421,43 @@ private:
   static MemRefType getImpl(ArrayRef<int64_t> shape, Type elementType,
                             ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace, Optional<Location> location);
+};
+
+/// Tuple types represent a collection of other types. Note: This type merely
+/// provides a common mechanism for representing tuples in MLIR. It is up to
+/// dialect authors to provides operations for manipulating them, e.g.
+/// extract_tuple_element. When possible, users should prefer multi-result
+/// operations in the place of tuples.
+class TupleType
+    : public Type::TypeBase<TupleType, Type, detail::TupleTypeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a new TupleType with the provided element types. Assumes the
+  /// arguments define a well-formed type.
+  static TupleType get(ArrayRef<Type> elementTypes, MLIRContext *context);
+
+  /// Get or create an empty tuple type.
+  static TupleType get(MLIRContext *context) { return get({}, context); }
+
+  /// Return the elements types for this tuple.
+  ArrayRef<Type> getTypes() const;
+
+  /// Return the number of held types.
+  unsigned size() const;
+
+  /// Iterate over the held elements.
+  using iterator = ArrayRef<Type>::iterator;
+  iterator begin() const { return getTypes().begin(); }
+  iterator end() const { return getTypes().end(); }
+
+  /// Return the element type at index 'index'.
+  Type getType(unsigned index) const {
+    assert(index < size() && "invalid index for tuple type");
+    return getTypes()[index];
+  }
+
+  static bool kindof(unsigned kind) { return kind == StandardTypes::Tuple; }
 };
 
 } // end namespace mlir

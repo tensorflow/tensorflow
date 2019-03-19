@@ -37,6 +37,7 @@ class MemRefType;
 class VectorType;
 class RankedTensorType;
 class UnrankedTensorType;
+class TupleType;
 class BoolAttr;
 class IntegerAttr;
 class FloatAttr;
@@ -87,6 +88,7 @@ public:
   VectorType getVectorType(ArrayRef<int64_t> shape, Type elementType);
   RankedTensorType getTensorType(ArrayRef<int64_t> shape, Type elementType);
   UnrankedTensorType getTensorType(Type elementType);
+  TupleType getTupleType(ArrayRef<Type> elementTypes);
 
   /// Get or construct an instance of the type 'ty' with provided arguments.
   template <typename Ty, typename... Args> Ty getType(Args... args) {

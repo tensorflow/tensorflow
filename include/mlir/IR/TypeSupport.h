@@ -134,6 +134,11 @@ public:
   // Allocate an instance of the provided type.
   template <typename T> T *allocate() { return allocator.Allocate<T>(); }
 
+  /// Allocate 'size' bytes of 'alignment' aligned memory.
+  void *allocate(size_t size, size_t alignment) {
+    return allocator.Allocate(size, alignment);
+  }
+
 private:
   /// The raw allocator for type storage objects.
   llvm::BumpPtrAllocator allocator;

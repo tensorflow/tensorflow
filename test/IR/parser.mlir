@@ -825,3 +825,15 @@ func @external_func_arg_attrs(i32, i1 {dialect.attr: 10}, i32)
 func @func_arg_attrs(%arg0: i1 {dialect.attr: 10}) {
   return
 }
+
+// CHECK-LABEL: func @empty_tuple(tuple<>)
+func @empty_tuple(tuple<>)
+
+// CHECK-LABEL: func @tuple_single_element(tuple<i32>)
+func @tuple_single_element(tuple<i32>)
+
+// CHECK-LABEL: func @tuple_multi_element(tuple<i32, i16, f32>)
+func @tuple_multi_element(tuple<i32, i16, f32>)
+
+// CHECK-LABEL: func @tuple_nested(tuple<tuple<tuple<i32>>>)
+func @tuple_nested(tuple<tuple<tuple<i32>>>)

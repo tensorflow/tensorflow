@@ -366,3 +366,21 @@ unsigned MemRefType::getMemorySpace() const {
 unsigned MemRefType::getNumDynamicDims() const {
   return llvm::count_if(getShape(), [](int64_t i) { return i < 0; });
 }
+
+/// TupleType
+
+/// Get or create a new TupleType with the provided element types. Assumes the
+/// arguments define a well-formed type.
+TupleType TupleType::get(ArrayRef<Type> elementTypes, MLIRContext *context) {
+  return Base::get(context, StandardTypes::Tuple, elementTypes);
+}
+
+/// Return the elements types for this tuple.
+ArrayRef<Type> TupleType::getTypes() const {
+  return static_cast<ImplType *>(type)->getTypes();
+}
+
+/// Return the number of element types.
+unsigned TupleType::size() const {
+  return static_cast<ImplType *>(type)->size();
+}

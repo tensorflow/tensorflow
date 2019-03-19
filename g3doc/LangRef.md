@@ -492,7 +492,7 @@ MLIR provides a first class set of polyhedral operations and analyses within the
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
 number of primitive types (like integers) and also aggregate types for tensors
-and memory buffers. MLIR standard types do not include complex numbers, tuples,
+and memory buffers. MLIR standard types do not include complex numbers,
 structures, arrays, or dictionaries.
 
 MLIR has an open type system (there is no fixed list of types), and types may
@@ -556,7 +556,7 @@ Builtin types consist of only the types needed for the validity of the IR.
 Syntax:
 
 ``` {.ebnf}
-// MLIR doesn't have a tuple type but functions can return multiple values.
+// MLIR functions can return multiple values.
 function-result-type ::= type-list-parens
                        | non-function-type
 
@@ -859,6 +859,34 @@ The semi-affine map composition can be used in dependence analysis, memory
 access pattern analysis, and for performance optimizations like vectorization,
 copy elision and in-place updates. If an affine map composition is not specified
 for the memref, the identity affine map is assumed.
+
+#### Tuple Type {#tuple-type}
+
+Syntax:
+
+``` {.ebnf}
+tuple-type ::= `tuple` `<` (type ( `,` type)*)? `>`
+```
+
+The value of `tuple` type represents a fixed-size collection of elements, where
+each element may be of a different type.
+
+**Rationale:** Though this type is first class in the type system, MLIR provides
+no standard operations for operating on `tuple` types
+[rationale](Rationale.md#tuple-type).
+
+Examples:
+
+```mlir {.mlir}
+// Empty tuple.
+tuple<>
+
+// Single element
+tuple<f32>
+
+// Many elements.
+tuple<i32, f32, tensor<i1>, i5>
+```
 
 ## Attributes {#attributes}
 

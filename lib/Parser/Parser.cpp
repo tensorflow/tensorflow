@@ -185,6 +185,7 @@ public:
                                        bool allowDynamic);
   Type parseExtendedType();
   Type parseTensorType();
+  Type parseTupleType();
   Type parseMemRefType();
   Type parseFunctionType();
   Type parseNonFunctionType();
@@ -319,6 +320,7 @@ ParseResult Parser::parseCommaSeparatedListUntil(
 ///                       | vector-type
 ///                       | tensor-type
 ///                       | memref-type
+///                       | tuple-type
 ///
 ///   index-type ::= `index`
 ///   float-type ::= `f16` | `bf16` | `f32` | `f64`
@@ -331,6 +333,8 @@ Type Parser::parseNonFunctionType() {
     return parseMemRefType();
   case Token::kw_tensor:
     return parseTensorType();
+  case Token::kw_tuple:
+    return parseTupleType();
   case Token::kw_vector:
     return parseVectorType();
   // integer-type
@@ -565,6 +569,30 @@ Type Parser::parseTensorType() {
   if (isUnranked)
     return UnrankedTensorType::getChecked(elementType, typeLocation);
   return RankedTensorType::getChecked(dimensions, elementType, typeLocation);
+}
+
+/// Parse a tuple type.
+///
+///   tuple-type ::= `tuple` `<` (type (`,` type)*)? `>`
+///
+Type Parser::parseTupleType() {
+  consumeToken(Token::kw_tuple);
+
+  // Parse the '<'.
+  if (parseToken(Token::less, "expected '<' in tuple type"))
+    return nullptr;
+
+  // Check for an empty tuple by directly parsing '>'.
+  if (consumeIf(Token::greater))
+    return TupleType::get(getContext());
+
+  // Parse the element types and the '>'.
+  SmallVector<Type, 4> types;
+  if (parseTypeListNoParens(types) ||
+      parseToken(Token::greater, "expected '>' in tuple type"))
+    return nullptr;
+
+  return TupleType::get(types, getContext());
 }
 
 /// Parse a memref type.

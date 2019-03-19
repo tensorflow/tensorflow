@@ -805,6 +805,13 @@ void ModulePrinter::printType(Type type) {
     os << '>';
     return;
   }
+  case StandardTypes::Tuple: {
+    auto tuple = type.cast<TupleType>();
+    os << "tuple<";
+    interleaveComma(tuple.getTypes(), [&](Type type) { printType(type); });
+    os << '>';
+    return;
+  }
   }
 }
 

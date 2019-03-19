@@ -933,3 +933,13 @@ func @$invalid_function_name()
 
 // expected-error @+1 {{function arguments may only have dialect attributes}}
 func @invalid_func_arg_attr(i1 {non_dialect_attr: 10})
+
+// -----
+
+// expected-error @+1 {{expected '<' in tuple type}}
+func @invalid_tuple_missing_less(tuple i32>)
+
+// -----
+
+// expected-error @+1 {{expected '>' in tuple type}}
+func @invalid_tuple_missing_greater(tuple<i32)
