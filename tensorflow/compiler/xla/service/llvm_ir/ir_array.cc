@@ -130,8 +130,7 @@ bool IrArray::Index::LinearValidOnShape(const Shape& a) const {
 IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
-  const auto& target_index = *this;
-  CHECK_EQ(target_index.size(), output_shape.rank());
+  CHECK_EQ(multidim_.size(), output_shape.rank());
   std::vector<std::pair<int64, int64>> common_factors =
       CommonFactors(AsInt64Slice(input_shape.dimensions()),
                     AsInt64Slice(output_shape.dimensions()));
@@ -240,11 +239,7 @@ IrArray::Index IrArray::Index::SourceIndexOfBitcast(
     scale *= shape.dimensions(dimension);
   }
 
-  // Now delinearize it for the input of the bitcast.
-  std::vector<llvm::Value*> multi_index(operand_shape.dimensions_size());
-  Delinearize(&multi_index, linear_index, operand_shape, builder);
-
-  return Index(multi_index, linear_index, operand_shape, index_type_);
+  return Index(linear_index, operand_shape, builder);
 }
 
 IrArray::Index IrArray::Index::SourceIndexOfBroadcast(
