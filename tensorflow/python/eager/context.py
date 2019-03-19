@@ -560,6 +560,7 @@ class Context(object):
 
     Raises:
       ValueError: If name is not a string or is an invalid device name.
+      RuntimeError: If device scopes are not properly nested.
     """
     eager_context = self._thread_local_data
     old_device_name = eager_context.device_name
@@ -595,6 +596,8 @@ class Context(object):
       eager_context.device_spec = new_device_spec
       yield
     finally:
+      if eager_context.device_spec is not new_device_spec:
+        raise RuntimeError("Exiting device scope without proper scope nesting")
       eager_context.device_name = old_device_name
       eager_context.device_spec = old_device_spec
 
