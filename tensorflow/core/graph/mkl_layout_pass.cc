@@ -1298,7 +1298,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     }
     if (filter_node->IsConstant()) {
       VLOG(1) << "QuantizeOpRewrite: Trying to quantize a node which "
-              << "could possibly be a filter"
+              << "is a constant"
               << "This case is not supported by the kernel, thus using Eigen op"
               << "for Quantize op ";
 

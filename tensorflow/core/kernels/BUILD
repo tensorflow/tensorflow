@@ -6511,37 +6511,21 @@ tf_cc_test(
 )
 
 tf_mkl_kernel_library(
-   name = "mkl_quantized_op",
-   srcs = [
-       "mkl_quantize_op.cc",
-     ],
+   name = "mkl_quantize_op",
+   srcs = ["mkl_quantize_op.cc",],
    hdrs = [
        "meta_support.h",
        "reference_gemm.h",
    ],
-   deps = if_mkl(
-     [
-       ":concat_lib_hdrs",
-       ":conv_ops",
-       ":cwise_op",
-       ":eigen_helpers",
-       ":image_resizer_state",
+   deps = [
+       ":bounds_check",
        ":ops_util",
-       ":pooling_ops",
-       ":quantization_utils",
-       ":transpose_functor",
-       "//tensorflow/core:array_ops_op_lib",
        "//tensorflow/core:core_cpu",
        "//tensorflow/core:framework",
        "//tensorflow/core:lib",
-       "//tensorflow/core:math_ops_op_lib",
-       "//tensorflow/core:nn_ops_op_lib",
-       "//third_party/eigen3",
-       "//third_party/mkl:intel_binary_blob",
+       "//tensorflow/core:lib_internal",
        "@gemmlowp",
-       "@mkl_dnn",
-     ]
-   )
+   ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(
@@ -6551,7 +6535,7 @@ tf_cc_test_mkl(
     deps = [
         ":ops_testutil",
         ":ops_util",
-        ":mkl_quantized_op",
+        ":mkl_quantize_op",
         "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:math_ops_op_lib",
