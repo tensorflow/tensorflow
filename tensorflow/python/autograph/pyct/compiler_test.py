@@ -39,12 +39,12 @@ class CompilerTest(test.TestCase):
         b = x + 1
       return b
 
-    _, _, all_nodes = parser.parse_entity(test_fn)
+    node, _, _ = parser.parse_entity(test_fn, future_imports=())
 
     self.assertEqual(
         textwrap.dedent(tf_inspect.getsource(test_fn)),
         tf_inspect.getsource(
-            compiler.ast_to_object(all_nodes)[0].test_fn))
+            compiler.ast_to_object([node])[0].test_fn))
 
   def test_ast_to_source(self):
     node = gast.If(
