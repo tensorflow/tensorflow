@@ -632,11 +632,11 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
   # We rely on the internal methods to avoid having share_weights weights in the
   # public API.
   if isinstance(model, sequential.Sequential):
-    updated_model = models._clone_sequential_model(model, input_tensors=inputs,
-                                                   share_weights=True)
+    updated_model = models._clone_sequential_model(
+        model, input_tensors=inputs, layer_fn=models.share_weights)
   else:
-    updated_model = models._clone_functional_model(model, input_tensors=inputs,
-                                                   share_weights=True)
+    updated_model = models._clone_functional_model(
+        model, input_tensors=inputs, layer_fn=models.share_weights)
 
   # Recast all low precision outputs back to float32 since we only casted
   # the inputs to bfloat16 and not targets. This is done so that we can preserve
