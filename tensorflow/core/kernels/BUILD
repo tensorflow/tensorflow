@@ -2969,6 +2969,17 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cuda_sparse",
+    srcs = ["cuda_sparse.cc"],
+    hdrs = ["cuda_sparse.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@local_config_cuda//cuda:cusparse",
+    ],
+)
+
 LINALG_DEPS = [
     ":linalg_ops_common",
     "//third_party/eigen3",
@@ -3063,7 +3074,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_solve_op",
     srcs = ["tridiagonal_solve_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_solve_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(
