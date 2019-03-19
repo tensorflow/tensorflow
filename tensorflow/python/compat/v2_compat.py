@@ -21,7 +21,6 @@ from __future__ import print_function
 from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras.layers import normalization
 from tensorflow.python.ops import variable_scope
 
 from tensorflow.python.util.tf_export import tf_export
@@ -43,7 +42,6 @@ def enable_v2_behavior():
   ops.enable_eager_execution()
   tensor_shape.enable_v2_tensorshape()  # Also switched by tf2
   variable_scope.enable_resource_variables()
-  normalization.enable_v2_batch_normalization()
 
 
 @tf_export(v1=["disable_v2_behavior"])
@@ -61,4 +59,3 @@ def disable_v2_behavior():
   ops.disable_eager_execution()
   tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
   variable_scope.disable_resource_variables()
-  normalization.disable_v2_batch_normalization()

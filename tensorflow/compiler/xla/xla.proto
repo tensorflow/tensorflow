@@ -64,8 +64,6 @@ message DebugOptions {
   // Show addresses of HLO ops in graph dump.
   bool xla_hlo_graph_addresses = 2;
 
-  reserved 5;  // Was xla_hlo_dump_as_graphdef
-
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
 
@@ -158,9 +156,20 @@ message DebugOptions {
   //
   //  - Reducing the precision of operations (e.g. using an approximate sin
   //    function, or transforming x/y into x * (1/y)).
-  //  - Assuming that operations never produce or consume NaN or +/- Inf.
+  //  - Assuming that operations never produce or consume NaN or +/- Inf (this
+  //    behavior can be adjusted using xla_cpu_fast_math_allow_{nans|infs}).
   //  - Assuming that +0 and -0 are indistinguishable.
   bool xla_cpu_enable_fast_math = 99;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce NaNs.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_nans = 120;
+
+  // When xla_cpu_enable_fast_math is true then this controls whether we allow
+  // operations to produce infinites.  Ignored when xla_cpu_enable_fast_math is
+  // false.
+  bool xla_cpu_fast_math_honor_infs = 121;
 
   // When true we lower the Minimum and Maximum hlos in the GPU backend such
   // that Min(NotNaN, NaN) = Min(NaN, NotNaN) = NotNaN.  In other words, if flag
@@ -243,10 +252,6 @@ message DebugOptions {
   // Dump HLO graphs as an HTML (DOT -> SVG inlined in HTML)
   bool xla_dump_hlo_as_html = 116;
 
-  // If true, we will dump intermediate results (e.g. LLVM IR) to the
-  // --xla_dump_to directory.
-  bool xla_dump_ir = 117;
-
   // If true, every time an HLO module is run, we will dump an HloSnapshot
   // (essentially, a serialized module plus its inputs) to the --xla_dump_to
   // directory.
@@ -256,11 +261,14 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 119
+  // Next id: 121
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
+
+  reserved 117;  // was xla_dump_to
+  reserved 5;    // Was xla_hlo_dump_as_graphdef
 }
 
 // These settings control how XLA compiles and/or runs code.  Not all settings
@@ -291,6 +299,10 @@ message ExecutionOptions {
   // Number of replicas of the computation to run. If zero, uses the default
   // number of replicas for the XLA service.
   int32 num_replicas = 6;
+
+  // This optional field specifies the device assignment if known at compile
+  // time.
+  DeviceAssignmentProto device_assignment = 7;
 }
 
 message GetDeviceHandlesRequest {

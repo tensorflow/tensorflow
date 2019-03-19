@@ -67,6 +67,40 @@ class ArgDefaultsTransformerTest(converter_testing.TestCase):
     node = arg_defaults.transform(node, ctx)
     self.assertTransformedFirstLineIs(node, 'def test_fn(a, b=None, *c):')
 
+  def test_arg_defaults_ignores_inner_lambda(self):
+
+    def test_fn():
+      return (lambda x=7: x)()
+
+    node, ctx = self.prepare(test_fn, {})
+    node = arg_defaults.transform(node, ctx)
+    with self.converted(test_fn, arg_defaults, {}) as result:
+      self.assertEqual(test_fn(), result.test_fn())
+
+  def test_arg_defaults_ignores_inner_function(self):
+
+    def test_fn():
+      def inner_fn(a=3):
+        return a
+      return inner_fn()
+
+    node, ctx = self.prepare(test_fn, {})
+    node = arg_defaults.transform(node, ctx)
+    with self.converted(test_fn, arg_defaults, {}) as result:
+      self.assertEqual(test_fn(), result.test_fn())
+
+  def test_arg_defaults_ignores_inner_function_returned(self):
+
+    def test_fn():
+      def inner_fn(a=3):
+        return a
+      return inner_fn
+
+    node, ctx = self.prepare(test_fn, {})
+    node = arg_defaults.transform(node, ctx)
+    with self.converted(test_fn, arg_defaults, {}) as result:
+      self.assertEqual(test_fn()(), result.test_fn()())
+
 
 if __name__ == '__main__':
   test.main()

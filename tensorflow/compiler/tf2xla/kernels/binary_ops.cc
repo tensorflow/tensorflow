@@ -79,6 +79,24 @@ static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(DivNoNan,
                 DivNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
+// Implementation of MulNoNan. Pseudo-code:
+// if (y == 0) {
+//   return 0
+// } else {
+//   return x * y;
+// }
+static xla::XlaOp MulNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto y_equals_0 = xla::Eq(y, zero);
+  auto zeros = xla::ZerosLike(x);
+  auto result = xla::Select(y_equals_0, zeros, xla::Mul(x, y));
+  return result;
+}
+XLA_MAKE_BINARY(MulNoNan,
+                MulNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+
 // Implementation of FloorDiv.
 //
 // For floating-point values, simply returns floor(x / y).  For integers, does:
@@ -130,14 +148,17 @@ XLA_MAKE_BINARY(Xdivy, XdivyImpl(lhs, rhs, broadcast_helper));
 
 // Implementation of FloorMod. Pseudo-code:
 // T trunc_mod = std::fmod(x, y);
-// return (x < T(0)) == (y < T(0)) ? trunc_mod : std::fmod(trunc_mod + y, y);
+// return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
+//                                                   : trunc_mod;
 static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
-  auto same_sign = xla::Eq(xla::Lt(x, zero), xla::Lt(y, zero));
   auto trunc_mod = xla::Rem(x, y);
-  return xla::Select(same_sign, trunc_mod, xla::Rem(xla::Add(trunc_mod, y), y));
+  auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);
+  auto do_plus = xla::And(xla::Ne(xla::Lt(trunc_mod, zero), xla::Lt(y, zero)),
+                          trunc_mod_not_zero);
+  return xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
 }
 XLA_MAKE_BINARY(FloorMod,
                 FloorModImpl(b, input_type(0), lhs, rhs, broadcast_helper));

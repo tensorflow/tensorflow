@@ -203,7 +203,8 @@ def _zero_debias(unbiased_var, value, decay):
     tensor will also update the shadow variables appropriately.
   """
   with variable_scope.variable_scope(
-      unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
+      unbiased_var.name[:-len(":0")], values=[unbiased_var,
+                                              value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
       with ops.init_scope():
         biased_initializer = init_ops.zeros_initializer(

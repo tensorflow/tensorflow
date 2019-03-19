@@ -308,6 +308,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1181,7 +1182,23 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
+    name = "template_mirrored_strategy_test",
+    size = "small",
+    srcs = ["template_mirrored_strategy_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:template",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "tridiagonal_solve_op_test",
     size = "medium",
     srcs = ["tridiagonal_solve_op_test.py"],
@@ -1191,7 +1208,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
     ],
-    shard_count = 5,
+    shard_count = 10,
 )
 
 tf_py_test(
@@ -1678,10 +1695,6 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = [
-        "no_gpu",  # TODO(b/117928656)
-        "no_windows",  # TODO(b/127888628)
-    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3133,6 +3146,7 @@ cuda_py_test(
         "no_pip",
         "notap",  # http://b/31080670
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

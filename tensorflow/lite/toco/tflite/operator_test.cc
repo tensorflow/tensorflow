@@ -705,6 +705,13 @@ TEST_F(OperatorTest, BuiltinReverseSequence) {
   EXPECT_EQ(op.batch_dim, output_toco_op->batch_dim);
 }
 
+TEST_F(OperatorTest, BuiltinMatrixDiag) {
+  MatrixDiagOperator op;
+  std::unique_ptr<toco::MatrixDiagOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("MATRIX_DIAG", OperatorType::kMatrixDiag), op);
+}
+
 // Test version for a simple Op with 2 versions and the input type controls the
 // version.
 template <typename Op>

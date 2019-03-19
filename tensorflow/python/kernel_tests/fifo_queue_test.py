@@ -42,6 +42,11 @@ from tensorflow.python.util import compat
 @test_util.run_v1_only("FIFOQueue removed from v2")
 class FIFOQueueTest(test.TestCase):
 
+  def setUp(self):
+    # We need each thread to keep its own device stack or the device scopes
+    # won't be properly nested.
+    ops.get_default_graph().switch_to_thread_local()
+
   def testConstructor(self):
     with ops.Graph().as_default():
       q = data_flow_ops.FIFOQueue(10, dtypes_lib.float32, name="Q")

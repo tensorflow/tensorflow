@@ -33,7 +33,6 @@ import six
 # pylint:enable=g-bad-import-order
 
 
-from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
@@ -63,7 +62,6 @@ def is_autograph_strict_conversion_mode():
 # to write converter.
 def convert(
     recursive=False,
-    verbose=converter.Verbosity.BRIEF,
     optional_features=converter.Feature.ALL):
   """Decorator that compiles a function to use TensorFlow ops.
 
@@ -75,7 +73,6 @@ def convert(
   Args:
     recursive: bool, whether to recursively convert any functions or classes
       that the converted function may use.
-    verbose: converter.Verbosity, the level of verbosity.
     optional_features: converted.Feature, allows toggling optional or
       experimental features. When set to None, only the core features are
       enabled.
@@ -94,7 +91,6 @@ def convert(
           f, None,
           converter.ConversionOptions(
               recursive=recursive,
-              verbose=verbose,
               force_conversion=True,
               optional_features=optional_features,
           ), args, kwargs)
@@ -293,10 +289,8 @@ def converted_call(f, owner, options, args, kwargs):
       # TODO(b/119246461): This may be more elegantly handled using __get__?
       if f_self is not None:
         effective_args = (f_self,) + args
-        partial_types = (f_self,)
       else:
         effective_args = args
-        partial_types = ()
 
     elif tf_inspect.isclass(f):
       # Constructors
@@ -306,14 +300,12 @@ def converted_call(f, owner, options, args, kwargs):
       target_entity = f
       arg_map_target = f.__init__
       effective_args = args
-      partial_types = ()
 
     elif hasattr(f, '__call__') and hasattr(f, '__class__'):
       # Callable objects
       target_entity = f.__call__
       arg_map_target = f.__call__
       effective_args = (f,) + args
-      partial_types = (f.__class__,)
 
     else:
       target_entity = f
@@ -325,29 +317,12 @@ def converted_call(f, owner, options, args, kwargs):
       arg_class = arg.__class__
       arg_types[name] = (arg_class.__name__, arg_class)
 
-    # When called from within a decorator, this is the only indication that
-    # the function is a method - it appears that the decorator is applied
-    # before the method is bound.
-    if not partial_types:
-      if 'self' in arg_values:
-        if tf_inspect.isclass(arg_values['self'].__class__):
-          partial_types = (arg_values['self'].__class__,)
-      elif 'cls' in arg_values:
-        if tf_inspect.isclass(arg_values['cls']):
-          partial_types = (arg_values['cls'],)
-
-    logging.log(3, 'Partial types in conversion of %s: %s', target_entity,
-                partial_types)
-
     converted_f = to_graph(
         target_entity,
         recursive=options.recursive,
         arg_values=arg_values,
         arg_types=arg_types,
-        experimental_optional_features=options.optional_features,
-        experimental_strip_decorators=options.strip_decorators,
-        experimental_verbose=options.verbose,
-        experimental_partial_types=partial_types)
+        experimental_optional_features=options.optional_features)
 
     if logging.has_verbosity(2):
       logging.log(2, 'Defaults of %s : %s', converted_f,
@@ -407,10 +382,7 @@ def to_graph(entity,
              recursive=True,
              arg_values=None,
              arg_types=None,
-             experimental_optional_features=converter.Feature.ALL,
-             experimental_strip_decorators=None,
-             experimental_verbose=converter.Verbosity.BRIEF,
-             experimental_partial_types=None):
+             experimental_optional_features=converter.Feature.ALL):
   """Converts a Python entity into a TensorFlow graph.
 
   Also see: `tf.autograph.to_code`, `tf.function`.
@@ -466,14 +438,6 @@ def to_graph(entity,
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
-    experimental_strip_decorators: A tuple specifying decorators that should be
-      excluded from the compiled output. By default, when converting a function
-      before the decorators are applied, the compiled output will include those
-      decorators.
-    experimental_verbose: The level of printing verbosity to use, as a
-      `tf.autograph.experimental.Verbosity` value.
-    experimental_partial_types: A `set` of `type` values, reserved for internal
-      use.
 
   Returns:
     Same as `entity`, the converted Python function or class.
@@ -482,25 +446,13 @@ def to_graph(entity,
     ValueError: If the entity could not be converted.
   """
   try:
-    if experimental_strip_decorators is None:
-      experimental_strip_decorators = ()
-    experimental_strip_decorators += (convert, do_not_convert, converted_call)
-
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
             recursive=recursive,
-            verbose=experimental_verbose,
-            strip_decorators=experimental_strip_decorators,
             optional_features=experimental_optional_features),
-        partial_types=experimental_partial_types,
-        autograph_module=tf_inspect.getmodule(to_graph),
-        uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
-    _, name, namespace = conversion.entity_to_graph(entity, program_ctx,
-                                                    arg_values, arg_types)
-
-    nodes = []
-    for dep in reversed(program_ctx.conversion_order):
-      nodes.extend(program_ctx.dependency_cache[dep])
+        autograph_module=tf_inspect.getmodule(to_graph))
+    nodes, name, namespace = conversion.entity_to_graph(entity, program_ctx,
+                                                        arg_values, arg_types)
 
     compiled_module, _ = compiler.ast_to_object(
         nodes,
@@ -511,9 +463,6 @@ def to_graph(entity,
     # TODO(mdan): This might not work well if the call tree spans modules?
     for key, val in namespace.items():
       # Avoid overwriting entities that have been transformed.
-      if key not in compiled_module.__dict__:
-        compiled_module.__dict__[key] = val
-    for key, val in program_ctx.additional_symbols.items():
       if key not in compiled_module.__dict__:
         compiled_module.__dict__[key] = val
     compiled = getattr(compiled_module, name)
@@ -560,8 +509,7 @@ def to_code(entity,
             arg_values=None,
             arg_types=None,
             indentation='  ',
-            experimental_optional_features=converter.Feature.ALL,
-            experimental_partial_types=None):
+            experimental_optional_features=converter.Feature.ALL):
   """Similar to `to_graph`, but returns Python source code as a string.
 
   Also see: `tf.autograph.to_graph`.
@@ -584,8 +532,6 @@ def to_code(entity,
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
-    experimental_partial_types: A `set` of `type` values, reserved for internal
-      use.
 
   Returns:
     The converted code as string.
@@ -593,16 +539,11 @@ def to_code(entity,
   program_ctx = converter.ProgramContext(
       options=converter.ConversionOptions(
           recursive=recursive,
-          verbose=converter.Verbosity.BRIEF,
-          strip_decorators=(convert, do_not_convert, converted_call),
           optional_features=experimental_optional_features),
-      partial_types=experimental_partial_types,
-      autograph_module=tf_inspect.getmodule(to_graph),
-      uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
-  conversion.entity_to_graph(entity, program_ctx, arg_values, arg_types)
+      autograph_module=tf_inspect.getmodule(to_graph))
+  nodes, _, _ = conversion.entity_to_graph(entity, program_ctx, arg_values,
+                                           arg_types)
 
-  code = '\n'.join(
-      compiler.ast_to_source(program_ctx.dependency_cache[dep], indentation)
-      for dep in reversed(program_ctx.conversion_order))
+  code = compiler.ast_to_source(nodes, indentation)
 
   return program_ctx.required_imports + '\n\n' + code

@@ -755,12 +755,12 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, data_types, **kwargs):
+  def create_op(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
-    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
-                                             **kwargs)
+    return super(_FuncGraph, self).create_op(op_type, inputs,
+                                             dtypes=dtypes, **kwargs)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""

@@ -232,8 +232,8 @@ tf_kernel_library(
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
         "concat_lib_gpu.h",
-        "cuda_device_array.h",
-        "cuda_device_array_gpu.h",
+        "gpu_device_array.h",
+        "gpu_device_array_gpu.h",
     ],
     deps = [
         ":bounds_check",
@@ -632,7 +632,7 @@ tf_kernel_library(
         "split_lib_gpu.h",
     ],
     deps = [
-        ":cuda_device_array",
+        ":gpu_device_array",
         "//tensorflow/core:framework",
         "//third_party/eigen3",
     ],
@@ -684,10 +684,10 @@ cc_header_only_library(
 )
 
 cc_library(
-    name = "cuda_device_array",
+    name = "gpu_device_array",
     hdrs = [
-        "cuda_device_array.h",
-        "cuda_device_array_gpu.h",
+        "gpu_device_array.h",
+        "gpu_device_array_gpu.h",
     ],
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
@@ -1118,14 +1118,14 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "split_op",
-    gpu_srcs = ["cuda_device_array.h"],
+    gpu_srcs = ["gpu_device_array.h"],
     prefix = "split_op",
     deps = ARRAY_DEPS + [":split_lib"],
 )
 
 tf_kernel_library(
     name = "split_v_op",
-    gpu_srcs = ["cuda_device_array.h"],
+    gpu_srcs = ["gpu_device_array.h"],
     prefix = "split_v_op",
     deps = ARRAY_DEPS + [":split_lib"],
 )
@@ -2160,8 +2160,8 @@ tf_kernel_library(
 tf_kernel_library(
     name = "dynamic_stitch_op",
     gpu_srcs = [
-        "cuda_device_array.h",
-        "cuda_device_array_gpu.h",
+        "gpu_device_array.h",
+        "gpu_device_array_gpu.h",
     ],
     prefix = "dynamic_stitch_op",
     deps = DYNAMIC_DEPS,
@@ -2969,6 +2969,17 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cuda_sparse",
+    srcs = ["cuda_sparse.cc"],
+    hdrs = ["cuda_sparse.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@local_config_cuda//cuda:cusparse",
+    ],
+)
+
 LINALG_DEPS = [
     ":linalg_ops_common",
     "//third_party/eigen3",
@@ -3063,7 +3074,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_solve_op",
     srcs = ["tridiagonal_solve_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_solve_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(
@@ -3309,7 +3323,7 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bucketize_op",
-    gpu_srcs = ["cuda_device_array.h"],
+    gpu_srcs = ["gpu_device_array.h"],
     prefix = "bucketize_op",
     deps = ARRAY_DEPS,
 )
@@ -5784,6 +5798,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "random_op_cpu.h",
         "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",

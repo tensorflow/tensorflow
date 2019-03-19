@@ -372,7 +372,7 @@ cc_library(
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
-        ":nccl_all_reduce_thunk",
+        ":nccl_all_reduce_thunk",  # fixdeps: keep
         ":outfeed_manager",
         ":partition_assignment",
         ":stream_assignment",
@@ -407,6 +407,7 @@ cc_library(
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",

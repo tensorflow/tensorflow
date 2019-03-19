@@ -25,6 +25,7 @@ import random
 import threading
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python import tf2
 from tensorflow.python.framework import c_api_util
@@ -143,6 +144,7 @@ class _ThreadLocalData(threading.local):
     self.scope_name = ""
     self.summary_writer = None
     self.summary_recording = None
+    self.summary_recording_distribution_strategy = True
     self.summary_step = None
     self.scalar_cache = {}
     self._ones_rank_cache = None
@@ -517,6 +519,16 @@ class Context(object):
     self._thread_local_data.summary_recording = condition
 
   @property
+  def summary_recording_distribution_strategy(self):
+    """Returns summary recording condition for distribution strategy."""
+    return self._thread_local_data.summary_recording_distribution_strategy
+
+  @summary_recording_distribution_strategy.setter
+  def summary_recording_distribution_strategy(self, condition):
+    """Sets summary recording condition for distribution strategy."""
+    self._thread_local_data.summary_recording_distribution_strategy = condition
+
+  @property
   def summary_step(self):
     """Returns summary step variable."""
     return self._thread_local_data.summary_step
@@ -548,6 +560,7 @@ class Context(object):
 
     Raises:
       ValueError: If name is not a string or is an invalid device name.
+      RuntimeError: If device scopes are not properly nested.
     """
     eager_context = self._thread_local_data
     old_device_name = eager_context.device_name
@@ -583,6 +596,8 @@ class Context(object):
       eager_context.device_spec = new_device_spec
       yield
     finally:
+      if eager_context.device_spec is not new_device_spec:
+        raise RuntimeError("Exiting device scope without proper scope nesting")
       eager_context.device_name = old_device_name
       eager_context.device_spec = old_device_spec
 
@@ -744,6 +759,102 @@ class Context(object):
     self._config.gpu_options.allow_growth = enabled
 
   @property
+  def optimizer_jit(self):
+    level = self._config.graph_options.optimizer_options.global_jit_level
+    return (level == config_pb2.OptimizerOptions.ON_1 or
+            level == config_pb2.OptimizerOptions.ON_2)
+
+  @optimizer_jit.setter
+  def optimizer_jit(self, enabled):
+    self._config.graph_options.optimizer_options.global_jit_level = (
+        config_pb2.OptimizerOptions.ON_1
+        if enabled else config_pb2.OptimizerOptions.OFF)
+
+    self._thread_local_data.function_call_options = None
+
+  def get_optimizer_experimental_options(self):
+    """Get experimental options for the optimizer.
+
+    Returns:
+      Dictionary of current option values
+    """
+    rewrite_options = self._config.graph_options.rewrite_options
+    options = {}
+
+    def rewriter_toggle(option):
+      attr = getattr(rewrite_options, option)
+      if attr != 0:
+        options[option] = (attr == rewriter_config_pb2.RewriterConfig.ON)
+
+    def rewriter_bool(option):
+      options[option] = getattr(rewrite_options, option)
+
+    rewriter_toggle("layout_optimizer")
+    rewriter_toggle("constant_folding")
+    rewriter_toggle("shape_optimization")
+    rewriter_toggle("remapping")
+    rewriter_toggle("arithmetic_optimization")
+    rewriter_toggle("dependency_optimization")
+    rewriter_toggle("loop_optimization")
+    rewriter_toggle("function_optimization")
+    rewriter_toggle("debug_stripper")
+    rewriter_bool("disable_model_pruning")
+    rewriter_toggle("scoped_allocator_optimization")
+    rewriter_toggle("pin_to_host_optimization")
+    rewriter_toggle("implementation_selector")
+    rewriter_bool("disable_meta_optimizer")
+
+    if rewrite_options.min_graph_nodes != 0:
+      options["min_graph_nodes"] = rewrite_options.min_graph_nodes
+
+    return options
+
+  def set_optimizer_experimental_options(self, options):
+    """Set experimental options for the optimizer.
+
+    Args:
+      options: Dictionary of options to modify
+    """
+    def rewriter_toggle(option):
+      toggle = options.get(option, None)
+      if toggle is None:
+        return
+
+      setattr(self._config.graph_options.rewrite_options,
+              option,
+              (rewriter_config_pb2.RewriterConfig.ON
+               if toggle else rewriter_config_pb2.RewriterConfig.OFF))
+
+    def rewriter_bool(option):
+      toggle = options.get(option, None)
+      if toggle is None:
+        return
+
+      setattr(self._config.graph_options.rewrite_options,
+              option,
+              toggle)
+
+    rewriter_toggle("layout_optimizer")
+    rewriter_toggle("constant_folding")
+    rewriter_toggle("shape_optimization")
+    rewriter_toggle("remapping")
+    rewriter_toggle("arithmetic_optimization")
+    rewriter_toggle("dependency_optimization")
+    rewriter_toggle("loop_optimization")
+    rewriter_toggle("function_optimization")
+    rewriter_toggle("debug_stripper")
+    rewriter_bool("disable_model_pruning")
+    rewriter_toggle("scoped_allocator_optimization")
+    rewriter_toggle("pin_to_host_optimization")
+    rewriter_toggle("implementation_selector")
+    rewriter_bool("disable_meta_optimizer")
+    nodes = options.get("min_graph_nodes", None)
+    if nodes is not None:
+      self._config.graph_options.rewrite_options.min_graph_nodes = nodes
+
+    self._thread_local_data.function_call_options = None
+
+  @property
   def intra_op_parallelism_threads(self):
     return self._config.intra_op_parallelism_threads
 
@@ -773,11 +884,9 @@ class Context(object):
 
   @soft_device_placement.setter
   def soft_device_placement(self, enabled):
-    if self._context_handle is not None:
-      raise RuntimeError(
-          "Soft placement must be set at program startup")
-
     self._config.allow_soft_placement = enabled
+
+    self._thread_local_data.function_call_options = None
 
   @property
   def log_device_placement(self):

@@ -92,14 +92,14 @@ ComputeArgAndRetvalCores(const Graph& graph) {
   std::map<int, int> arg_cores;
   std::map<int, int> retval_cores;
   for (const Node* n : graph.nodes()) {
-    if (n->type_string() == FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       TF_ASSIGN_OR_RETURN(int core, get_sharding_for_node(n));
       if (core < 0) continue;
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
       TF_RET_CHECK(index >= 0) << "Negative _Arg index";
       arg_cores[index] = core;
-    } else if (n->type_string() == FunctionLibraryDefinition::kRetOp) {
+    } else if (n->IsRetval()) {
       TF_ASSIGN_OR_RETURN(int core, get_sharding_for_node(n));
       if (core < 0) continue;
       int index;
@@ -581,16 +581,14 @@ Status XlaCompiler::CompileFunction(
   // lowest-numbered core that consumes the argument. We choose the
   // lowest-numbered core so the assignment is deterministic.
   for (Node* n : graph->nodes()) {
-    if (absl::string_view(n->type_string()) ==
-        FunctionLibraryDefinition::kArgOp) {
+    if (n->IsArg()) {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/true));
     }
   }
   // Do _Retval as a second loop, in case the retval's input is an _Arg (which
   // may have gotten a device assignment from the first loop).
   for (Node* n : graph->nodes()) {
-    if (absl::string_view(n->type_string()) ==
-        FunctionLibraryDefinition::kRetOp) {
+    if (n->IsRetval()) {
       TF_RETURN_IF_ERROR(SetNodeShardingFromNeighbors(n, /*out_edges=*/false));
     }
   }

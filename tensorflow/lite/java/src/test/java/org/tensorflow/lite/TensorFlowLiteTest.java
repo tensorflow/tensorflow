@@ -26,7 +26,18 @@ import org.junit.runners.JUnit4;
 public final class TensorFlowLiteTest {
 
   @Test
+  @SuppressWarnings("deprecation")
   public void testVersion() {
     assertThat(TensorFlowLite.version()).isEqualTo("3");
+  }
+
+  @Test
+  public void testSchemaVersion() {
+    assertThat(TensorFlowLite.schemaVersion()).isEqualTo("3");
+  }
+
+  @Test
+  public void testRuntimeVersion() {
+    assertThat(TensorFlowLite.runtimeVersion()).startsWith("1.");
   }
 }

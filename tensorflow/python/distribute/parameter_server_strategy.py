@@ -426,7 +426,7 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
@@ -436,9 +436,9 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)
@@ -502,11 +502,13 @@ class ParameterServerStrategyExtended(
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
-    if self._task_type not in ["chief", "worker"]:
-      return updated_config
     del updated_config.device_filters[:]
-    updated_config.device_filters.extend(
-        ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    if self._task_type in ["chief", "worker"]:
+      updated_config.device_filters.extend(
+          ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    elif self._task_type == "evaluator":
+      updated_config.device_filters.append(
+          "/job:%s/task:%d" % (self._task_type, self._task_id))
     return updated_config
 
   @property

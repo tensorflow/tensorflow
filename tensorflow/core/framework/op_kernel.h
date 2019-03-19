@@ -137,7 +137,7 @@ class OpKernel {
   // op is expensive. The new cost estimate is a weighted average of the old
   // cost estimate and the latest cost.
   void UpdateCostEstimate(uint64 elapsed_cycles) {
-    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simulataneous
+    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simultaneous
     // updates may result in one or more updates being ignored.  This does not
     // affect correctness but may slow down the update frequency.
     cost_estimate_.store(

@@ -274,6 +274,7 @@ def generated_test_models():
         "logical_or",
         "logical_xor",
         "lstm",
+        "matrix_diag",
         "max_pool",
         "maximum",
         "mean",
@@ -326,6 +327,7 @@ def generated_test_models():
         "transpose",
         "transpose_conv",
         "unidirectional_sequence_lstm",
+        "unidirectional_sequence_rnn",
         "unique",
         "unpack",
         "unroll_batch_matmul",
@@ -342,6 +344,7 @@ def generated_test_models_failing(conversion_mode):
             "lstm",  # TODO(b/117510976): Restore when lstm flex conversion works.
             "unroll_batch_matmul",  # TODO(b/123030774): Fails in 1.13 tests.
             "unidirectional_sequence_lstm",
+            "unidirectional_sequence_rnn",
         ]
 
     return []

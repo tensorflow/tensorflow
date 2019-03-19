@@ -29,9 +29,14 @@ limitations under the License.
 namespace xla {
 namespace llvm_ir {
 
+static llvm::Module* getModuleFromBuilder(llvm::IRBuilder<>* b) {
+  return b->GetInsertBlock()->getModule();
+}
+
 void EmitTupleSelect(const IrArray& select, const IrArray& pred,
                      llvm::Value* on_true, llvm::Value* on_false,
-                     llvm::IRBuilder<>* b, llvm::Module* module) {
+                     llvm::IRBuilder<>* b) {
+  llvm::Module* module = getModuleFromBuilder(b);
   CHECK(ShapeUtil::IsScalar(pred.GetShape()));
 
   llvm::LoadInst* pred_value =
@@ -65,7 +70,8 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
 }
 
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
-               llvm::IRBuilder<>* b, llvm::Module* module) {
+               llvm::IRBuilder<>* b) {
+  llvm::Module* module = getModuleFromBuilder(b);
   for (size_t i = 0; i < operands.size(); ++i) {
     auto* store = b->CreateStore(
         b->CreatePointerCast(operands[i], PrimitiveTypeToIrType(TUPLE, module)),
@@ -76,18 +82,45 @@ void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
 }
 
 void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
-               llvm::IRBuilder<>* b, llvm::Module* module) {
+               llvm::IRBuilder<>* b) {
   std::vector<llvm::Value*> buffer_ptrs;
   buffer_ptrs.reserve(buffers.size());
   absl::c_transform(
       buffers, std::back_inserter(buffer_ptrs),
       [](const llvm_ir::IrArray& buffer) { return buffer.GetBasePointer(); });
-  llvm_ir::EmitTuple(tuple, buffer_ptrs, b, module);
+  llvm_ir::EmitTuple(tuple, buffer_ptrs, b);
+}
+
+std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
+    const Shape& tuple_shape, llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  b->SetInsertPoint(&function->getEntryBlock(),
+                    function->getEntryBlock().getFirstInsertionPt());
+  CHECK(tuple_shape.IsTuple());
+  int tuple_size = tuple_shape.tuple_shapes_size();
+
+  std::vector<llvm::Value*> generated_allocas;
+  for (int i = 0; i < tuple_size; i++) {
+    const Shape& element_shape = tuple_shape.tuple_shapes(i);
+    CHECK(ShapeUtil::IsScalar(element_shape));
+    llvm::Type* type =
+        llvm_ir::PrimitiveTypeToIrType(element_shape.element_type(), module);
+    llvm::AllocaInst* alloca = b->CreateAlloca(
+        type,
+        /*ArraySize=*/nullptr, AsStringRef(absl::StrCat("tuple_element_", i)));
+    generated_allocas.push_back(alloca);
+  }
+
+  return generated_allocas;
 }
 
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
-                                 llvm::IRBuilder<>* b, llvm::Module* module) {
+                                 llvm::IRBuilder<>* b) {
+  llvm::Module* module = getModuleFromBuilder(b);
   llvm::Value* element_ptr =
       b->CreateInBoundsGEP(operand, {b->getInt64(0), b->getInt64(index)});
   llvm::LoadInst* src_buffer = b->CreateLoad(element_ptr);

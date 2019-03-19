@@ -1428,6 +1428,36 @@ class ErrorLoggingSession(session.Session):
       raise
 
 
+def use_deterministic_cudnn(func):
+  """Disable autotuning during the call to this function.
+
+  Some tests want to base assertions on a graph being isomorphic with a copy.
+  To ensure this, this decorator disables autotuning.
+
+  Args:
+    func: Function to run with CUDNN autotuning turned off.
+
+  Returns:
+    Decorated function.
+  """
+
+  def decorator(f):
+
+    def decorated(self, *args, **kwargs):
+      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
+      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      result = f(self, *args, **kwargs)
+      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+      return result
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 # The description is just for documentation purposes.
 def disable_xla(description):
 

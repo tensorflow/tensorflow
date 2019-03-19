@@ -577,7 +577,14 @@ def tf_protos_grappler():
     )
 
 def tf_additional_cupti_wrapper_deps():
-    return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
+    return [
+        "//tensorflow/core/platform/default/gpu:cupti_wrapper",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ]
 
 def tf_additional_device_tracer_srcs():
     return ["platform/default/device_tracer.cc"]

@@ -1190,9 +1190,8 @@ MasterSession::MasterSession(
 
   VLOG(1) << "Session " << handle_ << " #local " << env->local_devices.size()
           << " #remote " << remote_devs_->size();
-
-  LOG(INFO) << "Start master session " << handle_
-            << " with config: " << session_opts_.config.ShortDebugString();
+  VLOG(1) << "Start master session " << handle_
+          << " with config: " << session_opts_.config.ShortDebugString();
 }
 
 MasterSession::~MasterSession() {

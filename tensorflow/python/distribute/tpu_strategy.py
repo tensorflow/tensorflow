@@ -227,15 +227,12 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
     # TODO(jhseu): Switch to DeviceAssignment to support pods and model
     # parallelism.
-    self._device_index = {
-        d.name: i for i, d in enumerate(self._tpu_metadata.devices)
-        if "device:TPU:" in d.name
-    }
+    self._tpu_devices = [d.name for d in self._tpu_metadata.devices
+                         if "device:TPU:" in d.name]
+
     self._host_device = tpu_strategy_util.get_first_tpu_host_device(
         self._tpu_cluster_resolver)
-    # We sort the devices by the indexes in tpu_metadata.devices.
-    self._tpu_devices = tuple(device[0] for device in sorted(
-        self._device_index.items(), key=lambda device: device[1]))
+
     # Only create variables for the number of replicas we're running.
     self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
     self._device_map = values.ReplicaDeviceMap(self._tpu_devices)
@@ -503,7 +500,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(var, values.TPUMirroredVariable)
     return var.read_value()
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       # Return in a deterministic order.
       return tuple(val.get(device=d) for d in sorted(val.devices))
@@ -592,7 +589,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def _configure(self,
                  session_config=None,

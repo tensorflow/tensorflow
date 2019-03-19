@@ -7,7 +7,7 @@ load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_proto_library_py",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -719,6 +719,7 @@ cc_library(
         ":compilation_cache",
         ":compiler",
         ":computation_layout",
+        ":computation_placer",
         ":device_memory_allocator",
         ":dump",
         ":dynamic_dimension_inference",
@@ -933,6 +934,7 @@ cc_library(
     hdrs = ["compiler.h"],
     deps = [
         ":buffer_value",
+        ":computation_placer",
         ":executable",
         ":hlo",
         ":hlo_module_config",
@@ -3225,6 +3227,7 @@ cc_library(
     hdrs = ["hlo_module_config.h"],
     deps = [
         ":computation_layout",
+        ":computation_placer",
         "//tensorflow/compiler/xla:shape_layout",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
@@ -3965,5 +3968,37 @@ tf_cc_test(
         ":hlo_casting_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "conditional_to_select",
+    srcs = ["conditional_to_select.cc"],
+    hdrs = ["conditional_to_select.h"],
+    deps = [
+        ":call_graph",
+        ":call_inliner",
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "conditional_to_select_test",
+    srcs = ["conditional_to_select_test.cc"],
+    deps = [
+        ":conditional_to_select",
+        ":hlo",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "@com_google_absl//absl/memory",
     ],
 )

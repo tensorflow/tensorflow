@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
-#include <chrono>
 #include <cmath>
-#include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -203,6 +201,12 @@ Costs Costs::ZeroCosts() {
   costs.max_per_op_streaming = kZeroMemory;
   return costs;
 }
+
+Costs CombineCosts(const Costs& left, const Costs& right);
+
+// Multiplies Costs by a scalar.
+// Equivalent to applying CombineCosts "multiplier" times.
+Costs MultiplyCosts(const Costs& costs, int multiplier);
 
 // Given a GrapperItem and an optimized implementation of the corresponding
 // TensorFlow graph, the CostEstimator attempts to predicts the actual cost of

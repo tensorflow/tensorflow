@@ -126,6 +126,15 @@ func FakeQuantWithMinMaxVarsPerChannelNarrowRange(value bool) FakeQuantWithMinMa
 // then de-quantized and output as floats in `[min; max]` interval.
 // `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
 //
+// Before quantization, `min` and `max` values are adjusted with the following
+// logic.
+// It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+// the behavior can be unexpected:
+// If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+// If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+// If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+// `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
+//
 // This operation has a gradient and thus allows for training `min` and `max`
 // values.
 func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
@@ -306,6 +315,15 @@ func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr 
 // when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
 // then de-quantized and output as floats in `[min; max]` interval.
 // `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+//
+// Before quantization, `min` and `max` values are adjusted with the following
+// logic.
+// It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+// the behavior can be unexpected:
+// If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+// If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+// If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+// `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 //
 // Quantization is called fake since the output is still in floating point.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
@@ -11496,6 +11514,17 @@ func MaxPoolWithArgmax(scope *Scope, input tf.Output, ksize []int64, strides []i
 	return op.Output(0), op.Output(1)
 }
 
+// ModelDatasetAttr is an optional argument to ModelDataset.
+type ModelDatasetAttr func(optionalAttr)
+
+// ModelDatasetCpuBudget sets the optional cpu_budget attribute to value.
+// If not specified, defaults to 0
+func ModelDatasetCpuBudget(value int64) ModelDatasetAttr {
+	return func(m optionalAttr) {
+		m["cpu_budget"] = value
+	}
+}
+
 // Identity transformation that models performance.
 //
 // Identity transformation that models performance.
@@ -11504,11 +11533,14 @@ func MaxPoolWithArgmax(scope *Scope, input tf.Output, ksize []int64, strides []i
 //	input_dataset: A variant tensor representing the input dataset.
 //
 //
-func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ModelDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ModelDataset",
 		Input: []tf.Input{
@@ -20627,6 +20659,15 @@ func FakeQuantWithMinMaxVarsNarrowRange(value bool) FakeQuantWithMinMaxVarsAttr 
 // when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
 // then de-quantized and output as floats in `[min; max]` interval.
 // `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+//
+// Before quantization, `min` and `max` values are adjusted with the following
+// logic.
+// It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+// the behavior can be unexpected:
+// If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+// If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+// If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+// `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 //
 // This operation has a gradient and thus allows for training `min` and `max`
 // values.

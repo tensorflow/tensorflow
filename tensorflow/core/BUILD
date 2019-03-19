@@ -63,7 +63,15 @@
 # //tensorflow/tensorflow.bzl) will include the necessary symbols in binary
 # build targets.
 
+package_group(
+    name = "dependency_whitelist",
+    packages = [
+        "//learning/freud/topic_models/tensorflow/...",
+    ],
+)
+
 package(default_visibility = [
+    ":dependency_whitelist",
     "//tensorflow:internal",
     "//tensorflow_models:__subpackages__",
 ])
@@ -1589,6 +1597,7 @@ cc_library(
         "framework/function_testlib.h",
         "framework/shape_inference_testutil.h",
         "framework/tensor_testutil.h",
+        "graph/benchmark_testlib.h",
         "graph/testlib.h",
         # TODO(josh11b): Drop this once users are depending on
         # kernels:ops_testutil instead.
@@ -3038,8 +3047,9 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/executor_factory.h",
     "common_runtime/graph_optimizer.h",
     "common_runtime/local_device.h",
+    "common_runtime/lower_function_call_op.h",
     "common_runtime/lower_if_op.h",
-    "common_runtime/lower_if_while.h",
+    "common_runtime/lower_functional_ops.h",
     "common_runtime/lower_while_op.h",
     "common_runtime/memory_types.h",
     "common_runtime/metrics.h",
@@ -3098,8 +3108,9 @@ tf_cuda_library(
         "common_runtime/graph_runner.cc",
         "common_runtime/hierarchical_tree_broadcaster.cc",
         "common_runtime/local_device.cc",
+        "common_runtime/lower_function_call_op.cc",
+        "common_runtime/lower_functional_ops.cc",
         "common_runtime/lower_if_op.cc",
-        "common_runtime/lower_if_while.cc",
         "common_runtime/lower_while_op.cc",
         "common_runtime/memory_types.cc",
         "common_runtime/metrics.cc",
@@ -5041,6 +5052,30 @@ tf_cc_test_gpu(
 )
 
 tf_cc_tests(
+    name = "common_runtime_lower_function_call_test",
+    size = "small",
+    srcs = ["common_runtime/lower_function_call_op_test.cc"],
+    deps = [
+        ":all_kernels",
+        ":core_cpu",
+        ":core_cpu_internal",
+        ":direct_session",
+        ":framework",
+        ":framework_internal",
+        ":lib",
+        ":test",
+        ":test_main",
+        ":testlib",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:client_session",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
+    ],
+)
+
+tf_cc_tests(
     name = "common_runtime_lower_if_op_test",
     size = "small",
     srcs = ["common_runtime/lower_if_op_test.cc"],
@@ -5089,9 +5124,9 @@ tf_cc_tests(
 )
 
 tf_cc_tests(
-    name = "common_runtime_lower_if_while_test",
+    name = "common_runtime_lower_functional_ops_test",
     size = "small",
-    srcs = ["common_runtime/lower_if_while_test.cc"],
+    srcs = ["common_runtime/lower_functional_ops_test.cc"],
     deps = [
         ":all_kernels",
         ":core_cpu",
