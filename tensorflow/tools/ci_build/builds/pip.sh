@@ -123,6 +123,9 @@ done
 
 BAZEL_FLAGS=$(str_strip "${BAZEL_FLAGS}")
 
+# Disable "ares.h not found" error for MacOS (and everywhere at the moment)
+BAZEL_FLAGS="${BAZEL_FLAGS} --define=grpc_no_ares=true"
+
 if [[ -z "$GIT_TAG_OVERRIDE" ]]; then
   BAZEL_FLAGS+=" --action_env=GIT_TAG_OVERRIDE"
 fi
