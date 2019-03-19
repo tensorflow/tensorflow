@@ -660,10 +660,11 @@ class Network(base_layer.Layer):
     # built symbolically, and captures the wrong tensors from a different
     # func graph (causing a crash later on when trying to execute the
     # graph function)
-    with ops.init_scope():
-      if context.executing_eagerly():
-        return [loss for loss in losses
-                if loss.graph == ops.get_default_graph()]
+    if ops.executing_eagerly_outside_functions():
+      return [
+          loss for loss in losses
+          if getattr(loss, 'graph', None) == ops.get_default_graph()
+      ]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
