@@ -697,7 +697,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     // TODO(aselle): Implement call in BuiltinOptions, but nullptrs are
     // ok for now, since there is no call implementation either.
     case BuiltinOperator_CALL:
-    case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_CONCATENATE_EMBEDDINGS:
     case BuiltinOperator_COS:
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_DEQUANTIZE:
