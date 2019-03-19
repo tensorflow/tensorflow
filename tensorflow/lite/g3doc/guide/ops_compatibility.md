@@ -1096,7 +1096,7 @@ And these are TensorFlow Lite operations that are present but not ready for
 custom models yet:
 
 *   CALL
-*   CONCAT_EMBEDDINGS
+*   CONCATENATE_EMBEDDINGS
 *   CUSTOM
 *   EMBEDDING_LOOKUP
 *   EMBEDDING_LOOKUP_SPARSE
