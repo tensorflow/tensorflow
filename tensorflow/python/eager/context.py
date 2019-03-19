@@ -1025,6 +1025,9 @@ def executing_eagerly():
   but may also be enabled within the context of a Python function via
   tf.contrib.eager.py_func.
   """
+  if context_safe() is None:
+    return default_execution_mode == EAGER_MODE
+
   return context().executing_eagerly()
 
 
