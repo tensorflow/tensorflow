@@ -295,32 +295,32 @@ class MklShape {
     CHECK_EQ(dnnDelete_F32(convert), E_SUCCESS);
   }
 
-  // The following methods are used for serializing and de-serializing the
-  // contents of the mklshape object.
-  // The data is serialized in this order
-  // isMklTensor_
-  // dimension_
-  // sizes_
-  // strides_
-  // mklLayout_
-  // tfLayout_
-  // tf_to_mkl_dim_map_
+// The following methods are used for serializing and de-serializing the
+// contents of the mklshape object.
+// The data is serialized in this order
+// isMklTensor_
+// dimension_
+// sizes_
+// strides_
+// mklLayout_
+// tfLayout_
+// tf_to_mkl_dim_map_
 
 #define SIZE_OF_MKL_DNN_BUF \
   (dnnLayoutSerializationBufferSize_F32())  // Size of buffer needed to
                                             // serialize dnn_layout pointer
 
-  // Size of buffer to hold the serialized object, the size is computed as
-  // follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
-  // sizeof(strides_)
-  // + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
-  // + sizeof(tf_to_mkl_dim_map_)
+// Size of buffer to hold the serialized object, the size is computed as
+// follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
+// sizeof(strides_)
+// + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
+// + sizeof(tf_to_mkl_dim_map_)
 
 #define SIZE_OF_MKL_SERIAL_DATA(dims) \
   (2 * sizeof(size_t) + 3 * dims * sizeof(size_t) + 2 * SIZE_OF_MKL_DNN_BUF)
 
-  // First we need to define some macro for offsets into the serial buffer where
-  // different elements of Mklshape is written/read from
+// First we need to define some macro for offsets into the serial buffer where
+// different elements of Mklshape is written/read from
 
 #define IS_MKL_TENSOR_OFFSET 0
 // Location from start of buffer where isMklTensor_ is serialized
@@ -633,7 +633,8 @@ class MklDnnShape {
   /// also be Blocked format.
   inline void SetTfLayout(size_t dims, const memory::dims& sizes,
                           memory::format format) {
-    CHECK_EQ(dims, sizes.size());
+    DCHECK(dims != sizes.size()) << "SetTfLayout: Number of dimensions is not"
+                                    "match with dimension array";
     data_.dimension_ = dims;
     for (size_t ii = 0; ii < dims; ii++) {
       data_.sizes_[ii] = sizes[ii];
@@ -641,6 +642,21 @@ class MklDnnShape {
     data_.tf_data_format_ = format;
     if (format != memory::format::blocked) {
       SetTfDimOrder(dims, format);
+    }
+  }
+
+  inline void SetTfLayout2D(size_t dims, const memory::dims& sizes,
+                            memory::format format) {
+    DCHECK(dims != sizes.size()) << "SetTfLayout2D: Number of dimensions is"
+                                    "match with dimension array";
+    data_.dimension_ = dims;
+    for (size_t ii = 0; ii < dims; ii++) {
+      data_.sizes_[ii] = sizes[ii];
+    }
+    data_.tf_data_format_ = format;
+    if (format != memory::format::blocked) {
+      data_.map_[0] = MklDnnDims::Dim_N;
+      data_.map_[1] = MklDnnDims::Dim_C;
     }
   }
 
@@ -862,9 +878,9 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
       CHECK(output_tensor.CopyFrom(mkl_tensor, output_shape));
     }
   } catch (mkldnn::error& e) {
-    string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + string(e.message) + ", in file " +
-                       string(__FILE__) + ":" + std::to_string(__LINE__);
+    string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                       string(e.message) + ", in file " + string(__FILE__) +
+                       ":" + std::to_string(__LINE__);
     LOG(FATAL) << "Operation received an exception: " << error_msg;
   }
   return output_tensor;
