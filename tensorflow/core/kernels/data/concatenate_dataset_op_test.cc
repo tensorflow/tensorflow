@@ -384,6 +384,7 @@ TEST_F(ConcatenateDatasetOpTest, DatasetSave) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
+  core::ScopedUnref scored_unref(concatenate_dataset);
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
