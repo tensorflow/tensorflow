@@ -433,6 +433,9 @@ class _EagerDefinedFunction(object):
     if executing_eagerly:
       return outputs
     else:
+      # TODO(b/128924522): This additional set_shape should not be
+      # necessary. ShapeRefiner likely needs to inspect handle_data. Remove this
+      # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
       for i, func_graph_output in enumerate(self._func_graph_outputs):

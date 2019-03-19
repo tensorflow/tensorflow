@@ -1171,6 +1171,27 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual([2], root.f([2]).numpy())
 
+  def test_shapes_available(self, cycles):
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec([None, 3], dtypes.int32),
+        tensor_spec.TensorSpec([None, 2], dtypes.int32)
+    ])
+    def func(x, y):
+      return array_ops.concat([x, y], axis=1)
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    root = self.cycle(root, cycles)
+
+    imported_graph = root.f.get_concrete_function().graph
+    input_x, input_y = imported_graph.inputs
+    self.assertEqual([None, 3], input_x.shape.as_list())
+    self.assertEqual([None, 2], input_y.shape.as_list())
+    output, = imported_graph.outputs
+    self.assertEqual([None, 5], output.shape.as_list())
+
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),
                feature_column_v2.numeric_column("y")]

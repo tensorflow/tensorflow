@@ -249,6 +249,8 @@ REGISTER_OP("For")
     .Attr("body: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// While no useful shape function is registered for function call ops directly,
+// ShapeRefiner is run by default to perform shape inference.
 REGISTER_OP("PartitionedCall")
     .Input("args: Tin")
     .Output("output: Tout")

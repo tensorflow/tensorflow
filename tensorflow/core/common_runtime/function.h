@@ -277,6 +277,12 @@ inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return ExpandInlineFunctions(lib, graph, ExpandInlineFunctionsOptions());
 }
 
+// Extracts function name and attributes from `call_def`
+// `call_def` can be a native function call (where the op type is the function
+// name) or a call through PartitionedCall/StatefulPartitionedCall.
+Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                    NameAttrList* function);
+
 // Extracts function name and attributes from `call_def` and invokes
 // flr->Instantiate(name, attrs, handle).
 // `call_def` can be a native function call (where the op type is the function
