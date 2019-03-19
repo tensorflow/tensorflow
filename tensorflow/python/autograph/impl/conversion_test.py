@@ -58,7 +58,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertIs(ns['b'], b)
@@ -71,7 +71,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertEqual(
@@ -87,7 +87,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, _, _ = conversion.entity_to_graph(f, program_ctx, None, None)
-    f_node = nodes[0]
+    f_node = nodes[-2]
     self.assertEqual('tf__f', f_node.name)
 
   def test_entity_to_graph_class_hierarchy(self):
@@ -144,7 +144,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.Assign)
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
@@ -156,7 +156,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.Assign)
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
@@ -179,7 +179,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.Assign)
     self.assertIsInstance(fn_node.value, gast.Lambda)
     self.assertEqual('tf__lambda', name)
@@ -194,7 +194,7 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual(fn_node.name, 'tf__f')
     self.assertEqual('tf__f', name)
