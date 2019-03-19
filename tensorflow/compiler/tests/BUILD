@@ -873,6 +873,7 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
         "//tensorflow/python:stateful_random_ops",
+        "//tensorflow/python/kernel_tests/random:util",
     ],
 )
 
@@ -887,6 +888,7 @@ tf_xla_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:standard_ops",
         "//tensorflow/python:stateless_random_ops",
+        "//tensorflow/python/kernel_tests/random:util",
     ],
 )
 
