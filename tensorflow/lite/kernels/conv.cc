@@ -526,15 +526,19 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
-  KernelType effective_kernel_type;
-  if ((kernel_type == kMultithreadOptimized) &&
-      (params->dilation_width_factor != 1 ||
-       params->dilation_height_factor != 1)) {
-    // kMultithreadOptimized does not support dilation.
-    // Therefore, fallback to optimized.
-    effective_kernel_type = kGenericOptimized;
-  } else {
-    effective_kernel_type = kernel_type;
+  KernelType effective_kernel_type = kernel_type;
+  if (kernel_type == kMultithreadOptimized) {
+    if (context->recommended_num_threads == 1) {
+      // Use of kMultithreadOptimized is precomputed during |Prepare()|, whereas
+      // the actual thread count can change at any time. If the client requests
+      // a single thread (after Prepare()), fall back to optimized.
+      effective_kernel_type = kGenericOptimized;
+    } else if ((params->dilation_width_factor != 1) ||
+               (params->dilation_height_factor != 1)) {
+      // kMultithreadOptimized does not support dilation.
+      // Therefore, fallback to optimized.
+      effective_kernel_type = kGenericOptimized;
+    }
   }
   ConvParams op_params;
   op_params.padding_type = RuntimePaddingType(params->padding);
