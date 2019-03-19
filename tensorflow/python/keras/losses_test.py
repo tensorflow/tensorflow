@@ -397,6 +397,12 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
     self.assertEqual(mape_obj.name, 'mape_1')
     self.assertEqual(mape_obj.reduction, losses_utils.ReductionV2.SUM)
 
+  def test_all_correct_unweighted(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError()
+    y_true = constant_op.constant([4, 8, 12, 8, 1, 3], shape=(2, 3), dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_true)
+    self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
+
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
@@ -853,6 +859,12 @@ class CategoricalCrossentropyTest(test.TestCase):
 
 @test_util.run_all_in_graph_and_eager_modes
 class SparseCategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    cce_obj = keras.losses.SparseCategoricalCrossentropy(
+        reduction=losses_utils.ReductionV2.SUM, name='scc')
+    self.assertEqual(cce_obj.name, 'scc')
+    self.assertEqual(cce_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[0], [1], [2]], dtype=dtypes.int64)
