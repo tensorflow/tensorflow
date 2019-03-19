@@ -2150,6 +2150,19 @@ def cos(x):
   return math_ops.cos(x)
 
 
+@keras_export('keras.backend.tan')
+def tan(x):
+  """Computes tan of x element-wise.
+
+  Arguments:
+      x: Tensor or variable.
+
+  Returns:
+      A tensor.
+  """
+  return math_ops.tan(x)
+
+
 def _regular_normalize_batch_in_training(x,
                                          gamma,
                                          beta,
@@ -4068,6 +4081,32 @@ def hard_sigmoid(x):
   x = math_ops.add(x, point_five)
   x = clip_ops.clip_by_value(x, 0., 1.)
   return x
+
+
+@keras_export('keras.backend.sinh')
+ def sinh(x):
+   """Element-wise sinh.
+
+   Arguments:
+       x: Tensor or variable.
+
+   Returns:
+       A tensor.
+   """
+   return math_ops.sinh(x)
+
+ 
+  @keras_export('keras.backend.cosh')
+ def cosh(x):
+   """Element-wise cosh.
+
+   Arguments:
+       x: Tensor or variable.
+
+   Returns:
+       A tensor.
+   """
+   return math_ops.cosh(x)
 
 
 @keras_export('keras.backend.tanh')
