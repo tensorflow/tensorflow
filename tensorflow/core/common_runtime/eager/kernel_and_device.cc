@@ -145,7 +145,6 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
-  return Status::OK();
 }
 
 Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,

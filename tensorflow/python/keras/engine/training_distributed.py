@@ -78,7 +78,8 @@ def fit_distributed(model,
       class_weight=class_weight,
       batch_size=batch_size,
       validation_split=validation_split,
-      shuffle=shuffle)
+      shuffle=shuffle,
+      repeat=True)
 
   val_dataset = None
   if validation_data:
@@ -182,7 +183,6 @@ def predict_distributed(model,
   dataset = model._distribution_standardize_user_data(
       x,
       batch_size=batch_size,
-      repeat=False,
       allow_partial_batch=True)
   if distributed_training_utils.is_tpu_strategy(model._distribution_strategy):
     return experimental_tpu_predict_loop(

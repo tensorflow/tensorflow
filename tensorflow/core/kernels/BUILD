@@ -5784,6 +5784,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "random_op_cpu.h",
         "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",

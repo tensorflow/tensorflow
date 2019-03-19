@@ -302,7 +302,7 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     TensorShape output_shape(input_shape);
     output_shape.set_dim(split_dim, split_dim_output_size);
 
-    CudaDeviceArrayOnHost<T*> ptrs(context, num_split);
+    GpuDeviceArrayOnHost<T*> ptrs(context, num_split);
     OP_REQUIRES_OK(context, ptrs.Init());
 
     for (int i = 0; i < num_split; ++i) {

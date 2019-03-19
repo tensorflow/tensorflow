@@ -540,9 +540,29 @@ tf_kernel_library(
     name = "tensor_dataset_op",
     srcs = ["tensor_dataset_op.cc"],
     deps = [
+        ":dataset_utils",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
+    ],
+)
+
+tf_cc_test(
+    name = "tensor_dataset_op_test",
+    size = "small",
+    srcs = ["tensor_dataset_op_test.cc"],
+    deps = [
+        ":dataset_test_base",
+        ":dataset_utils",
+        ":iterator_ops",
+        ":tensor_dataset_op",
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -765,11 +785,10 @@ tf_kernel_library(
     name = "dataset_ops",
     srcs = ["dataset_ops.cc"],
     deps = [
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
     ],
 )

@@ -28,12 +28,15 @@ from tensorflow.python import tf2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.feature_column import feature_column_v2
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -129,6 +132,27 @@ class TraceModelCallTest(keras_parameterized.TestCase):
                         model.output_names[1]: outputs[1]}
 
     self._assert_all_close(expected_outputs, signature_outputs)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_trace_features_layer(self):
+    columns = [feature_column_v2.numeric_column('x')]
+    model = sequential.Sequential(
+        [feature_column_v2.DenseFeatures(columns)])
+    model_input = {'x': constant_op.constant([[1.]])}
+    model.predict(model_input, steps=1)
+    fn = saving_utils.trace_model_call(model)
+    self.assertAllClose({'output_1': [[1.]]}, fn({'x': [[1.]]}))
+
+    columns = [feature_column_v2.numeric_column('x'),
+               feature_column_v2.numeric_column('y')]
+    model = sequential.Sequential(
+        [feature_column_v2.DenseFeatures(columns)])
+    model_input = {'x': constant_op.constant([[1.]]),
+                   'y': constant_op.constant([[2.]])}
+    model.predict(model_input, steps=1)
+    fn = saving_utils.trace_model_call(model)
+    self.assertAllClose({'output_1': [[1., 2.]]},
+                        fn({'x': [[1.]], 'y': [[2.]]}))
 
   @keras_parameterized.run_all_keras_modes
   def test_specify_input_signature(self):

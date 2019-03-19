@@ -188,6 +188,7 @@ cc_library(
         "logical.cc",
         "lsh_projection.cc",
         "lstm.cc",
+        "matrix_diag.cc",
         "maximum_minimum.cc",
         "mfcc.cc",
         "mirror_pad.cc",
@@ -1369,9 +1370,10 @@ cc_test(
     size = "small",
     srcs = ["subgraph_test_util_test.cc"],
     deps = [
+        ":kernel_util",
         ":subgraph_test_util",
+        ":test_util",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -1380,6 +1382,18 @@ cc_test(
     name = "reverse_sequence_test",
     size = "small",
     srcs = ["reverse_sequence_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "matrix_diag_test",
+    size = "small",
+    srcs = ["matrix_diag_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:framework",

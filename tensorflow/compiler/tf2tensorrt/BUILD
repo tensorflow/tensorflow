@@ -76,14 +76,11 @@ cc_library(
 
 tf_cc_shared_object(
     name = "python/ops/libtftrt.so",
-    srcs = [
-        "ops/get_serialized_resource_op.cc",
-        "ops/trt_engine_op.cc",
-    ],
     copts = tf_copts(is_external = True),
     linkopts = ["-lm"],
     deps = [
         ":trt_op_kernels",
+        ":trt_op_libs",
         "//tensorflow/core:lib_proto_parsing",
     ] + if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
@@ -163,6 +160,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":trt_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -326,6 +324,7 @@ tf_cuda_cc_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/grappler/costs:graph_properties",

@@ -20,11 +20,11 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
-from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.util import nest
 
@@ -260,24 +260,54 @@ def if_stmt(cond, body, orelse, get_state, set_state):
 
 def tf_if_stmt(cond, body, orelse, get_state, set_state):
   """Overload of if_stmt that stages a TF cond."""
-  checkpointed_body = _wrap_in_state_isolation(body, get_state, set_state)
-  checkpointed_orelse = _wrap_in_state_isolation(orelse, get_state,
-                                                 set_state)
-  protected_body = _wrap_in_protection_from_undefined(
-      checkpointed_body, branch_name='if')
-  protected_orelse = _wrap_in_protection_from_undefined(
-      checkpointed_orelse, branch_name='else')
+  protected_body = _wrap_in_protection_from_undefined(body, branch_name='if')
+  protected_orelse = _wrap_in_protection_from_undefined(orelse,
+                                                        branch_name='else')
 
-  return control_flow_ops.cond(cond, protected_body, protected_orelse)
+  checkpointed_body = _wrap_in_state_isolation(protected_body, get_state,
+                                               set_state)
+  checkpointed_orelse = _wrap_in_state_isolation(protected_orelse, get_state,
+                                                 set_state)
+
+  (basics, composites) = control_flow_ops.cond(cond, checkpointed_body,
+                                               checkpointed_orelse)
+  # Set composite symbols modified by this conditional to their final values.
+  set_state(composites)
+  return basics
 
 
 def _wrap_in_state_isolation(func, get_state, set_state):
-  """Wraps function to checkpoint the value of modified composites."""
+  """Wraps func to (best-effort) isolate state mutations that func may do.
+
+  The simplest example of state mutation is mutation of variables (via e.g.
+  attributes), or modification of globals.
+
+  This allows us to more safely execute this function without worrying about
+  side effects when the function wasn't normally expected to execute. For
+  example, staging requires that the function is executed ahead of time, and
+  we need to ensure its effects are not observed during normal execution.
+
+  Args:
+    func: No-arg function that will be wrapped.
+    get_state: function that returns the current state.
+    set_state: function that takes a tuple of values and sets the
+      implementation-specific state those values. Most likely this is passed
+      the result of an earlier call to get_state.
+
+  Returns:
+    A tuple (returns, state), where outputs are the return values of func, and
+    state is implementation-specific.
+  """
   def checkpoint_func():
+    """This checkpoints composite symbols and restores them after execution."""
+    # Get the initial values to be restored after execution.
     init_values = get_state()
-    ret_values = func()
+    basic_final_values = func()
+    composite_final_values = get_state()
+    # Restore the initial values of the composite symbols to undo side-effects.
     set_state(init_values)
-    return ret_values
+
+    return basic_final_values, composite_final_values
 
   return checkpoint_func
 

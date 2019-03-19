@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import enum
 import threading
 import weakref
-import enum
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
@@ -189,10 +190,31 @@ class _CurrentDistributionContext(object):
 
   def __exit__(self, exception_type, exception_value, traceback):
     if self._device_scope:
-      self._device_scope.__exit__(exception_type, exception_value, traceback)
-    self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
+      try:
+        self._device_scope.__exit__(exception_type, exception_value, traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Device scope nesting error: move call to "
+                         "tf.distribute.set_strategy() out of `with` scope."),
+            e)
+
+    try:
+      self._var_creator_scope.__exit__(
+          exception_type, exception_value, traceback)
+    except RuntimeError as e:
+      six.raise_from(
+          RuntimeError("Variable creator scope nesting error: move call to "
+                       "tf.distribute.set_strategy() out of `with` scope."),
+          e)
+
     if self._var_scope:
-      self._var_scope.__exit__(exception_type, exception_value, traceback)
+      try:
+        self._var_scope.__exit__(exception_type, exception_value, traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Variable scope nesting error: move call to "
+                         "tf.distribute.set_strategy() out of `with` scope."),
+            e)
     _pop_per_thread_mode()
 
 
@@ -512,23 +534,50 @@ class DistributionStrategy(object):
     _require_cross_replica_or_default_context_extended(self._extended)
     return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
+  @doc_controls.do_not_generate_docs  # DEPRECATED
   def unwrap(self, value):
-    """Returns the list of all per-replica values contained in `value`.
+    """Returns the list of all local per-replica values contained in `value`.
+
+    DEPRECATED: Please use `experimental_local_results` instead.
+
+    Note: This only returns values on the workers initiated by this client.
+    When using a `Strategy` like
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy`, each worker
+    will be its own client, and this function will only return values
+    computed on that worker.
 
     Args:
-      value: A value returned by `extended.call_for_each_replica()` or a
-        variable created in `scope`.
+      value: A value returned by `experimental_run()`,
+        `extended.call_for_each_replica()`, or a variable created in `scope`.
 
     Returns:
       A tuple of values contained in `value`. If `value` represents a single
       value, this returns `(value,).`
     """
-    return self._extended._unwrap(value)  # pylint: disable=protected-access
+    return self._extended._local_results(value)  # pylint: disable=protected-access
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, -> `DistributedValues`
+  def experimental_local_results(self, value):
+    """Returns the list of all local per-replica values contained in `value`.
+
+    Note: This only returns values on the workers initiated by this client.
+    When using a `Strategy` like
+    `tf.distribute.experimental.MultiWorkerMirroredStrategy`, each worker
+    will be its own client, and this function will only return values
+    computed on that worker.
+
+    Args:
+      value: A value returned by `experimental_run()`, `experimental_run_v2()`,
+        `extended.call_for_each_replica()`, or a variable created in `scope`.
+
+    Returns:
+      A tuple of values contained in `value`. If `value` represents a single
+      value, this returns `(value,).`
+    """
+    return self._extended._local_results(value)  # pylint: disable=protected-access
+
+  @doc_controls.do_not_generate_docs  # DEPRECATED: TF v1.x only
   def group(self, value, name=None):
-    """Shortcut for `tf.group(self.unwrap(value))`."""
+    """Shortcut for `tf.group(self.experimental_local_results(value))`."""
     return self._extended._group(value, name)  # pylint: disable=protected-access
 
   @property
@@ -1067,7 +1116,7 @@ class DistributionStrategyExtended(object):
     # Called once in "cross-replica" context.
     def merge_fn(distribution, three_plus_replica_id):
       # sum the values across replicas
-      return sum(distribution.unwrap(three_plus_replica_id))
+      return sum(distribution.experimental_local_results(three_plus_replica_id))
 
     # Called once per replica in `distribution`, in a "replica" context.
     def fn(three):
@@ -1082,7 +1131,8 @@ class DistributionStrategyExtended(object):
       ...
       merged_results = distribution.call_for_each_replica(fn, args=[3])
       # merged_results has the values from every replica execution of `fn`.
-      print(distribution.unwrap(merged_results))  # Prints a list
+      # This statement prints a list:
+      print(distribution.experimental_local_results(merged_results))
     ```
 
     Args:
@@ -1104,8 +1154,9 @@ class DistributionStrategyExtended(object):
 
   def _reduce(self, reduce_op, value):
     # Default implementation until we have an implementation for each strategy.
-    return self._unwrap(self._reduce_to(
-        reduce_op, value, device_util.current() or "/device:CPU:0"))[0]
+    return self._local_results(
+        self._reduce_to(reduce_op, value,
+                        device_util.current() or "/device:CPU:0"))[0]
 
   def reduce_to(self, reduce_op, value, destinations):
     """Combine (via e.g. sum or mean) values across replicas.
@@ -1224,7 +1275,7 @@ class DistributionStrategyExtended(object):
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     raise NotImplementedError("must be implemented in descendants")
 
-  def _unwrap(self, distributed_value):
+  def _local_results(self, distributed_value):
     raise NotImplementedError("must be implemented in descendants")
 
   def value_container(self, value):
@@ -1238,13 +1289,14 @@ class DistributionStrategyExtended(object):
       A container that `value` belongs to.
       If value does not belong to any container (including the case of
       container having been destroyed), returns the value itself.
-      `value in unwrap(value_container(value))` will always be true.
+      `value in experimental_local_results(value_container(value))` will
+      always be true.
     """
     raise NotImplementedError("must be implemented in descendants")
 
   def _group(self, value, name=None):
-    """Shortcut for `tf.group(distribution.unwrap(value))`."""
-    value = nest.flatten(self._unwrap(value))
+    """Implementation of `group`."""
+    value = nest.flatten(self._local_results(value))
 
     if len(value) != 1 or name is not None:
       return control_flow_ops.group(value, name=name)
@@ -1590,12 +1642,12 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
       if should_group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   def read_var(self, replica_local_var):
     return array_ops.identity(replica_local_var)
 
-  def _unwrap(self, distributed_value):
+  def _local_results(self, distributed_value):
     return (distributed_value,)
 
   def value_container(self, value):

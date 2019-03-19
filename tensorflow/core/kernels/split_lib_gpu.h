@@ -33,15 +33,15 @@ template <typename T>
 struct SplitOpGPULaunch {
   void Run(const Eigen::GpuDevice& d, const T* input, int32 prefix_dim_size,
            int32 split_dim_size, int32 suffix_dim_size,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
+           const GpuDeviceArrayStruct<T*>& output_ptr_data);
 };
 
 template <typename T, typename IntType>
 struct SplitVOpGPULaunch {
   void Run(const Eigen::GpuDevice& d, bool fixed, const T* input,
            int total_cols, int total_rows,
-           const CudaDeviceArrayStruct<IntType>& output_scan,
-           const CudaDeviceArrayStruct<T*>& output_ptr_data);
+           const GpuDeviceArrayStruct<IntType>& output_scan,
+           const GpuDeviceArrayStruct<T*>& output_ptr_data);
 };
 
 // Explicit instantiations in split_lib_gpu.cu.cc.

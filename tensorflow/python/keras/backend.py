@@ -603,6 +603,23 @@ def _has_nchw_support():
 # VARIABLE MANIPULATION
 
 
+def _constant_to_tensor(x, dtype):
+  """Convert the input `x` to a tensor of type `dtype`.
+
+  This is slightly faster than the _to_tensor function, at the cost of
+  handling fewer cases.
+
+  Arguments:
+      x: An object to be converted (numpy arrays, floats, ints and lists of
+        them).
+      dtype: The destination type.
+
+  Returns:
+      A tensor.
+  """
+  return constant_op.constant(x, dtype=dtype)
+
+
 def _to_tensor(x, dtype):
   """Convert the input `x` to a tensor of type `dtype`.
 
@@ -1879,8 +1896,8 @@ def sqrt(x):
   Returns:
       A tensor.
   """
-  zero = _to_tensor(0., x.dtype.base_dtype)
-  inf = _to_tensor(np.inf, x.dtype.base_dtype)
+  zero = _constant_to_tensor(0., x.dtype.base_dtype)
+  inf = _constant_to_tensor(np.inf, x.dtype.base_dtype)
   x = clip_ops.clip_by_value(x, zero, inf)
   return math_ops.sqrt(x)
 
@@ -1990,8 +2007,8 @@ def clip(x, min_value, max_value):
     max_value = min_value
   if max_value is None:
     max_value = np.inf
-  min_value = _to_tensor(min_value, x.dtype.base_dtype)
-  max_value = _to_tensor(max_value, x.dtype.base_dtype)
+  min_value = _constant_to_tensor(min_value, x.dtype.base_dtype)
+  max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
   return clip_ops.clip_by_value(x, min_value, max_value)
 
 
@@ -3822,8 +3839,8 @@ def relu(x, alpha=0., max_value=None, threshold=0):
     x = nn.relu(x)
 
   if clip_max:
-    max_value = _to_tensor(max_value, x.dtype.base_dtype)
-    zero = _to_tensor(0., x.dtype.base_dtype)
+    max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
+    zero = _constant_to_tensor(0., x.dtype.base_dtype)
     x = clip_ops.clip_by_value(x, zero, max_value)
 
   if alpha != 0.:
@@ -3919,7 +3936,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
       # Compute cross entropy from probabilities.
-      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
       return -math_ops.reduce_sum(target * math_ops.log(output), axis)
     else:
@@ -3956,7 +3973,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
         output.op.type != 'Softmax'):
-      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
       output = math_ops.log(output)
     else:
@@ -4002,7 +4019,7 @@ def binary_crossentropy(target, output, from_logits=False):
   if not from_logits:
     if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
         output.op.type != 'Sigmoid'):
-      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
 
       # Compute cross entropy from probabilities.
@@ -4045,10 +4062,11 @@ def hard_sigmoid(x):
   Returns:
       A tensor.
   """
-  x = (0.2 * x) + 0.5
-  zero = _to_tensor(0., x.dtype.base_dtype)
-  one = _to_tensor(1., x.dtype.base_dtype)
-  x = clip_ops.clip_by_value(x, zero, one)
+  point_two = _constant_to_tensor(0.2, x.dtype.base_dtype)
+  point_five = _constant_to_tensor(0.5, x.dtype.base_dtype)
+  x = math_ops.mul(x, point_two)
+  x = math_ops.add(x, point_five)
+  x = clip_ops.clip_by_value(x, 0., 1.)
   return x
 
 

@@ -292,6 +292,9 @@ struct WhereOptionsT;
 struct ReverseSequenceOptions;
 struct ReverseSequenceOptionsT;
 
+struct MatrixDiagOptions;
+struct MatrixDiagOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -554,11 +557,12 @@ enum BuiltinOperator {
   BuiltinOperator_RANK = 110,
   BuiltinOperator_ELU = 111,
   BuiltinOperator_REVERSE_SEQUENCE = 112,
+  BuiltinOperator_MATRIX_DIAG = 113,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_REVERSE_SEQUENCE
+  BuiltinOperator_MAX = BuiltinOperator_MATRIX_DIAG
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[112] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[113] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -671,7 +675,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[112] {
     BuiltinOperator_WHERE,
     BuiltinOperator_RANK,
     BuiltinOperator_ELU,
-    BuiltinOperator_REVERSE_SEQUENCE
+    BuiltinOperator_REVERSE_SEQUENCE,
+    BuiltinOperator_MATRIX_DIAG
   };
   return values;
 }
@@ -791,6 +796,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "RANK",
     "ELU",
     "REVERSE_SEQUENCE",
+    "MATRIX_DIAG",
     nullptr
   };
   return names;
@@ -890,11 +896,12 @@ enum BuiltinOptions {
   BuiltinOptions_WhereOptions = 85,
   BuiltinOptions_RankOptions = 86,
   BuiltinOptions_ReverseSequenceOptions = 87,
+  BuiltinOptions_MatrixDiagOptions = 88,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_ReverseSequenceOptions
+  BuiltinOptions_MAX = BuiltinOptions_MatrixDiagOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[88] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[89] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -983,7 +990,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[88] {
     BuiltinOptions_CosOptions,
     BuiltinOptions_WhereOptions,
     BuiltinOptions_RankOptions,
-    BuiltinOptions_ReverseSequenceOptions
+    BuiltinOptions_ReverseSequenceOptions,
+    BuiltinOptions_MatrixDiagOptions
   };
   return values;
 }
@@ -1078,6 +1086,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "WhereOptions",
     "RankOptions",
     "ReverseSequenceOptions",
+    "MatrixDiagOptions",
     nullptr
   };
   return names;
@@ -1438,6 +1447,10 @@ template<> struct BuiltinOptionsTraits<RankOptions> {
 
 template<> struct BuiltinOptionsTraits<ReverseSequenceOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_ReverseSequenceOptions;
+};
+
+template<> struct BuiltinOptionsTraits<MatrixDiagOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_MatrixDiagOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2166,6 +2179,14 @@ struct BuiltinOptionsUnion {
   const ReverseSequenceOptionsT *AsReverseSequenceOptions() const {
     return type == BuiltinOptions_ReverseSequenceOptions ?
       reinterpret_cast<const ReverseSequenceOptionsT *>(value) : nullptr;
+  }
+  MatrixDiagOptionsT *AsMatrixDiagOptions() {
+    return type == BuiltinOptions_MatrixDiagOptions ?
+      reinterpret_cast<MatrixDiagOptionsT *>(value) : nullptr;
+  }
+  const MatrixDiagOptionsT *AsMatrixDiagOptions() const {
+    return type == BuiltinOptions_MatrixDiagOptions ?
+      reinterpret_cast<const MatrixDiagOptionsT *>(value) : nullptr;
   }
 };
 
@@ -7569,6 +7590,46 @@ inline flatbuffers::Offset<ReverseSequenceOptions> CreateReverseSequenceOptions(
 
 flatbuffers::Offset<ReverseSequenceOptions> CreateReverseSequenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReverseSequenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct MatrixDiagOptionsT : public flatbuffers::NativeTable {
+  typedef MatrixDiagOptions TableType;
+  MatrixDiagOptionsT() {
+  }
+};
+
+struct MatrixDiagOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef MatrixDiagOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  MatrixDiagOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(MatrixDiagOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<MatrixDiagOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const MatrixDiagOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct MatrixDiagOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit MatrixDiagOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  MatrixDiagOptionsBuilder &operator=(const MatrixDiagOptionsBuilder &);
+  flatbuffers::Offset<MatrixDiagOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<MatrixDiagOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<MatrixDiagOptions> CreateMatrixDiagOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  MatrixDiagOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<MatrixDiagOptions> CreateMatrixDiagOptions(flatbuffers::FlatBufferBuilder &_fbb, const MatrixDiagOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -7963,6 +8024,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const ReverseSequenceOptions *builtin_options_as_ReverseSequenceOptions() const {
     return builtin_options_type() == BuiltinOptions_ReverseSequenceOptions ? static_cast<const ReverseSequenceOptions *>(builtin_options()) : nullptr;
   }
+  const MatrixDiagOptions *builtin_options_as_MatrixDiagOptions() const {
+    return builtin_options_type() == BuiltinOptions_MatrixDiagOptions ? static_cast<const MatrixDiagOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8340,6 +8404,10 @@ template<> inline const RankOptions *Operator::builtin_options_as<RankOptions>()
 
 template<> inline const ReverseSequenceOptions *Operator::builtin_options_as<ReverseSequenceOptions>() const {
   return builtin_options_as_ReverseSequenceOptions();
+}
+
+template<> inline const MatrixDiagOptions *Operator::builtin_options_as<MatrixDiagOptions>() const {
+  return builtin_options_as_MatrixDiagOptions();
 }
 
 struct OperatorBuilder {
@@ -11156,6 +11224,29 @@ inline flatbuffers::Offset<ReverseSequenceOptions> CreateReverseSequenceOptions(
       _batch_dim);
 }
 
+inline MatrixDiagOptionsT *MatrixDiagOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new MatrixDiagOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void MatrixDiagOptions::UnPackTo(MatrixDiagOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<MatrixDiagOptions> MatrixDiagOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const MatrixDiagOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateMatrixDiagOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<MatrixDiagOptions> CreateMatrixDiagOptions(flatbuffers::FlatBufferBuilder &_fbb, const MatrixDiagOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const MatrixDiagOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateMatrixDiagOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -11762,6 +11853,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const ReverseSequenceOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_MatrixDiagOptions: {
+      auto ptr = reinterpret_cast<const MatrixDiagOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -12128,6 +12223,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const ReverseSequenceOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_MatrixDiagOptions: {
+      auto ptr = reinterpret_cast<const MatrixDiagOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -12482,6 +12581,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const ReverseSequenceOptionsT *>(value);
       return CreateReverseSequenceOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_MatrixDiagOptions: {
+      auto ptr = reinterpret_cast<const MatrixDiagOptionsT *>(value);
+      return CreateMatrixDiagOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -12834,6 +12937,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_ReverseSequenceOptions: {
       value = new ReverseSequenceOptionsT(*reinterpret_cast<ReverseSequenceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_MatrixDiagOptions: {
+      value = new MatrixDiagOptionsT(*reinterpret_cast<MatrixDiagOptionsT *>(u.value));
       break;
     }
     default:
@@ -13275,6 +13382,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_ReverseSequenceOptions: {
       auto ptr = reinterpret_cast<ReverseSequenceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_MatrixDiagOptions: {
+      auto ptr = reinterpret_cast<MatrixDiagOptionsT *>(value);
       delete ptr;
       break;
     }

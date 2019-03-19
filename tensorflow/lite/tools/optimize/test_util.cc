@@ -35,6 +35,8 @@ const char* kModelWithSharedWeights = "weight_shared_between_convs.bin";
 
 const char* kMultiInputAddWithReshape = "multi_input_add_reshape.bin";
 
+const char* kConstInputAddModel = "add_with_const_input.bin";
+
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];
   vsnprintf(buf, sizeof(buf), format, args);

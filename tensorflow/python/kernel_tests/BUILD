@@ -308,6 +308,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:nn_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1194,6 +1195,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1693,9 +1695,6 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = [
-        "no_gpu",  # TODO(b/117928656)
-    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3147,6 +3146,7 @@ cuda_py_test(
         "no_pip",
         "notap",  # http://b/31080670
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

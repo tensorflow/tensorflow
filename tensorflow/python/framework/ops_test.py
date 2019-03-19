@@ -1295,6 +1295,22 @@ class DeviceTest(test_util.TensorFlowTestCase):
              device: "/device:CPU:5" }
     """, gd)
 
+  def testNestingErrorGraph(self):
+    g = ops.Graph()
+    scope = g.device("/device:GPU:8")
+    scope.__enter__()
+    with g.device("/device:GPU:9"):
+      with self.assertRaises(RuntimeError):
+        scope.__exit__(None, None, None)
+
+  def testNestingErrorEager(self):
+    with context.eager_mode():
+      scope = ops.device("/device:CPU:0")
+      scope.__enter__()
+      with ops.device(None):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
+
   def testNoneClearsDefault(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2/device:CPU:1"):

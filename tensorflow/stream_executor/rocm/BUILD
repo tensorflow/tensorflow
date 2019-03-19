@@ -232,7 +232,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:logging_proto_cc",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",

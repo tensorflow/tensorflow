@@ -540,10 +540,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
-    tags = [
-        "no_windows",  # TODO(b/127888631)
-        "no_windows_gpu",  # TODO(b/127881287)
-    ],
 )
 
 tf_py_test(
@@ -606,6 +602,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -623,6 +620,7 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -675,6 +673,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -797,6 +796,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 2,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -809,6 +809,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -823,6 +824,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -837,6 +839,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1036,6 +1039,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -1048,6 +1052,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
