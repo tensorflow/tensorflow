@@ -533,6 +533,7 @@ class CheckpointManager(object):
         checkpoint will be preserved if it has been at least
         `keep_checkpoint_every_n_hours` since the last preserved checkpoint. The
         default setting of `None` does not preserve any checkpoints in this way.
+      checkpoint_name: Custom name for the checkpoint file.
 
     Raises:
       ValueError: If `max_to_keep` is not a positive integer.
