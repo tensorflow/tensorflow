@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import types_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as rwcpb2
-from tensorflow.core.protobuf import config_pb2 as cpb2
+from tensorflow.core.protobuf import rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
@@ -220,19 +220,19 @@ def _get_config(auto_mixed_precision=True):
   """ Returns a config object with automatic mixed precision
       activated if appropriate """
   if auto_mixed_precision:
-    rewrite_config = rwcpb2.RewriterConfig(
-        auto_mixed_precision=rwcpb2.RewriterConfig.ON,
+    rewrite_config = rewriter_config_pb2.RewriterConfig(
+        auto_mixed_precision=rewriter_config_pb2.RewriterConfig.ON,
         # do not remove duplicated nodes
-        arithmetic_optimization=rwcpb2.RewriterConfig.OFF)
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   else:
-    rewrite_config = rwcpb2.RewriterConfig(
-        auto_mixed_precision=rwcpb2.RewriterConfig.OFF,
+    rewrite_config = rewriter_config_pb2.RewriterConfig(
+        auto_mixed_precision=rewriter_config_pb2.RewriterConfig.OFF,
         # do not remove duplicated nodes
-        arithmetic_optimization=rwcpb2.RewriterConfig.OFF)
+        arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   rewrite_config.min_graph_nodes = -1
-  graph_options = cpb2.GraphOptions(
+  graph_options = config_pb2.GraphOptions(
       rewrite_options=rewrite_config, build_cost_model=1)
-  config = cpb2.ConfigProto(graph_options=graph_options)
+  config = config_pb2.ConfigProto(graph_options=graph_options)
   config.graph_options.optimizer_options.opt_level = -1
   return config
 
@@ -279,7 +279,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
     with session.Session(config=_get_config()) as sess:
       sess.run(variables.global_variables_initializer())
-      metadata = cpb2.RunMetadata()
+      metadata = config_pb2.RunMetadata()
       output_val = sess.run(fetches, run_metadata=metadata)
 
     return output_val_ref, output_val, metadata.cost_graph
