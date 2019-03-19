@@ -24,3 +24,9 @@ from __future__ import with_statement
 
 def f():
   print('foo')
+
+
+class Foo(object):
+
+  def f(self):
+    print('foo')

@@ -415,10 +415,16 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
-  def test_getfutureimports_simple_case(self):
+  def test_getfutureimports_functions(self):
     expected_imports = ('absolute_import', 'division', 'print_function',
                         'with_statement')
     self.assertEqual(inspect_utils.getfutureimports(future_import_module.f),
+                     expected_imports)
+
+  def test_getfutureimports_methods(self):
+    expected_imports = ('absolute_import', 'division', 'print_function',
+                        'with_statement')
+    self.assertEqual(inspect_utils.getfutureimports(future_import_module.Foo.f),
                      expected_imports)
 
   def test_super_wrapper_for_dynamic_attrs(self):
