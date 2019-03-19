@@ -165,6 +165,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
+        "//tensorflow/python/compiler/tensorrt:wrap_conversion",
     ],
 )
 
