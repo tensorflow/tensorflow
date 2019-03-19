@@ -245,6 +245,24 @@ class WrapFunctionTest(test.TestCase):
     self.assertEqual(0, v0.numpy())
     self.assertEqual(0, v1.numpy())
 
+  def test_operation_returned(self):
+
+    v = variables.Variable(0)
+
+    def f():
+      v.assign(1, read_value=False, name='assign_to_v')
+
+    f_wrapped = wrap_function.wrap_function(f, [])
+    operation_to_fetch = f_wrapped.graph.get_operation_by_name('assign_to_v')
+    f_pruned = f_wrapped.prune(
+        [], operation_to_fetch)
+    self.assertEqual(
+        ['assign_to_v'],
+        [operation.name for operation in f_pruned.graph.control_outputs])
+    self.assertEqual(0, v.numpy())
+    f_pruned()
+    self.assertEqual(1, v.numpy())
+
   def test_function_from_graph_def(self):
     @def_function.function
     def make_graph_def(x):
