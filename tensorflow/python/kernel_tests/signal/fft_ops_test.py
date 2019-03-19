@@ -39,13 +39,27 @@ VALID_FFT_RANKS = (1, 2, 3)
 
 class BaseFFTOpsTest(test.TestCase):
 
-  def _compare(self, x, rank, fft_length=None, use_placeholder=False,
-               rtol=1e-4, atol=1e-4):
+  # TODO(b/128833319,b/123860949): Default use_placeholder=False in the below
+  # methods after Eigen kernels are more precise or once XLA testing can disable
+  # constant folding. Alternatively, use placeholders by default for all these
+  # tests.
+  def _compare(self,
+               x,
+               rank,
+               fft_length=None,
+               use_placeholder=True,
+               rtol=1e-4,
+               atol=1e-4):
     self._compareForward(x, rank, fft_length, use_placeholder, rtol, atol)
     self._compareBackward(x, rank, fft_length, use_placeholder, rtol, atol)
 
-  def _compareForward(self, x, rank, fft_length=None, use_placeholder=False,
-                      rtol=1e-4, atol=1e-4):
+  def _compareForward(self,
+                      x,
+                      rank,
+                      fft_length=None,
+                      use_placeholder=False,
+                      rtol=1e-4,
+                      atol=1e-4):
     x_np = self._npFFT(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
@@ -55,8 +69,13 @@ class BaseFFTOpsTest(test.TestCase):
 
     self.assertAllClose(x_np, x_tf, rtol=rtol, atol=atol)
 
-  def _compareBackward(self, x, rank, fft_length=None, use_placeholder=False,
-                       rtol=1e-4, atol=1e-4):
+  def _compareBackward(self,
+                       x,
+                       rank,
+                       fft_length=None,
+                       use_placeholder=False,
+                       rtol=1e-4,
+                       atol=1e-4):
     x_np = self._npIFFT(x, rank, fft_length)
     if use_placeholder:
       x_ph = array_ops.placeholder(dtype=dtypes.as_dtype(x.dtype))
