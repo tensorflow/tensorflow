@@ -347,7 +347,7 @@ tf_custom_op_py_library(
 )
 
 cc_library(
-    name = "popop_ops",
+    name = "popops_ops",
     srcs = [
         "ops/popops/cross_replica_sum.cc",
     ],
@@ -358,13 +358,13 @@ cc_library(
 tf_gen_op_wrapper_py(
     name = "popops_ops_wrapper_py",
     out = "ops/gen_popops_ops.py",
-    deps = [":popop_ops"],
+    deps = [":popops_ops"],
     visibility = ["//tensorflow:internal"],
 )
 
 tf_custom_op_py_library(
     name = "popops_ops_py",
-    kernels = [":popop_ops"],
+    kernels = [":popops_ops"],
     deps = [":popops_ops_wrapper_py"],
     srcs_version = "PY2AND3",
 )
@@ -403,7 +403,7 @@ cc_library(
         ":poplar_backend",
         ":ipu_ops",
         ":popnn_ops",
-        ":popop_ops",
+        ":popops_ops",
         ":pop_datastream_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
