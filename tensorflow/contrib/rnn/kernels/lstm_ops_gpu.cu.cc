@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//#if GOOGLE_CUDA
-#if 0
+#if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
 
@@ -243,9 +242,9 @@ void LSTMBlockCellFpropWithCUDA(
   const int block_dim = 128;
   const int grid_dim =
       Eigen::divup(batch_size * (cell_size + input_size), block_dim);
-      GPU_LAUNCH_KERNEL(concat_xh<T>, grid_dim, block_dim, 0, cu_stream,
+  TF_CHECK_OK(CudaLaunchKernel(concat_xh<T>, grid_dim, block_dim, 0, cu_stream,
                                xh.data(), x.data(), h_prev.data(), batch_size,
-                               cell_size, input_size);
+                               cell_size, input_size));
 
   // states1 = xh * w
   typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
@@ -263,17 +262,17 @@ void LSTMBlockCellFpropWithCUDA(
                    Eigen::divup(cell_size, static_cast<int>(block_dim_2d.y)));
 
   if (use_peephole) {
-      GPU_LAUNCH_KERNEL(
+    TF_CHECK_OK(CudaLaunchKernel(
         lstm_gates<T, true>, grid_dim_2d, block_dim_2d, 0, cu_stream,
         icfo.data(), b.data(), cs_prev.data(), wci.data(), wcf.data(),
         wco.data(), o.data(), h.data(), ci.data(), cs.data(), co.data(),
-        i.data(), f.data(), forget_bias, cell_clip, batch_size, cell_size);
+        i.data(), f.data(), forget_bias, cell_clip, batch_size, cell_size));
   } else {
-    GPU_LAUNCH_KERNEL(
+    TF_CHECK_OK(CudaLaunchKernel(
         lstm_gates<T, false>, grid_dim_2d, block_dim_2d, 0, cu_stream,
         icfo.data(), b.data(), cs_prev.data(), wci.data(), wcf.data(),
         wco.data(), o.data(), h.data(), ci.data(), cs.data(), co.data(),
-        i.data(), f.data(), forget_bias, cell_clip, batch_size, cell_size);
+        i.data(), f.data(), forget_bias, cell_clip, batch_size, cell_size));
   }
 }
 
@@ -372,19 +371,19 @@ void LSTMBlockCellBpropWithCUDA(
     typename TTypes<T>::Vec wci_grad, typename TTypes<T>::Vec wcf_grad,
     typename TTypes<T>::Vec wco_grad, const int batch_size, const int cell_size,
     const bool use_peephole) {
-  const cudaStream_t& cu_stream = GetCudaStream(ctx);
+  const cudaStream_t& cu_stream = GetGpuStream(ctx);
 
   dim3 block_dim_2d(std::min(batch_size, 8), 32);
   dim3 grid_dim_2d(Eigen::divup(batch_size, static_cast<int>(block_dim_2d.x)),
                    Eigen::divup(cell_size, static_cast<int>(block_dim_2d.y)));
 
-  GPU_LAUNCH_KERNEL(
+  TF_CHECK_OK(CudaLaunchKernel(
       lstm_gates_bprop<T>, grid_dim_2d, block_dim_2d, 0, cu_stream,
       cs_prev.data(), h_prev.data(), w.data(), wci.data(), wcf.data(),
       wco.data(), b.data(), i.data(), cs.data(), f.data(), o.data(), ci.data(),
       co.data(), cs_grad.data(), h_grad.data(), do_.data(), dcs.data(),
       dci.data(), df.data(), di.data(), dicfo.data(), cs_prev_grad.data(),
-      batch_size, cell_size, use_peephole);
+      batch_size, cell_size, use_peephole));
 
   if (use_peephole) {
     Eigen::array<Eigen::DenseIndex, 2> p_shape({1, cell_size});

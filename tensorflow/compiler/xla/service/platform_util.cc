@@ -55,7 +55,7 @@ string CanonicalPlatformName(const string& name) {
   if (platform_str == "gpu") {
 #if TENSORFLOW_USE_ROCM
     platform_str = "rocm";
-#else
+#else 
     platform_str = "cuda";
 #endif 
   }

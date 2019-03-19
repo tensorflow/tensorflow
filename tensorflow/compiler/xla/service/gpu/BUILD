@@ -604,8 +604,7 @@ cc_library(
              "cusolver_rewriter.cc"
      ]),
     hdrs = if_cuda_is_configured([
-          "cusolver_context.h",
-           "cusolver_rewriter.h",
+          "cusolver_context.h"
        ]),
     deps =  if_cuda_is_configured([
              ":cusolver_context",
@@ -859,9 +858,9 @@ cc_library(
     srcs = if_cuda_is_configured(["nvptx_compiler.cc"]) 
            + if_rocm_is_configured(["amdgpu_compiler.cc"]),
     hdrs = if_cuda_is_configured([
-            "nvptx_compiler.h",
-            "cudnn_batchnorm_rewriter.h",
-            ]) 
+              "nvptx_compiler.h",
+              "cudnn_batchnorm_rewriter.h",
+           ]) 
            + if_rocm_is_configured(["amdgpu_compiler.h"]),
     deps = [
         ":cudnn_conv_pad_for_tensor_cores",
@@ -939,7 +938,6 @@ cc_library(
         "@llvm//:core",
     ]+
     if_cuda_is_configured([
-         "cudnn_batchnorm_rewriter",
         ":cusolver_rewriter",
         ":cudnn_conv_algorithm_picker", 
         "//tensorflow/core:cuda_libdevice_path",

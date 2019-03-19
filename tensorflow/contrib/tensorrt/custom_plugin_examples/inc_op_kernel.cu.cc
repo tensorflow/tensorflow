@@ -24,7 +24,7 @@ limitations under the License.
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/util/cuda_launch_config.h"
+#include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
 namespace tensorrt {

@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//#if GOOGLE_CUDA
-#if 0 
-
+#if GOOGLE_CUDA
 
 #define EIGEN_USE_GPU
 
@@ -39,11 +37,11 @@ namespace functor {
 #define GPUReduceSliceFunctorReduceop(reduceop, beginning)                     \
   template <typename T, typename Index>                                        \
   __global__ void ReduceSliceDeviceKernel##reduceop(                           \
-      Cuda3DLaunchConfig config, Index indices_width, Index bound,             \
-      const T begin, const Index *indices, const T *input, T *out) {           \
-    CUDA_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {               \
-      CUDA_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {             \
-        CUDA_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {           \
+      Gpu3DLaunchConfig config, Index indices_width, Index bound,              \
+      const T begin, const Index* indices, const T* input, T* out) {           \
+    GPU_AXIS_KERNEL_LOOP(x, config.virtual_thread_count.x, X) {                \
+      GPU_AXIS_KERNEL_LOOP(y, config.virtual_thread_count.y, Y) {              \
+        GPU_AXIS_KERNEL_LOOP(z, config.virtual_thread_count.z, Z) {            \
           Index outidx = x * config.virtual_thread_count.y *                   \
                              config.virtual_thread_count.z +                   \
                          y * config.virtual_thread_count.z + z;                \
@@ -63,7 +61,7 @@ namespace functor {
   template <typename T, typename Index>                                        \
   struct ReduceSliceFunctor##reduceop<GPUDevice, T, Index> {                   \
     virtual ~ReduceSliceFunctor##reduceop() {}                                 \
-    virtual void operator()(OpKernelContext *ctx, const GPUDevice &d,          \
+    virtual void operator()(OpKernelContext* ctx, const GPUDevice& d,          \
                             Index indices_width,                               \
                             typename TTypes<Index, 1>::ConstTensor indices,    \
                             typename TTypes<T, 3>::ConstTensor data,           \
@@ -75,14 +73,14 @@ namespace functor {
       if (sizex * sizey * sizez == 0) {                                        \
         return;                                                                \
       }                                                                        \
-      Gpu3DLaunchConfig config = GetGpu3DLaunchConfig(                       \
+      Gpu3DLaunchConfig config = GetGpu3DLaunchConfig(                         \
           sizex, sizey, sizez, d, ReduceSliceDeviceKernel##reduceop<T, Index>, \
           0, 0);                                                               \
                                                                                \
-      GpuLaunchKernel(                                            \
+      TF_CHECK_OK(CudaLaunchKernel(                                            \
           ReduceSliceDeviceKernel##reduceop<T, Index>, config.block_count,     \
           config.thread_per_block, 0, d.stream(), config, indices_width,       \
-          bound, beginning<T>(), indices.data(), data.data(), output.data()); \
+          bound, beginning<T>(), indices.data(), data.data(), output.data())); \
     }                                                                          \
   };
 

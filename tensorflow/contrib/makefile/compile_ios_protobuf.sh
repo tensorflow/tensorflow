@@ -24,11 +24,11 @@ fi
 usage() {
   echo "Usage: $(basename "$0") [-a]"
   echo "-a [build_arch] build for specified arch comma separate for multiple archs (eg: x86_64,arm64)"
-  echo "default arch i386, x86_64, armv7, armv7s, arm64"
+  echo "default arch x86_64, armv7, armv7s, arm64"
   exit 1
 }
 
-BUILD_TARGET="i386 x86_64 armv7 armv7s arm64"
+BUILD_TARGET="x86_64 armv7 armv7s arm64"
 while getopts "a:" opt_name; do
   case "$opt_name" in
     a) BUILD_TARGET="${OPTARG}";;
@@ -115,39 +115,6 @@ package_pb_library() {
 
 build_target() {
 case "$1" in
-    i386)  make distclean
-        ./configure \
-        --host=i386-apple-${OSX_VERSION} \
-        --disable-shared \
-        --enable-cross-compile \
-        --with-protoc="${PROTOC_PATH}" \
-        --prefix=${LIBDIR}/iossim_386 \
-        --exec-prefix=${LIBDIR}/iossim_386 \
-        "CFLAGS=${CFLAGS} \
-        -mios-simulator-version-min=${MIN_SDK_VERSION} \
-        -arch i386 \
-        -fembed-bitcode \
-        -isysroot ${IPHONESIMULATOR_SYSROOT}" \
-        "CXX=${CXX}" \
-        "CXXFLAGS=${CXXFLAGS} \
-        -mios-simulator-version-min=${MIN_SDK_VERSION} \
-        -arch i386 \
-        -fembed-bitcode \
-        -isysroot \
-        ${IPHONESIMULATOR_SYSROOT}" \
-        LDFLAGS="-arch i386 \
-        -fembed-bitcode \
-        -mios-simulator-version-min=${MIN_SDK_VERSION} \
-        ${LDFLAGS} \
-        -L${IPHONESIMULATOR_SYSROOT}/usr/lib/ \
-        -L${IPHONESIMULATOR_SYSROOT}/usr/lib/system" \
-        "LIBS=${LIBS}"
-        make -j"${JOB_COUNT}"
-        make install
-
-        package_pb_library "iossim_386"
-        ;;
-
     x86_64) make distclean
         ./configure \
         --host=x86_64-apple-${OSX_VERSION} \
