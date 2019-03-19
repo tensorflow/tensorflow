@@ -424,37 +424,60 @@ TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
   return kTfLiteOk;
 }
 
+int64_t Subgraph::MultiplyWithoutOverflow(const int64_t x, const int64_t y) {
+  // Multiply in uint64 rather than int64 since signed overflow is undefined.
+  // Negative values will wrap around to large unsigned values in the casts
+  // (see section 4.7 [conv.integral] of the C++14 standard).
+  const uint64_t ux = x;
+  const uint64_t uy = y;
+  const uint64_t uxy = ux * uy;
+
+  // Check if we overflow uint64, using a cheap check if both inputs are small
+  if (((ux | uy) >> 32) != 0) {
+    // Ensure nonnegativity.  Note that negative numbers will appear "large"
+    // to the unsigned comparisons above.
+    TF_LITE_ENSURE(context_, x >= 0 && y >= 0);
+
+    // Otherwise, detect overflow using a division
+    if (ux != 0 && uxy / ux != uy) return -1;
+  }
+
+  // Cast back to signed.  Any negative value will signal an error.
+  return static_cast<int64_t>(uxy);
+}
+
 TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
                                      size_t dims_size, size_t* bytes) {
-  // TODO(aselle): Check for overflow here using overflow.h in TensorFlow
-  // MultiplyWithoutOverflow.
   TF_LITE_ENSURE(context_, bytes != nullptr);
   size_t count = 1;
-  for (int k = 0; k < dims_size; k++) count *= dims[k];
+  for (int k = 0; k < dims_size; k++) {
+    count = MultiplyWithoutOverflow(count, dims[k]);
+  }
+
   switch (type) {
     case kTfLiteFloat32:
-      *bytes = sizeof(float) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(float), count);
       break;
     case kTfLiteInt16:
-      *bytes = sizeof(int16_t) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(int16_t), count);
       break;
     case kTfLiteInt32:
-      *bytes = sizeof(int32_t) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(int32_t), count);
       break;
     case kTfLiteUInt8:
-      *bytes = sizeof(uint8_t) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(uint8_t), count);
       break;
     case kTfLiteInt64:
-      *bytes = sizeof(int64_t) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(int64_t), count);
       break;
     case kTfLiteBool:
-      *bytes = sizeof(bool) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(bool), count);
       break;
     case kTfLiteComplex64:
-      *bytes = sizeof(std::complex<float>) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(std::complex<float>), count);
       break;
     case kTfLiteInt8:
-      *bytes = sizeof(int8_t) * count;
+      *bytes = MultiplyWithoutOverflow(sizeof(int8_t), count);
       break;
     default:
       ReportError(
@@ -462,6 +485,8 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
           "supported currently.");
       return kTfLiteError;
   }
+
+  TF_LITE_ENSURE(context_, bytes >= 0);
   return kTfLiteOk;
 }
 

@@ -445,6 +445,9 @@ class Subgraph {
     }
   }
 
+  // Multiply two nonnegative int64's, returning negative for overflow
+  int64_t MultiplyWithoutOverflow(const int64_t x, const int64_t y);
+
   // The state of the Interpreter.
   enum State {
     // The interpreter isn't ready to be invoked.
