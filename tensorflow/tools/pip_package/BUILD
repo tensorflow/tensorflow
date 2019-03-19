@@ -67,6 +67,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
+    "//tensorflow/python:is_xla_test_true",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
