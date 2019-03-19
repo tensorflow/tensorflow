@@ -24,12 +24,14 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/gemm_support.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -495,27 +497,70 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   }
 }
 
+template <KernelType kernel_type>
 void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
                              TfLiteConvParams* params, OpData* data,
                              TfLiteTensor* input, TfLiteTensor* filter,
-                             TfLiteTensor* bias, TfLiteTensor* output) {
-  ConvParams op_params;
-  op_params.input_offset = input->params.zero_point;
-  op_params.output_offset = output->params.zero_point;
-  op_params.stride_height = params->stride_height;
-  op_params.stride_width = params->stride_width;
-  op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.dilation_width_factor = params->dilation_width_factor;
-  op_params.padding_values.height = data->padding.height;
-  op_params.padding_values.width = data->padding.width;
+                             TfLiteTensor* bias, TfLiteTensor* output,
+                             TfLiteTensor* im2col) {
+  KernelType effective_kernel_type;
+  effective_kernel_type = kernel_type;
 
-  reference_integer_ops::ConvPerChannel(
-      op_params, data->per_channel_output_multiplier.data(),
-      data->per_channel_output_shift.data(), GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+// If not running on NEON we force a fallback to the reference kernels, until
+// we have optimized support on other platforms.
+#ifndef GEMMLOWP_NEON
+  effective_kernel_type = kReference;
+#endif
+
+  switch (effective_kernel_type) {
+    case kReference: {
+      ConvParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.stride_height = params->stride_height;
+      op_params.stride_width = params->stride_width;
+      op_params.dilation_height_factor = params->dilation_height_factor;
+      op_params.dilation_width_factor = params->dilation_width_factor;
+      op_params.padding_values.height = data->padding.height;
+      op_params.padding_values.width = data->padding.width;
+
+      reference_integer_ops::ConvPerChannel(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int8>(input), GetTensorShape(filter),
+          GetTensorData<int8>(filter), GetTensorShape(bias),
+          GetTensorData<int32>(bias), GetTensorShape(output),
+          GetTensorData<int8>(output));
+      break;
+    }
+    case kGenericOptimized:
+    case kMultithreadOptimized:
+    case kCblasOptimized: {
+#ifdef GEMMLOWP_NEON
+      gemmlowp::GemmContext* gemm_context =
+          gemm_support::GetFromContext(context);
+      ConvParams op_params;
+      op_params.input_offset = -input->params.zero_point;
+      op_params.output_offset = output->params.zero_point;
+      op_params.stride_height = params->stride_height;
+      op_params.stride_width = params->stride_width;
+      op_params.dilation_height_factor = params->dilation_height_factor;
+      op_params.dilation_width_factor = params->dilation_width_factor;
+      op_params.padding_values.height = data->padding.height;
+      op_params.padding_values.width = data->padding.width;
+
+      optimized_integer_ops::ConvPerChannel(
+          op_params, data->per_channel_output_multiplier.data(),
+          data->per_channel_output_shift.data(), GetTensorShape(input),
+          GetTensorData<int8>(input), GetTensorShape(filter),
+          GetTensorData<int8>(filter), GetTensorShape(bias),
+          GetTensorData<int32>(bias), GetTensorShape(output),
+          GetTensorData<int8>(output), GetTensorShape(im2col),
+          GetTensorData<int8>(im2col), gemm_context);
+#endif
+      break;
+    }
+  }
 }
 
 template <KernelType kernel_type>
@@ -707,8 +752,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                  bias, im2col, hwcn_weights, output);
       break;
     case kTfLiteInt8:
-      EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
-                              output);
+      EvalQuantizedPerChannel<kernel_type>(context, node, params, data, input,
+                                           filter, bias, output, im2col);
       break;
     default:
       context->ReportError(context, "Type %d not currently supported.",
