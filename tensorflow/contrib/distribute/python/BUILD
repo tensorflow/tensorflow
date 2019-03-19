@@ -28,13 +28,13 @@ py_library(
     ],
 )
 
-cuda_py_test(
+distribute_py_test(
     name = "values_test",
     srcs = ["values_test.py"],
-    additional_deps = [
+    main = "values_test.py",
+    deps = [
         ":combinations",
         ":mirrored_strategy",
-        "@absl_py//absl/testing:parameterized",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
@@ -47,6 +47,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -160,11 +161,20 @@ py_library(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:gradients_impl",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:layers",
         "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
@@ -245,6 +255,33 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "keras_multi_worker_test",
+    srcs = ["keras_multi_worker_test.py"],
+    additional_deps = [
+        "//tensorflow/contrib/distribute/python:collective_all_reduce_strategy",
+        "//tensorflow/contrib/distribute/python:combinations",
+        "//tensorflow/contrib/distribute/python:mirrored_strategy",
+        "//tensorflow/contrib/distribute/python:multi_worker_test_base",
+        "//tensorflow/contrib/distribute/python:parameter_server_strategy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:engine",
+    ],
+    shard_count = 3,
+    tags = [
+        # TODO(b/124344198): Add "multi_and_single_gpu",
+    ],
+)
+
 py_library(
     name = "step_fn",
     srcs = ["step_fn.py"],
@@ -260,18 +297,8 @@ py_library(
     srcs = ["tpu_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":one_device_strategy",
         "//tensorflow/contrib/tpu:tpu_lib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute:tpu_strategy",
     ],
 )
 
@@ -563,7 +590,7 @@ distribute_py_test(
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_oss",  # TODO(b/117919883)
         "no_windows_gpu",
         "notsan",
     ],
@@ -580,7 +607,6 @@ distribute_py_test(
     shard_count = 32,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -599,7 +625,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -643,7 +668,6 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -663,7 +687,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -683,7 +706,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -703,7 +725,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
     ],
@@ -723,7 +744,6 @@ distribute_py_test(
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
         "no_pip",
         "no_windows_gpu",
         "notsan",

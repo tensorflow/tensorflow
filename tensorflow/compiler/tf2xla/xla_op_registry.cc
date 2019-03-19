@@ -137,6 +137,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   static void* registration_init = [&registry]() {
     MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
+    VLOG(2) << "tf_xla_cpu_global_jit = " << cpu_global_jit;
 
     mutex_lock lock(registry.mutex_);
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_CPU)).ok()) {
@@ -147,7 +148,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
           cpu_global_jit
               ? XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally
               : XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested;
-      registration.compile_resource_ops = false;
+      registration.compile_all_resource_ops = false;
     }
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_GPU)).ok()) {
       DeviceRegistration& registration =
@@ -155,7 +156,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
       registration.compilation_device_name = DEVICE_GPU_XLA_JIT;
       registration.autoclustering_policy =
           XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally;
-      registration.compile_resource_ops = false;
+      registration.compile_all_resource_ops = false;
     }
     return nullptr;
   }();

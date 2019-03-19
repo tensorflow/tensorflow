@@ -256,7 +256,7 @@ Status GenVariableMethods(const tf2xla::Config& config,
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
     const string code = R"(
-  void set_var_{{NAME}}_input_data({{TYPE}}* data) {
+  void set_var_{{NAME}}_data({{TYPE}}* data) {
     set_arg_data({{I}}, data);
   }
 )";
@@ -270,17 +270,17 @@ Status GenVariableMethods(const tf2xla::Config& config,
     TF_RETURN_IF_ERROR(AddRewritesForShape(
         i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
     string code = R"(
-  {{TYPE}}* var_{{NAME}}_result_data() {
+  {{TYPE}}* var_{{NAME}}_data() {
     return static_cast<{{TYPE}}*>(result_data({{I}}));
   }
-  {{TYPE}}& var_{{NAME}}_result({{DIM_VARS}}) {
+  {{TYPE}}& var_{{NAME}}({{DIM_VARS}}) {
     return (*static_cast<{{TYPE}}(*){{DIM_SIZES}}>(
         result_data({{I}}))){{INDICES}};
   }
-  const {{TYPE}}* var_{{NAME}}_result_data() const {
+  const {{TYPE}}* var_{{NAME}}_data() const {
     return static_cast<const {{TYPE}}*>(result_data({{I}}));
   }
-  const {{TYPE}}& var_{{NAME}}_result({{DIM_VARS}}) const {
+  const {{TYPE}}& var_{{NAME}}({{DIM_VARS}}) const {
     return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
         result_data({{I}}))){{INDICES}};
   }

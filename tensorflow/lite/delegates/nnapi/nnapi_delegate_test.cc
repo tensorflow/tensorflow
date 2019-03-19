@@ -51,7 +51,7 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
   }
 
  protected:
-  void SetData(int index, TensorType type, std::initializer_list<float> data) {
+  void SetData(int index, TensorType type, const std::vector<float>& data) {
     switch (type) {
       case TensorType_FLOAT32:
         PopulateTensor(index, data);
@@ -61,6 +61,9 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
         break;
       case TensorType_UINT8:
         QuantizeAndPopulate<uint8_t>(index, data);
+        break;
+      case TensorType_INT8:
+        QuantizeAndPopulate<int8_t>(index, data);
         break;
       default:
         FAIL() << "Type not supported: " << type;
@@ -269,13 +272,6 @@ class ConvolutionOpModel : public SingleOpModelWithNNAPI {
 
     output_ = AddOutput(output);
 
-    if (input_type_ != TensorType_FLOAT32) {
-      // The following is required by quantized inference. It is the unittest's
-      // responsibility to make sure the output scale falls into the correct
-      // range.
-      CHECK_LT(GetScale(input_) * GetScale(filter_), GetScale(output_));
-    }
-
     SetBuiltinOp(BuiltinOperator_CONV_2D, BuiltinOptions_Conv2DOptions,
                  CreateConv2DOptions(
                      builder_, padding, stride_width, stride_height, activation,
@@ -427,10 +423,48 @@ TEST(ConvolutionOpTest, NoActivation) {
                              }));
 }
 
+TEST(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
+  // output_multiplier = 1.0118
+  ConvolutionOpModel quant_op({TensorType_UINT8, {2, 2, 4, 1}, -128.5, 128},
+                              {TensorType_UINT8, {3, 2, 2, 1}, -128.5, 128},
+                              {TensorType_UINT8, {}, -127, 128});
+  ConvolutionOpModel float_op({TensorType_FLOAT32, {2, 2, 4, 1}},
+                              {TensorType_FLOAT32, {3, 2, 2, 1}},
+                              {TensorType_FLOAT32, {}});
+  std::initializer_list<float> input = {
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  };
+  std::initializer_list<float> filter = {
+      1,  2,  3,  4,  // first 2x2 filter
+      -1, 1,  -1, 1,  // second 2x2 filter
+      -1, -1, 1,  1,  // third 2x2 filter
+  };
+  std::initializer_list<float> bias = {1, 2, 3};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
+}
+
 class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {
  public:
   DepthwiseConvolutionOpModel(const TensorData& input, const TensorData& filter,
-                              const TensorData& output) {
+                              const TensorData& output)
+      : input_type_(input.type) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -462,21 +496,36 @@ class DepthwiseConvolutionOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
   }
 
-  void SetFilter(std::initializer_list<float> f) { PopulateTensor(filter_, f); }
-
-  void SetBias(std::initializer_list<float> f) { PopulateTensor(bias_, f); }
-
   void SetInput(std::initializer_list<float> data) {
-    PopulateTensor(input_, data);
+    SetData(input_, input_type_, data);
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  void SetFilter(std::initializer_list<float> data) {
+    SetData(filter_, input_type_, data);
+  }
+
+  void SetBias(std::initializer_list<float> data) {
+    const auto bias_type =
+        (input_type_ == TensorType_FLOAT32) ? input_type_ : TensorType_INT32;
+    SetData(bias_, bias_type, data);
+  }
+
+  std::vector<float> GetOutput() {
+    if (input_type_ == TensorType_FLOAT32) {
+      return ExtractVector<float>(output_);
+    } else {
+      return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                                 GetScale(output_), GetZeroPoint(output_));
+    }
+  }
 
  protected:
   int input_;
   int filter_;
   int bias_;
   int output_;
+
+  const TensorType input_type_;
 };
 
 TEST(NNAPIDelegate, DepthwiseConv2DWithNoActivation) {
@@ -503,6 +552,42 @@ TEST(NNAPIDelegate, DepthwiseConv2DWithNoActivation) {
                                  71, -34, 99, -20,  //
                                  91, -26, 127, -4,  //
                              }));
+}
+
+TEST(QuantizedDepthwiseConv2DTest, FilterMultiplierGreaterThan1) {
+  DepthwiseConvolutionOpModel quant_op(
+      {TensorType_UINT8, {1, 3, 2, 2}, -128.5, 128},
+      {TensorType_UINT8, {1, 2, 2, 4}, -128.5, 128},
+      {TensorType_UINT8, {}, -127, 128});
+  DepthwiseConvolutionOpModel float_op({TensorType_FLOAT32, {1, 3, 2, 2}},
+                                       {TensorType_FLOAT32, {1, 2, 2, 4}},
+                                       {TensorType_FLOAT32, {}});
+
+  std::initializer_list<float> input = {
+      1, 2, 7,  8,   // column 1
+      3, 4, 9,  10,  // column 2
+      5, 6, 11, 12,  // column 3
+  };
+  std::initializer_list<float> filter = {
+      1,  2,   3,   4,    //
+      -9, 10,  -11, 12,   //
+      5,  6,   7,   8,    //
+      13, -14, 15,  -16,  //
+  };
+  std::initializer_list<float> bias = {1, 2, 3, 4};
+
+  quant_op.SetInput(input);
+  quant_op.SetFilter(filter);
+  quant_op.SetBias(bias);
+  quant_op.Invoke();
+
+  float_op.SetInput(input);
+  float_op.SetFilter(filter);
+  float_op.SetBias(bias);
+  float_op.Invoke();
+
+  EXPECT_THAT(quant_op.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(float_op.GetOutput(), 1)));
 }
 
 class FullyConnectedOpModel : public SingleOpModelWithNNAPI {
@@ -549,7 +634,14 @@ class FullyConnectedOpModel : public SingleOpModelWithNNAPI {
     SetData(bias_, bias_type, data);
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  std::vector<float> GetOutput() {
+    if (input_type_ == TensorType_FLOAT32) {
+      return ExtractVector<float>(output_);
+    } else {
+      return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
+                                 GetScale(output_), GetZeroPoint(output_));
+    }
+  }
 
  protected:
   int input_;
@@ -602,6 +694,33 @@ TEST(FullyConnectedOpTest, FloatInputQuantizedWeights) {
 
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear({24, 25, 26, 58, 59, 60}, 1.3)));
+}
+
+TEST(FullyConnectedOpTest, QuantizedOutputMultiplierGreaterThan1) {
+  // real_multiplier = 2.
+  FullyConnectedOpModel m(
+      /*input=*/{TensorType_UINT8, {2, 10}, -127, 128},
+      /*weights=*/{TensorType_UINT8, {3, 10}, -127, 128},
+      /*output=*/{TensorType_UINT8, {}, -63.5, 64});
+
+  m.SetWeights({
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 0
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 1
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,  // u = 2
+  });
+  m.SetBias({1, 2, 3});
+
+  m.SetInput({
+      1, 2, 3, 4, 5, 6, 7, 8,  -9, -10,  // b = 0
+      1, 2, 3, 4, 5, 6, 7, -8, 9,  -10,  // b = 1
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 24, 25, 26,  // first batch
+                                 58, 59, 60,  // second batch
+                             })));
 }
 
 class SoftmaxOpModel : public SingleOpModelWithNNAPI {
@@ -1016,8 +1135,9 @@ TEST(NNAPIDelegate, ConcatenationFourInputsQuantizedMixedRange) {
 
 class DequantizeOpModel : public SingleOpModelWithNNAPI {
  public:
-  DequantizeOpModel(std::initializer_list<int> shape, float min, float max) {
-    input_ = AddInput({TensorType_UINT8, shape, min, max});
+  DequantizeOpModel(TensorType inputType, std::initializer_list<int> shape,
+                    float min, float max) {
+    input_ = AddInput({inputType, shape, min, max});
     output_ = AddOutput({TensorType_FLOAT32, shape});
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
@@ -1025,7 +1145,8 @@ class DequantizeOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter({GetShape(input_)});
   }
 
-  void SetInput(std::initializer_list<uint8_t> data) {
+  template <typename T>
+  void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
 
@@ -1036,14 +1157,25 @@ class DequantizeOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, DequantizeFourDimensional) {
-  DequantizeOpModel m({2, 5}, -63.5, 64);
+TEST(NNAPIDelegate, DequantizeFourDimensionalUint8) {
+  DequantizeOpModel m(TensorType_UINT8, {2, 5}, -63.5, 64);
 
-  m.SetInput({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
+}
+
+TEST(NNAPIDelegate, DequantizeFourDimensionalInt8Symm) {
+  // [-64, 63.5] -> scale=0.5, zero_point=0 for INT8
+  DequantizeOpModel m(TensorType_INT8, {2, 5}, -64, 63.5);
+
+  m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-64, -63.5, -63, -62.5, -62, 61.5, 62, 62.5, 63, 63.5})));
 }
 
 class FloorOpModel : public SingleOpModelWithNNAPI {
@@ -1871,8 +2003,8 @@ static std::initializer_list<float> rnn_bias = {
 class RNNOpModel : public SingleOpModelWithNNAPI {
  public:
   RNNOpModel(int batches, int units, int size,
-             const TensorType& weights = TensorType_FLOAT32,
-             const TensorType& recurrent_weights = TensorType_FLOAT32)
+             const TensorType weights = TensorType_FLOAT32,
+             const TensorType recurrent_weights = TensorType_FLOAT32)
       : batches_(batches), units_(units), input_size_(size) {
     input_ = AddInput(TensorType_FLOAT32);
     weights_ = AddInput(weights);
@@ -2230,11 +2362,12 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
               bool use_peephole, bool use_projection_weights,
               bool use_projection_bias, float cell_clip, float proj_clip,
               const std::vector<std::vector<int>>& input_shapes,
-              const TensorType& weight_type = TensorType_FLOAT32)
+              const TensorType weight_type)
       : n_batch_(n_batch),
         n_input_(n_input),
         n_cell_(n_cell),
-        n_output_(n_output) {
+        n_output_(n_output),
+        weight_type_(weight_type) {
     input_ = AddInput(TensorType_FLOAT32);
 
     if (use_cifg) {
@@ -2307,69 +2440,71 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter(input_shapes);
   }
 
-  void SetInputToInputWeights(std::vector<float> f) {
-    PopulateTensor(input_to_input_weights_, f);
+  void SetInputToInputWeights(const std::vector<float>& f) {
+    SetData(input_to_input_weights_, weight_type_, f);
   }
 
-  void SetInputToForgetWeights(std::vector<float> f) {
-    PopulateTensor(input_to_forget_weights_, f);
+  void SetInputToForgetWeights(const std::vector<float>& f) {
+    SetData(input_to_forget_weights_, weight_type_, f);
   }
 
-  void SetInputToCellWeights(std::vector<float> f) {
-    PopulateTensor(input_to_cell_weights_, f);
+  void SetInputToCellWeights(const std::vector<float>& f) {
+    SetData(input_to_cell_weights_, weight_type_, f);
   }
 
-  void SetInputToOutputWeights(std::vector<float> f) {
-    PopulateTensor(input_to_output_weights_, f);
+  void SetInputToOutputWeights(const std::vector<float>& f) {
+    SetData(input_to_output_weights_, weight_type_, f);
   }
 
-  void SetRecurrentToInputWeights(std::vector<float> f) {
-    PopulateTensor(recurrent_to_input_weights_, f);
+  void SetRecurrentToInputWeights(const std::vector<float>& f) {
+    SetData(recurrent_to_input_weights_, weight_type_, f);
   }
 
-  void SetRecurrentToForgetWeights(std::vector<float> f) {
-    PopulateTensor(recurrent_to_forget_weights_, f);
+  void SetRecurrentToForgetWeights(const std::vector<float>& f) {
+    SetData(recurrent_to_forget_weights_, weight_type_, f);
   }
 
-  void SetRecurrentToCellWeights(std::vector<float> f) {
-    PopulateTensor(recurrent_to_cell_weights_, f);
+  void SetRecurrentToCellWeights(const std::vector<float>& f) {
+    SetData(recurrent_to_cell_weights_, weight_type_, f);
   }
 
-  void SetRecurrentToOutputWeights(std::vector<float> f) {
-    PopulateTensor(recurrent_to_output_weights_, f);
+  void SetRecurrentToOutputWeights(const std::vector<float>& f) {
+    SetData(recurrent_to_output_weights_, weight_type_, f);
   }
 
-  void SetCellToInputWeights(std::vector<float> f) {
-    PopulateTensor(cell_to_input_weights_, f);
+  void SetCellToInputWeights(const std::vector<float>& f) {
+    SetData(cell_to_input_weights_, weight_type_, f);
   }
 
-  void SetCellToForgetWeights(std::vector<float> f) {
-    PopulateTensor(cell_to_forget_weights_, f);
+  void SetCellToForgetWeights(const std::vector<float>& f) {
+    SetData(cell_to_forget_weights_, weight_type_, f);
   }
 
-  void SetCellToOutputWeights(std::vector<float> f) {
-    PopulateTensor(cell_to_output_weights_, f);
+  void SetCellToOutputWeights(const std::vector<float>& f) {
+    SetData(cell_to_output_weights_, weight_type_, f);
   }
 
-  void SetInputGateBias(std::vector<float> f) {
+  void SetInputGateBias(const std::vector<float>& f) {
     PopulateTensor(input_gate_bias_, f);
   }
 
-  void SetForgetGateBias(std::vector<float> f) {
+  void SetForgetGateBias(const std::vector<float>& f) {
     PopulateTensor(forget_gate_bias_, f);
   }
 
-  void SetCellBias(std::vector<float> f) { PopulateTensor(cell_bias_, f); }
+  void SetCellBias(const std::vector<float>& f) {
+    PopulateTensor(cell_bias_, f);
+  }
 
-  void SetOutputGateBias(std::vector<float> f) {
+  void SetOutputGateBias(const std::vector<float>& f) {
     PopulateTensor(output_gate_bias_, f);
   }
 
-  void SetProjectionWeights(std::vector<float> f) {
-    PopulateTensor(projection_weights_, f);
+  void SetProjectionWeights(const std::vector<float>& f) {
+    SetData(projection_weights_, weight_type_, f);
   }
 
-  void SetProjectionBias(std::vector<float> f) {
+  void SetProjectionBias(const std::vector<float>& f) {
     PopulateTensor(projection_bias_, f);
   }
 
@@ -2419,6 +2554,9 @@ class LSTMOpModel : public SingleOpModelWithNNAPI {
   int n_input_;
   int n_cell_;
   int n_output_;
+
+ private:
+  const TensorType weight_type_;
 };
 
 class BaseLstmTest : public ::testing::Test {
@@ -2564,7 +2702,8 @@ TEST_F(NoCifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
-                   });
+                   },
+                   /*weight_type=*/TensorType_FLOAT32);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -2667,7 +2806,8 @@ TEST_F(CifgNoPeepholeNoProjectionNoClippingLstmTest, LstmBlackBoxTest) {
 
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
-                   });
+                   },
+                   /*weight_type=*/TensorType_FLOAT32);
 
   lstm.SetInputToCellWeights(input_to_cell_weights_);
   lstm.SetInputToForgetWeights(input_to_forget_weights_);
@@ -3321,7 +3461,8 @@ TEST_F(NoCifgPeepholeProjectionClippingLstmTest, LstmBlackBoxTest) {
 
                        {n_output, n_cell},  // projection_weight tensor
                        {0},                 // projection_bias tensor
-                   });
+                   },
+                   /*weight_type=*/TensorType_FLOAT32);
 
   lstm.SetInputToInputWeights(input_to_input_weights_);
   lstm.SetInputToCellWeights(input_to_cell_weights_);
@@ -3352,7 +3493,7 @@ class BaseReduceOpModel : public SingleOpModelWithNNAPI {
   void SetAxis(const std::vector<int>& data) { PopulateTensor(axis_, data); }
 
   template <class T>
-  void SetInput(std::vector<T> data) {
+  void SetInput(const std::vector<T>& data) {
     PopulateTensor(input_, data);
   }
 

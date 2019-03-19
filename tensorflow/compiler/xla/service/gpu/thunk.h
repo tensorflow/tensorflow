@@ -42,12 +42,14 @@ class GpuExecutable;
 class Thunk {
  public:
   enum Kind {
+    kCholesky,
     kConditional,
     kConvolution,
     kCopy,
     kCudnnBatchNormBackward,
     kCudnnBatchNormForwardInference,
     kCudnnBatchNormForwardTraining,
+    kNcclAllReduce,
     kFft,
     kGemm,
     kInfeed,
@@ -104,6 +106,7 @@ class Thunk {
 // A sequence of thunks.
 using ThunkSequence = std::vector<std::unique_ptr<Thunk>>;
 
+absl::string_view ThunkKindToString(Thunk::Kind);
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind);
 
 }  // namespace gpu

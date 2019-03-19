@@ -514,7 +514,9 @@ def get_default_session_config():
   else:
     num_thread = int(os.environ.get('OMP_NUM_THREADS'))
     config = config_pb2.ConfigProto(
-        intra_op_parallelism_threads=num_thread, allow_soft_placement=True)
+        intra_op_parallelism_threads=num_thread,
+        inter_op_parallelism_threads=num_thread,
+        allow_soft_placement=True)
   return config
 
 
@@ -599,6 +601,23 @@ def _has_nchw_support():
 
 
 # VARIABLE MANIPULATION
+
+
+def _constant_to_tensor(x, dtype):
+  """Convert the input `x` to a tensor of type `dtype`.
+
+  This is slightly faster than the _to_tensor function, at the cost of
+  handling fewer cases.
+
+  Arguments:
+      x: An object to be converted (numpy arrays, floats, ints and lists of
+        them).
+      dtype: The destination type.
+
+  Returns:
+      A tensor.
+  """
+  return constant_op.constant(x, dtype=dtype)
 
 
 def _to_tensor(x, dtype):
@@ -784,6 +803,14 @@ def constant(value, dtype=None, shape=None, name=None):
   """
   if dtype is None:
     dtype = floatx()
+
+  # If the outer context is eager but we are executing under the keras
+  # FuncGraph, we create EagerTensors and use them as constants.
+  if (ops.executing_eagerly_outside_functions() and
+      getattr(get_graph(), 'name', '') == 'keras_graph'):
+    with ops.init_scope():
+      return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
+
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 
@@ -1869,8 +1896,8 @@ def sqrt(x):
   Returns:
       A tensor.
   """
-  zero = _to_tensor(0., x.dtype.base_dtype)
-  inf = _to_tensor(np.inf, x.dtype.base_dtype)
+  zero = _constant_to_tensor(0., x.dtype.base_dtype)
+  inf = _constant_to_tensor(np.inf, x.dtype.base_dtype)
   x = clip_ops.clip_by_value(x, zero, inf)
   return math_ops.sqrt(x)
 
@@ -1980,8 +2007,8 @@ def clip(x, min_value, max_value):
     max_value = min_value
   if max_value is None:
     max_value = np.inf
-  min_value = _to_tensor(min_value, x.dtype.base_dtype)
-  max_value = _to_tensor(max_value, x.dtype.base_dtype)
+  min_value = _constant_to_tensor(min_value, x.dtype.base_dtype)
+  max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
   return clip_ops.clip_by_value(x, min_value, max_value)
 
 
@@ -2948,7 +2975,10 @@ class GraphExecutionFunction(object):
     self.inputs = nest.flatten(inputs)
     self._outputs_structure = outputs
     self.outputs = cast_variables_to_tensor(nest.flatten(outputs))
-    with ops.control_dependencies(self.outputs):
+    # TODO(b/127668432): Consider using autograph to generate these
+    # dependencies in call.
+    # Index 0 = total loss or model output for `predict`.
+    with ops.control_dependencies([self.outputs[0]]):
       updates_ops = []
       for update in updates:
         if isinstance(update, tuple):
@@ -3394,7 +3424,7 @@ def rnn(step_function,
   if unroll:
     if not time_steps:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
-    states = initial_states
+    states = tuple(initial_states)
     successive_states = []
     successive_outputs = []
 
@@ -3426,7 +3456,8 @@ def rnn(step_function,
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         mask_t = mask_list[i]
-        output, new_states = step_function(inp, states + constants)
+        output, new_states = step_function(inp,
+                                           tuple(states) + tuple(constants))
         tiled_mask_t = _expand_mask(mask_t, output)
 
         if not successive_outputs:
@@ -3461,7 +3492,7 @@ def rnn(step_function,
     else:
       for i in range(time_steps):
         inp = _get_input_tensor(i)
-        output, states = step_function(inp, states + constants)
+        output, states = step_function(inp, tuple(states) + tuple(constants))
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
@@ -3808,8 +3839,8 @@ def relu(x, alpha=0., max_value=None, threshold=0):
     x = nn.relu(x)
 
   if clip_max:
-    max_value = _to_tensor(max_value, x.dtype.base_dtype)
-    zero = _to_tensor(0., x.dtype.base_dtype)
+    max_value = _constant_to_tensor(max_value, x.dtype.base_dtype)
+    zero = _constant_to_tensor(0., x.dtype.base_dtype)
     x = clip_ops.clip_by_value(x, zero, max_value)
 
   if alpha != 0.:
@@ -3899,13 +3930,13 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Softmax':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Softmax'):
       axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
-
       # Compute cross entropy from probabilities.
-      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
       return -math_ops.reduce_sum(target * math_ops.log(output), axis)
     else:
@@ -3940,8 +3971,9 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Softmax':
-      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Softmax'):
+      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
       output = math_ops.log(output)
     else:
@@ -3985,8 +4017,9 @@ def binary_crossentropy(target, output, from_logits=False):
       A tensor.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Sigmoid':
-      epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Sigmoid'):
+      epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
 
       # Compute cross entropy from probabilities.
@@ -4029,10 +4062,11 @@ def hard_sigmoid(x):
   Returns:
       A tensor.
   """
-  x = (0.2 * x) + 0.5
-  zero = _to_tensor(0., x.dtype.base_dtype)
-  one = _to_tensor(1., x.dtype.base_dtype)
-  x = clip_ops.clip_by_value(x, zero, one)
+  point_two = _constant_to_tensor(0.2, x.dtype.base_dtype)
+  point_five = _constant_to_tensor(0.5, x.dtype.base_dtype)
+  x = math_ops.mul(x, point_two)
+  x = math_ops.add(x, point_five)
+  x = clip_ops.clip_by_value(x, 0., 1.)
   return x
 
 
@@ -4064,12 +4098,9 @@ def dropout(x, level, noise_shape=None, seed=None):
   Returns:
       A tensor.
   """
-  retain_prob = 1. - level
   if seed is None:
     seed = np.random.randint(10e6)
-  # the dummy 1. works around a TF bug
-  # (float32_ref vs. float32 incompatibility)
-  return nn.dropout(x * 1., retain_prob, noise_shape, seed=seed)
+  return nn.dropout_v2(x, rate=level, noise_shape=noise_shape, seed=seed)
 
 
 @keras_export('keras.backend.l2_normalize')
@@ -4825,6 +4856,7 @@ def local_conv(inputs,
   return permute_dimensions(output, permutation)
 
 
+@keras_export('keras.backend.local_conv1d')
 def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   """Apply 1D conv with un-shared weights.
 
@@ -4859,6 +4891,7 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
                     data_format)
 
 
+@keras_export('keras.backend.local_conv2d')
 def local_conv2d(inputs,
                  kernel,
                  kernel_size,
@@ -5118,7 +5151,8 @@ def ctc_label_dense_to_sparse(labels, label_lengths):
   vals_sparse = array_ops.gather_nd(labels, indices)
 
   return sparse_tensor.SparseTensor(
-      math_ops.to_int64(indices), vals_sparse, math_ops.to_int64(label_shape))
+      math_ops.cast(indices, dtypes_module.int64), vals_sparse,
+      math_ops.cast(label_shape, dtypes_module.int64))
 
 
 @keras_export('keras.backend.ctc_batch_cost')
@@ -5139,10 +5173,12 @@ def ctc_batch_cost(y_true, y_pred, input_length, label_length):
       Tensor with shape (samples,1) containing the
           CTC loss of each element.
   """
-  label_length = math_ops.to_int32(array_ops.squeeze(label_length, axis=-1))
-  input_length = math_ops.to_int32(array_ops.squeeze(input_length, axis=-1))
-  sparse_labels = math_ops.to_int32(
-      ctc_label_dense_to_sparse(y_true, label_length))
+  label_length = math_ops.cast(
+      array_ops.squeeze(label_length, axis=-1), dtypes_module.int32)
+  input_length = math_ops.cast(
+      array_ops.squeeze(input_length, axis=-1), dtypes_module.int32)
+  sparse_labels = math_ops.cast(
+      ctc_label_dense_to_sparse(y_true, label_length), dtypes_module.int32)
 
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
 
@@ -5181,7 +5217,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               the log probability of each decoded sequence.
   """
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
-  input_length = math_ops.to_int32(input_length)
+  input_length = math_ops.cast(input_length, dtypes_module.int32)
 
   if greedy:
     (decoded, log_prob) = ctc.ctc_greedy_decoder(

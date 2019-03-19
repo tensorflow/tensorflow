@@ -44,6 +44,22 @@ class OptimizationOptions(options.OptionsBase):
       "Whether to apply default static optimizations. If False, only static "
       "optimizations that have been explicitly enabled will be applied.")
 
+  autotune = options.create_option(
+      name="autotune",
+      ty=bool,
+      docstring=
+      "Whether to automatically tune performance knobs. If None, defaults to "
+      "True.")
+
+  autotune_cpu_budget = options.create_option(
+      name="autotune_cpu_budget",
+      ty=int,
+      docstring=
+      "When autotuning is enabled (through `autotune`), determines the CPU "
+      "budget to use. Values greater than the number of schedulable CPU cores "
+      "are allowed but may result in CPU contention. If None, defaults to the "
+      "number of schedulable CPU cores.")
+
   filter_fusion = options.create_option(
       name="filter_fusion",
       ty=bool,

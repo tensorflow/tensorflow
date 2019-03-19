@@ -24,6 +24,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import profiler
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
@@ -40,20 +41,21 @@ from tensorflow.python.util.tf_export import keras_export
 @keras_export(v1=['keras.callbacks.TensorBoard'])
 class TensorBoard(callbacks.Callback):
   # pylint: disable=line-too-long
-  """TensorBoard basic visualizations.
-
-  This callback writes a log for TensorBoard, which allows
-  you to visualize dynamic graphs of your training and test
-  metrics, as well as activation histograms for the different
-  layers in your model.
+  """Enable visualizations for TensorBoard.
 
   TensorBoard is a visualization tool provided with TensorFlow.
+
+  This callback logs events for TensorBoard, including:
+  * Metrics summary plots
+  * Training graph visualization
+  * Activation histograms
+  * Sampled profiling
 
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
 
   ```sh
-  tensorboard --logdir=/full_path_to_your_logs
+  tensorboard --logdir=path_to_your_logs
   ```
 
   You can find more information about TensorBoard
@@ -96,6 +98,9 @@ class TensorBoard(callbacks.Callback):
         callback will write the metrics and losses to TensorBoard every 1000
         samples. Note that writing too frequently to TensorBoard can slow down
         your training.
+      profile_batch: Profile the batch to sample compute characteristics. By
+        default, it will profile the second batch. Set profile_batch=0 to
+        disable profiling.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -120,7 +125,8 @@ class TensorBoard(callbacks.Callback):
                embeddings_layer_names=None,
                embeddings_metadata=None,
                embeddings_data=None,
-               update_freq='epoch'):
+               update_freq='epoch',
+               profile_batch=2):
     super(TensorBoard, self).__init__()
     self.log_dir = log_dir
     self.histogram_freq = histogram_freq
@@ -147,6 +153,14 @@ class TensorBoard(callbacks.Callback):
       self.update_freq = update_freq
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
+    # TODO(fishx): Add a link to the full profiler tutorial.
+    self._profile_batch = profile_batch
+    # One profiler session is running if it is True.
+    self._is_profiling = False
+
+    # TensorBoard should only write summaries on the chief when in a
+    # Multi-Worker setting.
+    self._chief_worker_only = True
 
   def _init_writer(self, model):
     """Sets file writer."""
@@ -329,7 +343,10 @@ class TensorBoard(callbacks.Callback):
     self.writer.flush()
 
   def on_batch_end(self, batch, logs=None):
-    """Writes scalar summaries for metrics on every training batch."""
+    """Writes scalar summaries for metrics on every training batch.
+
+    Performs profiling if current batch is in profiler_batches.
+    """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}
     self._samples_seen += logs.get('size', 1)
@@ -341,6 +358,18 @@ class TensorBoard(callbacks.Callback):
       self._write_custom_summaries(self._total_batches_seen, batch_logs)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
+    if self._is_profiling:
+      profiler.save(self.log_dir, profiler.stop())
+      self._is_profiling = False
+    elif (not self._is_profiling and
+          self._total_batches_seen == self._profile_batch - 1):
+      profiler.start()
+      self._is_profiling = True
+
+  def on_train_begin(self, logs=None):
+    if self._profile_batch == 1:
+      profiler.start()
+      self._is_profiling = True
 
   def on_epoch_begin(self, epoch, logs=None):
     """Add histogram op to Model eval_function callbacks, reset batch count."""
@@ -350,10 +379,10 @@ class TensorBoard(callbacks.Callback):
       self._epoch = epoch
       # pylint: disable=protected-access
       # add the histogram summary op if it should run this epoch
-      self.model._make_eval_function()
-      if self.merged not in self.model._eval_function.fetches:
-        self.model._eval_function.fetches.append(self.merged)
-        self.model._eval_function.fetch_callbacks[
+      self.model._make_test_function()
+      if self.merged not in self.model.test_function.fetches:
+        self.model.test_function.fetches.append(self.merged)
+        self.model.test_function.fetch_callbacks[
             self.merged] = self._fetch_callback
       # pylint: enable=protected-access
 
@@ -374,10 +403,10 @@ class TensorBoard(callbacks.Callback):
     # pop the histogram summary op after each epoch
     if self.histogram_freq:
       # pylint: disable=protected-access
-      if self.merged in self.model._eval_function.fetches:
-        self.model._eval_function.fetches.remove(self.merged)
-      if self.merged in self.model._eval_function.fetch_callbacks:
-        self.model._eval_function.fetch_callbacks.pop(self.merged)
+      if self.merged in self.model.test_function.fetches:
+        self.model.test_function.fetches.remove(self.merged)
+      if self.merged in self.model.test_function.fetch_callbacks:
+        self.model.test_function.fetch_callbacks.pop(self.merged)
       # pylint: enable=protected-access
 
     if self.embeddings_data is None and self.embeddings_freq:
@@ -396,6 +425,7 @@ class TensorBoard(callbacks.Callback):
         embeddings_data = self.embeddings_data
         n_samples = embeddings_data[0].shape[0]
         i = 0
+        sess = K.get_session()
         while i < n_samples:
           step = min(self.batch_size, n_samples - i)
           batch = slice(i, i + step)
@@ -413,12 +443,15 @@ class TensorBoard(callbacks.Callback):
           if not isinstance(K.learning_phase(), int):
             feed_dict[K.learning_phase()] = False
 
-          self.sess.run(self.assign_embeddings, feed_dict=feed_dict)
-          self.saver.save(self.sess,
+          sess.run(self.assign_embeddings, feed_dict=feed_dict)
+          self.saver.save(sess,
                           os.path.join(self.log_dir, 'keras_embedding.ckpt'),
                           epoch)
 
           i += self.batch_size
 
   def on_train_end(self, logs=None):
+    if self._is_profiling:
+      profiler.save(self.log_dir, profiler.stop())
+      self._is_profiling = False
     self.writer.close()

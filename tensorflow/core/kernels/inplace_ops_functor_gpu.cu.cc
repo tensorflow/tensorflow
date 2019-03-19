@@ -49,9 +49,9 @@ Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
   const int64 ncols = Toutput.dimension(1);
   const T* src = value.flat<T>().data();
   T* dst = output->flat<T>().data();
-  CudaLaunchKernel(DoParallelConcatOpKernel<T>, cfg.block_count,
-                   cfg.thread_per_block, 0, d.stream(),
-                   cfg.virtual_thread_count, nrows, ncols, loc, src, dst);
+  TF_CHECK_OK(CudaLaunchKernel(
+      DoParallelConcatOpKernel<T>, cfg.block_count, cfg.thread_per_block, 0,
+      d.stream(), cfg.virtual_thread_count, nrows, ncols, loc, src, dst));
   return Status::OK();
 }
 
@@ -117,22 +117,22 @@ void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
   T* dst = y->flat<T>().data();
   switch (op) {
     case I_UPDATE:
-      CudaLaunchKernel(DoInplaceOpKernel<T, I_UPDATE>, cfg.block_count,
-                       cfg.thread_per_block, 0, d.stream(),
-                       cfg.virtual_thread_count, nrows, ncols, n, src, rowids,
-                       dst);
+      TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<T, I_UPDATE>,
+                                   cfg.block_count, cfg.thread_per_block, 0,
+                                   d.stream(), cfg.virtual_thread_count, nrows,
+                                   ncols, n, src, rowids, dst));
       break;
     case I_ADD:
-      CudaLaunchKernel(DoInplaceOpKernel<T, I_ADD>, cfg.block_count,
-                       cfg.thread_per_block, 0, d.stream(),
-                       cfg.virtual_thread_count, nrows, ncols, n, src, rowids,
-                       dst);
+      TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<T, I_ADD>, cfg.block_count,
+                                   cfg.thread_per_block, 0, d.stream(),
+                                   cfg.virtual_thread_count, nrows, ncols, n,
+                                   src, rowids, dst));
       break;
     case I_SUB:
-      CudaLaunchKernel(DoInplaceOpKernel<T, I_SUB>, cfg.block_count,
-                       cfg.thread_per_block, 0, d.stream(),
-                       cfg.virtual_thread_count, nrows, ncols, n, src, rowids,
-                       dst);
+      TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<T, I_SUB>, cfg.block_count,
+                                   cfg.thread_per_block, 0, d.stream(),
+                                   cfg.virtual_thread_count, nrows, ncols, n,
+                                   src, rowids, dst));
       break;
   }
 }
@@ -151,10 +151,10 @@ void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
   const int32* rowids = i.flat<int32>().data();
   bool* dst = y->flat<bool>().data();
   if (op == I_UPDATE) {
-    CudaLaunchKernel(DoInplaceOpKernel<bool, I_UPDATE>, cfg.block_count,
-                     cfg.thread_per_block, 0, d.stream(),
-                     cfg.virtual_thread_count, nrows, ncols, n, src, rowids,
-                     dst);
+    TF_CHECK_OK(CudaLaunchKernel(DoInplaceOpKernel<bool, I_UPDATE>,
+                                 cfg.block_count, cfg.thread_per_block, 0,
+                                 d.stream(), cfg.virtual_thread_count, nrows,
+                                 ncols, n, src, rowids, dst));
   }
 }
 

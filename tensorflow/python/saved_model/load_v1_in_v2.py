@@ -49,11 +49,11 @@ class _Initializer(tracking.TrackableResource):
     self._asset_paths = asset_paths
     self._init_fn = init_fn
 
-  def create_resource(self):
+  def _create_resource(self):
     return array_ops.placeholder(
         dtype=dtypes.resource, shape=[], name="unused_resource")
 
-  def initialize(self):
+  def _initialize(self):
     self._init_fn(*[path.asset_path for path in self._asset_paths])
 
 
@@ -140,7 +140,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
           feeds=asset_feed_tensors,
           fetches=[wrapped.graph.as_graph_element(init_op)])
       initializer = _Initializer(init_fn, asset_paths)
-      initializer.initialize()
+      initializer._initialize()  # pylint: disable=protected-access
       root.initializer = initializer
       root.asset_paths = asset_paths
     else:

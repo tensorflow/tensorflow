@@ -54,7 +54,9 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-using FDH = FunctionDefHelper;
+using FDH = ::tensorflow::FunctionDefHelper;
+
+using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 
 Status GetOpSig(const string& op, const OpDef** sig) {
   return OpRegistry::Global()->LookUpOpDef(op, sig);
@@ -708,14 +710,14 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     Scope s = Scope::NewRootScope();
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
-    auto func0 = ops::Identity(s.WithOpName("Func/_0"), x);
+    auto func0 = ops::Identity(s.WithOpName("Func/x4/input/_0"), x);
     auto x4_x2 = test::function::Call(&s, "x4/x2", "XTimesTwo", {func0});
     auto x4_y = test::function::Call(&s, "x4/y", "XTimesTwo", {x4_x2});
-    auto func1 = ops::Identity(s.WithOpName("Func/_1"), x4_y);
-    auto func2 = ops::Identity(s.WithOpName("Func/_2"), func1);
+    auto func1 = ops::Identity(s.WithOpName("Func/x4/output/_1"), x4_y);
+    auto func2 = ops::Identity(s.WithOpName("Func/y/input/_2"), func1);
     auto y_x2 = test::function::Call(&s, "y/x2", "XTimesTwo", {func2});
     auto y_y = test::function::Call(&s, "y/y", "XTimesTwo", {y_x2});
-    auto func3 = ops::Identity(s.WithOpName("Func/_3"), y_y);
+    auto func3 = ops::Identity(s.WithOpName("Func/y/output/_3"), y_y);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), func3, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
@@ -739,22 +741,22 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
     auto x4_y_scale = ops::Cast(s.WithOpName("x4/y/scale"), x4_y_two, DT_FLOAT);
     auto y_x2_scale = ops::Cast(s.WithOpName("y/x2/scale"), y_x2_two, DT_FLOAT);
     auto y_y_scale = ops::Cast(s.WithOpName("y/y/scale"), y_y_two, DT_FLOAT);
-    auto func0 = ops::Identity(s.WithOpName("Func/_0"), x);
-    auto func4 = ops::Identity(s.WithOpName("Func/_4"), func0);
+    auto func0 = ops::Identity(s.WithOpName("Func/x4/input/_0"), x);
+    auto func4 = ops::Identity(s.WithOpName("Func/x4/x2/input/_4"), func0);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), func4, x4_x2_scale);
-    auto func5 = ops::Identity(s.WithOpName("Func/_5"), x4_x2_y);
-    auto func6 = ops::Identity(s.WithOpName("Func/_6"), func5);
+    auto func5 = ops::Identity(s.WithOpName("Func/x4/x2/output/_5"), x4_x2_y);
+    auto func6 = ops::Identity(s.WithOpName("Func/x4/y/input/_6"), func5);
     auto x4_y_y = ops::Mul(s.WithOpName("x4/y/y"), func6, x4_y_scale);
-    auto func7 = ops::Identity(s.WithOpName("Func/_7"), x4_y_y);
-    auto func1 = ops::Identity(s.WithOpName("Func/_1"), func7);
-    auto func2 = ops::Identity(s.WithOpName("Func/_2"), func1);
-    auto func8 = ops::Identity(s.WithOpName("Func/_8"), func2);
+    auto func7 = ops::Identity(s.WithOpName("Func/x4/y/output/_7"), x4_y_y);
+    auto func1 = ops::Identity(s.WithOpName("Func/x4/output/_1"), func7);
+    auto func2 = ops::Identity(s.WithOpName("Func/y/input/_2"), func1);
+    auto func8 = ops::Identity(s.WithOpName("Func/y/x2/input/_8"), func2);
     auto y_x2_y = ops::Mul(s.WithOpName("y/x2/y"), func8, y_x2_scale);
-    auto func9 = ops::Identity(s.WithOpName("Func/_9"), y_x2_y);
-    auto func10 = ops::Identity(s.WithOpName("Func/_10"), func9);
+    auto func9 = ops::Identity(s.WithOpName("Func/y/x2/output/_9"), y_x2_y);
+    auto func10 = ops::Identity(s.WithOpName("Func/y/y/input/_10"), func9);
     auto y_y_y = ops::Mul(s.WithOpName("y/y/y"), func10, y_y_scale);
-    auto func11 = ops::Identity(s.WithOpName("Func/_11"), y_y_y);
-    auto func3 = ops::Identity(s.WithOpName("Func/_3"), func11);
+    auto func11 = ops::Identity(s.WithOpName("Func/y/y/output/_11"), y_y_y);
+    auto func3 = ops::Identity(s.WithOpName("Func/y/output/_3"), func11);
     auto ret = ops::_Retval(s.WithOpName("y_RetVal"), func3, 0);
     TF_ASSERT_OK(s.ToGraphDef(&e2));
 
@@ -801,7 +803,7 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
 
 // Verifies that control dependencies on the caller are added as control
 // dependencies on any function calls created by inlining.
-TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithInputControlEdges) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour()});
 
   std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
@@ -822,15 +824,15 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
     auto c = ops::NoOp(s.WithOpName("c"));
-    auto func0 =
-        ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
+    auto func0 = ops::NoOp(s.WithOpName("Func/b/input_control_node/_0")
+                               .WithControlDependencies({c}));
     auto func1 = ops::Identity(
-        s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
+        s.WithOpName("Func/b/input/_1").WithControlDependencies({func0}), a);
     auto b_x2 = test::function::Call(&s, "b/x2", "XTimesTwo", {func1});
     s.graph()->AddControlEdge(func0.operation.node(), b_x2.node());
     auto b_y = test::function::Call(&s, "b/y", "XTimesTwo", {b_x2});
     s.graph()->AddControlEdge(func0.operation.node(), b_y.node());
-    auto func2 = ops::Identity(s.WithOpName("Func/_2"), b_y);
+    auto func2 = ops::Identity(s.WithOpName("Func/b/output/_2"), b_y);
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
@@ -846,36 +848,176 @@ TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsWithControlDeps) {
     TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
     auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
     auto c = ops::NoOp(s.WithOpName("c"));
-    auto func0 =
-        ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies({c}));
+    auto func0 = ops::NoOp(s.WithOpName("Func/b/input_control_node/_0")
+                               .WithControlDependencies({c}));
     auto func1 = ops::Identity(
-        s.WithOpName("Func/_1").WithControlDependencies({func0}), a);
+        s.WithOpName("Func/b/input/_1").WithControlDependencies({func0}), a);
 
-    auto func3 =
-        ops::NoOp(s.WithOpName("Func/_3").WithControlDependencies({func0}));
+    auto func3 = ops::NoOp(s.WithOpName("Func/b/x2/input_control_node/_3")
+                               .WithControlDependencies({func0}));
     auto func4 = ops::Identity(
-        s.WithOpName("Func/_4").WithControlDependencies({func3}), func1);
+        s.WithOpName("Func/b/x2/input/_4").WithControlDependencies({func3}),
+        func1);
     auto b_x2_two = ops::Const(
         s.WithOpName("b/x2/two").WithControlDependencies({func3}), 2LL);
     auto b_x2_scale = ops::Cast(s.WithOpName("b/x2/scale"), b_x2_two, DT_FLOAT);
     auto b_x2_y = ops::Mul(s.WithOpName("b/x2/y"), func4, b_x2_scale);
-    auto func5 = ops::Identity(s.WithOpName("Func/_5"), b_x2_y);
+    auto func5 = ops::Identity(s.WithOpName("Func/b/x2/output/_5"), b_x2_y);
 
-    auto func6 =
-        ops::NoOp(s.WithOpName("Func/_6").WithControlDependencies({func0}));
+    auto func6 = ops::NoOp(s.WithOpName("Func/b/y/input_control_node/_6")
+                               .WithControlDependencies({func0}));
     auto func7 = ops::Identity(
-        s.WithOpName("Func/_7").WithControlDependencies({func6}), func5);
+        s.WithOpName("Func/b/y/input/_7").WithControlDependencies({func6}),
+        func5);
     auto b_y_two = ops::Const(
         s.WithOpName("b/y/two").WithControlDependencies({func6}), 2LL);
     auto b_y_scale = ops::Cast(s.WithOpName("b/y/scale"), b_y_two, DT_FLOAT);
     auto b_y_y = ops::Mul(s.WithOpName("b/y/y"), func7, b_y_scale);
-    auto func8 = ops::Identity(s.WithOpName("Func/_8"), b_y_y);
+    auto func8 = ops::Identity(s.WithOpName("Func/b/y/output/_8"), b_y_y);
 
-    auto func2 = ops::Identity(s.WithOpName("Func/_2"), func8);
+    auto func2 = ops::Identity(s.WithOpName("Func/b/output/_2"), func8);
     auto ret = ops::_Retval(s.WithOpName("b_RetVal"), func2, 0);
 
     GraphDef expected;
     TF_ASSERT_OK(s.ToGraphDef(&expected));
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
+TEST_F(FunctionLibraryRuntimeTest,
+       ExpandInlineFunctionsWithOutputControlEdges) {
+  using test::function::NDef;
+
+  // `add` node is not required to compute regular output `o`, but it must
+  // execute because it is in `control_ret`.
+  const FunctionDef func =
+      FDH::Create("AddAndMul", {"i: float"}, {"o: float"}, {},
+                  {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+                   {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+                  /*ret_def=*/{{"o", "ret:z:0"}},
+                  /*control_ret_def=*/{{"must_execute", "add"}});
+
+  Init({func});
+
+  // Construct a graph for the function call:
+  //
+  //   a = Arg[dtype=DT_FLOAT]
+  //   b = AddAndMul(a)
+  //   c = NoOp(^b)
+  //   ret = RetVal(b, ^c)
+  const auto init_graph = [this](std::unique_ptr<Graph>* g) -> void {
+    *g = absl::make_unique<Graph>(OpRegistry::Global());
+
+    Scope s = Scope::NewRootScope();
+    TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+    auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+    auto b = test::function::Call(&s, "b", "AddAndMul", {a});
+    auto c = ops::NoOp(s.WithOpName("c"));
+    auto ret = ops::_Retval(s.WithOpName("ret"), b, 0);
+    s.graph()->AddControlEdge(b.node(), c.operation.node());
+    s.graph()->AddControlEdge(c.operation.node(), ret.operation.node());
+    TF_ASSERT_OK(s.ToGraph(g->get()));
+  };
+
+  std::unique_ptr<Graph> g;
+  ExpandInlineFunctionsOptions opts;
+
+  const string input_node = "Func/b/input/_0";
+  const string output_node = "Func/b/output/_1";
+  const string output_control_node = "Func/b/output_control_node/_2";
+
+  // Use data outputs as output control source.
+  opts.native_options.output_control_src = OutputControlSrc::kDataOutputs;
+
+  init_graph(&g);
+  ExpandInlineFunctions(flr0_, g.get(), opts);
+  {
+    GraphDef expected = test::function::GDef(
+        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+         NDef(output_control_node, "NoOp", {"^Func/b/output/_1"}, {}),
+         NDef("c", "NoOp", {"^" + output_control_node}, {}),
+         NDef("ret", "_Retval", {output_node, "^c"},
+              {{"T", DT_FLOAT}, {"index", 0}})},
+        {func});
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+
+  // Use control outputs as output control source.
+  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+
+  init_graph(&g);
+  ExpandInlineFunctions(flr0_, g.get(), opts);
+  {
+    GraphDef expected = test::function::GDef(
+        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+         NDef(output_control_node, "NoOp", {"^b/add"}, {}),
+         NDef("c", "NoOp", {"^" + output_control_node}, {}),
+         NDef("ret", "_Retval", {output_node, "^c"},
+              {{"T", DT_FLOAT}, {"index", 0}})},
+        {func});
+
+    GraphDef actual;
+    g->ToGraphDef(&actual);
+    TF_EXPECT_GRAPH_EQ(expected, actual);
+  }
+}
+
+TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctionsAndKeepThemFetchable) {
+  using test::function::NDef;
+
+  const FunctionDef func =
+      FDH::Create("AddAndMul", {"i: float"}, {"o: float"}, {},
+                  {{{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+                   {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}}},
+                  /*ret_def=*/{{"o", "ret:z:0"}},
+                  /*control_ret_def=*/{{"must_execute", "add"}});
+  Init({func});
+
+  // Construct a graph:
+  //   a = Arg[dtype=DT_FLOAT]
+  //   b = FunctionWithControlOutputs(a)
+  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
+
+  Scope s = Scope::NewRootScope();
+  TF_ASSERT_OK(s.graph()->AddFunctionLibrary(fdef_lib_));
+  auto a = ops::_Arg(s.WithOpName("a"), DT_FLOAT, 0);
+  auto b = test::function::Call(&s, "b", "AddAndMul", {a});
+  TF_ASSERT_OK(s.ToGraph(g.get()));
+
+  ExpandInlineFunctionsOptions opts;
+  opts.native_options.keep_caller_fetchable = true;
+  opts.native_options.output_control_src = OutputControlSrc::kControlOutputs;
+
+  const string input_node = "Func/b/input/_0";
+  const string output_node = "Func/b/output/_1";
+  const string output_control_node = "Func/b/output_control_node/_2";
+
+  ExpandInlineFunctions(flr0_, g.get(), opts);
+  {
+    GraphDef expected = test::function::GDef(
+        {NDef("a", "_Arg", {}, {{"T", DT_FLOAT}, {"index", 0}}),
+         NDef(input_node, "Identity", {"a"}, {{"T", DT_FLOAT}}),
+         NDef("b/add", "Add", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef("b/ret", "Mul", {input_node, input_node}, {{"T", DT_FLOAT}}),
+         NDef(output_node, "Identity", {"b/ret"}, {{"T", DT_FLOAT}}),
+         NDef(output_control_node, "NoOp", {"^b/add"}, {}),
+         NDef("b", "IdentityN", {output_node, "^" + output_control_node},
+              {{"T", DataTypeSlice{DT_FLOAT}}})},
+        {func});
 
     GraphDef actual;
     g->ToGraphDef(&actual);
@@ -1113,13 +1255,15 @@ TEST_F(FunctionLibraryRuntimeTest, ControlDeps) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto y = ops::_Arg(s.WithOpName("y"), DT_FLOAT, 1);
     auto x2 = ops::Mul(s.WithOpName("x2"), x, x);
-    auto func0 = ops::NoOp(s.WithOpName("Func/_0").WithControlDependencies(x2));
+    auto func0 = ops::NoOp(s.WithOpName("Func/a0/input_control_node/_0")
+                               .WithControlDependencies(x2));
     auto func1 = ops::Identity(
-        s.WithOpName("Func/_1").WithControlDependencies({func0}), x);
+        s.WithOpName("Func/a0/input/_1").WithControlDependencies({func0}), x);
     auto func2 = ops::Identity(
-        s.WithOpName("Func/_2").WithControlDependencies({func0}), y);
-    auto func9 = ops::NoOp(s.WithOpName("Func/_9").WithControlDependencies(
-        {func1.output.op(), func2.output.op()}));
+        s.WithOpName("Func/a0/input/_2").WithControlDependencies({func0}), y);
+    auto func9 = ops::NoOp(
+        s.WithOpName("Func/a1/output_control_node/_9")
+            .WithControlDependencies({func1.output.op(), func2.output.op()}));
     auto y2 =
         ops::Mul(s.WithOpName("y2").WithControlDependencies({func9}), y, y);
     auto o = ops::Add(s.WithOpName("o"), x2, y2);
@@ -1385,9 +1529,9 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
     auto dz = ops::Const(s.WithOpName("dz"), 1.0f);
     auto grad0_zero = ops::Const(s.WithOpName("grad0/zero"), 0);
     auto grad0_one = ops::Const(s.WithOpName("grad0/one"), 1);
-    auto func0 = ops::Identity(s.WithOpName("Func/_0"), x);
-    auto func1 = ops::Identity(s.WithOpName("Func/_1"), y);
-    auto func2 = ops::Identity(s.WithOpName("Func/_2"), dz);
+    auto func0 = ops::Identity(s.WithOpName("Func/grad0/input/_0"), x);
+    auto func1 = ops::Identity(s.WithOpName("Func/grad0/input/_1"), y);
+    auto func2 = ops::Identity(s.WithOpName("Func/grad0/input/_2"), dz);
     auto grad0_z = ops::Add(s.WithOpName("grad0/z"), func0, func1);
     auto grad0_r = ops::Rank(s.WithOpName("grad0/r"), grad0_z);
     auto grad0_indices = ops::Range(s.WithOpName("grad0/indices"), grad0_zero,
@@ -1414,8 +1558,10 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
         std::initializer_list<Input>{func0, func1, grad0_func1[0]},
         {DT_FLOAT, DT_FLOAT}, add);
 
-    auto func3 = ops::Identity(s.WithOpName("Func/_3"), grad0_func3[0]);
-    auto func4 = ops::Identity(s.WithOpName("Func/_4"), grad0_func3[1]);
+    auto func3 =
+        ops::Identity(s.WithOpName("Func/grad0/output/_3"), grad0_func3[0]);
+    auto func4 =
+        ops::Identity(s.WithOpName("Func/grad0/output/_4"), grad0_func3[1]);
     auto dx = ops::Identity(s.WithOpName("dx"), func3);
     auto dy = ops::Identity(s.WithOpName("dy"), func4);
     auto dx_retval = ops::_Retval(s.WithOpName("dx_RetVal"), dx, 0);
@@ -1728,14 +1874,14 @@ TEST(OptimizationTest, RemoveListArrayConverter) {
     auto i = ops::_Arg(scope.WithOpName("i"), DT_FLOAT, 0);
     auto zero = ops::Const(scope.WithOpName("zero"), 0);
     auto s = ops::Split(scope.WithOpName("s"), zero, i, 4);
-    auto func_0 = ops::Identity(scope.WithOpName("Func/_0"), s[0]);
-    auto func_1 = ops::Identity(scope.WithOpName("Func/_1"), s[1]);
-    auto func_2 = ops::Identity(scope.WithOpName("Func/_2"), s[2]);
-    auto func_3 = ops::Identity(scope.WithOpName("Func/_3"), s[3]);
+    auto func_0 = ops::Identity(scope.WithOpName("Func/a/input/_0"), s[0]);
+    auto func_1 = ops::Identity(scope.WithOpName("Func/a/input/_1"), s[1]);
+    auto func_2 = ops::Identity(scope.WithOpName("Func/a/input/_2"), s[2]);
+    auto func_3 = ops::Identity(scope.WithOpName("Func/a/input/_3"), s[3]);
     auto r = ops::Mul(scope.WithOpName("r"), func_2, func_3);
     auto l = ops::Mul(scope.WithOpName("l"), func_0, func_1);
-    auto func_4 = ops::Identity(scope.WithOpName("Func/_4"), l);
-    auto func_5 = ops::Identity(scope.WithOpName("Func/_5"), r);
+    auto func_4 = ops::Identity(scope.WithOpName("Func/x/input/_4"), l);
+    auto func_5 = ops::Identity(scope.WithOpName("Func/x/input/_5"), r);
     auto o = ops::AddN(scope.WithOpName("o"),
                        std::initializer_list<Input>{func_4, func_5});
     auto o_ret = ops::_Retval(scope.WithOpName("o_RetVal"), o, 0);
@@ -1810,14 +1956,15 @@ TEST(OptimizationTest, RemoveListArrayConverter_WithContolDeps) {
     Scope s = Scope::NewRootScope();
     auto i = ops::_Arg(s.WithOpName("i"), DT_FLOAT, 0);
     auto dummy = ops::Const(s.WithOpName("dummy"), 0);
-    auto func_2 =
-        ops::NoOp(s.WithOpName("Func/_2").WithControlDependencies(dummy));
+    auto func_2 = ops::NoOp(s.WithOpName("Func/x/input_control_node/_2")
+                                .WithControlDependencies(dummy));
     auto func_0 = ops::Identity(
-        s.WithOpName("Func/_0").WithControlDependencies({func_2}), i);
+        s.WithOpName("Func/x/input/_0").WithControlDependencies({func_2}), i);
     auto func_1 = ops::Identity(
-        s.WithOpName("Func/_1").WithControlDependencies({func_2}), i);
-    auto func_3 = ops::NoOp(s.WithOpName("Func/_3").WithControlDependencies(
-        {func_0.output.op(), func_1.output.op()}));
+        s.WithOpName("Func/x/input/_1").WithControlDependencies({func_2}), i);
+    auto func_3 = ops::NoOp(
+        s.WithOpName("Func/x/output_control_node/_3")
+            .WithControlDependencies({func_0.output.op(), func_1.output.op()}));
     auto o = ops::AddN(s.WithOpName("o").WithControlDependencies({func_3}),
                        std::initializer_list<Input>{func_0, func_1});
     auto o_ret = ops::_Retval(s.WithOpName("o_RetVal"), o, 0);

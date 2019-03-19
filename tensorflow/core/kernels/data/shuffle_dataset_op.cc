@@ -468,8 +468,8 @@ class ShuffleDatasetOp : public ShuffleDatasetOpBase {
         // resource_mgr.
         ResourceMgr* mgr = ctx->resource_mgr();
         RandomSeedGenerator* seed_generator;
-        const string name = strings::StrCat(prefix(), "::", dataset()->name(),
-                                            "::RandomSeedGenerator");
+        const string name = strings::StrCat(
+            prefix(), "::", dataset()->type_string(), "::RandomSeedGenerator");
 
         int64 dataset_seed, dataset_seed2;
         {

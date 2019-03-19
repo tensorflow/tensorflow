@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "absl/base/casts.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/debugging/leak_check.h"
 #include "absl/strings/str_cat.h"
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -614,7 +615,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     {
       // TODO(leary) Need to see if NVIDIA can expunge the leakiness in their
       // module loading: see http://b/13248943
-
+      absl::LeakCheckDisabler disabler;
       res = cuModuleLoadDataEx(module, ptx_data, TF_ARRAYSIZE(options), options,
                                option_values);
     }

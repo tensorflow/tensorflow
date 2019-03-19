@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -564,6 +565,11 @@ class FunctionLibraryRuntime {
     // surface errors earlier.
     bool create_kernels_eagerly = false;
 
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function with the provided config_proto.
+    ConfigProto config_proto;
+
     // If provided, this optimization function will be invoked before
     // the placer for multi-device functions.
     std::function<Status(std::vector<string> /*ret_node_names*/,
@@ -594,6 +600,9 @@ class FunctionLibraryRuntime {
   // *this keeps the ownership of the returned object, which remains alive
   // as long as *this.
   virtual const FunctionBody* GetFunctionBody(Handle h) = 0;
+
+  // Returns the return types for the function identified by handle `h`.
+  virtual Status GetRetTypes(Handle h, DataTypeVector* ret_types) = 0;
 
   // Asynchronously invokes the instantiated function identified by
   // "handle".
@@ -654,6 +663,11 @@ class FunctionLibraryRuntime {
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
+
+  // Returns the default runner in which the ops should be launched. If the
+  // device on which the function executes has a private thread pool, return
+  // runner on the device local thread pool.
+  virtual std::function<void(std::function<void()>)>* runner() = 0;
 
   // Get the DeviceMgr from which the device was obtained.
   virtual const DeviceMgr* device_mgr() const = 0;

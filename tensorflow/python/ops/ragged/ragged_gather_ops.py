@@ -232,7 +232,7 @@ def gather_nd(params, indices, name=None):
     # index tuples point to the correct values in the flattened params; and
     # then use ragged.gather on the flattened index tuples & params.
     else:
-      indices = math_ops.to_int64(indices)
+      indices = math_ops.cast(indices, dtypes.int64)
 
       # Flatten the outermost 2 dimensions of the index tuples & params.
       flattened_index_tuples = array_ops.gather(params.row_splits,

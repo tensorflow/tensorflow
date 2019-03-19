@@ -91,11 +91,11 @@ def create_test_objects(cluster_spec=None,
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=num_gpus)
+          num_accelerators={'GPU': num_gpus})
       target = 'grpc://' + cluster_spec[WORKER][task_id]
     else:
       cluster_resolver = SimpleClusterResolver(
-          ClusterSpec({}), num_accelerators=num_gpus)
+          ClusterSpec({}), num_accelerators={'GPU': num_gpus})
       target = ''
 
     distribution = MockCoreParameterServerStrategy(cluster_resolver)
@@ -514,7 +514,7 @@ class ParameterServerStrategyTestBase(
       def update(v, g):
         return v.assign_sub(0.05 * g, use_locking=True)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -806,31 +806,37 @@ class ParameterServerStrategyTest(
     # Verify isolate_session_state
     self.assertTrue(new_config.isolate_session_state)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSum(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSumGradients(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum_gradients(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceSumGradientTape(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_sum_gradient_tape(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMean(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMeanGradients(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)
     self._test_all_reduce_mean_gradients(distribution)
 
+  @combinations.generate(combinations.combine(required_gpus=[2]))
   def testAllReduceMeanGradientTape(self):
     distribution = parameter_server_strategy.ParameterServerStrategy(
         num_gpus_per_worker=2)

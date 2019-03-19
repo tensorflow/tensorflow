@@ -72,7 +72,9 @@ from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu import util as util_lib
+from tensorflow.python.tpu._tpu_estimator_embedding import AdagradParameters  # pylint: disable=unused-import
 from tensorflow.python.tpu._tpu_estimator_embedding import AdamParameters  # pylint: disable=unused-import
+from tensorflow.python.tpu._tpu_estimator_embedding import StochasticGradientDescentParameters  # pylint: disable=unused-import
 from tensorflow.python.tpu._tpu_estimator_embedding import EmbeddingConfigSpec  # pylint: disable=unused-import
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training import basic_session_run_hooks
@@ -249,6 +251,18 @@ def _extract_key_names(tensor_or_dict):
   if isinstance(tensor_or_dict, dict):
     return sorted(tensor_or_dict.keys())
   return []
+
+
+class PeriodicLogger(object):
+
+  def __init__(self, seconds):
+    self._log_every_n_seconds = seconds
+    self._last_log_time = 0
+
+  def log(self, msg, *args, **kw):
+    if time.time() - self._last_log_time > self._log_every_n_seconds:
+      self._last_log_time = time.time()
+      logging.info(msg, *args, **kw)
 
 
 class _SIGNAL(object):
@@ -458,8 +472,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
 
-    self._feed_error = None
-    self._finished = False
     # When using model parallelism, the TPU is pre-initialized at startup to
     # fetch mesh information.  We skip re-initializing it here to avoid
     # suspected issues due to the mesh layout changing on the second
@@ -503,11 +515,13 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
   def _run_outfeed(self, queue_ctx, session):
     logging.info('Starting outfeed thread controller.')
+    status_logger = PeriodicLogger(seconds=60)
     with self._rendezvous.catch_errors(source='outfeed', session=session):
       for count, steps in enumerate(queue_ctx.read_iteration_counts()):
         for i in xrange(steps):
           logging.debug('Outfeed dequeue for iteration (%d, %d)', count, i)
           session.run(self._dequeue_ops)
+          status_logger.log('Outfeed finished for iteration (%d, %d)', count, i)
       logging.info('Outfeed thread finished, shutting down.')
 
   def _create_infeed_controller(self, name, target, args):
@@ -555,8 +569,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
                                             shutdown_timeout=watchdog_timeout)
 
   def before_run(self, run_context):
-    self._feed_error = None
-
     iterations = run_context.session.run(self._iterations_per_loop_var)
 
     logging.info('Enqueue next (%d) batch(es) of data to infeed.', iterations)
@@ -567,7 +579,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     self._outfeed_controller.send_next_batch_signal(iterations)
 
   def end(self, session):
-    self._finished = True
     logging.info('Stop infeed thread controller')
     self._infeed_controller.join()
     self._rendezvous.record_done('infeed')
@@ -982,6 +993,8 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
     signals = None
+    num_replicas = ctx.num_replicas
+    core_id = 0
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -998,7 +1011,18 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
                     features, labels, signals))
-          broadcasted_inputs.append(flattened_inputs)
+            if (ctx.config.tpu_config.eval_training_input_configuration is
+                tpu_config.InputPipelineConfig.SLICED):
+              input_slices = [
+                  array_ops.split(x, num_replicas) for x in flattened_inputs
+              ]
+          if (ctx.config.tpu_config.eval_training_input_configuration is
+              tpu_config.InputPipelineConfig.SLICED):
+            # for each core, slice out the flattened_inputs for each core.
+            broadcasted_inputs.append([x[core_id] for x in input_slices])
+            core_id += 1
+          else:
+            broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(broadcasted_inputs[0]))
@@ -1471,10 +1495,27 @@ class _ModelFnWrapper(object):
       # outfeed.
       with ops.control_dependencies([train_op] + apply_sparse_grads):
         host_call_outfeed_ops = []
+        host_call_fn, host_call_args = None, []
+
         if (isinstance(estimator_spec, model_fn_lib._TPUEstimatorSpec)  # pylint: disable=protected-access
             and estimator_spec.host_call is not None):
-          host_call.record({'host_call': estimator_spec.host_call})
+          host_call_fn, host_call_args = estimator_spec.host_call
+
+        if host_call_fn:
+          # Ignore dummy hostcalls (no arguments)
+          if host_call_args:
+            host_call.record({'host_call': estimator_spec.host_call})
+            host_call_outfeed_ops = host_call.create_enqueue_op()
+        else:
+          # Create a host call for the loss to track execution progress
+          # Without this, we don't have any indication of the state of the
+          # TPU program.
+          host_call.record({
+              'host_call': (lambda loss_t: loss_t,
+                            [array_ops.reshape(loss, [1])])
+          })
           host_call_outfeed_ops = host_call.create_enqueue_op()
+
         with ops.control_dependencies(host_call_outfeed_ops):
           return array_ops.identity(loss)
 
@@ -1679,7 +1720,10 @@ class _ModelFnWrapper(object):
       _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
     running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
-    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
+    # In export mode, params['use_tpu'] has already been set based on mode
+    # (i.e. True for _REWRITE_FOR_INFERENCE_MODE, False otherwise).
+    if not is_export_mode:
+      _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
 
     if not running_on_cpu:
       user_context = tpu_context.TPUContext(
@@ -2475,6 +2519,7 @@ class TPUEstimator(estimator_lib.Estimator):
       if self._experimental_exported_model_uses_all_cores:
         tensors_on_cpu = tpu.rewrite(
             tpu_computation, device_assignment=device_assignment)
+        tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
       else:
         tensors_on_cpu = tpu.rewrite_for_inference(
             tpu_computation, device_assignment=device_assignment)
@@ -2521,8 +2566,8 @@ class TPUEstimator(estimator_lib.Estimator):
       """
       # We should only call model fn once and it should be inside `computation`
       # so that building the graph will happen under `rewrite_for_inference`.
-      mode = model_fn_lib.ModeKeys.PREDICT
-      estimator_spec = self._call_model_fn(features, labels, mode, config)
+      estimator_spec = super(TPUEstimator, self)._call_model_fn(
+          features, labels, mode, config)
 
       # We pick the TPU tensors out from `export_output` and later return them
       # from `computation` for rewriting.
@@ -2749,18 +2794,26 @@ class TPUEstimator(estimator_lib.Estimator):
 
     def _model_fn(features, labels, mode, config, params):
       """A Estimator `model_fn` for TPUEstimator."""
+
+      # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
+      # but not in `export_savedmodel()`.
+      if self._is_input_fn_invoked:
+        is_export_mode = False
+      else:
+        is_export_mode = True
+
+      # Clear the bit.
+      self._is_input_fn_invoked = None
+
+      if is_export_mode:
+        if mode == _REWRITE_FOR_INFERENCE_MODE:
+          _add_item_to_params(params, _USE_TPU_KEY, True)
+          mode = model_fn_lib.ModeKeys.PREDICT
+        else:
+          _add_item_to_params(params, _USE_TPU_KEY, False)
+
       with self._ctx.with_mode(mode) as ctx:
         model_fn_wrapper = _ModelFnWrapper(model_fn, config, params, ctx)
-
-        # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
-        # but not in `export_savedmodel()`.
-        if self._is_input_fn_invoked:
-          is_export_mode = False
-        else:
-          is_export_mode = True
-
-        # Clear the bit.
-        self._is_input_fn_invoked = None
 
         # examples_hook is added to training_hooks for both CPU and TPU
         # execution.
@@ -2829,8 +2882,6 @@ class TPUEstimator(estimator_lib.Estimator):
             tpu_init_ops.extend(embedding_variables_and_ops.load_ops())
 
           host_ops = host_call.create_tpu_hostcall()
-          if host_ops is None:
-            host_ops = []
 
           shutdown_hooks = []
           shutdown_mode = os.environ.get('TF_TPU_GRACEFUL_SHUTDOWN_MODE',
@@ -2923,6 +2974,19 @@ class TPUEstimator(estimator_lib.Estimator):
         if mode == model_fn_lib.ModeKeys.EVAL:
           compile_op, total_loss, host_calls, scaffold, eval_hooks = (
               _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
+          if ctx.embedding_config:
+            g = ops.get_default_graph()
+            table_to_config_dict = (
+                ctx.embedding_config.tpu_embedding.table_to_config_dict)
+            embedding_variable_name_by_table, _ = (
+                _tpu_estimator_embedding.get_full_variable_names(
+                    g, table_to_config_dict)
+            )
+            embedding_variables_and_ops = (
+                ctx.embedding_config.tpu_embedding.create_variables_and_ops(
+                    embedding_variable_name_by_table
+                ))
+            tpu_init_ops.extend(embedding_variables_and_ops.load_ops())
           iterations_per_loop_var = _create_or_get_iterations_per_loop()
           mean_loss = math_ops.div(
               total_loss,
@@ -3132,6 +3196,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (single_tpu_eval_step, host_calls, captured_scaffold_fn, captured_eval_hooks
   ) = model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn)
 
+  @tpu_function.on_device_training_loop
   def multi_tpu_eval_steps_on_single_shard():
     return training_loop.repeat(iterations_per_loop_var, single_tpu_eval_step,
                                 [_ZERO_LOSS])

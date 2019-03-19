@@ -672,6 +672,17 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       *builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_REVERSE_SEQUENCE: {
+      TfLiteReverseSequenceParams* params =
+          allocator->AllocatePOD<TfLiteReverseSequenceParams>();
+      if (auto* reverse_seq_params =
+              op->builtin_options_as_ReverseSequenceOptions()) {
+        params->seq_dim = reverse_seq_params->seq_dim();
+        params->batch_dim = reverse_seq_params->batch_dim();
+      }
+      *builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
 
     // Below are the ops with no builtin_data strcture.
     case BuiltinOperator_ABS:

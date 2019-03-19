@@ -333,28 +333,39 @@ class Iterator(trackable.Trackable):
         element structure.
     """
     with ops.name_scope(name, "make_initializer") as name:
-      nest.assert_same_structure(self.output_types, dataset.output_types)
-      nest.assert_same_structure(self.output_shapes, dataset.output_shapes)
+      # pylint: disable=protected-access
+      # NOTE(mrry): Cannot depend on `dataset_ops.get_legacy_output*()` due
+      # to that creating a circular dependency.
+      dataset_output_types = (
+          dataset._element_structure._to_legacy_output_types())
+      dataset_output_shapes = (
+          dataset._element_structure._to_legacy_output_shapes())
+      dataset_output_classes = (
+          dataset._element_structure._to_legacy_output_classes())
+      # pylint: enable=protected-access
+
+      nest.assert_same_structure(self.output_types, dataset_output_types)
+      nest.assert_same_structure(self.output_shapes, dataset_output_shapes)
       for iterator_class, dataset_class in zip(
           nest.flatten(self.output_classes),
-          nest.flatten(dataset.output_classes)):
+          nest.flatten(dataset_output_classes)):
         if iterator_class is not dataset_class:
           raise TypeError(
               "Expected output classes %r but got dataset with output class %r."
-              % (self.output_classes, dataset.output_classes))
+              % (self.output_classes, dataset_output_classes))
       for iterator_dtype, dataset_dtype in zip(
-          nest.flatten(self.output_types), nest.flatten(dataset.output_types)):
+          nest.flatten(self.output_types), nest.flatten(dataset_output_types)):
         if iterator_dtype != dataset_dtype:
           raise TypeError(
               "Expected output types %r but got dataset with output types %r." %
-              (self.output_types, dataset.output_types))
+              (self.output_types, dataset_output_types))
       for iterator_shape, dataset_shape in zip(
           nest.flatten(self.output_shapes), nest.flatten(
-              dataset.output_shapes)):
+              dataset_output_shapes)):
         if not iterator_shape.is_compatible_with(dataset_shape):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
-                          (self.output_shapes, dataset.output_shapes))
+                          (self.output_shapes, dataset_output_shapes))
     with ops.colocate_with(self._iterator_resource):
       return gen_dataset_ops.make_iterator(
           dataset._variant_tensor, self._iterator_resource, name=name)  # pylint: disable=protected-access
@@ -525,18 +536,17 @@ class EagerIterator(trackable.Trackable):
       # pylint: disable=protected-access
       dataset = dataset._apply_options()
       ds_variant = dataset._variant_tensor
-      self._structure = structure_lib.convert_legacy_structure(
-          dataset.output_types, dataset.output_shapes, dataset.output_classes)
+      self._structure = dataset._element_structure
       self._flat_output_types = self._structure._flat_types
       self._flat_output_shapes = self._structure._flat_shapes
       with ops.colocate_with(ds_variant):
-        self._resource = gen_dataset_ops.anonymous_iterator(
+        self._iterator_resource = gen_dataset_ops.anonymous_iterator(
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
-        gen_dataset_ops.make_iterator(ds_variant, self._resource)
+        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
         # Delete the resource when this object is deleted
         self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-            handle=self._resource, handle_device=self._device)
+            handle=self._iterator_resource, handle_device=self._device)
       # pylint: enable=protected-access
 
   def __iter__(self):
@@ -562,7 +572,7 @@ class EagerIterator(trackable.Trackable):
         # to a background thread, and can achieve a small constant performance
         # boost by invoking the iterator synchronously.
         ret = gen_dataset_ops.iterator_get_next_sync(
-            self._resource,
+            self._iterator_resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
 
@@ -636,7 +646,7 @@ class EagerIterator(trackable.Trackable):
   def _gather_saveables_for_checkpoint(self):
 
     def _saveable_factory(name):
-      return _IteratorSaveable(self._resource, name)
+      return _IteratorSaveable(self._iterator_resource, name)
 
     return {"ITERATOR": _saveable_factory}
 

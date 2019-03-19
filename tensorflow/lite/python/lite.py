@@ -150,6 +150,25 @@ class RepresentativeDataset(object):
     self.output_gen = output_gen
 
 
+@_tf_export("lite.TargetSpec")
+class TargetSpec(object):
+  """Specification of target device.
+
+  Details about target device. Converter optimizes the generated model for
+  specific device.
+
+  Attributes:
+    supported_ops: Experimental flag, subject to change. Set of OpsSet options
+      supported by the device. (default set([OpsSet.TFLITE_BUILTINS]))
+  """
+
+  def __init__(self, supported_ops=None):
+    if supported_ops is None:
+      supported_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.supported_ops = supported_ops
+
+
+@_tf_export("lite.TFLiteConverter", v1=[])
 class TFLiteConverterV2(object):
   """Converts a TensorFlow model into TensorFlow Lite model.
 
@@ -159,8 +178,8 @@ class TFLiteConverterV2(object):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver. (default
       False)
-    target_ops: Experimental flag, subject to change. Set of OpsSet options
-      indicating which converter to use. (default set([OpsSet.TFLITE_BUILTINS]))
+    target_spec: Experimental flag, subject to change. Specification of target
+      device.
     optimizations: Experimental flag, subject to change, A list of optimizations
       to apply when converting the model. The converter applies the
       optimizations by giving priority to the optimizations specified earlier in
@@ -168,7 +187,7 @@ class TFLiteConverterV2(object):
       optimize.OPTIMIZE_FOR_LATENCY]` requires the converter to do both size and
       latency optimizations giving priority to size optimizations over latency
       optimizations.
-    representative_dataset: a representative dataset that can be used to
+    representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
 
@@ -190,7 +209,7 @@ class TFLiteConverterV2(object):
     """
     self._func = func
     self.allow_custom_ops = False
-    self.target_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.target_spec = TargetSpec()
     self.representative_dataset = None
     self.optimizations = []
 
@@ -223,36 +242,40 @@ class TFLiteConverterV2(object):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    graph_def = _convert_to_constants.convert_variables_to_constants_v2(
+    frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
         self._func)
     input_tensors = [
-        tensor for tensor in self._func.inputs
+        tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
     ]
-    output_tensors = self._func.outputs
+    output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(graph_def, input_tensors,
-                                         output_tensors, self._func.graph)
+    graph_def = _run_graph_optimizations(frozen_func.graph.as_graph_def(),
+                                         input_tensors, output_tensors,
+                                         frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
       # Note that shape_list might be empty for scalar shapes.
-      shape_list = tensor.get_shape().as_list()
+      shape_list = tensor.shape.as_list()
       if None in shape_list[1:]:
         raise ValueError(
             "None is only supported in the 1st dimension. Tensor '{0}' has "
             "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
       elif shape_list and shape_list[0] is None:
-        self._set_batch_size(batch_size=1)
+        # Set the batch size to 1 if undefined.
+        shape = tensor.shape.as_list()
+        shape[0] = 1
+        tensor.set_shape(shape)
 
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
-        raise TypeError("representative_dataset must be an instance of "
-                        "RepresentativeDataset")
+        raise TypeError("`representative_dataset` must be an instance of "
+                        "`RepresentativeDataset`")
       if self.representative_dataset.input_gen is None:
         raise ValueError(
-            "Provide an input generator for representative_dataset")
+            "Provide an input generator for `representative_dataset`")
 
     # TODO(shashishekhar): For now use optimizations order is ignored.
     # Both size and latency optimizations decide whether to apply post
@@ -269,7 +292,7 @@ class TFLiteConverterV2(object):
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "allow_custom_ops": self.allow_custom_ops,
         "post_training_quantize": weights_only_quantize_flag,
-        "target_ops": self.target_ops,
+        "target_ops": self.target_spec.supported_ops,
     }
 
     # Converts model.
@@ -287,7 +310,7 @@ class TFLiteConverterV2(object):
     return result
 
 
-@_tf_export("lite.TFLiteConverter")
+@_tf_export(v1=["lite.TFLiteConverter"])
 class TFLiteConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 
@@ -349,7 +372,7 @@ class TFLiteConverter(object):
       `[optimize.OPTIMIZE_FOR_SIZE, optimize.OPTIMIZE_FOR_LATENCY]` requires
       the converter to do both size and latency optimizations giving priority
       to size optimizations over latency optimizations.
-    representative_dataset: a representative dataset that can be used to
+    representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
 
@@ -388,7 +411,7 @@ class TFLiteConverter(object):
     Args:
       graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
@@ -437,7 +460,7 @@ class TFLiteConverter(object):
     Args:
       sess: TensorFlow Session.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
 
     Returns:
@@ -655,7 +678,7 @@ class TFLiteConverter(object):
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
-        shape = tensor.get_shape()
+        shape = tensor.shape
         if not shape:
           raise ValueError("Provide an input shape for input array "
                            "'{0}'.".format(_tensor_name(tensor)))
@@ -785,7 +808,7 @@ class TFLiteConverter(object):
                        "use input_shapes parameter.")
 
     for tensor in self._input_tensors:
-      shape = tensor.get_shape().as_list()
+      shape = tensor.shape.as_list()
       shape[0] = batch_size
       tensor.set_shape(shape)
 

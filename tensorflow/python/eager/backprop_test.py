@@ -132,6 +132,20 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(dx, 2.0)
     self.assertAllEqual(dy, 3.0)
 
+  def testCustomGradientEmptyError(self):
+
+    @custom_gradient.custom_gradient
+    def identity(x):
+      def grad(_):
+        return []  # This return value is wrong!
+      return x, grad
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as t:
+      y = identity(x)
+    with self.assertRaises(ValueError):
+      t.gradient(y, [x])
+
   def testOutputGradUsedInComputation(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)

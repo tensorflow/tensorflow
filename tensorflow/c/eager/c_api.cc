@@ -226,14 +226,84 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  ctx->context.InitializeRemote(std::move(server),
-                                std::move(remote_eager_workers),
-                                std::move(remote_device_mgr), remote_contexts,
-                                r, device_mgr, keep_alive_secs);
-
-  return tensorflow::Status::OK();
+  return ctx->context.InitializeRemote(
+      std::move(server), std::move(remote_eager_workers),
+      std::move(remote_device_mgr), remote_contexts, r, device_mgr,
+      keep_alive_secs);
 #undef LOG_AND_RETURN_IF_ERROR
 }
+
+tensorflow::Status OpInferSingleInputAttrs(TFE_Op* op,
+                                           TFE_TensorHandle* input) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
+  if (!input_def.number_attr().empty() || !input_def.type_list_attr().empty()) {
+    // Some clients that are still setting their input attributes manually are
+    // adding input list to their op by calling `TFE_OpAddInput` for each of
+    // its elements instead of calling `TFE_OpAddInputList`. When this happens,
+    // we cannot detect the end of such list, thus lose track of the input
+    // arguments in the op definition. To guarantee backward compatibility with
+    // those clients, disable automatic inference in this case.
+    op->inference_ctx.reset(nullptr);
+    return tensorflow::Status::OK();
+  }
+  const std::string& type_attr = input_def.type_attr();
+  if (!type_attr.empty() && ictx->attrs.find(type_attr) == ictx->attrs.end()) {
+    op->operation.MutableAttrs()->Set(type_attr, input->handle->dtype);
+    ictx->attrs.insert(type_attr);
+  }
+  return tensorflow::Status::OK();
+}
+
+void OpInferSingleTypeInputListAttrs(TFE_Op* op,
+                                     const tensorflow::OpDef::ArgDef& input_def,
+                                     TFE_TensorHandle** inputs,
+                                     int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  if (ictx->attrs.find(input_def.number_attr()) == ictx->attrs.end()) {
+    op->operation.MutableAttrs()->Set(input_def.number_attr(), num_inputs);
+    ictx->attrs.insert(input_def.number_attr());
+  }
+  if (ictx->attrs.find(input_def.type_attr()) == ictx->attrs.end()) {
+    op->operation.MutableAttrs()->Set(input_def.type_attr(),
+                                      inputs[0]->handle->dtype);
+    ictx->attrs.insert(input_def.type_attr());
+  }
+}
+
+void OpInferMixedTypeInputListAttrs(TFE_Op* op,
+                                    const tensorflow::OpDef::ArgDef& input_def,
+                                    TFE_TensorHandle** inputs, int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  if (ictx->attrs.find(input_def.type_list_attr()) == ictx->attrs.end()) {
+    std::unique_ptr<tensorflow::DataType[]> dtypes(
+        new tensorflow::DataType[num_inputs]);
+    for (int i = 0; i < num_inputs; ++i) {
+      dtypes[i] = inputs[i]->handle->dtype;
+    }
+    op->operation.MutableAttrs()->Set(
+        input_def.type_list_attr(),
+        tensorflow::gtl::ArraySlice<const tensorflow::DataType>(dtypes.get(),
+                                                                num_inputs));
+    ictx->attrs.insert(input_def.type_list_attr());
+  }
+}
+
+tensorflow::Status OpInferInputListAttrs(TFE_Op* op, TFE_TensorHandle** inputs,
+                                         int num_inputs) {
+  TFE_OpInferenceContext* ictx = op->inference_ctx.get();
+  const auto& input_def = ictx->op_def->input_arg(ictx->input_arg_idx++);
+  if (!input_def.type_list_attr().empty()) {
+    OpInferMixedTypeInputListAttrs(op, input_def, inputs, num_inputs);
+  } else if (!input_def.type_attr().empty() &&
+             !input_def.number_attr().empty()) {
+    OpInferSingleTypeInputListAttrs(op, input_def, inputs, num_inputs);
+  } else {
+    return tensorflow::errors::InvalidArgument("Invalid input list definition");
+  }
+  return tensorflow::Status::OK();
+}
+
 }  // namespace
 
 extern "C" {
@@ -249,6 +319,7 @@ void TFE_ContextOptionsSetAsync(TFE_ContextOptions* options,
                                 unsigned char enable) {
   options->async = enable;
 }
+
 void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions* options, TFE_ContextDevicePlacementPolicy policy) {
   options->policy = policy;
@@ -302,7 +373,9 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context.ClearCaches(); }
+void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
+  status->status = ctx->context.ClearCaches();
+}
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
@@ -492,20 +565,29 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
   const tensorflow::AttrTypeMap* types;
   bool is_function = false;
   status->status = tensorflow::AttrTypeMapForOp(name, &types, &is_function);
-  if (status->status.ok()) {
-    if (is_function && !ctx->context.FindFunctionByName(name)) {
-      status->status = tensorflow::errors::NotFound(
-          "'", name,
-          "' is neither a type of a primitive operation nor a name "
-          "of a function registered in binary running on ",
-          tensorflow::port::Hostname(),
-          ". Make sure the operation or function is "
-          "registered in the binary running in this process.");
+  if (!status->status.ok()) {
+    return nullptr;
+  }
+  if (!is_function) {
+    const tensorflow::OpDef* op_def;
+    status->status = tensorflow::OpDefForOp(op_or_function_name, &op_def);
+    if (!status->status.ok()) {
       return nullptr;
     }
-    return new TFE_Op(ctx, name, is_function, types);
+    return new TFE_Op(ctx, name, false, types,
+                      new TFE_OpInferenceContext(op_def));
   }
-  return nullptr;
+  if (!ctx->context.FindFunctionByName(name)) {
+    status->status = tensorflow::errors::NotFound(
+        "'", name,
+        "' is neither a type of a primitive operation nor a name "
+        "of a function registered in binary running on ",
+        tensorflow::port::Hostname(),
+        ". Make sure the operation or function is "
+        "registered in the binary running in this process.");
+    return nullptr;
+  }
+  return new TFE_Op(ctx, name, true, types, nullptr);
 }
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
@@ -529,8 +611,21 @@ void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
 #endif  // TENSORFLOW_EAGER_USE_XLA
 }
 
-void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  op->operation.AddInput(h->handle);
+void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
+  op->operation.AddInput(input->handle);
+  if (op->inference_ctx) {
+    status->status = OpInferSingleInputAttrs(op, input);
+  }
+}
+
+void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
+                        TF_Status* status) {
+  for (int i = 0; i < num_inputs; ++i) {
+    op->operation.AddInput(inputs[i]->handle);
+  }
+  if (op->inference_ctx) {
+    status->status = OpInferInputListAttrs(op, inputs, num_inputs);
+  }
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,

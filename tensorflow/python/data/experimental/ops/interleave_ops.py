@@ -24,14 +24,19 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.ops import gen_stateless_random_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+@deprecation.deprecated(
+    None,
+    "Use `tf.data.Dataset.interleave(map_func, cycle_length, block_length, "
+    "num_parallel_calls=tf.data.experimental.AUTOTUNE)` instead. If sloppy "
+    "execution is desired, use `tf.data.Options.experimental_determinstic`.")
 @tf_export("data.experimental.parallel_interleave")
 def parallel_interleave(map_func,
                         cycle_length,
@@ -97,22 +102,25 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
     self._selector_input = selector_input
     self._data_inputs = list(data_inputs)
 
+    first_output_types = dataset_ops.get_legacy_output_types(data_inputs[0])
+    first_output_classes = dataset_ops.get_legacy_output_classes(data_inputs[0])
+
     for data_input in data_inputs[1:]:
-      if (data_input.output_types != data_inputs[0].output_types or
-          data_input.output_classes != data_inputs[0].output_classes):
+      if (dataset_ops.get_legacy_output_types(data_input) != first_output_types
+          or dataset_ops.get_legacy_output_classes(data_input)
+          != first_output_classes):
         raise TypeError("All datasets must have the same type and class.")
 
-    output_shapes = self._data_inputs[0].output_shapes
+    output_shapes = dataset_ops.get_legacy_output_shapes(self._data_inputs[0])
     for data_input in self._data_inputs[1:]:
       output_shapes = nest.pack_sequence_as(output_shapes, [
           ts1.most_specific_compatible_shape(ts2) for (ts1, ts2) in zip(
               nest.flatten(output_shapes),
-              nest.flatten(data_input.output_shapes))
+              nest.flatten(dataset_ops.get_legacy_output_shapes(data_input)))
       ])
 
     self._structure = structure.convert_legacy_structure(
-        data_inputs[0].output_types, output_shapes,
-        data_inputs[0].output_classes)
+        first_output_types, output_shapes, first_output_classes)
     super(_DirectedInterleaveDataset, self).__init__()
 
   def _as_variant_tensor(self):
@@ -259,10 +267,8 @@ def choose_from_datasets_v2(datasets, choice_dataset):
     TypeError: If the `datasets` or `choice_dataset` arguments have the wrong
       type.
   """
-  if not (choice_dataset.output_types == dtypes.int64
-          and choice_dataset.output_shapes.is_compatible_with(
-              tensor_shape.scalar())
-          and choice_dataset.output_classes == ops.Tensor):
+  if not dataset_ops.get_structure(choice_dataset).is_compatible_with(
+      structure.TensorStructure(dtypes.int64, [])):
     raise TypeError("`choice_dataset` must be a dataset of scalar "
                     "`tf.int64` tensors.")
   return _DirectedInterleaveDataset(choice_dataset, datasets)

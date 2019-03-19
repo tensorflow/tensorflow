@@ -159,14 +159,17 @@ def StreamingFilesDataset(files,
   @function.Defun(dtypes.string)
   def LoadingFunc(h):
     remote_iterator = iterator_ops.Iterator.from_string_handle(
-        h, source_dataset.output_types, source_dataset.output_shapes)
+        h, dataset_ops.get_legacy_output_types(source_dataset),
+        dataset_ops.get_legacy_output_shapes(source_dataset))
     return remote_iterator.get_next()
 
   def MapFn(unused_input):
-    if isinstance(source_dataset.output_types, dtypes.DType):
-      output_types = [source_dataset.output_types]
-    elif isinstance(source_dataset.output_types, (list, tuple)):
-      output_types = source_dataset.output_types
+    source_dataset_output_types = dataset_ops.get_legacy_output_types(
+        source_dataset)
+    if isinstance(source_dataset_output_types, dtypes.DType):
+      output_types = [source_dataset_output_types]
+    elif isinstance(source_dataset_output_types, (list, tuple)):
+      output_types = source_dataset_output_types
     else:
       raise ValueError('source dataset has invalid output types')
     remote_calls = functional_ops.remote_call(

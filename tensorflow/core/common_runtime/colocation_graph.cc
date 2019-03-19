@@ -135,7 +135,8 @@ bool IsExemptFromResourceInputColocation(const Node* node) {
   // ref inputs to operations that are appropriately placed, instead of
   // dereferencing them.
   const string& op_type = node->op_def().name();
-  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall";
+  return op_type == "PartitionedCall" || op_type == "StatefulPartitionedCall" ||
+         op_type == "ReduceDataset";
 }
 
 bool HasPriorities(const PrioritizedDeviceTypeVector& device_types) {
@@ -212,7 +213,9 @@ Status Member::EnsureCompatibilityAcrossResourceEdge(
         "Cannot place the graph because a reference or resource edge "
         "connects colocation groups with incompatible assigned devices: ",
         DeviceNameUtils::ParsedNameToString(src_root.assigned_device_name_),
-        " vs ", DeviceNameUtils::ParsedNameToString(assigned_device_name_));
+        " vs ", DeviceNameUtils::ParsedNameToString(assigned_device_name_),
+        ". The edge src node is ", src.name(), " , and the dst node is ",
+        dst.name());
   }
 
   if (DeviceNameUtils::AreCompatibleDevNames(src_root.requested_device_name_,

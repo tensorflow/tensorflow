@@ -73,6 +73,10 @@ def function_def_to_graph(fdef, input_shapes=None):
     func_graph.outputs = [
         func_graph.get_tensor_by_name(name) for name in output_tensor_names
     ]
+    func_graph.control_outputs = [
+        func_graph.get_operation_by_name(fdef.control_ret[ret_name])
+        for ret_name in fdef.signature.control_output
+    ]
 
   return func_graph
 

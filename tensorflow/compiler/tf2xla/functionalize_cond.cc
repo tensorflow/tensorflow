@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/union_find.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -37,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 using xla::StatusOr;
 
@@ -620,7 +620,32 @@ Status Conditional::ExtractBodies(Graph* graph) {
             stack.push_back(src);
           }
         } else if (e->IsControlEdge()) {
-          external_control_inputs_.push_back(src);
+          // Here we have a control flow edge between src and dst that are not
+          // in the same context. This is an external control dependency except
+          // for one case: where the only difference between CondId of e->src()
+          // and CondId of e->dst() is that e->src() has {PRED, kNeither} and
+          // e->dst() has {PRED, kThenBranch/kElseBranch}. This happens in
+          // gradients code for tf.cond(), where e->src() is a control pivot
+          // node for a branch and e->dst() is a data node in that branch.
+          bool is_external_control_input = true;
+          if (!state_map_->IsEmpty(src_id) && !state_map_->IsEmpty(dst_id)) {
+            std::vector<StateMap::CondState::value_type> diff;
+            std::set_symmetric_difference(
+                src_id->begin(), src_id->end(), dst_id->begin(), dst_id->end(),
+                std::back_inserter(diff), CondStateLess());
+            if (diff.size() == 2 && diff[0].first == diff[1].first &&
+                (diff[0].second == BranchType::kNeither ||
+                 diff[1].second == BranchType::kNeither)) {
+              auto src_branch = src_id->find(diff[0].first);
+              if (src_branch != src_id->end() &&
+                  src_branch->second == BranchType::kNeither) {
+                is_external_control_input = false;
+              }
+            }
+          }
+          if (is_external_control_input) {
+            external_control_inputs_.push_back(src);
+          }
         } else {
           // This shouldn't happen, this means we have an external data input
           // not entering via a switch node. Work around this by for
@@ -710,7 +735,7 @@ Status Conditional::BuildIfNode(Graph* graph,
 
     VLOG(3) << "FunctionalizeControlFlow (" << branch_name[branch_index]
             << "): "
-            << dump_graph::DumpGraphToFile(
+            << DumpGraphToFile(
                    "functionalize_cond_body_" + branch_name[branch_index],
                    *bodies_[branch_index], nullptr);
 
@@ -993,10 +1018,18 @@ StatusOr<StateMap::CondId> FunctionalizeCond::JoinCondStatesNonMerge(
       both.insert(kv);
     } else {
       if (it->second != kv.second) {
-        return errors::InvalidArgument(
-            "Graph contains node with inputs predicated on incompatible "
-            "predicates: ",
-            DebugString(src), " and ", DebugString(dst));
+        if (it->second == BranchType::kNeither) {
+          // BranchType for 'src' is kNeither. Use the BranchType in 'dst'.
+          it->second = kv.second;
+        } else if (kv.second == BranchType::kNeither) {
+          // BranchType for 'dst' is kNeither. Use the BranchType in 'src'.
+          // No need to change it->second.
+        } else {
+          return errors::InvalidArgument(
+              "Graph contains node with inputs predicated on incompatible "
+              "predicates: ",
+              DebugString(src), " and ", DebugString(dst));
+        }
       }
     }
   }
@@ -1065,7 +1098,17 @@ StateMap::CondId FunctionalizeCond::StateAlongEdge(const Edge* e) {
     if (id != nullptr) state = *id;
     OutputTensor predicate;
     TF_CHECK_OK(GetSwitchPredicate(*src, &predicate));
-    if (!e->IsControlEdge()) {
+    if (e->IsControlEdge()) {
+      // In gradients of tf.cond(), in each branch, we have a NoOp node as
+      // control pivot. These NoOp nodes have control dependency from Switch
+      // node. If we don't record this into CondState, branches might have
+      // incorrect CondState (e.g. if the branch only has a Const data node).
+      // We set it to kNeither because there is no way to tell whether it's
+      // for true branch or false branch. This node's desendents might have
+      // other incoming edges with defined BranchType, and we correctly handle
+      // merging kNeither with other defined BranchType in StateAlongEdge().
+      state[predicate] = BranchType::kNeither;
+    } else {
       state[predicate] = BranchType(e->src_output());
     }
     return state_map_.GetCondId(state);
@@ -1473,9 +1516,8 @@ void FunctionalizeCond::DumpGraphWithCondState(const string& name) {
                             state_map_.AncestorStateToString(n)));
   }
   LOG(INFO) << "FunctionalizeControlFlow (" << name << "): "
-            << dump_graph::DumpGraphToFile(
-                   absl::StrCat("functionalize_cond_", name), *graph_,
-                   library_);
+            << DumpGraphToFile(absl::StrCat("functionalize_cond_", name),
+                               *graph_, library_);
 }
 
 void FunctionalizeCond::AddSwitchId(int switch_id) {

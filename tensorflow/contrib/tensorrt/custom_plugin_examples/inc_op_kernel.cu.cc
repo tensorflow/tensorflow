@@ -39,8 +39,8 @@ void IncrementKernel(const float* d_input, float inc, float* d_output,
   int threads_per_block = 256;
   int blocks_per_grid = (count + threads_per_block - 1) / threads_per_block;
 
-  CudaLaunchKernel(VecInc, threads_per_block, blocks_per_grid, 0, stream,
-                   d_input, inc, d_output, count);
+  TF_CHECK_OK(CudaLaunchKernel(VecInc, threads_per_block, blocks_per_grid, 0,
+                               stream, d_input, inc, d_output, count));
 }
 
 // Note: this kernel definition is not needed in the plugin_test rule, but it is

@@ -23,6 +23,8 @@ import re
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.eager import context
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -33,6 +35,11 @@ _RETRY_TIMES = 120
 _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS = 300 * 1000  # 5 mins
 
 _TPU_DEVICE_REG = re.compile(r'.*task:(\d+)/.*device:TPU:(\d+)$')
+_DEVICE_TYPE_REGEX = re.compile('.*device:([^:]+).*')
+
+_DEFAULT_JOB_NAME = 'tpu_worker'
+_DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
+_LOCAL_MASTERS = ('', 'local')
 
 # _TPUSystemMetadata is used by TPUEstimator to hold TPU configuration,
 # including num_cores and num_hosts.
@@ -52,41 +59,54 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
   devices = []
   device_dict = collections.defaultdict(list)
 
-  # TODO(b/120564445): Replace with standard library for retries.
-  retry_count = 1
-  while True:
-    logging.info('Querying Tensorflow master (%s) for TPU system metadata.',
-                 master_address)
-    try:
-      with ops.Graph().as_default():
-        with session_lib.Session(
-            master_address,
-            config=get_session_config_with_timeout(
-                _PINGING_MASTER_TIMEOUT_IN_MS,
-                cluster_def)) as sess:
-          devices = sess.list_devices()
-          for device in devices:
-            match = _TPU_DEVICE_REG.match(device.name)
-            if match:
-              host_id = match.group(1)
-              core_id = match.group(2)
-              device_dict[host_id].append(core_id)
-              tpu_core_count += 1
-          break
-    except errors.DeadlineExceededError:
-      msg = ('Failed to connect to the Tensorflow master. The TPU worker may '
-             'not be ready (still scheduling) or the Tensorflow master address '
-             'is incorrect: got (%s).' %
-             (master_address))
+  if context.executing_eagerly():
+    device_names = context.list_devices()
+    devices = []
 
-      # TODO(xiejw): For local or grpc master we might not need retry logic
-      # here.
-      if retry_count <= _RETRY_TIMES:
-        logging.warning('%s', msg)
-        logging.warning('Retrying (%d/%d).', retry_count, _RETRY_TIMES)
-        retry_count += 1
-      else:
-        raise ValueError(msg)
+    # We want the output type to match in both eager and session mode
+    for name in device_names:
+      device_match = _DEVICE_TYPE_REGEX.match(name)
+      device_type = 'CPU'
+      if device_match:
+        device_type = device_match.group(1)
+      devices.append(session_lib._DeviceAttributes(name, device_type, 0, 0))  # pylint: disable=protected-access
+  else:
+    # TODO(b/120564445): Replace with standard library for retries.
+    retry_count = 1
+    while True:
+      logging.info('Querying Tensorflow master (%s) for TPU system metadata.',
+                   master_address)
+      try:
+        with ops.Graph().as_default():
+          with session_lib.Session(
+              master_address,
+              config=get_session_config_with_timeout(
+                  _PINGING_MASTER_TIMEOUT_IN_MS,
+                  cluster_def)) as sess:
+            devices = sess.list_devices()
+            break
+      except errors.DeadlineExceededError:
+        msg = ('Failed to connect to the Tensorflow master. The TPU worker may '
+               'not be ready (still scheduling) or the Tensorflow master '
+               'address is incorrect: got (%s).' %
+               (master_address))
+
+        # TODO(xiejw): For local or grpc master we might not need retry logic
+        # here.
+        if retry_count <= _RETRY_TIMES:
+          logging.warning('%s', msg)
+          logging.warning('Retrying (%d/%d).', retry_count, _RETRY_TIMES)
+          retry_count += 1
+        else:
+          raise ValueError(msg)
+
+  for device in devices:
+    match = _TPU_DEVICE_REG.match(device.name)
+    if match:
+      host_id = match.group(1)
+      core_id = match.group(2)
+      device_dict[host_id].append(core_id)
+      tpu_core_count += 1
 
   num_of_cores_per_host = 0
   if tpu_core_count:
@@ -108,6 +128,14 @@ def _query_tpu_system_metadata(master_address, cluster_def=None,
               master_address, devices))
 
     topology = _obtain_topology(master_address, cluster_def)
+
+  # We sort the metadata devices so that downstream users get a sorted list
+  # for creating mirrored variables correctly.
+  def _sort_key(device):
+    spec = tf_device.DeviceSpec.from_string(device.name)
+    return (spec.job, spec.replica, spec.task, spec.device_type,
+            spec.device_index)
+  devices = tuple(sorted(devices, key=_sort_key))
 
   metadata = _TPUSystemMetadata(
       num_cores=tpu_core_count,
@@ -154,3 +182,42 @@ def get_session_config_with_timeout(timeout_in_secs, cluster_def):
   config = config_pb2.ConfigProto(
       operation_timeout_in_ms=timeout_in_secs, cluster_def=cluster_def)
   return config
+
+
+def master_job(master, cluster_def):
+  """Returns the canonnical job name to use to place TPU computations on.
+
+  Args:
+    master: A `string` representing the TensorFlow master to use.
+    cluster_def: A ClusterDef object describing the TPU cluster.
+
+
+  Returns:
+    A string containing the job name, or None if no job should be specified.
+
+  Raises:
+    ValueError: If the user needs to specify a tpu_job_name, because we are
+      unable to infer the job name automatically, or if the user-specified job
+      names are inappropriate.
+  """
+  # If the user specifies the tpu_job_name, use that.
+
+  if master in _LOCAL_MASTERS:
+    return None
+
+  if (not cluster_def or not cluster_def.job):
+    return _DEFAULT_JOB_NAME
+  job_names = set([job.name for job in cluster_def.job])
+  if _DEFAULT_JOB_NAME in job_names:
+    # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
+    raise ValueError('Currently, tpu_worker is not an allowed job name.')
+  if len(job_names) == 1:
+    return cluster_def.job[0].name
+  if len(job_names) == 2:
+    if _DEFAULT_COORDINATOR_JOB_NAME in job_names:
+      job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
+      return job_names.pop()
+    # TODO(b/67716447): Include more sophisticated heuristics.
+  raise ValueError(
+      'Could not infer TPU job name. Please specify a tpu_job_name as part '
+      'of your TPUConfig.')

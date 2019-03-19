@@ -31,8 +31,8 @@ class ParserTest(test.TestCase):
     def f(x):
       return x + 1
 
-    mod, _ = parser.parse_entity(f)
-    self.assertEqual('f', mod.body[0].name)
+    node, _, _ = parser.parse_entity(f)
+    self.assertEqual('f', node.name)
 
   def test_parse_str(self):
     mod = parser.parse_str(

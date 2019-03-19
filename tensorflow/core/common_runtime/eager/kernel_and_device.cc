@@ -54,9 +54,24 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
+KernelAndDeviceOp::~KernelAndDeviceOp() {
+  // Make sure that the device execution has finished before deleting cm_.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    while (num_deferred_ops_ > 0) {
+      no_deferred_ops_cv_.wait(lock);
+    }
+  }
+}
+
 Status KernelAndDeviceOp::Init(const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
+  if (flr_ == nullptr) {
+    return errors::Internal(
+        "A valid FunctionLibraryRuntime must be provided when running ops "
+        "based on OpKernel.");
+  }
   TF_RETURN_IF_ERROR(flr_->CreateKernel(ndef, &k));
   kernel_.reset(k);
   return Status::OK();
@@ -65,8 +80,18 @@ Status KernelAndDeviceOp::Init(const NodeDef& ndef,
 Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
                                  GraphCollector* graph_collector) {
   const OpDef* op_def = nullptr;
-  const FunctionDef* function_def =
-      flr_->GetFunctionLibraryDefinition()->Find(ndef.op());
+  const FunctionDef* function_def;
+  if (flr_ == nullptr) {
+    // If function is being executed without an explicit device request,
+    // lookup the FunctionDef in the CPU's FLR. All FLRs share the same
+    // library.
+    function_def = pflr_->GetFLR(host_cpu_device_->name())
+                       ->GetFunctionLibraryDefinition()
+                       ->Find(ndef.op());
+  } else {
+    function_def = flr_->GetFunctionLibraryDefinition()->Find(ndef.op());
+  }
+
   if (function_def != nullptr) {
     op_def = &(function_def->signature());
   } else {
@@ -76,7 +101,7 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
       InOutTypesForNode(ndef, *op_def, &input_dtypes_, &output_dtypes_));
 
   FunctionLibraryRuntime::InstantiateOptions options;
-  options.target = device_->name();
+  options.target = device_ == nullptr ? "" : device_->name();
   options.is_multi_device_function = true;
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
@@ -90,8 +115,7 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
   if (it != ndef.attr().end()) {
-    ConfigProto config_proto;
-    if (!config_proto.ParseFromString(config_it->second.s())) {
+    if (!options.config_proto.ParseFromString(config_it->second.s())) {
       return errors::InvalidArgument(
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
@@ -112,8 +136,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
     options.optimize_graph_fn = std::bind(
         grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
         std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
-        config_proto, function_def->signature().name(), optimization_options,
-        std::placeholders::_6);
+        options.config_proto, function_def->signature().name(),
+        optimization_options, std::placeholders::_6);
   }
 #endif
   options.graph_collector = graph_collector;
@@ -124,12 +148,26 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   return Status::OK();
 }
 
-Status KernelAndDevice::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
-                            std::vector<Tensor>* outputs, NodeExecStats* stats,
-                            StepStats* step_stats,
-                            GraphCollector* graph_collector) {
+Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+                              std::vector<Tensor>* outputs,
+                              NodeExecStats* stats, StepStats* step_stats,
+                              GraphCollector* graph_collector) {
   ScopedStepContainer step_container(0, [this](const string& name) {
     device_->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  return this->Run(&step_container, inputs, outputs, stats, step_stats,
+                   graph_collector);
+}
+
+Status KernelAndDeviceFunc::Run(
+    const gtl::InlinedVector<TensorValue, 4>& inputs,
+    std::vector<Tensor>* outputs, NodeExecStats* stats, StepStats* step_stats,
+    GraphCollector* graph_collector) {
+  const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
+  ScopedStepContainer step_container(0, [&devices](const string& name) {
+    for (Device* device : devices) {
+      device->resource_manager()->Cleanup(name).IgnoreError();
+    }
   });
   return this->Run(&step_container, inputs, outputs, stats, step_stats,
                    graph_collector);
@@ -170,6 +208,11 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
                               std::vector<Tensor>* outputs,
                               NodeExecStats* stats, StepStats* step_stats,
                               GraphCollector* graph_collector) {
+  gtl::InlinedVector<AllocatorAttributes, 4> in_attrs(kernel_->num_inputs());
+  for (size_t i = 0; i < in_attrs.size(); ++i) {
+    in_attrs[i].set_on_host(kernel_->input_memory_types()[i] ==
+                            tensorflow::HOST_MEMORY);
+  }
   std::vector<AllocatorAttributes> out_attrs(kernel_->num_outputs());
   for (size_t i = 0; i < out_attrs.size(); ++i) {
     out_attrs[i].set_on_host(kernel_->output_memory_types()[i] ==
@@ -191,6 +234,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.inputs = &inputs;
   params.op_kernel = kernel_.get();
   params.resource_manager = device_->resource_manager();
+  params.input_alloc_attrs = &in_attrs;
   params.output_attr_array = gtl::vector_as_array(&out_attrs);
   params.function_library = flr_;
   params.slice_reader_cache = &slice_reader_cache_;
@@ -198,6 +242,17 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.cancellation_manager = &cm_;
   cm_.Reset();
   params.log_memory = log_memory_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_--;
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
+  };
   std::unique_ptr<StepStatsCollector> step_stats_collector;
   if (stats != nullptr) {
     step_stats_collector.reset(new StepStatsCollector(step_stats));
@@ -258,8 +313,10 @@ Status KernelAndDeviceFunc::Run(
   // function library runtime to create a new for this call. We could have
   // created one here but it requires more state to be kept in
   // KernelAndDeviceFunc.
-  opts.rendezvous = nullptr;
-  opts.create_rendezvous = true;
+  Rendezvous* rendezvous = new IntraProcessRendezvous(pflr_->device_mgr());
+  opts.rendezvous = rendezvous;
+  opts.create_rendezvous = false;
+
   opts.cancellation_manager = &cm_;
   cm_.Reset();
   // eager runtime does not yet support collective ops.
@@ -285,13 +342,14 @@ Status KernelAndDeviceFunc::Run(
     input_vector.push_back(*tensor_value.tensor);
   }
 
-  flr_->Run(opts, handle_, input_vector, outputs,
-            [&status, &done](const Status& s) {
-              status = s;
-              done.Notify();
-            });
+  pflr_->Run(opts, handle_, input_vector, outputs,
+             [&status, &done](const Status& s) {
+               status = s;
+               done.Notify();
+             });
   done.WaitForNotification();
 
+  rendezvous->Unref();
   if (step_stats_collector != nullptr) {
     step_stats_collector->Finalize();
   }
