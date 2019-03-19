@@ -25,11 +25,11 @@ CastFunctorType GetCpuCastFromComplex64(DataType dst_dtype) {
   return nullptr;
 }
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 CastFunctorType GetGpuCastFromComplex64(DataType dst_dtype) {
   CURRY_TYPES3_NO_BF16(CAST_CASE, GPUDevice, std::complex<float>);
   return nullptr;
 }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
