@@ -1928,7 +1928,7 @@ def tf_py_test(
     # kernels compiled with XLA.
     if xla_enable_strict_auto_jit:
         xla_enabled = True
-        xla_test_true_list += [clean_dep("//tensorflow/python:is_xla_test_true")]
+        xla_test_true_list += ["//tensorflow/python:is_xla_test_true"]
     if xla_enabled:
         additional_deps = additional_deps + tf_additional_xla_deps_py()
     if grpc_enabled:
@@ -1972,37 +1972,19 @@ def gpu_py_test(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
+    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
+    # XLA tests once enough compute resources are available.
+    _ignored = [xla_enable_strict_auto_jit]
     if main == None:
         main = name + ".py"
     for config in ["cpu", "gpu"]:
         test_name = name
         test_tags = tags
-        suffix = ""
         if config == "gpu":
-            suffix += "_gpu"
+            test_name += "_gpu"
             test_tags = test_tags + tf_gpu_tests_tags()
-
-        # We don't care about testing XLA autojit on CPU for now.
-        if xla_enable_strict_auto_jit and config != "cpu":
-            tf_py_test(
-                name = name + "_xla" + suffix,
-                size = size,
-                srcs = srcs,
-                additional_deps = additional_deps,
-                args = args,
-                data = data,
-                flaky = flaky,
-                grpc_enabled = grpc_enabled,
-                kernels = kernels,
-                main = main,
-                shard_count = shard_count,
-                tags = test_tags,
-                xla_enabled = xla_enabled,
-                xla_enable_strict_auto_jit = True,
-            )
-
         tf_py_test(
-            name = name + suffix,
+            name = test_name,
             size = size,
             srcs = srcs,
             additional_deps = additional_deps,
@@ -2113,22 +2095,10 @@ def gpu_py_tests(
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
         grpc_enabled = False):
+    # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
+    # XLA tests once enough compute resources are available.
+    _ignored = [xla_enable_strict_auto_jit]
     test_tags = tags + tf_gpu_tests_tags()
-    if xla_enable_strict_auto_jit:
-        py_tests(
-            name = name,
-            size = size,
-            srcs = srcs,
-            additional_deps = additional_deps,
-            data = data,
-            grpc_enabled = grpc_enabled,
-            kernels = kernels,
-            prefix = prefix + "gpu_xla",
-            shard_count = shard_count,
-            tags = test_tags,
-            xla_enabled = xla_enabled,
-            xla_enable_strict_auto_jit = True,
-        )
     py_tests(
         name = name,
         size = size,
