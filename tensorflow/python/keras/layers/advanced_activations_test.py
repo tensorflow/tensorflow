@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for advanced activation layers."""
+"""Tests for Advanced Activation layers."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -60,6 +60,11 @@ class AdvancedActivationsTest(keras_parameterized.TestCase):
     testing_utils.layer_test(keras.layers.Softmax,
                              kwargs={'axis': 1},
                              input_shape=(2, 3, 4))
+  def test_softshrink(self):
+    for lambd in [5., .5, -1.]:
+      testing_utils.layer_test(keras.layers.SoftShrink,
+                               kwargs={'lambd': lambd},
+                               input_shape=(2, 3, 4))
 
   def test_relu(self):
     testing_utils.layer_test(keras.layers.ReLU,
