@@ -191,7 +191,8 @@ class DatasetV2(object):
             "`tf.enable_resource_variables()` at the start of the program." %
             ", ".join(static_optimizations))
       else:
-        dataset = _OptimizeDataset(dataset, static_optimizations)
+        dataset = _OptimizeDataset(dataset, static_optimizations,
+                                   options._static_optimization_configs())  # pylint: disable=protected-access
 
     autotune = True
     cpu_budget = 0  # Indicates that all CPU cores should be used.
@@ -2009,6 +2010,10 @@ class Options(options_lib.OptionsBase):
       result.append("latency_all_edges")
     return result
 
+  def _static_optimization_configs(self):
+    """Produces the list of configurations for enabled static optimizations."""
+    return self.experimental_optimization._static_optimization_configs()  # pylint: disable=protected-access
+
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
 
@@ -3295,15 +3300,18 @@ class _ModelDataset(UnaryUnchangedStructureDataset):
 class _OptimizeDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and applies optimizations."""
 
-  def __init__(self, input_dataset, optimizations):
+  def __init__(self, input_dataset, optimizations, optimization_configs=None):
     self._input_dataset = input_dataset
     if optimizations is None:
       optimizations = []
+    if optimization_configs is None:
+      optimization_configs = []
     self._optimizations = ops.convert_to_tensor(
         optimizations, dtype=dtypes.string, name="optimizations")
     variant_tensor = gen_dataset_ops.optimize_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._optimizations,
+        optimization_configs=optimization_configs,
         **flat_structure(self))
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
