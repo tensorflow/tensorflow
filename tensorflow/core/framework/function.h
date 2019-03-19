@@ -601,6 +601,9 @@ class FunctionLibraryRuntime {
   // as long as *this.
   virtual const FunctionBody* GetFunctionBody(Handle h) = 0;
 
+  // Returns the return types for the function identified by handle `h`.
+  virtual Status GetRetTypes(Handle h, DataTypeVector* ret_types) = 0;
+
   // Asynchronously invokes the instantiated function identified by
   // "handle".
   //

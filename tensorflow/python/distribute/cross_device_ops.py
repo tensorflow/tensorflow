@@ -970,12 +970,7 @@ class CollectiveAllReduce(CrossDeviceOps):
                              cross_device_utils.CollectiveKeys())
     super(CollectiveAllReduce, self).__init__()
 
-  # TODO(yuefengz, tucker): is indexed slices supported by collective ops?
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
-    if cross_device_utils.contains_indexed_slices(per_replica_value):
-      raise ValueError(
-          "`IndexSlices` is not supported for Collective All-Reduce.")
-
     all_reduced = self._batch_all_reduce(reduce_op, [per_replica_value])[0]
     device_map, logical_device = get_device_map_from(destinations)
     if (all_reduced.device_map is device_map and
@@ -995,10 +990,6 @@ class CollectiveAllReduce(CrossDeviceOps):
     return value_lib.Mirrored(device_map, index, logical_device)
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
-    if cross_device_utils.contains_indexed_slices(value_destination_pairs):
-      raise ValueError(
-          "`IndexSlices` is not supported for Collective All-Reduce.")
-
     all_devices_match = _all_devices_match(value_destination_pairs)
     if all_devices_match:
       return self._batch_all_reduce(reduce_op,
@@ -1014,13 +1005,8 @@ class CollectiveAllReduce(CrossDeviceOps):
           for t, v in value_destination_pairs
       ]
 
-  def _batch_all_reduce(self, reduce_op, per_replica_values):
-    """All-reduce across all workers in a batch."""
-
-    logging.log_first_n(
-        logging.INFO, "Collective All-reduce invoked with batches size = %d, "
-        "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
-
+  def _make_gradient_chunks(self, per_replica_values, all_reduce_merge_scope):
+    """Make `per_replica_values` into chunks."""
     grouped_by_device = _group_value_by_device(per_replica_values)
 
     grouped_by_var = list(zip(*grouped_by_device))
@@ -1031,18 +1017,100 @@ class CollectiveAllReduce(CrossDeviceOps):
     #  ...
     # ]
     chunked_gv = [
-        grouped_by_var[x:x + self._all_reduce_merge_scope]
-        for x in range(0, len(grouped_by_var), self._all_reduce_merge_scope)
+        grouped_by_var[x:x + all_reduce_merge_scope]
+        for x in range(0, len(grouped_by_var), all_reduce_merge_scope)
     ]
+    return chunked_gv
+
+  def _batch_all_reduce(self, reduce_op, per_replica_values):
+    """All reduce algorithm in a batch."""
+    logging.log_first_n(
+        logging.INFO, "Collective All-reduce invoked with batches size = %d, "
+        "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
+
+    dense_values, dense_indices, sparse_values, sparse_indices = (
+        cross_device_utils.split_by_sparsity(per_replica_values))
+    if dense_values:
+      dense_results = self._do_batch_all_reduce_dense(reduce_op, dense_values)
+    else:
+      dense_results = []
+    if sparse_values:
+      sparse_results = self._do_batch_all_reduce_sparse(reduce_op,
+                                                        sparse_values)
+    else:
+      sparse_results = []
+    return cross_device_utils.stitch_values(((dense_results, dense_indices),
+                                             (sparse_results, sparse_indices)))
+
+  def _do_batch_all_reduce_dense(self, reduce_op, per_replica_values):
+    """All-reduce across all workers in a batch."""
+
+    logging.log_first_n(
+        logging.INFO, "Collective All-reduce invoked with batches size = %d, "
+        "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
+
+    chunked_gv = self._make_gradient_chunks(per_replica_values,
+                                            self._all_reduce_merge_scope)
 
     reduced_gv_list = []
     for chunk in chunked_gv:
       with ops.name_scope("allreduce"):
         for grad_and_vars in chunk:
+          # Gradients for the same variable but from different devices.
           scaled_grads = [g for g, _ in grad_and_vars]
           collective_reduced = cross_device_utils.build_collective_reduce(
               scaled_grads, self._num_workers, self._collective_keys, "Add",
               "Id")
+          result = []
+          for (_, v), g in zip(grad_and_vars, collective_reduced):
+            result.append([g, v])
+          reduced_gv_list.append(result)
+
+    new_device_grads = [list(x) for x in zip(*reduced_gv_list)]
+    return _ungroup_and_make_mirrored(
+        new_device_grads,
+        per_replica_values[0],
+        reduce_op,
+        num_between_graph_workers=self._num_workers)
+
+  def _do_batch_all_reduce_sparse(self, reduce_op, per_replica_values):
+    """All-reduce IndexedSlices across all workers in a batch."""
+
+    logging.log_first_n(
+        logging.INFO, "Collective All-reduce for IndexedSlices invoked with "
+        "batches size = %d, num_workers = %d" %
+        (len(per_replica_values), self._num_workers), 10)
+
+    chunked_gv = self._make_gradient_chunks(per_replica_values,
+                                            self._all_reduce_merge_scope)
+
+    reduced_gv_list = []
+    for chunk in chunked_gv:
+      with ops.name_scope("allreduce"):
+        for grad_and_vars in chunk:
+          # Gradients for the same variable but from different devices.
+          scaled_grads = [g for g, _ in grad_and_vars]
+
+          values = [g.values for g in scaled_grads]
+          indices = [g.indices for g in scaled_grads]
+          assert len(values) == len(indices)
+
+          # Build two separate allgathers, one for values, the other one for
+          # indices.
+          gathered_values = cross_device_utils.build_collective_gather(
+              values, self._num_workers, self._collective_keys)
+          gathered_indices = cross_device_utils.build_collective_gather(
+              indices, self._num_workers, self._collective_keys)
+          assert len(gathered_values) == len(gathered_indices)
+
+          collective_reduced = []
+          for i in range(len(values)):
+            reduced = ops.IndexedSlices(
+                gathered_values[i],
+                gathered_indices[i],
+                dense_shape=scaled_grads[i].dense_shape)
+            collective_reduced.append(reduced)
+
           result = []
           for (_, v), g in zip(grad_and_vars, collective_reduced):
             result.append([g, v])

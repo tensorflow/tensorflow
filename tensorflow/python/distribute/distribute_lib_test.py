@@ -22,6 +22,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
@@ -107,6 +108,53 @@ class TestStrategyTest(test.TestCase):
           variable_scope.VariableAggregation.NONE)
       self.assertDictEqual(expected_value,
                            variable_scope.variable(1.0, name="baz"))
+    _assert_in_default_state(self)
+
+  def testScopeDeviceNestingError(self):
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    # Open a device scope with dist.scope().
+    dist.extended._default_device = "/device:GPU:0"
+    scope = dist.scope()
+    scope.__enter__()
+    self.assertIs(dist, ds_context.get_strategy())
+    with ops.device("/device:CPU:0"):
+      with self.assertRaisesRegexp(RuntimeError, "Device scope nesting error"):
+        scope.__exit__(None, None, None)
+    scope.__exit__(None, None, None)
+    _assert_in_default_state(self)
+
+  def testScopeVarCreatorNestingError(self):
+
+    def creator(next_creator, **kwargs):
+      return next_creator(**kwargs)
+
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    scope = dist.scope()
+    scope.__enter__()
+    self.assertIs(dist, ds_context.get_strategy())
+    with variable_scope.variable_creator_scope(creator):
+      with self.assertRaisesRegexp(RuntimeError,
+                                   "Variable creator scope nesting error"):
+        scope.__exit__(None, None, None)
+    scope.__exit__(None, None, None)
+    _assert_in_default_state(self)
+
+  def testScopeVarScopeNestingError(self):
+    # We create a new graph here to simplify clean-up, since the error
+    # we are triggering happens in the middle of scope.__exit__() and
+    # leaves us in a weird state.
+    with ops.Graph().as_default():
+      _assert_in_default_state(self)
+      dist = _TestStrategy()
+      scope = dist.scope()
+      scope.__enter__()
+      self.assertIs(dist, ds_context.get_strategy())
+      with variable_scope.variable_scope("AA"):
+        with self.assertRaisesRegexp(RuntimeError,
+                                     "Variable scope nesting error"):
+          scope.__exit__(None, None, None)
     _assert_in_default_state(self)
 
   def testSettingSynchronizationAndAggregation(self):

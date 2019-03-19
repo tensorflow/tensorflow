@@ -2969,6 +2969,17 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "cuda_sparse",
+    srcs = ["cuda_sparse.cc"],
+    hdrs = ["cuda_sparse.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@local_config_cuda//cuda:cusparse",
+    ],
+)
+
 LINALG_DEPS = [
     ":linalg_ops_common",
     "//third_party/eigen3",
@@ -3063,7 +3074,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "tridiagonal_solve_op",
     srcs = ["tridiagonal_solve_op.cc"],
-    deps = LINALG_DEPS,
+    gpu_srcs = ["tridiagonal_solve_op_gpu.cu.cc"],
+    deps = LINALG_DEPS + if_cuda([
+        ":cuda_sparse",
+    ]),
 )
 
 tf_kernel_library(
@@ -5784,6 +5798,7 @@ filegroup(
         "queue_op.cc",
         "queue_ops.cc",
         "random_op.cc",
+        "random_op_cpu.h",
         "reduction_ops_all.cc",
         "reduction_ops_any.cc",
         "reduction_ops_common.cc",
@@ -5936,7 +5951,6 @@ filegroup(
             "decode_proto_op.cc",
             "encode_proto_op.cc",
             "rpc_op.cc",
-            "partitioned_function_ops.cc",
             # Excluded due to experimental status:
             "debug_ops.*",
             "mutex_ops.*",

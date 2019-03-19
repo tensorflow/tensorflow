@@ -26,8 +26,23 @@ using ::testing::ElementsAreArray;
 
 class BasePoolingOpModel : public SingleOpModel {
  public:
-  // TODO(ahentz): Also test different activation types, bias, padding types,
-  // stride values.
+  BasePoolingOpModel(const BuiltinOperator& type, const TensorData& input,
+                     int stride_width, int stride_height, int filter_width,
+                     int filter_height, const Padding& padding,
+                     const ActivationFunctionType& fused_activation_function,
+                     const TensorData& output) {
+    input_ = AddInput(input);
+    output_ = AddOutput(output);
+
+    SetBuiltinOp(type, BuiltinOptions_Pool2DOptions,
+                 CreatePool2DOptions(builder_, padding, stride_width,
+                                     stride_height, filter_width, filter_height,
+                                     fused_activation_function)
+                     .Union());
+
+    BuildInterpreter({GetShape(input_)});
+  }
+
   BasePoolingOpModel(BuiltinOperator type, const TensorData& input,
                      int filter_width, int filter_height,
                      const TensorData& output) {
@@ -113,6 +128,99 @@ std::vector<float> ReplicateDepthRamp(const std::vector<float>& image_plane,
   }
 
   return ramped_data;
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithPad) {
+  FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                        /*input=*/{TensorType_FLOAT32, {1, 3, 4, 1}},
+                        /*stride_width=*/2, /*stride_height=*/2,
+                        /*filter_width=*/2, /*filter_height=*/2, Padding_SAME,
+                        ActivationFunctionType_RELU,
+                        /*output=*/{TensorType_FLOAT32, {}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, 2, -10, 7,  //
+      4, 8, 1, 2,    //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-0.0, 0.75, 6.0, 1.5}));
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithRELU6) {
+  FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                        /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                        /*stride_width=*/2, /*stride_height=*/2,
+                        /*filter_width=*/2, /*filter_height=*/2, Padding_SAME,
+                        ActivationFunctionType_RELU6,
+                        /*output=*/{TensorType_FLOAT32, {}});
+  m.SetInput({
+      0, -6, 2, 4,  //
+      3, 2, 10, 7,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 5.75}));
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithTanh) {
+  FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                        /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                        /*stride_width=*/2, /*stride_height=*/2,
+                        /*filter_width=*/2, /*filter_height=*/2, Padding_SAME,
+                        ActivationFunctionType_TANH,
+                        /*output=*/{TensorType_FLOAT32, {}});
+  m.SetInput({
+      0, -6, 2, 4,  //
+      3, 2, 10, 7,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-0.25, 5.75}));
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithSign) {
+  FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                        /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                        /*stride_width=*/2, /*stride_height=*/2,
+                        /*filter_width=*/2, /*filter_height=*/2, Padding_SAME,
+                        ActivationFunctionType_SIGN_BIT,
+                        /*output=*/{TensorType_FLOAT32, {}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, 2, -10, 7,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-0.25, 0.75}));
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithRelu_N1_TO_1) {
+  FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                        /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
+                        /*stride_width=*/2, /*stride_height=*/2,
+                        /*filter_width=*/2, /*filter_height=*/2, Padding_SAME,
+                        ActivationFunctionType_RELU_N1_TO_1,
+                        /*output=*/{TensorType_FLOAT32, {}});
+  m.SetInput({
+      0, -6, 2, 4,    //
+      3, 2, -10, -7,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-0.25, -1.00}));
+}
+
+TEST(FloatPoolingOpTest, AveragePoolWithStride) {
+  FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
+                        /*input=*/{TensorType_FLOAT32, {1, 3, 4, 1}},
+                        /*stride_width=*/1, /*stride_height=*/1,
+                        /*filter_width=*/2, /*filter_height=*/2, Padding_SAME,
+                        ActivationFunctionType_RELU,
+                        /*output=*/{TensorType_FLOAT32, {}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, 2, -10, 7,  //
+      4, 8, 1, 2,    //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0.0, 0.0, 0.75, 5.5, 4.25, 0.25,
+                                               0.0, 4.5, 6.0, 4.5, 1.5, 2.0}));
 }
 
 TEST(FloatPoolingOpTest, AveragePool) {

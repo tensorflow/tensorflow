@@ -661,10 +661,13 @@ class ReduceDatasetOp : public AsyncOpKernel {
       std::vector<Tensor> state(inputs.begin(), inputs.end());
 
       std::unique_ptr<CapturedFunction> captured_func;
+      CapturedFunction::Params fn_params;
+      fn_params.use_inter_op_parallelism = use_inter_op_parallelism_;
+      fn_params.is_multi_device_function = true;
       OP_REQUIRES_OK_ASYNC(
           ctx,
           CapturedFunction::Create(reduce_func_, ctx, "other_arguments",
-                                   use_inter_op_parallelism_, &captured_func),
+                                   fn_params, &captured_func),
           done);
 
       IteratorContext::Params params(ctx);

@@ -21236,6 +21236,14 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "optimization_configs"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "OptionalFromValue"

@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import enum
 import threading
 import weakref
-import enum
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import device_util
@@ -189,10 +190,31 @@ class _CurrentDistributionContext(object):
 
   def __exit__(self, exception_type, exception_value, traceback):
     if self._device_scope:
-      self._device_scope.__exit__(exception_type, exception_value, traceback)
-    self._var_creator_scope.__exit__(exception_type, exception_value, traceback)
+      try:
+        self._device_scope.__exit__(exception_type, exception_value, traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Device scope nesting error: move call to "
+                         "tf.distribute.set_strategy() out of `with` scope."),
+            e)
+
+    try:
+      self._var_creator_scope.__exit__(
+          exception_type, exception_value, traceback)
+    except RuntimeError as e:
+      six.raise_from(
+          RuntimeError("Variable creator scope nesting error: move call to "
+                       "tf.distribute.set_strategy() out of `with` scope."),
+          e)
+
     if self._var_scope:
-      self._var_scope.__exit__(exception_type, exception_value, traceback)
+      try:
+        self._var_scope.__exit__(exception_type, exception_value, traceback)
+      except RuntimeError as e:
+        six.raise_from(
+            RuntimeError("Variable scope nesting error: move call to "
+                         "tf.distribute.set_strategy() out of `with` scope."),
+            e)
     _pop_per_thread_mode()
 
 

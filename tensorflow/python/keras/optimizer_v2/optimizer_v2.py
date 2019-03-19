@@ -27,11 +27,11 @@ import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
-from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
@@ -661,9 +661,7 @@ class OptimizerV2(trackable.Trackable):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, tf_variables.Variable,
-                          distributed_values.TPUMirroredVariable,
-                          distributed_values.DistributedVariable)):
+    if tensor_util.is_tensor(value):
       return backend.get_value(value)
     return value
 

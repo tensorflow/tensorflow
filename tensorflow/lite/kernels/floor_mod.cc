@@ -52,9 +52,8 @@ T FloorMod(T input1, T input2) {
 
   ModFunc mod_func;
   T trunc_mod = mod_func(input1, input2);
-  return (input1 < T(0)) == (input2 < T(0))
-             ? trunc_mod
-             : mod_func(trunc_mod + input2, input2);
+  return trunc_mod != 0 && (input2 < 0 != trunc_mod < 0) ? trunc_mod + input2
+                                                         : trunc_mod;
 }
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {

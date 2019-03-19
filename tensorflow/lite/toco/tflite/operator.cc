@@ -2476,7 +2476,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<ReverseSequence>(::tflite::BuiltinOperator_REVERSE_SEQUENCE,
                                   OperatorType::kReverseSequence));
-
+  ops.push_back(MakeUnique<SimpleOperator<MatrixDiagOperator>>(
+      "MATRIX_DIAG", OperatorType::kMatrixDiag));
   // Custom Operators.
   ops.push_back(
       MakeUnique<DepthToSpace>("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));

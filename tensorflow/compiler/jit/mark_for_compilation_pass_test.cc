@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/list_ops.h"
 #include "tensorflow/cc/ops/resource_variable_ops.h"
 #include "tensorflow/cc/ops/sendrecv_ops.h"
@@ -193,6 +194,45 @@ TEST(XlaCompilationTest, HalfSupported) {
   TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
   EXPECT_FALSE(clusters.empty());
+}
+
+// Tests that PartitionedCalls are only marked for compilation if every node
+// inside the function can be compiled.
+TEST(XlaCompilationTest, PartitionedCallUnsupported) {
+  FunctionDef compilable = FunctionDefHelper::Define(
+      "CompilableFn", {"n_a:float", "n_b:float"}, {"n_c:float"}, {},
+      {{{"n_c"}, "Add", {"n_a", "n_b"}, {{"T", DT_FLOAT}}}});
+  FunctionDef uncompilable =
+      FunctionDefHelper::Define("UncompilableFn", {"n_a:float"}, {"n_c:float"},
+                                {}, {{{"n_c"}, "UncompilableUnary", {"n_a"}}});
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = compilable;
+  *flib.add_function() = uncompilable;
+  FunctionLibraryDefinition flib_def(OpRegistry::Global(), flib);
+
+  std::unique_ptr<Graph> graph(new Graph(&flib_def));
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("A"), DT_FLOAT);
+
+  NameAttrList b_name_attr;
+  b_name_attr.set_name("CompilableFn");
+  ops::PartitionedCall b(root.WithOpName("B"), {a, a}, {DT_FLOAT}, b_name_attr);
+  NameAttrList c_name_attr;
+  c_name_attr.set_name("UncompilableFn");
+
+  ops::PartitionedCall c(root.WithOpName("C"), {a}, {DT_FLOAT}, c_name_attr);
+  Output d = ops::Add(root.WithOpName("D"), b.output.front(), c.output.front());
+
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+  TF_ASSERT_OK(
+      MarkForCompilationPassTestHelper::MarkForCompilation(&graph, &flib_def));
+  auto clusters = GetClusters(*graph);
+
+  EXPECT_EQ(2, clusters.size());
+  EXPECT_FALSE(clusters["B"].empty());
+  EXPECT_TRUE(clusters["C"].empty());
+  EXPECT_EQ(clusters["B"], clusters["D"]);
 }
 
 TEST(XlaCompilationTest, FunctionCalls) {
@@ -1312,6 +1352,60 @@ TEST(XlaCompilationTest, DontClusterResourceOpsWhenUnsafe) {
 
   EXPECT_EQ(clusters["test/b"], "");
   EXPECT_EQ(clusters[resource_read_name], "");
+}
+
+TEST(XlaCompilationTest, DontClusterNodesWithScopedAllocatorAttr) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
+
+  Output x = ops::Add(root.WithOpName("test/x"), a, b);
+  Output y = ops::MatMul(root.WithOpName("test/y"), a, b);
+  Output z = ops::Add(root.WithOpName("test/z"), x, y);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  FindNodeByName(graph.get(), "test/x")->set_assigned_device_name(kGPU0);
+  FindNodeByName(graph.get(), "test/y")->set_assigned_device_name(kGPU0);
+  FindNodeByName(graph.get(), "test/z")->set_assigned_device_name(kGPU0);
+
+  std::vector<int> scoped_allocator_value;
+  scoped_allocator_value.push_back(0);
+  scoped_allocator_value.push_back(155);
+  FindNodeByName(graph.get(), "test/z")
+      ->AddAttr("_scoped_allocator", scoped_allocator_value);
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+
+  EXPECT_EQ(clusters["test/z"], "");
+}
+
+TEST(XlaCompilationTest, DontClusterNodesWithForwardFromAttr) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  Output a = ops::Placeholder(root.WithOpName("test/a"), DT_FLOAT);
+  Output b = ops::Placeholder(root.WithOpName("test/b"), DT_FLOAT);
+
+  Output x = ops::Add(root.WithOpName("test/x"), a, b);
+  Output y = ops::MatMul(root.WithOpName("test/y"), a, b);
+  Output z = ops::Add(root.WithOpName("test/z"), x, y);
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(root.ToGraph(graph.get()));
+
+  FindNodeByName(graph.get(), "test/x")->set_assigned_device_name(kGPU0);
+  FindNodeByName(graph.get(), "test/y")->set_assigned_device_name(kGPU0);
+  FindNodeByName(graph.get(), "test/z")->set_assigned_device_name(kGPU0);
+
+  FindNodeByName(graph.get(), "test/z")->AddAttr("_forward_from", 0);
+
+  TF_ASSERT_OK(MarkForCompilationPassTestHelper::MarkForCompilation(&graph));
+
+  std::unordered_map<string, string> clusters = GetClusters(*graph);
+
+  EXPECT_EQ(clusters["test/z"], "");
 }
 
 }  // namespace

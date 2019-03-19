@@ -172,10 +172,9 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       for (; index < end_index; ++index) {
         captured_args.push_back(inputs[index]);
       }
-      OP_REQUIRES_OK(
-          ctx, CapturedFunction::Create(
-                   funcs_[i], ctx, std::move(captured_args),
-                   /*use_inter_op_parallelism=*/true, &captured_funcs[i]));
+      OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                              funcs_[i], ctx, std::move(captured_args),
+                              /*params=*/{}, &captured_funcs[i]));
     }
     *output =
         new Dataset(ctx, input, funcs_, std::move(captured_funcs),

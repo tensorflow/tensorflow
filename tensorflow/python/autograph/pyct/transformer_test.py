@@ -68,7 +68,7 @@ class TransformerTest(test.TestCase):
           return b, inner_function
       return a, TestClass
 
-    node, _, _ = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     node = tr.visit(node)
 
     test_function_node = node
@@ -141,7 +141,7 @@ class TransformerTest(test.TestCase):
           while True:
             raise '1'
 
-    node, _, _ = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     node = tr.visit(node)
 
     fn_body = node.body
@@ -207,7 +207,7 @@ class TransformerTest(test.TestCase):
             raise '1'
       return 'nor this'
 
-    node, _, _ = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     node = tr.visit(node)
 
     for_node = node.body[2]
@@ -238,7 +238,7 @@ class TransformerTest(test.TestCase):
         print(a)
       return None
 
-    node, _, _ = parser.parse_entity(no_exit)
+    node, _, _ = parser.parse_entity(no_exit, future_imports=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -246,7 +246,7 @@ class TransformerTest(test.TestCase):
       for _ in a:
         print(a)
 
-    node, _, _ = parser.parse_entity(no_entry)
+    node, _, _ = parser.parse_entity(no_entry, future_imports=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -272,7 +272,7 @@ class TransformerTest(test.TestCase):
 
     tr = TestTransformer(self._simple_context())
 
-    node, _, _ = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     node = tr.visit(node)
 
     self.assertEqual(len(node.body), 2)
@@ -302,9 +302,9 @@ class TransformerTest(test.TestCase):
 
     tr = BrokenTransformer(self._simple_context())
 
-    _, _, all_nodes = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     with self.assertRaises(ValueError) as cm:
-      all_nodes = tr.visit(all_nodes)
+      node = tr.visit(node)
     obtained_message = str(cm.exception)
     expected_message = r'expected "ast.AST", got "\<(type|class) \'list\'\>"'
     self.assertRegexpMatches(obtained_message, expected_message)
@@ -333,9 +333,9 @@ class TransformerTest(test.TestCase):
 
     tr = BrokenTransformer(self._simple_context())
 
-    _, _, all_nodes = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     with self.assertRaises(ValueError) as cm:
-      all_nodes = tr.visit(all_nodes)
+      node = tr.visit(node)
     obtained_message = str(cm.exception)
     # The message should reference the exception actually raised, not anything
     # from the exception handler.

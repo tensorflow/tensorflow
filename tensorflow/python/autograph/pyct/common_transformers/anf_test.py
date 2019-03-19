@@ -81,7 +81,7 @@ class AnfTransformerTest(test.TestCase):
     def test_function():
       a = 0
       return a
-    node, _, _ = parser.parse_entity(test_function)
+    node, _, _ = parser.parse_entity(test_function, future_imports=())
     node = anf.transform(node, self._simple_context())
     result, _ = compiler.ast_to_object(node)
     self.assertEqual(test_function(), result.test_function())
@@ -97,8 +97,8 @@ class AnfTransformerTest(test.TestCase):
     # Testing the code bodies only.  Wrapping them in functions so the
     # syntax highlights nicely, but Python doesn't try to execute the
     # statements.
-    exp_node, _, _ = parser.parse_entity(expected_fn)
-    node, _, _ = parser.parse_entity(test_fn)
+    exp_node, _, _ = parser.parse_entity(expected_fn, future_imports=())
+    node, _, _ = parser.parse_entity(test_fn, future_imports=())
     node = anf.transform(
         node, self._simple_context(), gensym_source=DummyGensym)
     exp_name = exp_node.name

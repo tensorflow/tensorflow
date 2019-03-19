@@ -211,6 +211,12 @@ def if_windows(a, otherwise = []):
         "//conditions:default": otherwise,
     })
 
+def if_windows_cuda(a, otherwise = []):
+    return select({
+        clean_dep("//tensorflow:with_cuda_support_windows_override"): a,
+        "//conditions:default": otherwise,
+    })
+
 def if_not_windows_cuda(a):
     return select({
         clean_dep("//tensorflow:with_cuda_support_windows_override"): [],
@@ -2176,7 +2182,16 @@ def tf_py_build_info_genrule():
         name = "py_build_info_gen",
         outs = ["platform/build_info.py"],
         cmd =
-            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " + if_cuda("cuda", "cpu") + if_windows(" --key_value msvcp_dll_name=msvcp140.dll", ""),
+            "$(location //tensorflow/tools/build_info:gen_build_info) --raw_generate \"$@\" --build_config " +
+            if_cuda("cuda", "cpu") +
+            " --key_value " +
+            if_cuda(" cuda_version_number=$${TF_CUDA_VERSION:-} cudnn_version_number=$${TF_CUDNN_VERSION:-} ", "") +
+            if_windows(" msvcp_dll_name=msvcp140.dll ", "") +
+            if_windows_cuda(" ".join([
+                "nvcuda_dll_name=nvcuda.dll",
+                "cudart_dll_name=cudart64_$$(echo $${TF_CUDA_VERSION:-} | sed \"s/\\.//\").dll",
+                "cudnn_dll_name=cudnn64_$${TF_CUDNN_VERSION:-}.dll",
+            ]), ""),
         local = 1,
         tools = [clean_dep("//tensorflow/tools/build_info:gen_build_info")],
     )

@@ -2182,7 +2182,7 @@ tf_module {
   }
   member_method {
     name: "OptimizeDataset"
-    argspec: "args=[\'input_dataset\', \'optimizations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'optimizations\', \'output_types\', \'output_shapes\', \'optimization_configs\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "OptionalFromValue"

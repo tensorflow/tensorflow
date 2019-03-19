@@ -32,7 +32,7 @@ class OriginInfoTest(test.TestCase):
     def test_fn(x):
       return x + 1
 
-    node, _, _ = parser.parse_entity(test_fn)
+    node, _, _ = parser.parse_entity(test_fn, future_imports=())
     fake_origin = origin_info.OriginInfo(
         loc=origin_info.Location('fake_filename', 3, 7),
         function_name='fake_function_name',
@@ -53,7 +53,7 @@ class OriginInfoTest(test.TestCase):
     def test_fn(x):
       return x + 1
 
-    node, _, _ = parser.parse_entity(test_fn)
+    node, _, _ = parser.parse_entity(test_fn, future_imports=())
     converted_code = compiler.ast_to_source(node)
 
     source_map = origin_info.create_source_map(
@@ -67,7 +67,7 @@ class OriginInfoTest(test.TestCase):
       """Docstring."""
       return x  # comment
 
-    node, source, _ = parser.parse_entity(test_fn)
+    node, _, source = parser.parse_entity(test_fn, future_imports=())
 
     origin_info.resolve(node, source)
 
@@ -89,14 +89,15 @@ class OriginInfoTest(test.TestCase):
     self.assertEqual(origin.source_code_line, '  return x  # comment')
     self.assertEqual(origin.comment, 'comment')
 
-  def disabled_test_resolve_with_future_imports(self):
+  def test_resolve_with_future_imports(self):
 
     def test_fn(x):
       """Docstring."""
       print(x)
       return x  # comment
 
-    node, source, _ = parser.parse_entity(test_fn)
+    node, _, source = parser.parse_entity(
+        test_fn, future_imports=['print_function'])
 
     origin_info.resolve(node, source)
 
