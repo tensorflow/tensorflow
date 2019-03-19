@@ -230,12 +230,6 @@ edsc_stmt_t makeStmt(edsc_expr_t e);
 /// Returns an opaque expression for an mlir::edsc::Indexed.
 edsc_indexed_t makeIndexed(edsc_expr_t expr);
 
-/// Returns an indexed opaque expression with indices bound in the structure
-/// given an `indexed` and `indices`.
-/// Prerequisite:
-///   - `indexed` must not have been indexed previously.
-edsc_indexed_t index(edsc_indexed_t indexed, edsc_expr_list_t indices);
-
 /// Returns an opaque expression that will emit an abstract operation identified
 /// by its name.
 edsc_expr_t Op(mlir_context_t context, const char *name, mlir_type_t resultType,
