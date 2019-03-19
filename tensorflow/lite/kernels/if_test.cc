@@ -18,15 +18,15 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/kernels/subgraph_test_util.h"
+#include "tensorflow/lite/kernels/control_flow_test_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
 
-using subgraph_test_util::CheckIntTensor;
-using subgraph_test_util::ControlFlowOpTest;
-using subgraph_test_util::FillIntTensor;
+using control_flow_test_util::CheckIntTensor;
+using control_flow_test_util::ControlFlowOpTest;
+using control_flow_test_util::FillIntTensor;
 
 namespace {
 

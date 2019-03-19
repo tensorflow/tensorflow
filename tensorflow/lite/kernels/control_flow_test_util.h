@@ -25,11 +25,8 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 
 namespace tflite {
-namespace subgraph_test_util {
+namespace control_flow_test_util {
 
-// TODO(ycling): This file should be renamed as
-// `control_flow_test_util` to avoid confusion. I'll do it immediately
-// in a separated change.
 class SubgraphBuilder {
  public:
   ~SubgraphBuilder();
@@ -117,7 +114,7 @@ void CheckIntTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
 void CheckBoolTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
                      const std::vector<bool>& data);
 
-}  // namespace subgraph_test_util
+}  // namespace control_flow_test_util
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_

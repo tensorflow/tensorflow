@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/subgraph_test_util.h"
+#include "tensorflow/lite/kernels/control_flow_test_util.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tflite {
 
-namespace subgraph_test_util {
+namespace control_flow_test_util {
 
 namespace {
 
@@ -164,7 +164,7 @@ TEST_F(SubgraphBuilderTest, TestBuildPadLoopBodySubgraph) {
 }
 
 }  // namespace
-}  // namespace subgraph_test_util
+}  // namespace control_flow_test_util
 }  // namespace tflite
 
 int main(int argc, char** argv) {

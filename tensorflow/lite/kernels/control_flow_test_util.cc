@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/kernels/subgraph_test_util.h"
+#include "tensorflow/lite/kernels/control_flow_test_util.h"
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/core/subgraph.h"
@@ -41,7 +41,7 @@ TfLiteRegistration* Register_WHILE();
 }  // namespace custom
 }  // namespace ops
 
-namespace subgraph_test_util {
+namespace control_flow_test_util {
 
 namespace {
 
@@ -407,5 +407,5 @@ void CheckBoolTensor(const TfLiteTensor* tensor, const std::vector<int>& shape,
   }
 }
 
-}  // namespace subgraph_test_util
+}  // namespace control_flow_test_util
 }  // namespace tflite

@@ -1262,7 +1262,7 @@ cc_test(
     deps = [
         ":builtin_ops",
         ":kernel_util",
-        ":subgraph_test_util",
+        ":control_flow_test_util",
         ":test_util",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
@@ -1279,7 +1279,7 @@ cc_test(
     deps = [
         ":builtin_ops",
         ":kernel_util",
-        ":subgraph_test_util",
+        ":control_flow_test_util",
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
@@ -1349,10 +1349,10 @@ cc_test(
 )
 
 cc_library(
-    name = "subgraph_test_util",
+    name = "control_flow_test_util",
     testonly = 1,
-    srcs = ["subgraph_test_util.cc"],
-    hdrs = ["subgraph_test_util.h"],
+    srcs = ["control_flow_test_util.cc"],
+    hdrs = ["control_flow_test_util.h"],
     deps = [
         ":builtin_ops",
         ":kernel_util",
@@ -1365,12 +1365,12 @@ cc_library(
 )
 
 cc_test(
-    name = "subgraph_test_util_test",
+    name = "control_flow_test_util_test",
     size = "small",
-    srcs = ["subgraph_test_util_test.cc"],
+    srcs = ["control_flow_test_util_test.cc"],
     deps = [
         ":kernel_util",
-        ":subgraph_test_util",
+        ":control_flow_test_util",
         ":test_util",
         "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
