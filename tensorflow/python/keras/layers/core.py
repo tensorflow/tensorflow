@@ -46,6 +46,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -643,7 +645,18 @@ class RepeatVector(Layer):
 
 @keras_export('keras.layers.Lambda')
 class Lambda(Layer):
-  """Wraps arbitrary expression as a `Layer` object.
+  """Wraps arbitrary expressions as a `Layer` object.
+
+  The `Lambda` layer exists so that aribtrary TensorFlow functions
+  can be used when constructing `Sequential` and Functional API
+  models. `Lambda` layers are best suited for simple operations or
+  quick experimentation. For more advanced use cases, subclassing
+  `keras.layers.Layer` is preferred. One reason for this is that
+  when saving a Model, `Lambda` layers are saved by serializing the
+  Python bytecode, whereas subclassed Layers are saved via overriding
+  their `get_config` method and are thus more portable. Models that rely
+  on subclassed Layers are also often easier to visualize and reason
+  about.
 
   Examples:
 
@@ -666,30 +679,49 @@ class Lambda(Layer):
   model.add(Lambda(antirectifier))
   ```
 
+  Variables can be created within a `Lambda` layer. Like with
+  other layers, these variables will be created only once and reused
+  if the `Lambda` layer is called on new inputs. If creating more
+  than one variable in a given `Lambda` instance, be sure to use
+  a different name for each variable. Note that calling sublayers
+  from within a `Lambda` is not supported.
+
+  Example of variable creation:
+
+  ```python
+  def linear_transform(x):
+    v1 = tf.Variable(1., name='multiplier')
+    v2 = tf.Variable(0., name='bias')
+    return x*v1 + v2
+
+  linear_layer = Lambda(linear_transform)
+  model.add(linear_layer)
+  model.add(keras.layers.Dense(10, activation='relu'))
+  model.add(linear_layer)  # Reuses existing Variables
+  ```
+
+  Note that creating two instances of `Lambda` using the same function
+  will *not* share Variables between the two instances. Each instance of
+  `Lambda` will create and manage its own weights.
+
   Arguments:
-    function: The function to be evaluated.
-      Takes input tensor as first argument.
-    output_shape: Expected output shape from function.
-      This argument can be inferred if not explicitly provided.
-      Can be a tuple or function.
-      If a tuple, it only specifies the first dimension onward;
-      sample dimension is assumed either the same as the input:
-      `output_shape = (input_shape[0], ) + output_shape`
-      or, the input is `None` and
-      the sample dimension is also `None`:
-      `output_shape = (None, ) + output_shape`
-      If a function, it specifies the entire shape as a function of the
+    function: The function to be evaluated. Takes input tensor as first
+      argument.
+    output_shape: Expected output shape from function. This argument can be
+      inferred if not explicitly provided. Can be a tuple or function. If a
+      tuple, it only specifies the first dimension onward;
+      sample dimension is assumed either the same as the input: `output_shape =
+        (input_shape[0], ) + output_shape` or, the input is `None` and
+      the sample dimension is also `None`: `output_shape = (None, ) +
+        output_shape` If a function, it specifies the entire shape as a function
+        of the
       input shape: `output_shape = f(input_shape)`
-    arguments: Optional dictionary of keyword arguments to be passed
-      to the function.
-
-  Input shape:
-    Arbitrary. Use the keyword argument input_shape
-    (tuple of integers, does not include the samples axis)
-    when using this layer as the first layer in a model.
-
-  Output shape:
-    Specified by `output_shape` argument
+    arguments: Optional dictionary of keyword arguments to be passed to the
+      function.
+  Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
+    integers, does not include the samples axis) when using this layer as the
+    first layer in a model.
+  Output shape: Specified by `output_shape` argument
   """
 
   def __init__(self, function, output_shape=None, mask=None, arguments=None,
@@ -700,72 +732,60 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
-    if (output_shape is not None and not isinstance(output_shape,
-                                                    (tuple, list)) and
-        not callable(output_shape)):
-      raise TypeError('In Lambda, `output_shape` '
-                      'must be a list, a tuple, or a function.')
-    # Convert a list representing a single shape into a tuple.
-    if (isinstance(output_shape, list) and isinstance(output_shape[0],
-                                                      (int, type(None)))):
-      output_shape = tuple(output_shape)
     self._output_shape = output_shape
+    self._variable_dict = {}
+    # These attributes are inherited from `Layer`.
+    self._trainable_weights = []
+    self._non_trainable_weights = []
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self._output_shape is None:
-      if context.executing_eagerly():
-        # Make use of existing autocomputation for Eager mode but provide
-        # Lambda-specific error message.
+      # Make use of existing autocomputation but provide Lambda-specific
+      # error message. This is always safe to run even whn the outer context
+      # is Graph mode because Lambda layers don't have side effects such as
+      # `add_loss`.
+      with context.eager_mode():
         try:
           return super(Lambda, self).compute_output_shape(input_shape)
         except NotImplementedError:
-          raise NotImplementedError('We could not automatically infer '
-                                    'the static shape of the Lambda\'s output.'
-                                    ' Please specify the `output_shape` for'
-                                    ' this Lambda.')
-      if isinstance(input_shape, list):
-        x = [K.placeholder(shape=shape) for shape in input_shape]
-      else:
-        x = K.placeholder(shape=input_shape)
-      x = self.call(x)
-      if isinstance(x, list):
-        return [tensor_shape.TensorShape(K.int_shape(x_elem)) for x_elem in x]
-      else:
-        return tensor_shape.TensorShape(K.int_shape(x))
-    elif isinstance(self._output_shape, (tuple, list)):
-      if isinstance(input_shape, list):
-        num_samples = input_shape[0][0]
-      else:
-        num_samples = input_shape[0] if input_shape else None
-      # List here represents multiple outputs.
-      if isinstance(self._output_shape, list):
-        return [
-            tensor_shape.TensorShape((num_samples,) + tuple(single_shape))
-            for single_shape in self._output_shape
-        ]
-      return tensor_shape.TensorShape((num_samples,) + self._output_shape)
-    else:
-      shape = self._output_shape(input_shape)
-      if not isinstance(shape, (list, tuple)):
-        raise ValueError(
-            '`output_shape` function must return a tuple or a list of tuples.')
-      # List here can represent multiple outputs or single output.
-      if isinstance(shape, list):
-        # Convert list representing single output into a tuple.
-        if isinstance(shape[0], (int, type(None))):
-          shape = tuple(shape)
-        else:
-          return [
-              tensor_shape.TensorShape(single_shape) for single_shape in shape
-          ]
-      return tensor_shape.TensorShape(shape)
+          raise NotImplementedError(
+              'We could not automatically infer the shape of the Lambda\'s '
+              'output. Please specify `output_shape` for this Lambda.')
+
+    if callable(self._output_shape):
+      output_shapes = self._output_shape(input_shape)
+      return tf_utils.convert_shapes(output_shapes, to_tuples=False)
+
+    # Output shapes are passed directly and don't include batch dimension.
+    input_tensor_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
+    batch_size = nest.flatten(input_tensor_shape)[0][0] if input_shape else None
+
+    def _add_batch(shape):
+      return tensor_shape.TensorShape([batch_size] + shape.as_list())
+
+    output_shapes = tf_utils.convert_shapes(self._output_shape, to_tuples=False)
+    return nest.map_structure(_add_batch, output_shapes)
 
   def call(self, inputs, mask=None):
     arguments = self.arguments
     if generic_utils.has_arg(self.function, 'mask'):
       arguments['mask'] = mask
-    return self.function(inputs, **arguments)
+    with variable_scope.variable_creator_scope(self._variable_creator):
+      return self.function(inputs, **arguments)
+
+  def _variable_creator(self, next_creator, **kwargs):
+    name = kwargs['name']
+    if name in self._variable_dict:
+      return self._variable_dict[name]
+    var = next_creator(**kwargs)
+    self._variable_dict[name] = var
+    if var.trainable:
+      self._trainable_weights.append(var)
+    else:
+      self._non_trainable_weights.append(var)
+    K.track_variable(var)
+    return var
 
   def compute_mask(self, inputs, mask=None):
     if callable(self.mask):

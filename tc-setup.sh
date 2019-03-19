@@ -4,14 +4,6 @@ set -ex
 
 source $(dirname $0)/tc-vars.sh
 
-if [ "${OS}" = "Linux" ]; then
-    SHA_SUM="sha256sum -c --strict"
-    WGET=/usr/bin/wget
-elif [ "${OS}" = "Darwin" ]; then
-    SHA_SUM="shasum -a 256 -c"
-    WGET=wget
-fi;
-
 install_cuda=
 if [ "$1" = "--cuda" ]; then
     install_cuda=yes
@@ -58,11 +50,17 @@ elif [ "${OS}" = "Darwin" ]; then
 fi;
 mkdir -p ${DS_ROOT_TASK}/bin || true
 pushd ${DS_ROOT_TASK}/bin
-    /bin/bash ${DS_ROOT_TASK}/dls/${BAZEL_INSTALL_FILENAME} ${BAZEL_INSTALL_FLAGS}
+    if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
+        cp ${DS_ROOT_TASK}/dls/${BAZEL_INSTALL_FILENAME} ${DS_ROOT_TASK}/bin/bazel.exe
+    else
+        /bin/bash ${DS_ROOT_TASK}/dls/${BAZEL_INSTALL_FILENAME} ${BAZEL_INSTALL_FLAGS}
+    fi
 popd
 
 # For debug
 bazel version
+
+bazel shutdown
 
 if [ ! -z "${install_cuda}" ]; then
     # Install CUDA and CuDNN

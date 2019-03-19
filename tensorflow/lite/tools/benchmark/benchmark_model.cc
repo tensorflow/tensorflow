@@ -108,7 +108,9 @@ void BenchmarkModel::LogParams() {
                    << params_.Get<float>("warmup_min_secs") << "]";
 }
 
-void BenchmarkModel::PrepareInputsAndOutputs() {}
+void BenchmarkModel::PrepareInputData() {}
+
+void BenchmarkModel::ResetInputsAndOutputs() {}
 
 Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
                                   RunType run_type) {
@@ -120,7 +122,7 @@ Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
   for (int run = 0;
        run < min_num_times || profiling::time::NowMicros() < min_finish_us;
        run++) {
-    PrepareInputsAndOutputs();
+    ResetInputsAndOutputs();
     listeners_.OnSingleRunStart(run_type);
     int64_t start_us = profiling::time::NowMicros();
     RunImpl();
@@ -151,7 +153,6 @@ void BenchmarkModel::Run() {
   ValidateParams();
   LogParams();
 
-  listeners_.OnBenchmarkStart(params_);
   int64_t initialization_start_us = profiling::time::NowMicros();
   Init();
   int64_t initialization_end_us = profiling::time::NowMicros();
@@ -159,7 +160,9 @@ void BenchmarkModel::Run() {
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
                    << "ms";
 
+  PrepareInputData();
   uint64_t input_bytes = ComputeInputBytes();
+  listeners_.OnBenchmarkStart(params_);
   Stat<int64_t> warmup_time_us =
       Run(params_.Get<int32_t>("warmup_runs"),
           params_.Get<float>("warmup_min_secs"), WARMUP);

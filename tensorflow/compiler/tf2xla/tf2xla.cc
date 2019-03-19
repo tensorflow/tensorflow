@@ -24,7 +24,6 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/functionalize_control_flow.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -164,12 +164,10 @@ Status RewriteAndPruneGraph(
   std::unordered_set<const Node*> retval_nodes;
   TF_RETURN_IF_ERROR(
       AddRetvalNodes(graph, node_map, config.fetch(), &retval_nodes));
-  VLOG(2) << "Post rewrite: "
-          << dump_graph::DumpGraphToFile("tf2xla_post_rewrite", *graph);
+  VLOG(2) << "Post rewrite: " << DumpGraphToFile("tf2xla_post_rewrite", *graph);
   PruneForReverseReachability(graph, retval_nodes);
   FixupSourceAndSinkEdges(graph);
-  VLOG(2) << "Post prune: "
-          << dump_graph::DumpGraphToFile("tfcompile_post_prune", *graph);
+  VLOG(2) << "Post prune: " << DumpGraphToFile("tfcompile_post_prune", *graph);
   // Sanity-check, to make sure the feeds and fetches still exist post-pruning.
   std::set<string> missing_feeds, missing_fetches;
   for (const tf2xla::Feed& feed : config.feed()) {

@@ -45,6 +45,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -110,6 +111,24 @@ py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "auto_shard_dataset_test",
+    size = "medium",
+    srcs = ["auto_shard_dataset_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        ":reader_dataset_ops_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:nest",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -443,19 +462,15 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
     name = "reader_dataset_ops_test_base",
-    testonly = 1,
     srcs = [
         "reader_dataset_ops_test_base.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//tensorflow/python/data/experimental/kernel_tests:__pkg__",
-        "//tensorflow/python/data/experimental/kernel_tests/serialization:__pkg__",
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -746,4 +761,5 @@ cuda_py_test(
         "//tensorflow/python/data/kernel_tests:test_base",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )

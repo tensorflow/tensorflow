@@ -735,7 +735,7 @@ def find_lib(repository_ctx, paths, check_soname = True):
     for path in [repository_ctx.path(path) for path in paths]:
         if not path.exists:
             continue
-        if check_soname and objdump != None:
+        if check_soname and objdump != None and not _is_windows(repository_ctx):
             output = repository_ctx.execute([objdump, "-p", str(path)]).stdout
             output = [line for line in output.splitlines() if "SONAME" in line]
             sonames = [line.strip().split(" ")[-1] for line in output]
@@ -1435,10 +1435,11 @@ def _create_local_cuda_repository(repository_ctx):
             wrapper_defines,
         )
 
+    cuda_defines.update(_get_win_cuda_defines(repository_ctx))
     _tpl(
         repository_ctx,
         "crosstool:CROSSTOOL",
-        cuda_defines + _get_win_cuda_defines(repository_ctx),
+        cuda_defines,
         out = "crosstool/CROSSTOOL",
     )
 
@@ -1493,6 +1494,10 @@ def _cuda_autoconf_impl(repository_ctx):
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
+        if (_TF_CUDA_VERSION not in repository_ctx.os.environ or
+            _TF_CUDNN_VERSION not in repository_ctx.os.environ):
+            auto_configure_fail("%s and %s must also be set if %s is specified" %
+                                (_TF_CUDA_VERSION, _TF_CUDNN_VERSION, _TF_CUDA_CONFIG_REPO))
         _create_remote_cuda_repository(
             repository_ctx,
             repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO],

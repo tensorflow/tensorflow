@@ -1097,7 +1097,7 @@ void FixOperatorOrdering(Model* model) {
   std::unordered_map<string, string> reason_why_leftover;
   while (true) {
     bool inserted_something = false;
-    for (auto i : remaining) {
+    for (const auto& i : remaining) {
       bool can_insert = true;
       auto& op = old_operators[i];
       CHECK(op);
@@ -1167,7 +1167,7 @@ void FixOperatorOrdering(Model* model) {
       }
       bad_inputs_already_traced.insert(bad_input);
       bad_op = nullptr;
-      for (auto i : remaining) {
+      for (const auto& i : remaining) {
         const Operator* op = old_operators[i].get();
         for (const string& output : op->outputs) {
           if (bad_input == output) {
@@ -1270,7 +1270,7 @@ void FixEdgeArrays(Model* model) {
 
 void DedupeConstantArrays(Model* model, size_t min_size) {
   // Walk all 0..N and compare with the remaining n+1..N.
-  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // This lets us avoid N^2 comparisons and erase duplicate arrays while
   // iterating.
   const auto& array_map = model->GetArrayMap();
   for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();
@@ -1640,7 +1640,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       if (input_array_proto.has_shape()) {
         auto& input_array_dims = *input_array.mutable_shape()->mutable_dims();
         CheckValidShapeDimensions(input_array_proto.shape().dims());
-        for (auto dim : input_array_proto.shape().dims()) {
+        for (const auto& dim : input_array_proto.shape().dims()) {
           input_array_dims.push_back(dim);
         }
       }
@@ -2333,7 +2333,7 @@ void UseArraysExtraInfo(Model* model, bool quantize_output) {
         // Make sure to create the shape even if there are no dims, to
         // correctly record 0-D shapes.
         array.mutable_shape();
-        for (int dim : entry.shape().dims()) {
+        for (const auto& dim : entry.shape().dims()) {
           array.mutable_shape()->mutable_dims()->push_back(dim);
         }
       }

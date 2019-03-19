@@ -32,18 +32,12 @@ class KernelUtilTest : public ::testing::Test {
     memset(&tensor2_, 0, sizeof(TfLiteTensor));
     tensor1_.dims = nullptr;
     tensor2_.dims = nullptr;
-    tensor3_.dims = nullptr;
-    tensor4_.dims = nullptr;
     tensor1_.allocation_type = kTfLiteMmapRo;
     tensor2_.allocation_type = kTfLiteMmapRo;
-    tensor3_.allocation_type = kTfLiteMmapRo;
-    tensor4_.allocation_type = kTfLiteMmapRo;
   }
   ~KernelUtilTest() override {
     TfLiteTensorFree(&tensor1_);
     TfLiteTensorFree(&tensor2_);
-    TfLiteTensorFree(&tensor3_);
-    TfLiteTensorFree(&tensor4_);
   }
 
   void SetShape(TfLiteTensor* tensor, std::initializer_list<int> dims) {
@@ -68,8 +62,6 @@ class KernelUtilTest : public ::testing::Test {
   TfLiteContext context_;
   TfLiteTensor tensor1_;
   TfLiteTensor tensor2_;
-  TfLiteTensor tensor3_;
-  TfLiteTensor tensor4_;
 };
 
 TEST_F(KernelUtilTest, SameShapeEmpty) {
@@ -259,28 +251,113 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   TfLiteTensorFree(&output);
 }
 
-TEST_F(KernelUtilTest, QuantizedConvolutionMultipler) {
-  TfLiteTensor* input = &tensor1_;
-  TfLiteTensor* filter = &tensor2_;
-  TfLiteTensor* bias = &tensor3_;
-  TfLiteTensor* output = &tensor4_;
+TEST_F(KernelUtilTest, CheckAndPopulateZeroValue) {
+  // Create input.
+  TfLiteTensor input;
+  input.type = kTfLiteInt8;
+  input.allocation_type = kTfLiteArenaRw;
+  input.dims = TfLiteIntArrayCreate(1);
+  input.dims->data[0] = 2;
+  TfLiteQuantizationParams input_quant = {1, 5};
+  input.params = input_quant;
+  input.quantization.type = kTfLiteAffineQuantization;
+  auto* input_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  input_params->scale = TfLiteFloatArrayCreate(1);
+  input_params->scale->data[0] = 1;
+  input_params->zero_point = TfLiteIntArrayCreate(1);
+  input_params->zero_point->data[0] = 5;
+  input.quantization.params = reinterpret_cast<void*>(input_params);
 
-  // from quantized MobileNetV1's third conv.
-  constexpr float input_output_scale = 0.023528477177023888;
-  constexpr float filter_scale = 0.015148180536925793;
-  constexpr float bias_scale = 0.00035641359863802791;
-  constexpr double multiplier_expected = static_cast<double>(filter_scale);
+  // Create filter.
+  TfLiteTensor filter;
+  filter.type = kTfLiteInt8;
+  filter.allocation_type = kTfLiteArenaRw;
+  filter.dims = TfLiteIntArrayCreate(4);
+  filter.dims->data[0] = 3;
+  filter.dims->data[1] = 4;
+  filter.dims->data[2] = 5;
+  filter.dims->data[3] = 6;
+  TfLiteQuantizationParams filter_quant = {4.6566129e-10, 0};
+  filter.params = filter_quant;
+  filter.quantization.type = kTfLiteAffineQuantization;
+  auto* filter_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  filter_params->scale = TfLiteFloatArrayCreate(3);
+  int32_t two_pow_neg_31 = 0x30000000;  // 2^-31 so shift = -30.
+  int32_t two_pow_neg_32 = 0x2F800000;  // 2^-32 so shift = -31.
+  int32_t two_pow_neg_33 = 0x2F000000;  // 2^-33 so shift = -32.
+  filter_params->scale->data[0] = *reinterpret_cast<float*>(&two_pow_neg_31);
+  filter_params->scale->data[1] = *reinterpret_cast<float*>(&two_pow_neg_32);
+  filter_params->scale->data[2] = *reinterpret_cast<float*>(&two_pow_neg_33);
+  filter_params->zero_point = TfLiteIntArrayCreate(3);
+  filter_params->zero_point->data[0] = 0;
+  filter_params->zero_point->data[1] = 0;
+  filter_params->zero_point->data[2] = 0;
+  filter_params->quantized_dimension = 0;
+  filter.quantization.params = reinterpret_cast<void*>(filter_params);
 
-  input->params.scale = input_output_scale;
-  output->params.scale = input_output_scale;
-  filter->params.scale = filter_scale;
-  bias->params.scale = bias_scale;
+  // Create bias.
+  TfLiteTensor bias;
+  bias.type = kTfLiteInt32;
+  bias.allocation_type = kTfLiteArenaRw;
+  bias.dims = TfLiteIntArrayCreate(4);
+  TfLiteQuantizationParams bias_quant = {4.6566129e-10, 9};
+  bias.params = bias_quant;
+  bias.quantization.type = kTfLiteAffineQuantization;
+  auto* bias_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  bias_params->scale = TfLiteFloatArrayCreate(3);
+  bias_params->scale->data[0] = 4.6566129e-10;  // 2^-31
+  bias_params->scale->data[1] = 2.3283064e-10;  // 2^-32
+  bias_params->scale->data[2] = 1.1641532e-10;  // 2^-33
+  bias_params->zero_point = TfLiteIntArrayCreate(3);
+  bias_params->zero_point->data[0] = 11;
+  bias_params->zero_point->data[1] = 12;
+  bias_params->zero_point->data[2] = 15;
+  bias.quantization.params = reinterpret_cast<void*>(bias_params);
 
-  double multiplier = 0.0f;
-  EXPECT_EQ(kTfLiteOk,
-            GetQuantizedConvolutionMultipler(&context_, input, filter, bias,
-                                             output, &multiplier));
-  EXPECT_EQ(multiplier, multiplier_expected);
+  // Create output.
+  TfLiteTensor output;
+  output.type = kTfLiteInt8;
+  output.allocation_type = kTfLiteArenaRw;
+  output.dims = nullptr;
+  TfLiteQuantizationParams output_quant = {1, -128};
+  output.params = output_quant;
+  output.quantization.type = kTfLiteAffineQuantization;
+  auto* output_params = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  output_params->scale = TfLiteFloatArrayCreate(1);
+  output_params->scale->data[0] = 1;
+  output_params->zero_point = TfLiteIntArrayCreate(1);
+  output_params->zero_point->data[0] = -128;
+  output.quantization.params = reinterpret_cast<void*>(output_params);
+
+  // Create call parameters.
+  TfLiteContext context;
+  int32_t multiplier;
+  int shift;
+  int32_t output_activation_min;
+  int32_t output_activation_max;
+  std::vector<int32_t> per_channel_multiplier(3);
+  std::vector<int> per_channel_shift(3);
+
+  // Call and verify results for per channel case.
+  EXPECT_EQ(
+      kTfLiteOk,
+      PopulateConvolutionQuantizationParams(
+          &context, &input, &filter, &bias, &output, kTfLiteActRelu,
+          &multiplier, &shift, &output_activation_min, &output_activation_max,
+          per_channel_multiplier.data(), per_channel_shift.data()));
+  EXPECT_THAT(per_channel_multiplier,
+              ::testing::ElementsAre(1073741824, 1073741824, 0));
+  EXPECT_THAT(per_channel_shift, ::testing::ElementsAre(-30, -31, 0));
+
+  // Release.
+  TfLiteTensorFree(&input);
+  TfLiteTensorFree(&filter);
+  TfLiteTensorFree(&bias);
+  TfLiteTensorFree(&output);
 }
 
 }  // namespace

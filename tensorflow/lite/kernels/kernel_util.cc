@@ -23,6 +23,19 @@ limitations under the License.
 
 namespace tflite {
 
+void GuardedQuantizeMultiplier(double effective_output_scale,
+                               int32_t* significand, int* shift) {
+  QuantizeMultiplier(effective_output_scale, significand, shift);
+  // Additional guard to make sure RoundingDivideByPOT does not fail.
+  if (*shift < -31) {
+    // If shift is less than -31, RoundingDivideByPOT fails. This happens when
+    // min and max are close and small. For this particular case, both
+    // significand and shift are set to zero.
+    *significand = 0;
+    *shift = 0;
+  }
+}
+
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
@@ -66,7 +79,7 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
                                           static_cast<double>(output_scale);
     int32_t significand;
     int shift;
-    QuantizeMultiplier(effective_output_scale, &significand, &shift);
+    GuardedQuantizeMultiplier(effective_output_scale, &significand, &shift);
     per_channel_multiplier[i] = significand;
     per_channel_shift[i] = shift;
   }
@@ -94,11 +107,9 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               const TfLiteTensor* input,
                                               const TfLiteTensor* filter,
                                               const TfLiteTensor* bias,
-                                              const TfLiteTensor* output,
+                                              TfLiteTensor* output,
                                               double* multiplier) {
-  const double input_scale = input->params.scale;
-  const double filter_scale = filter->params.scale;
-  const double input_product_scale = input_scale * filter_scale;
+  const double input_product_scale = input->params.scale * filter->params.scale;
   const double bias_scale = bias->params.scale;
   const double output_scale = output->params.scale;
 

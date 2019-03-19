@@ -21,11 +21,10 @@ from __future__ import print_function
 import gast
 
 from tensorflow.python.autograph import utils
-from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
-from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.impl import conversion
+from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras.engine import training
 from tensorflow.python.platform import test
@@ -36,9 +35,7 @@ class ConversionTest(test.TestCase):
   def _simple_program_ctx(self):
     return converter.ProgramContext(
         options=converter.ConversionOptions(recursive=True),
-        partial_types=(),
-        autograph_module=api,
-        uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
+        autograph_module=api)
 
   def test_is_whitelisted_for_graph(self):
 
@@ -89,11 +86,8 @@ class ConversionTest(test.TestCase):
       return g(a)
 
     program_ctx = self._simple_program_ctx()
-    conversion.entity_to_graph(f, program_ctx, None, None)
-
-    self.assertTrue(f in program_ctx.dependency_cache)
-    self.assertFalse(g in program_ctx.dependency_cache)
-    f_node = program_ctx.dependency_cache[f][0]
+    nodes, _, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    f_node = nodes[0]
     self.assertEqual('tf__f', f_node.name)
 
   def test_entity_to_graph_class_hierarchy(self):
@@ -122,16 +116,8 @@ class ConversionTest(test.TestCase):
         return self.y
 
     program_ctx = self._simple_program_ctx()
-    conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
-
-    self.assertTrue(TestBase in program_ctx.dependency_cache)
-    self.assertTrue(TestSubclass in program_ctx.dependency_cache)
-    # The returned nodes will include:
-    # <import nodes>, <class node>, <assignment node>
-    self.assertEqual('TfTestBase',
-                     program_ctx.dependency_cache[TestBase][-2].name)
-    self.assertEqual('TfTestSubclass',
-                     program_ctx.dependency_cache[TestSubclass][-2].name)
+    with self.assertRaisesRegex(NotImplementedError, 'classes.*whitelisted'):
+      conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
 
   def test_entity_to_graph_class_hierarchy_whitelisted(self):
 
@@ -145,16 +131,12 @@ class ConversionTest(test.TestCase):
         return 3 * x
 
     program_ctx = self._simple_program_ctx()
-    conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
+    nodes, name, _ = conversion.entity_to_graph(TestSubclass, program_ctx, None,
+                                                None)
+    class_node = nodes[-2]  # TODO(mdan): This is brittle.
 
-    self.assertTrue(TestSubclass in program_ctx.dependency_cache)
-    self.assertFalse(training.Model in program_ctx.dependency_cache)
-    self.assertEqual(
-        'Model', program_ctx.dependency_cache[TestSubclass][0].names[0].name)
-    # The returned nodes will include:
-    # <import nodes>, <class node>, <assignment node>
-    self.assertEqual('TfTestSubclass',
-                     program_ctx.dependency_cache[TestSubclass][-2].name)
+    self.assertEqual(name, 'TfTestSubclass')
+    self.assertEqual(class_node.name, 'TfTestSubclass')
 
   def test_entity_to_graph_lambda(self):
     b = 2

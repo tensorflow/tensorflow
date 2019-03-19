@@ -918,55 +918,10 @@ TEST_F(ShapeInferenceTest, InferPowShape) {
   ASSERT_TRUE(ShapeUtil::Equal(ten_floats, inferred_status.ValueOrDie()));
 }
 
-TEST_F(ShapeInferenceTest, InferCompareShapeEq) {
+TEST_F(ShapeInferenceTest, InferCompareShape) {
   auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(HloOpcode::kEq, ten_floats, f32_, {});
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
-                               inferred_status.ValueOrDie()));
-}
-
-TEST_F(ShapeInferenceTest, InferCompareShapeGe) {
-  auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(HloOpcode::kGe, ten_floats, f32_, {});
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
-                               inferred_status.ValueOrDie()));
-}
-
-TEST_F(ShapeInferenceTest, InferCompareShapeGt) {
-  auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(HloOpcode::kGt, ten_floats, f32_, {});
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
-                               inferred_status.ValueOrDie()));
-}
-
-TEST_F(ShapeInferenceTest, InferCompareShapeLe) {
-  auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(HloOpcode::kLe, ten_floats, f32_, {});
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
-                               inferred_status.ValueOrDie()));
-}
-
-TEST_F(ShapeInferenceTest, InferCompareShapeLt) {
-  auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(HloOpcode::kLt, ten_floats, f32_, {});
-  ASSERT_IS_OK(inferred_status.status());
-  ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
-                               inferred_status.ValueOrDie()));
-}
-
-TEST_F(ShapeInferenceTest, InferCompareShapeNe) {
-  auto ten_floats = ShapeUtil::MakeShape(F32, {10});
-  auto inferred_status =
-      ShapeInference::InferBinaryOpShape(HloOpcode::kNe, ten_floats, f32_, {});
+  auto inferred_status = ShapeInference::InferBinaryOpShape(
+      HloOpcode::kCompare, ten_floats, f32_, {});
   ASSERT_IS_OK(inferred_status.status());
   ASSERT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeShape(PRED, {10}),
                                inferred_status.ValueOrDie()));

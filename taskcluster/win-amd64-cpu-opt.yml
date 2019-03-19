@@ -1,0 +1,10 @@
+build:
+  template_file: win-opt-base.tyml
+  routes:
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.win"
+    - "index.project.deepspeech.tensorflow.pip.${event.head.branch}.${event.head.sha}.win"
+    - "index.project.deepspeech.tensorflow.pip.win.${event.head.sha}"
+  maxRunTime: 14400
+  metadata:
+    name: "TensorFlow Windows AMD64 CPU"
+    description: "Building TensorFlow for Windows AMD64, CPU only, optimized version"

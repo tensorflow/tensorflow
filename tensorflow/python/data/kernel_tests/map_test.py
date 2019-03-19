@@ -752,7 +752,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testWarnOnLookupTable(self):
     def collecting_function(x):
       _ = lookup_ops.HashTable(
-          lookup_ops.KeyValueTensorInitializer([], []), 0.0, name="t1")
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
       return x
 
     warnings.simplefilter("always")
@@ -763,11 +763,92 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertGreaterEqual(len(w), 1)
     found_warning = False
     for warning in w:
-      if ("Creating lookup tables inside a function passed to Dataset.map() is "
+      if ("Creating resources inside a function passed to Dataset.map() is "
           "not supported." in str(warning)):
         found_warning = True
         break
     self.assertTrue(found_warning)
+
+  @test_util.run_v1_only("map_with_legacy_function v1 only")
+  def testWarnOnLookupTableLegacyFunction(self):
+
+    def collecting_function(x):
+      _ = lookup_ops.HashTable(
+          lookup_ops.KeyValueTensorInitializer(["a"], [1.]), 0.0, name="t1")
+      return x
+
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+      _ = dataset_ops.Dataset.range(10).map_with_legacy_function(
+          collecting_function)
+    # NOTE(mrry): Python 3 prints other warnings in addition to the one we are
+    # testing, so we search for the expected warning.
+    self.assertGreaterEqual(len(w), 1)
+    found_warning = False
+    for warning in w:
+      if ("Creating resources inside a function passed to Dataset.map() is "
+          "not supported." in str(warning)):
+        found_warning = True
+        break
+    self.assertTrue(found_warning)
+
+  def testWarnOnSeedFromOuterGraph(self):
+    with ops.Graph().as_default() as g:
+      g.seed = 10
+      warnings.simplefilter("always")
+
+      # map_fun doesn't use seed, so no warning is generated.
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).map(math_ops.square)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
+
+      def random_func(x):
+        x = math_ops.add(x, 1)
+        random_ops.random_shuffle([x, math_ops.square(x)])
+        return x
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).map(random_func)
+      self.assertGreaterEqual(len(w), 1)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertTrue(found_warning)
+
+      def random_func_seeded(x):
+        ops.get_default_graph().seed = None
+        random_ops.random_shuffle(x)
+        return x
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).batch(2).map(random_func_seeded)
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
+
+      with warnings.catch_warnings(record=True) as w:
+        _ = dataset_ops.Dataset.range(10).batch(
+            2).map(lambda x: random_ops.random_shuffle(x, seed=37))
+      found_warning = False
+      for warning in w:
+        if ("Explicitly set the seed in the function if this is not the "
+            "intended behavior" in str(warning)):
+          found_warning = True
+          break
+      self.assertFalse(found_warning)
 
   def testNestedDatasetMap(self):
     # TODO(b/110122868): When iterators can yield a `tf.data.Dataset`, remove

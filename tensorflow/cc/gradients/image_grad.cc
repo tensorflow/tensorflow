@@ -88,15 +88,19 @@ Status ScaleAndTranslateGradHelper(const Scope& scope, const Operation& op,
   string kernel_type;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "kernel_type", &kernel_type));
+  bool antialias;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "antialias", &antialias));
   grad_outputs->push_back(internal::ScaleAndTranslateGrad(
       scope, grad_inputs[0], op.input(0), op.input(2), op.input(3),
-      internal::ScaleAndTranslateGrad::KernelType(kernel_type)));
+      internal::ScaleAndTranslateGrad::KernelType(kernel_type)
+          .Antialias(antialias)));
 
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(NoGradient());
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
+
 REGISTER_GRADIENT_OP("ScaleAndTranslate", ScaleAndTranslateGradHelper);
 
 Status CropAndResizeGradHelper(const Scope& scope, const Operation& op,

@@ -121,31 +121,23 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
                            .Attr("dtype", dtype)
                            .Attr("var_name", accumulator_name)
                            .Finalize(g, &create_accumulator));
-    if (PartialTensorShape(shape).IsFullyDefined()) {
-      // For fully defined shapes make a constant zero tensor.
-      TF_RETURN_IF_ERROR(make_node("Const")
-                             .Attr("value", make_zeros(dtype, shape))
-                             .Attr("dtype", dtype)
-                             .Finalize(g, &initial_val));
-    } else {
-      // For partial shapes make a Fill operation to make a zero tensor with the
-      // shape of the first input.
-      Node* shape_node;
-      TF_RETURN_IF_ERROR(
-          make_node("Shape")
-              .Input(data_edges[0]->src(), data_edges[0]->src_output())
-              .Finalize(g, &shape_node));
-      Node* zero;
-      TF_RETURN_IF_ERROR(
-          make_node("Const")
-              .Attr("value", make_zeros(dtype, TensorShapeProto()))
-              .Attr("dtype", dtype)
-              .Finalize(g, &zero));
-      TF_RETURN_IF_ERROR(make_node("Fill")
-                             .Input(shape_node)
-                             .Input(zero)
-                             .Finalize(g, &initial_val));
-    }
+    PartialTensorShape partial_shape(shape);
+    // Make a Fill operation to make a zero tensor with the shape of the first
+    // input.
+    Node* shape_node;
+    TF_RETURN_IF_ERROR(
+        make_node("Shape")
+            .Input(data_edges[0]->src(), data_edges[0]->src_output())
+            .Finalize(g, &shape_node));
+    Node* zero;
+    TF_RETURN_IF_ERROR(make_node("Const")
+                           .Attr("value", make_zeros(dtype, TensorShapeProto()))
+                           .Attr("dtype", dtype)
+                           .Finalize(g, &zero));
+    TF_RETURN_IF_ERROR(make_node("Fill")
+                           .Input(shape_node)
+                           .Input(zero)
+                           .Finalize(g, &initial_val));
     TF_RETURN_IF_ERROR(make_node("Assign")
                            .Attr("T", dtype)
                            .Input(create_accumulator)  // ref: Ref(T)

@@ -459,8 +459,8 @@ def _SqrtGradGrad(op, grad):
   a = op.inputs[0]
   y = op.outputs[0]  # y = 0.5 * b / conj(a)
   with ops.control_dependencies([grad]):
-    ga = grad / a
-    return -math_ops.conj(ga) * y, 0.5 * ga
+    ga = gen_math_ops.xdivy(grad, a)
+    return -gen_math_ops.mul_no_nan(y, math_ops.conj(ga)), 0.5 * ga
 
 
 @ops.RegisterGradient("Rsqrt")
@@ -508,7 +508,7 @@ def _LogGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * math_ops.reciprocal(x)
+    return gen_math_ops.xdivy(grad, x)
 
 
 @ops.RegisterGradient("Log1p")
@@ -517,7 +517,7 @@ def _Log1pGrad(op, grad):
   x = op.inputs[0]
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * math_ops.reciprocal(1 + x)
+    return gen_math_ops.xdivy(grad, 1 + x)
 
 
 @ops.RegisterGradient("Xlogy")
@@ -596,7 +596,7 @@ def _AcoshGrad(op, grad):
   y = op.outputs[0]
   with ops.control_dependencies([grad]):
     y = math_ops.conj(y)
-    return grad / math_ops.sinh(y)
+    return math_ops.xdivy(grad, math_ops.sinh(y))
 
 
 @ops.RegisterGradient("Atanh")
@@ -831,7 +831,7 @@ def _TanGrad(op, grad):
     x = math_ops.conj(x)
     secx = math_ops.reciprocal(math_ops.cos(x))
     secx2 = math_ops.square(secx)
-    return grad * secx2
+    return math_ops.mul_no_nan(secx2, grad)
 
 
 @ops.RegisterGradient("Asin")
@@ -843,8 +843,7 @@ def _AsinGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    inv = math_ops.reciprocal(den)
-    return grad * inv
+    return math_ops.xdivy(grad, den)
 
 
 @ops.RegisterGradient("Acos")
@@ -856,8 +855,7 @@ def _AcosGrad(op, grad):
     x2 = math_ops.square(x)
     one = constant_op.constant(1, dtype=grad.dtype)
     den = math_ops.sqrt(math_ops.subtract(one, x2))
-    inv = math_ops.reciprocal(den)
-    return -grad * inv
+    return -math_ops.xdivy(grad, den)
 
 
 @ops.RegisterGradient("Atan")
@@ -878,7 +876,7 @@ def _Atan2Grad(op, grad):
   y = op.inputs[0]
   x = op.inputs[1]
   with ops.control_dependencies([grad]):
-    grad_inv = grad / (math_ops.square(x) + math_ops.square(y))
+    grad_inv = math_ops.xdivy(grad, (math_ops.square(x) + math_ops.square(y)))
     return x * grad_inv, -y * grad_inv
 
 
@@ -981,10 +979,11 @@ def _DivGrad(op, grad):
   x = math_ops.conj(x)
   y = math_ops.conj(y)
   return (array_ops.reshape(
-      math_ops.reduce_sum(math_ops.divide(grad, y), rx), sx),
+      math_ops.reduce_sum(math_ops.div_no_nan(grad, y), rx), sx),
           array_ops.reshape(
               math_ops.reduce_sum(
-                  grad * math_ops.divide(math_ops.divide(-x, y), y), ry), sy))
+                  grad * math_ops.div_no_nan(math_ops.divide(-x, y), y), ry),
+              sy))
 
 
 @ops.RegisterGradient("FloorDiv")
@@ -1062,7 +1061,8 @@ def _PowGrad(op, grad):
   y = math_ops.conj(y)
   z = math_ops.conj(z)
   gx = array_ops.reshape(
-      math_ops.reduce_sum(grad * y * math_ops.pow(x, y - 1), rx), sx)
+      math_ops.reduce_sum(
+          math_ops.mul_no_nan(y * math_ops.pow(x, y - 1), grad), rx), sx)
   # Avoid false singularity at x = 0
   if x.dtype.is_complex:
     # real(x) < 0 is fine for the complex case
@@ -1072,7 +1072,8 @@ def _PowGrad(op, grad):
     mask = x > 0
   safe_x = array_ops.where(mask, x, array_ops.ones_like(x))
   log_x = array_ops.where(mask, math_ops.log(safe_x), array_ops.zeros_like(x))
-  gy = array_ops.reshape(math_ops.reduce_sum(grad * z * log_x, ry), sy)
+  gy = array_ops.reshape(
+      math_ops.reduce_sum(gen_math_ops.mul_no_nan(z * log_x, grad), ry), sy)
   return gx, gy
 
 

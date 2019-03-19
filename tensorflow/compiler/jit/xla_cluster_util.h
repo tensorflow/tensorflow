@@ -20,7 +20,10 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
+#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
@@ -52,7 +55,11 @@ bool HasForwardedRefInput(const Node& node);
 // Creates a graph representation to enable cycle detection when clustering.
 // This representation handles loops in graph by disconnecting each loop from
 // the enclosing graph.
-Status CreateCycleDetectionGraph(const Graph* graph, GraphCycles* cycles);
+//
+// Returns true for success and false for valid graphs that we can't handle yet
+// (b/127521408).
+xla::StatusOr<bool> CreateCycleDetectionGraph(const Graph* graph,
+                                              GraphCycles* cycles);
 
 // Returns the XLA cluster in which `node` is placed if it is in an XLA cluster,
 // otherwise returns nullopt.
@@ -118,6 +125,13 @@ Status PickDeviceForXla(absl::Span<const string> device_names,
 Status CanPickDeviceForXla(absl::Span<const string> device_names,
                            bool allow_mixing_unknown_and_cpu,
                            bool* out_can_pick_device);
+
+// Determine the global jit level which is ON if either the
+// GraphOptimizationPassOptions has the jit ON, or if the --tf_xla_auto_jit flag
+// is true.
+OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
+    const GraphOptimizationPassOptions& options);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_

@@ -173,6 +173,12 @@ class HloRunner {
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options, bool use_threads = false);
 
+  // Same as above, but with specified device assignment.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module,
+      const ReplicatedExecuteOptions& options,
+      DeviceAssignment* device_assignment, bool use_threads = false);
+
   // If backend is not created in the constructor, creates and returns the
   // default backend. If creation fails, crashes the program.
   //

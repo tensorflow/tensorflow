@@ -1,0 +1,76 @@
+taskId: ${taskcluster.taskId}
+provisionerId: ${taskcluster.win.provisionerId}
+workerType: ${taskcluster.win.workerType}
+taskGroupId: ${taskcluster.taskGroupId}
+schedulerId: ${taskcluster.schedulerId}
+dependencies:
+  $map: { $eval: build.dependencies }
+  each(b):
+    $eval: as_slugid(b)
+created: { $fromNow: '0 sec' }
+deadline: { $fromNow: '1 day' }
+expires:
+  $if: 'event.event == "push"'
+  then: { $fromNow: '6 months' }
+  else: { $fromNow: '7 days' }
+
+extra:
+  github:
+    $if: 'event.event == "push"'
+    then: { $eval: taskcluster.github_events.merge }
+    else: { $eval: taskcluster.github_events.pull_request }
+
+routes:
+  $if: 'event.event == "push"'
+  then:
+    { $eval: build.routes }
+
+payload:
+  maxRunTime: { $eval: to_int(build.maxRunTime) }
+  mounts:
+    - file: msys2-base-x86_64.tar.xz
+      content:
+        sha256: 4e799b5c3efcf9efcb84923656b7bcff16f75a666911abd6620ea8e5e1e9870c
+        url: >-
+          https://sourceforge.net/projects/msys2/files/Base/x86_64/msys2-base-x86_64-20180531.tar.xz/download
+  env:
+    MSYS: 'winsymlinks:nativestrict'
+    TC_MSYS_VERSION: 'MSYS_NT-6.3'
+  command:
+    - >-
+      "C:\Program Files\7-zip\7z.exe" x -txz -so msys2-base-x86_64.tar.xz |
+      "C:\Program Files\7-zip\7z.exe" x -o%USERPROFILE% -ttar -aoa -si
+    - .\msys64\usr\bin\bash.exe --login -cx "exit"
+    - .\msys64\usr\bin\bash.exe --login -cx "pacman --noconfirm -Syu"
+    - .\msys64\usr\bin\bash.exe --login -cxe "
+      export LC_ALL=C &&
+      export PATH=\"/c/builds/tc-workdir/msys64/usr/bin:/c/Python36:/c/Program Files/Git/bin:$PATH\" &&
+      export TASKCLUSTER_ARTIFACTS=\"$USERPROFILE/public\" &&
+      export TASKCLUSTER_TASK_DIR=\"/c/builds/tc-workdir/\" &&
+      (mkdir $TASKCLUSTER_TASK_DIR || rm -fr $TASKCLUSTER_TASK_DIR/*) && cd $TASKCLUSTER_TASK_DIR &&
+      ln -s $USERPROFILE/msys64 $TASKCLUSTER_TASK_DIR/msys64 &&
+      mkdir -p $TASKCLUSTER_TASK_DIR/DeepSpeech &&
+      env &&
+      git clone --quiet ${event.head.repo.url} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf &&
+      cd $TASKCLUSTER_TASK_DIR/DeepSpeech/tf && git checkout --quiet ${event.head.sha} && cd $TASKCLUSTER_TASK_DIR &&
+      $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-pacman.sh &&
+      $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-setup.sh ${build.args.tcsetup} &&
+      $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-build.sh ${build.args.tcbuild} &&
+      $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-package.sh ;
+      export TASKCLUSTER_TASK_EXIT_CODE=$? &&
+      cd $TASKCLUSTER_TASK_DIR/../ && rm -fr tc-workdir/ && exit $TASKCLUSTER_TASK_EXIT_CODE"
+
+  artifacts:
+    - type: "directory"
+      path: "public/"
+      expires:
+        $if: 'event.event == "push"'
+        then: { $fromNow: '6 months' }
+        else: { $fromNow: '7 days' }
+
+# Each task also requires explicit metadata
+metadata:
+  name: ${build.metadata.name}
+  description: ${build.metadata.description}
+  owner: ${event.head.user.email}
+  source: ${event.head.repo.url}

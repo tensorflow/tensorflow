@@ -59,10 +59,18 @@ fi
 pushd ${DS_ROOT_TASK}/DeepSpeech/tf/
     BAZEL_BUILD="bazel ${BAZEL_OUTPUT_USER_ROOT} build -s --explain bazel_monolithic_tf.log --verbose_explanations --experimental_strict_action_env --config=monolithic"
 
+    # Start a bazel process to ensure reliability on Windows and avoid:
+    # FATAL: corrupt installation: file 'c:\builds\tc-workdir\.bazel_cache/install/6b1660721930e9d5f231f7d2a626209b/_embedded_binaries/build-runfiles.exe' missing.
+    bazel ${BAZEL_OUTPUT_USER_ROOT} info
+
     if [ "${build_amd64}" = "yes" ]; then
         # Pure amd64 CPU-only build
-        if [ "${build_cuda}" = "no" -a "${build_linux_arm}" = "no" -a "${build_linux_arm64}" = "no" ]; then
-            echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BAZEL_EXTRA_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_CONVERT_MMAP} ${BUILD_TARGET_TOCO} ${BUILD_TARGET_LITE_BENCHMARK}
+        if [ "${OS}" = "${TC_MSYS_VERSION}" -a  "${build_cuda}" = "no" ]; then
+                echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BAZEL_EXTRA_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_CONVERT_MMAP} ${BUILD_TARGET_TOCO}
+        else
+            if [ "${build_cuda}" = "no" -a "${build_linux_arm}" = "no" -a "${build_linux_arm64}" = "no" ]; then
+                echo "" | TF_NEED_CUDA=0 ./configure && ${BAZEL_BUILD} -c opt ${BAZEL_OPT_FLAGS} ${BAZEL_EXTRA_FLAGS} ${BUILD_TARGET_LIB_CPP_API} ${BUILD_TARGET_GRAPH_TRANSFORMS} ${BUILD_TARGET_GRAPH_SUMMARIZE} ${BUILD_TARGET_GRAPH_BENCHMARK} ${BUILD_TARGET_CONVERT_MMAP} ${BUILD_TARGET_TOCO} ${BUILD_TARGET_LITE_BENCHMARK}
+            fi
         fi
 
         # Cross RPi3 CPU-only build
@@ -94,4 +102,6 @@ pushd ${DS_ROOT_TASK}/DeepSpeech/tf/
         echo "Build failure, please check the output above. Exit code was: $?"
         return 1
     fi
+
+    bazel ${BAZEL_OUTPUT_USER_ROOT} shutdown
 popd

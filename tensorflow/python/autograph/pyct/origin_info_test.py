@@ -32,18 +32,17 @@ class OriginInfoTest(test.TestCase):
     def test_fn(x):
       return x + 1
 
-    node, _ = parser.parse_entity(test_fn)
+    node, _, _ = parser.parse_entity(test_fn)
     fake_origin = origin_info.OriginInfo(
         loc=origin_info.Location('fake_filename', 3, 7),
         function_name='fake_function_name',
         source_code_line='fake source line',
         comment=None)
-    fn_node = node.body[0]
-    anno.setanno(fn_node.body[0], anno.Basic.ORIGIN, fake_origin)
-    converted_code = compiler.ast_to_source(fn_node)
+    anno.setanno(node.body[0], anno.Basic.ORIGIN, fake_origin)
+    converted_code = compiler.ast_to_source(node)
 
     source_map = origin_info.create_source_map(
-        fn_node, converted_code, 'test_filename', [0])
+        node, converted_code, 'test_filename', [0])
 
     loc = origin_info.LineLocation('test_filename', 2)
     self.assertIn(loc, source_map)
@@ -54,12 +53,11 @@ class OriginInfoTest(test.TestCase):
     def test_fn(x):
       return x + 1
 
-    node, _ = parser.parse_entity(test_fn)
-    fn_node = node.body[0]
-    converted_code = compiler.ast_to_source(fn_node)
+    node, _, _ = parser.parse_entity(test_fn)
+    converted_code = compiler.ast_to_source(node)
 
     source_map = origin_info.create_source_map(
-        fn_node, converted_code, 'test_filename', [0])
+        node, converted_code, 'test_filename', [0])
 
     self.assertEqual(len(source_map), 0)
 
@@ -69,25 +67,53 @@ class OriginInfoTest(test.TestCase):
       """Docstring."""
       return x  # comment
 
-    node, source = parser.parse_entity(test_fn)
-    fn_node = node.body[0]
+    node, source, _ = parser.parse_entity(test_fn)
 
-    origin_info.resolve(fn_node, source)
+    origin_info.resolve(node, source)
 
-    origin = anno.getanno(fn_node, anno.Basic.ORIGIN)
+    origin = anno.getanno(node, anno.Basic.ORIGIN)
     self.assertEqual(origin.loc.lineno, 1)
     self.assertEqual(origin.loc.col_offset, 0)
     self.assertEqual(origin.source_code_line, 'def test_fn(x):')
     self.assertIsNone(origin.comment)
 
-    origin = anno.getanno(fn_node.body[0], anno.Basic.ORIGIN)
+    origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
     self.assertEqual(origin.loc.lineno, 2)
     self.assertEqual(origin.loc.col_offset, 2)
     self.assertEqual(origin.source_code_line, '  """Docstring."""')
     self.assertIsNone(origin.comment)
 
-    origin = anno.getanno(fn_node.body[1], anno.Basic.ORIGIN)
+    origin = anno.getanno(node.body[1], anno.Basic.ORIGIN)
     self.assertEqual(origin.loc.lineno, 3)
+    self.assertEqual(origin.loc.col_offset, 2)
+    self.assertEqual(origin.source_code_line, '  return x  # comment')
+    self.assertEqual(origin.comment, 'comment')
+
+  def disabled_test_resolve_with_future_imports(self):
+
+    def test_fn(x):
+      """Docstring."""
+      print(x)
+      return x  # comment
+
+    node, source, _ = parser.parse_entity(test_fn)
+
+    origin_info.resolve(node, source)
+
+    origin = anno.getanno(node, anno.Basic.ORIGIN)
+    self.assertEqual(origin.loc.lineno, 2)
+    self.assertEqual(origin.loc.col_offset, 0)
+    self.assertEqual(origin.source_code_line, 'def test_fn(x):')
+    self.assertIsNone(origin.comment)
+
+    origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
+    self.assertEqual(origin.loc.lineno, 3)
+    self.assertEqual(origin.loc.col_offset, 2)
+    self.assertEqual(origin.source_code_line, '  """Docstring."""')
+    self.assertIsNone(origin.comment)
+
+    origin = anno.getanno(node.body[2], anno.Basic.ORIGIN)
+    self.assertEqual(origin.loc.lineno, 5)
     self.assertEqual(origin.loc.col_offset, 2)
     self.assertEqual(origin.source_code_line, '  return x  # comment')
     self.assertEqual(origin.comment, 'comment')
