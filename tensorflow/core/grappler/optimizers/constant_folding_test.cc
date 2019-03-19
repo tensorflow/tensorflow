@@ -3750,6 +3750,55 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
 }
 
+TEST_F(ConstantFoldingTest, CompressConstants) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Tensor zeros_t(DT_FLOAT, TensorShape({64}));
+  Tensor ones_t(DT_FLOAT, TensorShape({64}));
+  for (int i = 0; i < 64; ++i) {
+    zeros_t.flat<float>()(i) = 0.0f;
+    ones_t.flat<float>()(i) = 1.0f;
+  }
+  Output zeros = ops::Const(scope.WithOpName("zeros"), zeros_t);
+  Output host_ones = ops::Const(scope.WithOpName("host_ones"), ones_t);
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  ASSERT_EQ(item.graph.node(1).name(), "host_ones");
+  // There is not C++ api for HostConst, so we manually change the node type
+  // here.
+  item.graph.mutable_node(1)->set_op("HostConst");
+  item.fetch = {"zeros", "host_ones"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  {
+    ASSERT_EQ(output.node_size(), 2);
+    const NodeDef& node = output.node(0);
+    EXPECT_EQ(node.name(), "zeros");
+    EXPECT_EQ(node.op(), "Const");
+    const TensorProto& zeroes_t = node.attr().at("value").tensor();
+    EXPECT_EQ(zeroes_t.float_val_size(), 1);
+    EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+  }
+  {
+    const NodeDef& node = output.node(1);
+    EXPECT_EQ(node.name(), "host_ones");
+    EXPECT_EQ(node.op(), "HostConst");
+    const TensorProto& ones_t = node.attr().at("value").tensor();
+    EXPECT_EQ(ones_t.float_val_size(), 1);
+    EXPECT_EQ(ones_t.float_val(0), 1.0f);
+  }
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  ASSERT_EQ(tensors.size(), 2);
+  ASSERT_EQ(tensors_expected.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
+  }
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

@@ -489,55 +489,6 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
-                                             int32* output_inv_sqrt,
-                                             int* output_shift) {
-  *output_shift = 11;
-  while (input >= (1 << 29)) {
-    input /= 4;
-    ++*output_shift;
-  }
-  TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits =
-      CountLeadingZeros(static_cast<uint32>(input)) - 1;
-  const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
-  const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
-  *output_shift -= left_shift_bit_pairs;
-  input <<= 2 * left_shift_bit_pairs;
-  TFLITE_DCHECK_GE(input, (1 << 27));
-  TFLITE_DCHECK_LT(input, (1 << 29));
-  using gemmlowp::FixedPoint;
-  using gemmlowp::Rescale;
-  using gemmlowp::SaturatingRoundingMultiplyByPOT;
-  // Using 3 integer bits gives us enough room for the internal arithmetic in
-  // this Newton-Raphson iteration.
-  using F3 = FixedPoint<int32, 3>;
-  using F0 = FixedPoint<int32, 0>;
-  const F3 fixedpoint_input = F3::FromRaw(input >> 1);
-  const F3 fixedpoint_half_input =
-      SaturatingRoundingMultiplyByPOT<-1>(fixedpoint_input);
-  const F3 fixedpoint_half_three =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(F3, (1 << 28) + (1 << 27), 1.5);
-  // Newton-Raphson iteration
-  // Naive unoptimized starting guess: x = 1
-  F3 x = F3::One();
-  // Naive unoptimized number of iterations: 5
-  for (int i = 0; i < 5; i++) {
-    const F3 x3 = Rescale<3>(x * x * x);
-    x = Rescale<3>(fixedpoint_half_three * x - fixedpoint_half_input * x3);
-  }
-  const F0 fixedpoint_half_sqrt_2 =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(F0, 1518500250, std::sqrt(2.) / 2.);
-  x = x * fixedpoint_half_sqrt_2;
-  *output_inv_sqrt = x.raw();
-  if (*output_shift < 0) {
-    *output_inv_sqrt <<= -*output_shift;
-    *output_shift = 0;
-  }
-  // Convert right shift (right is positive) to left shift.
-  *output_shift *= kReverseShift;
-}
-
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const uint8* input_data,
@@ -557,9 +508,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
-                                     &inv_l2norm_shift);
-
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
+                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
     for (int c = 0; c < depth; c++) {
       int32 diff = input_data[depth * i + c] - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
@@ -3358,6 +3308,16 @@ inline void PadImageStyle(const tflite::PadParams& op_params,
 template <typename P>
 inline void PadImageStyle(const tflite::PadParams& op_params,
                           const RuntimeShape& input_shape,
+                          const int8_t* input_data, const P* pad_value_ptr,
+                          const RuntimeShape& output_shape,
+                          int8_t* output_data) {
+  Pad(op_params, input_shape, input_data, pad_value_ptr, output_shape,
+      output_data);
+}
+
+template <typename P>
+inline void PadImageStyle(const tflite::PadParams& op_params,
+                          const RuntimeShape& input_shape,
                           const float* input_data, const P* pad_value_ptr,
                           const RuntimeShape& output_shape,
                           float* output_data) {
@@ -4717,6 +4677,85 @@ void Reverse(int axis, const RuntimeShape& input_shape,
       Scalar* output_ptr = output_data + start_pos;
       int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
       memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    }
+  }
+}
+
+template <typename Scalar, typename TS>
+void ReverseSequence(const TS* seq_lengths, const int seq_dim,
+                     const int batch_dim, const RuntimeShape& input_shape,
+                     const Scalar* input_data, const RuntimeShape& output_shape,
+                     Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReverseSequence");
+
+  int outer_size = 1;
+  int outer_dim = std::min(batch_dim, seq_dim);
+  int medium_dim = std::max(batch_dim, seq_dim);
+  for (int i = 0; i < outer_dim; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int medium_size = 1;
+  for (int i = outer_dim + 1; i < medium_dim; ++i) {
+    medium_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = medium_dim + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_outer_dim = input_shape.Dims(outer_dim);
+  const int dims_at_medium_dim = input_shape.Dims(medium_dim);
+
+  Scalar* output_ptr;
+  if (batch_dim > seq_dim) {
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_outer_dim; ++j) {
+        const int in_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        for (int p = 0; p < medium_size; ++p) {
+          for (int q = 0; q < dims_at_medium_dim; ++q) {
+            const int in_pos =
+                ((in_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+            const Scalar* in_ptr = input_data + in_pos;
+            int sl = seq_lengths[q] - 1;
+            if (j > sl) {
+              output_ptr = output_data + in_pos;
+            } else {
+              const int out_pos_base =
+                  (i * dims_at_outer_dim + sl - j) * medium_size;
+              const int out_pos =
+                  ((out_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+              output_ptr = output_data + out_pos;
+            }
+            memcpy(output_ptr, in_ptr, copy_size * sizeof(Scalar));
+          }
+        }
+      }
+    }
+  } else if (batch_dim < seq_dim) {
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_outer_dim; ++j) {
+        const int in_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        int sl = seq_lengths[j] - 1;
+        const int out_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        for (int p = 0; p < medium_size; ++p) {
+          for (int q = 0; q < dims_at_medium_dim; ++q) {
+            const int in_pos =
+                ((in_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+            const Scalar* in_ptr = input_data + in_pos;
+            if (q > sl) {
+              output_ptr = output_data + in_pos;
+            } else {
+              const int out_pos =
+                  ((out_pos_base + p) * dims_at_medium_dim + sl - q) *
+                  copy_size;
+              output_ptr = output_data + out_pos;
+            }
+            memcpy(output_ptr, in_ptr, copy_size * sizeof(Scalar));
+          }
+        }
+      }
     }
   }
 }

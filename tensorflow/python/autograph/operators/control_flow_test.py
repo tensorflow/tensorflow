@@ -118,11 +118,20 @@ class WhileLoopTest(test.TestCase):
 class IfStmtTest(test.TestCase):
 
   def single_return_if_stmt(self, cond):
-    return control_flow.if_stmt(cond=cond, body=lambda: 1, orelse=lambda: -1)
+    return control_flow.if_stmt(
+        cond=cond,
+        body=lambda: 1,
+        orelse=lambda: -1,
+        get_state=lambda: (),
+        set_state=lambda _: None)
 
   def multi_return_if_stmt(self, cond):
     return control_flow.if_stmt(
-        cond=cond, body=lambda: (1, 2), orelse=lambda: (-1, -2))
+        cond=cond,
+        body=lambda: (1, 2),
+        orelse=lambda: (-1, -2),
+        get_state=lambda: (),
+        set_state=lambda _: None)
 
   @test_util.run_deprecated_v1
   def test_tensor(self):

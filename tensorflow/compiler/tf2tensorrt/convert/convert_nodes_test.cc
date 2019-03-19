@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
@@ -109,12 +110,16 @@ DataType TrtDataTypeToTf(nvinfer1::DataType trt_dtype) {
 }
 
 NodeDef MakeNodeDef(const string& name, const string& op,
-                    const std::vector<string>& inputs) {
+                    const std::vector<string>& inputs,
+                    const std::map<string, AttrValue> attrs = {}) {
   NodeDef node_def;
   node_def.set_name(name);
   node_def.set_op(op);
   for (const string& input : inputs) {
     node_def.add_input(input);
+  }
+  for (const auto& attr : attrs) {
+    (*node_def.mutable_attr())[attr.first] = attr.second;
   }
   return node_def;
 }
@@ -123,7 +128,7 @@ template <typename T>
 NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals,
                          const TensorShape& shape) {
   Scope s = Scope::NewRootScope();
-  Tensor t = ::tensorflow::test::AsTensor<T>(vals, shape);
+  Tensor t = test::AsTensor<T>(vals, shape);
   auto const_op = ops::Const(s.WithOpName(name), t);
   return const_op.node()->def();
 }
@@ -233,7 +238,7 @@ class FakeITensor : public nvinfer1::ITensor {
     location_ = location;
   }
 
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0)
   bool setDynamicRange(float min, float max) override {
     dynamic_range_ = std::max(std::abs(min), std::abs(max));
     return true;
@@ -242,7 +247,7 @@ class FakeITensor : public nvinfer1::ITensor {
   float getDynamicRange() const override { return dynamic_range_; }
 #endif
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   bool dynamicRangeIsSet() const override { return true; }
 
   void resetDynamicRange() override {}
@@ -389,8 +394,8 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  void AddOpValidator(const string& op_name, OpConverter op_validator) {
-    validator_.op_validators_[op_name] = op_validator;
+  std::unordered_map<string, OpConverter>& op_validators() {
+    return validator_.op_validators_;
   }
 
   Status ConvertToTensorOrWeights(
@@ -401,9 +406,17 @@ class ValidatorTest : public ::testing::Test {
         node_def, output_port, graph_properties, tensor_or_weights);
   }
 
+  const std::set<string>* GetQuantizeOps() { return validator_.quantize_ops; }
+
  protected:
   TrtNodeValidator validator_;
 };
+
+TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
+  for (const string& quantize_op : *GetQuantizeOps()) {
+    QCHECK(op_validators().count(quantize_op));
+  }
+}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -477,18 +490,30 @@ TEST_F(ValidatorTest, ValidateNode) {
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {});
 
-  // Validator not registered, validation should pass.
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  // Validator not registered.
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED, "Op type MyOp is not supported.");
 
   // Register validator.
-  AddOpValidator("MyOp", op_converter);
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  op_validators()["MyOp"] = op_converter;
+  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator_.ValidateNode(node_def, {}, graph_properties),
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
                error::INVALID_ARGUMENT);
+
+  // Test quantization ops, they're only supported in INT8 mode. The success
+  // case is tested in OpConverterTest.ConvertQuantize.
+  node_def = MakeNodeDef("my_op", "FakeQuantWithMinMaxArgs", {});
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED,
+               "Op type FakeQuantWithMinMaxArgs is not supported.");
 }
 
 class ConverterTest : public ::testing::Test {
@@ -691,23 +716,34 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
   TRT_TensorOrWeights tw(input_tensor);
   const nvinfer1::ITensor* output_tensor = nullptr;
 
-  // Shape size doesn't match.
-  ExpectStatus(converter_->PrepareTensorForShape(tw, GetTestDims({2, 3, 6}),
-                                                 &output_tensor),
-               error::INVALID_ARGUMENT, "Reshape shapes are not compatible");
+  for (bool validation_only : {false, true}) {
+    // Shape size doesn't match.
+    ExpectStatus(
+        converter_->PrepareTensorForShape(tw, GetTestDims({2, 3, 6}),
+                                          validation_only, &output_tensor),
+        error::INVALID_ARGUMENT, "Reshape shapes are not compatible");
 
-  // TODO(aaroey): we should check the case where uninferred dimensions are not
-  // an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
+    // TODO(aaroey): we should check the case where uninferred dimensions are
+    // not an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
 
-  // Infer shape, ok.
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({-1, 2}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({15, 2}, output_tensor->getDimensions());
+    // Infer shape, ok.
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({-1, 2}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({15, 2}, output_tensor->getDimensions());
+    }
 
-  // Regular shape.
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({10, 3}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    // Regular shape.
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    }
+  }
 }
 
 TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
@@ -715,9 +751,15 @@ TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
       weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({2, 3, 5}));
   TRT_TensorOrWeights tw(weights);
   const nvinfer1::ITensor* output_tensor = nullptr;
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({10, 3}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+  for (bool validation_only : {false, true}) {
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    }
+  }
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
@@ -808,7 +850,7 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
 
   // Input range should be inferred along the chain and applied to tensors.
   int8_converter.MaybeApplyQuantizationRanges();
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0)
   EXPECT_EQ(input.getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_1.getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_2.getDynamicRange(), 5.0f);
@@ -948,7 +990,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
   Status RunConvertGraphDefToEngine(Scope* s) {
     GraphDef gdef;
     TF_EXPECT_OK(s->ToGraphDef(&gdef));
-    std::vector<tensorflow::PartialTensorShape> input_shapes;
+    std::vector<PartialTensorShape> input_shapes;
     int batch_size = -1;
     for (const NodeDef& node : gdef.node()) {
       absl::string_view node_name(node.name());
@@ -1049,7 +1091,7 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset the validator and converter.
     validator_.reset(new TrtNodeValidator);
-    converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
+    converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
                                    /*use_calibration=*/false));
 
     // Reset other related artifacts.
@@ -1057,8 +1099,22 @@ class OpConverterTest : public ::testing::Test {
     validator_inputs_.clear();
   }
 
-  // TODO(laigd): test fp16 and int8 support.
-  void BuildAndRun(const DataVec& input_data, DataVec* output_data) {
+  void CheckDataTypeMatches(const DataVec& datas) {
+    for (const auto& data : datas) {
+      const int input_index = engine_->getBindingIndex(data.name);
+      ASSERT_NE(-1, input_index);
+      const nvinfer1::DataType trt_dtype =
+          engine_->getBindingDataType(input_index);
+      const DataType tf_dtype = TrtDataTypeToTf(trt_dtype);
+      ASSERT_EQ(data.tensor.dtype(), tf_dtype)
+          << DataTypeString(data.tensor.dtype()) << " vs. "
+          << DataTypeString(tf_dtype);
+    }
+  }
+
+  // TODO(laigd): test fp16 and int8 support for more converters.
+  void BuildAndRun(const DataVec& input_data, DataVec* output_data,
+                   TrtPrecisionMode precision_mode = TrtPrecisionMode::FP32) {
     // Mark the output tensor as TRT engine output.
     std::vector<Converter::EngineOutputInfo> output_info;
     for (const auto& data : *output_data) {
@@ -1068,9 +1124,20 @@ class OpConverterTest : public ::testing::Test {
     TF_EXPECT_OK(converter_->RenameAndMarkOutputTensors(output_info));
 
     // Build the TRT engine.
+    if (precision_mode == TrtPrecisionMode::FP16) {
+      builder_->setFp16Mode(true);
+    } else if (precision_mode == TrtPrecisionMode::INT8) {
+      // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
+      // use them in situations where they are faster than INT8 or where INT8 is
+      // not supported for a given layer.
+      builder_->setFp16Mode(true);
+      builder_->setInt8Mode(true);
+    }
     ASSERT_EQ(nullptr, engine_.get());
     engine_.reset(builder_->buildCudaEngine(*converter_->network()));
     CHECK_NOTNULL(engine_.get());
+    CheckDataTypeMatches(input_data);
+    CheckDataTypeMatches(*output_data);
 
     // Execute the TRT engine.
     const int num_bindings = input_data.size() + output_data->size();
@@ -1182,9 +1249,10 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    ExpectStatus(validator_->ValidateNode(node_def, input_node_and_ports,
-                                          graph_properties),
-                 expected_code, expected_msg_substr);
+    ExpectStatus(
+        validator_->ValidateNode(node_def, input_node_and_ports,
+                                 precision_mode_to_test_, graph_properties),
+        expected_code, expected_msg_substr);
   }
 
   void RunConversion(const NodeDef& node_def,
@@ -1213,6 +1281,10 @@ class OpConverterTest : public ::testing::Test {
 
   std::unique_ptr<Converter> converter_;
   std::unique_ptr<TrtNodeValidator> validator_;
+
+ protected:
+  // TODO(laigd): parameterize the test and make the precision mode a parameter.
+  TrtPrecisionMode precision_mode_to_test_ = TrtPrecisionMode::FP32;
 
  private:
   Logger logger_;
@@ -1298,34 +1370,34 @@ void TestConvertConst(OpConverterTest* test) {
     reset_and_test(t, false, {}, {});
   }
   {
-    Tensor t = ::tensorflow::test::AsScalar<InputCType>(12);
+    Tensor t = test::AsScalar<InputCType>(12);
     reset_and_test(t, false, {1}, {12});
     reset_and_test(t, true, {1}, {12});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2});
+    Tensor t = test::AsTensor<InputCType>({1, 2});
     reset_and_test(t, false, {2}, {1, 2});
     reset_and_test(t, true, {2}, {1, 2});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
   }
   {
     // Set all tensor elements to the same value. Such tensors are encoded
     // using a single element list in tensor proto.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
   }
   {
     // Set trailing tensor elements to the same value. Such tensors are
     // encoded by truncating all equal elements except the first one.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
@@ -1529,9 +1601,9 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     NodeDef node_def = get_matmul_nodedef(DT_INT32, false, false);
     AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
     AddTestWeights<int32>("weights", {2, 1}, {3, 5});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Data type is not supported, for node my_matmul got int32");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Data type int32 is not supported for MatMul, "
+                               "must be one of [float, half], at my_matmul");
   }
   // transpose_a is set.
   for (bool transpose_b : {false, true}) {
@@ -1719,7 +1791,9 @@ void TestBinaryTensorOpWeightNoBroadcast(OpConverterTest* test) {
     const DataVec input_data{
         {"input", test::AsTensor<CType>(swap_inputs ? operand2 : operand1)}};
     DataVec output_data{{"my_binary", ConstructTensor<CType>(2)}};
-    test->BuildAndRun(input_data, &output_data);
+    test->BuildAndRun(
+        input_data, &output_data,
+        dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
     if (node_def.op() == "Add") {
       EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                   ElementsAre(CType(5), CType(10.5)));
@@ -1900,7 +1974,9 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   DataVec output_data{{"my_binary", ConstructTensor<CType>(4)}};
   // After broadcasting first input becomes {3, 6, 3, 6} and second input
   // becomes {2, 3, 2, 3}.
-  test->BuildAndRun(input_data, &output_data);
+  test->BuildAndRun(
+      input_data, &output_data,
+      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
   if (node_def.op() == "Add") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(5), CType(8), CType(6), CType(9)));
@@ -1922,16 +1998,23 @@ void TestBinaryTensorOpTensor(OpConverterTest* test) {
   } else if (node_def.op() == "Maximum") {
     EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
                 ElementsAre(CType(3), CType(6), CType(3), CType(6)));
+  } else if (node_def.op() == "Pow") {
+    ExpectArrayNear(
+        std::vector<CType>{CType(9), CType(36), CType(27), CType(216)},
+        GetSpanForData<CType>(output_data[0]));
   } else {
     ASSERT_TRUE(false);
   }
 }
 
 TEST_F(OpConverterTest, ConvertBinary) {
+  AttrValue dtype;
+  dtype.set_type(DT_FLOAT);
   // Input size doesn't match, should fail.
   for (size_t num_inputs = 0; num_inputs < 2; ++num_inputs) {
     Reset();
-    NodeDef node_def = MakeNodeDef("my_add", "Add", {num_inputs, "input"});
+    NodeDef node_def =
+        MakeNodeDef("my_add", "Add", {num_inputs, "input"}, {{"T", dtype}});
     AddTestTensor("input", {1}, /*batch_size=*/1, nvinfer1::DataType::kFLOAT);
     RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
                                StrCat("Add got ", std::to_string(num_inputs),
@@ -1941,7 +2024,8 @@ TEST_F(OpConverterTest, ConvertBinary) {
   {
     // Both inputs are weights.
     Reset();
-    NodeDef node_def = MakeNodeDef("my_add", "Add", {"weights1", "weights2"});
+    NodeDef node_def =
+        MakeNodeDef("my_add", "Add", {"weights1", "weights2"}, {{"T", dtype}});
     AddTestWeights<float>("weights1", {1}, {1});
     AddTestWeights<float>("weights2", {1}, {1});
     RunValidationAndConversion(
@@ -1956,15 +2040,12 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpWeightNoBroadcast<ops::Mul, DT_FLOAT>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Div, DT_FLOAT>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::RealDiv, DT_FLOAT>(this);
-#if 0
-  // TODO(b/119560144): it doesn't support FP16 constants and the following test
-  // will fail.
+
   TestBinaryTensorOpWeightNoBroadcast<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Sub, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Mul, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::Div, DT_HALF>(this);
   TestBinaryTensorOpWeightNoBroadcast<ops::RealDiv, DT_HALF>(this);
-#endif
 
   // Test BinaryTensorOpWeight() with channel-wise broadcasting.
   TestBinaryTensorOpWeightWithChannelWiseBroadcast<DT_FLOAT>(this);
@@ -1995,6 +2076,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpTensor<ops::RealDiv, DT_FLOAT>(this);
   TestBinaryTensorOpTensor<ops::Minimum, DT_FLOAT>(this);
   TestBinaryTensorOpTensor<ops::Maximum, DT_FLOAT>(this);
+  TestBinaryTensorOpTensor<ops::Pow, DT_FLOAT>(this);
 
   TestBinaryTensorOpTensor<ops::Add, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Sub, DT_HALF>(this);
@@ -2003,9 +2085,11 @@ TEST_F(OpConverterTest, ConvertBinary) {
   TestBinaryTensorOpTensor<ops::RealDiv, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Minimum, DT_HALF>(this);
   TestBinaryTensorOpTensor<ops::Maximum, DT_HALF>(this);
+  TestBinaryTensorOpTensor<ops::Pow, DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
+  precision_mode_to_test_ = TrtPrecisionMode::INT8;
   const std::pair<string, int> op_with_num_inputs[4] = {
       {"FakeQuantWithMinMaxArgs", 1},
       {"FakeQuantWithMinMaxVars", 3},
@@ -2143,7 +2227,8 @@ void TestConvertSquare(OpConverterTest* test) {
   auto square = ops::Square(s.WithOpName("my_square"), input);
   NodeDef node_def = square.operation.node()->def();
 
-  test->AddTestTensor("input", {1, 20});
+  test->AddTestTensor("input", {1, 20}, /*batch_size=*/1,
+                      TfDataTypeToTrt(dtype));
   test->RunValidationAndConversion(node_def);
   TRT_TensorOrWeights output;
   TF_EXPECT_OK(test->GetTensorOrWeights("my_square", &output));
@@ -2153,14 +2238,18 @@ void TestConvertSquare(OpConverterTest* test) {
   const int num_inputs = 20;
   std::vector<CType> inputs(num_inputs);
   std::vector<CType> expected_outputs(num_inputs);
-  for (int i = 0; i < 20; i++) {
+  for (int i = 0; i < num_inputs; ++i) {
     const CType value = CType(i - 9);
     inputs[i] = value;
     expected_outputs[i] = value * value;
   }
   const DataVec input_data{{"input", test::AsTensor<CType>(inputs)}};
+  // Engine outputs are converted to FP16 automatically if we set FP16 mode in
+  // the builder.
   DataVec output_data{{"my_square", ConstructTensor<CType>(num_inputs)}};
-  test->BuildAndRun(input_data, &output_data);
+  test->BuildAndRun(
+      input_data, &output_data,
+      dtype == DT_HALF ? TrtPrecisionMode::FP16 : TrtPrecisionMode::FP32);
   ExpectArrayNear(expected_outputs, GetSpanForData<CType>(output_data[0]));
 }
 
@@ -2188,9 +2277,7 @@ TEST_F(OpConverterTest, ConvertSquare) {
   // OK. Note that kINT32 is not supported by IElementWiseLayer, so we don't
   // test DT_INT32 type here.
   TestConvertSquare<DT_FLOAT>(this);
-  // TODO(tmorris): Looks like there may be a bug with this layer for FP16
-  // inputs. Disabling for now.
-  // TestConvertSquare<DT_HALF>(this);
+  TestConvertSquare<DT_HALF>(this);
 }
 
 TEST_F(OpConverterTest, ConvertActivation) {
@@ -2220,10 +2307,10 @@ TEST_F(OpConverterTest, ConvertActivation) {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     if (op_name == "LeakyRelu") {
-      // LeakyRelu does not have a C++ API
-      NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
-      (*node_def.mutable_attr())["alpha"].set_f(kAlpha);
-      return node_def;
+      auto act =
+          ops::internal::LeakyRelu(s.WithOpName("my_act"), input,
+                                   ops::internal::LeakyRelu::Alpha(kAlpha));
+      return act.operation.node()->def();
     } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
@@ -2527,8 +2614,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
   // Get nodedef for StridedSlice layer.
   auto get_strided_slice_nodedef =
-      [](int begin_mask = 0, int end_mask = 0, int ellipsis_mask = 0,
-         int new_axis_mask = 0, int shrink_axis_mask = 0) -> NodeDef {
+      [](int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
+         int64 new_axis_mask = 0, int64 shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
@@ -2623,7 +2710,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     RunValidationAndConversion(node_def);
   }
 // TRT 5.1+ supports strides
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   {
     // Negative strides, should fail.
     Reset();
@@ -2686,7 +2773,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
   // Same input is used for all tests.
   const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
   const int kStridedSliceOKCases = 23;
 #else
   const int kStridedSliceOKCases = 19;
@@ -2813,7 +2900,7 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
                /*end_mask=*/get_mask({1, 0, 0, 0}),
                /*expected_output_dims=*/{1, 2, 3},
                /*expected_output=*/{1, 2, 3, 4, 5, 6}},
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0)
     // Strides
     TestParams{/*input_dims=*/{6},
                /*begin=*/{0, 0}, /*end=*/{0, 5}, /*strides=*/{1, 2},
@@ -3285,8 +3372,9 @@ TEST_F(OpConverterTest, ConvertTopK) {
   {
     // Input list is empty, should fail.
     NodeDef node_def = MakeNodeDef("my_topk", "TopKV2", {});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Input expects tensor and weights, at my_topk");
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "TopKV2 got 0 inputs but expected 2, at my_topk");
   }
 
   for (const auto dtype : {DT_FLOAT, DT_INT32}) {
@@ -3303,8 +3391,8 @@ TEST_F(OpConverterTest, ConvertTopK) {
                     /*trt_dtype=*/TfDataTypeToTrt(dtype));
       AddTestTensor("weights", {2});
       RunValidationAndConversion(
-          node_def, error::INVALID_ARGUMENT,
-          "Input expects tensor and weights, at my_topk");
+          node_def, error::UNIMPLEMENTED,
+          "The input \"k\" for TopKV2 must be a constant, at my_topk");
     }
     {
       // Ok.
@@ -3356,14 +3444,23 @@ void TestConvertGather(OpConverterTest* test) {
 
   // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
   const int kGatherOKCases = 5;
+  const std::vector<CType> params_input = {CType(1), CType(2), CType(3),
+                                           CType(4), CType(5), CType(6)};
   TestParams ok_params[kGatherOKCases] = {
-      // Vector indices (output is rank(params)).
-      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1}, {1, 4}},
-      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1}, {2, 5}},
-      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1}, {3, 6}},
-      TestParams{{1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 3}, {3, 1, 2, 6, 4, 5}},
-      // Higher rank indices (output is rank(params) + rank(indices) - 1).
-      TestParams{{1, 2, 3}, {1, 1}, {0}, 2, {1, 1, 1, 3}, {1, 2, 3}},
+      // Indices are always of rank>1, and output rank is
+      // rank(params) + rank(indices) - 1.
+      // TODO(laigd): do we support 0-rank ITensor as indices?
+      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1, 1}, {1, 4}},
+      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1, 1}, {2, 5}},
+      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1, 1}, {3, 6}},
+      TestParams{
+          {1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 1, 3}, {3, 1, 2, 6, 4, 5}},
+      TestParams{{3, 2},
+                 {2, 2},
+                 {0, 0, 1, 0},
+                 2,
+                 {3, 1, 2, 2},
+                 {1, 1, 2, 1, 3, 3, 4, 3, 5, 5, 6, 5}},
   };
 
   // Ok.
@@ -3382,14 +3479,12 @@ void TestConvertGather(OpConverterTest* test) {
                              output.tensor()->getDimensions());
 
     // Create input in CType and convert expected output to CType.
-    std::vector<CType> inputs = {CType(1), CType(2), CType(3),
-                                 CType(4), CType(5), CType(6)};
     std::vector<CType> converted_expected_output(
         ok_params[i].expected_output.begin(),
         ok_params[i].expected_output.end());
 
     const DataVec input_data{
-        {"params", test::AsTensor<CType>(inputs)},
+        {"params", test::AsTensor<CType>(params_input)},
         {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
     DataVec output_data{
         {"my_gather",

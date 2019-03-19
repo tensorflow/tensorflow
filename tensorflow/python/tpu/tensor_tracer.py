@@ -58,6 +58,7 @@ _REASON_OUTSIDE_OP_RANGE = 'not-traced-outside-op-range'
 _REASON_UNSAFE_OP = 'not-traced-unsafe-op'
 _REASON_WHILELOOP_OP = 'not-traced-special-whileloop-op'
 _REASON_UNSAFE_SCALAR = 'not-traced-unsafe-scalar'
+_REASON_SKIP_SCALAR = 'not-traced-scalar'
 _REASON_LESS_INTERESTING_OP = 'not-traced-less-interesting-op'
 _REASON_DEVICE_MISMATCH = 'not-traced-device-mismatch'
 _REASON_DYNAMIC_SHAPE = 'not-traced-dynamic-shape'
@@ -95,6 +96,7 @@ _FLAG_NO_EQUAL_PAT = re.compile(r'\s*--([^=]+)\s*')
 _FLAG_NAME_ENABLE = 'enable'
 _FLAG_NAME_TRACE_MODE = 'trace_mode'
 _FLAG_NAME_USE_COMPACT_TRACE = 'compact_trace'
+_FLAG_NAME_TRACE_SCALAR_OPS = 'trace_scalar'
 _FLAG_NAME_SUBMODE = 'submode'
 _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS = 'include_less_interesting_ops'
 _FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
@@ -218,7 +220,7 @@ def _create_tensor_values_cache(graph, num_tensors):
             _COMPACT_TRACE_ENTRY_INIT_VALUE),
         trainable=False,
         use_resource=True,
-        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.GLOBAL_VARIABLES])
+        collections=[_TENSOR_TRACER_STORAGE, ops.GraphKeys.LOCAL_VARIABLES])
 
 
 class TensorTracer(object):
@@ -239,6 +241,7 @@ class TensorTracer(object):
   """
   # The set of graphs that are rewritten by tensor tracer.
   _traced_graphs = set()
+
   @staticmethod
   def _match_next_flag(flags, pos):
     """Returns the match for the next TensorTracer flag.
@@ -274,6 +277,7 @@ class TensorTracer(object):
     """Validates if the TensorTrace flags passed are valid."""
     valid_flag_names = [_FLAG_NAME_ENABLE, _FLAG_NAME_TRACE_MODE,
                         _FLAG_NAME_USE_COMPACT_TRACE,
+                        _FLAG_NAME_TRACE_SCALAR_OPS,
                         _FLAG_NAME_SUBMODE,
                         _FLAG_NAME_EXCLUDED_OPNAMES,
                         _FLAG_NAME_EXCLUDED_OPTYPES,
@@ -540,54 +544,56 @@ class TensorTracer(object):
        cycle is found) and the second element is either the sorted
        list of nodes or the cycle of nodes found.
     """
+    def _is_loop_edge(op):
+      """Returns true if the op is the end of a while-loop creating a cycle."""
+      return op.type in ['NextIteration']
 
-    def visit(op, cycle, permanently_marked_ops,
-              temporarily_marked_ops, sorted_ops):
-      """Recursively visits all Ops in a graph.
+    def _in_op_degree(op):
+      """Returns the number of incoming edges to the given op.
 
+      The edge calculation skips the edges that come from 'NextIteration' ops.
+      NextIteration creates a cycle in the graph. We break cycles by treating
+      this op as 'sink' and ignoring all outgoing edges from it.
       Args:
-         op: the current Op being visited.
-         cycle: a cycle of Ops found.
-         permanently_marked_ops: the set of Ops that were already visited.
-         temporarily_marked_ops: the set of Ops that we have visited during
-                                 the current descent.
-         sorted_ops: the list of Ops sorted in topological order.
+        op: Tf.Operation
+      Returns:
+        the number of incoming edges.
       """
+      count = 0
+      for op in op.control_inputs + [in_tensor.op for in_tensor in op.inputs]:
+        if not _is_loop_edge(op):
+          count += 1
+      return count
 
-      if cycle:
-        return
-      if op in permanently_marked_ops:
-        return
-      if op in temporarily_marked_ops:
-        cycle = temporarily_marked_ops
-        return
-      temporarily_marked_ops.add(op)
-      for i in range(len(op.outputs)):
-        out_tensor = op.outputs[i]
-        for consumer_op in out_tensor.consumers():
-          visit(consumer_op, cycle, permanently_marked_ops,
-                temporarily_marked_ops, sorted_ops)
-      # pylint: disable=protected-access
-      for ctrl_output_op in op._control_outputs:
-        # pylint: enable=protected-access
-        visit(ctrl_output_op, cycle, permanently_marked_ops,
-              temporarily_marked_ops, sorted_ops)
-      temporarily_marked_ops.remove(op)
-      permanently_marked_ops.add(op)
-      sorted_ops.insert(0, op)
-
-    graph_cycle = set([])
     sorted_ops = []
-    permanently_marked_ops = set([])
-    temporarily_marked_ops = set([])
-    unsorted_ops = g.get_operations()
-    for op in unsorted_ops:
-      visit(op, graph_cycle, permanently_marked_ops,
-            temporarily_marked_ops, sorted_ops)
-    if graph_cycle:
-      return (False, graph_cycle)
+    op_in_degree = {op: _in_op_degree(op) for op in g.get_operations()}
+
+    frontier = [op for (op, degree) in op_in_degree.items() if degree == 0]
+    while frontier:
+      op = frontier.pop()
+      # Remove the op from graph, and remove its outgoing edges.
+      sorted_ops.append(op)
+      if _is_loop_edge(op):
+        continue
+      # pylint: disable=protected-access
+      consumers = list(op._control_outputs)
+      # pylint: enable=protected-access
+      for out_tensor in op.outputs:
+        consumers += [consumer_op for consumer_op in out_tensor.consumers()]
+
+      for consumer in consumers:
+        # For each deleted edge shift the bucket of the vertex.
+        op_in_degree[consumer] -= 1
+        if op_in_degree[consumer] == 0:
+          frontier.append(consumer)
+        if op_in_degree[consumer] < 0:
+          raise ValueError('consumer:%s degree mismatch'%consumer.name)
+
+    left_ops = set([op for (op, degree) in op_in_degree.items() if degree > 0])
+    if left_ops:
+      return (False, left_ops)
     else:
-      assert len(unsorted_ops) == len(sorted_ops)
+      assert len(g.get_operations()) == len(sorted_ops)
       return (True, sorted_ops)
 
   @staticmethod
@@ -646,6 +652,8 @@ class TensorTracer(object):
     self._num_replicas_per_host = None
     self._num_hosts = None
     self._replica_id = None
+    self._trace_scalar_ops = TensorTracer._is_flag_on(
+        _FLAG_NAME_TRACE_SCALAR_OPS)
     _, self._graph_dump_path = TensorTracer.get_flag_value(
         _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
 
@@ -1076,14 +1084,19 @@ class TensorTracer(object):
     rank = len(out_tensor.shape)
     if rank < 1:
       # scalar
-      if TensorTracer.unsafe_scalar_trace(out_tensor.op):
-        self._instrument_records[out_tensor.name] = TensorTracer.reason(
-            op_id, _REASON_UNSAFE_SCALAR)
-        return True
+      if self._trace_scalar_ops:
+        if TensorTracer.unsafe_scalar_trace(out_tensor.op):
+          self._instrument_records[out_tensor.name] = TensorTracer.reason(
+              op_id, _REASON_UNSAFE_SCALAR)
+          return True
+        else:
+          self._instrument_records[out_tensor.name] = TensorTracer.reason(
+              op_id, _REASON_SCALAR_GET_TRACED)
+          return False
       else:
         self._instrument_records[out_tensor.name] = TensorTracer.reason(
-            op_id, _REASON_SCALAR_GET_TRACED)
-        return False
+            op_id, _REASON_SKIP_SCALAR)
+        return True
     else:
       # tensor
       self._instrument_records[out_tensor.name] = TensorTracer.reason(

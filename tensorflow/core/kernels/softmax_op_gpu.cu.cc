@@ -180,12 +180,12 @@ class SoftmaxOpGPU : public OpKernel {
           context, const_cast<acc_type*>(sum_probs.flat<acc_type>().data()),
           input_itr, rows, cols);
 
-      CudaLaunchKernel(
+      TF_CHECK_OK(CudaLaunchKernel(
           GenerateNormalizedProb<T, acc_type>, numBlocks, numThreads, 0,
           cu_stream, reinterpret_cast<const T*>(logits_in_.flat<T>().data()),
           reinterpret_cast<const acc_type*>(sum_probs.flat<acc_type>().data()),
           reinterpret_cast<const T*>(max_logits.flat<T>().data()),
-          const_cast<T*>(softmax_out->flat<T>().data()), rows, cols, log_);
+          const_cast<T*>(softmax_out->flat<T>().data()), rows, cols, log_));
     }
   }
 

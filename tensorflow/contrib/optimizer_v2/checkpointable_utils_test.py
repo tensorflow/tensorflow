@@ -302,7 +302,7 @@ class CheckpointingTests(test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.AdamOptimizer(0.001)
-          root = util.Checkpoint(
+          root = util.CheckpointV1(
               optimizer=optimizer, model=model,
               global_step=training_util.get_or_create_global_step())
           input_value = constant_op.constant([[3.]])
@@ -704,8 +704,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       if context.executing_eagerly():
         self._check_sentinels(root)
       if context.executing_eagerly():
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_consumed()
+        status.assert_consumed()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
@@ -727,10 +726,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.test_session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(
-            session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)

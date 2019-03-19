@@ -43,6 +43,12 @@ extern const char* const kOutputPHName;
 
 namespace convert {
 
+#define IS_TRT_VERSION_GE(major, minor, patch)                  \
+  ((NV_TENSORRT_MAJOR > major) ||                               \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
+    NV_TENSORRT_PATCH >= patch))
+
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -74,14 +80,14 @@ struct EngineConnection {
   const string outside_node_name;
   const int outside_id;
   const int outside_port;
-  tensorflow::PartialTensorShape outside_shape;  // Only set for input edge.
+  PartialTensorShape outside_shape;  // Only set for input edge.
 
   const string inside_node_name;
   const int inside_id;
   const int inside_port;
-  tensorflow::PartialTensorShape inside_shape;  // Only set for output edge.
+  PartialTensorShape inside_shape;  // Only set for output edge.
 
-  tensorflow::DataType connection_type;
+  DataType connection_type;
   const bool is_input_edge;
 
   // The port number of the TRT node connected with this edge.
@@ -97,7 +103,7 @@ struct EngineInfo {
 
   string engine_name;
   string device;
-  tensorflow::GraphDef segment_graph_def;
+  GraphDef segment_graph_def;
 
   // Non-control input connections inside this vector are sorted in a way such
   // that, the segment nodes connecting to them are topological sorted.
@@ -123,14 +129,14 @@ struct EngineInfo {
 //   topological order.
 // - segment_def: the output GraphDef, whose non-input/output nodedefs will be
 //   sorted in topological order.
+// - scope_name: the name of the scope where the TRTEngineOp will be placed.
 //
 // TODO(aaroey): add tests to validate these properties.
-tensorflow::Status ConvertSegmentToGraphDef(
-    const tensorflow::Graph* graph,
-    const tensorflow::grappler::GraphProperties& graph_properties,
+Status ConvertSegmentToGraphDef(
+    const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,
-    std::vector<EngineConnection>* connections,
-    tensorflow::GraphDef* segment_def, string* common_scope);
+    std::vector<EngineConnection>* connections, GraphDef* segment_def,
+    string* scope_name);
 
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'
@@ -140,12 +146,11 @@ tensorflow::Status ConvertSegmentToGraphDef(
 // - convert_successfully: indicates whether the converson to TensorRT network
 //   is successful. This is different than successfully building the engine:
 //   building can still fail afterwards.
-tensorflow::Status ConvertGraphDefToEngine(
-    const tensorflow::GraphDef& gdef, TrtPrecisionMode precision_mode,
-    int max_batch_size, size_t max_workspace_size_bytes,
-    const std::vector<tensorflow::PartialTensorShape>& input_shapes,
-    Logger* logger, nvinfer1::IGpuAllocator* allocator,
-    TRTInt8Calibrator* calibrator,
+Status ConvertGraphDefToEngine(
+    const GraphDef& gdef, TrtPrecisionMode precision_mode, int max_batch_size,
+    size_t max_workspace_size_bytes,
+    const std::vector<PartialTensorShape>& input_shapes, Logger* logger,
+    nvinfer1::IGpuAllocator* allocator, TRTInt8Calibrator* calibrator,
     TrtUniquePtrType<nvinfer1::ICudaEngine>* engine, bool use_calibration,
     bool* convert_successfully);
 
@@ -155,7 +160,7 @@ class OutputEdgeValidator {
  public:
   // Return true if the specified edge is eligible to be an output edge of the
   // TRT segment.
-  bool operator()(const tensorflow::Edge* out_edge) const;
+  bool operator()(const Edge* out_edge) const;
 };
 
 string DebugString(const nvinfer1::DimensionType type);
@@ -203,7 +208,7 @@ class TRT_ShapedWeights {
 
   // TODO(aaroey): make these private.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
-  tensorflow::DataType type_;
+  DataType type_;
 
  private:
   // This constructor is only used by TrtWeightStore, which creates the
@@ -229,8 +234,7 @@ class TRT_ShapedWeights {
 class TrtWeightStore {
  public:
   // Get a TRT_ShapedWeights with 'type' and 'dims'.
-  TRT_ShapedWeights GetTempWeights(tensorflow::DataType type,
-                                   const nvinfer1::Dims& dims);
+  TRT_ShapedWeights GetTempWeights(DataType type, const nvinfer1::Dims& dims);
 
   // Get a TRT_ShapedWeights with the same data type and dimensions as
   // 'weights'.
@@ -341,8 +345,7 @@ class Converter;
 
 // Parameters for each op converter.
 struct OpConverterParams {
-  OpConverterParams(Converter* arg_converter,
-                    const tensorflow::NodeDef& arg_node_def,
+  OpConverterParams(Converter* arg_converter, const NodeDef& arg_node_def,
                     const std::vector<TRT_TensorOrWeights>& arg_inputs,
                     std::vector<TRT_TensorOrWeights>* arg_outputs,
                     bool arg_validation_only, TrtWeightStore* arg_weight_store)
@@ -354,7 +357,7 @@ struct OpConverterParams {
         weight_store(arg_weight_store) {}
 
   Converter* converter;
-  const tensorflow::NodeDef& node_def;
+  const NodeDef& node_def;
   const std::vector<TRT_TensorOrWeights>& inputs;
   std::vector<TRT_TensorOrWeights>* outputs;
   const bool validation_only;
@@ -379,9 +382,12 @@ class TrtNodeValidator {
   Status ValidateNode(
       const NodeDef& node_def,
       const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
+      const TrtPrecisionMode precision_mode,
       const grappler::GraphProperties& graph_properties);
 
  private:
+  static const std::set<string>* quantize_ops;
+
   void RegisterOpValidators();
 
   // Convert a Const node to a TRT_TensorOrWeights.
@@ -434,7 +440,7 @@ class Converter {
   // function/subgraph.
 
   // Convert the node to TRT network.
-  Status ConvertNode(const tensorflow::NodeDef& node_def);
+  Status ConvertNode(const NodeDef& node_def);
 
   // Add input tensor to the TRT network with given 'name', 'dtype', 'dims' and
   // 'batch_size'.
@@ -487,8 +493,13 @@ class Converter {
                          const nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims'.
+  //
+  // If validation_only is true, it doesn't do the conversion but only do some
+  // minimum validation for the eligibility of the conversion, and *tensor will
+  // be set to nullptr.
   Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                const nvinfer1::Dims& dims,
+                               const bool validation_only,
                                const nvinfer1::ITensor** tensor);
 
   // Return OK if the broadcast scheme is supported and compute the shapes after
@@ -515,7 +526,7 @@ class Converter {
   Status GetTensorOrWeights(const string& name, TRT_TensorOrWeights* output);
 
   // Get the inputs of 'node_def' from trt_tensors_.
-  Status GetInputs(const tensorflow::NodeDef& node_def,
+  Status GetInputs(const NodeDef& node_def,
                    std::vector<TRT_TensorOrWeights>* inputs) const;
 
   void RegisterOpConverters();

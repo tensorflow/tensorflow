@@ -25,6 +25,9 @@ from tensorflow.python.feature_column import feature_column as core_fc
 from tensorflow.python.feature_column import feature_column_lib as core_fc_lib
 from tensorflow.python.tpu import feature_column as tpu_fc
 from tensorflow.python.tpu import tpu_embedding
+from tensorflow.python.tpu.tpu_embedding import AdagradParameters
+from tensorflow.python.tpu.tpu_embedding import AdamParameters
+from tensorflow.python.tpu.tpu_embedding import StochasticGradientDescentParameters
 
 # pylint: disable=protected-access
 _TPU_EMBEDDING_COLUMN_CLASSES = (tpu_fc._TPUEmbeddingColumn,
@@ -33,6 +36,8 @@ _EMBEDDING_COLUMN_CLASSES = (core_fc._EmbeddingColumn,
                              core_fc_lib.EmbeddingColumn,
                              core_fc._SharedEmbeddingColumn)
 _SUPPORTED_FEATURE_COLUMNS = (core_fc._NumericColumn, core_fc_lib.NumericColumn)
+_SUPPORTED_OPTIMIZERS = (AdagradParameters, AdamParameters,
+                         StochasticGradientDescentParameters)
 
 # pylint: enable=protected-access
 
@@ -73,7 +78,7 @@ def _get_slot_variable_names(scope_name, var_name, optimization_parameters):
 
 
 def get_full_variable_names(
-    graph, table_to_config_dict, optimization_parameters):
+    graph, table_to_config_dict, optimization_parameters=None):
   """Return embedding variable names and slot variables which are consistent with CPU runs."""
   collection = graph.get_collection_ref(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   if not collection:
@@ -89,8 +94,9 @@ def get_full_variable_names(
     (scope_name, var_name) = collection[0][embedding_var_name]
     embedding_variable_name_by_table[table_name] = (
         _get_embedding_variable_name(scope_name, var_name))
-    slot_variable_names_by_table[table_name] = _get_slot_variable_names(
-        scope_name, var_name, optimization_parameters)
+    if optimization_parameters:
+      slot_variable_names_by_table[table_name] = _get_slot_variable_names(
+          scope_name, var_name, optimization_parameters)
 
   graph.clear_collection(tpu_fc._TPU_FC_TO_SCOPE)  # pylint: disable=protected-access
   return embedding_variable_name_by_table, slot_variable_names_by_table
@@ -139,68 +145,25 @@ def get_tpu_embedding_config_from_feature_columns(feature_columns):
   return table_to_config, feature_to_table
 
 
-def _get_tpu_embedding_optimization_parameters(embedding_config_spec):
-  """Get tpu_embedding._OptimizationParameters from EmbeddingConfigSpec."""
-  if embedding_config_spec.optimizer_type == 'adagrad':
-    return tpu_embedding.AdagradParameters(
-        embedding_config_spec.learning_rate,
-        embedding_config_spec.adagrad_initial_accumulator,
-        embedding_config_spec.use_gradient_accumulation)
-  elif embedding_config_spec.optimizer_type == 'sgd':
-    return tpu_embedding.StochasticGradientDescentParameters(
-        embedding_config_spec.learning_rate,
-        embedding_config_spec.use_gradient_accumulation)
-  elif embedding_config_spec.optimizer_type == 'adam':
-    return tpu_embedding.AdamParameters(
-        embedding_config_spec.learning_rate,
-        embedding_config_spec.adam_parameters.beta1,
-        embedding_config_spec.adam_parameters.beta2,
-        embedding_config_spec.adam_parameters.epsilon,
-        use_gradient_accumulation=embedding_config_spec
-        .use_gradient_accumulation)
-  else:
-    raise ValueError('optimizer_type must be adagrad or sgd or adam for now.')
-
-
-AdamParameters = collections.namedtuple('AdamParameters',
-                                        ['beta1', 'beta2', 'epsilon'])
-
-
-# TODO(shizhiw): Improve the API to support more optimizer parameters in API.
 class EmbeddingConfigSpec(
     collections.namedtuple('EmbeddingConfigSpec', [
-        'feature_columns', 'learning_rate', 'optimizer_type',
-        'adagrad_initial_accumulator', 'clipping_limit',
-        'use_gradient_accumulation', 'adam_parameters'
+        'feature_columns', 'optimization_parameters', 'clipping_limit',
     ])):
   """Class to keep track of embedding config specification."""
 
   def __new__(cls,
               feature_columns,
-              learning_rate,
-              optimizer_type='adagrad',
-              adagrad_initial_accumulator=None,
-              clipping_limit=None,
-              use_gradient_accumulation=False,
-              adam_parameters=None):
+              optimization_parameters,
+              clipping_limit=None):
     """Creates an EmbeddingConfigSpec instance.
 
     Args:
       feature_columns: All `FeatureColumn`s used by model.
-      learning_rate: embedding optimizer learning rate.
-      optimizer_type: (String) Name of the optimizer for embedding gradients
-        updates. Must be either 'adagrad' ( `tf.train.AdagradOptimizer`, default
-        value), 'sgd' (`tf.train.GradientDescentOptimizer`), or 'adam'
-        (`tf.contrib.opt.LazyAdamOptimizer`) for lazy Adam. This optimizer will
-        be applied to all embedding variables specified by `feature_columns`.
-      adagrad_initial_accumulator: Initial accumulator for Adagrad. Used when
-        optimizer_type is 'adagrad'. Default is `0.1`.
+      optimization_parameters: An instance of `AdagradParameters`,
+        `AdamParameters` or `StochasticGradientDescentParameters`. This
+        optimizer will be applied to all embedding variables specified by
+        `feature_columns`.
       clipping_limit: (Optional) Clipping limit (absolute value).
-      use_gradient_accumulation: (Experimental) Whether to accumulate the
-        gradients across TPU embedding mini-batches. Gradient accumulation does
-        not affect SGD and therefore this is applicable only for Adagrad.
-      adam_parameters: AdamParameters. Used when optimizer_type is 'adam'.
-        Default is 0.9 for beta1, 0.999 for beta2 and 1e-8 for epsilon.
 
     Returns:
       An EmbeddingConfigSpec instance.
@@ -210,9 +173,7 @@ class EmbeddingConfigSpec(
       TypeError: If the feature columns are not of ths correct type (one of
         _SUPPORTED_FEATURE_COLUMNS, _TPU_EMBEDDING_COLUMN_CLASSES OR
         _EMBEDDING_COLUMN_CLASSES).
-      ValueError: If use_gradient_accumulation is True for SGD.
-      ValueError: If `optimizer_type` is not one of "adagrad" or "sgd" or
-        "adam".
+      ValueError: If `optimization_parameters` is not one of the required types.
     """
     if not feature_columns:
       raise ValueError('`feature_columns` cannot be `None` or empty.')
@@ -229,38 +190,16 @@ class EmbeddingConfigSpec(
             'All feature columns must be supported types in {}. Got {}'.format(
                 supported_classes, type(column)))
 
-    if optimizer_type == 'adagrad':
-      if adagrad_initial_accumulator is None:
-        adagrad_initial_accumulator = 0.1
-      if adagrad_initial_accumulator <= 0:
-        raise ValueError('Adagrad initial_accumulator must be positive')
-    elif optimizer_type == 'sgd':
-      if use_gradient_accumulation:
-        raise ValueError('Gradient accumulation makes sense for Adagrad only.')
-    elif optimizer_type == 'adam':
-      if adam_parameters is None:
-        adam_parameters = AdamParameters(0.9, 0.999, 1e-8)
-      if adam_parameters.beta1 < 0. or adam_parameters.beta1 >= 1.:
-        raise ValueError('beta1 must be between 0. and 1; got {}.'.format(
-            adam_parameters.beta1))
-      if adam_parameters.beta2 < 0. or adam_parameters.beta2 >= 1.:
-        raise ValueError('beta2 must be between 0. and 1; got {}.'.format(
-            adam_parameters.beta2))
-      if adam_parameters.epsilon <= 0.:
-        raise ValueError('epsilon must be positive; got {}.'.format(
-            adam_parameters.epsilon))
-    else:
-      raise ValueError('optimizer_type must be adagrad or sgd or adam for now.')
+    if not isinstance(optimization_parameters, _SUPPORTED_OPTIMIZERS):
+      raise ValueError('optimization_parameters must be an instance of type '
+                       '{}. Got {}.'.format(_SUPPORTED_OPTIMIZERS,
+                                            type(optimization_parameters)))
 
     return super(EmbeddingConfigSpec, cls).__new__(
         cls,
         feature_columns=feature_columns,
-        learning_rate=learning_rate,
-        optimizer_type=optimizer_type,
-        adagrad_initial_accumulator=adagrad_initial_accumulator,
-        clipping_limit=clipping_limit,
-        use_gradient_accumulation=use_gradient_accumulation,
-        adam_parameters=adam_parameters)
+        optimization_parameters=optimization_parameters,
+        clipping_limit=clipping_limit)
 
 
 class EmbeddingConfig(object):
@@ -272,19 +211,17 @@ class EmbeddingConfig(object):
   """
 
   def __init__(self, embedding_config_spec, train_batch_size, eval_batch_size,
-               num_hosts, num_cores, master):
+               num_hosts, num_cores, run_config):
     self._embedding_config_spec = embedding_config_spec
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
     self._num_hosts = num_hosts
     self._num_cores = num_cores
-    self._master = master
+    self._run_config = run_config
 
     self._table_to_config_dict, self._feature_to_table_dict = (
         get_tpu_embedding_config_from_feature_columns(
             embedding_config_spec.feature_columns))
-    self._optimization_parameters = _get_tpu_embedding_optimization_parameters(
-        self._embedding_config_spec)
     self._mode_to_tpu_embedding_dict = {}
     self.dummy_table_variables = None
 
@@ -300,19 +237,32 @@ class EmbeddingConfig(object):
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       tpu_embedding_mode = tpu_embedding.TRAINING
+      optimization_parameters = (
+          self._embedding_config_spec.optimization_parameters)
     elif (mode == model_fn_lib.ModeKeys.EVAL or
           mode == model_fn_lib.ModeKeys.PREDICT):
       tpu_embedding_mode = tpu_embedding.INFERENCE
+      optimization_parameters = None
     else:
       raise ValueError('Mode {} is not supported.'.format(mode))
 
+    if self._run_config.cluster:
+      master = self._run_config.cluster.master()
+      cluster_spec = self._run_config.cluster.cluster_spec()
+      cluster_def = cluster_spec.as_cluster_def() if cluster_spec else None
+    else:
+      master = (
+          self._run_config.evaluation_master
+          if mode == model_fn_lib.ModeKeys.EVAL else self._run_config.master)
+      cluster_def = None
     tpu_embedding_ = tpu_embedding.TPUEmbedding(
         self._table_to_config_dict,
         self._feature_to_table_dict,
         batch_size,
         tpu_embedding_mode,
-        self._master,
-        self._optimization_parameters,
+        master,
+        optimization_parameters,
+        cluster_def,
     )
     return tpu_embedding_
 

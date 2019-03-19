@@ -1280,7 +1280,7 @@ class ExecutorState {
 
   // Available via OpKernelContext to every OpKernel invocation.
   mutex num_deferred_ops_mu_;
-  condition_variable num_deferred_ops_cv_;
+  condition_variable no_deferred_ops_cv_;
   int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
 
   mutex mu_;
@@ -1648,7 +1648,9 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.dec_num_deferred_ops_function = [this]() {
     mutex_lock lock(num_deferred_ops_mu_);
     num_deferred_ops_--;
-    num_deferred_ops_cv_.notify_all();
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
   };
 
   Status s;
@@ -2478,7 +2480,7 @@ void ExecutorState::Finish() {
   {
     mutex_lock lock(num_deferred_ops_mu_);
     while (num_deferred_ops_ > 0) {
-      num_deferred_ops_cv_.wait(lock);
+      no_deferred_ops_cv_.wait(lock);
     }
   }
 

@@ -41,14 +41,13 @@ class LiveValuesResolverTest(test.TestCase):
                          literals=None,
                          arg_types=None):
     literals = literals or {}
-    node, source = parser.parse_entity(test_fn)
+    node, source, _ = parser.parse_entity(test_fn)
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,
         namespace=namespace,
         arg_values=None,
-        arg_types=arg_types,
-        owner_type=None)
+        arg_types=arg_types)
     node = qual_names.resolve(node)
     graphs = cfg.build(node)
     ctx = transformer.Context(entity_info)
@@ -68,7 +67,7 @@ class LiveValuesResolverTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn, {}, literals={'a': 'bar'})
-    retval_node = node.body[0].body[0].value
+    retval_node = node.body[0].value
     self.assertEquals('bar', anno.getanno(retval_node, 'live_val'))
 
   def test_primitive_values(self):
@@ -79,7 +78,7 @@ class LiveValuesResolverTest(test.TestCase):
       return a
 
     node = self._parse_and_analyze(test_fn, {'a': True})
-    retval_node = node.body[0].body[0].value
+    retval_node = node.body[0].value
     if six.PY2:
       self.assertEqual(
           anno.getanno(retval_node, 'fqn'), ('__builtin__', 'bool'))
@@ -95,7 +94,7 @@ class LiveValuesResolverTest(test.TestCase):
       return foo()
 
     node = self._parse_and_analyze(test_fn, {'foo': foo})
-    func_node = node.body[0].body[0].value.func
+    func_node = node.body[0].value.func
     self.assertEquals(foo, anno.getanno(func_node, 'live_val'))
     self.assertEquals(('foo',), anno.getanno(func_node, 'fqn'))
 
@@ -105,7 +104,7 @@ class LiveValuesResolverTest(test.TestCase):
       return constant_op.constant(0)
 
     node = self._parse_and_analyze(test_fn, {'constant_op': constant_op})
-    func_node = node.body[0].body[0].value.func
+    func_node = node.body[0].value.func
     self.assertEquals(constant_op.constant, anno.getanno(func_node, 'live_val'))
     self.assertEquals((constant_op.__name__, 'constant'),
                       anno.getanno(func_node, 'fqn'))
@@ -123,7 +122,7 @@ class LiveValuesResolverTest(test.TestCase):
     node = self._parse_and_analyze(
         TestClass.test_fn, {'constant_op': constant_op},
         arg_types={'self': (TestClass.__name__, TestClass)})
-    func_node = node.body[0].body[0].value.func
+    func_node = node.body[0].value.func
     self.assertEquals(TestClass.member, anno.getanno(func_node, 'live_val'))
     self.assertEquals(TestClass, anno.getanno(func_node, 'parent_type'))
     self.assertEquals(('TestClass', 'member'), anno.getanno(func_node, 'fqn'))

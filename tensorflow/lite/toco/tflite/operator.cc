@@ -378,6 +378,12 @@ class Concatenation
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -618,6 +624,12 @@ class L2Normalization
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    // Version 2 supports signed int8 input types.
+    if (output_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -953,7 +965,7 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    ::tflite::LSTMKernelType kernel_type;
+    ::tflite::LSTMKernelType kernel_type = ::tflite::LSTMKernelType_FULL;
     switch (op.kernel_type) {
       case LstmCellOperator::KERNEL_BASIC:
         kernel_type = ::tflite::LSTMKernelType_BASIC;
@@ -961,6 +973,8 @@ class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
       case LstmCellOperator::KERNEL_FULL:
         kernel_type = ::tflite::LSTMKernelType_FULL;
         break;
+      default:
+        return -1;
     }
 
     // Current toco converter only supports tanh, no clip.
@@ -1915,7 +1929,7 @@ class UnidirectionalSequenceRnn
   }
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    // Only support tanh actication, so check that tflite type is tanh.
+    // Only support tanh activation, so check that tflite type is tanh.
     DCHECK(options.fused_activation_function() ==
            ::tflite::ActivationFunctionType_TANH);
   }
@@ -2191,6 +2205,31 @@ class Dequantize
   }
 };
 
+class ReverseSequence
+    : public BuiltinOperator<ReverseSequenceOperator,
+                             ::tflite::ReverseSequenceOptions,
+                             ::tflite::BuiltinOptions_ReverseSequenceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReverseSequenceOptions(*builder, op.seq_dim,
+                                                  op.batch_dim);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->seq_dim = options.seq_dim();
+    op->batch_dim = options.batch_dim();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 class Equal : public SimpleOperator<TensorFlowEqualOperator> {
  public:
   explicit Equal() : SimpleOperator("EQUAL", OperatorType::kEqual) {}
@@ -2434,6 +2473,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       OperatorType::kUnidirectionalSequenceRnn));
   ops.push_back(
       MakeUnique<Where>(::tflite::BuiltinOperator_WHERE, OperatorType::kWhere));
+  ops.push_back(
+      MakeUnique<ReverseSequence>(::tflite::BuiltinOperator_REVERSE_SEQUENCE,
+                                  OperatorType::kReverseSequence));
 
   // Custom Operators.
   ops.push_back(

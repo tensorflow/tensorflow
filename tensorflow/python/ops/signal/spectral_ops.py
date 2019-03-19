@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -282,6 +283,8 @@ def _enclosing_power_of_two(value):
     return constant_op.constant(
         int(2**np.ceil(np.log(value_static) / np.log(2.0))), value.dtype)
   return math_ops.cast(
-      math_ops.pow(2.0, math_ops.ceil(
-          math_ops.log(math_ops.to_float(value)) / math_ops.log(2.0))),
-      value.dtype)
+      math_ops.pow(
+          2.0,
+          math_ops.ceil(
+              math_ops.log(math_ops.cast(value, dtypes.float32)) /
+              math_ops.log(2.0))), value.dtype)

@@ -288,8 +288,8 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
-def all_strategy_combinations_minus_default():
-  strategy_minus_default_combinations = combinations.combine(
+def all_strategy_minus_default_and_tpu_combinations():
+  return combinations.combine(
       distribution=[
           combinations.one_device_strategy,
           combinations.one_device_strategy_gpu,
@@ -298,7 +298,11 @@ def all_strategy_combinations_minus_default():
           combinations.core_mirrored_strategy_with_gpu_and_cpu,
           combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph', 'eager'])
-  return strategy_minus_default_combinations + tpu_strategy_combinations()
+
+
+def all_strategy_combinations_minus_default():
+  return (all_strategy_minus_default_and_tpu_combinations() +
+          tpu_strategy_combinations())
 
 
 def strategy_and_optimizer_combinations():
@@ -320,6 +324,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
                                         parameterized.TestCase):
 
   def setUp(self):
+    super(TestEstimatorDistributionStrategy, self).setUp()
     self._base_dir = os.path.join(self.get_temp_dir(),
                                   'keras_mirrored_strategy_test')
     gfile.MakeDirs(self._base_dir)
@@ -327,6 +332,7 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
         tf_random_seed=_RANDOM_SEED, model_dir=self._base_dir)
 
   def tearDown(self):
+    super(TestEstimatorDistributionStrategy, self).tearDown()
     writer_cache.FileWriterCache.clear()
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)
@@ -723,14 +729,22 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       inputs = np.zeros((10, 3), dtype=np.float32)
 
       # As sample size is 10, we batch by 4 so that the last batch is
-      # a partial batch. Also `fit()` using numpy array as inputs without
+      # a partial batch. Also `predict()` using numpy array as inputs without
       # distribution strategy uses entire sample as a single batch. As so,
       # we remove parameters `batch_size` and `steps`.
+      predict_ground_truth = cpu_model.predict(inputs)
       cpu_model.set_weights(model_with_ds_strategy.get_weights())
       self.assertAllClose(
           model_with_ds_strategy.predict(inputs, batch_size=4, steps=3),
-          cpu_model.predict(inputs),
-          atol=1e-5, rtol=1e-5)
+          predict_ground_truth,
+          atol=1e-5,
+          rtol=1e-5)
+      # Test that `steps` is inferred correctly when final partial batch exists.
+      self.assertAllClose(
+          model_with_ds_strategy.predict(inputs, batch_size=4),
+          predict_ground_truth,
+          atol=1e-5,
+          rtol=1e-5)
 
   @combinations.generate(tpu_strategy_combinations())
   def test_predict_multi_output_model_with_partial_batch(
@@ -819,7 +833,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
 
       self.assertEqual(interleaved_output.history['val_loss'],
                        [x[0] for x in user_controlled_output])
-      self.assertEqual(interleaved_output.history['val_mean_absolute_error'],
+      val_mean_absolute_error = interleaved_output.history.get(
+          'val_mean_absolute_error')
+      if not val_mean_absolute_error:
+        # The name of the metric changed in TF2.0
+        val_mean_absolute_error = interleaved_output.history['val_mae']
+      self.assertEqual(val_mean_absolute_error,
                        [x[1] for x in user_controlled_output])
       self.assertEqual(interleaved_output.history['val_categorical_accuracy'],
                        [x[2] for x in user_controlled_output])
@@ -1281,28 +1300,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
     model.predict(inputs, steps=1)
     model.evaluate(inputs, targets, steps=1)
-
-  # TODO(b/124377929): Remove error assertions once subclassed models
-  # are supported in DistributedStrategy.
-  @combinations.generate(all_strategy_combinations_minus_default())
-  def test_distribution_strategy_on_subclassed_model(self, distribution):
-    with distribution.scope():
-      model = simple_subclassed_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss)
-
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 2), dtype=np.float32)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.predict(inputs, steps=1)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.evaluate(inputs, targets, steps=1)
 
   @combinations.generate(all_strategy_combinations_minus_default())
   def test_distribution_strategy_one_dimensional(self, distribution):

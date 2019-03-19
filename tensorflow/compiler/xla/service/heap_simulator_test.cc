@@ -54,8 +54,8 @@ TEST_F(MinimumMemoryForSequenceTest, MultiComputation) {
       HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
   // Free cond_param[] (16 bytes), Alloc PRED[] (1 byte)
   HloInstruction* cond_lt = cond_builder.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                   HloOpcode::kLt, cond_iter, cond_data));
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_data, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -113,7 +113,8 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
   //   %slice = f32[1]{0} slice(f32[4]{0} %cond_param), slice={[0:1]}
   //   %reshape = f32[] reshape(f32[1]{0} %slice)
   //   %constant = f32[] constant(0)
-  //   ROOT %not-equal-to = pred[] not-equal-to(f32[] %reshape, f32[] %constant)
+  //   ROOT %not-equal-to = pred[] compare(f32[] %reshape, f32[] %constant),
+  //   direction=NE
   // }
 
   // ENTRY %SubcomputationAccounting () -> f32[2,4] {
@@ -143,9 +144,9 @@ TEST_F(MinimumMemoryForSequenceTest, SubcomputationAccounting) {
       cond_builder.AddInstruction(HloInstruction::CreateReshape(r0f32, slice));
   HloInstruction* zero = cond_builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0)));
-  HloInstruction* cond_comparison =
-      cond_builder.AddInstruction(HloInstruction::CreateBinary(
-          ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, reshape, zero));
+  HloInstruction* cond_comparison = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), reshape,
+                                    zero, ComparisonDirection::kNe));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
 
   // param - 1
@@ -703,8 +704,8 @@ TEST_F(HeapSimulatorTest, WholeModule) {
   HloInstruction* cond_data = cond_builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
   HloInstruction* cond_lt = cond_builder.AddInstruction(
-      HloInstruction::CreateBinary(ShapeUtil::MakeShape(PRED, {}),
-                                   HloOpcode::kLt, cond_iter, cond_data));
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_data, ComparisonDirection::kLt));
   HloComputation* cond_computation =
       tracker.module()->AddEmbeddedComputation(cond_builder.Build());
 

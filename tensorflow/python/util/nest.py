@@ -322,8 +322,8 @@ def flatten_dict_items(dictionary):
 
   Raises:
     TypeError: If the input is not a dictionary.
-    ValueError: If any key and value have not the same structure, or if keys are
-      not unique.
+    ValueError: If any key and value do not have the same structure layout, or
+    if keys are not unique.
   """
   if not isinstance(dictionary, (dict, _collections.Mapping)):
     raise TypeError("input must be a dictionary")
@@ -447,7 +447,7 @@ def map_structure(func, *structure, **kwargs):
 
   Applies `func(x[0], x[1], ...)` where x[i] is an entry in
   `structure[i]`.  All structures in `structure` must have the same arity,
-  and the return value will contain the results in the same structure.
+  and the return value will contain results with the same structure layout.
 
   Args:
     func: A callable that accepts as many arguments as there are structures.
@@ -513,9 +513,9 @@ def map_structure_with_paths(func, *structure, **kwargs):
   Applies `func(path, x[0], x[1], ..., **kwargs)` where x[i] is an entry in
   `structure[i]` and `path` is the common path to x[i] in the structures.  All
   structures in `structure` must have the same arity, and the return value will
-  contain the results in the same structure. Special kwarg `check_types`
-  determines whether the types of iterables within the structure must be the
-  same-- see **kwargs definition below.
+  contain the results with the same structure layout. Special kwarg
+  `check_types` determines whether the types of iterables within the structure
+  must be the same-- see **kwargs definition below.
 
   Args:
     func: A callable with the signature func(path, *values, **kwargs) that is
@@ -714,8 +714,8 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True):
   of the nested structure. We achieve this by specifying a shallow structure,
   `shallow_tree`, we wish to flatten up to.
 
-  The input, `input_tree`, can be thought of as having the same structure as
-  `shallow_tree`, but with leaf nodes that are themselves tree structures.
+  The input, `input_tree`, can be thought of as having the same structure layout
+  as `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
   Examples:
 
@@ -793,8 +793,8 @@ def flatten_with_tuple_paths_up_to(shallow_tree, input_tree, check_types=True):
   of the nested structure. We achieve this by specifying a shallow structure,
   `shallow_tree`, we wish to flatten up to.
 
-  The input, `input_tree`, can be thought of as having the same structure as
-  `shallow_tree`, but with leaf nodes that are themselves tree structures.
+  The input, `input_tree`, can be thought of as having the same structure layout
+  as `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
   Examples:
 
@@ -881,7 +881,7 @@ def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
   achieve this by specifying a shallow structure, `shallow_tree` we wish to
   flatten up to.
 
-  The `inputs`, can be thought of as having the same structure as
+  The `inputs`, can be thought of as having the same structure layout as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
   This function therefore will return something with the same base structure as
@@ -940,7 +940,7 @@ def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
       `input_tree`.
 
   Returns:
-    result of repeatedly applying `func`, with same structure as
+    result of repeatedly applying `func`, with the same structure layout as
     `shallow_tree`.
   """
   return map_structure_with_tuple_paths_up_to(
@@ -1012,7 +1012,8 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
       `input_tree`.
 
   Returns:
-    Result of repeatedly applying `func`. Has same structure as `shallow_tree`.
+    Result of repeatedly applying `func`. Has the same structure layout as
+    `shallow_tree`.
   """
   if not inputs:
     raise ValueError("Cannot map over no sequences")

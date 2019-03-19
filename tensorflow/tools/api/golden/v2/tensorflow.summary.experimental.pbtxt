@@ -1,0 +1,11 @@
+path: "tensorflow.summary.experimental"
+tf_module {
+  member_method {
+    name: "get_step"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_step"
+    argspec: "args=[\'step\'], varargs=None, keywords=None, defaults=None"
+  }
+}

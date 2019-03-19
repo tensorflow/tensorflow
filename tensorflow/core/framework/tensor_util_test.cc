@@ -446,6 +446,12 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
   EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto = tensor::CreateTensorProto(
+      std::vector<std::complex<float>>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
 }
 
 TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
@@ -472,13 +478,29 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
             1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(
+      tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
+      1);
+
+  tensor_proto = tensor::CreateTensorProto(
+      std::vector<std::complex<float>>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<std::complex<float>>::NumValues(
+                tensor_proto),
+            1);
 }
 
 template <typename T>
 std::vector<T> VectorWithConstantTail(int size, int tail_length) {
   CHECK_LE(tail_length, size);
   std::vector<T> v(size, T(0));
-  std::iota(v.begin(), v.end() - tail_length, T(1));
+  for (int i = 0; i < size - tail_length; ++i) {
+    v[i] = T(i + 1);
+  }
   return v;
 }
 
@@ -521,10 +543,12 @@ void ConstantTailTest(int64 length, int64 tail_length, bool as_field) {
       as_field ? CreateAsProtoField<T>(length, tail_length)
                : CreateAsProtoTensorContent<T>(length, tail_length);
   TensorProto original_tensor_proto = tensor_proto;
-  int64 original_size = length * (as_field ? sizeof(FieldType) : sizeof(T));
+  int64 original_size =
+      length * (as_field ? (is_complex<T>::value ? 2 : 1) * sizeof(FieldType)
+                         : sizeof(T));
   int64 size_as_tensor_content = length * sizeof(T);
-  int64 size_as_field =
-      std::min(length, (length - tail_length + 1)) * sizeof(FieldType);
+  int64 size_as_field = std::min(length, (length - tail_length + 1)) *
+                        (is_complex<T>::value ? 2 : 1) * sizeof(FieldType);
   bool will_compress = std::min(size_as_tensor_content, size_as_field) <=
                        static_cast<int64>(original_size / kMinCompressionRatio);
 
@@ -550,6 +574,8 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
     for (int tail_length : {0, 1, 2, 32, 33, 63, 64}) {
       ConstantTailTest<float>(kLength, tail_length, as_field);
       ConstantTailTest<double>(kLength, tail_length, as_field);
+      ConstantTailTest<complex64>(kLength, tail_length, as_field);
+      ConstantTailTest<complex128>(kLength, tail_length, as_field);
       ConstantTailTest<int32>(kLength, tail_length, as_field);
       ConstantTailTest<uint32>(kLength, tail_length, as_field);
       ConstantTailTest<int64>(kLength, tail_length, as_field);
@@ -558,6 +584,8 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
       ConstantTailTest<uint8>(kLength, tail_length, as_field);
       ConstantTailTest<int16>(kLength, tail_length, as_field);
       ConstantTailTest<uint16>(kLength, tail_length, as_field);
+      ConstantTailTest<Eigen::half>(kLength, tail_length, as_field);
+      ConstantTailTest<bfloat16>(kLength, tail_length, as_field);
     }
   }
 }

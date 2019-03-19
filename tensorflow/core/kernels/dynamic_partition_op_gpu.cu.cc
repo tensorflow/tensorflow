@@ -79,9 +79,9 @@ template <typename T>
 void RangeInit(const GPUDevice& d, const T start, const T delta,
                const int32 size, typename TTypes<T>::Flat out) {
   CudaLaunchConfig config = GetCudaLaunchConfig(size, d);
-  CudaLaunchKernel(RangeInitKernel<T>, config.block_count,
-                   config.thread_per_block, 0, d.stream(), start, delta, size,
-                   out.data());
+  TF_CHECK_OK(CudaLaunchKernel(RangeInitKernel<T>, config.block_count,
+                               config.thread_per_block, 0, d.stream(), start,
+                               delta, size, out.data()));
 }
 
 // Given *num_runs pairs (key, value), this function moves the value
@@ -94,8 +94,9 @@ void MoveValues(const GPUDevice& d, int32* keys, int32* values, int32* num_runs,
   // For wrong inputs, we may have out_size < *num_runs. In this case we will
   // only handle the first out_size values.
   CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
-  MoveValuesKernel<<<config.block_count, config.thread_per_block, 0,
-                     d.stream()>>>(keys, values, num_runs, out_size, out);
+  TF_CHECK_OK(CudaLaunchKernel(MoveValuesKernel, config.block_count,
+                               config.thread_per_block, 0, d.stream(), keys,
+                               values, num_runs, out_size, out));
 }
 
 template <typename T>
@@ -103,9 +104,10 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
   CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
-  CudaLaunchKernel(GatherOpKernel<T, int32, true>, config.block_count,
-                   config.thread_per_block, 0, d.stream(), params, indices, out,
-                   gather_dim_size, indices_size, slice_size, out_size);
+  TF_CHECK_OK(CudaLaunchKernel(
+      GatherOpKernel<T, int32, true>, config.block_count,
+      config.thread_per_block, 0, d.stream(), params, indices, out,
+      gather_dim_size, indices_size, slice_size, out_size));
 }
 
 struct IdentityOp {

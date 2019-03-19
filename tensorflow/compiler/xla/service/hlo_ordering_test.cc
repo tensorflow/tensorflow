@@ -306,7 +306,7 @@ condition.v4 {
   constant.2 = s32[] constant(2)
   prev.2 = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) parameter(0)
   get-tuple-element.8 = s32[] get-tuple-element(prev.2), index=0
-  ROOT greater-than = pred[] greater-than(constant.2, get-tuple-element.8)
+  ROOT greater-than = pred[] compare(constant.2, get-tuple-element.8), direction=GT
 }
 
 fused_computation {

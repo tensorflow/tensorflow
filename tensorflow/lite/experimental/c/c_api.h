@@ -60,6 +60,11 @@ typedef TfLiteTensor TFL_Tensor;
 typedef TfLiteType TFL_Type;
 
 // --------------------------------------------------------------------------
+// TFL_Version returns a string describing version information of the
+// TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
+TFL_CAPI_EXPORT extern const char* TFL_Version(void);
+
+// --------------------------------------------------------------------------
 // TFL_Model wraps a loaded TensorFlow Lite model.
 typedef struct TFL_Model TFL_Model;
 

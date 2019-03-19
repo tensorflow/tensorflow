@@ -214,7 +214,17 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
 
 
 def tensor_name(x):
-  return x.name.split(":")[0]
+  """Returns name of the input tensor."""
+  parts = x.name.split(":")
+  if len(parts) > 2:
+    raise ValueError("Tensor name invalid. Expect 0 or 1 colon, got {0}".format(
+        len(parts) - 1))
+
+  # To be consistent with the tensor naming scheme in tensorflow, we need
+  # drop the ':0' suffix for the first tensor.
+  if len(parts) > 1 and parts[1] != "0":
+    return x.name
+  return parts[0]
 
 
 # Don't expose these for now.
@@ -244,7 +254,7 @@ def build_toco_convert_protos(input_tensors,
 
   Args:
     input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+      `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     inference_type: Target data type of real-number arrays in the output file.
       Must be `{tf.float32, tf.uint8}`.  (default tf.float32)
@@ -347,7 +357,7 @@ def build_toco_convert_protos(input_tensors,
                          "inference_input_type is QUANTIZED_UINT8.")
       input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
     if input_shapes is None:
-      shape = input_tensor.get_shape()
+      shape = input_tensor.shape
     else:
       shape = input_shapes[idx]
     input_array.shape.dims.extend(map(int, shape))
@@ -423,7 +433,7 @@ def toco_convert_impl(input_data, input_tensors, output_tensors, *args,
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),
     input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+      `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.
@@ -456,7 +466,7 @@ def toco_convert(input_data, input_tensors, output_tensors, *args, **kwargs):
   Args:
     input_data: Input data (i.e. often `sess.graph_def`),
     input_tensors: List of input tensors. Type and shape are computed using
-      `foo.get_shape()` and `foo.dtype`.
+      `foo.shape` and `foo.dtype`.
     output_tensors: List of output tensors (only .name is used from this).
     *args: See `build_toco_convert_protos`,
     **kwargs: See `build_toco_convert_protos`.

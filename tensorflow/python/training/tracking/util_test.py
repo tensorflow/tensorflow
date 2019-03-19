@@ -497,7 +497,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.Adam(0.001)
-          root = trackable_utils.Checkpoint(
+          root = trackable_utils.CheckpointV1(
               optimizer=optimizer, model=model)
           input_value = constant_op.constant([[3.]])
           with backprop.GradientTape() as tape:
@@ -1477,12 +1477,9 @@ class CheckpointCompatibilityTests(test.TestCase):
       if context.executing_eagerly():
         self._check_sentinels(root)
       if context.executing_eagerly():
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_nontrivial_match()
+        status.assert_consumed()
+        status.assert_existing_objects_matched()
+        status.assert_nontrivial_match()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.
@@ -1497,6 +1494,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       self._set_sentinels(root)
       status = object_saver.restore(save_path)
       status.initialize_or_restore()
+      status.assert_nontrivial_match()
       self._check_sentinels(root)
       # Check that there is no error when keys are missing from the name-based
       # checkpoint.
@@ -1511,9 +1509,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)

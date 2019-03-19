@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/lower_while_op.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/lower_if_op.h"
 
 #include "tensorflow/core/common_runtime/function.h"
@@ -27,6 +28,9 @@ namespace {
 
 using NodeOut = NodeBuilder::NodeOut;
 
+constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
+    LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
+
 // Helper to convert a functional While op to its lowered form.
 //
 // Example:
@@ -37,19 +41,19 @@ using NodeOut = NodeBuilder::NodeOut;
 //
 // Output graph(top to down flow):
 //
-//                          loop_var
-//                             |
-//                           Enter
-//                             |
-// inlined_cond_func ---<--- Merge -----<----- NextIteration
-//      |                      |                    |
-//      V                      V                    ^
-//      |                      |                    |
-//  LoopCond ------>-------- Switch ---->---- inlined_body_func
-//                             |
-//                           Exit
-//                             |
-//                          consumer
+//                   loop_var
+//                      |
+//                    Enter
+//                      |
+//  cond_func ---<--- Merge  ---<--- NextIteration
+//      |               |                |
+//      V               V                ^
+//      |               |                |
+//  LoopCond  --->--- Switch --->--- body_func
+//                      |
+//                     Exit
+//                      |
+//                   consumer
 class LowerWhileHelper {
  public:
   static Status Run(Node* while_op, const string& cond_fn_name,
@@ -82,7 +86,6 @@ class LowerWhileHelper {
   Status CreateMergeNodes();
 
   // Creates the call node for cond func and stores in `cond_call_node_`.
-  // This gets inlined later in `InlineCallNodes`.
   Status CreateCondFuncCallNode();
 
   // Creates a Switch node for each loop var and adds to `switch_nodes_`.
@@ -91,7 +94,6 @@ class LowerWhileHelper {
   Status CreateSwitchNodes();
 
   // Creates the call node for body func and stores in `body_call_node_`.
-  // This gets inlined later in `InlineCallNodes`.
   Status CreateBodyFuncCallNode();
 
   // Creates an Exit node for each loop var and adds to `exit_nodes_`. These
@@ -112,20 +114,17 @@ class LowerWhileHelper {
   // edges to depend on `lowered_while_output_` instead.
   Status UpdateConsumers();
 
-  // Inlines the cond and body functions.
-  Status InlineCallNodes();
-
   // Returns unique name containing the name of the While op being rewritten
   // (name_), infix and a suffix to ensure it is unique within the graph.
   string NewName(const string& infix);
 
   // The original While op.
   Node* while_op_;
-  // The call node for the cond branch. This gets inlined.
+  // The call node for the cond branch.
   Node* cond_call_node_;
   // The LoopCond node specifying the loop termination condition.
   Node* loop_cond_node_;
-  // The call node for the body branch. This gets inlined.
+  // The call node for the body branch.
   Node* body_call_node_;
   // The IdentityN node with the same outputs as the original While op.
   Node* lowered_while_output_;
@@ -164,6 +163,8 @@ LowerWhileHelper::LowerWhileHelper(Node* while_op, const string& cond_fn_name,
       body_call_builder_(NewName("body"), body_fn_name, graph->op_registry(),
                          &debug_info_),
       num_loop_inputs_(while_op_->num_inputs()) {
+  cond_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
+  body_call_builder_.Attr(kLowerAsMultiDeviceFunctionAttr, true);
   // We intentionally `resize` instead of `reserve` space in `enter_nodes_`
   // because we need to set it's elements out of order in `CreateEnterNodes`.
   enter_nodes_.resize(num_loop_inputs_);
@@ -183,7 +184,6 @@ Status LowerWhileHelper::RunInternal() {
   TF_RETURN_IF_ERROR(CreateNextIterationNodes());
   TF_RETURN_IF_ERROR(UpdateMergeNodes());
   TF_RETURN_IF_ERROR(UpdateConsumers());
-  TF_RETURN_IF_ERROR(InlineCallNodes());
   return Status::OK();
 }
 
@@ -373,34 +373,12 @@ string LowerWhileHelper::NewName(const string& infix) {
   return graph_->NewName(strings::StrCat(name_, "/", infix));
 }
 
-Status InlineCallInGraph(Node* n, Graph* g,
-                         const FunctionLibraryDefinition& lib) {
-  const FunctionDef* fdef = lib.Find(n->type_string());
-  CHECK(fdef != nullptr);
-  FunctionBody* fbody;
-  TF_RETURN_IF_ERROR(
-      FunctionDefToBodyHelper(*fdef, n->attrs(), &lib,
-                              [&lib](const string& op, const OpDef** sig) {
-                                return lib.LookUpOpDef(op, sig);
-                              },
-                              &fbody));
-  // TODO(jpienaar): Improve this interface to make the need to delete it
-  // explicit.
-  InlineFunctionBody(g->flib_def(), g, n, fbody, false);
-  delete fbody;
-  return Status::OK();
-}
-
-Status LowerWhileHelper::InlineCallNodes() {
-  TF_RETURN_IF_ERROR(InlineCallInGraph(cond_call_node_, graph_, flib_));
-  TF_RETURN_IF_ERROR(InlineCallInGraph(body_call_node_, graph_, flib_));
-  return Status::OK();
-}
-
 }  // namespace
 
 Status RewriteWhileNode(Node* n, Graph* g,
                         const FunctionLibraryDefinition& flib) {
+  VLOG(2) << "Lower While node: " << SummarizeNode(*n);
+
   const AttrValue* cond_attr = n->attrs().Find("cond");
   if (cond_attr == nullptr) {
     return errors::InvalidArgument("While cond function missing");

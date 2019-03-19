@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/version.h"
 
 namespace tflite {
 namespace label_image {

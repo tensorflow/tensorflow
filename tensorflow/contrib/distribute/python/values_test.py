@@ -511,6 +511,34 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       sess.run({"complicated": mirrored})
 
+  @combinations.generate(combinations.combine(
+      distribution=[
+          combinations.mirrored_strategy_with_one_cpu,
+          combinations.mirrored_strategy_with_gpu_and_cpu,
+          combinations.core_mirrored_strategy_with_gpu_and_cpu,
+          combinations.tpu_strategy,
+      ],
+      mode=["graph", "eager"]))
+  def testAssignOutOfScope_mirrored(self, distribution):
+    with distribution.scope():
+      mirrored = variables_lib.Variable(1.)
+    if not isinstance(mirrored, values.MirroredVariable):
+      self.assertIsInstance(mirrored, values.TPUMirroredVariable)
+    self.evaluate(mirrored.assign(3.))
+    self.assertEqual(self.evaluate(mirrored.read_value()), 3.)
+    for component in mirrored.values:
+      self.assertEqual(self.evaluate(component.read_value()), 3.)
+
+  @combinations.generate(combinations.combine(
+      distribution=[combinations.parameter_server_strategy_with_two_gpus],
+      mode=["graph", "eager"]))
+  def testAssignOutOfScope_aggregating(self, distribution):
+    with distribution.scope():
+      aggregating = variables_lib.Variable(1.)
+    self.assertIsInstance(aggregating, values.AggregatingVariable)
+    self.evaluate(aggregating.assign(3.))
+    self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
+    self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
 
 _devices = ("/device:GPU:0", "/device:CPU:0")
 
@@ -522,11 +550,11 @@ def _make_replica_local(method, strategy=None):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.ReplicaLocalVariable(strategy, device_map, v, method)
+  replica_local = values.SyncOnReadVariable(strategy, device_map, v, method)
   return v, replica_local
 
 
-class ReplicaLocalVariablePropertiesTest(test.TestCase):
+class SyncOnReadVariablePropertiesTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -549,7 +577,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
-    replica_local = values.ReplicaLocalVariable(
+    replica_local = values.SyncOnReadVariable(
         None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, replica_local.name)
@@ -577,7 +605,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
         combinations.mirrored_strategy_with_gpu_and_cpu,
         combinations.core_mirrored_strategy_with_gpu_and_cpu],
     mode=["graph", "eager"]))
-class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
+class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):

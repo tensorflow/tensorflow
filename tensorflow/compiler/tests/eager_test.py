@@ -623,6 +623,17 @@ class EagerFunctionTest(xla_test.XLATestCase):
       r = f(elems)
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
 
+  def testFeedDeviceMemoryToOpExpectingHostMemory(self):
+    @function.defun
+    def f(dims, value):
+      return array_ops.fill(dims, value)
+
+    with self.test_scope():
+      x = constant_op.constant([4], dtype=dtypes.int64)
+
+    y = f(x, 3)
+    self.assertAllEqual([3, 3, 3, 3], y)
+
 
 class ExcessivePaddingTest(xla_test.XLATestCase):
   """Test that eager execution works with TPU flattened tensors.

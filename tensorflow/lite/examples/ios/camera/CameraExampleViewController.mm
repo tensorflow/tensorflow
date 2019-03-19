@@ -23,19 +23,12 @@
 #include <iostream>
 #include <queue>
 
-#if TFLITE_USE_CONTRIB_LITE
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/model.h"
-#include "tensorflow/contrib/lite/op_resolver.h"
-#include "tensorflow/contrib/lite/string_util.h"
-#else
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/string_util.h"
 #if TFLITE_USE_GPU_DELEGATE
 #include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#endif
 #endif
 
 #define LOG(x) std::cerr

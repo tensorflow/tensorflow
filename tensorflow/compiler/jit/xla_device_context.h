@@ -75,9 +75,6 @@ class XlaDeviceContext : public DeviceContext {
   se::Stream* host_to_device_stream() const {
     return host_to_device_stream_.get();
   }
-  se::Stream* device_to_host_stream() const {
-    return device_to_host_stream_.get();
-  }
   se::Stream* device_to_device_stream(int index) const {
     return device_to_device_streams_.at(index).get();
   }
@@ -99,7 +96,8 @@ class XlaDeviceContext : public DeviceContext {
   // idential to stream_, but must not be nullptr.
   std::shared_ptr<se::Stream> host_to_device_stream_;
   // The stream to use for transferring data from device to host. Can be
-  // idential to stream_, but must not be nullptr.
+  // idential to stream_. If nullptr, borrow a stream from backend for each
+  // transfer request to support out-of-order requests.
   std::shared_ptr<se::Stream> device_to_host_stream_;
   // Streams to use for transferring data directly between different devices,
   // e.g., over NVLINK.
