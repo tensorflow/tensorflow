@@ -301,6 +301,9 @@ py_test(
     srcs = ["applications/applications_test.py"],
     shard_count = 2,
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
