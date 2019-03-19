@@ -174,100 +174,6 @@ message GPUOptions {
   Experimental experimental = 9;
 };
 
-message IPUOptions {
-
-  // Structure for setting an idividual Poplar OptionFlag for OptionFlags
-  message PoplarOptionFlag {
-    string option = 1;
-    string value = 2;
-  };
-
-  // Options controlling the software IPU model (see IPUModel in poplar)
-  message IpuModelConfig {
-    bool enable_ipu_model = 1;
-    bool compile_ipu_code = 2;
-  };
-  IpuModelConfig ipu_model_config = 1;
-
-  // Options to control IPU profiling
-  message Profiling {
-    // Set to enable compilation trace
-    bool enable_compilation_trace = 1;
-
-    // Set to have the poplar reports in text, not JSON
-    bool enable_poplar_reports_text = 2;
-
-    // Set to enable I/O trace
-    bool enable_io_trace = 3;
-
-    // Set to enable execution trace
-    bool enable_execution_trace = 4;
-
-    // Report every N'th execution (0=once only)
-    int64 report_every_nth_execution = 5;
-
-    // Options for controlling profile report generation
-    repeated PoplarOptionFlag options = 6;
-
-    // Enable IPU trace events - indpendently of poplar reporting
-    bool enable_ipu_trace_events = 7;
-  };
-  Profiling profiling = 2;
-
-  // Type type of randomness (see poprand library)
-  enum RandomType {
-    NOT_REPEATABLE = 0;
-    SYSTEM_REPEATABLE = 1;
-    ALWAYS_REPEATABLE = 2;
-  };
-  RandomType random_type = 3;
-
-  // Options to control Poplar compilation
-  repeated PoplarOptionFlag compilation_options = 4;
-
-  // Options controlling the configuration of each IPU device
-  message DeviceConfig {
-    // Set one of these fields to determine the way to select IPUs
-    oneof selection {
-      // Set this to the number of IPUs which are required.  The system will
-      // acquire a free IPU configuration containing this many physical IPUs.
-      int32 auto_count = 1;
-
-      // Set this to acquire a specific IPU hardware configuration.
-      int32 cfg_index = 2;
-    }
-
-    // Number of replicas (should be a divisor of the number of IPUs
-    int32 num_replicas = 3;
-  };
-
-  repeated DeviceConfig device_config = 5;
-
-  // Options to control the memory size and speed of the execution trade-off.
-  message SpeedSizeConfig {
-    // Option controlling whether to rearrange streamed copies on the host
-    bool always_rearrange_copies_on_the_host = 1;
-
-    // Option to disable caching of sub-graphs containing convolutions
-    bool disable_graph_convolution_caching = 2;
-
-    // Option to enable re-computation of non linearities.
-    bool recompute_non_linearities = 3;
-    bool has_recompute_non_linearities = 4;
-  }
-
-  SpeedSizeConfig speed_size_config = 6;
-
-  // Options controlling the configuration of convolutions
-  repeated PoplarOptionFlag convolution_options = 7;
-
-  // Options controlling the configuration of pooling operations
-  repeated PoplarOptionFlag pooling_options = 8;
-
-  // Retain control dependencies from the Tensorflow graph
-  bool retain_control_dependencies = 9;
-};
-
 // Options passed to the graph optimizer
 message OptimizerOptions {
   // If true, optimize the graph using common subexpression elimination.
@@ -541,10 +447,7 @@ message ConfigProto {
 
   Experimental experimental = 16;
 
-  // Options that apply to Graphcore IPUs
-  IPUOptions ipu_options = 17;
-
-  // Next: 18
+  // Next: 17
 };
 
 // Options for a single Run() call.

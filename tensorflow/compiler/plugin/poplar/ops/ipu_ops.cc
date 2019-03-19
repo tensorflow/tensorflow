@@ -17,6 +17,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("IpuConfigureHardware")
+    .Attr("config: string")
+    .SetIsStateful()
+    .Doc("IPU Hardware configuration.");
+
 REGISTER_OP("IpuEventTrace")
     .Output("out: string")
     .SetIsStateful()

@@ -66,9 +66,9 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
-  tensorflow::IPUOptions opts;
+  IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -119,9 +119,9 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
-  tensorflow::IPUOptions opts;
+  IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -180,9 +180,9 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
-  tensorflow::IPUOptions opts;
+  IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -233,9 +233,9 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
       se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
   auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
 
-  tensorflow::IPUOptions opts;
+  IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 
@@ -289,9 +289,9 @@ TEST_F(GraphCompileIoMapTest, ResourceInit) {
   se::Stream stream(stream_executor);
   stream.Init();
 
-  tensorflow::IPUOptions opts;
+  IpuOptions opts;
   auto* p = static_cast<PoplarPlatform*>(platform);
-  EXPECT_TRUE(p->ConfigurePoplarDevice(0, opts).ok());
+  EXPECT_TRUE(p->ConfigurePoplarDevices(opts).ok());
 
   PoplarCompiler compiler;
 

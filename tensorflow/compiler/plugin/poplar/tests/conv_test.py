@@ -77,7 +77,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-      with tu.ipu_session() as sess:
+    tu.configure_ipu_system()
+
+    with tu.ipu_session() as sess:
         sess.run(report)
 
         fd = {
@@ -114,7 +116,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-      with tu.ipu_session() as sess:
+    tu.configure_ipu_system()
+
+    with tu.ipu_session() as sess:
         sess.run(report)
 
         fd = {
@@ -151,7 +155,9 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-      with tu.ipu_session() as sess:
+    tu.configure_ipu_system()
+
+    with tu.ipu_session() as sess:
         sess.run(report)
 
         fd = {
@@ -184,6 +190,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -218,6 +226,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -248,6 +258,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -288,6 +300,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -333,6 +347,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -366,6 +382,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -401,6 +419,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       fd = {
         pa: np.zeros([1,6,6,3]),
@@ -428,6 +448,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -459,6 +481,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -495,6 +519,8 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)

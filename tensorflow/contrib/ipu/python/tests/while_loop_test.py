@@ -13,7 +13,6 @@ from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import ipu_infeed_queue
 from tensorflow.contrib.ipu.python import loops
 from tensorflow.contrib.ipu.python import sharded_optimizer as so
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.framework import dtypes
@@ -254,7 +253,9 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     cfg = ipu.utils.auto_select_ipus(cfg, 1)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       sess.run(variables.global_variables_initializer())
       sess.run(out[0], {})
@@ -294,7 +295,9 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
   #   cfg = ipu.utils.create_ipu_config(profiling=False)
   #   cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
   #   cfg = ipu.utils.auto_select_ipus(cfg, 2)
-  #   with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+  #   ipu.utils.configure_ipu_system(cfg)
+  #
+  #   with session_lib.Session() as sess:
   #     sess.run(infeed_queue.initializer)
   #     sess.run(variables.global_variables_initializer())
   #     sess.run(out[0], {lr: 0.1})

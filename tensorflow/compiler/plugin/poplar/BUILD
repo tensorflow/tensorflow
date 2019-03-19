@@ -24,6 +24,7 @@ genrule(
 tf_proto_library(
     name = "protos",
     srcs = [
+      "driver/config.proto",
       "driver/trace.proto",
       "driver/executable.proto",
     ],
@@ -1162,9 +1163,43 @@ py_test(
 )
 
 py_test(
+    name = "norm_graph_caching_sharded_test",
+    size = "medium",
+    srcs = ["tests/norm_graph_caching_sharded_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "conv_graph_caching_test",
     size = "medium",
     srcs = ["tests/conv_graph_caching_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "conv_graph_caching_sharded_test",
+    size = "medium",
+    srcs = ["tests/conv_graph_caching_sharded_test.py"],
     deps = [
         ":test_utils_py",
         ":ipu_ops_py",
@@ -1296,6 +1331,7 @@ test_suite(
         "constant_slice_folding_test",
         "conv3d_test",
         "conv_graph_caching_test",
+        "conv_graph_caching_sharded_test",
         "conv_test",
         "conversions_test",
         "convolution_classifier_test",
@@ -1326,6 +1362,7 @@ test_suite(
         "multi_run_test",
         "non_linearity_recomputation_test",
         "norm_graph_caching_test",
+        "norm_graph_caching_sharded_test",
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "popops_custom_ops_test",

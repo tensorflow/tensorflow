@@ -75,7 +75,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
@@ -106,7 +108,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
@@ -138,7 +142,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
@@ -171,7 +177,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       with self.assertRaisesRegexp(errors.FailedPreconditionError,
                                    'Currently calling'):
@@ -199,7 +207,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
@@ -229,7 +239,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
@@ -266,7 +278,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
       self.assertAllClose(result[0], np.broadcast_to(129.5, [4, 4]))
@@ -291,7 +305,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(program(0))
       self.assertAllClose(result[0], np.broadcast_to(0, [4, 4]))
@@ -327,7 +343,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue1.initializer)
       sess.run(infeed_queue2.initializer)
       result = sess.run(program(5, infeed_queue1))
@@ -403,9 +421,10 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(  )
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    ipu.utils.configure_ipu_system(cfg)
 
     outfeed = outfeed_queue.dequeue()
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    with session_lib.Session() as sess:
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
 
       self.assertAllClose(result[0], np.broadcast_to(21, [4, 4]))
@@ -437,7 +456,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res, {v:np.ones([4, 4], np.float32)})
 
@@ -478,7 +499,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     outfed = outfeed_queue.dequeue()
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)
       result = sess.run(res)
       self.assertAllClose(result[0], np.broadcast_to(31, shape))
