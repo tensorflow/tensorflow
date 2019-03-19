@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -265,7 +267,22 @@ def _build_node_map(nodes):
 
 class AutoMixedPrecisionTest(test.TestCase):
   """Tests the Grappler auto mixed precision optimizer."""
-  MIN_GPU_ARCH = (7, 0)
+  MIN_GPU_ARCH = None
+  IGNORE_PERF_VAR = 'TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_IGNORE_PERFORMANCE'
+
+  def setUp(self):
+    super(AutoMixedPrecisionTest, self).setUp()
+    # Enable the tests to be run on pre-Volta GPUs by telling the grappler pass
+    # to ignore performance and always transform the graph.
+    self._original_ignore_perf_value = os.getenv(self.IGNORE_PERF_VAR)
+    os.environ[self.IGNORE_PERF_VAR] = '1'
+
+  def tearDown(self):
+    if self._original_ignore_perf_value is not None:
+      os.environ[self.IGNORE_PERF_VAR] = self._original_ignore_perf_value
+    else:
+      del os.environ[self.IGNORE_PERF_VAR]
+    super(AutoMixedPrecisionTest, self).tearDown()
 
   def _assert_output_fp16(self, node_map, node_name, output_port=0):
     self.assertEqual(node_map[node_name].output_info[output_port].dtype,
