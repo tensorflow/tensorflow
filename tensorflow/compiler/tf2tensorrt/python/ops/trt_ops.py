@@ -21,7 +21,7 @@ from __future__ import print_function
 import threading
 
 import platform
-from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.python.framework import errors
 
 _tf_trt_so = None

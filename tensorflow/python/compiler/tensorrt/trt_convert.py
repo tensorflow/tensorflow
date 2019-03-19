@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import six as _six
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import convert_to_constants
