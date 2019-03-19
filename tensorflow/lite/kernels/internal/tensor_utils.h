@@ -158,7 +158,7 @@ void ApplySigmoidToVector(const float* vector, int v_size, float* result);
 
 // Apply activation function to elements of a vector.
 void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result);
+                             TfLiteActivation activation, float* result);
 
 // Copy vector to another vector.
 void CopyVector(const float* vector, int v_size, float* result);

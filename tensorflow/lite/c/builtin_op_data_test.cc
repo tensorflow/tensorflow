@@ -26,7 +26,7 @@ namespace tflite {
 TEST(IntArray, CanCompileStructs) {
   TfLitePadding padding = kTfLitePaddingSame;
   TfLitePaddingValues padding_values;
-  TfLiteFusedActivation fused_activation = kTfLiteActRelu;
+  TfLiteActivation fused_activation = kTfLiteActRelu;
   TfLiteConvParams conv_params;
   TfLitePoolParams pool_params;
   TfLiteDepthwiseConvParams depthwise_conv_params;

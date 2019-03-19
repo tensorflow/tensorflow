@@ -88,7 +88,7 @@ inline void SetTensorToDynamic(TfLiteTensor* tensor) {
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
-    const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
+    const TfLiteActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
     int32_t* per_channel_multiplier, int* per_channel_shift);
 
@@ -109,20 +109,20 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
 // Calculates the useful quantized range of an activation layer given its
 // activation tensor.
 TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
-                                               TfLiteFusedActivation activation,
+                                               TfLiteActivation activation,
                                                TfLiteTensor* output,
                                                int32_t* act_min,
                                                int32_t* act_max);
-void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
+void CalculateActivationRangeUint8(TfLiteActivation activation,
                                    TfLiteTensor* output, int32_t* act_min,
                                    int32_t* act_max);
-void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
+void CalculateActivationRangeInt8(TfLiteActivation activation,
                                   TfLiteTensor* output, int32_t* act_min,
                                   int32_t* act_max);
 // Calculates the useful range of an activation layer given its activation
 // tensor.a
 template <typename T>
-void CalculateActivationRange(TfLiteFusedActivation activation,
+void CalculateActivationRange(TfLiteActivation activation,
                               T* activation_min, T* activation_max) {
   if (activation == kTfLiteActRelu) {
     *activation_min = 0;

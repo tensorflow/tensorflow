@@ -112,7 +112,7 @@ void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
 }
 
 void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result) {
+                             TfLiteActivation activation, float* result) {
   PortableApplyActivationToVector(vector, v_size, activation, result);
 }
 

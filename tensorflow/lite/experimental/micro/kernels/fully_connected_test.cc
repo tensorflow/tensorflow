@@ -32,7 +32,7 @@ void TestFullyConnectedFloat(std::initializer_list<int> input_dims_data,
                              std::initializer_list<float> bias_data,
                              std::initializer_list<float> expected_output_data,
                              std::initializer_list<int> output_dims_data,
-                             TfLiteFusedActivation activation,
+                             TfLiteActivation activation,
                              float* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* weights_dims = IntArrayFromInitializer(weights_dims_data);
@@ -107,7 +107,7 @@ void TestFullyConnectedQuantized(
     std::initializer_list<int32_t> bias_data, float bias_min, float bias_max,
     std::initializer_list<uint8_t> expected_output_data,
     std::initializer_list<int> output_dims_data, float output_min,
-    float output_max, TfLiteFusedActivation activation, uint8_t* output_data) {
+    float output_max, TfLiteActivation activation, uint8_t* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
   TfLiteIntArray* weights_dims = IntArrayFromInitializer(weights_dims_data);
   TfLiteIntArray* bias_dims = IntArrayFromInitializer(bias_dims_data);

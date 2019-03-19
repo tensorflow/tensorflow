@@ -29,7 +29,7 @@ namespace tflite {
 // using template inlining.
 class ActivationFunctor {
  public:
-  explicit ActivationFunctor(TfLiteFusedActivation act) : act_(act) {}
+  explicit ActivationFunctor(TfLiteActivation act) : act_(act) {}
 
   float operator()(float a) const {
     switch (act_) {
@@ -50,7 +50,7 @@ class ActivationFunctor {
   }
 
  private:
-  TfLiteFusedActivation act_;
+  TfLiteActivation act_;
 };
 
 }  // namespace tflite

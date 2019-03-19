@@ -76,7 +76,7 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteConvParams;
 ```
 
@@ -88,7 +88,7 @@ typedef struct {
   // Parameters supported by version 1: TfLitePadding padding; int
   stride_width;
   int stride_height;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 
   // Parameters supported by version 2:
   int dilation_width_factor;

@@ -23,7 +23,7 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   const float* recurrent_weights_ptr, const float* bias_ptr,
                   int input_size, int num_units, int batch_size,
                   int output_batch_leading_dim,
-                  TfLiteFusedActivation activation,
+                  TfLiteActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch) {
   RnnBatchStep(input_ptr_batch, input_weights_ptr,
                /*aux_input_ptr_batch=*/nullptr,
@@ -39,7 +39,7 @@ void RnnBatchStep(const float* input_ptr_batch, const float* input_weights_ptr,
                   const float* recurrent_weights_ptr, const float* bias_ptr,
                   int input_size, int aux_input_size, int num_units,
                   int batch_size, int output_batch_leading_dim,
-                  TfLiteFusedActivation activation,
+                  TfLiteActivation activation,
                   float* hidden_state_ptr_batch, float* output_ptr_batch) {
   // Since the output batch rows may not be contiguous (output_batch_leading_dim
   // != n_output), we unroll the batched operations where this is the case.
@@ -122,7 +122,7 @@ void RnnBatchStep(
     float input_weights_scale, const int8_t* recurrent_weights_ptr,
     float recurrent_weights_scale, const float* bias_ptr, int input_size,
     int num_units, int batch_size, int output_batch_leading_dim,
-    TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
+    TfLiteActivation activation, int8_t* quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
     float* hidden_state_ptr_batch, float* output_ptr_batch) {
   RnnBatchStep(input_ptr_batch, input_weights_ptr, input_weights_scale,
@@ -144,7 +144,7 @@ void RnnBatchStep(
     const int8_t* recurrent_weights_ptr, float recurrent_weights_scale,
     const float* bias_ptr, int input_size, int aux_input_size, int num_units,
     int batch_size, int output_batch_leading_dim,
-    TfLiteFusedActivation activation, int8_t* quantized_input_ptr_batch,
+    TfLiteActivation activation, int8_t* quantized_input_ptr_batch,
     int8_t* aux_quantized_input_ptr_batch,
     int8_t* quantized_hidden_state_ptr_batch, float* scaling_factors,
     float* hidden_state_ptr_batch, float* output_ptr_batch) {

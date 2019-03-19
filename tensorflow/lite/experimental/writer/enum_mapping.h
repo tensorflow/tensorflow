@@ -23,7 +23,7 @@ limitations under the License.
 namespace tflite {
 
 inline ActivationFunctionType TfLiteActivationToSchemaActivation(
-    TfLiteFusedActivation act) {
+    TfLiteActivation act) {
   switch (act) {
     case kTfLiteActNone:
       return ActivationFunctionType_NONE;

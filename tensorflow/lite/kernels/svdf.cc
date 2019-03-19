@@ -46,7 +46,7 @@ struct OpData {
 static inline void ApplyTimeWeightsBiasAndActivation(
     int batch_size, int memory_size, int num_filters, int num_units, int rank,
     const TfLiteTensor* weights_time, const TfLiteTensor* bias,
-    TfLiteFusedActivation activation, TfLiteTensor* activation_state,
+    TfLiteActivation activation, TfLiteTensor* activation_state,
     TfLiteTensor* scratch, TfLiteTensor* output) {
   // Compute matmul(state, weights_time).
   // The right most column is used to save temporary output (with the size of

@@ -56,7 +56,6 @@ typedef struct {
 } TfLiteMirrorPaddingParams;
 
 // Possible fused activation functions.
-// TODO(aselle): rename to TfLiteActivation
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
@@ -65,7 +64,7 @@ typedef enum {
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
-} TfLiteFusedActivation;
+} TfLiteActivation;
 
 typedef struct {
   TfLitePadding padding;
@@ -73,7 +72,7 @@ typedef struct {
   int stride_height;
   int dilation_width_factor;
   int dilation_height_factor;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteConvParams;
 
 typedef struct {
@@ -82,7 +81,7 @@ typedef struct {
   int stride_height;
   int filter_width;
   int filter_height;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
   struct {
     TfLitePaddingValues padding;
   } computed;
@@ -94,7 +93,7 @@ typedef struct {
   int stride_width;
   int stride_height;
   int depth_multiplier;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
   // Parameters for DepthwiseConv version 2 or above.
   int dilation_width_factor;
   int dilation_height_factor;
@@ -102,21 +101,21 @@ typedef struct {
 
 typedef struct {
   int rank;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteSVDFParams;
 
 typedef struct {
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteRNNParams;
 
 typedef struct {
   bool time_major;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteSequenceRNNParams;
 
 typedef struct {
   bool time_major;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
   bool merge_outputs;
 } TfLiteBidirectionalSequenceRNNParams;
 
@@ -127,7 +126,7 @@ typedef enum {
 
 typedef struct {
   // Parameters for FullyConnected version 1 or above.
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 
   // Parameters for FullyConnected version 2 or above.
   TfLiteFullyConnectedWeightsFormat weights_format;
@@ -149,11 +148,11 @@ typedef struct {
 
 typedef struct {
   int axis;
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteConcatenationParams;
 
 typedef struct {
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteAddParams;
 
 typedef struct {
@@ -165,19 +164,19 @@ typedef struct {
 } TfLiteBatchToSpaceNDParams;
 
 typedef struct {
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteMulParams;
 
 typedef struct {
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteSubParams;
 
 typedef struct {
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteDivParams;
 
 typedef struct {
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
 } TfLiteL2NormParams;
 
 typedef struct {
@@ -194,7 +193,7 @@ typedef enum {
 
 typedef struct {
   // Parameters for LSTM version 1.
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
   float cell_clip;
   float proj_clip;
 
@@ -205,7 +204,7 @@ typedef struct {
 
 typedef struct {
   // Parameters needed for the underlying LSTM.
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
   float cell_clip;
   float proj_clip;
 
@@ -216,7 +215,7 @@ typedef struct {
 typedef struct {
   // Parameters supported by version 1:
   // Parameters inherited for the LSTM kernel.
-  TfLiteFusedActivation activation;
+  TfLiteActivation activation;
   float cell_clip;
   float proj_clip;
 

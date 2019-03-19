@@ -150,7 +150,7 @@ void PortableApplySigmoidToVector(const float* vector, int v_size,
 
 // Apply activation function to elements of a vector.
 void PortableApplyActivationToVector(const float* vector, int v_size,
-                                     TfLiteFusedActivation activation,
+                                     TfLiteActivation activation,
                                      float* result);
 
 // Copy vector to another vector.

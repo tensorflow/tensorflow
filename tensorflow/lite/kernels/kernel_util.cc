@@ -39,7 +39,7 @@ void GuardedQuantizeMultiplier(double effective_output_scale,
 TfLiteStatus PopulateConvolutionQuantizationParams(
     TfLiteContext* context, const TfLiteTensor* input,
     const TfLiteTensor* filter, const TfLiteTensor* bias, TfLiteTensor* output,
-    const TfLiteFusedActivation& activation, int32_t* multiplier, int* shift,
+    const TfLiteActivation& activation, int32_t* multiplier, int* shift,
     int32_t* output_activation_min, int32_t* output_activation_max,
     int32_t* per_channel_multiplier, int* per_channel_shift) {
   TF_LITE_ENSURE_EQ(context, input->quantization.type,
@@ -125,7 +125,7 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
 }
 
 namespace {
-void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
+void CalculateActivationRangeQuantizedImpl(TfLiteActivation activation,
                                            int32_t qmin, int32_t qmax,
                                            TfLiteTensor* output,
                                            int32_t* act_min, int32_t* act_max) {
@@ -153,7 +153,7 @@ void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
 }  // namespace
 
 TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
-                                               TfLiteFusedActivation activation,
+                                               TfLiteActivation activation,
                                                TfLiteTensor* output,
                                                int32_t* act_min,
                                                int32_t* act_max) {
@@ -177,7 +177,7 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
+void CalculateActivationRangeUint8(TfLiteActivation activation,
                                    TfLiteTensor* output, int32_t* act_min,
                                    int32_t* act_max) {
   const int32_t qmin = std::numeric_limits<uint8_t>::min();
@@ -187,7 +187,7 @@ void CalculateActivationRangeUint8(TfLiteFusedActivation activation,
                                         act_max);
 }
 
-void CalculateActivationRangeInt8(TfLiteFusedActivation activation,
+void CalculateActivationRangeInt8(TfLiteActivation activation,
                                   TfLiteTensor* output, int32_t* act_min,
                                   int32_t* act_max) {
   const int32_t qmin = std::numeric_limits<int8_t>::min();
