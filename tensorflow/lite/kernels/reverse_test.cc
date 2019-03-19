@@ -77,6 +77,48 @@ TEST(ReverseOpTest, FloatMultiDimensions) {
                         17, 18, 15, 16, 13, 14, 23, 24, 21, 22, 19, 20}));
 }
 
+TEST(ReverseOpTest, Floataxes) {
+  ReverseOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                              {TensorType_INT32, {1}});
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.axis(), {2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({2,  1,  4,  3,  6,  5,  8,  7,  10, 9,  12, 11,
+                        14, 13, 16, 15, 18, 17, 20, 19, 22, 21, 24, 23}));
+}
+
+TEST(ReverseOpTest, FloatNegAxes) {
+  ReverseOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                              {TensorType_INT32, {1}});
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.axis(), {-2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({5,  6,  3,  4,  1,  2,  11, 12, 9,  10, 7,  8,
+                        17, 18, 15, 16, 13, 14, 23, 24, 21, 22, 19, 20}));
+}
+
+TEST(ReverseOpTest, FloatInvalidAxes) {
+  ReverseOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                              {TensorType_INT32, {1}});
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.axis(), {-4});
+  ASSERT_NE(model.InvokeUnchecked(), kTfLiteOk) << "Invalid Axes passed";
+}
+
 // int32 tests
 TEST(ReverseOpTest, Int32OneDimension) {
   ReverseOpModel<int32_t> model({TensorType_INT32, {4}},
@@ -188,6 +230,5 @@ TEST(ReverseOpTest, Int16MultiDimensions) {
       ElementsAreArray({5,  6,  3,  4,  1,  2,  11, 12, 9,  10, 7,  8,
                         17, 18, 15, 16, 13, 14, 23, 24, 21, 22, 19, 20}));
 }
-
 }  // namespace
 }  // namespace tflite

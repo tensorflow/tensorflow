@@ -69,7 +69,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* axis_tensor = GetInput(context, node, kAxisTensor);
   int axis = GetTensorData<int32_t>(axis_tensor)[0];
 
-  TF_LITE_ENSURE(context, axis >= 0 && axis < NumDimensions(input));
+  if (axis < 0) {
+    axis += input->dims->size;
+  }
+  TF_LITE_ENSURE_MSG(context, axis >= 0 && axis < NumDimensions(input),
+                     "Invalid Axes passed");
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   switch (output->type) {
