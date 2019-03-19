@@ -246,9 +246,11 @@ def getfullargspec(obj):
     directly on the callable.
   """
   decorators, target = tf_decorator.unwrap(obj)
-  return next((_convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
-               for d in decorators
-               if d.decorator_argspec is not None), _getfullargspec(target))
+
+  for d in decorators:
+    if d.decorator_argspec is not None:
+      return _convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
+  return _getfullargspec(target)
 
 
 def getcallargs(func, *positional, **named):
