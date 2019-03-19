@@ -95,7 +95,7 @@ def _matmul_act(x):
 
 
 def _conv_pool(x):
-  """Conv followed by pooling."""
+  """(Conv -> bias -> relu -> max_pool) x2."""
   x_image = array_ops.reshape(x, [-1, 8, 8, 1])
   w_conv1 = _weight([3, 3, 1, 6])
   b_conv1 = _bias([6])
