@@ -139,7 +139,7 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
 
 static std::string toString(Instruction *inst) {
   std::string res;
-  auto os = llvm::raw_string_ostream(res);
+  llvm::raw_string_ostream os(res);
   inst->print(os);
   return res;
 }

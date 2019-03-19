@@ -343,3 +343,5 @@ void PassInstrumentor::addInstrumentation(PassInstrumentation *pi) {
   llvm::sys::SmartScopedLock<true> instrumentationLock(impl->mutex);
   impl->instrumentations.emplace_back(pi);
 }
+
+constexpr AnalysisID mlir::detail::PreservedAnalyses::allAnalysesID;

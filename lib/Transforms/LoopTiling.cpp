@@ -405,4 +405,7 @@ void LoopTiling::runOnFunction() {
   }
 }
 
+constexpr unsigned LoopTiling::kDefaultTileSize;
+constexpr uint64_t LoopTiling::kDefaultCacheMemCapacity;
+
 static PassRegistration<LoopTiling> pass("loop-tile", "Tile loop nests");
