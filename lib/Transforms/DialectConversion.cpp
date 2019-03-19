@@ -215,13 +215,11 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
     return nullptr;
   };
 
-  // Create a new function with argument types and result types converted.  Wrap
+  // Create a new function with argument types and result types converted. Wrap
   // it into a unique_ptr to make sure it is cleaned up in case of error.
-  auto newFunctionSig = dialectConversion->convertFunctionSignatureType(
-      f->getType(), f->getAllArgAttrs());
-  Type newFunctionType = newFunctionSig.first;
-  std::vector<NamedAttributeList> newFunctionArgAttrs = newFunctionSig.second;
-
+  SmallVector<NamedAttributeList, 4> newFunctionArgAttrs;
+  Type newFunctionType = dialectConversion->convertFunctionSignatureType(
+      f->getType(), f->getAllArgAttrs(), newFunctionArgAttrs);
   if (!newFunctionType)
     return emitError("could not convert function type");
   auto newFunction = llvm::make_unique<Function>(
@@ -310,9 +308,9 @@ LogicalResult impl::FunctionConversion::run(Module *module) {
 
 // Create a function type with arguments and results converted, and argument
 // attributes passed through.
-std::pair<FunctionType, std::vector<NamedAttributeList>>
-DialectConversion::convertFunctionSignatureType(
-    FunctionType type, ArrayRef<NamedAttributeList> argAttrs) {
+FunctionType DialectConversion::convertFunctionSignatureType(
+    FunctionType type, ArrayRef<NamedAttributeList> argAttrs,
+    SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) {
   SmallVector<Type, 8> arguments;
   SmallVector<Type, 4> results;
 
@@ -324,8 +322,13 @@ DialectConversion::convertFunctionSignatureType(
   for (auto t : type.getResults())
     results.push_back(convertType(t));
 
-  return std::make_pair(
-      FunctionType::get(arguments, results, type.getContext()), argAttrs.vec());
+  // Note this will cause an extra allocation only if we need
+  // to grow the caller-provided resulting attribute vector.
+  convertedArgAttrs.reserve(arguments.size());
+  for (auto attr : argAttrs)
+    convertedArgAttrs.push_back(attr);
+
+  return FunctionType::get(arguments, results, type.getContext());
 }
 
 LogicalResult DialectConversion::convert(Module *m) {

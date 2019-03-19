@@ -1118,11 +1118,14 @@ protected:
   }
 
   // Convert function signatures using the stored LLVM IR module.
-  std::pair<FunctionType, std::vector<NamedAttributeList>>
-  convertFunctionSignatureType(FunctionType t,
-                               ArrayRef<NamedAttributeList> argAttrs) override {
-    auto convertedType = TypeConverter::convertFunctionSignature(t, *module);
-    return std::make_pair(convertedType, argAttrs.vec());
+  FunctionType convertFunctionSignatureType(
+      FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
+      SmallVectorImpl<NamedAttributeList> &convertedArgAttrs) override {
+
+    convertedArgAttrs.reserve(argAttrs.size());
+    for (auto attr : argAttrs)
+      convertedArgAttrs.push_back(attr);
+    return TypeConverter::convertFunctionSignature(t, *module);
   }
 
   // Make argument-taking successors of each block distinct.  PHI nodes in LLVM

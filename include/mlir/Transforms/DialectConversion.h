@@ -190,9 +190,12 @@ protected:
   /// The default behavior of this function is to call convertType on individual
   /// function operands and results, and then create a new MLIR function type
   /// from those.
-  virtual std::pair<FunctionType, std::vector<NamedAttributeList>>
-  convertFunctionSignatureType(FunctionType t,
-                               ArrayRef<NamedAttributeList> argAttrs);
+  ///
+  /// Post-condition: if the returned optional attribute list does not have
+  /// a value then no argument attribute conversion happened.
+  virtual FunctionType convertFunctionSignatureType(
+      FunctionType t, ArrayRef<NamedAttributeList> argAttrs,
+      SmallVectorImpl<NamedAttributeList> &convertedArgAttrs);
 };
 
 } // end namespace mlir
