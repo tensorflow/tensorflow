@@ -1,6 +1,6 @@
-# TFLite Android App Example
+# TF Lite Android App Example
 
-A TFLite End-to-End Android example that demonstrates image classification and object
+A TF Lite End-to-End Android example that demonstrates image classification and object
 detection using the camera, as well as speech recognition using the microphone.
 
 ## Building in Android Studio with TensorFlow Lite AAR from JCenter.
@@ -17,9 +17,9 @@ for our external and internal code to merge.
 1. Follow the [Bazel steps for the TF Demo App](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#bazel):
 
   1. [Install Bazel and Android Prerequisites](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/examples/android#install-bazel-and-android-prerequisites).
-     It's easy with Android Studio.
+     It's easiest with Android Studio.
 
-      - You'll need atleast SDK version 23.
+      - You'll need at least SDK version 23.
       - Make sure to install the latest version of Bazel. Some distributions
         ship with Bazel 0.5.4, which is too old.
       - Bazel requires Android Build Tools `26.0.1` or higher.
