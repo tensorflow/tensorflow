@@ -49,22 +49,22 @@ FunctionPassBase *mlir::createMemRefDependenceCheckPass() {
 
 // Returns a result string which represents the direction vector (if there was
 // a dependence), returns the string "false" otherwise.
-static string
+static std::string
 getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
                       ArrayRef<DependenceComponent> dependenceComponents) {
   if (!ret)
     return "false";
   if (dependenceComponents.empty() || loopNestDepth > numCommonLoops)
     return "true";
-  string result;
+  std::string result;
   for (unsigned i = 0, e = dependenceComponents.size(); i < e; ++i) {
-    string lbStr = "-inf";
+    std::string lbStr = "-inf";
     if (dependenceComponents[i].lb.hasValue() &&
         dependenceComponents[i].lb.getValue() !=
             std::numeric_limits<int64_t>::min())
       lbStr = std::to_string(dependenceComponents[i].lb.getValue());
 
-    string ubStr = "+inf";
+    std::string ubStr = "+inf";
     if (dependenceComponents[i].ub.hasValue() &&
         dependenceComponents[i].ub.getValue() !=
             std::numeric_limits<int64_t>::max())

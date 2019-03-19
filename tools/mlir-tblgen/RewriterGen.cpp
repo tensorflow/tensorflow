@@ -279,7 +279,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
   os << R"(
   PatternMatchResult match(Instruction *op0) const override {
     auto ctx = op0->getContext(); (void)ctx;
-    auto state = std::make_unique<MatchedState>();)"
+    auto state = llvm::make_unique<MatchedState>();)"
      << "\n";
 
   // The rewrite pattern may specify that certain outputs should be unused in
@@ -660,7 +660,7 @@ static void emitRewriters(const RecordKeeper &recordKeeper, raw_ostream &os) {
   os << "void populateWithGenerated(MLIRContext *context, "
      << "OwningRewritePatternList *patterns) {\n";
   for (unsigned i = 0; i != rewritePatternCount; ++i) {
-    os.indent(2) << "patterns->push_back(std::make_unique<" << baseRewriteName
+    os.indent(2) << "patterns->push_back(llvm::make_unique<" << baseRewriteName
                  << i << ">(context));\n";
   }
   os << "}\n";

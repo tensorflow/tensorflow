@@ -505,7 +505,7 @@ PatternMatchResult SimplifyAffineApply::match(Instruction *op) const {
   composeAffineMapAndOperands(&map, &resultOperands);
   if (map != oldMap)
     return matchSuccess(
-        std::make_unique<SimplifyAffineApplyState>(map, resultOperands));
+        llvm::make_unique<SimplifyAffineApplyState>(map, resultOperands));
 
   return matchFailure();
 }
@@ -520,7 +520,7 @@ void SimplifyAffineApply::rewrite(Instruction *op,
 
 void AffineApplyOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.push_back(std::make_unique<SimplifyAffineApply>(context));
+  results.push_back(llvm::make_unique<SimplifyAffineApply>(context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -867,7 +867,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
 
 void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                               MLIRContext *context) {
-  results.push_back(std::make_unique<AffineForLoopBoundFolder>(context));
+  results.push_back(llvm::make_unique<AffineForLoopBoundFolder>(context));
 }
 
 Block *AffineForOp::createBody() {

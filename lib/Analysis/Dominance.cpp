@@ -40,7 +40,7 @@ void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
   dominanceInfos.clear();
 
   // Build the top level function dominance.
-  auto functionDominance = std::make_unique<base>();
+  auto functionDominance = llvm::make_unique<base>();
   functionDominance->recalculate(function->getBody());
   dominanceInfos.try_emplace(&function->getBody(),
                              std::move(functionDominance));
@@ -51,7 +51,7 @@ void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
       // Don't compute dominance if the region is empty.
       if (region.empty())
         continue;
-      auto opDominance = std::make_unique<base>();
+      auto opDominance = llvm::make_unique<base>();
       opDominance->recalculate(region);
       dominanceInfos.try_emplace(&region, std::move(opDominance));
     }

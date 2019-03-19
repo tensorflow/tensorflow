@@ -309,7 +309,7 @@ FlatAffineConstraints::FlatAffineConstraints(
 
 // Clones this object.
 std::unique_ptr<FlatAffineConstraints> FlatAffineConstraints::clone() const {
-  return std::make_unique<FlatAffineConstraints>(*this);
+  return llvm::make_unique<FlatAffineConstraints>(*this);
 }
 
 // Construct from an IntegerSet.

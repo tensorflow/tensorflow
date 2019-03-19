@@ -371,8 +371,8 @@ struct SimplifyDeadAlloc : public RewritePattern {
 
 void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
-  results.push_back(std::make_unique<SimplifyAllocConst>(context));
-  results.push_back(std::make_unique<SimplifyDeadAlloc>(context));
+  results.push_back(llvm::make_unique<SimplifyAllocConst>(context));
+  results.push_back(llvm::make_unique<SimplifyDeadAlloc>(context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -578,7 +578,7 @@ bool CallIndirectOp::verify() const {
 void CallIndirectOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
   results.push_back(
-      std::make_unique<SimplifyIndirectCallWithKnownCallee>(context));
+      llvm::make_unique<SimplifyIndirectCallWithKnownCallee>(context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -887,7 +887,7 @@ bool CondBranchOp::verify() const {
 
 void CondBranchOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
-  results.push_back(std::make_unique<SimplifyConstCondBranchPred>(context));
+  results.push_back(llvm::make_unique<SimplifyConstCondBranchPred>(context));
 }
 
 Block *CondBranchOp::getTrueDest() {
@@ -1143,8 +1143,8 @@ void DeallocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   /// dealloc(memrefcast) -> dealloc
   results.push_back(
-      std::make_unique<MemRefCastFolder>(getOperationName(), context));
-  results.push_back(std::make_unique<SimplifyDeadDealloc>(context));
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
+  results.push_back(llvm::make_unique<SimplifyDeadDealloc>(context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1424,7 +1424,7 @@ void DmaStartOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                              MLIRContext *context) {
   /// dma_start(memrefcast) -> dma_start
   results.push_back(
-      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 // ---------------------------------------------------------------------------
@@ -1488,7 +1488,7 @@ void DmaWaitOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
   /// dma_wait(memrefcast) -> dma_wait
   results.push_back(
-      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1643,7 +1643,7 @@ void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   /// load(memrefcast) -> load
   results.push_back(
-      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1964,7 +1964,7 @@ void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context) {
   /// store(memrefcast) -> store
   results.push_back(
-      std::make_unique<MemRefCastFolder>(getOperationName(), context));
+      llvm::make_unique<MemRefCastFolder>(getOperationName(), context));
 }
 
 //===----------------------------------------------------------------------===//
@@ -2013,7 +2013,7 @@ struct SimplifyXMinusX : public RewritePattern {
 
 void SubIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.push_back(std::make_unique<SimplifyXMinusX>(context));
+  results.push_back(llvm::make_unique<SimplifyXMinusX>(context));
 }
 
 //===----------------------------------------------------------------------===//

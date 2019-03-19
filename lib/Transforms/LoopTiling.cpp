@@ -32,6 +32,7 @@
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include <iomanip>
+#include <sstream>
 
 using namespace mlir;
 

@@ -197,7 +197,7 @@ void CSE::simplifyRegion(DominanceInfo &domInfo, Region &region) {
   std::deque<std::unique_ptr<CFGStackNode>> stack;
 
   // Process the nodes of the dom tree for this region.
-  stack.emplace_back(std::make_unique<CFGStackNode>(
+  stack.emplace_back(llvm::make_unique<CFGStackNode>(
       knownValues, domInfo.getRootNode(&region)));
 
   while (!stack.empty()) {
@@ -213,7 +213,7 @@ void CSE::simplifyRegion(DominanceInfo &domInfo, Region &region) {
     if (currentNode->childIterator != currentNode->node->end()) {
       auto *childNode = *(currentNode->childIterator++);
       stack.emplace_back(
-          std::make_unique<CFGStackNode>(knownValues, childNode));
+          llvm::make_unique<CFGStackNode>(knownValues, childNode));
     } else {
       // Finally, if the node and all of its children have been processed
       // then we delete the node.

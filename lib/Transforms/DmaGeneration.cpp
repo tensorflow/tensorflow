@@ -618,7 +618,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
     }
 
     // Compute the MemRefRegion accessed.
-    auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
+    auto region = llvm::make_unique<MemRefRegion>(opInst->getLoc());
     if (failed(region->compute(opInst, dmaDepth))) {
       LLVM_DEBUG(llvm::dbgs()
                  << "Error obtaining memory region: semi-affine maps?\n");

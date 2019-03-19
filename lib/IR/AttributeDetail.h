@@ -44,6 +44,8 @@ struct AttributeStorage {
 
 /// An attribute representing a boolean value.
 struct BoolAttributeStorage : public AttributeStorage {
+  BoolAttributeStorage(AttributeStorage base, Type type, bool value)
+      : AttributeStorage(base), type(type), value(value) {}
   const Type type;
   bool value;
 };
@@ -92,59 +94,85 @@ struct FloatAttributeStorage final
 
 /// An attribute representing a string value.
 struct StringAttributeStorage : public AttributeStorage {
+  StringAttributeStorage(AttributeStorage base, StringRef value)
+      : AttributeStorage(base), value(value) {}
   StringRef value;
 };
 
 /// An attribute representing an array of other attributes.
 struct ArrayAttributeStorage : public AttributeStorage {
+  ArrayAttributeStorage(AttributeStorage base, ArrayRef<Attribute> value)
+      : AttributeStorage(base), value(value) {}
   ArrayRef<Attribute> value;
 };
 
 // An attribute representing a reference to an affine map.
 struct AffineMapAttributeStorage : public AttributeStorage {
+  AffineMapAttributeStorage(AttributeStorage base, AffineMap value)
+      : AttributeStorage(base), value(value) {}
   AffineMap value;
 };
 
 // An attribute representing a reference to an integer set.
 struct IntegerSetAttributeStorage : public AttributeStorage {
+  IntegerSetAttributeStorage(AttributeStorage base, IntegerSet value)
+      : AttributeStorage(base), value(value) {}
   IntegerSet value;
 };
 
 /// An attribute representing a reference to a type.
 struct TypeAttributeStorage : public AttributeStorage {
+  TypeAttributeStorage(AttributeStorage base, Type value)
+      : AttributeStorage(base), value(value) {}
   Type value;
 };
 
 /// An attribute representing a reference to a function.
 struct FunctionAttributeStorage : public AttributeStorage {
+  FunctionAttributeStorage(AttributeStorage base, Function *value)
+      : AttributeStorage(base), value(value) {}
   Function *value;
 };
 
 /// A base attribute representing a reference to a vector or tensor constant.
 struct ElementsAttributeStorage : public AttributeStorage {
+  ElementsAttributeStorage(AttributeStorage base, VectorOrTensorType type)
+      : AttributeStorage(base), type(type) {}
   VectorOrTensorType type;
 };
 
 /// An attribute representing a reference to a vector or tensor constant,
 /// inwhich all elements have the same value.
 struct SplatElementsAttributeStorage : public ElementsAttributeStorage {
+  SplatElementsAttributeStorage(ElementsAttributeStorage base, Attribute elt)
+      : ElementsAttributeStorage(base), elt(elt) {}
   Attribute elt;
 };
 
 /// An attribute representing a reference to a dense vector or tensor object.
 struct DenseElementsAttributeStorage : public ElementsAttributeStorage {
+  DenseElementsAttributeStorage(ElementsAttributeStorage base,
+                                ArrayRef<char> data)
+      : ElementsAttributeStorage(base), data(data) {}
   ArrayRef<char> data;
 };
 
 /// An attribute representing a reference to a tensor constant with opaque
 /// content.
 struct OpaqueElementsAttributeStorage : public ElementsAttributeStorage {
+  OpaqueElementsAttributeStorage(ElementsAttributeStorage base,
+                                 Dialect *dialect, StringRef bytes)
+      : ElementsAttributeStorage(base), dialect(dialect), bytes(bytes) {}
   Dialect *dialect;
   StringRef bytes;
 };
 
 /// An attribute representing a reference to a sparse vector or tensor object.
 struct SparseElementsAttributeStorage : public ElementsAttributeStorage {
+  SparseElementsAttributeStorage(ElementsAttributeStorage base,
+                                 DenseIntElementsAttr indices,
+                                 DenseElementsAttr values)
+      : ElementsAttributeStorage(base), indices(indices), values(values) {}
   DenseIntElementsAttr indices;
   DenseElementsAttr values;
 };

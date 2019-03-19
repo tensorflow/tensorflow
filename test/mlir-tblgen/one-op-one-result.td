@@ -28,4 +28,4 @@ def : Pat<(X_AddOp (X_AddOp:$res $lhs, $rhs), $rrhs), (Y_AddOp $lhs, U:$rhs, T_C
 // CHECK:              PatternRewriter &rewriter)
 // CHECK: rewriter.create<Y::AddOp>(loc, op->getResult(0)->getType()
 // CHECK: void populateWithGenerated
-// CHECK: patterns->push_back(std::make_unique<GeneratedConvert0>(context))
+// CHECK: patterns->push_back(llvm::make_unique<GeneratedConvert0>(context))

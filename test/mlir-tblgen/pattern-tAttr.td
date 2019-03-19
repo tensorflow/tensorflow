@@ -48,5 +48,5 @@ def : Pat<(Z_AddOp $lhs, $rhs, $attr1, $attr2), (Y_AddOp $lhs, $rhs, (T_Compose_
 // CHECK-NEXT: rewriter.replaceOp(op, {vAddOp0});
 
 // CHECK: void populateWithGenerated
-// CHECK: patterns->push_back(std::make_unique<GeneratedConvert0>(context))
-// CHECK: patterns->push_back(std::make_unique<GeneratedConvert1>(context))
+// CHECK: patterns->push_back(llvm::make_unique<GeneratedConvert0>(context))
+// CHECK: patterns->push_back(llvm::make_unique<GeneratedConvert1>(context))

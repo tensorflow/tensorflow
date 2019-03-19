@@ -42,6 +42,9 @@ struct AffineExprStorage {
 
 /// A binary operation appearing in an affine expression.
 struct AffineBinaryOpExprStorage : public AffineExprStorage {
+  AffineBinaryOpExprStorage(AffineExprStorage base, AffineExpr lhs,
+                            AffineExpr rhs)
+      : AffineExprStorage(base), lhs(lhs), rhs(rhs) {}
   static AffineExpr get(AffineExprKind kind, AffineExpr lhs, AffineExpr rhs);
   AffineExpr lhs;
   AffineExpr rhs;
@@ -49,18 +52,24 @@ struct AffineBinaryOpExprStorage : public AffineExprStorage {
 
 /// A dimensional identifier appearing in an affine expression.
 struct AffineDimExprStorage : public AffineExprStorage {
+  AffineDimExprStorage(AffineExprStorage base, unsigned position)
+      : AffineExprStorage(base), position(position) {}
   /// Position of this identifier in the argument list.
   unsigned position;
 };
 
 /// A symbolic identifier appearing in an affine expression.
 struct AffineSymbolExprStorage : public AffineExprStorage {
+  AffineSymbolExprStorage(AffineExprStorage base, unsigned position)
+      : AffineExprStorage(base), position(position) {}
   /// Position of this identifier in the symbol list.
   unsigned position;
 };
 
 /// An integer constant appearing in affine expression.
 struct AffineConstantExprStorage : public AffineExprStorage {
+  AffineConstantExprStorage(AffineExprStorage base, int64_t constant)
+      : AffineExprStorage(base), constant(constant) {}
   // The constant.
   int64_t constant;
 };
