@@ -25,9 +25,6 @@ limitations under the License.
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
-#include "tensorflow/core/kernels/cwise_ops.h"
-#include "tensorflow/core/kernels/meta_support.h"
-#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/default/logging.h"
 #include "tensorflow/core/util/mkl_util.h"
@@ -52,9 +49,8 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// Quantize a tensor from float to T, with user-specified min_range and
+// Quantizes a tensor from float to T, with user-specified min_range and
 // max_range.
-
 template <typename Device, typename T>
 class MklQuantizeV2Op : public OpKernel {
  public:
@@ -67,7 +63,7 @@ class MklQuantizeV2Op : public OpKernel {
     string round_mode_string;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("round_mode", &round_mode_string));
     OP_REQUIRES(ctx, (round_mode_string == "HALF_TO_EVEN"),
-                errors::InvalidArgument("round mode must be half to even"));
+                errors::InvalidArgument("Round mode must be half to even"));
     round_mode_ = ROUND_HALF_TO_EVEN;
   }
 
@@ -79,7 +75,7 @@ class MklQuantizeV2Op : public OpKernel {
     const float input_max_range = ctx->input(2).flat<float>()(0);
     float min_range = std::min(0.0f, input_min_range);
     float max_range;
-    OP_REQUIRES(ctx, (input_max_range >= input_min_range),
+    OP_REQUIRES(ctx, (input_max_range > input_min_range),
                 errors::InvalidArgument(
                     "input_max_range must be larger than input_min_range."));
 
@@ -154,7 +150,7 @@ class MklQuantizeV2Op : public OpKernel {
       output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                    src_mkl_shape.GetSizesAsMklDnnDims(),
                                    src_mkl_shape.GetTfDataFormat());
-      output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)) + 1);
+      output_tf_shape.AddDim(dst_pd.get_size() / sizeof(T));
     } else {
       output_mkl_shape.SetMklTensor(false);
       output_tf_shape = MklDnnDimsToTFShape(output_dims);
@@ -193,7 +189,7 @@ class MklQuantizeV2Op : public OpKernel {
       max_range = max_abs;
       min_range = 0.0;
       // If it is unsigned and num_bits == 8, the range with 8 bits is [0,
-      // 255].  If the input range is [0, x], then the scale is x/255 instead
+      // 255].  If the input range is [0, x], then the scale is 255/x instead
       // of 254 as in the case above.
       target_range = static_cast<float>((uint64_t{1} << num_bits) - 1);
     }

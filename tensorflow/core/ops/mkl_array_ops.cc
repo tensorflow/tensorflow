@@ -117,4 +117,4 @@ REGISTER_OP("_MklQuantizeV2")
     });
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL
