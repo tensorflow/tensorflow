@@ -558,9 +558,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace kernel
 
 TfLiteRegistration GetKernel() {
-  TfLiteRegistration registration{&kernel::Init,    &kernel::Free,
-                                  &kernel::Prepare, &kernel::Eval,
-                                  nullptr,          kTfLiteBuiltinDelegate};
+  TfLiteRegistration registration{
+      &kernel::Init,
+      &kernel::Free,
+      &kernel::Prepare,
+      &kernel::Eval,
+      nullptr,                 // .profiling_string
+      kTfLiteBuiltinDelegate,  // .builtin_code
+      "TfLiteFlexDelegate",    // .custom_name
+      1,                       // .version
+  };
   return registration;
 }
 
