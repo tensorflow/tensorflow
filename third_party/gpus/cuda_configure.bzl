@@ -899,6 +899,13 @@ def _find_libs(repository_ctx, cuda_config):
             cuda_config.cudnn_version,
         ),
         "cupti": _find_cupti_lib(repository_ctx, cuda_config),
+        "cusparse": _find_cuda_lib(
+            "cusparse",
+            repository_ctx,
+            cpu_value,
+            cuda_config.cuda_toolkit_path,
+            cuda_config.cuda_version,
+        ),
     }
 
 def _find_cuda_include_path(repository_ctx, cuda_config):
@@ -1070,6 +1077,7 @@ def _create_dummy_repository(repository_ctx):
             "%{cufft_lib}": lib_name("cufft", cpu_value),
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
+            "%{cusparse_lib}": lib_name("cusparse", cpu_value),
             "%{copy_rules}": "",
             "%{cuda_headers}": "",
         },
@@ -1092,6 +1100,7 @@ def _create_dummy_repository(repository_ctx):
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("curand", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cufft", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cupti", cpu_value))
+    repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusparse", cpu_value))
 
     # Set up cuda_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
@@ -1328,6 +1337,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cufft_lib}": cuda_libs["cufft"].basename,
             "%{curand_lib}": cuda_libs["curand"].basename,
             "%{cupti_lib}": cuda_libs["cupti"].basename,
+            "%{cusparse_lib}": cuda_libs["cusparse"].basename,
             "%{copy_rules}": "\n".join(copy_rules),
             "%{cuda_headers}": (
                 '":cuda-include",\n' + '        ":cudnn-include",'
