@@ -106,7 +106,7 @@ class TensorDataSet {
   // Randomly samples a feature from example, returns its id in feature_name,
   // the value in bias, and it's type from input_spec in type.
   void RandomSample(int example, decision_trees::FeatureId* feature_name,
-                    float* bias, int* type, int rand_feature) const;
+                    float* bias, int* type, const int rand_feature) const;
 
  private:
   std::unique_ptr<DenseStorageType> dense_data_;

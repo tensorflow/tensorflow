@@ -203,8 +203,7 @@ void UpdateStatsCollated(
     const std::unique_ptr<TensorDataSet>& data, const TensorInputTarget& target,
     int num_targets,
     const std::unordered_map<int32, std::vector<int>>& leaf_examples,
-    const std::unordered_map<int32, std::vector<int>>&
-        leaf_feature_to_use_per_split,
+    const std::unordered_map<int32, std::vector<int>>& features_per_split,
     mutex* set_lock, int32 start, int32 end,
     std::unordered_set<int32>* ready_to_split) {
   auto it = leaf_examples.begin();
@@ -213,7 +212,7 @@ void UpdateStatsCollated(
   std::advance(end_it, end);
   while (it != end_it) {
     int32 leaf_id = it->first;
-    const auto& random_features = leaf_feature_to_use_per_split.at(leaf_id);
+    const auto& random_features = features_per_split.at(leaf_id);
     bool is_finished;
     fertile_stats_resource->AddExampleToStatsAndInitialize(
         data, &target, it->second, leaf_id, &is_finished, random_features);
@@ -293,9 +292,8 @@ class ProcessInputOp : public OpKernel {
     std::unordered_map<int, std::unique_ptr<mutex>> locks;
     std::unordered_map<int32, std::vector<int>> leaf_examples;
     // keep a id of subsampled feature which this leaf will use.
-    std::unordered_map<int32, std::vector<int>> leaf_feature_to_use_per_split;
+    std::unordered_map<int32, std::vector<int>> features_per_split;
     const int32 num_total_features = input_spec_.dense_features_size();
-    // Since num_splits_to_consider is a constant here, we set the depth as 0.
     const int32 num_splits_to_consider =
         param_proto_.num_splits_to_consider().constant_value();
 
@@ -305,11 +303,11 @@ class ProcessInputOp : public OpKernel {
         leaf_examples[leaf_ids(i)].push_back(i);
       }
       for (const auto& leaf : leaf_examples) {
+        const int leaf_id = leaf.first;
         // choose a feature to be used for each split.
         for (int i = 0; i < num_splits_to_consider; ++i) {
           int rand_feature = rng_->Uniform(num_total_features);
-          const int leaf_id = leaf.first;
-          leaf_feature_to_use_per_split[leaf_id].push_back(rand_feature);
+          features_per_split[leaf_id].push_back(rand_feature);
         }
       }
     } else {
@@ -351,15 +349,14 @@ class ProcessInputOp : public OpKernel {
     };
 
     auto update_collated = [this, &target, &num_targets, fertile_stats_resource,
-                            tree_resource, &leaf_examples,
-                            &leaf_feature_to_use_per_split, &set_lock,
-                            &ready_to_split, &data_set,
+                            tree_resource, &leaf_examples, &features_per_split,
+                            &set_lock, &ready_to_split, &data_set,
                             num_leaves](int64 start, int64 end) {
       CHECK(start <= end);
       CHECK(end <= num_leaves);
       UpdateStatsCollated(
           fertile_stats_resource, tree_resource, data_set, target, num_targets,
-          leaf_examples, leaf_feature_to_use_per_split, &set_lock,
+          leaf_examples, features_per_split, &set_lock,
           static_cast<int32>(start), static_cast<int32>(end), &ready_to_split);
     };
 

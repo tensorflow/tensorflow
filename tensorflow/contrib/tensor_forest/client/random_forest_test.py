@@ -41,7 +41,7 @@ def _get_classification_input_fns():
       x=data, y=labels, batch_size=150, num_epochs=None, shuffle=False)
 
   predict_input_fn = numpy_io.numpy_input_fn(
-      x=data[:1,], y=None, batch_size=1, num_epochs=1, shuffle=False)
+      x=data[:1, ], y=None, batch_size=1, num_epochs=1, shuffle=False)
   return train_input_fn, predict_input_fn
 
 
@@ -53,12 +53,12 @@ def _get_classification_big_input_fns():
   x = x.astype(np.float32)
   y = y.astype(np.int32)
   x_train, x_test, y_train, y_test = train_test_split(
-    x, y, test_size=0.33, random_state=42)
+      x, y, test_size=0.33, random_state=42)
   train_input_fn = numpy_io.numpy_input_fn(
-    x=x_train, y=y_train, batch_size=150, num_epochs=None, shuffle=False)
+      x=x_train, y=y_train, batch_size=150, num_epochs=None, shuffle=False)
 
   predict_input_fn = numpy_io.numpy_input_fn(
-    x=x_test, y=None, batch_size=1, num_epochs=1, shuffle=False)
+      x=x_test, y=None, batch_size=1, num_epochs=1, shuffle=False)
   return train_input_fn, predict_input_fn
 
 
@@ -71,7 +71,7 @@ def _get_regression_input_fns():
       x=data, y=labels, batch_size=506, num_epochs=None, shuffle=False)
 
   predict_input_fn = numpy_io.numpy_input_fn(
-      x=data[:1,], y=None, batch_size=1, num_epochs=1, shuffle=False)
+      x=data[:1, ], y=None, batch_size=1, num_epochs=1, shuffle=False)
   return train_input_fn, predict_input_fn
 
 
@@ -107,7 +107,8 @@ class TensorForestTrainerTests(test.TestCase):
         num_classes=3,
         num_features=4,
         split_after_samples=20,
-        inference_tree_paths=True)
+        inference_tree_paths=True,
+        base_random_seed=1)
     input_fn, predict_input_fn = _get_classification_big_input_fns()
 
     classifier_first = random_forest.TensorForestEstimator(hparams.fill())
@@ -140,7 +141,8 @@ class TensorForestTrainerTests(test.TestCase):
     self.assertGreaterEqual(0.1, res['loss'])
 
     predictions = list(regressor.predict(input_fn=predict_input_fn))
-    self.assertAllClose([24.], [pred['scores'] for pred in predictions], atol=1)
+    self.assertAllClose([24.], [pred['scores']
+                                for pred in predictions], atol=1)
 
   def testAdditionalOutputs(self):
     """Tests multi-class classification using matrix data as input."""

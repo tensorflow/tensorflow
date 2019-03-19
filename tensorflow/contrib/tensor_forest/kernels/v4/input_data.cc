@@ -121,7 +121,7 @@ void TensorDataSet::set_input_tensors(const Tensor& dense,
 void TensorDataSet::RandomSample(int example,
                                  decision_trees::FeatureId* feature_id,
                                  float* bias, int* type,
-                                 int rand_feature) const {
+                                 int* rand_feature) const {
   int32 num_total_features = input_spec_.dense_features_size();
   int64 sparse_input_start;
   if (sparse_indices_ != nullptr) {
@@ -131,16 +131,16 @@ void TensorDataSet::RandomSample(int example,
       num_total_features += num_sparse;
     }
   }
-  if (rand_feature == NULL) {
+  if (rand_feature == nullptr) {
     mutex_lock lock(mu_);
-    rand_feature = rng_->Uniform(num_total_features);
+    *rand_feature = rng_->Uniform(num_total_features);
   }
-  if (rand_feature < available_features_.size()) {  // it's dense.
-    *feature_id = available_features_[rand_feature];
-    *type = input_spec_.GetDenseFeatureType(rand_feature);
+  if (*rand_feature < available_features_.size()) {  // it's dense.
+    *feature_id = available_features_[*rand_feature];
+    *type = input_spec_.GetDenseFeatureType(*rand_feature);
   } else {
     const int32 sparse_index =
-        sparse_input_start + rand_feature - input_spec_.dense_features_size();
+        sparse_input_start + *rand_feature - input_spec_.dense_features_size();
     const int32 saved_index =
         (*sparse_indices_)(sparse_index, 1) + input_spec_.dense_features_size();
     *feature_id = decision_trees::FeatureId();
