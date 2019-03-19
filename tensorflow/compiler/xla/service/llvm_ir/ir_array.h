@@ -98,6 +98,12 @@ class IrArray {
     Index(absl::Span<llvm::Value* const> multidim, const Shape& shape,
           llvm::Type* index_type);
 
+    // Same as above, but only the dimensions of the shape without layout is
+    // passed. The layout is assumed to be the default (descending
+    // minor-to-major) layout.
+    Index(absl::Span<llvm::Value* const> multidim,
+          absl::Span<int64 const> dimensions, llvm::Type* index_type);
+
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64 dim,
                          llvm::IRBuilder<>* b) const {
@@ -120,8 +126,8 @@ class IrArray {
 
     bool LinearValidOnShape(const Shape& a) const;
 
-    // Given that "this" is the target index of a reshape from `operand_shape`
-    // to `shape`, returns the source index.
+    // Given that "this" is the target index of a reshape from `input_shape`
+    // to `output_shape`, returns the source index.
     Index SourceIndexOfReshape(const Shape& output_shape,
                                const Shape& input_shape,
                                llvm::IRBuilder<>* builder) const;
