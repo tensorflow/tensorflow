@@ -1160,7 +1160,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 16,
-    tags = ["notsan"],
+    tags = [
+            "notsan",
+            "no_rocm",
+           ],
 )
 
 tf_py_test(
@@ -1235,7 +1238,10 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    tags = ["notsan"],
+    tags = [
+            "notsan",
+            "no_rocm",
+           ],
 )
 
 tf_py_test(
