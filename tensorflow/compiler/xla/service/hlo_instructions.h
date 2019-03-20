@@ -911,6 +911,10 @@ class HloGetTupleElementInstruction : public HloInstruction {
                                          HloInstruction* operand, int64 index);
   // Returns the tuple index associated with this instruction.
   int64 tuple_index() const { return tuple_index_; }
+  // Sets the tuple index associated with this instruction.
+  void set_tuple_index(int64 new_tuple_index) {
+    tuple_index_ = new_tuple_index;
+  }
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
