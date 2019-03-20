@@ -366,6 +366,20 @@ class ScatterNdUpdateOp : public OpKernel {
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                         \
       type, dev, "ResourceScatterNdUpdate", scatter_nd_op::UpdateOp::ASSIGN);
 
+#define REGISTER_SCATTER_ND_MIN_MAX(type, dev)                            \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMin",            \
+                                    scatter_nd_op::UpdateOp::MIN);        \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingMin", \
+                                    scatter_nd_op::UpdateOp::MIN);        \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMax",            \
+                                    scatter_nd_op::UpdateOp::MAX);        \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingMax", \
+                                    scatter_nd_op::UpdateOp::MAX);        \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdMin", scatter_nd_op::UpdateOp::MIN);   \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
+      type, dev, "ResourceScatterNdMax", scatter_nd_op::UpdateOp::MAX);
+
 // Registers CPU kernels.
 #define REGISTER_SCATTER_ND_ADD_SUB_CPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB(type, CPU);
@@ -373,16 +387,21 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_UPDATE_CPU(type) \
   REGISTER_SCATTER_ND_UPDATE(type, CPU);
 
+#define REGISTER_SCATTER_ND_MIN_MAX_CPU(type) \
+  REGISTER_SCATTER_ND_MIN_MAX(type, CPU);
+
 #define REGISTER_SCATTER_ND_CPU(type) REGISTER_SCATTER_ND(type, CPU);
 #define REGISTER_SCATTER_ND_GPU(type) REGISTER_SCATTER_ND(type, GPU);
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
+TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 TF_CALL_string(REGISTER_SCATTER_ND_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
+TF_CALL_bool(REGISTER_SCATTER_ND_MIN_MAX_CPU);
 
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, index_type, \
                                                           dev)              \
@@ -409,6 +428,22 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
                           TensorScatterOp<dev##Device, type, index_type,      \
                                           scatter_nd_op::UpdateOp::SUB>)
 
+#define REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, index_type, dev) \
+  REGISTER_KERNEL_BUILDER(Name("TensorScatterMin")                            \
+                              .Device(DEVICE_##dev)                           \
+                              .TypeConstraint<type>("T")                      \
+                              .TypeConstraint<index_type>("Tindices"),        \
+                          TensorScatterOp<dev##Device, type, index_type,      \
+                                          scatter_nd_op::UpdateOp::MIN>)
+
+#define REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, index_type, dev) \
+  REGISTER_KERNEL_BUILDER(Name("TensorScatterMax")                            \
+                              .Device(DEVICE_##dev)                           \
+                              .TypeConstraint<type>("T")                      \
+                              .TypeConstraint<index_type>("Tindices"),        \
+                          TensorScatterOp<dev##Device, type, index_type,      \
+                                          scatter_nd_op::UpdateOp::MAX>)
+
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU(type)                    \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, int32, CPU); \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE(type, int64, CPU);
@@ -421,12 +456,22 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int32, CPU); \
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int64, CPU);
 
+#define REGISTER_SCATTER_ND_TENSOR_MIN_CPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int32, CPU); \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int64, CPU);
+
+#define REGISTER_SCATTER_ND_TENSOR_MAX_CPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int32, CPU); \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int64, CPU);
+
 #define REGISTER_SCATTER_ND_TENSOR_CPU(type)   \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU(type); \
   REGISTER_SCATTER_ND_TENSOR_ADD_CPU(type);    \
-  REGISTER_SCATTER_ND_TENSOR_SUB_CPU(type);
+  REGISTER_SCATTER_ND_TENSOR_SUB_CPU(type);    \
+  REGISTER_SCATTER_ND_TENSOR_MIN_CPU(type);    \
+  REGISTER_SCATTER_ND_TENSOR_MAX_CPU(type);
 
-// Register TensorScatterUpdate/Add/Sub for all number types.
+// Register TensorScatterUpdate/Add/Sub/Min/Max for all number types.
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_CPU);
 // Register only TensorScatterUpdate for string/bool types as well.
 TF_CALL_string(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
@@ -443,9 +488,13 @@ TF_CALL_bool(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 #define REGISTER_SCATTER_ND_UPDATE_GPU(type) \
   REGISTER_SCATTER_ND_UPDATE(type, GPU);
 
+#define REGISTER_SCATTER_ND_MIN_MAX_GPU(type) \
+  REGISTER_SCATTER_ND_MIN_MAX(type, GPU);
+
 #define REGISTER_SCATTER_ND_ALL_GPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB_GPU(type);  \
   REGISTER_SCATTER_ND_UPDATE_GPU(type);   \
+  REGISTER_SCATTER_ND_MIN_MAX_GPU(type);  \
   REGISTER_SCATTER_ND_GPU(type);
 
 TF_CALL_int32(REGISTER_SCATTER_ND_ALL_GPU);
@@ -462,13 +511,19 @@ TF_CALL_complex128(REGISTER_SCATTER_ND_ALL_GPU);
 #define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
   REGISTER_SCATTER_ND_UPDATE(type, SYCL);
 
+#define REGISTER_SCATTER_ND_MIN_MAX_GPU(type) \
+  REGISTER_SCATTER_ND_MIN_MAX(type, SYCL);
+
 TF_CALL_int32(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_int32(REGISTER_SCATTER_ND_UPDATE_SYCL);
+TF_CALL_int32(REGISTER_SCATTER_ND_MIN_MAX_SYCL);
 TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MIN_MAX_SYCL);
 #undef REGISTER_SCATTER_ND_ADD_SUB_SYCL
 #undef REGISTER_SCATTER_ND_UPDATE_SYCL
+#undef REGISTER_SCATTER_ND_MIN_MAX_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_SCATTER_ND_TENSOR_UPDATE_GPU(type)                    \
@@ -483,10 +538,20 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int32, GPU); \
   REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE(type, int64, GPU);
 
+#define REGISTER_SCATTER_ND_TENSOR_MIN_GPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int32, GPU); \
+  REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE(type, int64, GPU);
+
+#define REGISTER_SCATTER_ND_TENSOR_MAX_GPU(type)                    \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int32, GPU); \
+  REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE(type, int64, GPU);
+
 #define REGISTER_SCATTER_ND_TENSOR_GPU(type)   \
   REGISTER_SCATTER_ND_TENSOR_ADD_GPU(type);    \
   REGISTER_SCATTER_ND_TENSOR_UPDATE_GPU(type); \
-  REGISTER_SCATTER_ND_TENSOR_SUB_GPU(type);
+  REGISTER_SCATTER_ND_TENSOR_SUB_GPU(type);    \
+  REGISTER_SCATTER_ND_TENSOR_MIN_GPU(type);    \
+  REGISTER_SCATTER_ND_TENSOR_MAX_GPU(type);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU);
 
@@ -494,6 +559,9 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU);
 #undef REGISTER_SCATTER_ND_ADD_SUB
 #undef REGISTER_SCATTER_ND_ADD_SUB_CPU
 #undef REGISTER_SCATTER_ND_ADD_SUB_GPU
+#undef REGISTER_SCATTER_ND_MIN_MAX
+#undef REGISTER_SCATTER_ND_MIN_MAX_CPU
+#undef REGISTER_SCATTER_ND_MIN_MAX_GPU
 #undef REGISTER_SCATTER_ND_UPDATE
 #undef REGISTER_SCATTER_ND_UPDATE_CPU
 #undef REGISTER_SCATTER_ND_UPDATE_GPU
@@ -505,9 +573,13 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU);
 #undef REGISTER_SCATTER_ND_TENSOR_UPDATE_TYPE_INDEX_TYPE
 #undef REGISTER_SCATTER_ND_TENSOR_ADD_TYPE_INDEX_TYPE
 #undef REGISTER_SCATTER_ND_TENSOR_SUB_TYPE_INDEX_TYPE
+#undef REGISTER_SCATTER_ND_TENSOR_MIN_TYPE_INDEX_TYPE
+#undef REGISTER_SCATTER_ND_TENSOR_MAX_TYPE_INDEX_TYPE
 #undef REGISTER_SCATTER_ND_TENSOR_UPDATE_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_ADD_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_SUB_GPU
+#undef REGISTER_SCATTER_ND_TENSOR_MIN_GPU
+#undef REGISTER_SCATTER_ND_TENSOR_MAX_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_GPU
 
 #endif  // GOOGLE_CUDA
