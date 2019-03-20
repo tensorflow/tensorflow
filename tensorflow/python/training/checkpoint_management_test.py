@@ -567,7 +567,7 @@ class CheckpointManagerTest(test.TestCase):
     path = manager.save(checkpoint_number=5)
     self.assertEqual(os.path.basename(path), 'ckpt_name-5')
     manager = checkpoint_management.CheckpointManager(
-      checkpoint, directory, max_to_keep=2)
+        checkpoint, directory, max_to_keep=2)
     path = manager.save(checkpoint_number=5)
     self.assertEqual(os.path.basename(path), 'ckpt-5')
 
