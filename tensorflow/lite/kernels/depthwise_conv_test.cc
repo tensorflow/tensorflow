@@ -62,7 +62,7 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
             filter.per_channel_quantization_scales.size());
         std::vector<int64_t> bias_zero_points(
             filter.per_channel_quantization_scales.size());
-        for (int i = 0; i < filter.per_channel_quantization_scales.size();
+        for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
              ++i) {
           bias_scale[i] =
               input.scale * filter.per_channel_quantization_scales[i];
