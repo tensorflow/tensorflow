@@ -114,7 +114,7 @@ class OpHint(object):
   FUNCTION_NAME_ATTR = "_tflite_function_name"
   # UUID of the function (each OpHint gets a new uuid).
   FUNCTION_UUID_ATTR = "_tflite_function_uuid"
-  # The index index of the input (or nothing if it is an output).
+  # The input index of the input (or nothing if it is an output).
   FUNCTION_INPUT_INDEX_ATTR = "_tflite_function_input_index"
   # The output index of the output (or nothing if it is an input).
   FUNCTION_OUTPUT_INDEX_ATTR = "_tflite_function_output_index"
