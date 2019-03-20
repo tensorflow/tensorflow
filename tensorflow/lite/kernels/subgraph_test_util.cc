@@ -147,7 +147,7 @@ void SubgraphBuilder::BuildPadSubgraph(Subgraph* subgraph) {
       ::tflite::ops::builtin::Register_PAD(), &node_index);
 }
 
-void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
+void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph, TfLiteType condtype) {
   const int kCondInput = 0;
   const int kInput1 = 1;
   const int kInput2 = 2;
@@ -165,7 +165,7 @@ void SubgraphBuilder::BuildIfSubgraph(Subgraph* subgraph) {
   ASSERT_EQ(subgraph->SetInputs({kCondInput, kInput1, kInput2}), kTfLiteOk);
   ASSERT_EQ(subgraph->SetOutputs({kOutput}), kTfLiteOk);
 
-  SetupTensor(subgraph, kCondInput, kTfLiteBool);
+  SetupTensor(subgraph, kCondInput, condtype);
   SetupTensor(subgraph, kInput1, kTfLiteInt32);
   SetupTensor(subgraph, kInput2, kTfLiteInt32);
   SetupTensor(subgraph, kOutput, kTfLiteInt32);
