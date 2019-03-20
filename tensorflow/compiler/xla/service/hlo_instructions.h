@@ -1370,8 +1370,6 @@ class HloGatherInstruction : public HloInstruction {
   absl::Span<const int64> gather_slice_sizes() const {
     return gather_slice_sizes_;
   }
-  // Returns the dump string of the gather dimension numbers.
-  string GatherDimensionNumbersToString() const;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1380,6 +1378,9 @@ class HloGatherInstruction : public HloInstruction {
       absl::Span<const int64> offset_dims,
       absl::Span<const int64> collapsed_slice_dims,
       absl::Span<const int64> start_index_map, int64 index_vector_dim);
+  // Returns the dump string of the given gather dimension numbers.
+  static string GatherDimensionNumbersToString(
+      const GatherDimensionNumbers& gather_dimension_numbers);
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
@@ -1407,8 +1408,6 @@ class HloScatterInstruction : public HloInstruction {
     CHECK(scatter_dimension_numbers_ != nullptr);
     return *scatter_dimension_numbers_;
   }
-  // Returns the dump string of the scatter dimension numbers.
-  string ScatterDimensionNumbersToString() const;
   // Returns a serialized representation of this instruction.
   HloInstructionProto ToProto() const override;
 
@@ -1418,6 +1417,9 @@ class HloScatterInstruction : public HloInstruction {
       absl::Span<const int64> inserted_window_dims,
       absl::Span<const int64> scatter_dims_to_operand_dims,
       int64 index_vector_dim);
+  // Returns the dump string of the given scatter dimension numbers.
+  static string ScatterDimensionNumbersToString(
+      const ScatterDimensionNumbers& scatter_dimension_numbers);
 
  private:
   std::vector<string> ExtraAttributesToStringImpl(
