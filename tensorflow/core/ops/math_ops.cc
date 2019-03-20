@@ -968,8 +968,8 @@ REGISTER_OP("ArgMax")
     .Output("output: output_type")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
-    .SetShapeFn(ArgOpShape);
+    .Attr("output_type: {int32, int64} = DT_INT64");
+
 
 REGISTER_OP("ArgMin")
     .Input("input: T")
@@ -977,8 +977,8 @@ REGISTER_OP("ArgMin")
     .Output("output: output_type")
     .Attr("T: numbertype")
     .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
-    .SetShapeFn(ArgOpShape);
+    .Attr("output_type: {int32, int64} = DT_INT64");
+
 
 namespace {
 
