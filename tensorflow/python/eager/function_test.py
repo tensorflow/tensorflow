@@ -2566,6 +2566,27 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Tracing more than twice per input doesn't make sense.
     self.assertLess(trace_count[0], 13)
 
+  def test_concrete_function_shape_mismatch(self):
+
+    @def_function.function
+    def f(argument_name):
+      return argument_name + 1.
+
+    f_concrete = f.get_concrete_function(constant_op.constant([1.]))
+
+    # Calling a function from eager doesn't do any shape checking above what
+    # kernels do while executing.
+    self.assertAllEqual(
+        [2., 3.],
+        f_concrete(constant_op.constant([1., 2.])).numpy())
+
+    @def_function.function
+    def g():
+      f_concrete(constant_op.constant([1., 2.]))
+
+    with self.assertRaisesRegexp(ValueError, 'argument_name'):
+      g()
+
   @test_util.run_in_graph_and_eager_modes
   def test_shape_inference_with_symbolic_shapes(self):
 

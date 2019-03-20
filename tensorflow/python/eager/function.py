@@ -573,6 +573,7 @@ class ConcreteFunction(object):
       ValueError: If `args` contains anything other than Tensors or Variables.
     """
     ctx = context.context()
+    executing_eagerly = ctx.executing_eagerly()
 
     tape.variables_accessed(self._func_graph.variables)
 
@@ -590,6 +591,26 @@ class ConcreteFunction(object):
         variables_used.add(arg.handle)
       elif isinstance(arg, ops.Tensor):
         tensor_inputs.append(arg)
+        if not executing_eagerly:
+          # If we're graph building, shape inference is on. We check for input
+          # compatibility up front to avoid hard to debug incompatibilities
+          # later.
+          graph_input_shape = tensor_shape.TensorShape(
+              self._func_graph.inputs[i].shape)
+          if not graph_input_shape.is_compatible_with(arg.shape):
+            if self._arg_keywords:
+              arg_name = "'{}'".format(self._arg_keywords[i])
+            else:
+              arg_name = "with index {}".format(i)
+            raise ValueError(
+                ("The argument {} (value {}) is not compatible with the shape "
+                 "this function was traced with. Expected shape {}, but got "
+                 "shape {}.\n\nIf you called get_concrete_function, you may "
+                 "need to pass a tf.TensorSpec(..., shape=...) with a less "
+                 "specific shape, having None on axes which can vary.").format(
+                     arg_name, arg,
+                     self._func_graph.inputs[i].shape,
+                     arg.shape))
       elif (self._signature is not None and
             isinstance(self._signature[i], tensor_spec.TensorSpec)):
         tensor_inputs.append(
