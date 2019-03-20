@@ -177,11 +177,7 @@ template <typename T>
 struct functor_traits<div_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
-#if TENSORFLOW_USE_ROCM
     PacketAccess = false,
-#else
-    PacketAccess = true,
-#endif // TENSORFLOW_USE_ROCM
   };
 };
 
