@@ -25,3 +25,6 @@ This directory contains test models for testing quantization.
    A floating point model with two convs that have a use the same weight tensor.
 * `multi_input_add_reshape.bin` \
    A floating point model with two inputs with an add followed by a reshape.
+* `quantized_with_gather.bin` \
+   A floating point model with an input with a gather, modeling a situation
+   of mapping categorical input to embeddings.
