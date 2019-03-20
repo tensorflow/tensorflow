@@ -1754,9 +1754,10 @@ def conv1d_transpose(
 
     input = array_ops.expand_dims(input, spatial_start_dim)
     filters = array_ops.expand_dims(filters, 0)
-    output_shape = list(output_shape)
-    output_shape = output_shape[: spatial_start_dim] + [1] + \
-                   output_shape[spatial_start_dim:]
+    output_shape = list(output_shape) if not isinstance(
+        output_shape, ops.Tensor) else output_shape
+    output_shape = array_ops.concat([output_shape[: spatial_start_dim], [1],
+                                     output_shape[spatial_start_dim:]], 0)
 
     result = gen_nn_ops.conv2d_backprop_input(
         input_sizes=output_shape,
@@ -2599,10 +2600,12 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
-    if output_shape is not None:
+    if isinstance(output_shape, collections.Sized):
       n = len(output_shape) - 2
+    elif isinstance(output_shape, ops.Tensor):
+      n = output_shape.shape[0] - 2
     else:
-      raise ValueError("output_shape cannot be None")
+      raise ValueError("output_shape must be a tensor or sized collection.")
 
     if not 1 <= n <= 3:
       raise ValueError(
