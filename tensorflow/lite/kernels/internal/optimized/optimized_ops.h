@@ -47,6 +47,7 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
+using reference_ops::AffineQuantize;
 using reference_ops::ArgMax;
 using reference_ops::ArgMinMax;
 using reference_ops::Broadcast4DSlowGreater;

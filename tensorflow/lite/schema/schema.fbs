@@ -227,6 +227,7 @@ enum BuiltinOperator : byte {
   ELU = 111,
   REVERSE_SEQUENCE = 112,
   MATRIX_DIAG = 113,
+  QUANTIZE = 114,
 }
 
 // Options for the builtin operators.
@@ -319,6 +320,7 @@ union BuiltinOptions {
   RankOptions,
   ReverseSequenceOptions,
   MatrixDiagOptions,
+  QuantizeOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -760,6 +762,9 @@ table ReverseSequenceOptions {
 }
 
 table MatrixDiagOptions {
+}
+
+table QuantizeOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

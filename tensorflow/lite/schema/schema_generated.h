@@ -295,6 +295,9 @@ struct ReverseSequenceOptionsT;
 struct MatrixDiagOptions;
 struct MatrixDiagOptionsT;
 
+struct QuantizeOptions;
+struct QuantizeOptionsT;
+
 struct OperatorCode;
 struct OperatorCodeT;
 
@@ -558,11 +561,12 @@ enum BuiltinOperator {
   BuiltinOperator_ELU = 111,
   BuiltinOperator_REVERSE_SEQUENCE = 112,
   BuiltinOperator_MATRIX_DIAG = 113,
+  BuiltinOperator_QUANTIZE = 114,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_MATRIX_DIAG
+  BuiltinOperator_MAX = BuiltinOperator_QUANTIZE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[113] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[114] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -676,7 +680,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[113] {
     BuiltinOperator_RANK,
     BuiltinOperator_ELU,
     BuiltinOperator_REVERSE_SEQUENCE,
-    BuiltinOperator_MATRIX_DIAG
+    BuiltinOperator_MATRIX_DIAG,
+    BuiltinOperator_QUANTIZE
   };
   return values;
 }
@@ -797,6 +802,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "ELU",
     "REVERSE_SEQUENCE",
     "MATRIX_DIAG",
+    "QUANTIZE",
     nullptr
   };
   return names;
@@ -897,11 +903,12 @@ enum BuiltinOptions {
   BuiltinOptions_RankOptions = 86,
   BuiltinOptions_ReverseSequenceOptions = 87,
   BuiltinOptions_MatrixDiagOptions = 88,
+  BuiltinOptions_QuantizeOptions = 89,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_MatrixDiagOptions
+  BuiltinOptions_MAX = BuiltinOptions_QuantizeOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[89] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[90] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -991,7 +998,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[89] {
     BuiltinOptions_WhereOptions,
     BuiltinOptions_RankOptions,
     BuiltinOptions_ReverseSequenceOptions,
-    BuiltinOptions_MatrixDiagOptions
+    BuiltinOptions_MatrixDiagOptions,
+    BuiltinOptions_QuantizeOptions
   };
   return values;
 }
@@ -1087,6 +1095,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "RankOptions",
     "ReverseSequenceOptions",
     "MatrixDiagOptions",
+    "QuantizeOptions",
     nullptr
   };
   return names;
@@ -1451,6 +1460,10 @@ template<> struct BuiltinOptionsTraits<ReverseSequenceOptions> {
 
 template<> struct BuiltinOptionsTraits<MatrixDiagOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_MatrixDiagOptions;
+};
+
+template<> struct BuiltinOptionsTraits<QuantizeOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_QuantizeOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2187,6 +2200,14 @@ struct BuiltinOptionsUnion {
   const MatrixDiagOptionsT *AsMatrixDiagOptions() const {
     return type == BuiltinOptions_MatrixDiagOptions ?
       reinterpret_cast<const MatrixDiagOptionsT *>(value) : nullptr;
+  }
+  QuantizeOptionsT *AsQuantizeOptions() {
+    return type == BuiltinOptions_QuantizeOptions ?
+      reinterpret_cast<QuantizeOptionsT *>(value) : nullptr;
+  }
+  const QuantizeOptionsT *AsQuantizeOptions() const {
+    return type == BuiltinOptions_QuantizeOptions ?
+      reinterpret_cast<const QuantizeOptionsT *>(value) : nullptr;
   }
 };
 
@@ -7630,6 +7651,46 @@ inline flatbuffers::Offset<MatrixDiagOptions> CreateMatrixDiagOptions(
 
 flatbuffers::Offset<MatrixDiagOptions> CreateMatrixDiagOptions(flatbuffers::FlatBufferBuilder &_fbb, const MatrixDiagOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct QuantizeOptionsT : public flatbuffers::NativeTable {
+  typedef QuantizeOptions TableType;
+  QuantizeOptionsT() {
+  }
+};
+
+struct QuantizeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef QuantizeOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  QuantizeOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(QuantizeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<QuantizeOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const QuantizeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct QuantizeOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit QuantizeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  QuantizeOptionsBuilder &operator=(const QuantizeOptionsBuilder &);
+  flatbuffers::Offset<QuantizeOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<QuantizeOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<QuantizeOptions> CreateQuantizeOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  QuantizeOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<QuantizeOptions> CreateQuantizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const QuantizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -8027,6 +8088,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const MatrixDiagOptions *builtin_options_as_MatrixDiagOptions() const {
     return builtin_options_type() == BuiltinOptions_MatrixDiagOptions ? static_cast<const MatrixDiagOptions *>(builtin_options()) : nullptr;
   }
+  const QuantizeOptions *builtin_options_as_QuantizeOptions() const {
+    return builtin_options_type() == BuiltinOptions_QuantizeOptions ? static_cast<const QuantizeOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8408,6 +8472,10 @@ template<> inline const ReverseSequenceOptions *Operator::builtin_options_as<Rev
 
 template<> inline const MatrixDiagOptions *Operator::builtin_options_as<MatrixDiagOptions>() const {
   return builtin_options_as_MatrixDiagOptions();
+}
+
+template<> inline const QuantizeOptions *Operator::builtin_options_as<QuantizeOptions>() const {
+  return builtin_options_as_QuantizeOptions();
 }
 
 struct OperatorBuilder {
@@ -11247,6 +11315,29 @@ inline flatbuffers::Offset<MatrixDiagOptions> CreateMatrixDiagOptions(flatbuffer
       _fbb);
 }
 
+inline QuantizeOptionsT *QuantizeOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new QuantizeOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void QuantizeOptions::UnPackTo(QuantizeOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<QuantizeOptions> QuantizeOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const QuantizeOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateQuantizeOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<QuantizeOptions> CreateQuantizeOptions(flatbuffers::FlatBufferBuilder &_fbb, const QuantizeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const QuantizeOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateQuantizeOptions(
+      _fbb);
+}
+
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new OperatorCodeT();
   UnPackTo(_o, _resolver);
@@ -11857,6 +11948,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const MatrixDiagOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_QuantizeOptions: {
+      auto ptr = reinterpret_cast<const QuantizeOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -12227,6 +12322,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const MatrixDiagOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_QuantizeOptions: {
+      auto ptr = reinterpret_cast<const QuantizeOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -12585,6 +12684,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const MatrixDiagOptionsT *>(value);
       return CreateMatrixDiagOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_QuantizeOptions: {
+      auto ptr = reinterpret_cast<const QuantizeOptionsT *>(value);
+      return CreateQuantizeOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -12941,6 +13044,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_MatrixDiagOptions: {
       value = new MatrixDiagOptionsT(*reinterpret_cast<MatrixDiagOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_QuantizeOptions: {
+      value = new QuantizeOptionsT(*reinterpret_cast<QuantizeOptionsT *>(u.value));
       break;
     }
     default:
@@ -13387,6 +13494,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_MatrixDiagOptions: {
       auto ptr = reinterpret_cast<MatrixDiagOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_QuantizeOptions: {
+      auto ptr = reinterpret_cast<QuantizeOptionsT *>(value);
       delete ptr;
       break;
     }

@@ -2878,6 +2878,26 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
   }
 }
 
+template <typename T>
+inline void AffineQuantize(const tflite::QuantizationParams& op_params,
+                           const RuntimeShape& input_shape,
+                           const float* input_data,
+                           const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Quantize");
+  const int32 zero_point = op_params.zero_point;
+  const double scale = static_cast<double>(op_params.scale);
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  static constexpr int32 min_val = std::numeric_limits<T>::min();
+  static constexpr int32 max_val = std::numeric_limits<T>::max();
+
+  for (int i = 0; i < flat_size; i++) {
+    const float val = input_data[i];
+    int32 unclamped = static_cast<int32>(TfLiteRound(val / scale)) + zero_point;
+    int32 clamped = std::min(std::max(unclamped, min_val), max_val);
+    output_data[i] = clamped;
+  }
+}
+
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
