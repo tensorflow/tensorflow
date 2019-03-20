@@ -92,6 +92,7 @@ class MklQuantizeV2Op : public OpKernel {
                                                   fabsf(input_max_range))) /
                           100.0f;
     max_range = std::max(input_max_range, min_range + epsilon);
+    // Clamping the max_range to zero since max_range can also be negative.
     max_range = std::max(0.0f, max_range);
     auto cpu_engine = engine(engine::cpu, 0);
     const unsigned int src_idx = 0;
