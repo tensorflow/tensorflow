@@ -471,7 +471,7 @@ TF_CALL_bool(REGISTER_SCATTER_ND_MIN_MAX_CPU);
   REGISTER_SCATTER_ND_TENSOR_MIN_CPU(type);    \
   REGISTER_SCATTER_ND_TENSOR_MAX_CPU(type);
 
-// Register TensorScatterUpdate/Add/Sub for all number types.
+// Register TensorScatterUpdate/Add/Sub/Min/Max for all number types.
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_CPU);
 // Register only TensorScatterUpdate for string/bool types as well.
 TF_CALL_string(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
