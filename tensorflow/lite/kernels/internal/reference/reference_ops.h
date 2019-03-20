@@ -2933,6 +2933,21 @@ inline void Cast(const RuntimeShape& input_shape, const SrcT* input_data,
   }
 }
 
+template <typename T>
+T FloorMod(T input1, T input2) {
+  struct FloatMod {
+    float operator()(const float lhs, const float rhs) const {
+      return std::fmod(lhs, rhs);
+    }
+  };
+  using ModFunc = typename std::conditional<std::is_integral<T>::value,
+                                            std::modulus<T>, FloatMod>::type;
+  ModFunc mod_func;
+  T trunc_mod = mod_func(input1, input2);
+  return trunc_mod != 0 && (input2 < 0 != trunc_mod < 0) ? trunc_mod + input2
+                                                         : trunc_mod;
+}
+
 inline void Floor(const RuntimeShape& input_shape, const float* input_data,
                   const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
