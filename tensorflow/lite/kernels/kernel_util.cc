@@ -208,6 +208,17 @@ bool HaveSameShapes(const TfLiteTensor* input1, const TfLiteTensor* input2) {
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
+TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
+                            std::initializer_list<int> values) {
+  TfLiteIntArray* size = TfLiteIntArrayCreate(values.size());
+  int index = 0;
+  for (int v : values) {
+    size->data[index] = v;
+    ++index;
+  }
+  return context->ResizeTensor(context, tensor, size);
+}
+
 // TODO(petewarden): Having macros around this is ugly, look at other strategies
 // before replicating this approach elsewhere.
 #ifndef TF_LITE_STATIC_MEMORY
