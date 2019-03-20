@@ -34,11 +34,12 @@ namespace {
 // The computation is: `cond ? a + b : a * b`.
 class SimpleIfTest : public ControlFlowOpTest {
  protected:
-  void SetUp() override {
+  void SetUp() override {}
+  void BuildGraph(TfLiteType condtype = kTfLiteBool) {
     interpreter_->AddSubgraphs(2);
     builder_->BuildAddSubgraph(interpreter_->subgraph(1));
     builder_->BuildMulSubgraph(interpreter_->subgraph(2));
-    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
+    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph(), condtype);
 
     interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
     interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
@@ -51,6 +52,7 @@ class SimpleIfTest : public ControlFlowOpTest {
 };
 
 TEST_F(SimpleIfTest, TestIfTrue) {
+  BuildGraph(kTfLiteBool);
   interpreter_->typed_input_tensor<bool>(0)[0] = true;
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
@@ -58,21 +60,129 @@ TEST_F(SimpleIfTest, TestIfTrue) {
 }
 
 TEST_F(SimpleIfTest, TestIfFalse) {
+  BuildGraph(kTfLiteBool);
   interpreter_->typed_input_tensor<bool>(0)[0] = false;
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
   CheckIntTensor(output, {1, 2}, {5, 14});
 }
 
+TEST_F(SimpleIfTest, TestIfFloat) {
+  BuildGraph(kTfLiteFloat32);
+  interpreter_->typed_input_tensor<float>(0)[0] = 0.0f;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {5, 14});
+}
+
+TEST_F(SimpleIfTest, TestIfFloatMax) {
+  BuildGraph(kTfLiteFloat32);
+  interpreter_->typed_input_tensor<float>(0)[0] =
+      std::numeric_limits<float>::max();
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {6, 9});
+}
+
+TEST_F(SimpleIfTest, TestIfInt) {
+  BuildGraph(kTfLiteInt32);
+  interpreter_->typed_input_tensor<int>(0)[0] = 0;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {5, 14});
+}
+
+TEST_F(SimpleIfTest, TestIfIntMax) {
+  BuildGraph(kTfLiteInt32);
+  interpreter_->typed_input_tensor<int>(0)[0] = std::numeric_limits<int>::max();
+  ;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {6, 9});
+}
+
+TEST_F(SimpleIfTest, TestIfUInt8) {
+  BuildGraph(kTfLiteUInt8);
+  interpreter_->typed_input_tensor<uint8_t>(0)[0] = 0;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {5, 14});
+}
+
+TEST_F(SimpleIfTest, TestIfUInt8Max) {
+  BuildGraph(kTfLiteUInt8);
+  interpreter_->typed_input_tensor<uint8_t>(0)[0] =
+      std::numeric_limits<uint8_t>::max();
+  ;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {6, 9});
+}
+
+TEST_F(SimpleIfTest, TestIfInt64) {
+  BuildGraph(kTfLiteInt64);
+  interpreter_->typed_input_tensor<int64_t>(0)[0] = 0;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {5, 14});
+}
+
+TEST_F(SimpleIfTest, TestIfInt64Max) {
+  BuildGraph(kTfLiteInt64);
+  interpreter_->typed_input_tensor<int64_t>(0)[0] =
+      std::numeric_limits<int64_t>::max();
+  ;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {6, 9});
+}
+
+TEST_F(SimpleIfTest, TestIfInt16) {
+  BuildGraph(kTfLiteInt16);
+  interpreter_->typed_input_tensor<int16_t>(0)[0] = 0;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {5, 14});
+}
+
+TEST_F(SimpleIfTest, TestIfInt16Max) {
+  BuildGraph(kTfLiteInt16);
+  interpreter_->typed_input_tensor<int16_t>(0)[0] =
+      std::numeric_limits<int16_t>::max();
+  ;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {6, 9});
+}
+
+TEST_F(SimpleIfTest, TestIfInt8) {
+  BuildGraph(kTfLiteInt8);
+  interpreter_->typed_input_tensor<int8_t>(0)[0] = 0;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {5, 14});
+}
+
+TEST_F(SimpleIfTest, TestIfInt8Max) {
+  BuildGraph(kTfLiteInt8);
+  interpreter_->typed_input_tensor<int8_t>(0)[0] =
+      std::numeric_limits<int8_t>::max();
+  ;
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+  TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
+  CheckIntTensor(output, {1, 2}, {6, 9});
+}
+
 // Test IF op using subgraphs with dynamically sized outputs.
 // The computation is: `cond ? a + b : pad(a, b)`.
 class DynamicSubgraphIfTest : public ControlFlowOpTest {
  protected:
-  void SetUp() override {
+  void SetUp() override {}
+  void BuildGraph(TfLiteType condtype = kTfLiteBool) {
     interpreter_->AddSubgraphs(2);
     builder_->BuildAddSubgraph(interpreter_->subgraph(1));
     builder_->BuildPadSubgraph(interpreter_->subgraph(2));
-    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
+    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph(), condtype);
 
     interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
     interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
@@ -85,6 +195,7 @@ class DynamicSubgraphIfTest : public ControlFlowOpTest {
 };
 
 TEST_F(DynamicSubgraphIfTest, TestIfTrue) {
+  BuildGraph(kTfLiteBool);
   interpreter_->typed_input_tensor<bool>(0)[0] = true;
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);
@@ -95,6 +206,7 @@ TEST_F(DynamicSubgraphIfTest, TestIfTrue) {
 }
 
 TEST_F(DynamicSubgraphIfTest, TestIfFalse) {
+  BuildGraph(kTfLiteBool);
   interpreter_->typed_input_tensor<bool>(0)[0] = false;
   ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
   TfLiteTensor* output = interpreter_->tensor(interpreter_->outputs()[0]);

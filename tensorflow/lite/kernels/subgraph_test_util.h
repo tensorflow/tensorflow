@@ -51,7 +51,7 @@ class SubgraphBuilder {
   //   The 1st input is condition with boolean type.
   //   The 2nd and 3rd inputs are feed input the branch subgraphs.
   // 1 output.
-  void BuildIfSubgraph(Subgraph* subgraph);
+  void BuildIfSubgraph(Subgraph* subgraph, TfLiteType condtype);
 
   // Build a subgraph with a single Less op.
   // The subgraph is used as the condition subgraph for testing `While` op.

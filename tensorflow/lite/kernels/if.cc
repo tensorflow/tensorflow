@@ -49,9 +49,20 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The first input is the condition.
   const TfLiteTensor* cond = GetInput(context, node, 0);
   // Currently only bool is supported.
-  // TODO(ycling): Support other types since TensorFlow also support
-  // non-bool types as condition.
-  TF_LITE_ENSURE_EQ(context, cond->type, kTfLiteBool);
+  switch (cond->type) {
+    case kTfLiteBool:
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+    case kTfLiteInt64:
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+    case kTfLiteInt16:
+      // all is ok just fall out safely
+      break;
+    default:
+      context->ReportError(context, "Does not support type %d", cond->type);
+      return kTfLiteError;
+  }
   TF_LITE_ENSURE_EQ(context, NumElements(cond), 1);
 
   // The first input of the node is the condition. The rest of inputs are
@@ -129,7 +140,48 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
   const TfLiteTensor* cond = GetInput(context, node, 0);
-  bool cond_value = cond->data.b[0];
+
+  int active_branch_subgraph_index = -1;
+
+  switch (cond->type) {
+    case kTfLiteInt32:
+      active_branch_subgraph_index = cond->data.i32[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    case kTfLiteFloat32:
+      active_branch_subgraph_index = cond->data.f[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    case kTfLiteBool:
+      active_branch_subgraph_index = cond->data.b[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    case kTfLiteUInt8:
+      active_branch_subgraph_index = cond->data.uint8[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    case kTfLiteInt64:
+      active_branch_subgraph_index = cond->data.i64[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    case kTfLiteInt16:
+      active_branch_subgraph_index = cond->data.i16[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    case kTfLiteInt8:
+      active_branch_subgraph_index = cond->data.int8[0]
+                                         ? op_data->then_subgraph_index
+                                         : op_data->else_subgraph_index;
+      break;
+    default:
+      return kTfLiteError;
+  }
 
   Subgraph* this_subgraph = reinterpret_cast<Subgraph*>(context->impl_);
   auto* subgraphs = this_subgraph->GetSubgraphs();
@@ -137,8 +189,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Currently we copy the input / output between the subgraphs. This isn't
   // optimized yet.
   // TODO(b/120234921): Optimize and avoid copying tensors between subgraphs.
-  int active_branch_subgraph_index =
-      cond_value ? op_data->then_subgraph_index : op_data->else_subgraph_index;
   Subgraph& active_branch_subgraph =
       *(*subgraphs)[active_branch_subgraph_index];
   for (int i = 0; i < active_branch_subgraph.inputs().size(); ++i) {
