@@ -247,11 +247,20 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
     }
   }
 }
-}  // namespace
 
-static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
+std::string SerializeComputationToGraphDef(const HloComputation& comp) {
   return hlo_graph_dumper::HloComputationToDotGraph(comp, {});
 }
+
+HloPrintOptions GetPrintOptions() {
+  HloPrintOptions opts;
+  opts.set_print_operand_shape(false)
+      .set_print_percent(false)
+      .set_include_layout_in_shapes(false);
+  return opts;
+}
+
+}  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module,
@@ -440,7 +449,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
-  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module->ToString(GetPrintOptions()));
 
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;
