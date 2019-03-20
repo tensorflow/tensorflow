@@ -654,6 +654,24 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
                              }));
 }
 
+// Smoke test to ensure slightly irregular shapes safely partition into
+// multi-threaded tasks. See also b/128996474.
+TEST_P(ConvolutionOpTest, SimpleTestLargeIrregularQuantized) {
+  ConvolutionOpModel m(GetRegistration(),
+                       {TensorType_UINT8, {1, 1, 1, 1024}, -127, 128},
+                       {TensorType_UINT8, {1001, 1, 1, 1024}, -127, 128},
+                       {TensorType_UINT8, {1, 1, 1, 1001}, -127, 128});
+
+  m.SetNumThreads(1);
+  m.Invoke();
+
+  m.SetNumThreads(2);
+  m.Invoke();
+
+  m.SetNumThreads(3);
+  m.Invoke();
+}
+
 TEST_P(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
   // output_multiplier = 1.0118
   QuantizedConvolutionOpModel quant_op(
