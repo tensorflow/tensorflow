@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-package com.example.android.tflitecamerademo;
+package com.example.android.tflitecamerademo
 
-import android.app.Activity;
-import android.os.Bundle;
+import android.os.Bundle
+import android.support.v7.app.AppCompatActivity
 
-/** Main {@code Activity} class for the Camera app. */
-public class CameraActivity extends Activity {
+/** Main `Activity` class for the Camera app.  */
+class CameraActivity : AppCompatActivity() {
 
-  @Override
-  protected void onCreate(Bundle savedInstanceState) {
-    super.onCreate(savedInstanceState);
-    setContentView(R.layout.activity_camera);
-    if (null == savedInstanceState) {
-      getFragmentManager()
-          .beginTransaction()
-          .replace(R.id.container, Camera2BasicFragment.newInstance())
-          .commit();
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_camera)
+        savedInstanceState ?: supportFragmentManager
+                .beginTransaction()
+                .replace(R.id.container, Camera2BasicFragment.newInstance())
+                .commit()
     }
-  }
 }

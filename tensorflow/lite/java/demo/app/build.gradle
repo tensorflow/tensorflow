@@ -1,13 +1,15 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android-extensions'
+apply plugin: 'kotlin-android'
 
 android {
-    compileSdkVersion 26
-    buildToolsVersion "27.0.3"
+    compileSdkVersion 28
+    buildToolsVersion "28.0.3"
     defaultConfig {
-        applicationId "android.example.com.tflitecamerademo"
+        applicationId "android.example.com.tflitecamerademo.kt"
         // Required by Camera2 API.
         minSdkVersion 21
-        targetSdkVersion 26
+        targetSdkVersion 28
         versionCode 1
         versionName "1.0"
     }
@@ -34,6 +36,7 @@ repositories {
     maven {
         url 'https://google.bintray.com/tensorflow'
     }
+    mavenCentral()
 }
 
 allprojects {
@@ -46,14 +49,13 @@ allprojects {
 
 dependencies {
     implementation fileTree(dir: 'libs', include: ['*.jar'])
-    implementation 'com.android.support:appcompat-v7:25.2.0'
-    implementation 'com.android.support.constraint:constraint-layout:1.0.2'
-    implementation 'com.android.support:design:25.2.0'
-    implementation 'com.android.support:support-annotations:25.3.1'
-    implementation 'com.android.support:support-v13:25.2.0'
+    implementation 'com.android.support:appcompat-v7:28.0.0'
+    implementation 'com.android.support:support-annotations:28.0.0'
+    implementation 'com.android.support:support-v4:28.0.0'
 
-    // Build off of nightly TensorFlow Lite
-    implementation 'org.tensorflow:tensorflow-lite:0.0.0-nightly'
+    // Build off of TensorFlow Lite
+    implementation 'org.tensorflow:tensorflow-lite:1.13.1'
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
     // Use local TensorFlow library
     // implementation 'org.tensorflow:tensorflow-lite-local:0.0.0'
 }

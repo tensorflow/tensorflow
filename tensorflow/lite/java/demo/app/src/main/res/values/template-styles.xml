@@ -17,12 +17,8 @@
 <resources>
 
     <!-- Activity themes -->
+    <style name="AppTheme" parent="Theme.AppCompat.Light.NoActionBar" />
 
-    <style name="Theme.Base" parent="android:Theme.Light" />
-
-    <style name="Theme.Sample" parent="Theme.Base" />
-
-    <style name="AppTheme" parent="Theme.Sample" />
     <!-- Widget styling -->
 
     <style name="Widget" />
