@@ -189,7 +189,6 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
-        "//tensorflow/core/distributed_runtime:recent_request_ids",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_cache",
