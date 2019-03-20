@@ -393,15 +393,16 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
 
   // threshold scores
   std::vector<int> keep_indices;
-  // TODO (chowdhery): Remove the dynamic allocation and replace it
-  // with temporaries, esp for std::vector<float>
   std::vector<float> keep_scores;
+  // Reserve the memory as the size is already known
+  keep_scores.reserve(scores.size());
+  keep_indices.reserve(scores.size());
   SelectDetectionsAboveScoreThreshold(
       scores, non_max_suppression_score_threshold, &keep_scores, &keep_indices);
 
   int num_scores_kept = keep_scores.size();
-  std::vector<int> sorted_indices;
-  sorted_indices.resize(num_scores_kept);
+  // Reserve the memory as the size is already known
+  std::vector<int> sorted_indices(num_scores_kept);
   DecreasingPartialArgSort(keep_scores.data(), num_scores_kept, num_scores_kept,
                            sorted_indices.data());
   const int num_boxes_kept = num_scores_kept;
