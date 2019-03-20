@@ -1291,14 +1291,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     GetNodeAttr(n->def(), "round_mode", &round_mode_string);
     if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
       VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
-              << "rounding mode is not HALF_TO_EVEN"
+              << "rounding mode is not HALF_TO_EVEN. "
               << "This case is not optimized by Intel MKL, thus using Eigen op"
               << "for Quantize op ";
       return false;
     }
     if (filter_node->IsConstant()) {
       VLOG(1) << "QuantizeOpRewrite: Trying to quantize a node which "
-              << "is a constant"
+              << "is a constant. "
               << "This case is not supported by the kernel, thus using Eigen op"
               << "for Quantize op ";
 
