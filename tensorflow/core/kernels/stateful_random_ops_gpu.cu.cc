@@ -18,7 +18,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/random_op_gpu.h"
-#include "tensorflow/core/kernels/stateful_random_ops.h"
+#include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/util/gpu_launch_config.h"
 
 namespace tensorflow {
