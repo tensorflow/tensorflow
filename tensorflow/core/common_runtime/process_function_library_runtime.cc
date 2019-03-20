@@ -486,19 +486,14 @@ Status GetGraphAndRets(const string& function_name, AttrSlice attrs,
                        std::vector<string>* ret_node_names,
                        DataTypeVector* ret_types,
                        std::vector<string>* control_ret_node_names) {
-  auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
-    return lib_def->LookUpOpDef(op, sig);
-  };
-  FunctionBody* tmp_fbody;
+  std::unique_ptr<FunctionBody> fbody;
   // TODO(iga): FunctionDefToBodyHelper copies fdef. Avoid this copy.
-  TF_RETURN_IF_ERROR(
-      FunctionDefToBodyHelper(*fdef, attrs, lib_def, get_func_sig, &tmp_fbody));
-  if (tmp_fbody == nullptr) {
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, attrs, lib_def, &fbody));
+  if (!fbody) {
     LOG(ERROR) << "Failed to get FunctionBody for \"" << function_name << "\"";
     return errors::Internal("Failed to construct FunctionBody for ",
                             function_name);
   }
-  std::unique_ptr<FunctionBody> fbody(tmp_fbody);
   *graph = std::unique_ptr<Graph>(fbody->graph);
   fbody->graph = nullptr;
   ret_node_names->reserve(fbody->ret_nodes.size());
