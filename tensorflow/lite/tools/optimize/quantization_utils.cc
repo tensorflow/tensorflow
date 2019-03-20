@@ -117,7 +117,7 @@ void SymmetricPerChannelQuantization(const float* const input,
   // Calculate scales per channel
   std::vector<float> scale_invs(channel_dim_size);
   const float half_scale = kMaxQuantizedValue;
-  for (size_t channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
+  for (int channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
     const float half_range = std::max(std::abs(min_vals[channel_idx]),
                                       std::abs(max_vals[channel_idx]));
     output_scales->at(channel_idx) = half_range / half_scale;
