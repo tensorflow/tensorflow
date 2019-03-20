@@ -173,16 +173,6 @@ StatusOr<bool> TryRemoveUnusedConditionalOperands(
         HloInstruction::CreateTuple(new_tuple_operands));
     TF_RETURN_IF_ERROR(
         conditional->ReplaceOperandWithDifferentShape(branch + 1, new_tuple));
-
-    // Sanity check that the conditional instruction is in a sane state.
-    CHECK_EQ(conditional->operand(branch + 1)->shape(),
-             conditional->branch_computation(branch)
-                 ->parameter_instruction(0)
-                 ->shape());
-    CHECK_EQ(
-        conditional->shape(),
-        conditional->branch_computation(branch)->root_instruction()->shape())
-        << conditional->branch_computation(branch)->ToString();
   }
   return true;
 }
