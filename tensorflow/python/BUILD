@@ -4697,6 +4697,7 @@ tf_py_test(
     additional_deps = [
         ":array_ops",
         ":client",
+        ":config",
         ":control_flow_ops",
         ":data_flow_ops",
         ":errors",
