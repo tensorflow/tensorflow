@@ -186,7 +186,7 @@ IrArray::Index IrArray::Index::SourceIndexOfSlice(
     const Shape& operand_shape, absl::Span<const int64> starts,
     absl::Span<const int64> strides, llvm::IRBuilder<>* builder) const {
   std::vector<llvm::Value*> source_multi_index(multidim_.size());
-  for (int i = 0; i < multidim_.size(); ++i) {
+  for (size_t i = 0; i < multidim_.size(); ++i) {
     int64 stride = strides[i];
     auto type = multidim_[i]->getType();
 
