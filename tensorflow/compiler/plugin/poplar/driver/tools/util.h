@@ -48,6 +48,14 @@ absl::optional<To> convert_scalar(const From& from) {
   return check_convert_ok(to, from) ? absl::optional<To>(to) : absl::nullopt;
 };
 
+// Check if there are any operations in the computation which have sharding
+// information
+bool HaveSharding(HloComputation* comp);
+
+// Check if there are any operations in the module which have sharding
+// information
+bool HaveSharding(HloModule* module);
+
 // Get the sharding info for the output tensors of the given op
 std::vector<int64> GetShardingDeviceId(const HloInstruction* inst);
 

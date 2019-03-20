@@ -26,36 +26,6 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-static bool HaveSharding(HloComputation* comp) {
-  for (auto* inst : comp->instructions()) {
-    if (inst->has_sharding()) {
-      auto sharding = inst->sharding();
-      if (IsSupportedSharding(sharding)) {
-        return true;
-      }
-      LOG(INFO) << "Instruction " << inst->name()
-                << " has unsupported sharding " << sharding.ToString()
-                << " which will be ignored.";
-      inst->clear_sharding();
-    }
-  }
-  return false;
-}
-
-static bool HaveSharding(HloModule* module) {
-  for (auto* comp : module->computations()) {
-    if (IsPopOpsFusion(comp)) {
-      continue;
-    }
-
-    // If there is no sharding information, no need to continue
-    if (HaveSharding(comp)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 StatusOr<bool> ShardingPass::Run(HloModule* module) {
   if (!HaveSharding(module)) {
     return false;
@@ -64,6 +34,19 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
   for (auto* comp : module->computations()) {
     if (IsPopOpsFusion(comp)) {
       continue;
+    }
+
+    // Remove unsupported sharding
+    for (auto* inst : comp->instructions()) {
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding();
+        if (!IsSupportedSharding(sharding)) {
+          LOG(INFO) << "Instruction " << inst->name()
+                    << " has unsupported sharding " << sharding.ToString()
+                    << " which will be ignored.";
+          inst->clear_sharding();
+        }
+      }
     }
 
     if (!HaveSharding(comp)) {
@@ -106,91 +89,7 @@ StatusOr<bool> ShardingPass::Run(HloModule* module) {
     }
   }
 
-  bool added = false;
-
-  for (auto* comp : module->computations()) {
-    if (IsPopOpsFusion(comp)) {
-      continue;
-    }
-
-    // Now add InterIpuCopy instructions between nodes which are on different
-    // devices
-    auto original_insts = comp->MakeInstructionPostOrder();
-    for (auto* inst : original_insts) {
-      auto opcode = inst->opcode();
-      if (opcode == HloOpcode::kTuple ||
-          opcode == HloOpcode::kGetTupleElement) {
-        continue;
-      }
-
-      if (!inst->has_sharding()) {
-        continue;
-      }
-
-      const auto& src_sharding = inst->sharding();
-      if (!src_sharding.HasUniqueDevice()) {
-        return xla::FailedPrecondition("No unique IPU number on %s",
-                                       inst->name());
-      }
-
-      int src_ipu = src_sharding.GetUniqueDevice();
-
-      FindAllUsers finder;
-      finder.Find(inst);
-      auto paths = finder.Paths();
-
-      std::multimap<int, HloInstruction*> ipu_map;
-      std::set<int> ipu_nums;
-      for (const auto& path : paths) {
-        auto user = path.back();
-        auto next = path.front();
-
-        if (inst->parent() != next->parent()) {
-          return xla::FailedPrecondition(
-              "Instructions on different computations %s, %s", inst->name(),
-              next->name());
-        }
-
-        const auto& dst_sharding = user->sharding();
-        if (!dst_sharding.HasUniqueDevice()) {
-          return xla::FailedPrecondition("No unique IPU number on %s",
-                                         user->name());
-        }
-
-        int dst_ipu = dst_sharding.GetUniqueDevice();
-
-        if (src_ipu != dst_ipu) {
-          ipu_map.insert(std::make_pair(dst_ipu, next));
-          ipu_nums.insert(dst_ipu);
-        }
-      }
-
-      for (auto ipu : ipu_nums) {
-        added = true;
-        auto range = ipu_map.equal_range(ipu);
-        HloInstruction* inst_on_ipu;
-        if (inst->opcode() == HloOpcode::kConstant ||
-            IsPopOpsFusion(inst, "wide_const")) {
-          inst_on_ipu = comp->AddInstruction(inst->Clone());
-        } else {
-          inst_on_ipu = comp->AddInstruction(HloInstruction::CreateCustomCall(
-              inst->shape(), {inst}, "inter_ipu_copy", ""));
-        }
-        inst_on_ipu->set_device_sharding(ipu);
-
-        for (auto user = range.first; user != range.second; ++user) {
-          auto* u = user->second;
-          for (int operand = 0; operand < u->operand_count(); operand++) {
-            if (u->operand(operand) == inst) {
-              u->ReplaceOperandWith(operand, inst_on_ipu);
-            }
-          }
-        }
-      }
-    }
-  }
-
-  return added;
+  return true;
 }
 
 ShardingPass::ShardingPass() {}

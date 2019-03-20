@@ -84,6 +84,7 @@ cc_library(
         "driver/passes/hlo_computation_name_uniquify.cc",
         "driver/passes/inplace_finder.cc",
         "driver/passes/inplace_util.cc",
+        "driver/passes/inter_ipu_copy_inserter.cc",
         "driver/passes/non_linearity_recomputation.cc",
         "driver/passes/not_supported_gather_expander.cc",
         "driver/passes/not_supported_scatter_expander.cc",
@@ -120,6 +121,7 @@ cc_library(
         "driver/passes/hlo_computation_name_uniquify.h",
         "driver/passes/inplace_finder.h",
         "driver/passes/inplace_util.h",
+        "driver/passes/inter_ipu_copy_inserter.h",
         "driver/passes/non_linearity_recomputation.h",
         "driver/passes/not_supported_gather_expander.h",
         "driver/passes/not_supported_scatter_expander.h",
@@ -705,6 +707,17 @@ xla_test(
 tf_cc_test(
     name = "sharding_pass_test",
     srcs = ["tests/sharding_pass_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
+    name = "inter_ipu_copy_inserter_test",
+    srcs = ["tests/inter_ipu_copy_inserter_test.cc"],
     size = "small",
     deps = [
         ":optimizers",
@@ -1371,6 +1384,7 @@ test_suite(
         "root_token_replacer_test",
         "scheduler_test",
         "sharding_pass_test",
+        "inter_ipu_copy_inserter_test",
         "simple_network_test",
         "sort_op_test",
         "tensor_array_test",

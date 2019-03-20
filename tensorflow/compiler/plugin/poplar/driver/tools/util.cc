@@ -5,12 +5,41 @@
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include "absl/types/optional.h"
 
 namespace xla {
 namespace poplarplugin {
+
+bool IsSupportedSharding(const HloSharding& sharding) {
+  // We currently only support sharding with unique devices.
+  return sharding.HasUniqueDevice();
+}
+
+bool HaveSharding(HloComputation* comp) {
+  for (auto* inst : comp->instructions()) {
+    if (inst->has_sharding()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HaveSharding(HloModule* module) {
+  for (auto* comp : module->computations()) {
+    if (IsPopOpsFusion(comp)) {
+      continue;
+    }
+
+    // If there is no sharding information, no need to continue
+    if (HaveSharding(comp)) {
+      return true;
+    }
+  }
+  return false;
+}
 
 std::vector<int64> GetShardingDeviceId(const HloInstruction* inst) {
   // This function works on the assumptions:
@@ -173,11 +202,6 @@ bool IsRepeatLoop(const xla::HloInstruction* inst) {
     }
   }
   return false;
-}
-
-bool IsSupportedSharding(const HloSharding& sharding) {
-  // We currently only support sharding with unique devices.
-  return sharding.HasUniqueDevice();
 }
 
 bool IsInterIpuCopy(const HloInstruction* inst) {
