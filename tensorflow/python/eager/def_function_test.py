@@ -253,7 +253,8 @@ class DefFunctionTest(test.TestCase):
     func = def_function.function(
         functools.partial(f, x=constant_op.constant(1)))
 
-    # This is a limitation of functools.partial.
+    # This is a limitation of functools.partial. It is not unexpected behavior,
+    # but still testing for it for completeness.
     with self.assertRaisesRegexp(
         TypeError, 'got multiple values for'):
       func(5)
