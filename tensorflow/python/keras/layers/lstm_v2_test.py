@@ -90,7 +90,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     layer = rnn.LSTM(units, return_sequences=True)
     model.add(layer)
     outputs = model.layers[-1].output
-    self.assertEqual(outputs.get_shape().as_list(), [None, timesteps, units])
+    self.assertEqual(outputs.shape.as_list(), [None, timesteps, units])
 
   def test_dynamic_behavior_LSTM(self):
     num_samples = 2
