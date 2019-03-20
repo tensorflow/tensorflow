@@ -501,17 +501,45 @@ void mlir::sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth) {
   }
 }
 
-// Factors out common behavior to add max(`iv`, ...), min(`iv` + `offset`, ...)
-// to loop bounds.
+// Factors out common behavior to add a new `iv` (resp. `iv` + `offset`) to the
+// lower (resp. upper) loop bound. When called for both results in:
+//
+// ```mlir
+//    for %i = max (`iv, ...) to min (`iv` + `offset`)
 static void augmentMapAndBounds(FuncBuilder *b, Value *iv, AffineMap *map,
                                 SmallVector<Value *, 4> *operands,
                                 int64_t offset = 0) {
   auto bounds = llvm::to_vector<4>(map->getResults());
-  operands->push_back(iv);
-  auto numOperands = operands->size();
-  bounds.push_back(b->getAffineDimExpr(numOperands - 1) + offset);
-  *map = b->getAffineMap(numOperands, map->getNumSymbols(), bounds, {});
+  bounds.push_back(b->getAffineDimExpr(map->getNumDims()) + offset);
+  operands->insert(operands->begin() + map->getNumDims(), iv);
+  *map =
+      b->getAffineMap(map->getNumDims() + 1, map->getNumSymbols(), bounds, {});
   canonicalizeMapAndOperands(map, operands);
+}
+
+// Clone the original body of `forOp` into the body of `newForOp` while
+// substituting `oldIv` in place of
+// `forOp.getInductionVariable()`.
+// Note: `newForOp` may be nested under `forOp`.
+static void cloneLoopBodyInto(OpPointer<AffineForOp> forOp, Value *oldIv,
+                              OpPointer<AffineForOp> newForOp) {
+  BlockAndValueMapping map;
+  map.map(oldIv, newForOp->getInductionVar());
+  FuncBuilder b(newForOp->getBody(), newForOp->getBody()->end());
+  for (auto it = forOp->getBody()->begin(), end = forOp->getBody()->end();
+       it != end; ++it) {
+    // Step over newForOp in case it is nested under forOp.
+    if (&*it == newForOp->getInstruction()) {
+      continue;
+    }
+    auto *inst = b.clone(*it, map);
+    unsigned idx = 0;
+    for (auto r : it->getResults()) {
+      // Since we do a forward pass over the body, we iteratively augment
+      // the `map` with everything we clone.
+      map.map(r, inst->getResult(idx++));
+    }
+  }
 }
 
 // Stripmines `forOp` by `factor` and sinks it under each of the `targets`.
@@ -549,16 +577,19 @@ stripmineSink(OpPointer<AffineForOp> forOp, uint64_t factor,
 
   SmallVector<OpPointer<AffineForOp>, 8> innerLoops;
   for (auto t : targets) {
-    // Insert forOp just before the first instruction in the body.
-    auto *body = t->getBody();
-    auto &inst = body->getInstructions().front();
-    FuncBuilder b(&inst);
-    auto newLoop = b.create<AffineForOp>(t->getLoc(), lbOperands, lbMap,
-                                         ubOperands, ubMap, originalStep);
-    newLoop->createBody()->getInstructions().splice(
-        newLoop->getBody()->end(), body->getInstructions(), ++body->begin(),
-        body->end());
-    innerLoops.push_back(newLoop);
+    // Insert newForOp at the end of `t`.
+    FuncBuilder b(t->getBody(), t->getBody()->end());
+    auto newForOp = b.create<AffineForOp>(t->getLoc(), lbOperands, lbMap,
+                                          ubOperands, ubMap, originalStep);
+    newForOp->createBody();
+    cloneLoopBodyInto(t, forOp->getInductionVar(), newForOp);
+    // Remove all instructions from `t` except `newForOp`.
+    auto rit = ++newForOp->getInstruction()->getReverseIterator();
+    auto re = t->getBody()->rend();
+    for (auto &inst : llvm::make_early_inc_range(llvm::make_range(rit, re))) {
+      inst.erase();
+    }
+    innerLoops.push_back(newForOp);
   }
 
   return innerLoops;

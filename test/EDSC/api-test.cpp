@@ -412,6 +412,10 @@ TEST_FUNC(tile_2d) {
   // CHECK-NEXT:           for %i4 = max (d0, d1) -> (d0, d1)([[ZERO]], %i1) to min (d0, d1) -> (d0, d1 + 1024)(%1, %i1) step 32 {
   // CHECK-NEXT:             for %i5 = max (d0, d1, d2) -> (d0, d1, d2)([[ZERO]], %i1, %i4) to min (d0, d1, d2) -> (d0, d1 + 1024, d2 + 32)(%1, %i1, %i4) {
   // CHECK-NEXT:               for %i6 = max (d0, d1, d2) -> (d0, d1, d2)([[ZERO]], %i0, %i3) to min (d0, d1, d2) -> (d0, d1 + 512, d2 + 16)(%0, %i0, %i3) {
+  // CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  // CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  // CHECK-NEXT:                 {{.*}} = addf {{.*}}, {{.*}} : f32
+  // CHECK-NEXT:                 store {{.*}}, {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
   //      CHECK:               }
   // CHECK-NEXT:             }
   // CHECK-NEXT:           }
@@ -420,6 +424,10 @@ TEST_FUNC(tile_2d) {
   // CHECK-NEXT:       for %i7 = (d0) -> (d0)([[ZERO]]) to (d0) -> (d0)(%2) {
   // CHECK-NEXT:         for %i8 = max (d0, d1) -> (d0, d1)([[ZERO]], %i0) to min (d0, d1) -> (d0, d1 + 512)(%0, %i0) {
   // CHECK-NEXT:           for %i9 = max (d0, d1) -> (d0, d1)([[ZERO]], %i1) to min (d0, d1) -> (d0, d1 + 1024)(%1, %i1) {
+  // CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  // CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  // CHECK-NEXT:             {{.*}}= addf {{.*}}, {{.*}} : f32
+  // CHECK-NEXT:             store {{.*}}, {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
   // clang-format on
   f->print(llvm::outs());
 }
