@@ -183,16 +183,22 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_Adam(int iters, int params) {
+static void BM_Adam(int iters, int params, int is_multi_threaded) {
   const int64 tot = static_cast<int64>(iters) * params;
   testing::ItemsProcessed(tot);
   testing::BytesProcessed(tot * sizeof(float));
   Graph* init;
   Graph* train;
   Adam(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  if (is_multi_threaded) {
+    // Use max thread number if test performance.
+    test::Benchmark("cpu", train, nullptr, init).Run(iters);
+  } else {
+    test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  }
 }
-BENCHMARK(BM_Adam)->Arg(128 << 10)->Arg(256 << 10);
+BENCHMARK(BM_Adam)->ArgPair(128 << 10, 0)->ArgPair(256 << 10, 0);
+BENCHMARK(BM_Adam)->ArgPair(256 << 5, 1)->ArgPair(256 << 16, 1);
 
 static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
