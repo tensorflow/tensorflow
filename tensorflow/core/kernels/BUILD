@@ -6444,6 +6444,28 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_qmatmul_op_test",
+    size = "small",
+    srcs = ["mkl_qmatmul_op_test.cc"],
+    deps = [
+        ":mkl_input_conversion_op",
+        ":mkl_qmatmul_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 # Android-only test for quantized multiply.
 cc_binary(
     name = "quantized_mul_op_test_android_only",
