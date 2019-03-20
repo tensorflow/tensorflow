@@ -83,8 +83,6 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
 }
 
 // Convert indices into a vector of 4-d vectors.
-// TODO(renjieliu): Revisit here to improve the performance, since multiple
-// allocations of std::vectors will be quite slow on phones.
 template <typename T>
 TfLiteStatus GetIndicesVector(TfLiteContext* context,
                               const TfLiteTensor* indices,
@@ -95,28 +93,29 @@ TfLiteStatus GetIndicesVector(TfLiteContext* context,
     case 0:
     case 1: {
       const auto indices_data = GetTensorData<T>(indices);
+      std::vector<std::vector<T>> index(num_indices, {0,0,0});
       for (int i = 0; i < num_indices; ++i) {
-        std::vector<T> index({0, 0, 0, indices_data[i]});
-        indices_vector->push_back(index);
+        index[i].push_back(indices_data[i]);
+        indices_vector->emplace_back(index[i]);
       }
       break;
     }
     case 2: {
       const int true_dimensions = SizeOfDimension(indices, 1);
       TF_LITE_ENSURE(context, true_dimensions <= kMaxDimensions);
+      std::vector<std::vector<T>> index(num_indices);
       for (int i = 0; i < num_indices; ++i) {
-        std::vector<T> index;
-        index.reserve(kMaxDimensions);
+        index[i].reserve(kMaxDimensions);
         // Fill the index with 1 up to kMaxDimensions - true_dimensions to
         // satisfy the needs for 4-dimension index.
         for (int j = 0; j < kMaxDimensions - true_dimensions; ++j) {
-          index.push_back(0);
+          index[i].push_back(0);
         }
         for (int j = 0; j < true_dimensions; ++j) {
-          index.push_back(GetTensorData<T>(indices)[i * true_dimensions + j]);
+          index[i].push_back(GetTensorData<T>(indices)[i * true_dimensions + j]);
         }
 
-        indices_vector->push_back(index);
+        indices_vector->push_back(index[i]);
       }
       break;
     }
