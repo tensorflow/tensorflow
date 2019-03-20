@@ -61,9 +61,7 @@ tf_cc_test(
 cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
-    hdrs = ["llvm_util.h",
-           "llvm_target_helper.h",
-           ],
+    hdrs = ["llvm_util.h",],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -147,6 +145,7 @@ cc_library(
     deps = [
         ":ir_array",
         ":llvm_util",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
@@ -209,6 +208,7 @@ cc_library(
         ":llvm_loop",
         ":llvm_util",
         ":loop_emitter",
+        "//tensorflow/compiler/xla/service/gpu:target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/service/gpu:parallel_loop_emitter",
