@@ -1766,8 +1766,17 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     // elsewhere.
     if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
         (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
-      // a / sqrt(b) = a * rsqrt(b)
-      node->set_op("Mul");
+      if (IsDivNoNan(*node)) {
+        // div_no_nan(a, sqrt(b)) => mul_no_nan(a, rsqrt(b))
+        node->set_op("MulNoNan");
+      } else if (IsXdivy(*node)) {
+        // xdivy(a, sqrt(b)) => mul_no_nan(rsqrt(b), a)
+        node->set_op("MulNoNan");
+        node->mutable_input()->SwapElements(0, 1);
+      } else {
+        // div(a, sqrt(b)) => mul(a, rsqrt(b))
+        node->set_op("Mul");
+      }
       y->set_op("Rsqrt");
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
@@ -2102,7 +2111,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
 
     // Check that value preserving chain is the only consumer of the Mul output.
-    TF_RETURN_IF_TRUE(!IsMul(*source));
+    TF_RETURN_IF_TRUE(!IsAnyMul(*source));
     TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
 
     const NodeDef* mul = source;
@@ -2132,7 +2141,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     // Create new node `scaled_weights`.
     NodeDef* scaled_weights = AddEmptyNode(scaled_weights_node_name);
-    scaled_weights->set_op("Mul");
+    scaled_weights->set_op(source->op());
     scaled_weights->set_device(weights->device());
     (*scaled_weights->mutable_attr())["T"] = weights->attr().at("dtype");
     AddToOptimizationQueue(scaled_weights);
@@ -2317,7 +2326,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   ~ReplaceMulWithSquare() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMul(*node) && node->input(0) == node->input(1);
+    return IsAnyMul(*node) && node->input(0) == node->input(1);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
