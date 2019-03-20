@@ -265,8 +265,10 @@ std::vector<uint8> EmitModuleToHsaco(Module* module, llvm::TargetMachine* target
                                       llvm::TargetMachine::CGFT_ObjectFile);
   codegen_passes.run(*module);
   isabin_fs->flush();
+  const char* lld_path_value = "/opt/rocm/hcc/bin";
+  StringRef lld_path = lld_path_value;
 
-  auto lld_program = llvm::sys::findProgramByName("ld.lld");
+  auto lld_program = llvm::sys::findProgramByName("ld.lld",lld_path);
   if (!lld_program) {
     LOG(FATAL) << "unable to find ld.lld in PATH: "
                << lld_program.getError().message();
