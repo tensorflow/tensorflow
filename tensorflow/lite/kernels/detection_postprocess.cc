@@ -125,18 +125,6 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-// TODO(chowdhery): Add to kernel_util.h
-TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
-                            std::initializer_list<int> values) {
-  TfLiteIntArray* size = TfLiteIntArrayCreate(values.size());
-  int index = 0;
-  for (int v : values) {
-    size->data[index] = v;
-    ++index;
-  }
-  return context->ResizeTensor(context, tensor, size);
-}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = reinterpret_cast<OpData*>(node->user_data);
   // Inputs: box_encodings, scores, anchors
@@ -161,27 +149,29 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* detection_boxes =
       GetOutput(context, node, kOutputTensorDetectionBoxes);
   detection_boxes->type = kTfLiteFloat32;
-  SetTensorSizes(context, detection_boxes,
-                 {kBatchSize, num_detected_boxes, kNumCoordBox});
+  tflite::SetTensorSizes(context, detection_boxes,
+                         {kBatchSize, num_detected_boxes, kNumCoordBox});
 
   // Output Tensor detection_classes: size is set to (1, num_detected_boxes)
   TfLiteTensor* detection_classes =
       GetOutput(context, node, kOutputTensorDetectionClasses);
   detection_classes->type = kTfLiteFloat32;
-  SetTensorSizes(context, detection_classes, {kBatchSize, num_detected_boxes});
+  tflite::SetTensorSizes(context, detection_classes,
+                         {kBatchSize, num_detected_boxes});
 
   // Output Tensor detection_scores: size is set to (1, num_detected_boxes)
   TfLiteTensor* detection_scores =
       GetOutput(context, node, kOutputTensorDetectionScores);
   detection_scores->type = kTfLiteFloat32;
-  SetTensorSizes(context, detection_scores, {kBatchSize, num_detected_boxes});
+  tflite::SetTensorSizes(context, detection_scores,
+                         {kBatchSize, num_detected_boxes});
 
   // Output Tensor num_detections: size is set to 1
   TfLiteTensor* num_detections =
       GetOutput(context, node, kOutputTensorNumDetections);
   num_detections->type = kTfLiteFloat32;
   // TODO (chowdhery): Make it a scalar when available
-  SetTensorSizes(context, num_detections, {1});
+  tflite::SetTensorSizes(context, num_detections, {1});
 
   // Temporary tensors
   TfLiteIntArrayFree(node->temporaries);
@@ -194,24 +184,24 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* decoded_boxes = &context->tensors[op_data->decoded_boxes_index];
   decoded_boxes->type = kTfLiteFloat32;
   decoded_boxes->allocation_type = kTfLiteArenaRw;
-  SetTensorSizes(context, decoded_boxes,
-                 {input_box_encodings->dims->data[1], kNumCoordBox});
+  tflite::SetTensorSizes(context, decoded_boxes,
+                         {input_box_encodings->dims->data[1], kNumCoordBox});
 
   // scores
   TfLiteTensor* scores = &context->tensors[op_data->scores_index];
   scores->type = kTfLiteFloat32;
   scores->allocation_type = kTfLiteArenaRw;
-  SetTensorSizes(context, scores,
-                 {input_class_predictions->dims->data[1],
-                  input_class_predictions->dims->data[2]});
+  tflite::SetTensorSizes(context, scores,
+                         {input_class_predictions->dims->data[1],
+                          input_class_predictions->dims->data[2]});
 
   // active_candidate
   TfLiteTensor* active_candidate =
       &context->tensors[op_data->active_candidate_index];
   active_candidate->type = kTfLiteUInt8;
   active_candidate->allocation_type = kTfLiteArenaRw;
-  SetTensorSizes(context, active_candidate,
-                 {input_box_encodings->dims->data[1]});
+  tflite::SetTensorSizes(context, active_candidate,
+                         {input_box_encodings->dims->data[1]});
 
   return kTfLiteOk;
 }
@@ -723,10 +713,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace detection_postprocess
 
 TfLiteRegistration* Register_DETECTION_POSTPROCESS() {
-  static TfLiteRegistration r = {detection_postprocess::Init,
-                                 detection_postprocess::Free,
-                                 detection_postprocess::Prepare,
-                                 detection_postprocess::Eval};
+  static TfLiteRegistration r = {
+      detection_postprocess::Init, detection_postprocess::Free,
+      detection_postprocess::Prepare, detection_postprocess::Eval};
   return &r;
 }
 

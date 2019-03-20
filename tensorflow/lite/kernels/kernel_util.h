@@ -84,6 +84,9 @@ inline void SetTensorToDynamic(TfLiteTensor* tensor) {
   }
 }
 
+TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
+                            std::initializer_list<int> values);
+
 // Determines whether it is a hybrid op - one that has float inputs and
 // quantized weights.
 inline bool IsHybridOp(const TfLiteTensor* input, const TfLiteTensor* weight) {
