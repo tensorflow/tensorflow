@@ -535,6 +535,10 @@ Status FindCompilationCandidates(
       VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
       continue;
     }
+    if (node->IsControlFlow()) {
+      VLOG(2) << "Rejecting " << node->name() << ": is a control-flow op";
+      continue;
+    }
     if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
       VLOG(2) << "Rejecting " << node->name() << ": dummy op ("
               << node->type_string() << ")";
