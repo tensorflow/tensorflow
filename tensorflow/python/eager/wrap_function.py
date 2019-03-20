@@ -190,8 +190,6 @@ class WrappedFunction(function.ConcreteFunction):
         lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
     pruned_graph.control_outputs.extend(
         [lift_map[operation] for operation in operation_fetches])
-    if not tensor_fetches:
-      pruned_graph.outputs.append(lift_map[sink_tensor])
     for external_capture, internal_capture in self.graph.captures.items():
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)

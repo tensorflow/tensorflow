@@ -1391,6 +1391,8 @@ TfLiteDelegate* NnApiDelegate() {
 
             .profiling_string = nullptr,
             .builtin_code = kTfLiteBuiltinDelegate,
+            .custom_name = "TfLiteNnapiDelegate",
+            .version = 1,
         };
 
         // Request TFLite to partition the graph and make kernels

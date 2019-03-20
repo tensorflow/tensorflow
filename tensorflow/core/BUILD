@@ -2996,14 +2996,13 @@ tf_cuda_library(
         "common_runtime/scoped_allocator.cc",
         "common_runtime/scoped_allocator_mgr.cc",
         "common_runtime/shape_refiner.cc",
-        "common_runtime/shape_refiner.h",
-        "framework/versions.h",
+        "common_runtime/graph_optimizer.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
         "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
         "public/session.h",
         "public/session_options.h",
         "public/version.h",
-    ],
+    ] + CORE_CPU_BASE_HDRS,
     hdrs = CORE_CPU_BASE_HDRS,
     copts = tf_copts(),
     deps = [

@@ -1130,7 +1130,7 @@ class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
   }
 };
 
-TEST_P(ConvolutionOpTest, SimpleTest) {
+TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,

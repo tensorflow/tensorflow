@@ -1434,24 +1434,24 @@ bool RemoveListArrayConverter(Graph* g) {
   return removed_any;
 }
 
+Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                    NameAttrList* function) {
+  if (call_def.op() == "PartitionedCall" ||
+      call_def.op() == "StatefulPartitionedCall") {
+    TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", function));
+  } else {
+    function->set_name(call_def.op());
+    *function->mutable_attr() = call_def.attr();
+  }
+  return Status::OK();
+}
+
 Status InstantiateFunctionCall(const NodeDef& call_def,
                                FunctionLibraryRuntime& flr,
                                FunctionLibraryRuntime::Handle* handle) {
-  const string* func_name;
-  AttrSlice attrs;
-
-  NameAttrList func;
-  if (call_def.op() == "PartitionedCall" ||
-      call_def.op() == "StatefulPartitionedCall") {
-    TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", &func));
-    func_name = &func.name();
-    attrs = AttrSlice(&func.attr());
-  } else {
-    func_name = &call_def.op();
-    attrs = AttrSlice(call_def);
-  }
-
-  return flr.Instantiate(*func_name, attrs, handle);
+  NameAttrList function;
+  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(call_def, &function));
+  return flr.Instantiate(function.name(), AttrSlice(&function.attr()), handle);
 }
 
 namespace {

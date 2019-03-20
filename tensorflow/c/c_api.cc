@@ -1941,7 +1941,10 @@ TF_Graph::TF_Graph()
       refiner(graph.versions().producer(), graph.op_registry()),
       delete_requested(false),
       parent(nullptr),
-      parent_inputs(nullptr) {}
+      parent_inputs(nullptr) {
+  // Tell the shape refiner to also run shape inference on functions.
+  refiner.set_function_library_for_shape_inference(&graph.flib_def());
+}
 
 TF_Graph* TF_NewGraph() { return new TF_Graph; }
 

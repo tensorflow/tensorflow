@@ -22,6 +22,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
@@ -161,6 +162,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":trt_ops",
+        ":wrap_py_utils",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -444,4 +446,14 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]),
+)
+
+tf_py_wrap_cc(
+    name = "wrap_py_utils",
+    srcs = ["utils/py_utils.i"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/compiler/tf2tensorrt:py_utils",
+        "//third_party/python_runtime:headers",
+    ],
 )

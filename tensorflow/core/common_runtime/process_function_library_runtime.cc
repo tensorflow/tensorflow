@@ -668,6 +668,22 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
+  // Mapping from a function body node name to the control output name.
+  std::unordered_map<string, string> node_name_to_control_ret;
+  for (const auto& control_ret : fdef->control_ret()) {
+    node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
+  }
+
+  // We must preserve control returns in each of the function components,
+  // otherwise after function inlining we might prune side-effectful nodes.
+  const auto control_ret =
+      [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
+    const auto it = node_name_to_control_ret.find(n->name());
+    return it != node_name_to_control_ret.end()
+               ? absl::make_optional<string>(it->second)
+               : absl::nullopt;
+  };
+
   int i = 0;
   FunctionNameGenerator name_generator(&data->overlay_lib_, function_name);
   for (const auto& pair : subgraphs) {
@@ -683,7 +699,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         &comp_data->arg_alloc_attrs_, &comp_data->ret_alloc_attrs_));
     FunctionDef shard;
     string unique_name = name_generator.GetName();
-    TF_RETURN_IF_ERROR(GraphToFunctionDef(*subgraph, unique_name, &shard));
+    TF_RETURN_IF_ERROR(
+        GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
     FunctionLibraryRuntime* target_flr = GetFLR(target);
     TF_RETURN_IF_ERROR(data->overlay_lib_.AddFunctionDef(shard));
     FunctionLibraryRuntime::InstantiateOptions opts;

@@ -433,6 +433,9 @@ class _EagerDefinedFunction(object):
     if executing_eagerly:
       return outputs
     else:
+      # TODO(b/128924522): This additional set_shape should not be
+      # necessary. ShapeRefiner likely needs to inspect handle_data. Remove this
+      # once that's done.
       for i, shape in enumerate(self._output_shapes):
         outputs[i].set_shape(shape)
       for i, func_graph_output in enumerate(self._func_graph_outputs):
@@ -982,12 +985,11 @@ class FunctionSpec(object):
     self.vararg_name = fullargspec.varargs
 
     # A cache mapping from arg index to default value, for canonicalization.
-    offset = len(args) - len(fullargspec.defaults or [])
+    offset = len(args) - len(self._default_values or [])
     self._arg_indices_to_default_values = {
         offset + index: default
-        for index, default in enumerate(fullargspec.defaults or [])
+        for index, default in enumerate(self._default_values or [])
     }
-    self._default_values_start_index = offset
     if input_signature is None:
       self._input_signature = None
     else:
@@ -1069,11 +1071,10 @@ class FunctionSpec(object):
     args = self._args_to_prepend + args
     kwargs = dict(kwargs, **self._kwargs_to_include)
     if not kwargs:
-      if self._default_values:
-        inputs = args + self._default_values[
-            len(args) - self._default_values_start_index:]
-      else:
-        inputs = args
+      inputs = args
+      for index in sorted(self._arg_indices_to_default_values.keys()):
+        if index >= len(args):
+          inputs += (self._arg_indices_to_default_values[index],)
     else:
       # Maps from index of arg to its corresponding value, according to `args`
       # and `kwargs`; seeded with the default values for the named args that

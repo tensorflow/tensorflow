@@ -432,7 +432,6 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
 GrpcWorker::GrpcWorker(WorkerEnv* worker_env, const ConfigProto& config)
     : Worker(worker_env),
-      recent_request_ids_(100000),
       recv_buf_max_chunk_(
           config.experimental().recv_buf_max_chunk() > 0
               ? config.experimental().recv_buf_max_chunk()

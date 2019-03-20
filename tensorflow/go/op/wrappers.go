@@ -7652,6 +7652,17 @@ func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output
 	return op.Output(0)
 }
 
+// OptimizeDatasetAttr is an optional argument to OptimizeDataset.
+type OptimizeDatasetAttr func(optionalAttr)
+
+// OptimizeDatasetOptimizationConfigs sets the optional optimization_configs attribute to value.
+// If not specified, defaults to <>
+func OptimizeDatasetOptimizationConfigs(value []string) OptimizeDatasetAttr {
+	return func(m optionalAttr) {
+		m["optimization_configs"] = value
+	}
+}
+
 // Creates a dataset by applying optimizations to `input_dataset`.
 //
 // Creates a dataset by applying optimizations to `input_dataset`.
@@ -7661,11 +7672,14 @@ func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output
 //	optimizations: A `tf.string` vector `tf.Tensor` identifying optimizations to use.
 //
 //
-func OptimizeDataset(scope *Scope, input_dataset tf.Output, optimizations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func OptimizeDataset(scope *Scope, input_dataset tf.Output, optimizations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...OptimizeDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "OptimizeDataset",
 		Input: []tf.Input{
@@ -7767,6 +7781,60 @@ func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.O
 		Input: []tf.Input{
 			resource_handle,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// IteratorFromStringHandleAttr is an optional argument to IteratorFromStringHandle.
+type IteratorFromStringHandleAttr func(optionalAttr)
+
+// IteratorFromStringHandleOutputTypes sets the optional output_types attribute to value.
+//
+// value: If specified, defines the type of each tuple component in an
+// element produced by the resulting iterator.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func IteratorFromStringHandleOutputTypes(value []tf.DataType) IteratorFromStringHandleAttr {
+	return func(m optionalAttr) {
+		m["output_types"] = value
+	}
+}
+
+// IteratorFromStringHandleOutputShapes sets the optional output_shapes attribute to value.
+//
+// value: If specified, defines the shape of each tuple component in an
+// element produced by the resulting iterator.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func IteratorFromStringHandleOutputShapes(value []tf.Shape) IteratorFromStringHandleAttr {
+	return func(m optionalAttr) {
+		m["output_shapes"] = value
+	}
+}
+
+// Converts the given string representing a handle to an iterator to a resource.
+//
+// Arguments:
+//	string_handle: A string representation of the given handle.
+//
+// Returns A handle to an iterator resource.
+func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ...IteratorFromStringHandleAttr) (resource_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "IteratorFromStringHandle",
+		Input: []tf.Input{
+			string_handle,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -27722,6 +27790,61 @@ func StatelessTruncatedNormal(scope *Scope, shape tf.Output, seed tf.Output, opt
 	return op.Output(0)
 }
 
+// QuantizedConv2DPerChannelAttr is an optional argument to QuantizedConv2DPerChannel.
+type QuantizedConv2DPerChannelAttr func(optionalAttr)
+
+// QuantizedConv2DPerChannelOutType sets the optional out_type attribute to value.
+//
+// value: The quantized type of output tensor that needs to be converted.
+// If not specified, defaults to DT_QINT32
+func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChannelAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
+//
+// value: list of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes QuantizedConv2D per channel.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	min_input: The minimum value of the input tensor
+//	max_input: The maximum value of the input tensor.
+//	min_filter: The minimum value of the filter tensor.
+//	max_filter: The maximum value of the filter tensor.
+//	strides: list of stride values.
+//
+//
+// Returns The output tensor.The minimum value of the final output tensor.The maximum value of the final output tensor.
+func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedConv2DPerChannelAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedConv2DPerChannel",
+		Input: []tf.Input{
+			input, filter, min_input, max_input, min_filter, max_filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
 // RestoreSliceAttr is an optional argument to RestoreSlice.
 type RestoreSliceAttr func(optionalAttr)
 
@@ -39162,60 +39285,6 @@ func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_han
 		Input: []tf.Input{
 			resource_handle,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// IteratorFromStringHandleAttr is an optional argument to IteratorFromStringHandle.
-type IteratorFromStringHandleAttr func(optionalAttr)
-
-// IteratorFromStringHandleOutputTypes sets the optional output_types attribute to value.
-//
-// value: If specified, defines the type of each tuple component in an
-// element produced by the resulting iterator.
-// If not specified, defaults to <>
-//
-// REQUIRES: len(value) >= 0
-func IteratorFromStringHandleOutputTypes(value []tf.DataType) IteratorFromStringHandleAttr {
-	return func(m optionalAttr) {
-		m["output_types"] = value
-	}
-}
-
-// IteratorFromStringHandleOutputShapes sets the optional output_shapes attribute to value.
-//
-// value: If specified, defines the shape of each tuple component in an
-// element produced by the resulting iterator.
-// If not specified, defaults to <>
-//
-// REQUIRES: len(value) >= 0
-func IteratorFromStringHandleOutputShapes(value []tf.Shape) IteratorFromStringHandleAttr {
-	return func(m optionalAttr) {
-		m["output_shapes"] = value
-	}
-}
-
-// Converts the given string representing a handle to an iterator to a resource.
-//
-// Arguments:
-//	string_handle: A string representation of the given handle.
-//
-// Returns A handle to an iterator resource.
-func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ...IteratorFromStringHandleAttr) (resource_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "IteratorFromStringHandle",
-		Input: []tf.Input{
-			string_handle,
-		},
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
