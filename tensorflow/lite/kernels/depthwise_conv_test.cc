@@ -75,8 +75,8 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
                         /*scale=*/0,
                         /*zero_point=*/0,
                         true,
-                        /*per_channel_scale=*/bias_scale,
-                        /*per_channel_zero_point=*/bias_zero_points,
+                        /*per_channel_quantization_scales=*/bias_scale,
+                        /*per_channel_quantization_offsets=*/bias_zero_points,
                         /*channel_index==*/0};
         bias_ = AddInput(bias);
       } else {
