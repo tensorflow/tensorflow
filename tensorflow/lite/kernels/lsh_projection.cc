@@ -59,11 +59,11 @@ limitations under the License.
 #include <limits>
 #include <memory>
 
+#include <farmhash.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
-#include <farmhash.h>
 
 namespace tflite {
 namespace ops {

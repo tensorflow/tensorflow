@@ -180,11 +180,11 @@ const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
           "st4 {v0.s, v1.s, v2.s, v3.s}[2], [%[shuffled_vectors_ptr]], #16\n"
           "st4 {v0.s, v1.s, v2.s, v3.s}[3], [%[shuffled_vectors_ptr]], #16\n"
 
-          : [ unshuffled_vec0_ptr ] "+r"(unshuffled_vec0_ptr),
-            [ unshuffled_vec1_ptr ] "+r"(unshuffled_vec1_ptr),
-            [ unshuffled_vec2_ptr ] "+r"(unshuffled_vec2_ptr),
-            [ unshuffled_vec3_ptr ] "+r"(unshuffled_vec3_ptr),
-            [ shuffled_vectors_ptr ] "+r"(shuffled_vectors_ptr)
+          : [unshuffled_vec0_ptr] "+r"(unshuffled_vec0_ptr),
+            [unshuffled_vec1_ptr] "+r"(unshuffled_vec1_ptr),
+            [unshuffled_vec2_ptr] "+r"(unshuffled_vec2_ptr),
+            [unshuffled_vec3_ptr] "+r"(unshuffled_vec3_ptr),
+            [shuffled_vectors_ptr] "+r"(shuffled_vectors_ptr)
           :
           : "v0", "v1", "v2", "v3", "cc", "memory");
     }
@@ -297,11 +297,11 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
-          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
-            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr)
-          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
-            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
-            [ wide_rows ] "r"(wide_rows)
+          : [mat_ptr0] "+r"(mat_ptr0), [mat_ptr1] "+r"(mat_ptr1),
+            [vec_ptr] "+r"(vec_ptr), [result_ptr] "+r"(result_ptr)
+          : [mat_ptr0_end] "r"(mat_ptr0_end),
+            [scaling_factors_ptr] "r"(scaling_factors_ptr),
+            [wide_rows] "r"(wide_rows)
           : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
             "v10", "v11", "v12", "v13", "cc", "memory");
     }
@@ -363,9 +363,9 @@ static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
             // We have to be careful to cast this value to 32 bits in order
             // to interpret the sign bit properly.
             "mov %[row_sum], v1.d[0]\n"
-            : [ row_sum ] "=r"(row_sum), [ ledger_ptr ] "+r"(ledger_ptr),
-              [ mat_ptr ] "+r"(mat_ptr), [ vec_ptr ] "+r"(vec_ptr)
-            : [ ledger_end ] "r"(ledger_end)
+            : [row_sum] "=r"(row_sum), [ledger_ptr] "+r"(ledger_ptr),
+              [mat_ptr] "+r"(mat_ptr), [vec_ptr] "+r"(vec_ptr)
+            : [ledger_end] "r"(ledger_end)
             : "x0", "x1", "x7", "x8", "v0", "v1", "v8", "v9", "cc", "memory");
       }
       result[(batch * m_rows + row) * result_stride] +=
