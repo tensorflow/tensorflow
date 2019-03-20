@@ -971,7 +971,6 @@ REGISTER_OP("ArgMax")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape)
 	.Doc(R"doc(Returns the index with the largest value across axes of a tensor.
-inputs: Must all be the same size and shape.
 Note that in case of ties the identity of the return value is not guaranteed.
 )doc");
 
@@ -984,7 +983,6 @@ REGISTER_OP("ArgMin")
     .Attr("output_type: {int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape)
 	.Doc(R"doc(Returns the index with the smallest value across axes of a tensor.
-inputs: Must all be the same size and shape.
 Note that in case of ties the identity of the return value is not guaranteed.
 )doc");
 
