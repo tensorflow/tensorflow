@@ -158,23 +158,43 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   Arguments:
       `x`: A tensor or variable.
-      `alpha`: A float, governs as the slope of function when the input value is less than threshold value, small positive value corresponds to `Leaky RelU` (default=`0.`).
+      `alpha`: A float, governs as the slope of function when the input
+      value is less than threshold value, small positive value corresponds
+      to `Leaky RelU` (default=`0.`).
       `max_value`: float. The maximum value the function could return.(default=`none`)
       `threshold`: float. Threshold value for thresholded activation.
 
   Returns:
       f(x), element-wise. It is a tensor if x is a tensor.
 
-  Example:
+  Example 1:
       `python
       Code:
       a = tf.constant([1.0, -0.5, 3.4, 2.1, 0.0, -6.5], dtype = tf.float32)
       b=tf.keras.activations.relu(a,alpha=1.0,max_value=3.0,threshold=1.2)
       print ("Output: ", (b))
-
       Output:
-      tf.Tensor([-0.20000005 -1.7         3.          2.1        -1.2
-      -7.7       ], shape=(6,), dtype=float32)`
+      tf.Tensor([-0.2 -1.7  3.   2.1 -1.2 -7.7], shape=(6,), dtype=float32)
+      `
+  Example 2:
+     `python
+     Code:
+     a = tf.constant([1.0, -0.5, 3.4, 2.1, 0.0, -6.5], dtype = tf.float32)
+     b=tf.keras.activations.relu(a,alpha=0.0,max_value=3.0,threshold=1.2)
+     print ("Output: ", (b))
+     Output:
+     tf.Tensor([ 0.  -0.   3.   2.1  0.  -0. ], shape=(6,), dtype=float32)
+       `
+  Example 3:
+    `python
+     Code:
+     a = tf.constant([1.0, -0.5, 3.4, 2.1, 0.0, -6.5], dtype = tf.float32)
+     b=tf.keras.activations.relu(a,alpha=0.0,max_value=3.0,threshold=0.0)
+     print ("Output: ", (b))
+     Output:
+     tf.Tensor([1.  0.  3.  2.1 0.  0. ], shape=(6,), dtype=float32)
+    `
+
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
