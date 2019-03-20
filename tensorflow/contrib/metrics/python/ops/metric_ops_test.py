@@ -5811,9 +5811,10 @@ class StreamingCovarianceTest(test.TestCase):
 
   def testVars(self):
     metrics.streaming_covariance(
-        predictions=math_ops.to_float(math_ops.range(10)) +
+        predictions=math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
         array_ops.ones([10, 10]),
-        labels=math_ops.to_float(math_ops.range(10)) + array_ops.ones([10, 10]))
+        labels=(math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
+                array_ops.ones([10, 10])))
     _assert_metric_variables(self, (
         'covariance/comoment:0',
         'covariance/count:0',
@@ -5824,18 +5825,20 @@ class StreamingCovarianceTest(test.TestCase):
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     cov, _ = metrics.streaming_covariance(
-        predictions=math_ops.to_float(math_ops.range(10)) +
+        predictions=math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
         array_ops.ones([10, 10]),
-        labels=math_ops.to_float(math_ops.range(10)) + array_ops.ones([10, 10]),
+        labels=(math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
+                array_ops.ones([10, 10])),
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [cov])
 
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.streaming_covariance(
-        predictions=math_ops.to_float(math_ops.range(10)) +
+        predictions=math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
         array_ops.ones([10, 10]),
-        labels=math_ops.to_float(math_ops.range(10)) + array_ops.ones([10, 10]),
+        labels=(math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
+                array_ops.ones([10, 10])),
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
@@ -5858,8 +5861,8 @@ class StreamingCovarianceTest(test.TestCase):
 
   def testSingleUpdateIdentical(self):
     with self.cached_session() as sess:
-      predictions = math_ops.to_float(math_ops.range(10))
-      labels = math_ops.to_float(math_ops.range(10))
+      predictions = math_ops.cast(math_ops.range(10), dtypes_lib.float32)
+      labels = math_ops.cast(math_ops.range(10), dtypes_lib.float32)
 
       cov, update_op = metrics.streaming_covariance(predictions, labels)
 
@@ -5983,9 +5986,10 @@ class StreamingPearsonRTest(test.TestCase):
 
   def testVars(self):
     metrics.streaming_pearson_correlation(
-        predictions=math_ops.to_float(math_ops.range(10)) +
+        predictions=math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
         array_ops.ones([10, 10]),
-        labels=math_ops.to_float(math_ops.range(10)) + array_ops.ones([10, 10]))
+        labels=(math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
+                array_ops.ones([10, 10])))
     _assert_metric_variables(self, (
         'pearson_r/covariance/comoment:0',
         'pearson_r/covariance/count:0',
@@ -6004,18 +6008,20 @@ class StreamingPearsonRTest(test.TestCase):
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     pearson_r, _ = metrics.streaming_pearson_correlation(
-        predictions=math_ops.to_float(math_ops.range(10)) +
+        predictions=math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
         array_ops.ones([10, 10]),
-        labels=math_ops.to_float(math_ops.range(10)) + array_ops.ones([10, 10]),
+        labels=(math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
+                array_ops.ones([10, 10])),
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [pearson_r])
 
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.streaming_pearson_correlation(
-        predictions=math_ops.to_float(math_ops.range(10)) +
+        predictions=math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
         array_ops.ones([10, 10]),
-        labels=math_ops.to_float(math_ops.range(10)) + array_ops.ones([10, 10]),
+        labels=(math_ops.cast(math_ops.range(10), dtypes_lib.float32) +
+                array_ops.ones([10, 10])),
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
@@ -6039,8 +6045,8 @@ class StreamingPearsonRTest(test.TestCase):
 
   def testSingleUpdateIdentical(self):
     with self.cached_session() as sess:
-      predictions = math_ops.to_float(math_ops.range(10))
-      labels = math_ops.to_float(math_ops.range(10))
+      predictions = math_ops.cast(math_ops.range(10), dtypes_lib.float32)
+      labels = math_ops.cast(math_ops.range(10), dtypes_lib.float32)
 
       pearson_r, update_op = metrics.streaming_pearson_correlation(
           predictions, labels)

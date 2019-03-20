@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_gen_lib.h"
 
 #include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -39,7 +40,7 @@ constexpr char kTestOpList[] = R"(op {
     version: 123
     explanation: "foo"
   }
-)";
+})";
 
 constexpr char kTestApiDef[] = R"(op {
   graph_op_name: "testop"
@@ -453,6 +454,18 @@ op {
   // Loading with the same argument twice in arg_order should fail.
   status = api_map.LoadApiDef(api_def3);
   ASSERT_EQ(tensorflow::error::FAILED_PRECONDITION, status.code());
+}
+
+TEST(OpGenLibTest, ApiDefInvalidSyntax) {
+  const string api_def = R"pb(
+    op { bad_op_name: "testop" }
+  )pb";
+
+  OpList op_list;
+  ApiDefMap api_map(op_list);
+  // Loading with invalid syntax (e.g. unrecognized field name) should fail.
+  auto status = api_map.LoadApiDef(api_def);
+  ASSERT_EQ(tensorflow::error::INVALID_ARGUMENT, status.code());
 }
 
 TEST(OpGenLibTest, ApiDefUpdateDocs) {

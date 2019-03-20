@@ -61,27 +61,19 @@ Disabling these as a starting point.
 // TODO(b/64227304) Creating a custom pass pipeline will replace this.
 
 namespace {
-class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
- public:
-  FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
-      : llvm::legacy::FunctionPassManager(m),
-        disable_expensive_passes_(disable_expensive_passes) {}
-  void add(llvm::Pass* p) override {
-    llvm::legacy::FunctionPassManager::add(p);
-  }
-
- private:
-  bool disable_expensive_passes_;
-};
-
 class FilteredPassManager : public llvm::legacy::PassManager {
  public:
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
+    llvm::StringRef PassName = p->getPassName();
+    if (PassName.contains("Warn about non-applied transformations")) {
+      delete p;
+      return;
+    }
     if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
       if (PassName.contains("Unroll loops")) {
+        delete p;
         return;
       }
     }
@@ -96,14 +88,13 @@ class FilteredPassManager : public llvm::legacy::PassManager {
 std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
     llvm::Module& module) const {
   FilteredPassManager module_passes(disable_expensive_passes_);
-  FilteredFunctionPassManager function_passes(&module,
-                                              disable_expensive_passes_);
+  llvm::legacy::FunctionPassManager function_passes(&module);
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (pre_optimization_hook_) {
-    TF_CHECK_OK(pre_optimization_hook_(module));
+    pre_optimization_hook_(module);
   }
 
   // Add the appropriate TargetLibraryInfo and TargetTransformInfo.
@@ -147,7 +138,7 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
 
   if (post_optimization_hook_) {
-    TF_CHECK_OK(post_optimization_hook_(module));
+    post_optimization_hook_(module);
   }
 
   // Generate code.
@@ -159,17 +150,11 @@ std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
   std::unique_ptr<llvm::MemoryBuffer> memory_buffer(
       new llvm::SmallVectorMemoryBuffer(std::move(stream_buffer)));
 
-  if (VLOG_IS_ON(2)) {
+  if (post_codegen_hook_) {
     llvm::Expected<std::unique_ptr<llvm::object::ObjectFile>> obj_file =
         llvm::object::ObjectFile::createObjectFile(*memory_buffer);
     if (obj_file) {
-      StatusOr<DisassemblerResult> disasm_result =
-          disassembler_->DisassembleObjectFile(*obj_file.get());
-      if (disasm_result.ok()) {
-        XLA_VLOG_LINES(2, disasm_result.ValueOrDie().text);
-      } else {
-        LOG(WARNING) << "Could not disassemble object file!";
-      }
+      post_codegen_hook_(*obj_file.get());
     } else {
       LOG(WARNING) << "Could convert memory buffer to object file!";
     }

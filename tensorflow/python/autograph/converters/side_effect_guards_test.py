@@ -23,6 +23,7 @@ from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -34,6 +35,7 @@ tf = None  # Will be replaced by a mock.
 
 class SideEffectGuardsTest(converter_testing.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_side_effect_on_return_only_variable(self):
 
     def test_fn(a):
@@ -48,12 +50,12 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
-        sess.run(result.test_fn(v))
+        self.evaluate(v.initializer)
+        self.evaluate(result.test_fn(v))
         # TODO(mdan): Add support for this use case.
         # Right now the variable `a` is not conditioned on the `assign` because
         # there's no way to add control dependencies to a variable object.
-        self.assertEqual(2, sess.run(v))
+        self.assertEqual(2, self.evaluate(v))
 
   def test_side_effect_on_used_variable(self):
 
@@ -69,12 +71,13 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
-        sess.run(result.test_fn(v))
+        self.evaluate(v.initializer)
+        self.evaluate(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
         # Right now it's 3 or 4 based on whether the read is synchronized.
-        self.assertEqual(3, sess.run(v))
+        self.assertEqual(3, self.evaluate(v))
 
+  @test_util.run_deprecated_v1
   def test_side_effect_on_tensor(self):
 
     def test_fn(a):
@@ -109,10 +112,10 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign_add) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
-        sess.run(result.test_fn(v))
+        self.evaluate(v.initializer)
+        self.evaluate(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
-        self.assertEqual(4, sess.run(v))
+        self.assertEqual(4, self.evaluate(v))
 
   def test_multiline_nested_block(self):
 
@@ -130,10 +133,10 @@ class SideEffectGuardsTest(converter_testing.TestCase):
     with self.compiled(node, {}, state_ops.assign, ops.name_scope) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
-        sess.run(result.test_fn(v))
+        self.evaluate(v.initializer)
+        self.evaluate(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
-        self.assertEqual(3, sess.run(v))
+        self.assertEqual(3, self.evaluate(v))
 
   def test_multiline_block_unsafe(self):
 
@@ -153,10 +156,10 @@ class SideEffectGuardsTest(converter_testing.TestCase):
                        state_ops.assign_add) as result:
       with self.cached_session() as sess:
         v = variable_scope.get_variable('test', initializer=2)
-        sess.run(v.initializer)
-        sess.run(result.test_fn(v))
+        self.evaluate(v.initializer)
+        self.evaluate(result.test_fn(v))
         # TODO(mdan): Ensure the result of test_fn(v) is also deterministic.
-        self.assertEqual(4, sess.run(v))
+        self.assertEqual(4, self.evaluate(v))
 
 
 if __name__ == '__main__':

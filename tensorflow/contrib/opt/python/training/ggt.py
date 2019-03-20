@@ -20,7 +20,9 @@ from __future__ import print_function
 import collections
 import numpy as np
 from tensorflow.contrib.optimizer_v2 import optimizer_v2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
@@ -120,7 +122,7 @@ class GGTOptimizer(optimizer_v2.OptimizerV2):
     # Construct ordered dictionary for variable dimensions, sorted by name.
     shape_dict = {}
     for v in var_list:
-      shape_dict[v.name] = np.prod(v.get_shape()).value
+      shape_dict[v.name] = tensor_shape.dimension_value(np.prod(v.get_shape()))
     self.shape_dict = collections.OrderedDict(
         sorted(shape_dict.items(), key=lambda t: t[0]))
 
@@ -223,7 +225,7 @@ class GGTOptimizer(optimizer_v2.OptimizerV2):
     window = state.get_hyper("window")
     grad_buffer = self._get_grad_buffer(state)
     next_grad_index = math_ops.floormod(
-        math_ops.to_int32(update_global_step - 1.), window)
+        math_ops.cast(update_global_step - 1., dtypes.int32), window)
     # grad_buffer[(t-1) % window] := moment1_t
     update_grad_buffer = state_ops.scatter_update(grad_buffer, next_grad_index,
                                                   update_moment1)

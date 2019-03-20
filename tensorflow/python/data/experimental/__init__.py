@@ -25,13 +25,26 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
+@@DatasetStructure
+@@MapVectorizationOptions
+@@NestedStructure
+@@OptimizationOptions
 @@Optional
+@@OptionalStructure
 @@RandomDataset
 @@Reducer
+@@SparseTensorStructure
 @@SqlDataset
+@@StatsAggregator
+@@StatsOptions
+@@Structure
 @@TFRecordWriter
+@@TensorStructure
+@@ThreadingOptions
 
 @@bucket_by_sequence_length
+@@bytes_produced_stats
+@@cardinality
 @@choose_from_datasets
 @@copy_to_device
 @@dense_to_sparse_batch
@@ -46,19 +59,21 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@make_csv_dataset
 @@make_saveable_from_iterator
 @@map_and_batch
+@@map_and_batch_with_legacy_function
 @@parallel_interleave
 @@parse_example_dataset
 @@prefetch_to_device
 @@rejection_resample
 @@sample_from_datasets
 @@scan
-@@set_stats_aggregator
 @@shuffle_and_repeat
-@@StatsAggregator
+@@take_while
 @@unbatch
 @@unique
 
 @@AUTOTUNE
+@@INFINITE_CARDINALITY
+@@UNKNOWN_CARDINALITY
 """
 
 from __future__ import absolute_import
@@ -69,7 +84,11 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
+from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
 from tensorflow.python.data.experimental.ops.batching import unbatch
+from tensorflow.python.data.experimental.ops.cardinality import cardinality
+from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
+from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
@@ -83,10 +102,9 @@ from tensorflow.python.data.experimental.ops.interleave_ops import parallel_inte
 from tensorflow.python.data.experimental.ops.interleave_ops import sample_from_datasets
 from tensorflow.python.data.experimental.ops.iterator_ops import CheckpointInputPipelineHook
 from tensorflow.python.data.experimental.ops.iterator_ops import make_saveable_from_iterator
-
-# Optimization constant that can be used to enable auto-tuning.
 from tensorflow.python.data.experimental.ops.optimization import AUTOTUNE
-
+from tensorflow.python.data.experimental.ops.optimization_options import MapVectorizationOptions
+from tensorflow.python.data.experimental.ops.optimization_options import OptimizationOptions
 from tensorflow.python.data.experimental.ops.parsing_ops import parse_example_dataset
 from tensorflow.python.data.experimental.ops.prefetching_ops import copy_to_device
 from tensorflow.python.data.experimental.ops.prefetching_ops import prefetch_to_device
@@ -98,13 +116,22 @@ from tensorflow.python.data.experimental.ops.readers import SqlDataset
 from tensorflow.python.data.experimental.ops.resampling import rejection_resample
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
+from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
+from tensorflow.python.data.experimental.ops.stats_ops import bytes_produced_stats
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
-from tensorflow.python.data.experimental.ops.stats_ops import set_stats_aggregator
-from tensorflow.python.data.experimental.ops.stats_ops import StatsAggregator
+from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
+from tensorflow.python.data.experimental.ops.take_while_ops import take_while
+from tensorflow.python.data.experimental.ops.threading_options import ThreadingOptions
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
+from tensorflow.python.data.ops.dataset_ops import DatasetStructure
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
+from tensorflow.python.data.ops.optional_ops import OptionalStructure
+from tensorflow.python.data.util.structure import NestedStructure
+from tensorflow.python.data.util.structure import SparseTensorStructure
+from tensorflow.python.data.util.structure import Structure
+from tensorflow.python.data.util.structure import TensorStructure
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

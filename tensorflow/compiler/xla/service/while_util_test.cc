@@ -180,8 +180,8 @@ body {
 
 cond {
   param.c = (s32[], s32[]) parameter(0)
-  token = token[] after-all()
-  infeed = (pred[], token[]) infeed(token)
+  token0 = token[] after-all()
+  infeed = (pred[], token[]) infeed(token0)
   ROOT condition = pred[] get-tuple-element(infeed), index=0
 }
 

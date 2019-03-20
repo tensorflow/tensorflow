@@ -24,7 +24,6 @@ from __future__ import print_function
 
 import collections as collections_lib
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -44,32 +43,6 @@ from tensorflow.python.util.deprecation import deprecated
 
 # Epsilon constant used to represent extremely small quantity.
 _EPSILON = 1e-7
-
-
-def _safe_div(numerator, denominator):
-  """Computes a safe divide which returns 0 if the denominator is zero.
-
-  Note that the function contains an additional conditional check that is
-  necessary for avoiding situations where the loss is zero causing NaNs to
-  creep into the gradient computation.
-
-  Args:
-    numerator: An arbitrary `Tensor`.
-    denominator: A `Tensor` whose shape matches `numerator` and whose values are
-      assumed to be non-negative.
-
-  Returns:
-    The element-wise value of the numerator divided by the denominator.
-  """
-  if compat.forward_compatible(2018, 11, 1):
-    return math_ops.div_no_nan(numerator, denominator)
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.div(numerator,
-                   array_ops.where(
-                       math_ops.equal(denominator, 0),
-                       array_ops.ones_like(denominator), denominator)),
-      array_ops.zeros_like(numerator))
 
 
 @deprecated(None, 'Please switch to tf.metrics.true_positives. Note that the '
@@ -799,7 +772,7 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
 
   if weights is not None:
     broadcast_weights = weights_broadcast_ops.broadcast_weights(
-        math_ops.to_float(weights), predictions)
+        math_ops.cast(weights, dtypes.float32), predictions)
     weights_tiled = array_ops.tile(
         array_ops.reshape(broadcast_weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
@@ -813,8 +786,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'tp' in includes:
     true_positives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='true_positives')
-    is_true_positive = math_ops.to_float(
-        math_ops.logical_and(label_is_pos, pred_is_pos))
+    is_true_positive = math_ops.cast(
+        math_ops.logical_and(label_is_pos, pred_is_pos), dtypes.float32)
     if weights_tiled is not None:
       is_true_positive *= weights_tiled
     update_ops['tp'] = state_ops.assign_add(true_positives,
@@ -825,8 +798,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'fn' in includes:
     false_negatives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='false_negatives')
-    is_false_negative = math_ops.to_float(
-        math_ops.logical_and(label_is_pos, pred_is_neg))
+    is_false_negative = math_ops.cast(
+        math_ops.logical_and(label_is_pos, pred_is_neg), dtypes.float32)
     if weights_tiled is not None:
       is_false_negative *= weights_tiled
     update_ops['fn'] = state_ops.assign_add(false_negatives,
@@ -837,8 +810,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'tn' in includes:
     true_negatives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='true_negatives')
-    is_true_negative = math_ops.to_float(
-        math_ops.logical_and(label_is_neg, pred_is_neg))
+    is_true_negative = math_ops.cast(
+        math_ops.logical_and(label_is_neg, pred_is_neg), dtypes.float32)
     if weights_tiled is not None:
       is_true_negative *= weights_tiled
     update_ops['tn'] = state_ops.assign_add(true_negatives,
@@ -849,8 +822,8 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   if 'fp' in includes:
     false_positives = metrics_impl.metric_variable(
         [num_thresholds], dtypes.float32, name='false_positives')
-    is_false_positive = math_ops.to_float(
-        math_ops.logical_and(label_is_neg, pred_is_pos))
+    is_false_positive = math_ops.cast(
+        math_ops.logical_and(label_is_neg, pred_is_pos), dtypes.float32)
     if weights_tiled is not None:
       is_false_positive *= weights_tiled
     update_ops['fp'] = state_ops.assign_add(false_positives,
@@ -1383,9 +1356,8 @@ def _compute_placement_auc(labels, predictions, weights, alpha,
           weights_0 * math_ops.square(1. - placement_values_0 - auc_0)) /
       (total_0 - 1. + _EPSILON))
   var_1 = (
-      math_ops.reduce_sum(
-          weights_1 * math_ops.square(placement_values_1 - auc_1)) /
-      (total_1 - 1. + _EPSILON))
+      math_ops.reduce_sum(weights_1 * math_ops.squared_difference(
+          placement_values_1, auc_1)) / (total_1 - 1. + _EPSILON))
   auc_std_err = math_ops.sqrt(
       (var_0 / (total_0 + _EPSILON)) + (var_1 / (total_1 + _EPSILON)))
 
@@ -2192,7 +2164,7 @@ def streaming_recall_at_k(predictions,
       either `metrics_collections` or `updates_collections` are not a list or
       tuple.
   """
-  in_top_k = math_ops.to_float(nn.in_top_k(predictions, labels, k))
+  in_top_k = math_ops.cast(nn.in_top_k(predictions, labels, k), dtypes.float32)
   return streaming_mean(in_top_k, weights, metrics_collections,
                         updates_collections, name or _at_k_name('recall', k))
 
@@ -3233,7 +3205,8 @@ def streaming_covariance(predictions,
         [], dtypes.float32, name='comoment')
 
     if weights is None:
-      batch_count = math_ops.to_float(array_ops.size(labels))  # n_B in eqn
+      batch_count = math_ops.cast(
+          array_ops.size(labels), dtypes.float32)  # n_B in eqn
       weighted_predictions = predictions
       weighted_labels = labels
     else:
@@ -3247,24 +3220,20 @@ def streaming_covariance(predictions,
 
     # We update the means by Delta=Error*BatchCount/(BatchCount+PrevCount)
     # batch_mean_prediction is E[x_B] in the update equation
-    batch_mean_prediction = _safe_div(
-        math_ops.reduce_sum(weighted_predictions),
-        batch_count)
-    delta_mean_prediction = _safe_div(
-        (batch_mean_prediction - mean_prediction) * batch_count,
-        update_count)
+    batch_mean_prediction = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_predictions), batch_count)
+    delta_mean_prediction = math_ops.div_no_nan(
+        (batch_mean_prediction - mean_prediction) * batch_count, update_count)
     update_mean_prediction = state_ops.assign_add(mean_prediction,
                                                   delta_mean_prediction)
     # prev_mean_prediction is E[x_A] in the update equation
     prev_mean_prediction = update_mean_prediction - delta_mean_prediction
 
     # batch_mean_label is E[y_B] in the update equation
-    batch_mean_label = _safe_div(
-        math_ops.reduce_sum(weighted_labels),
-        batch_count)
-    delta_mean_label = _safe_div(
-        (batch_mean_label - mean_label) * batch_count,
-        update_count)
+    batch_mean_label = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_labels), batch_count)
+    delta_mean_label = math_ops.div_no_nan(
+        (batch_mean_label - mean_label) * batch_count, update_count)
     update_mean_label = state_ops.assign_add(mean_label, delta_mean_label)
     # prev_mean_label is E[y_A] in the update equation
     prev_mean_label = update_mean_label - delta_mean_label
@@ -3447,7 +3416,7 @@ def streaming_mean_cosine_distance(predictions,
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
       ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
@@ -3797,15 +3766,15 @@ def count(values,
     count_ = metrics_impl.metric_variable([], dtypes.float32, name='count')
 
     if weights is None:
-      num_values = math_ops.to_float(array_ops.size(values))
+      num_values = math_ops.cast(array_ops.size(values), dtypes.float32)
     else:
-      values = math_ops.to_float(values)
+      values = math_ops.cast(values, dtypes.float32)
       values, _, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
           predictions=values,
           labels=None,
           weights=weights)
       weights = weights_broadcast_ops.broadcast_weights(
-          math_ops.to_float(weights), values)
+          math_ops.cast(weights, dtypes.float32), values)
       num_values = math_ops.reduce_sum(weights)
 
     with ops.control_dependencies([values]):
@@ -3926,12 +3895,12 @@ def cohen_kappa(labels,
       po_sum = math_ops.reduce_sum(po)
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
-          _safe_div(
-              math_ops.to_double(pe_row * pe_col),
-              math_ops.to_double(total)))
-      po_sum, pe_sum, total = (math_ops.to_double(po_sum),
-                               math_ops.to_double(pe_sum),
-                               math_ops.to_double(total))
+          math_ops.div_no_nan(
+              math_ops.cast(pe_row * pe_col, dtypes.float64),
+              math_ops.cast(total, dtypes.float64)))
+      po_sum, pe_sum, total = (math_ops.cast(po_sum, dtypes.float64),
+                               math_ops.cast(pe_sum, dtypes.float64),
+                               math_ops.cast(total, dtypes.float64))
       # kappa = (po - pe) / (N - pe)
       k = metrics_impl._safe_scalar_div(  # pylint: disable=protected-access
           po_sum - pe_sum,

@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -28,7 +29,10 @@ namespace {
 class TensorSliceDatasetOp : public DatasetOpKernel {
  public:
   explicit TensorSliceDatasetOp(OpKernelConstruction* ctx)
-      : DatasetOpKernel(ctx) {}
+      : DatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutput_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     OpInputList inputs;
@@ -50,6 +54,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
               "All components must have the same size in the 0th dimension"));
     }
     *output = new Dataset(ctx, std::move(components));
+    OP_REQUIRES_OK(ctx,
+                   VerifyTypesMatch((*output)->output_dtypes(), output_types_));
+    OP_REQUIRES_OK(ctx, VerifyShapesCompatible((*output)->output_shapes(),
+                                               output_shapes_));
   }
 
  private:
@@ -71,8 +79,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TensorSlice")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::TensorSlice")});
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -84,6 +92,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       return "TensorSliceDatasetOp::Dataset";
     }
 
+    int64 Cardinality() const override { return tensors_[0].dim_size(0); }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
@@ -92,10 +102,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       components.reserve(tensors_.size());
       for (const Tensor& t : tensors_) {
         Node* node;
-        std::vector<std::pair<string, Tensor>>* input_list = ctx->input_list();
-        if (input_list) {
+        if (ctx->optimization_only()) {
           TF_RETURN_IF_ERROR(b->AddPlaceholder(t, &node));
-          input_list->emplace_back(node->name(), t);
+          DCHECK_NE(ctx->input_list(), nullptr);
+          ctx->input_list()->emplace_back(node->name(), t);
         } else {
           TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
         }
@@ -125,10 +135,11 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           out_tensors->reserve(dataset()->tensors_.size());
           for (int i = 0; i < dataset()->tensors_.size(); ++i) {
             const Tensor& t = dataset()->tensors_[i];
-            Tensor t_slice(ctx->allocator({}), t.dtype(),
-                           TensorShape(dataset()->shapes_[i].dim_sizes()));
-            TF_RETURN_IF_ERROR(batch_util::CopySliceToElement(t, &t_slice, i_));
-            out_tensors->emplace_back(std::move(t_slice));
+            out_tensors->emplace_back(
+                ctx->allocator({}), t.dtype(),
+                TensorShape(dataset()->shapes_[i].dim_sizes()));
+            TF_RETURN_IF_ERROR(
+                batch_util::CopySliceToElement(t, &out_tensors->back(), i_));
           }
           ++i_;
           *end_of_sequence = false;
@@ -139,6 +150,11 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));
@@ -162,6 +178,9 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
     DataTypeVector dtypes_;
     std::vector<PartialTensorShape> shapes_;
   };
+
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorSliceDataset").Device(DEVICE_CPU),

@@ -110,6 +110,9 @@ REGISTER(uint8);
 REGISTER(int16);
 REGISTER(int8);
 REGISTER(int64);
+REGISTER(bool);
+REGISTER(complex64);
+REGISTER(complex128);
 
 #undef REGISTER
 

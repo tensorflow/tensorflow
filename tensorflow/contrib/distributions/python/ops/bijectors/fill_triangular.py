@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
@@ -104,7 +106,8 @@ class FillTriangular(bijector.Bijector):
     return array_ops.zeros_like(y[..., 0, 0])
 
   def _forward_event_shape(self, input_shape):
-    batch_shape, d = input_shape[:-1], input_shape[-1].value
+    batch_shape, d = (input_shape[:-1],
+                      tensor_shape.dimension_value(input_shape[-1]))
     if d is None:
       n = None
     else:
@@ -113,8 +116,8 @@ class FillTriangular(bijector.Bijector):
 
   def _inverse_event_shape(self, output_shape):
     batch_shape, n1, n2 = (output_shape[:-2],
-                           output_shape[-2].value,
-                           output_shape[-1].value)
+                           tensor_shape.dimension_value(output_shape[-2]),
+                           tensor_shape.dimension_value(output_shape[-1]))
     if n1 is None or n2 is None:
       m = None
     elif n1 != n2:
@@ -156,10 +159,13 @@ def vector_size_to_square_matrix_size(d, validate_args, name=None):
     return int(n)
   else:
     with ops.name_scope(name, "vector_size_to_square_matrix_size", [d]) as name:
-      n = (-1. + math_ops.sqrt(1 + 8. * math_ops.to_float(d))) / 2.
+      n = (-1. + math_ops.sqrt(1 + 8. * math_ops.cast(d, dtypes.float32))) / 2.
       if validate_args:
-        with ops.control_dependencies([check_ops.assert_equal(
-            math_ops.to_float(math_ops.to_int32(n)), n,
-            message="Vector length is not a triangular number")]):
+        with ops.control_dependencies([
+            check_ops.assert_equal(
+                math_ops.cast(math_ops.cast(n, dtypes.int32), dtypes.float32),
+                n,
+                message="Vector length is not a triangular number")
+        ]):
           n = array_ops.identity(n)
       return math_ops.cast(n, d.dtype)

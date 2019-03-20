@@ -17,7 +17,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_format.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
-
 
 namespace xla {
 
@@ -138,46 +138,11 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStreamWrapper(
     XLA_LOG_LINES(
         tensorflow::INFO,
         profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
-    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
-                                         profile_ptr.get());
   }
 
   return return_value;
 }
 
 int64 Executable::SizeInBytes() { return -1; }
-
-Status Executable::DumpHloSnapshot() {
-  TF_RET_CHECK(dumping_snapshot());
-  TF_RET_CHECK(hlo_snapshot_->has_hlo() &&
-               hlo_snapshot_->hlo().has_hlo_module());
-  const string& directory_path =
-      module_config().debug_options().xla_dump_executions_to();
-  const auto& module = hlo_snapshot_->hlo().hlo_module();
-  string filename =
-      absl::StrFormat("computation_%d__%s__execution_%d", module.id(),
-                      module.entry_computation_name(), ++execution_count_);
-  return Executable::DumpToDirectory(directory_path, filename, *hlo_snapshot_);
-}
-
-/* static */ Status Executable::DumpToDirectory(
-    const string& directory_path, string filename,
-    const HloSnapshot& hlo_session) {
-  tensorflow::Env* env = tensorflow::Env::Default();
-  if (!env->IsDirectory(directory_path).ok()) {
-    // NB! CreateDir does not work reliably with multiple XLA threads -- two
-    // threads can race to observe the absence of the dump directory and
-    // simultaneously try to create it, causing the "losing" thread to get a
-    // "directory already exists" error.
-    TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(directory_path));
-  }
-  filename = SanitizeFileName(std::move(filename));
-  string file_path = tensorflow::io::JoinPath(directory_path, filename);
-  string result;
-  TF_RET_CHECK(
-      tensorflow::SerializeToStringDeterministic(hlo_session, &result));
-  return tensorflow::WriteStringToFile(tensorflow::Env::Default(), file_path,
-                                       result);
-}
 
 }  // namespace xla

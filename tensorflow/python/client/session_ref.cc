@@ -109,21 +109,8 @@ class SessionLogger {
   }
 
   Status RecordNewSession(Session* session) {
-    LOG(INFO) << "New session discovered.  Capturing devices...";
     ReplayOp op;
     NewReplaySession* req = op.mutable_new_replay_session();
-
-    std::vector<DeviceAttributes> devices;
-    Status status = session->ListDevices(&devices);
-    if (status.ok()) {
-      LOG(INFO) << "Found: " << devices.size() << " devices.";
-      for (const DeviceAttributes& dev : devices) {
-        *req->mutable_devices()->add_local_device() = dev;
-      }
-    } else {
-      LOG(WARNING) << "Failed to list devices on session. Continuing.";
-    }
-
     req->set_session_handle(SessionToHandle(session));
     return Flush(op);
   }

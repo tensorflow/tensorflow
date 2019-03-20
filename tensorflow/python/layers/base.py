@@ -23,16 +23,18 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-
+# Avoid breaking users who directly import this symbol from this file.
+# TODO(fchollet): remove this.
 InputSpec = base_layer.InputSpec  # pylint: disable=invalid-name
-
 
 _KERAS_STYLE_SCOPE = False
 
@@ -149,7 +151,7 @@ def _is_in_keras_style_scope():
   return _KERAS_STYLE_SCOPE
 
 
-@tf_export('layers.Layer')
+@tf_export(v1=['layers.Layer'])
 class Layer(base_layer.Layer):
   """Base layer class.
 
@@ -208,6 +210,9 @@ class Layer(base_layer.Layer):
         raise ValueError(
             'reuse argument not allowed when keras style layers are enabled, '
             'but saw: {}'.format(self._reuse))
+      self._keras_style = True
+    else:
+      self._keras_style = False
 
     self._graph = None
     self._call_has_scope_arg = 'scope' in self._call_fn_args
@@ -239,11 +244,11 @@ class Layer(base_layer.Layer):
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
     base_name = base_layer.to_snake_case(self.__class__.__name__)
-    name = base_layer.unique_layer_name(base_name,
-                                        name_uid_map=name_uid_map,
-                                        avoid_names=avoid_names,
-                                        namespace=namespace,
-                                        zero_based=zero_based)
+    name = base_layer_utils.unique_layer_name(base_name,
+                                              name_uid_map=name_uid_map,
+                                              avoid_names=avoid_names,
+                                              namespace=namespace,
+                                              zero_based=zero_based)
     return (name, base_name)
 
   @property
@@ -275,7 +280,7 @@ class Layer(base_layer.Layer):
 
   def _name_scope(self):
     """Determines op naming for the Layer."""
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       return super(Layer, self)._name_scope()
     return self._current_scope.original_name_scope
 
@@ -302,7 +307,8 @@ class Layer(base_layer.Layer):
                  use_resource=None,
                  synchronization=vs.VariableSynchronization.AUTO,
                  aggregation=vs.VariableAggregation.NONE,
-                 partitioner=None):
+                 partitioner=None,
+                 **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -337,6 +343,7 @@ class Layer(base_layer.Layer):
         `tf.variable_axis_size_partitioner`.  For more details, see the
         documentation of `tf.get_variable` and the  "Variable Partitioners
         and Sharding" section of the API guide.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       The created variable.  Usually either a `Variable` or `ResourceVariable`
@@ -349,7 +356,10 @@ class Layer(base_layer.Layer):
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
-    if _is_in_keras_style_scope():
+    for kwarg in kwargs:
+      if kwarg != 'experimental_autocast':
+        raise TypeError('Unknown keyword argument:', kwarg)
+    if self._keras_style:
       return super(Layer, self).add_weight(
           name=name,
           shape=shape,
@@ -361,7 +371,8 @@ class Layer(base_layer.Layer):
           use_resource=use_resource,
           synchronization=vs.VariableSynchronization.AUTO,
           aggregation=vs.VariableAggregation.NONE,
-          partitioner=partitioner)
+          partitioner=partitioner,
+          **kwargs)
 
     if synchronization == vs.VariableSynchronization.ON_READ:
       if trainable:
@@ -428,11 +439,12 @@ class Layer(base_layer.Layer):
             use_resource=use_resource,
             synchronization=synchronization,
             aggregation=aggregation,
-            getter=vs.get_variable)
+            getter=vs.get_variable,
+            **kwargs)
 
         if regularizer:
-          if context.executing_eagerly() or _should_add_regularizer(
-              variable, existing_variables):
+          if (ops.executing_eagerly_outside_functions()
+              or _should_add_regularizer(variable, existing_variables)):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
@@ -477,7 +489,7 @@ class Layer(base_layer.Layer):
     """
     scope = kwargs.pop('scope', None)
 
-    if _is_in_keras_style_scope():
+    if self._keras_style:
       if scope is not None:
         raise ValueError(
             'scope argument not allowed when keras style layers are enabled, '
@@ -546,6 +558,10 @@ class Layer(base_layer.Layer):
       else:
         setattr(result, k, copy.deepcopy(v, memo))
     return result
+
+  def __setattr__(self, value, name):
+    # By-pass the automatic dependency tracking performed by the parent Layer.
+    super(trackable.Trackable, self).__setattr__(value, name)
 
 
 def _add_elements_to_collection(elements, collection_list):

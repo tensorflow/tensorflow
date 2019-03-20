@@ -200,7 +200,7 @@ class VBN(object):
       del reduction_axes[axis]
 
       self._broadcast_shape = [1] * len(input_shape)
-      self._broadcast_shape[axis] = input_shape[axis].value
+      self._broadcast_shape[axis] = input_shape.dims[axis]
 
       self._example_reduction_axes = list(range(ndims))
       del self._example_reduction_axes[max(axis, self._batch_axis)]
@@ -224,7 +224,8 @@ class VBN(object):
       # statistics and the reference batch statistics.
       ref_batch_size = _static_or_dynamic_batch_size(
           self._reference_batch, self._batch_axis)
-      self._example_weight = 1. / (math_ops.to_float(ref_batch_size) + 1.)
+      self._example_weight = 1. / (
+          math_ops.cast(ref_batch_size, dtypes.float32) + 1.)
       self._ref_weight = 1. - self._example_weight
 
       # Make the variables, if necessary.

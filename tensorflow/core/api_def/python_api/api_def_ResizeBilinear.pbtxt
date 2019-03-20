@@ -1,6 +1,4 @@
 op {
   graph_op_name: "ResizeBilinear"
-  endpoint {
-    name: "image.resize_bilinear"
-  }
+  visibility: HIDDEN
 }

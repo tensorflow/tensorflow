@@ -34,6 +34,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/util/proto/proto_utils.h"
 using stream_executor::dnn::DimIndex;
 #endif
 
@@ -407,7 +409,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+    static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();
@@ -445,12 +447,11 @@ struct LaunchConvOp<GPUDevice, T> {
                       "because cuDNN failed to initialize, so try looking to "
                       "see if a warning log message was printed above."));
 
-      ProfileResult best_result;
-      ProfileResult best_result_no_scratch;
+      std::vector<tensorflow::AutotuneResult> results;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
@@ -461,32 +462,26 @@ struct LaunchConvOp<GPUDevice, T> {
                 .ok();
         if (cudnn_launch_status) {
           if (profile_result.is_valid()) {
-            if (profile_result.elapsed_time_in_ms() <
-                best_result.elapsed_time_in_ms()) {
-              best_result = profile_result;
-            }
-            if (scratch_allocator.TotalByteSize() == 0 &&
-                profile_result.elapsed_time_in_ms() <
-                    best_result_no_scratch.elapsed_time_in_ms()) {
-              best_result_no_scratch = profile_result;
-            }
+            results.emplace_back();
+            auto& result = results.back();
+            result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+            result.mutable_conv()->set_tensor_ops_enabled(
+                profile_algorithm.tensor_ops_enabled());
+            result.mutable_success()->set_scratch_bytes(
+                scratch_allocator.TotalByteSize());
+            *result.mutable_success()->mutable_run_time() =
+                proto_utils::ToDurationProto(
+                    absl::Milliseconds(profile_result.elapsed_time_in_ms()));
           }
         }
       }
-      OP_REQUIRES(ctx,
-                  best_result.is_valid() || best_result_no_scratch.is_valid(),
-                  errors::NotFound("No algorithm worked!"));
-      if (best_result.is_valid()) {
-        algorithm_config.set_algorithm(best_result.algorithm());
-      }
-      if (best_result_no_scratch.is_valid()) {
-        algorithm_config.set_algorithm_no_scratch(
-            best_result_no_scratch.algorithm());
-      }
+      LogConvAutotuneResults(ctx->op_kernel().def(), input, filter, *output,
+                             stream->parent(), results);
+      OP_REQUIRES_OK(ctx, BestCudnnConvAlgorithm(results, &algorithm_config));
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
-    CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool cudnn_launch_status =
         stream
             ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
@@ -533,10 +528,19 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);   \
+  template <>                                                         \
+  void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      typename TTypes<T, 5>::Tensor out);                             \
+  template <>                                                         \
+  void NCHWToNHWC<GPUDevice, T, 5>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      typename TTypes<T, 5>::Tensor out);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
@@ -548,6 +552,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv3DOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

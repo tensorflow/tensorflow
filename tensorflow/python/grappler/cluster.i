@@ -132,7 +132,7 @@ struct GCluster {
 
 static GCluster TF_NewCluster(bool allow_soft_placement,
                    bool disable_detailed_stats, TF_Status* out_status) {
-    int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
   int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
   int timeout_s = 60 * 10;
   tensorflow::grappler::Cluster* cluster_ =
@@ -153,7 +153,7 @@ static GCluster TF_NewVirtualCluster(
   for (const auto& named_device : named_devices) {
     devices[named_device.name()]= named_device.properties();
   }
-  tensorflow::grappler::Cluster*cluster_ =
+  tensorflow::grappler::Cluster* cluster_ =
       new tensorflow::grappler::VirtualCluster(devices);
   PyGILState_STATE gstate = PyGILState_Ensure();
   tensorflow::Status status = cluster_->Provision();
@@ -176,13 +176,13 @@ tensorflow::Status _GetOpPerformanceDataAndRunTime(
   tensorflow::Status status = cost_measure->Initialize(item);
   if (!status.ok()) return status;
 
-  tensorflow::CostGraphDef cost_graph;
+  tensorflow::RunMetadata run_metadata;
   TF_RETURN_IF_ERROR(
-      cost_measure->PredictCosts(item.graph, &cost_graph, costs));
+      cost_measure->PredictCosts(item.graph, &run_metadata, costs));
 
   if (op_performance_data) {
     *op_performance_data = tensorflow::grappler::CostGraphToOpPerformanceData(
-        cost_graph, item.graph);
+        run_metadata.cost_graph(), item.graph);
   }
   return tensorflow::Status::OK();
 }

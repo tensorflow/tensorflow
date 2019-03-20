@@ -44,17 +44,18 @@ class ExperimentalTest(test.TestCase):
 
     # Assert function docs are properly updated.
     self.assertEqual("_fn", _fn.__name__)
-    self.assertEqual("fn doc. (experimental)"
-                     "\n"
-                     "\nTHIS FUNCTION IS EXPERIMENTAL. It may change or "
-                     "be removed at any time, and without warning."
-                     "\n"
-                     "\nArgs:"
-                     "\n  arg0: Arg 0."
-                     "\n  arg1: Arg 1."
-                     "\n"
-                     "\nReturns:"
-                     "\n  Sum of args.", _fn.__doc__)
+    self.assertEqual(
+        "fn doc. (experimental)"
+        "\n"
+        "\nWarning: THIS FUNCTION IS EXPERIMENTAL. It may change "
+        "or be removed at any time, and without warning."
+        "\n"
+        "\nArgs:"
+        "\n  arg0: Arg 0."
+        "\n  arg1: Arg 1."
+        "\n"
+        "\nReturns:"
+        "\n  Sum of args.", _fn.__doc__)
 
     # Assert calling new fn issues log warning.
     self.assertEqual(3, _fn(1, 2))

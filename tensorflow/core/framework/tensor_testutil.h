@@ -206,7 +206,7 @@ struct Expector<T, true> {
     const T* b = y.flat<T>().data();
     for (int i = 0; i < size; ++i) {
       EXPECT_TRUE(Near(a[i], b[i], abs_err))
-          << "a = " << a[i] << " b = " << b << " index = " << i;
+          << "a = " << a[i] << " b = " << b[i] << " index = " << i;
     }
   }
 };

@@ -68,8 +68,13 @@ class NodeExecStatsInterface {
   // Called immediately after this executor finishes processing this node.
   virtual void RecordExecutorEnded() = 0;
 
+  // Returns `true` if this object should track memory allocations.
+  virtual bool TrackAllocations() const = 0;
+
   // Records information about the memory allocated during the execution of this
   // node.
+  //
+  // Takes ownership of any `TrackingAllocator` objects stored in `ctx`.
   virtual void SetMemory(OpKernelContext* ctx) = 0;
 
   // Records information about the tensor produced by this node at the given
@@ -104,6 +109,7 @@ class NodeExecStatsWrapper : public NodeExecStatsInterface {
   void RecordComputeStarted() override;
   void RecordComputeEnded() override;
   void RecordExecutorEnded() override;
+  bool TrackAllocations() const override { return true; }
   void SetMemory(OpKernelContext* ctx) override;
   void SetOutput(int slot, const Tensor* tensor) override;
   void SetReferencedTensors(const TensorReferenceVector& tensors) override;
@@ -169,6 +175,10 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   void Save(const string& device, NodeExecStats* node_stats_pb);
   void Save(const string& device, NodeExecStatsWrapper* node_stats);
 
+  // Saves thread name.
+  void SaveThreadName(const string& device, const uint32 thread_id,
+                      const string& thread_name);
+
   NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override;
   string ReportAllocsOnResourceExhausted(const string& err) override;
 
@@ -185,12 +195,14 @@ class StepStatsCollector : public StepStatsCollectorInterface {
   static const uint64 kMaxCollectedNodes = 1 << 20;
 
   typedef std::vector<std::unique_ptr<NodeExecStatsWrapper>> NodeStatsVector;
+  typedef std::unordered_map<uint32, string> ThreadNamesMap;
 
   void FinalizeInternal() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
   bool finalized_ GUARDED_BY(mu_);
   std::unordered_map<string, NodeStatsVector> dev_stats_ GUARDED_BY(mu_);
+  std::unordered_map<string, ThreadNamesMap> thread_names_ GUARDED_BY(mu_);
   StepStats* step_stats_ GUARDED_BY(mu_);
   uint64 collected_nodes_ GUARDED_BY(mu_) = 0;
 };

@@ -27,9 +27,9 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export(
-    "io.TFRecordCompressionType",
     v1=["io.TFRecordCompressionType", "python_io.TFRecordCompressionType"])
-@deprecation.deprecated_endpoints("python_io.TFRecordCompressionType")
+@deprecation.deprecated_endpoints("io.TFRecordCompressionType",
+                                  "python_io.TFRecordCompressionType")
 class TFRecordCompressionType(object):
   """The type of compression for the record."""
   NONE = 0
@@ -69,7 +69,7 @@ class TFRecordOptions(object):
     Leaving an option as `None` allows C++ to set a reasonable default.
 
     Args:
-      compression_type: `TFRecordCompressionType` or `None`.
+      compression_type: `"GZIP"`, "ZLIB" or `"NONE"`.
       flush_mode: flush mode or `None`, Default: Z_NO_FLUSH.
       input_buffer_size: int or `None`.
       output_buffer_size: int or `None`.
@@ -150,10 +150,11 @@ class TFRecordOptions(object):
     return options
 
 
-@tf_export(
-    "io.tf_record_iterator",
-    v1=["io.tf_record_iterator", "python_io.tf_record_iterator"])
-@deprecation.deprecated_endpoints("python_io.tf_record_iterator")
+@tf_export(v1=["io.tf_record_iterator", "python_io.tf_record_iterator"])
+@deprecation.deprecated(
+    date=None,
+    instructions=("Use eager execution and: \n"
+                  "`tf.data.TFRecordDataset(path)`"))
 def tf_record_iterator(path, options=None):
   """An iterator that read the records from a TFRecords file.
 

@@ -28,6 +28,7 @@ limitations under the License.
 
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/executable.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -82,12 +83,24 @@ class AotCompilationOptions {
   const DebugOptions& debug_options() const { return debug_options_; }
   DebugOptions* mutable_debug_options() { return &debug_options_; }
 
+  bool has_static_device_assignment() const {
+    return static_device_assignment_.has_value();
+  }
+  const DeviceAssignment& static_device_assignment() const {
+    CHECK(static_device_assignment_.has_value());
+    return *static_device_assignment_;
+  }
+  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
+    static_device_assignment_ = device_assignment;
+  }
+
  protected:
   AotCompilationOptions();
 
  private:
   DeviceMemoryAllocator* device_allocator_ = nullptr;
   DebugOptions debug_options_;
+  absl::optional<DeviceAssignment> static_device_assignment_;
 };
 
 // Abstract superclass describing metadata produced during ahead-of-time
@@ -139,14 +152,15 @@ class Compiler {
   // Optimizes a HLO module group, a set of module which runs concurrently on
   // multiple devices potentially communicating data between the modules.
   virtual Status RunHloPassesOnModuleGroup(
-      HloModuleGroup* module_group, se::StreamExecutor* executor,
+      HloModuleGroup* module_group,
+      absl::Span<se::StreamExecutor* const> executors,
       DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
   // applied to module. Generally a module should be passed through RunHloPasses
   // prior to calling this method because some HLO passes are required for
-  // correctness. Takes ownership of the HLO module and is free to transform it.
+  // correctness. Takes ownership of the HLO module.
   //
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.

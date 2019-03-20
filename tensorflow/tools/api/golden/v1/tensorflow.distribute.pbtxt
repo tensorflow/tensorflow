@@ -1,0 +1,83 @@
+path: "tensorflow.distribute"
+tf_module {
+  member {
+    name: "CrossDeviceOps"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "HierarchicalCopyAllReduce"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "InputContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "InputReplicationMode"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "MirroredStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "NcclAllReduce"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OneDeviceStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ReduceOp"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "ReductionToOneDevice"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ReplicaContext"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Server"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Strategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StrategyExtended"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "cluster_resolver"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "get_loss_reduction"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_replica_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "has_strategy"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "in_cross_replica_context"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

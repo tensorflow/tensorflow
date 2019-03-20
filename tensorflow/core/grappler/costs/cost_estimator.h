@@ -16,10 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
-#include <chrono>
 #include <cmath>
-#include <unordered_map>
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 class GraphDef;
@@ -133,6 +132,8 @@ struct Costs {
 
   // Intermediate memory access cost of running the graph
   Duration intermediate_memory_time;
+  Duration intermediate_memory_read_time;   // Intermediate memory read cost.
+  Duration intermediate_memory_write_time;  // Intermediate memory write cost.
 
   // This field can be a very pessimistic estimate of the main memory
   // requirements of a graph. For example, it might assume that all activations
@@ -201,6 +202,12 @@ Costs Costs::ZeroCosts() {
   return costs;
 }
 
+Costs CombineCosts(const Costs& left, const Costs& right);
+
+// Multiplies Costs by a scalar.
+// Equivalent to applying CombineCosts "multiplier" times.
+Costs MultiplyCosts(const Costs& costs, int multiplier);
+
 // Given a GrapperItem and an optimized implementation of the corresponding
 // TensorFlow graph, the CostEstimator attempts to predicts the actual cost of
 // running the graph.
@@ -215,14 +222,14 @@ class CostEstimator {
 
   // Predicts the cost of running the given optimized version of the grappler
   // item.
-  // If a CostGraphDef is passed, it will be populated with detailed information
+  // If a RunMetadata is passed, it will be populated with detailed information
   // about the cost of running each operation of the optimized graph.
   // if a double value is passed, it will be set to a value that reflects the
   // overall cost of running the graph (e.g. the latency of the computation).
   // Returns a status that indicate is the performance could be estimated or
   // not.
   virtual Status PredictCosts(const GraphDef& optimized_graph,
-                              CostGraphDef* cost_graph, Costs* cost) const = 0;
+                              RunMetadata* run_metadata, Costs* cost) const = 0;
 };
 
 }  // end namespace grappler

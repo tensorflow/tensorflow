@@ -340,7 +340,7 @@ public final class OperatorProcessor extends AbstractProcessor {
                     + "{@link $T @Operator} is exposed\n"
                     + "by this API or one of its subgroup.\n<p>Example usage:\n<pre>{@code\n"
                     + "try (Graph g = new Graph()) {\n"
-                    + "  Ops ops = new Ops(g);\n"
+                    + "  Ops ops = Ops.create(g);\n"
                     + "  // Operations are typed classes with convenience\n"
                     + "  // builders in Ops.\n"
                     + "  Constant three = ops.constant(3);\n"
@@ -357,10 +357,10 @@ public final class OperatorProcessor extends AbstractProcessor {
                     + "  // Optional attributes\n"
                     + "  ops.math().matMul(a, b, MatMul.transposeA(true));\n"
                     + "  // Naming operators\n"
-                    + "  ops.withName(“foo”).constant(5); // name “foo”\n"
+                    + "  ops.withName(\"foo\").constant(5); // name \"foo\"\n"
                     + "  // Names can exist in a hierarchy\n"
-                    + "  Ops sub = ops.withSubScope(“sub”);\n"
-                    + "  sub.withName(“bar”).constant(4); // “sub/bar”\n"
+                    + "  Ops sub = ops.withSubScope(\"sub\");\n"
+                    + "  sub.withName(\"bar\").constant(4); // \"sub/bar\"\n"
                     + "}\n"
                     + "}</pre>\n",
                 T_GRAPH,

@@ -20,13 +20,14 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import platform
 
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import autograph
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import checkpoint
-if os.name != "nt":
+if os.name != "nt" and platform.machine() != "s390x":
   from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder
@@ -62,7 +63,6 @@ from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
 from tensorflow.contrib import mixed_precision
 from tensorflow.contrib import model_pruning
-from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
 from tensorflow.contrib import periodic_resample
@@ -92,7 +92,6 @@ from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
-from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.optimizer_v2 import optimizer_v2_symbols as optimizer_v2
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.recurrent.python import recurrent_api as recurrent
@@ -104,6 +103,8 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 ffmpeg = LazyLoader("ffmpeg", globals(),
                     "tensorflow.contrib.ffmpeg")
 del os
+del platform
+
 del LazyLoader
 
 del absolute_import

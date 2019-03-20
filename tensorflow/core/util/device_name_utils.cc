@@ -289,6 +289,30 @@ bool DeviceNameUtils::IsSpecification(const ParsedName& less_specific,
   return true;
 }
 
+void DeviceNameUtils::EnsureSpecification(ParsedName* more_specific,
+                                          const ParsedName& less_specific) {
+  if (less_specific.has_job) {
+    more_specific->has_job = true;
+    more_specific->job = less_specific.job;
+  }
+  if (less_specific.has_replica) {
+    more_specific->has_replica = true;
+    more_specific->replica = less_specific.replica;
+  }
+  if (less_specific.has_task) {
+    more_specific->has_task = true;
+    more_specific->task = less_specific.task;
+  }
+  if (less_specific.has_type) {
+    more_specific->has_type = true;
+    more_specific->type = less_specific.type;
+  }
+  if (less_specific.has_id) {
+    more_specific->has_id = true;
+    more_specific->id = less_specific.id;
+  }
+}
+
 /* static */
 bool DeviceNameUtils::IsCompleteSpecification(const ParsedName& pattern,
                                               const ParsedName& name) {
@@ -478,6 +502,18 @@ std::vector<string> DeviceNameUtils::GetLocalNamesForDeviceMappings(
   } else {
     return {};
   }
+}
+
+/*static*/ Status DeviceNameUtils::DeviceNameToCpuDeviceName(
+    const string& device_name, string* host_device_name) {
+  DeviceNameUtils::ParsedName device;
+  if (!DeviceNameUtils::ParseFullName(device_name, &device)) {
+    return errors::Internal("Could not parse device name ", device_name);
+  }
+  device.type = "CPU";
+  device.id = 0;
+  *host_device_name = DeviceNameUtils::ParsedNameToString(device);
+  return Status::OK();
 }
 
 }  // namespace tensorflow

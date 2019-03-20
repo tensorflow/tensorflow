@@ -21,10 +21,10 @@ from __future__ import print_function
 import gast
 
 from tensorflow.python.autograph import utils
-from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
 from tensorflow.python.autograph.impl import conversion
+from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras.engine import training
 from tensorflow.python.platform import test
@@ -35,9 +35,7 @@ class ConversionTest(test.TestCase):
   def _simple_program_ctx(self):
     return converter.ProgramContext(
         options=converter.ConversionOptions(recursive=True),
-        partial_types=(),
-        autograph_module=api,
-        uncompiled_modules=config.DEFAULT_UNCOMPILED_MODULES)
+        autograph_module=api)
 
   def test_is_whitelisted_for_graph(self):
 
@@ -60,10 +58,24 @@ class ConversionTest(test.TestCase):
 
     program_ctx = self._simple_program_ctx()
     nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
-    fn_node, _ = nodes
+    fn_node = nodes[-2]
     self.assertIsInstance(fn_node, gast.FunctionDef)
     self.assertEqual('tf__f', name)
     self.assertIs(ns['b'], b)
+
+  def test_entity_to_graph_function_with_defaults(self):
+    b = 2
+    c = 1
+    def f(a, d=c + 1):
+      return a + b + d
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node = nodes[-2]
+    self.assertIsInstance(fn_node, gast.FunctionDef)
+    self.assertEqual('tf__f', name)
+    self.assertEqual(
+        compiler.ast_to_source(fn_node.args.defaults[0]).strip(), 'None')
 
   def test_entity_to_graph_call_tree(self):
 
@@ -74,15 +86,9 @@ class ConversionTest(test.TestCase):
       return g(a)
 
     program_ctx = self._simple_program_ctx()
-    conversion.entity_to_graph(f, program_ctx, None, None)
-
-    self.assertTrue(f in program_ctx.dependency_cache)
-    self.assertTrue(g in program_ctx.dependency_cache)
-    f_node = program_ctx.dependency_cache[f][0]
-    g_node = program_ctx.dependency_cache[g][0]
+    nodes, _, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    f_node = nodes[-2]
     self.assertEqual('tf__f', f_node.name)
-    self.assertEqual('tf__g', f_node.body[0].body[0].body[0].value.func.id)
-    self.assertEqual('tf__g', g_node.name)
 
   def test_entity_to_graph_class_hierarchy(self):
 
@@ -110,16 +116,8 @@ class ConversionTest(test.TestCase):
         return self.y
 
     program_ctx = self._simple_program_ctx()
-    conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
-
-    self.assertTrue(TestBase in program_ctx.dependency_cache)
-    self.assertTrue(TestSubclass in program_ctx.dependency_cache)
-    # The returned nodes will include:
-    # <import nodes>, <class node>, <assignment node>
-    self.assertEqual('TfTestBase',
-                     program_ctx.dependency_cache[TestBase][-2].name)
-    self.assertEqual('TfTestSubclass',
-                     program_ctx.dependency_cache[TestSubclass][-2].name)
+    with self.assertRaisesRegex(NotImplementedError, 'classes.*whitelisted'):
+      conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
 
   def test_entity_to_graph_class_hierarchy_whitelisted(self):
 
@@ -133,23 +131,74 @@ class ConversionTest(test.TestCase):
         return 3 * x
 
     program_ctx = self._simple_program_ctx()
-    conversion.entity_to_graph(TestSubclass, program_ctx, None, None)
+    nodes, name, _ = conversion.entity_to_graph(TestSubclass, program_ctx, None,
+                                                None)
+    class_node = nodes[-2]  # TODO(mdan): This is brittle.
 
-    self.assertTrue(TestSubclass in program_ctx.dependency_cache)
-    self.assertFalse(training.Model in program_ctx.dependency_cache)
-    self.assertEqual(
-        'Model', program_ctx.dependency_cache[TestSubclass][0].names[0].name)
-    # The returned nodes will include:
-    # <import nodes>, <class node>, <assignment node>
-    self.assertEqual('TfTestSubclass',
-                     program_ctx.dependency_cache[TestSubclass][-2].name)
+    self.assertEqual(name, 'TfTestSubclass')
+    self.assertEqual(class_node.name, 'TfTestSubclass')
 
   def test_entity_to_graph_lambda(self):
-    f = lambda a: a
+    b = 2
+    f = lambda x: b * x if x > 0 else -x
 
-    with self.assertRaises(NotImplementedError):
-      program_ctx = self._simple_program_ctx()
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node = nodes[-2]
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+    self.assertIs(ns['b'], b)
+
+  def test_entity_to_graph_multiple_lambdas(self):
+    a, b = 1, 2
+    f, _ = (lambda x: a * x, lambda y: b * y)
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node = nodes[-2]
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+    self.assertIs(ns['a'], a)
+
+  def test_entity_to_graph_multiple_lambdas_ambiguous_definitions(self):
+    a, b = 1, 2
+    f, _ = (lambda x: a * x, lambda x: b * x)
+
+    program_ctx = self._simple_program_ctx()
+    with self.assertRaises(ValueError):
       conversion.entity_to_graph(f, program_ctx, None, None)
+
+  def test_entity_to_graph_lambda_code_with_garbage(self):
+    # pylint:disable=g-long-lambda
+    f = (  # intentional wrap
+        lambda x: (x  # intentional wrap
+                   + 1),)[0]
+    # pylint:enable=g-long-lambda
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, _ = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node = nodes[-2]
+    self.assertIsInstance(fn_node, gast.Assign)
+    self.assertIsInstance(fn_node.value, gast.Lambda)
+    self.assertEqual('tf__lambda', name)
+
+  def test_entity_to_graph_nested_functions(self):
+    b = 2
+
+    def f(x):
+      def g(x):
+        return b * x
+      return g(x)
+
+    program_ctx = self._simple_program_ctx()
+    nodes, name, ns = conversion.entity_to_graph(f, program_ctx, None, None)
+    fn_node = nodes[-2]
+    self.assertIsInstance(fn_node, gast.FunctionDef)
+    self.assertEqual(fn_node.name, 'tf__f')
+    self.assertEqual('tf__f', name)
+    self.assertIs(ns['b'], b)
 
   def test_ag_module_cached(self):
     def callee():

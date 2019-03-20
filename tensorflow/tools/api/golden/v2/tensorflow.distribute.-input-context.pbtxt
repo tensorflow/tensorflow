@@ -1,0 +1,25 @@
+path: "tensorflow.distribute.InputContext"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.InputContext\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "input_pipeline_id"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_input_pipelines"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "num_replicas_in_sync"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'num_input_pipelines\', \'input_pipeline_id\', \'num_replicas_in_sync\'], varargs=None, keywords=None, defaults=[\'1\', \'0\', \'1\'], "
+  }
+  member_method {
+    name: "get_per_replica_batch_size"
+    argspec: "args=[\'self\', \'global_batch_size\'], varargs=None, keywords=None, defaults=None"
+  }
+}

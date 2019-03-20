@@ -217,11 +217,15 @@ class TreeAnnotator(transformer.Base):
 
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
+
+  def visit_ExceptHandler(self, node):
+    # TODO(b/123995141) Add Exception Handlers to the CFG
+    return node
 
   def visit_Name(self, node):
     if self.current_analyzer is None:
@@ -232,7 +236,8 @@ class TreeAnnotator(transformer.Base):
     analyzer = self.current_analyzer
     cfg_node = self.current_cfg_node
 
-    assert cfg_node is not None, 'name node outside of any statement?'
+    assert cfg_node is not None, ('name node, %s, outside of any statement?'
+                                  % node.id)
 
     qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Load):

@@ -37,7 +37,7 @@ from tensorflow.contrib.learn.python.learn.estimators import test_data
 from tensorflow.contrib.learn.python.learn.metric_spec import MetricSpec
 from tensorflow.contrib.linear_optimizer.python import sdca_optimizer as sdca_optimizer_lib
 from tensorflow.contrib.metrics.python.ops import metric_ops
-from tensorflow.python.feature_column import feature_column as fc_core
+from tensorflow.python.feature_column import feature_column_lib as fc_core
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
@@ -1745,7 +1745,7 @@ class LinearRegressorTest(test.TestCase):
           'place_holder':
               constant_op.constant([[0.0]] * num_examples),
       }, constant_op.constant(
-          [[1 if i % 4 is 0 else 0] for i in range(num_examples)])
+          [[1 if i % 4 == 0 else 0] for i in range(num_examples)])
 
     place_holder = feature_column_lib.real_valued_column('place_holder')
     sdca_optimizer = sdca_optimizer_lib.SDCAOptimizer(

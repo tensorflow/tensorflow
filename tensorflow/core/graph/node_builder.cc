@@ -29,6 +29,8 @@ NodeBuilder::NodeOut::NodeOut(Node* n, int32 i)  // NOLINT(runtime/explicit)
       index(i),
       dt(SafeGetOutput(node, i, &error)) {}
 
+NodeBuilder::NodeOut::NodeOut(OutputTensor t) : NodeOut(t.node, t.index) {}
+
 NodeBuilder::NodeOut::NodeOut(StringPiece n, int32 i, DataType t)
     : node(nullptr), error(false), name(n), index(i), dt(t) {}
 
@@ -36,8 +38,9 @@ NodeBuilder::NodeOut::NodeOut()
     : node(nullptr), error(true), index(0), dt(DT_FLOAT) {}
 
 NodeBuilder::NodeBuilder(StringPiece name, StringPiece op_name,
-                         const OpRegistryInterface* op_registry)
-    : def_builder_(name, op_name, op_registry) {}
+                         const OpRegistryInterface* op_registry,
+                         const NodeDebugInfo* debug)
+    : def_builder_(name, op_name, op_registry, debug) {}
 
 NodeBuilder::NodeBuilder(StringPiece name, const OpDef* op_def)
     : def_builder_(name, op_def) {}
@@ -101,6 +104,11 @@ NodeBuilder& NodeBuilder::Device(StringPiece device_spec) {
 
 NodeBuilder& NodeBuilder::AssignedDevice(StringPiece device) {
   assigned_device_ = string(device);
+  return *this;
+}
+
+NodeBuilder& NodeBuilder::XlaCluster(StringPiece xla_cluster) {
+  def_builder_.Attr("_XlaCluster", xla_cluster);
   return *this;
 }
 

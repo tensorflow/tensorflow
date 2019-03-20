@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -43,8 +44,8 @@ TEST(ConstAnalysisTest, Basics) {
 
   std::vector<bool> const_args(4, false);
   std::vector<bool> const_nodes(root.graph()->num_node_ids(), false);
-  TF_ASSERT_OK(
-      BackwardsConstAnalysis(*root.graph(), &const_args, &const_nodes));
+  TF_ASSERT_OK(BackwardsConstAnalysis(*root.graph(), &const_args, &const_nodes,
+                                      /*flib_runtime=*/nullptr));
 
   // Arg 0 doesn't need to be constant since the graph only uses its shape.
   // Arg 1 must be constant because it flows to the shape argument of a Reshape.
@@ -81,7 +82,8 @@ TEST(ConstAnalysisTest, TopologicalOrder) {
 
     std::vector<bool> const_args(3, false);
     TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
-                                        /*compile_time_const_nodes=*/nullptr));
+                                        /*compile_time_const_nodes=*/nullptr,
+                                        /*flib_runtime=*/nullptr));
 
     EXPECT_EQ(const_args, std::vector<bool>({true, true, false}));
   }
@@ -102,9 +104,61 @@ TEST(ConstAnalysisTest, DontFollowControlDependencies) {
 
   std::vector<bool> const_args(2, false);
   TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
-                                      /*compile_time_const_nodes=*/nullptr));
+                                      /*compile_time_const_nodes=*/nullptr,
+                                      /*flib_runtime=*/nullptr));
 
   EXPECT_EQ(const_args, std::vector<bool>({false, true}));
+}
+
+TEST(ConstAnalysisTest, RespectExplicitAttr_0) {
+  Scope root = Scope::NewRootScope();
+
+  Output arg0 = ops::_Arg(root.WithOpName("Arg0"), DT_INT32, 0);
+  Output arg1 = ops::_Arg(root.WithOpName("Arg1"), DT_INT32, 1);
+  Output c1 =
+      ops::Const(root.WithOpName("c1").WithControlDependencies(arg0), 1, {1});
+  Output add = ops::Add(root, arg1, c1);
+
+  // Force const analysis to pretend that the shape argument to `reshape` does
+  // not need to be a constant.
+  Output reshape = ops::Reshape(root, arg1, add);
+  reshape.node()->AddAttr(kXlaCompileTimeConstantInputsAttr,
+                          std::vector<string>());
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(&graph));
+
+  std::vector<bool> const_args(2, false);
+  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
+                                      /*compile_time_const_nodes=*/nullptr,
+                                      /*flib_runtime=*/nullptr));
+
+  EXPECT_EQ(const_args, std::vector<bool>({false, false}));
+}
+
+TEST(ConstAnalysisTest, RespectExplicitAttr_1) {
+  Scope root = Scope::NewRootScope();
+
+  Output arg0 = ops::_Arg(root.WithOpName("Arg0"), DT_INT32, 0);
+  Output c1 =
+      ops::Const(root.WithOpName("c1").WithControlDependencies(arg0), 1, {1});
+  Output add = ops::Add(root, arg0, c1);
+
+  // Force const analysis to pretend that the first argument to `add` needs to
+  // be a constant.
+  std::vector<string> add_constant_inputs;
+  add_constant_inputs.push_back("x");
+  add.node()->AddAttr(kXlaCompileTimeConstantInputsAttr, add_constant_inputs);
+
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(root.ToGraph(&graph));
+
+  std::vector<bool> const_args(1, false);
+  TF_ASSERT_OK(BackwardsConstAnalysis(graph, &const_args,
+                                      /*compile_time_const_nodes=*/nullptr,
+                                      /*flib_runtime=*/nullptr));
+
+  EXPECT_EQ(const_args, std::vector<bool>({true}));
 }
 
 }  // namespace

@@ -1,11 +1,11 @@
 path: "tensorflow.keras.initializers.VarianceScaling"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.init_ops.VarianceScaling\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.VarianceScaling\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'scale\', \'mode\', \'distribution\', \'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'1.0\', \'fan_in\', \'truncated_normal\', \'None\', \"<dtype: \'float32\'>\"], "
+    argspec: "args=[\'self\', \'scale\', \'mode\', \'distribution\', \'seed\'], varargs=None, keywords=None, defaults=[\'1.0\', \'fan_in\', \'truncated_normal\', \'None\'], "
   }
   member_method {
     name: "from_config"

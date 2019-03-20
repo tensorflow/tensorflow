@@ -646,6 +646,7 @@ cc_library(
         ":amdgpu_asm_printer",
         ":amdgpu_info",
         ":amdgpu_utils",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -793,12 +794,14 @@ cc_library(
         ":amdgpu_utils",
         ":analysis",
         ":asm_printer",
+        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
         ":global_i_sel",
         ":ipo",
         ":mc",
+        ":mir_parser",
         ":scalar",
         ":selection_dag",
         ":support",
@@ -823,6 +826,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
+        ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
         ":arm_utils",
@@ -1489,6 +1493,32 @@ cc_library(
 )
 
 cc_library(
+    name = "mir_parser",
+    srcs = glob([
+        "lib/CodeGen/MIRParser/*.c",
+        "lib/CodeGen/MIRParser/*.cpp",
+        "lib/CodeGen/MIRParser/*.inc",
+        "lib/CodeGen/MIRParser/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/CodeGen/MIRParser/*.h",
+        "include/llvm/CodeGen/MIRParser/*.def",
+        "include/llvm/CodeGen/MIRParser/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":asm_parser",
+        ":binary_format",
+        ":code_gen",
+        ":config",
+        ":core",
+        ":mc",
+        ":support",
+        ":target",
+    ],
+)
+
+cc_library(
     name = "nvptx_asm_printer",
     srcs = glob([
         "lib/Target/NVPTX/InstPrinter/*.c",
@@ -2141,6 +2171,7 @@ cc_library(
         ":core",
         ":global_i_sel",
         ":mc",
+        ":profile_data",
         ":selection_dag",
         ":support",
         ":target",
@@ -2239,7 +2270,6 @@ cc_library(
     deps = [
         ":code_gen",
         ":config",
-        ":core",
         ":support",
     ],
 )

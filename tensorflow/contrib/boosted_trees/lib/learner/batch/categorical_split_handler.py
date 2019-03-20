@@ -119,7 +119,7 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
 
     def not_active_inputs():
       return (constant_op.constant([], dtype=dtypes.int32),
-              constant_op.constant([], dtype=dtypes.int64, shape=[1, 2]),
+              constant_op.constant_v1([], dtype=dtypes.int64, shape=[1, 2]),
               empty_gradients, empty_hessians)
 
     def active_inputs():
@@ -193,7 +193,8 @@ class EqualitySplitHandler(base_split_handler.BaseSplitHandler):
 
     num_minibatches = control_flow_ops.cond(
         ops.convert_to_tensor(self._loss_uses_sum_reduction),
-        lambda: math_ops.to_int64(1), lambda: num_minibatches)
+        lambda: math_ops.cast(1, dtypes.int64),
+        lambda: num_minibatches)
     partition_ids, gains, split_infos = (
         split_handler_ops.build_categorical_equality_splits(
             num_minibatches=num_minibatches,

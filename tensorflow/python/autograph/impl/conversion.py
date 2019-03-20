@@ -18,12 +18,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import imp
+import unittest
 
 import gast
 
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.converters import arg_defaults
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import break_statements
 from tensorflow.python.autograph.converters import builtin_functions
@@ -31,7 +34,6 @@ from tensorflow.python.autograph.converters import call_trees
 from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
 from tensorflow.python.autograph.converters import control_flow
-from tensorflow.python.autograph.converters import decorators
 from tensorflow.python.autograph.converters import directives
 from tensorflow.python.autograph.converters import error_handlers
 from tensorflow.python.autograph.converters import function_scopes
@@ -42,17 +44,22 @@ from tensorflow.python.autograph.converters import side_effect_guards
 from tensorflow.python.autograph.converters import slices
 from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
-from tensorflow.python.autograph.core import errors
+from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import naming
+from tensorflow.python.autograph.core import unsupported_features_checker
+from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -70,12 +77,81 @@ def is_whitelisted_for_graph(o):
   Returns:
     Boolean
   """
-  m = tf_inspect.getmodule(o)
-  for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
-    if m.__name__.startswith(prefix):
+  # TODO(b/120224672): Fix this.
+  if isinstance(o, functools.partial):
+    # tf_inspect.getmodule(functools.partial(...)) otherwise returns None since
+    # functools.partial objects do not have a __module__ attribute.
+    m = functools
+  else:
+    m = tf_inspect.getmodule(o)
+
+  if hasattr(m, '__name__'):
+    # Builtins typically have unnamed modules.
+    for prefix, in config.DEFAULT_UNCOMPILED_MODULES:
+      if m.__name__.startswith(prefix):
+        logging.log(2, 'Whitelisted: %s: name starts with "%s"', o, prefix)
+        return True
+
+    # Temporary -- whitelist tensorboard modules.
+    # TODO(b/122731813): Remove.
+    if m.__name__ == 'tensorboard' or '.tensorboard' in m.__name__:
+      logging.log(2, 'Whitelisted: %s: name contains "tensorboard"', o)
       return True
-  if hasattr(o, 'autograph_info__'):
+
+  if hasattr(o, 'autograph_info__') or hasattr(o, '__ag_compiled'):
+    logging.log(2, 'Whitelisted: %s: already converted', o)
     return True
+
+  if hasattr(o, '__call__'):
+    # Callable objects: whitelisted if their __call__ method is.
+    # The type check avoids infinite recursion around the __call__ method
+    # of function objects.
+    if (type(o) != type(o.__call__)) and is_whitelisted_for_graph(o.__call__):  # pylint: disable=unidiomatic-typecheck
+      logging.log(2, 'Whitelisted: %s: object __call__ whitelisted', o)
+      return True
+
+  owner_class = None
+  if tf_inspect.ismethod(o):
+    # Methods of whitelisted classes are also whitelisted, even if they are
+    # bound via user subclasses.
+    #
+    # For example, suppose `tf.Foo` has a method called `bar`, and `baz` is
+    # defined as below. `tf.Foo` is whitelisted. Then `baz.bar` is also
+    # whitelisted.
+    #
+    #   class Custom(tf.Foo):
+    #     pass
+    #
+    #   baz = Custom()
+    #
+    # For the example above, if `Custom` did overload `bar`, then it would no
+    # longer be whitelisted.
+
+    owner_class = inspect_utils.getmethodclass(o)
+    if owner_class is not None:
+      if issubclass(owner_class, unittest.TestCase):
+        logging.log(2, 'Whitelisted: %s: method of TestCase subclass', o)
+        return True
+
+      owner_class = inspect_utils.getdefiningclass(o, owner_class)
+      if is_whitelisted_for_graph(owner_class):
+        logging.log(2, 'Whitelisted: %s: owner is whitelisted %s', o,
+                    owner_class)
+        return True
+
+  if inspect_utils.isnamedtuple(o):
+    # Due to the way they're constructed, namedtuple types cannot be converted
+    # because they don't expose source code. But we assume they are safe for
+    # graph mode since they are just containers.
+    if tf_inspect.isclass(o) and len(o.__bases__) > 1:
+      logging.warn(
+          'Entity {} looks like a namedtuple subclass. Its constructor will'
+          ' not be converted by AutoGraph, but if it has any custom methods,'
+          ' those will be.'.format(o), 1)
+    logging.log(2, 'Whitelisted: %s: named tuple', o)
+    return True
+
+  logging.log(2, 'Not whitelisted: %s: default rule', o)
   return False
 
 
@@ -107,23 +183,14 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   Raises:
     ValueError: if the entity type is not supported.
   """
-  if program_ctx.options.verbose:
-    logging.info('Converting {}'.format(o))
+  logging.log(1, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
-    node, name, ns = class_to_graph(o, program_ctx)
+    nodes, name, ns = class_to_graph(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    # TODO(mdan): This is not a reliable mechanism.
-    # The most reliable way is to check the source code, the AST will contain
-    # a Lambda node instead of a FunctionDef
-    if o.__name__ == '<lambda>':
-      raise NotImplementedError(
-          'lambda functions are not yet supported; declare the function'
-          ' using def instead: %s' % o)
-    else:
-      node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    nodes, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
-    node, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    nodes, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
   elif hasattr(o, '__class__'):
     raise NotImplementedError(
@@ -133,7 +200,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
         'conversion. For example, instead of converting the method '
         'of a class, try converting the entire class instead. '
         'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
-        'contrib/autograph/README.md#using-the-functional-api '
+        'python/autograph/README.md#using-the-functional-api '
         'for more information.')
   else:
     raise ValueError(
@@ -146,66 +213,70 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   template = '''
       entity.autograph_info__ = {}
   '''
-  node.extend(templates.replace(template, entity=name))
+  nodes.extend(templates.replace(template, entity=name))
 
-  program_ctx.add_to_cache(o, node)
+  if logging.has_verbosity(2):
+    logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
+                compiler.ast_to_source(nodes))
+  if logging.has_verbosity(4):
+    for n in nodes:
+      logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,
+                  pretty_printer.fmt(n, color=False))
 
-  if program_ctx.options.verbose:
-    logging.info('Compiled output of {}:\n\n{}\n'.format(
-        o, compiler.ast_to_source(node)))
-
-  if program_ctx.options.recursive:
-    while True:
-      candidate = None
-      for obj in program_ctx.name_map.keys():
-        if obj not in program_ctx.dependency_cache:
-          candidate = obj
-          break
-      if candidate is None:
-        break
-      if (hasattr(candidate, 'im_class') and
-          getattr(candidate, 'im_class') not in program_ctx.partial_types):
-        # Class members are converted with their objects, unless they're
-        # only converted partially.
-        continue
-      entity_to_graph(candidate, program_ctx, {}, {})
-
-  return node, name, ns
+  return nodes, name, ns
 
 
 def class_to_graph(c, program_ctx):
   """Specialization of `entity_to_graph` for classes."""
+  # TODO(mdan): Revisit this altogether. Not sure we still need it.
   converted_members = {}
   method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
   members = tf_inspect.getmembers(c, predicate=method_filter)
   if not members:
     raise ValueError('Cannot convert %s: it has no member methods.' % c)
 
+  # TODO(mdan): Don't clobber namespaces for each method in one class namespace.
+  # The assumption that one namespace suffices for all methods only holds if
+  # all methods were defined in the same module.
+  # If, instead, functions are imported from multiple modules and then spliced
+  # into the class, then each function has its own globals and __future__
+  # imports that need to stay separate.
+
+  # For example, C's methods could both have `global x` statements referring to
+  # mod1.x and mod2.x, but using one namespace for C would cause a conflict.
+  # from mod1 import f1
+  # from mod2 import f2
+  # class C(object):
+  #   method1 = f1
+  #   method2 = f2
+
   class_namespace = {}
   for _, m in members:
     # Only convert the members that are directly defined by the class.
     if inspect_utils.getdefiningclass(m, c) is not c:
       continue
-    node, _, namespace = function_to_graph(
+    nodes, _, namespace = function_to_graph(
         m,
         program_ctx=program_ctx,
         arg_values={},
         arg_types={'self': (c.__name__, c)},
-        owner_type=c,
-        rewrite_errors=False)
+        do_rename=False)
     if class_namespace is None:
       class_namespace = namespace
     else:
       class_namespace.update(namespace)
-    converted_members[m] = node[0]
-  namer = program_ctx.new_namer(class_namespace)
-  class_name = namer.compiled_class_name(c.__name__, c)
+    # TODO(brianklee): function_to_graph returns future import nodes and the
+    # converted function nodes. We discard all the future import nodes here
+    # which is buggy behavior, but really, the whole approach of gathering all
+    # of the converted function nodes in one place is intrinsically buggy.
+    # So this is a reminder to properly handle the future import nodes when we
+    # redo our approach to class conversion.
+    converted_members[m] = nodes[-1]
+  namer = naming.Namer(class_namespace)
+  class_name = namer.class_name(c.__name__)
 
-  # TODO(mdan): This needs to be explained more thoroughly.
   # Process any base classes: if the superclass if of a whitelisted type, an
-  # absolute import line is generated. Otherwise, it is marked for conversion
-  # (as a side effect of the call to namer.compiled_class_name() followed by
-  # program_ctx.update_name_map(namer)).
+  # absolute import line is generated.
   output_nodes = []
   renames = {}
   base_names = []
@@ -221,11 +292,12 @@ def class_to_graph(c, program_ctx):
               names=[gast.alias(name=base.__name__, asname=alias)],
               level=0))
     else:
-      # This will trigger a conversion into a class with this name.
-      alias = namer.compiled_class_name(base.__name__, base)
+      raise NotImplementedError(
+          'Conversion of classes that do not directly extend classes from'
+          ' whitelisted modules is temporarily suspended. If this breaks'
+          ' existing code please notify the AutoGraph team immediately.')
     base_names.append(alias)
     renames[qual_names.QN(base.__name__)] = qual_names.QN(alias)
-  program_ctx.update_name_map(namer)
 
   # Generate the definition of the converted class.
   bases = [gast.Name(n, gast.Load(), None) for n in base_names]
@@ -257,6 +329,7 @@ def _add_reserved_symbol(namespace, name, entity):
 ag_internal = None
 
 
+# TODO(mdan): Move into core or replace with an actual importable module.
 def _add_self_references(namespace, autograph_module):
   """Adds namespace references to the module that exposes the api itself."""
   global ag_internal
@@ -264,66 +337,88 @@ def _add_self_references(namespace, autograph_module):
     # Craft a module that exposes parts of the external API as well as certain
     # internal modules.
     ag_internal = imp.new_module('autograph')
-    ag_internal.converted_call = autograph_module.converted_call
+    ag_internal.__dict__.update(autograph_module.__dict__)
     ag_internal.ConversionOptions = converter.ConversionOptions
+    ag_internal.Feature = converter.Feature
     ag_internal.utils = utils
     ag_internal.function_scope = function_wrapping.function_scope
     ag_internal.rewrite_graph_construction_error = (
-        errors.rewrite_graph_construction_error)
+        ag_errors.rewrite_graph_construction_error)
     # TODO(mdan): Add safeguards against name clashes.
     # We don't want to create a submodule because we want the operators to be
     # accessible as ag__.<operator>
+    ag_internal.__dict__.update(special_functions.__dict__)
     ag_internal.__dict__.update(operators.__dict__)
 
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f,
-                      program_ctx,
-                      arg_values,
-                      arg_types,
-                      owner_type=None,
-                      rewrite_errors=True):
+def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
   """Specialization of `entity_to_graph` for callable functions."""
 
-  node, source = parser.parse_entity(f)
-  node = node.body[0]
+  future_imports = inspect_utils.getfutureimports(f)
+  node, future_import_nodes, source = parser.parse_entity(
+      f, future_imports=future_imports)
+  logging.log(3, 'Source code of %s:\n\n%s\n', f, source)
+  # Parsed AST should contain future imports and one function def node.
+
+  # In general, the output of inspect.getsource is inexact for lambdas because
+  # it uses regex matching to adjust the exact location around the line number
+  # that CPython records. Then, the entire containing line is returned, which
+  # we may have trouble disambiguating. For example:
+  # x, y = lambda: 1, lambda: 2
+  if f.__name__ == '<lambda>':
+    nodes = ast_util.find_matching_definitions(node, f)
+    if len(nodes) != 1:
+      raise ValueError(
+          'Unable to identify source code of lambda function {}. It was'
+          ' defined on this line: {}, which must contain a single lambda with'
+          ' matching signature. To avoid ambiguity, define each lambda'
+          ' in a separate expression.'.format(f, source))
+    node, = nodes
+
+  # TODO(znado): Place inside standard_analysis.
   origin_info.resolve(node, source, f)
   namespace = inspect_utils.getnamespace(f)
   _add_self_references(namespace, program_ctx.autograph_module)
-  namer = program_ctx.new_namer(namespace)
+  namer = naming.Namer(namespace)
 
   entity_info = transformer.EntityInfo(
       source_code=source,
       source_file='<fragment>',
       namespace=namespace,
       arg_values=arg_values,
-      arg_types=arg_types,
-      owner_type=owner_type)
+      arg_types=arg_types)
   context = converter.EntityContext(namer, entity_info, program_ctx)
-  node = node_to_graph(node, context, rewrite_errors=rewrite_errors)
+  try:
+    node = node_to_graph(node, context)
+  except (ValueError, AttributeError, KeyError, NotImplementedError) as e:
+    logging.error(1, 'Error converting %s', f, exc_info=True)
+    raise errors.InternalError('conversion', e)
+    # TODO(mdan): Catch and rethrow syntax errors.
 
-  # TODO(mdan): This somewhat duplicates the call rename logic in call_trees.py
-  new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
-  if not did_rename:
+  if isinstance(node, gast.Lambda):
+    new_name = namer.new_symbol('tf__lambda', ())
+    node = gast.Assign(
+        targets=[gast.Name(new_name, gast.Store(), None)], value=node)
+
+  elif do_rename:
+    # TODO(mdan): This somewhat duplicates the renaming logic in call_trees.py
+    new_name = namer.function_name(f.__name__)
+    node.name = new_name
+  else:
     new_name = f.__name__
-    if node.name != f.__name__:
-      raise NotImplementedError('Strange corner case. Send us offending code!')
-  node.name = new_name
+    assert node.name == new_name
 
-  program_ctx.update_name_map(namer)
-  # TODO(mdan): Use this at compilation.
-
-  return [node], new_name, namespace
+  return future_import_nodes + [node], new_name, namespace
 
 
-def node_to_graph(node, context, rewrite_errors=True):
+def node_to_graph(node, context):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: AST, the code to convert.
     context: converter.EntityContext
-    rewrite_errors: Boolean, whether or not to rewrite the error traceback.
 
   Returns:
     A tuple (node, deps):
@@ -332,17 +427,18 @@ def node_to_graph(node, context, rewrite_errors=True):
             dependencies that this node has.
   """
   # TODO(mdan): Insert list_comprehensions somewhere.
+  unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
   # Past this point, line numbers are no longer accurate so we ignore the
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   context.info.source_code = None
-
-  node = converter.apply_(node, context, decorators)
+  node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
-  node = converter.apply_(node, context, asserts)
+  if context.program.options.uses(converter.Feature.ASSERT_STATEMENTS):
+    node = converter.apply_(node, context, asserts)
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
@@ -351,14 +447,18 @@ def node_to_graph(node, context, rewrite_errors=True):
   if context.program.options.uses(converter.Feature.LISTS):
     node = converter.apply_(node, context, lists)
     node = converter.apply_(node, context, slices)
-  node = converter.apply_(node, context, builtin_functions)
+  if context.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS):
+    node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)
-  node = converter.apply_(node, context, logical_expressions)
+  if context.program.options.uses(converter.Feature.LOGICAL_EXPRESSIONS):
+    node = converter.apply_(node, context, logical_expressions)
   if context.program.options.uses(converter.Feature.AUTO_CONTROL_DEPS):
     node = converter.apply_(node, context, side_effect_guards)
-  node = converter.apply_(node, context, function_scopes)
-  if rewrite_errors:
+  # TODO(mdan): If function scopes ever does more, the toggle will need moving.
+  if context.program.options.uses(converter.Feature.NAME_SCOPES):
+    node = converter.apply_(node, context, function_scopes)
+  if context.program.options.uses(converter.Feature.ERROR_REWRITING):
     node = converter.apply_(node, context, error_handlers)
   return node

@@ -46,11 +46,9 @@ class SessionMgrTest : public ::testing::Test {
   SessionMgrTest()
       : mgr_(&env_, "/job:mnist/replica:0/task:0",
              std::unique_ptr<WorkerCacheInterface>(), factory_) {
-    Device* device =
-        FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0")
-            .release();
-    env_.local_devices = {device};
-    device_mgr_.reset(new DeviceMgr(env_.local_devices));
+    device_mgr_ = absl::make_unique<DeviceMgr>(
+        FakeDevice::MakeCPU("/job:mnist/replica:0/task:0/device:fakecpu:0"));
+    env_.local_devices = device_mgr_->ListDevices();
     env_.device_mgr = device_mgr_.get();
   }
 
@@ -142,7 +140,6 @@ TEST_F(SessionMgrTest, CreateSessionIsolateSessionState) {
 }
 
 TEST_F(SessionMgrTest, LegacySession) {
-  ServerDef server_def;
   string session_handle = "";
   std::shared_ptr<WorkerSession> session;
   TF_EXPECT_OK(mgr_.WorkerSessionForSession(session_handle, &session));
@@ -152,7 +149,6 @@ TEST_F(SessionMgrTest, LegacySession) {
 }
 
 TEST_F(SessionMgrTest, UnknownSessionHandle) {
-  ServerDef server_def;
   string session_handle = "unknown_session_handle";
   std::shared_ptr<WorkerSession> session;
   Status s = mgr_.WorkerSessionForSession(session_handle, &session);

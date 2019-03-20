@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -43,11 +44,52 @@ def per_example_logistic_loss(labels, weights, predictions):
     loss: A Rank 2 (N, 1) tensor of per-example logistic loss.
     update_op: An update operation to update the loss's internal state.
   """
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
       labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()
 
+# MUST USE WITH HESSIAN REGULARIZATION,
+# This loss can have zero hessian, so it must be used with l2 or min_node_weight
+# regularization.
+# An example config is
+# learner_config.constraints.min_node_weight = 1 / num_examples_per_layer
+# learner_config.regularization.l2 = 1.0 / num_examples_per_layer
+# TODO(nponomareva): make it multidimensional so we can estimate several
+# quantiles at once.
+def per_example_quantile_regression_loss(labels, weights, predictions,
+                                         quantile):
+  """Smoothed loss for quantile regression.
+
+  The standard quantile regression loss is quantile*(y-y') when y>y' and
+  (quantile-1)*(y-y') otherwise, y' is a prediction, y is a label. The impl
+  below is this loss but squared in the region where the loss value < 1.
+
+  Args:
+    labels: Rank 2 (N, D) tensor of per-example labels.
+    weights: Rank 2 (N, 1) tensor of per-example weights.
+    predictions: Rank 2 (N, D) tensor of per-example predictions.
+    quantile: The quantile to use.
+
+  Returns:
+    loss: A Rank 2 (N, 1) tensor of per-example quantile loss.
+    update_op: An update operation to update the loss's internal state.
+  """
+  labels = math_ops.cast(labels, dtypes.float32)
+  error = labels - predictions
+  square_loss_right = array_ops.where(error * quantile < 1.0,
+                                      math_ops.square(quantile * error),
+                                      quantile * error)
+  square_loss_left = array_ops.where(error * (quantile - 1) < 1,
+                                     math_ops.square((quantile - 1) * error),
+                                     (quantile - 1) * error)
+
+  unweighted_loss = array_ops.where(error > 0, square_loss_right,
+                                    square_loss_left)
+  if weights is None:
+    return unweighted_loss, control_flow_ops.no_op()
+  else:
+    return unweighted_loss * weights, control_flow_ops.no_op()
 
 # This is classical form of Maximum entropy loss, that is twice differentiable
 # (sparse_softmax_cross_entropy which is what we go for is not twice
@@ -71,16 +113,15 @@ def per_example_maxent_loss(labels, weights, logits, num_classes, eps=1e-15):
     loss: A Rank 2 (N, 1) tensor of per-example maxent loss
     update_op: An update operation to update the loss's internal state.
   """
-  labels = math_ops.to_int64(labels)
+  labels = math_ops.cast(labels, dtypes.int64)
   # If labels are of rank 1, make them rank 2.
   labels_shape = labels.get_shape()
   if len(labels_shape) != 2:
     labels = array_ops.expand_dims(labels, 1)
   # Labels are indices of classes, convert them to one hot encodings.
   target_one_hot = array_ops.one_hot(indices=labels, depth=num_classes)
-  labels = math_ops.reduce_sum(
-      input_tensor=target_one_hot, reduction_indices=[1])
-  labels = math_ops.to_float(labels)
+  labels = math_ops.reduce_sum(input_tensor=target_one_hot, axis=[1])
+  labels = math_ops.cast(labels, dtypes.float32)
 
   # Calculate softmax probabilities for each class.
   unnormalized_probs = math_ops.exp(logits)
@@ -126,7 +167,7 @@ def per_example_squared_loss(labels, weights, predictions):
     update_op: An update operation to update the loss's internal state.
   """
   unweighted_loss = math_ops.reduce_sum(
-      math_ops.square(predictions - labels), 1, keepdims=True)
+      math_ops.squared_difference(predictions, labels), 1, keepdims=True)
 
   return unweighted_loss * weights, control_flow_ops.no_op()
 
@@ -213,7 +254,7 @@ def per_example_exp_loss(labels, weights, predictions, name=None, eps=0.1):
     preds_converted = min_res
     return math_ops.exp(-preds_converted * labels_converted)
 
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   unweighted_loss = exp_with_logits(
       name=name, eps=eps, labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()
@@ -272,7 +313,7 @@ def per_example_full_exp_loss(labels, weights, predictions, name=None):
 
     return math_ops.exp(-1.0 * logits * labels_converted)
 
-  labels = math_ops.to_float(labels)
+  labels = math_ops.cast(labels, dtypes.float32)
   unweighted_loss = full_exp_with_logits(
       name=name, labels=labels, logits=predictions)
   return unweighted_loss * weights, control_flow_ops.no_op()

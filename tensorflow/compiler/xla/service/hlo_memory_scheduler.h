@@ -36,56 +36,62 @@ namespace xla {
 // that describes buffer aliasing, together with a target-specific size function
 // that maps a tensor's logical size to its padded size.
 typedef std::function<StatusOr<HloInstructionSequence>(
-    const HloComputation&, const TuplePointsToAnalysis&,
+    HloComputation*, const TuplePointsToAnalysis&,
     const LogicalBuffer::SizeFunction&,
-    const absl::flat_hash_map<const HloComputation*, int64>&)>
+    const absl::flat_hash_map<const HloComputation*, int64>&,
+    bool async_host_transfers)>
     MemorySchedulerAlgorithm;
 
 // List scheduler
 StatusOr<HloInstructionSequence> ListMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation);
+        memory_by_computation,
+    bool async_host_transfers);
 
 // DFS-order scheduler
 StatusOr<HloInstructionSequence> DFSMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation);
+        memory_by_computation,
+    bool async_host_transfers);
 
 // Naive Post Order scheduler
 StatusOr<HloInstructionSequence> PostOrderMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation);
+        memory_by_computation,
+    bool async_host_transfers);
 
 // The default scheduling algorithm. Runs both the list scheduler
 // and the DFS scheduler, and chooses whichever returns a lower min-memory,
 // not accounting for fragmentation.
 StatusOr<HloInstructionSequence> DefaultMemoryScheduler(
-    const HloComputation& computation,
+    HloComputation* computation,
     const TuplePointsToAnalysis& points_to_analysis,
     const LogicalBuffer::SizeFunction& size_function,
     const absl::flat_hash_map<const HloComputation*, int64>&
-        memory_by_computation);
+        memory_by_computation,
+    bool async_host_transfers);
 
 // Returns an HloSchedule which seeks to minimize the memory required for
 // the computation. size_function is the function returning the number of bytes
 // required for a LogicalBuffer.
 StatusOr<HloSchedule> ScheduleModule(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function,
-    const MemorySchedulerAlgorithm& algorithm = {});
+    HloModule* module, const LogicalBuffer::SizeFunction& size_function,
+    const MemorySchedulerAlgorithm& algorithm = {},
+    bool async_host_transfers = true);
 
 // Computes the schedule for a single computation.
 // Currently only used by the GPU backend.
 StatusOr<HloInstructionSequence> ScheduleComputation(
-    const HloComputation& computation,
+    HloComputation* computation,
     const LogicalBuffer::SizeFunction& size_function);
 
 // A pass which schedules the HLO instructions in a module. The HloModule's
@@ -97,19 +103,39 @@ class HloMemoryScheduler : public HloModulePass {
   // LogicalBuffer. algorithm is the memory scheduling algorithm to use. If not
   // specified, then DefaultMemoryScheduler is used.
   HloMemoryScheduler(const LogicalBuffer::SizeFunction& size_function,
-                     const MemorySchedulerAlgorithm& algorithm = {});
+                     const MemorySchedulerAlgorithm& algorithm = {},
+                     bool async_host_transfers = true);
+
   ~HloMemoryScheduler() override = default;
+
   absl::string_view name() const override { return "hlo-memory-scheduler"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
   LogicalBuffer::SizeFunction size_function_;
+
   MemorySchedulerAlgorithm algorithm_;
+
+  // When true, the List scheduler schedules host send-dones and recv-dones as
+  // late as possible, to keep the device busy during the host transfer. This
+  // is a hack because packing of computation between channel instructions
+  // normally happens in the module group scheduler, and the memory scheduler
+  // only tries to minimize memory.
+  const bool async_host_transfers_ = true;
+};
+
+// A pass which produces a naive, but correct schedule. The schedule is produced
+// using a DFS traversal of the graph with no attempt to minimize memory use.
+class HloTrivialScheduler : public HloModulePass {
+ public:
+  absl::string_view name() const override { return "hlo-trivial-scheduler"; }
+
+  StatusOr<bool> Run(HloModule* module) override;
 };
 
 // A trivial pass which clears the schedule currently set on the
-// HloModule. After this pass runs HloModudle::has_schedule will return false.
+// HloModule. After this pass runs HloModule::has_schedule will return false.
 class HloDescheduler : public HloModulePass {
  public:
   HloDescheduler() = default;

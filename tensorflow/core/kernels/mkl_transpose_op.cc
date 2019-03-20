@@ -141,7 +141,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
-    net.push_back(in.CreateReorder(in.GetUsrMem(), out.GetUsrMem()));
+    net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
     stream(stream::kind::eager).submit(net).wait();
     return Status::OK();
   } catch (mkldnn::error& e) {

@@ -69,6 +69,9 @@ Status DataTypeToPrimitiveType(DataType data_type, xla::PrimitiveType* type) {
     case tensorflow::DT_COMPLEX64:
       *type = xla::C64;
       return Status::OK();
+    case tensorflow::DT_COMPLEX128:
+      *type = xla::C128;
+      return Status::OK();
     default:
       return errors::InvalidArgument(
           "Unsupported type in DataTypeToPrimitiveType ",

@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
+#include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -138,6 +139,113 @@ TEST_F(ModelPrunerTest, IdentityPruning) {
   std::vector<string> fetch = {"e"};
   auto expected_tensors = EvaluateNodes(item.graph, fetch);
   auto actual_tensors = EvaluateNodes(output, fetch);
+  EXPECT_EQ(1, expected_tensors.size());
+  EXPECT_EQ(1, actual_tensors.size());
+  test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);
+}
+
+TEST_F(ModelPrunerTest, IdentityNInputPruning) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
+  Output b = ops::Sqrt(s.WithOpName("b"), {a});
+  Output c = ops::Const(s.WithOpName("c"), 3.0f, {10, 10});
+  Output d = ops::Const(s.WithOpName("d"), 4.0f, {10, 10});
+  auto e =
+      ops::IdentityN(s.WithOpName("e").WithControlDependencies(d), {a, b, c});
+  auto f = ops::IdentityN(s.WithOpName("f"), {e[2], e[1], e[0]});
+  Output g = ops::Sqrt(s.WithOpName("g"), {f[1]});
+  Output h = ops::Sqrt(s.WithOpName("h"), {f[2]});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  item.fetch = {"g", "h"};
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(7, output.node_size());
+  const NodeDef& new_g = output.node(0);
+  EXPECT_EQ("g", new_g.name());
+  const NodeDef& new_a = output.node(1);
+  EXPECT_EQ("a", new_a.name());
+  const NodeDef& new_b = output.node(2);
+  EXPECT_EQ("b", new_b.name());
+  const NodeDef& new_d = output.node(3);
+  EXPECT_EQ("d", new_d.name());
+  const NodeDef& new_e = output.node(4);
+  EXPECT_EQ("e", new_e.name());
+  const NodeDef& new_f = output.node(5);
+  EXPECT_EQ("f", new_f.name());
+  const NodeDef& new_h = output.node(6);
+  EXPECT_EQ("h", new_h.name());
+
+  // Node "c" is pruned along with inputs leading to "c".
+  EXPECT_EQ(3, new_e.input_size());
+  EXPECT_EQ("a", new_e.input(0));
+  EXPECT_EQ("b", new_e.input(1));
+  EXPECT_EQ("^d", new_e.input(2));
+  EXPECT_EQ(2, new_f.input_size());
+  EXPECT_EQ("e:1", new_f.input(0));
+  EXPECT_EQ("e", new_f.input(1));
+  EXPECT_EQ(1, new_g.input_size());
+  EXPECT_EQ("f", new_g.input(0));
+  EXPECT_EQ(1, new_h.input_size());
+  EXPECT_EQ("f:1", new_h.input(0));
+
+  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+  auto actual_tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(2, expected_tensors.size());
+  EXPECT_EQ(2, actual_tensors.size());
+  for (int i = 0; i < expected_tensors.size(); i++) {
+    test::ExpectTensorEqual<float>(expected_tensors[i], actual_tensors[i]);
+  }
+}
+
+TEST_F(ModelPrunerTest, IdentityNInputPruningWithIdentityNInFetch) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+
+  Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
+  Output b = ops::Sqrt(s.WithOpName("b"), {a});
+  Output c = ops::Const(s.WithOpName("c"), 3.0f, {10, 10});
+  Output d = ops::Const(s.WithOpName("d"), 4.0f, {10, 10});
+  auto e =
+      ops::IdentityN(s.WithOpName("e").WithControlDependencies(d), {a, b, c});
+  auto f = ops::IdentityN(s.WithOpName("f"), {e[0], e[1], e[2]});
+  auto g = ops::IdentityN(s.WithOpName("g"), {f[1]});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  item.fetch = {"g"};
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(5, output.node_size());
+  const NodeDef& new_a = output.node(0);
+  EXPECT_EQ("a", new_a.name());
+  const NodeDef& new_b = output.node(1);
+  EXPECT_EQ("b", new_b.name());
+  const NodeDef& new_d = output.node(2);
+  EXPECT_EQ("d", new_d.name());
+  const NodeDef& new_e = output.node(3);
+  EXPECT_EQ("e", new_e.name());
+  const NodeDef& new_g = output.node(4);
+  EXPECT_EQ("g", new_g.name());
+
+  EXPECT_EQ(2, new_e.input_size());
+  EXPECT_EQ("b", new_e.input(0));
+  EXPECT_EQ("^d", new_e.input(1));
+  EXPECT_EQ(1, new_g.input_size());
+  // Single output IdentityN (node "f") was pruned.
+  EXPECT_EQ("e", new_g.input(0));
+
+  auto expected_tensors = EvaluateNodes(item.graph, item.fetch);
+  auto actual_tensors = EvaluateNodes(output, item.fetch);
   EXPECT_EQ(1, expected_tensors.size());
   EXPECT_EQ(1, actual_tensors.size());
   test::ExpectTensorEqual<float>(expected_tensors[0], actual_tensors[0]);

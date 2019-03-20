@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -46,7 +47,7 @@ class InverseOpTest(test.TestCase):
           tiling = list(y.shape)
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
-        out = tf_ans.eval()
+        out = self.evaluate(tf_ans)
         self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
         self.assertShapeEqual(y, tf_ans)
 
@@ -101,12 +102,14 @@ class InverseOpTest(test.TestCase):
     # Complex batch
     self._verifyInverseComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.deprecated_graph_mode_only
   def testNonSquareMatrix(self):
     # When the inverse of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
       linalg_ops.matrix_inverse(np.array([[1., 2., 3.], [3., 4., 5.]]))
 
+  @test_util.deprecated_graph_mode_only
   def testWrongDimensions(self):
     # The input to the inverse should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.])
@@ -137,6 +140,7 @@ class InverseOpTest(test.TestCase):
               size=np.prod(shape)).reshape(shape).astype(dtype)
           self._verifyInverseReal(matrix)
 
+  @test_util.deprecated_graph_mode_only
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       all_ops = []
@@ -146,7 +150,7 @@ class InverseOpTest(test.TestCase):
         inv1 = linalg_ops.matrix_inverse(matrix1, adjoint=adjoint_)
         inv2 = linalg_ops.matrix_inverse(matrix2, adjoint=adjoint_)
         all_ops += [inv1, inv2]
-      inv = sess.run(all_ops)
+      inv = self.evaluate(all_ops)
       self.assertAllEqual(inv[0], inv[1])
       self.assertAllEqual(inv[2], inv[3])
 

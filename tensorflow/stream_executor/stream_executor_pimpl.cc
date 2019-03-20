@@ -22,6 +22,7 @@ limitations under the License.
 #include <atomic>
 #include <utility>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/fft.h"
@@ -45,7 +46,7 @@ namespace {
 
 string StackTraceIfVLOG10() {
   if (VLOG_IS_ON(10)) {
-    return port::StrCat(" ", port::CurrentStackTrace(), "\n");
+    return absl::StrCat(" ", port::CurrentStackTrace(), "\n");
   } else {
     return "";
   }
@@ -69,6 +70,9 @@ internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
   switch (platform_kind) {
     case PlatformKind::kCuda:
       factory = *internal::MakeCUDAExecutorImplementation();
+      break;
+    case PlatformKind::kROCm:
+      factory = *internal::MakeROCMExecutorImplementation();
       break;
     case PlatformKind::kOpenCL:
       factory = *internal::MakeOpenCLExecutorImplementation();
@@ -187,10 +191,14 @@ StreamExecutor::StreamExecutor(
       memory_limit_bytes_(GetMemoryLimitBytes()) {
   if (port::Lowercase(platform_->Name()) == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
+  } else if (port::Lowercase(platform_->Name()) == "rocm") {
+    platform_kind_ = PlatformKind::kROCm;
   } else if (port::Lowercase(platform_->Name()) == "opencl") {
     platform_kind_ = PlatformKind::kOpenCL;
   } else if (port::Lowercase(platform_->Name()) == "host") {
     platform_kind_ = PlatformKind::kHost;
+  } else {
+    platform_kind_ = PlatformKind::kInvalid;
   }
 }
 
@@ -388,7 +396,7 @@ StreamExecutor::createRnnDescriptor(
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
+StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
                                                   int batch_size, int data_size,
                                                   dnn::DataType data_type) {
   dnn::DnnSupport *dnn_support = AsDnn();
@@ -396,8 +404,23 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int seq_length,
     return port::Status(port::error::UNKNOWN,
                         "Fail to find the dnn implementation.");
   }
-  return dnn_support->createRnnSequenceTensorDescriptor(seq_length, batch_size,
-                                                        data_size, data_type);
+  return dnn_support->createRnnSequenceTensorDescriptor(
+      max_seq_length, batch_size, data_size, data_type);
+}
+
+port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+StreamExecutor::createRnnSequenceTensorDescriptor(
+    int max_seq_length, int batch_size, int data_size,
+    const absl::Span<const int> &seq_lengths, bool time_major,
+    dnn::DataType data_type) {
+  dnn::DnnSupport *dnn_support = AsDnn();
+  if (!dnn_support) {
+    return port::Status(port::error::UNKNOWN,
+                        "Fail to find the dnn implementation.");
+  }
+  return dnn_support->createRnnSequenceTensorDescriptor(
+      max_seq_length, batch_size, data_size, seq_lengths, time_major,
+      data_type);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
@@ -471,6 +494,10 @@ port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
   return result;
 }
 
+port::Status StreamExecutor::GetStatus(Stream *stream) {
+  return implementation_->GetStatus(stream);
+}
+
 void *StreamExecutor::Allocate(uint64 size) {
   if (memory_limit_bytes_ > 0 &&
       mem_alloc_bytes_ + size > memory_limit_bytes_) {
@@ -501,13 +528,13 @@ port::StatusOr<DeviceMemoryBase> StreamExecutor::GetUntypedSymbol(
   if (static_cast<bool>(module_handle)) {
     return port::Status(
         port::error::NOT_FOUND,
-        port::StrCat("Check if module containing symbol ", symbol_name,
+        absl::StrCat("Check if module containing symbol ", symbol_name,
                      " is loaded (module_handle = ",
                      reinterpret_cast<uintptr_t>(module_handle.id()), ")"));
   } else {
     return port::Status(
         port::error::NOT_FOUND,
-        port::StrCat("Check if kernel using the symbol is loaded: ",
+        absl::StrCat("Check if kernel using the symbol is loaded: ",
                      symbol_name));
   }
 }
@@ -844,6 +871,10 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
 
   implementation_->UnregisterTraceListener(listener);
   return true;
+}
+
+absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+  return implementation_->GetAllocatorStats();
 }
 
 template <typename TraceCallT, typename... ArgsT>

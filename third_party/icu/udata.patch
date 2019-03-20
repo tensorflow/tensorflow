@@ -1,0 +1,68 @@
+--- /icu4c/source/common/unicode/uconfig.h	2018-06-19 22:34:56.000000000 -0700
++++ /ice4c/source/common/unicode/uconfig.h.new	2019-03-12 10:12:35.896095657 -0700
+@@ -55,6 +55,11 @@
+ #include "uconfig_local.h"
+ #endif
+ 
++// Tensorflow is statically linked on all platforms.
++#ifndef U_STATIC_IMPLEMENTATION
++#define U_STATIC_IMPLEMENTATION
++#endif
++
+ /**
+  * \def U_DEBUG
+  * Determines whether to include debugging code.
+
+--- /icu4c/source/common/udata.cpp.old	2018-06-19 22:34:56.000000000 -0700
++++ /icu4c/source/common/udata.cpp	2018-10-19 14:26:09.778950855 -0700
+@@ -18,15 +18,15 @@
+ 
+ #include "unicode/utypes.h"  /* U_PLATFORM etc. */
+ 
+-#ifdef __GNUC__
+-/* if gcc
+-#define ATTRIBUTE_WEAK __attribute__ ((weak))
+-might have to #include some other header
+-*/
++#if defined(__GNUC__) || defined(__SUNPRO_CC)
++#  define ATTRIBUTE_WEAK __attribute__ ((weak))
++#else
++#  define ATTRIBUTE_WEAK
+ #endif
+ 
+ #include "unicode/putil.h"
+ #include "unicode/udata.h"
++#include "unicode/umachine.h"
+ #include "unicode/uversion.h"
+ #include "charstr.h"
+ #include "cmemory.h"
+@@ -641,10 +641,11 @@
+  * partial-data-library access functions where each returns a pointer
+  * to its data package, if it is linked in.
+  */
+-/*
+-extern const void *uprv_getICUData_collation(void) ATTRIBUTE_WEAK;
+-extern const void *uprv_getICUData_conversion(void) ATTRIBUTE_WEAK;
+-*/
++
++//extern "C" const void *uprv_getICUData_collation(void);
++U_CDECL_BEGIN
++const void *uprv_getICUData_conversion(void) ATTRIBUTE_WEAK;
++U_CDECL_END
+ 
+ /*----------------------------------------------------------------------*
+  *                                                                      *
+@@ -702,10 +703,11 @@
+         if (uprv_getICUData_collation) {
+             setCommonICUDataPointer(uprv_getICUData_collation(), FALSE, pErrorCode);
+         }
++        */
+         if (uprv_getICUData_conversion) {
+-            setCommonICUDataPointer(uprv_getICUData_conversion(), FALSE, pErrorCode);
++          setCommonICUDataPointer(uprv_getICUData_conversion(), FALSE, pErrorCode);
+         }
+-        */
++
+ #if U_PLATFORM_HAS_WINUWP_API == 0 // Windows UWP Platform does not support dll icu data at this time
+         setCommonICUDataPointer(&U_ICUDATA_ENTRY_POINT, FALSE, pErrorCode);
+         {

@@ -220,7 +220,7 @@ def _build_estimator_for_export_tests(tmpdir):
     hashtable = lookup.HashTable(
         lookup.TextFileStringTableInitializer(vocab_file_name), 'x')
     features['bogus_lookup'] = hashtable.lookup(
-        math_ops.to_int64(features['feature']))
+        math_ops.cast(features['feature'], dtypes.int64))
 
     return input_fn_utils.InputFnOps(features, labels, inputs)
 
@@ -1181,14 +1181,14 @@ class EstimatorTest(test.TestCase):
         ]
         self.assertItemsEqual([expected_vocab_file], assets)
         graph_ops = [x.name for x in graph.get_operations()]
-        self.assertTrue('input_example_tensor' in graph_ops)
-        self.assertTrue('ParseExample/ParseExample' in graph_ops)
-        self.assertTrue('linear/linear/feature/matmul' in graph_ops)
+        self.assertIn('input_example_tensor', graph_ops)
+        self.assertIn('ParseExample/ParseExample', graph_ops)
+        self.assertIn('linear/linear/feature/matmul', graph_ops)
         # Since there were no transforms, both save ops are still present.
-        self.assertTrue('save/SaveV2/tensor_names' in graph_ops)
-        self.assertTrue('save_1/SaveV2/tensor_names' in graph_ops)
+        self.assertIn('save/SaveV2/tensor_names', graph_ops)
+        self.assertIn('save_1/SaveV2/tensor_names', graph_ops)
         # Since there were no transforms, the hash table lookup is still there.
-        self.assertTrue('hash_table_Lookup' in graph_ops)
+        self.assertIn('hash_table_Lookup/LookupTableFindV2', graph_ops)
 
     # Restore, to validate that the export was well-formed.
     # tag_2, tag_3 was subjected to strip_unused_nodes.
@@ -1368,7 +1368,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
       table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
-    self.assertDeviceEqual('/job:ps/task:0', table._table_ref.device)
+    self.assertDeviceEqual('/job:ps/task:0', table.resource_handle.device)
     self.assertDeviceEqual('/job:ps/task:0', output.device)
 
   def testMutableHashTableIsLocal(self):
@@ -1378,7 +1378,7 @@ class ReplicaDeviceSetterTest(test.TestCase):
       table = lookup.MutableHashTable(dtypes.string, dtypes.int64, default_val)
       input_string = constant_op.constant(['brain', 'salad', 'tank'])
       output = table.lookup(input_string)
-    self.assertDeviceEqual('', table._table_ref.device)
+    self.assertDeviceEqual('', table.resource_handle.device)
     self.assertDeviceEqual('', output.device)
 
   def testTaskIsSetOnWorkerWhenJobNameIsSet(self):

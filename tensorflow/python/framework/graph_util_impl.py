@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 _VARIABLE_OPS = {
@@ -50,7 +51,10 @@ def _is_variable_op(op):
   return op in _VARIABLE_OPS
 
 
-@tf_export("graph_util.must_run_on_cpu")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `tf.compat.v1.graph_util.must_run_on_cpu`")
+@tf_export(v1=["graph_util.must_run_on_cpu"])
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
   """Returns True if the given node_def must run on CPU, otherwise False.
 
@@ -139,17 +143,21 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
   # Breadth first search to find all the nodes that we should keep.
   next_to_visit = target_nodes[:]
   while next_to_visit:
-    n = next_to_visit[0]
+    node = next_to_visit[0]
     del next_to_visit[0]
-    if n in nodes_to_keep:
+    if node in nodes_to_keep:
       # Already visited this node.
       continue
-    nodes_to_keep.add(n)
-    next_to_visit += name_to_input_name[n]
+    nodes_to_keep.add(node)
+    if node in name_to_input_name:
+      next_to_visit += name_to_input_name[node]
   return nodes_to_keep
 
 
-@tf_export("graph_util.extract_sub_graph")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `tf.compat.v1.graph_util.extract_sub_graph`")
+@tf_export(v1=["graph_util.extract_sub_graph"])
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
 
@@ -187,7 +195,11 @@ def extract_sub_graph(graph_def, dest_nodes):
   return out
 
 
-@tf_export("graph_util.tensor_shape_from_node_def_name")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `tf.compat.v1.graph_util.tensor_shape_from_node_def_name`"
+)
+@tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
   # To get a tensor, the name must be in the form <input>:<port>, for example
@@ -202,7 +214,10 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
-@tf_export("graph_util.convert_variables_to_constants")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
+@tf_export(v1=["graph_util.convert_variables_to_constants"])
 def convert_variables_to_constants(sess,
                                    input_graph_def,
                                    output_node_names,
@@ -289,7 +304,10 @@ def convert_variables_to_constants(sess,
   return output_graph_def
 
 
-@tf_export("graph_util.remove_training_nodes")
+@deprecation.deprecated(
+    date=None,
+    instructions="Use `tf.compat.v1.graph_util.remove_training_nodes`")
+@tf_export(v1=["graph_util.remove_training_nodes"])
 def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
 
@@ -336,18 +354,26 @@ def remove_training_nodes(input_graph, protected_nodes=None):
     nodes_after_removal.append(new_node)
 
   types_to_splice = {"Identity": True}
+  control_input_names = set()
+  node_names_with_control_input = set()
+  for node in nodes_after_removal:
+    for node_input in node.input:
+      if "^" in node_input:
+        control_input_names.add(node_input.replace("^", ""))
+        node_names_with_control_input.add(node.name)
+
   names_to_splice = {}
   for node in nodes_after_removal:
     if node.op in types_to_splice and node.name not in protected_nodes:
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.
-      has_control_edge = False
-      for input_name in node.input:
-        if re.match(r"^\^", input_name):
-          has_control_edge = True
-      if not has_control_edge:
+      if node.name not in node_names_with_control_input:
         names_to_splice[node.name] = node.input[0]
+
+  # We also don't want to remove nodes which are used as control edge inputs.
+  names_to_splice = {name: value for name, value in names_to_splice.items()
+                     if name not in control_input_names}
 
   nodes_after_splicing = []
   for node in nodes_after_removal:

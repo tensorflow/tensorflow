@@ -68,6 +68,9 @@ namespace gpu {
 class IrEmitter : public DfsHloVisitorWithDefault,
                   public IrBuilderMixin<IrEmitter> {
  public:
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
+
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
 
@@ -78,7 +81,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSend(HloInstruction* send) override;
@@ -97,6 +100,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -178,6 +182,20 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
+
+ protected:
+  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
+      HloInstruction* fusion) {
+    return [=]() {
+      std::vector<llvm_ir::IrArray> ir_arrays;
+      ir_arrays.reserve(fusion->operand_count());
+      absl::c_transform(fusion->operands(), std::back_inserter(ir_arrays),
+                        [&](const HloInstruction* operand) {
+                          return GetIrArray(*operand, *fusion);
+                        });
+      return ir_arrays;
+    };
+  }
 
  private:
   // A helper method for EmitAtomicOperationForNestedComputation. Certain

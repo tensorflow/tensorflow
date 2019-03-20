@@ -20,6 +20,8 @@ from __future__ import print_function
 import abc
 import collections
 
+import six
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -27,10 +29,9 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 
 
+@six.add_metaclass(abc.ABCMeta)
 class ScheduledOp(object):
   """Represents a scheduled remote operation."""
-
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def batching_key(self):

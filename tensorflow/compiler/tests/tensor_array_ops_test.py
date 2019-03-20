@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
@@ -25,7 +26,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import resource_variable_ops
@@ -41,8 +44,10 @@ def _make_converter(dtype):
   return _converter
 
 
+@test_util.with_control_flow_v2
 class TensorArrayTest(xla_test.XLATestCase):
 
+  @test_util.disable_control_flow_v2("Tries to evaluate flow")
   def testTensorArrayWriteRead(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -79,7 +84,8 @@ class TensorArrayTest(xla_test.XLATestCase):
       c0 = w2.stack()
 
       self.assertAllEqual(
-          convert([[[4.0, 5.0]], [[6.0, 7.0]], [[8.0, 9.0]]]), c0.eval())
+          convert([[[4.0, 5.0]], [[6.0, 7.0]], [[8.0, 9.0]]]),
+          self.evaluate(c0))
 
   def testTensorArrayWritePack(self):
     for dtype in self.numeric_tf_types:
@@ -97,7 +103,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       c0 = w2.stack()
 
-      self.assertAllEqual([3, 0, 1], c0.eval().shape)
+      self.assertAllEqual([3, 0, 1], self.evaluate(c0).shape)
 
   def _testTensorArrayWriteConcat(self, tf_dtype):
     with self.cached_session(), self.test_scope():
@@ -113,9 +119,10 @@ class TensorArrayTest(xla_test.XLATestCase):
       c0 = w2.concat()
 
       self.assertAllEqual(
-          convert([[4.0, 5.0], [104.0, 105.0], [6.0, 7.0],
-                   [106.0, 107.0], [8.0, 9.0], [204.0, 205.0]]), c0.eval())
+          convert([[4.0, 5.0], [104.0, 105.0], [6.0, 7.0], [106.0, 107.0],
+                   [8.0, 9.0], [204.0, 205.0]]), self.evaluate(c0))
 
+  @test_util.disable_control_flow_v2("b/122315751 (concat)")
   def testTensorArrayWriteConcat(self):
     for dtype in self.numeric_tf_types:
       self._testTensorArrayWriteConcat(dtype)
@@ -223,10 +230,12 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(convert([[2.0, 201.0]]), d1)
       self.assertAllEqual(convert([[3.0, 301.0]]), d2)
 
+  @test_util.disable_control_flow_v2("b/122315872 (split)")
   def testTensorArraySplitRead(self):
     for dtype in self.numeric_tf_types:
       self._testTensorArraySplitRead(dtype)
 
+  @test_util.disable_control_flow_v2("TensorArray.grad is not supported in v2")
   def testTensorGradArrayWriteRead(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -260,6 +269,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual([[2.0]], g_d1)
       self.assertAllEqual([[-2.0]], g_d2)
 
+  @test_util.disable_control_flow_v2("TensorArray.grad is not supported in v2")
   def testTensorGradArrayDynamicWriteRead(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -299,6 +309,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(3, vs)
       self.assertAllEqual(3, g_vs)
 
+  @test_util.disable_control_flow_v2("TensorArray.grad is not supported in v2")
   def testTensorGradAccessTwiceReceiveSameObject(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -316,6 +327,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(t_g_ta_0, t_g_ta_1)
       self.assertAllEqual([[4.0, 5.0]], d_r1_0)
 
+  @test_util.disable_control_flow_v2("b/124334470")
   def testTensorArrayWriteWrongIndexOrDataTypeFails(self):
     with self.cached_session(), self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -326,6 +338,7 @@ class TensorArrayTest(xla_test.XLATestCase):
           "TensorArray dtype is float but op has dtype int32"):
         ta.write(-1, np.int32(7)).flow.eval()
 
+  @test_util.disable_control_flow_v2("b/124334096 verify dtype")
   def testTensorArrayReadWrongIndexOrDataTypeFails(self):
     # Find two different floating point types, create an array of
     # the first type, but try to read the other type.
@@ -341,11 +354,12 @@ class TensorArrayTest(xla_test.XLATestCase):
         r0_bad = gen_data_flow_ops.tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtype2, flow_in=w0.flow)
         with self.assertRaisesOpError("TensorArray dtype is "):
-          r0_bad.eval()
+          self.evaluate(r0_bad)
 
         # Test reading from a different index than the one we wrote to
         w0.read(1)
 
+  @test_util.disable_control_flow_v2("b/122315872 (split)")
   def testTensorArraySplitIncompatibleShapesFails(self):
     with self.cached_session(), self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -405,6 +419,7 @@ class TensorArrayTest(xla_test.XLATestCase):
           r"Mismatched TensorArray sizes"):
         wb1_grad.flow.eval()
 
+  @test_util.disable_control_flow_v2("TensorArray.grad is not supported in v2")
   def testTensorArrayWriteGradientAddMultipleAdds(self):
     for dtype in self.numeric_tf_types:
       self._testTensorArrayWriteGradientAddMultipleAdds(dtype)
@@ -422,7 +437,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       w2 = h2.write(0, 5.0)
       r2 = w2.read(0)
       r = r1 + r2
-      self.assertAllClose(9.0, r.eval())
+      self.assertAllClose(9.0, self.evaluate(r))
 
   def _testTensorArrayGradientWriteReadType(self, dtype):
     with self.cached_session() as session, self.test_scope():
@@ -504,11 +519,12 @@ class TensorArrayTest(xla_test.XLATestCase):
                 [-0.5, 1.5],  # read(0) gradient
                 [20.0, 30.0, 40.0, 50.0],  # concat gradient
             ])
-      grad_vals = sess.run(grad_r)  # 2 + 2 entries
+      grad_vals = self.evaluate(grad_r)  # 2 + 2 entries
 
       self.assertAllClose([2.0 - 0.5 + 20.0, 3.0 + 1.5 + 30.0], grad_vals[0])
       self.assertAllEqual([4.0 + 40.0, 5.0 + 50.0], grad_vals[1])
 
+  @test_util.disable_control_flow_v2("b/122315751 (concat)")
   def testTensorArrayGradientWritePackConcatAndRead(self):
     self._testTensorArrayGradientWritePackConcatAndRead()
 
@@ -526,7 +542,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       with ops.control_dependencies([r0_readtwice]):
         r1_readtwice = w_readtwice.read(0)
 
-      self.assertAllEqual([1.0, -1.0], r1_readtwice.eval())
+      self.assertAllEqual([1.0, -1.0], self.evaluate(r1_readtwice))
 
   def _testTensorArrayGradientUnpackRead(self):
     with self.cached_session() as session, self.test_scope():
@@ -556,6 +572,7 @@ class TensorArrayTest(xla_test.XLATestCase):
   def testTensorArrayGradientUnpackRead(self):
     self._testTensorArrayGradientUnpackRead()
 
+  @test_util.disable_control_flow_v2("b/122315751(concat), b/122315872(split)")
   def testTensorArrayGradientSplitConcat(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -592,7 +609,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32, tensor_array_name="foo", size=3)
       s = ta.size()
-      self.assertAllEqual(3, s.eval())
+      self.assertAllEqual(3, self.evaluate(s))
 
   def testWriteCloseTensorArray(self):
     with self.cached_session(), self.test_scope():
@@ -722,7 +739,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
   #     r = acc2.stack()
   #     grad = gradients_impl.gradients(r, [x])[0]
-  #     self.assertAllClose(31.0, grad.eval())
+  #     self.assertAllClose(31.0, self.evaluate(grad))
 
   def testSumOfTwoReadVariablesWithoutRepeatGrad(self):
     with self.cached_session() as session, self.test_scope():
@@ -902,6 +919,7 @@ class TensorArrayTest(xla_test.XLATestCase):
           "zero-size TensorArrays."):
         ta.stack().eval()
 
+  @test_util.disable_control_flow_v2("b/124335246")
   def testTensorArrayEvalEmpty(self):
     self._testTensorArrayEvalEmpty()
 
@@ -912,10 +930,12 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertEqual(0, ta.size().eval())
       ta = ta.unstack(array_ops.zeros([0, 3, 5]))
       packed = ta.stack()
-      self.assertAllEqual([0, 3, 5], packed.eval().shape)
+      self.assertAllEqual([0, 3, 5], self.evaluate(packed).shape)
       # Concatenating zero tensors along their first dimension gives a
       # first dimension of zero
-      self.assertAllEqual([0, 5], ta.concat().eval().shape)
+      if not control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        # TODO(b/122315751): Enable this.
+        self.assertAllEqual([0, 5], ta.concat().eval().shape)
 
   def testTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
@@ -943,11 +963,13 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual(convert([1.0, -1.0]), read_vals[0])
       self.assertAllEqual(convert([10.0, -10.0]), read_vals[1])
 
+  @test_util.disable_control_flow_v2("b/122315734 (scatter)")
   def testTensorArrayScatterRead(self):
     for dtype in self.numeric_tf_types:
       self._testTensorArrayScatterRead(dtype)
     self._testTensorArrayScatterRead(dtypes.bool)
 
+  @test_util.disable_control_flow_v2("b/122315734 (scatter)")
   def testTensorArrayScatterReadAndGradients(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -976,6 +998,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertAllEqual([10.0, -10.0], read_vals[1])
       self.assertAllEqual([[2.0, 3.0], [4.0, 5.0]], grad_vals[0])
 
+  @test_util.disable_control_flow_v2("b/122315378 (gather)")
   def testTensorArrayWriteGatherAndGradients(self):
     with self.cached_session() as session, self.test_scope():
       ta = tensor_array_ops.TensorArray(
@@ -1041,8 +1064,8 @@ class TensorArrayTest(xla_test.XLATestCase):
           (read0, read1, size0, size1))
 
       # Tests that the control dependencies was added and executed.
-      self.assertEqual(1, v0.eval())
-      self.assertEqual(1, v1.eval())
+      self.assertEqual(1, self.evaluate(v0))
+      self.assertEqual(1, self.evaluate(v1))
 
       # Tests correct TensorArray.
       self.assertEqual(read0_v, 0)
@@ -1051,4 +1074,6 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertEqual(size1_v, 4)
 
 if __name__ == "__main__":
+  os.environ["TF_XLA_FLAGS"] = ("--tf_xla_min_cluster_size=2 " +
+                                os.environ.get("TF_XLA_FLAGS", ""))
   test.main()

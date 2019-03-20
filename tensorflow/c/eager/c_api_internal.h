@@ -52,6 +52,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/public/version.h"
 
 struct TFE_ContextOptions {
@@ -79,13 +80,15 @@ struct TFE_TensorHandle {
                    tensorflow::Device* op_device)
       : handle(new tensorflow::TensorHandle(t, d, op_device, nullptr)) {}
 
-  TFE_TensorHandle(tensorflow::uint64 node_id, tensorflow::DataType dtype,
-                   tensorflow::EagerContext* ctx)
-      : handle(new tensorflow::TensorHandle(node_id, dtype, ctx)) {}
-
   TFE_TensorHandle(tensorflow::TensorHandle* handle) : handle(handle) {}
 
   tensorflow::TensorHandle* handle;
+
+  // Create a symbolic tensor.
+  TFE_TensorHandle(TF_Output t, TF_DataType dtype)
+      : handle(new tensorflow::TensorHandle(
+            tensorflow::OutputGraphNode{t.oper, t.index},
+            static_cast<tensorflow::DataType>(dtype))) {}
 };
 
 struct TFE_TensorDebugInfo {
@@ -96,13 +99,36 @@ struct TFE_TensorDebugInfo {
   std::vector<tensorflow::int64> dev_dims;
 };
 
+struct TFE_OpInferenceContext {
+  explicit TFE_OpInferenceContext(const tensorflow::OpDef* op_def)
+      : op_def(op_def) {}
+
+  const tensorflow::OpDef* op_def;  // op definition from protobuf
+  int input_arg_idx = 0;  // arg definition index for the next input to be added
+  tensorflow::gtl::FlatSet<std::string> attrs;  // attributes inferred so far
+};
+
 struct TFE_Op {
-  // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
-  // primitive operation.
-  TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
-      : operation(&ctx->context, op, t) {}
+  TFE_Op(TFE_Context* ctx, const char* op, bool is_function,
+         const tensorflow::AttrTypeMap* t,
+         TFE_OpInferenceContext* inference_ctx)
+      : operation(&ctx->context, op, is_function, t),
+        inference_ctx(inference_ctx) {}
 
   tensorflow::EagerOperation operation;
+  std::unique_ptr<TFE_OpInferenceContext> inference_ctx;
+};
+
+struct TFE_ProfilerContext {
+  tensorflow::ProfilerContext profiler_context;
+};
+
+struct TFE_Profiler {
+  TFE_Profiler(TFE_ProfilerContext* ctx) {
+    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
+  }
+
+  std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };
 
 namespace tensorflow {
@@ -111,5 +137,25 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
                           const char* attr_name, TF_Status* status);
 }  // namespace tensorflow
+
+struct TFE_TraceContext {
+  TF_Graph* const graph;
+
+  unsigned int node_counter = 0;
+  // Each tensor handle will have its ref count incremented when it's added as a
+  // map key, and decremented when this object is destroyed.
+  std::map<tensorflow::TensorHandle*, TF_Output> input_tensor_map;
+  std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
+      nullptr;
+
+  TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
+
+  ~TFE_TraceContext() {
+    delete input_tensors;
+    for (auto input : input_tensor_map) {
+      input.first->Unref();
+    }
+  }
+};
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

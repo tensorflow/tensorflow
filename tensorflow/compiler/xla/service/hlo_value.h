@@ -166,9 +166,6 @@ class HloValue : public BufferValue {
 
   // Whether this value is live out of the HLO module.
   bool live_out_of_module_ = false;
-
-  // Whether this value is live out of its computation.
-  bool live_out_of_computation_ = false;
 };
 
 std::ostream& operator<<(std::ostream& out, const HloValue& hlo_value);

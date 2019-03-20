@@ -19,21 +19,24 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/GlobalValue.h"
+#include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
+#include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/byte_order.h"
@@ -57,14 +60,6 @@ llvm::Module* ModuleFromIRBuilder(llvm::IRBuilder<>* b) {
 
 }  // namespace
 
-string AsString(const std::string& str) {
-  return string(str.data(), str.length());
-}
-
-llvm::StringRef AsStringRef(absl::string_view str) {
-  return llvm::StringRef(str.data(), str.size());
-}
-
 std::unique_ptr<llvm::Module> DropConstantInitializers(
     const llvm::Module& module) {
   std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
@@ -80,13 +75,12 @@ string DumpModuleToString(const llvm::Module& module) {
   llvm::raw_string_ostream ostream(buffer_string);
   module.print(ostream, nullptr);
   ostream.flush();
-  return AsString(buffer_string);
+  return buffer_string;
 }
 
-llvm::Value* EmitCallToIntrinsic(llvm::Intrinsic::ID intrinsic_id,
-                                 absl::Span<llvm::Value* const> operands,
-                                 absl::Span<llvm::Type* const> overloaded_types,
-                                 llvm::IRBuilder<>* b) {
+llvm::CallInst* EmitCallToIntrinsic(
+    llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b) {
   llvm::Module* module = ModuleFromIRBuilder(b);
   llvm::Function* intrinsic = llvm::Intrinsic::getDeclaration(
       module, intrinsic_id, AsArrayRef(overloaded_types));
@@ -188,7 +182,16 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       }
       return cplx_t;
     }
-    // A Tuple contains an array of pointers. Use i8*.
+    case C128: {
+      auto cplx_t = module->getTypeByName("complex128");
+      if (cplx_t == nullptr) {
+        return llvm::StructType::create(
+            {llvm::Type::getDoubleTy(module->getContext()),
+             llvm::Type::getDoubleTy(module->getContext())},
+            "complex128", /*isPacked=*/true);
+      }
+      return cplx_t;
+    }  // A Tuple contains an array of pointers. Use i8*.
     case TUPLE:
     // An Opaque is like a void*, use i8*.
     case OPAQUE:
@@ -219,10 +222,10 @@ int GetSizeInBits(llvm::Type* type) {
 
 llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   llvm::Type* result_type = PrimitiveTypeToIrType(shape.element_type(), module);
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
-  } else if (ShapeUtil::IsArray(shape)) {
+  } else if (shape.IsArray()) {
     for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));
@@ -239,15 +242,16 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
     return InternalError("Encoded shape size exceeded int32 size limit.");
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
-  return b->CreateGlobalStringPtr(llvm_ir::AsStringRef(encoded_shape));
+  return b->CreateGlobalStringPtr(encoded_shape);
 }
 
 StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
                                                   int32 size_bytes) {
-  Shape shape;
-  TF_RET_CHECK(shape.ParseFromArray(shape_ptr, size_bytes));
+  ShapeProto shape_proto;
+  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
+  Shape shape(shape_proto);
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return shape;
+  return std::move(shape);
 }
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
@@ -258,6 +262,17 @@ llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
   return llvm::ConstantDataArray::getString(
       module->getContext(), llvm::StringRef(data, literal.size_bytes()),
       /*AddNull=*/false);
+}
+
+llvm::GlobalVariable* AllocateSharedMemoryTile(llvm::Module* module,
+                                               llvm::Type* tile_type,
+                                               absl::string_view name) {
+  const int kNVPTXSharedMemoryAddrSpace = 3;
+  return new llvm::GlobalVariable(
+      *module, tile_type,
+      /*isConstant=*/false, llvm::GlobalValue::PrivateLinkage,
+      llvm::UndefValue::get(tile_type), AsStringRef(name), nullptr,
+      llvm::GlobalValue::NotThreadLocal, kNVPTXSharedMemoryAddrSpace);
 }
 
 llvm::AllocaInst* EmitAllocaAtFunctionEntry(llvm::Type* type,
@@ -272,7 +287,7 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
                                                      absl::string_view name,
                                                      llvm::IRBuilder<>* b,
                                                      int alignment) {
-  llvm::IRBuilder<>::InsertPoint insert_point = b->saveIP();
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
   llvm::Function* function = b->GetInsertBlock()->getParent();
   b->SetInsertPoint(&function->getEntryBlock(),
                     function->getEntryBlock().getFirstInsertionPt());
@@ -281,7 +296,6 @@ llvm::AllocaInst* EmitAllocaAtFunctionEntryWithCount(llvm::Type* type,
   if (alignment != 0) {
     alloca->setAlignment(alignment);
   }
-  b->restoreIP(insert_point);
   return alloca;
 }
 
@@ -313,7 +327,7 @@ LlvmIfData EmitIfThenElse(llvm::Value* condition, absl::string_view name,
     b->CreateBr(if_data.after_block);
   } else {
     if_data.after_block = if_data.if_block->splitBasicBlock(
-        b->GetInsertPoint(), AsStringRef(absl::StrCat(name, "-after")));
+        b->GetInsertPoint(), absl::StrCat(name, "-after"));
   }
 
   // Our basic block should now end with an unconditional branch.  Remove it;
@@ -362,11 +376,10 @@ static void LogS64(const char* tag, int64 value) {
 void EmitLogging(const char* tag, llvm::Value* value, llvm::IRBuilder<>* b) {
   llvm::FunctionType* log_function_type = llvm::FunctionType::get(
       b->getVoidTy(), {b->getInt64Ty(), b->getInt64Ty()}, /*isVarArg=*/false);
-  b->CreateCall(
-      log_function_type,
-      b->CreateIntToPtr(b->getInt64(tensorflow::bit_cast<int64>(&LogS64)),
-                        log_function_type->getPointerTo()),
-      {b->getInt64(tensorflow::bit_cast<int64>(tag)), value});
+  b->CreateCall(log_function_type,
+                b->CreateIntToPtr(b->getInt64(absl::bit_cast<int64>(&LogS64)),
+                                  log_function_type->getPointerTo()),
+                {b->getInt64(absl::bit_cast<int64>(tag)), value});
 }
 
 void SetAlignmentMetadataForLoad(llvm::LoadInst* load, uint64_t alignment) {
@@ -487,24 +500,25 @@ int64 ByteSizeOf(const Shape& shape, const llvm::DataLayout& data_layout) {
   return ShapeUtil::ByteSizeOf(shape, pointer_size);
 }
 
-llvm::FastMathFlags GetFastMathFlags(bool fast_math_enabled) {
+llvm::FastMathFlags GetCpuFastMathFlags(const HloModuleConfig& module_config) {
   llvm::FastMathFlags flags;
-  if (fast_math_enabled) {
-    // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros,
-    // AllowReciprocal, AllowContract, and ApproxFunc.
-    flags.setFast();
+  if (!module_config.debug_options().xla_cpu_enable_fast_math()) {
+    return flags;
   }
-  return flags;
-}
 
-void SetTargetOptions(bool fast_math_enabled,
-                      llvm::TargetOptions* target_options) {
-  // In LLVM backend flags, UnsafeFPMath does not explicitly imply
-  // NoInfs, etc.
-  target_options->UnsafeFPMath = fast_math_enabled;
-  target_options->NoInfsFPMath = fast_math_enabled;
-  target_options->NoNaNsFPMath = fast_math_enabled;
-  target_options->NoSignedZerosFPMath = fast_math_enabled;
+  // Fast implies AllowReassoc, NoInfs, NoNaNs, NoSignedZeros, AllowReciprocal,
+  // AllowContract, and ApproxFunc.
+  flags.setFast();
+
+  if (module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
+    flags.setNoNaNs(false);
+  }
+
+  if (module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
+    flags.setNoInfs(false);
+  }
+
+  return flags;
 }
 
 std::map<int, llvm::MDNode*> MergeMetadata(
@@ -555,14 +569,6 @@ std::map<int, llvm::MDNode*> MergeMetadata(
   return result;
 }
 
-static string GetProcessUniqueIrFileName(absl::string_view prefix) {
-  static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
-  static NameUniquer* uniquer = new NameUniquer(/*separator=*/"-");
-
-  tensorflow::mutex_lock lock(mu);
-  return uniquer->GetUniqueName(prefix);
-}
-
 static Status CreateAndWriteStringToFile(const string& directory_name,
                                          const string& file_name,
                                          const string& text) {
@@ -576,51 +582,60 @@ static Status CreateAndWriteStringToFile(const string& directory_name,
   return Status::OK();
 }
 
-Status DumpIRToDirectory(const string& directory_name,
-                         const string& hlo_module_name,
-                         const llvm::Module& llvm_module, bool optimized) {
+void DumpIrIfEnabled(const HloModule& hlo_module,
+                     const llvm::Module& llvm_module, bool optimized) {
+  const auto& debug_opts = hlo_module.config().debug_options();
+  if (!DumpingEnabledForHloModule(hlo_module)) {
+    return;
+  }
   // We can end up compiling different modules with the same name when using
   // XlaJitCompiledCpuFunction::Compile.  Avoid overwriting IR files previously
   // dumped from the same process in such cases.
-  string unique_and_safe_file_name = GetProcessUniqueIrFileName(
-      absl::StrCat("ir-", SanitizeFileName(hlo_module_name), "-",
-                   optimized ? "with" : "no", "-opt"));
-
-  string ir_file_name = tensorflow::io::JoinPath(
-      directory_name, absl::StrCat(unique_and_safe_file_name, ".ll"));
+  string suffix = absl::StrCat("ir-", optimized ? "with" : "no", "-opt");
+  DumpToFileInDirOrStdout(hlo_module, absl::StrCat(suffix, ".ll"),
+                          DumpModuleToString(llvm_module));
 
   // For some models the embedded constants can be huge, so also dump the module
-  // with the constants stripped to get IR that is easier to manipulate.
-  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
-      directory_name, absl::StrCat(unique_and_safe_file_name, "-noconst.ll"));
-
-  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
-      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
-  return CreateAndWriteStringToFile(
-      directory_name, ir_no_constant_initializers_file_name,
-      DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  // with the constants stripped to get IR that is easier to manipulate.  Skip
+  // this if we're dumping to stdout; there's no point in duplicating everything
+  // when writing to the terminal.
+  if (!DumpingToStdout(debug_opts)) {
+    DumpToFileInDir(hlo_module, absl::StrCat(suffix, "-noconst.ll"),
+                    DumpModuleToString(*DropConstantInitializers(llvm_module)));
+  }
 }
 
-llvm::Function* CreateFunction(llvm::FunctionType* function_type,
-                               llvm::GlobalValue::LinkageTypes linkage,
-                               bool enable_fast_math, bool optimize_for_size,
-                               absl::string_view name, llvm::Module* module) {
+llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
+                                  llvm::GlobalValue::LinkageTypes linkage,
+                                  const HloModuleConfig& module_config,
+                                  absl::string_view name,
+                                  llvm::Module* module) {
   llvm::Function* function =
       llvm::Function::Create(function_type, linkage, AsStringRef(name), module);
   function->setCallingConv(llvm::CallingConv::C);
   function->addFnAttr("no-frame-pointer-elim", "false");
 
-  if (enable_fast_math) {
+  // Generate unwind information so that GDB can crawl through the stack frames
+  // created by the JIT compiled code.
+  function->setHasUWTable();
+
+  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
     function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-infs-fp-math", "true");
-    function->addFnAttr("no-nans-fp-math", "true");
     function->addFnAttr("no-signed-zeros-fp-math", "true");
+
+    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
+      function->addFnAttr("no-nans-fp-math", "true");
+    }
+
+    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
+      function->addFnAttr("no-infs-fp-math", "true");
+    }
   }
 
   // Add the optize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
-  if (optimize_for_size) {
+  if (cpu::options::OptimizeForSizeRequested(module_config)) {
     function->addFnAttr(llvm::Attribute::OptimizeForSize);
   }
 

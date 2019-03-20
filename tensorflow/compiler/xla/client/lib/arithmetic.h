@@ -57,6 +57,14 @@ XlaComputation CreateScalarOrComputation(PrimitiveType type,
 // Note: if predicates is zero-sized, Any() vacuously returns false.
 XlaOp Any(XlaOp predicates);
 
+// Returns the argmax of `input` along `axis`. `output_type` is the type to
+// use for the output.
+XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
+
+// Returns the argmin of `input` along `axis`. `output_type` is the type to
+// use for the output.
+XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_ARITHMETIC_H_

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -30,7 +31,6 @@ from tensorflow.python.ops import sparse_ops
 # latent bugs here.
 ops.NotDifferentiable("SparseAddGrad")
 ops.NotDifferentiable("SparseConcat")
-ops.NotDifferentiable("SparseToDense")
 
 
 @ops.RegisterGradient("SparseReorder")
@@ -110,7 +110,7 @@ def _SparseReduceSumGrad(op, out_grad):
   sp_shape = op.inputs[2]
   output_shape_kept_dims = math_ops.reduced_shape(sp_shape, op.inputs[3])
   out_grad_reshaped = array_ops.reshape(out_grad, output_shape_kept_dims)
-  scale = sp_shape // math_ops.to_int64(output_shape_kept_dims)
+  scale = sp_shape // math_ops.cast(output_shape_kept_dims, dtypes.int64)
   # (sparse_indices, sparse_values, sparse_shape, reduction_axes)
   return (None, array_ops.gather_nd(out_grad_reshaped, sp_indices // scale),
           None, None)
@@ -195,7 +195,7 @@ def _SparseTensorDenseMatMulGrad(op, grad):
   parts_a = array_ops.gather(grad, rows if not adj_a else cols)
   parts_b = array_ops.gather(b if not adj_b else array_ops.transpose(b),
                              cols if not adj_a else rows)
-  a_values_grad = math_ops.reduce_sum(parts_a * parts_b, reduction_indices=1)
+  a_values_grad = math_ops.reduce_sum(parts_a * parts_b, axis=1)
 
   # gradients w.r.t. (a_indices, a_values, a_shape, b)
   return (None, a_values_grad, None, b_grad)
@@ -213,7 +213,7 @@ def _SparseDenseCwiseMulOrDivGrad(op, grad, is_mul):
   x_shape = op.inputs[2]
   y = op.inputs[3]
 
-  y_shape = math_ops.to_int64(array_ops.shape(y))
+  y_shape = math_ops.cast(array_ops.shape(y), dtypes.int64)
   num_added_dims = array_ops.expand_dims(
       array_ops.size(x_shape) - array_ops.size(y_shape), 0)
   augmented_y_shape = array_ops.concat(
@@ -278,7 +278,7 @@ def _SparseSoftmaxGrad(op, grad):
       indices, sp_output.values * sp_grad.values, shape)
 
   # [..., B, 1], dense.
-  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keep_dims=True)
+  sum_reduced = -sparse_ops.sparse_reduce_sum(sp_product, [-1], keepdims=True)
   # sparse [..., B, C] + dense [..., B, 1] with broadcast; outputs sparse.
   sp_sum = sparse_ops.sparse_dense_cwise_add(sp_grad, sum_reduced)
 
@@ -310,3 +310,16 @@ def _SparseFillEmptyRowsGrad(op, unused_grad_output_indices, output_grad_values,
 
   # d_indices, d_values, d_dense_shape, d_default_value.
   return [None, d_values, None, d_default_value]
+
+
+@ops.RegisterGradient("SparseToDense")
+def _SparseToDenseGrad(op, grad):
+  sparse_indices, output_shape, _, _ = op.inputs
+
+  sparse_values_grad = array_ops.gather_nd(grad, sparse_indices)
+  default_value_grad = math_ops.reduce_sum(grad) - math_ops.reduce_sum(
+      sparse_values_grad)
+  return [
+      array_ops.zeros_like(sparse_indices),
+      array_ops.zeros_like(output_shape), sparse_values_grad, default_value_grad
+  ]

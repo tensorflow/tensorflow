@@ -180,7 +180,7 @@ After editing your WORKSPACE file to update the SDK/NDK configuration, you may
 build the APK. Run this from your workspace root:
 
 ```bash
-bazel build -c opt //tensorflow/examples/android:tensorflow_demo
+bazel build --cxxopt='--std=c++11' -c opt //tensorflow/examples/android:tensorflow_demo
 ```
 
 ##### Install

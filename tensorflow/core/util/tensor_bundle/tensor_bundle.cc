@@ -785,7 +785,7 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_RETURN_IF_ERROR(
       ParseEntryProto(iter_->key(), iter_->value(), &entry_copy));
   if (!TensorShape::IsValid(entry_copy.shape())) {
-    return errors::DataLoss("Invaid tensor shape: ", key, " ",
+    return errors::DataLoss("Invalid tensor shape: ", key, " ",
                             ProtoShortDebugString(entry_copy.shape()));
   }
 
@@ -895,7 +895,7 @@ Status BundleReader::ReadCurrent(Tensor* val) {
   BundleEntryProto entry;
   TF_RETURN_IF_ERROR(ParseEntryProto(iter_->key(), iter_->value(), &entry));
   if (!TensorShape::IsValid(entry.shape())) {
-    return errors::DataLoss("Invaid tensor shape: ", iter_->key(), " ",
+    return errors::DataLoss("Invalid tensor shape: ", iter_->key(), " ",
                             ProtoShortDebugString(entry.shape()));
   }
 

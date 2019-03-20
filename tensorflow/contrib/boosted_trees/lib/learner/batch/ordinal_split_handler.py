@@ -142,7 +142,7 @@ class InequalitySplitHandler(base_split_handler.BaseSplitHandler):
         name="StatsAccumulator/{}".format(self._name))
     # Allocate both stats accumulator and quantile accumulator on the same
     # device so that we can build splits with fewer RPCs.
-    with ops.colocate_with(self._stats_accumulator.resource()):
+    with ops.colocate_with(self._stats_accumulator.resource_handle):
       self._quantile_accumulator = quantile_ops.QuantileAccumulator(
           init_stamp_token,
           epsilon=epsilon,
@@ -268,8 +268,8 @@ class DenseSplitHandler(InequalitySplitHandler):
       handler = make_dense_split_tensor
 
     are_splits_ready, partition_ids, gains, split_infos = (
-        handler(self._quantile_accumulator.resource(),
-                self._stats_accumulator.resource(), stamp_token,
+        handler(self._quantile_accumulator.resource_handle,
+                self._stats_accumulator.resource_handle, stamp_token,
                 next_stamp_token, self._multiclass_strategy, class_id,
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,
@@ -312,9 +312,10 @@ def _make_dense_split(quantile_accumulator_handle, stats_accumulator_handle,
         gen_stats_accumulator_ops.stats_accumulator_scalar_flush(
             stats_accumulator_handle, stamp_token, next_stamp_token))
   # For sum_reduction, we don't need to divide by number of minibatches.
-  num_minibatches = control_flow_ops.cond(loss_uses_sum_reduction,
-                                          lambda: math_ops.to_int64(1),
-                                          lambda: num_minibatches)
+  num_minibatches = control_flow_ops.cond(
+      loss_uses_sum_reduction,
+      lambda: math_ops.cast(1, dtypes.int64),
+      lambda: num_minibatches)
   # Put quantile and stats accumulator flushing in the dependency path.
   with ops.control_dependencies([flush_quantiles, partition_ids]):
     are_splits_ready = array_ops.identity(are_splits_ready)
@@ -447,8 +448,8 @@ class SparseSplitHandler(InequalitySplitHandler):
       handler = make_sparse_split_tensor
 
     are_splits_ready, partition_ids, gains, split_infos = (
-        handler(self._quantile_accumulator.resource(),
-                self._stats_accumulator.resource(), stamp_token,
+        handler(self._quantile_accumulator.resource_handle,
+                self._stats_accumulator.resource_handle, stamp_token,
                 next_stamp_token, self._multiclass_strategy, class_id,
                 self._feature_column_group_id, self._l1_regularization,
                 self._l2_regularization, self._tree_complexity_regularization,
@@ -488,9 +489,10 @@ def _make_sparse_split(
     num_minibatches, partition_ids, bucket_ids, gradients, hessians = (
         gen_stats_accumulator_ops.stats_accumulator_scalar_flush(
             stats_accumulator_handle, stamp_token, next_stamp_token))
-  num_minibatches = control_flow_ops.cond(loss_uses_sum_reduction,
-                                          lambda: math_ops.to_int64(1),
-                                          lambda: num_minibatches)
+  num_minibatches = control_flow_ops.cond(
+      loss_uses_sum_reduction,
+      lambda: math_ops.cast(1, dtypes.int64),
+      lambda: num_minibatches)
   # Put quantile and stats accumulator flushing in the dependency path.
   with ops.control_dependencies([flush_quantiles, partition_ids]):
     are_splits_ready = array_ops.identity(are_splits_ready)
@@ -605,7 +607,7 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
                             quantile_buckets, example_partition_ids, gradients,
                             hessians, weights, empty_gradients, empty_hessians):
   """Updates the state for dense split handler."""
-  empty_float = constant_op.constant([], dtype=dtypes.float32)
+  empty_float = constant_op.constant_v1([], dtype=dtypes.float32)
 
   quantile_values, quantile_weights = control_flow_ops.cond(
       is_active[1],  # For the next layer, this handler is inactive.
@@ -621,8 +623,8 @@ def dense_make_stats_update(is_active, are_buckets_ready, float_column,
     return (example_partition_ids, quantized_feature, gradients, hessians)
 
   def not_ready_inputs_fn():
-    return (constant_op.constant([], dtype=dtypes.int32),
-            constant_op.constant([[]], dtype=dtypes.int64, shape=[1, 2]),
+    return (constant_op.constant_v1([], dtype=dtypes.int32),
+            constant_op.constant_v1([[]], dtype=dtypes.int64, shape=[1, 2]),
             empty_gradients, empty_hessians)
 
   example_partition_ids, feature_ids, gradients, hessians = (
@@ -708,11 +710,11 @@ def sparse_make_stats_update(
 
   def quantiles_not_ready():
     """The subgraph for when the quantiles are not ready."""
-    return (constant_op.constant([], dtype=dtypes.int32),
-            constant_op.constant([], dtype=dtypes.int64, shape=[1, 2]),
+    return (constant_op.constant_v1([], dtype=dtypes.int32),
+            constant_op.constant_v1([], dtype=dtypes.int64, shape=[1, 2]),
             empty_gradients, empty_hessians)
 
-  empty_float = constant_op.constant([], dtype=dtypes.float32)
+  empty_float = constant_op.constant_v1([], dtype=dtypes.float32)
   handler_not_active = (constant_op.constant(
       [], dtype=dtypes.int64, shape=[0, 2]), empty_float,
                         constant_op.constant([0, 1], dtype=dtypes.int64),
