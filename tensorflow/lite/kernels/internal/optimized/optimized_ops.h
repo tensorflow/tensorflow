@@ -82,7 +82,6 @@ using reference_ops::LessWithScaling;
 using reference_ops::Mean;
 using reference_ops::ProcessBroadcastShapes;
 using reference_ops::RankOneSelect;
-using reference_ops::Relu1;
 using reference_ops::Relu6;
 using reference_ops::ReluX;
 using reference_ops::Select;
@@ -2349,6 +2348,15 @@ inline void Relu(const RuntimeShape& input_shape, const float* input_data,
   const auto input = MapAsVector(input_data, input_shape);
   auto output = MapAsVector(output_data, output_shape);
   output = input.cwiseMax(0.0f);
+}
+
+inline void Relu1(const RuntimeShape& input_shape, const float* input_data,
+                  const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
+
+  const auto input = MapAsVector(input_data, input_shape);
+  auto output = MapAsVector(output_data, output_shape);
+  output = input.cwiseMax(-1.0f).cwiseMin(1.0f);
 }
 
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
