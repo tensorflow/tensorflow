@@ -493,8 +493,12 @@ class CheckpointManager(object):
   particular directory at a time.
   """
 
-  def __init__(self, checkpoint, directory,
-               max_to_keep, keep_checkpoint_every_n_hours=None, checkpoint_name="ckpt"):
+  def __init__(self,
+               checkpoint,
+               directory,
+               max_to_keep,
+               keep_checkpoint_every_n_hours=None,
+               checkpoint_name="ckpt"):
     """Configure a `CheckpointManager` for use in `directory`.
 
     If a `CheckpointManager` was previously used in `directory`, its
