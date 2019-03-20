@@ -178,6 +178,7 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
     if (output_size == 0) return true;
 
     GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
+#ifdef TENSORFLOW_USE_ROCM
     GPU_LAUNCH_KERNEL((ResizeNearestNeighborNHWC<T>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         output_size, input.data(),
@@ -187,6 +188,30 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
         static_cast<int>(out_height),
         static_cast<int>(out_width),
         height_scale, width_scale, output.data());
+#else 
+    if (half_pixel_centers) {
+      GPU_LAUNCH_KERNEL((ResizeNearestNeighborNHWC<T>),
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+        output_size, input.data(),
+        static_cast<int>(in_height),
+        static_cast<int>(in_width),
+        channels,
+        static_cast<int>(out_height),
+        static_cast<int>(out_width),
+        height_scale, width_scale, output.data());
+      return d.ok();
+    } else {
+      GPU_LAUNCH_KERNEL((LegacyResizeNearestNeighborNHWC<T, align_corners>),
+        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
+        output_size, input.data(),
+        static_cast<int>(in_height),
+        static_cast<int>(in_width),
+        channels,
+        static_cast<int>(out_height),
+        static_cast<int>(out_width),
+        height_scale, width_scale, output.data());
+    }
+#endif 
     return d.ok();
   }
 };
@@ -229,6 +254,7 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
     if (input_size == 0) return true;
 
     GpuLaunchConfig input_config = GetGpuLaunchConfig(input_size, d);
+#ifdef TENSORFLOW_USE_ROCM
     GPU_LAUNCH_KERNEL((ResizeNearestNeighborBackwardNHWC<T>),
         dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
         d.stream(),
@@ -240,7 +266,38 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
         static_cast<int>(out_width),
         height_scale, width_scale,
         output.data());
-    return d.ok();
+      return d.ok();
+#else 
+    if (half_pixel_centers) {
+      GPU_LAUNCH_KERNEL((ResizeNearestNeighborBackwardNHWC<T>),
+        dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
+        d.stream(),
+        input_config.virtual_thread_count, input.data(),
+        static_cast<int>(in_height),
+        static_cast<int>(in_width),
+        channels,
+        static_cast<int>(out_height),
+        static_cast<int>(out_width),
+        height_scale, width_scale,
+        output.data());
+      return d.ok();
+    } else {
+      GPU_LAUNCH_KERNEL((
+        LegacyResizeNearestNeighborBackwardNHWC<T, align_corners>),
+        dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
+        d.stream(),
+        input_config.virtual_thread_count, input.data(),
+        static_cast<int>(in_height),
+        static_cast<int>(in_width),
+        channels,
+        static_cast<int>(out_height),
+        static_cast<int>(out_width),
+        height_scale, width_scale,
+        output.data());
+      return d.ok();
+    }
+#endif 
+
   }
 };
 
