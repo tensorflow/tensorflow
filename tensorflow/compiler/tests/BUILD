@@ -260,6 +260,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "cond_test",
+    size = "small",
+    srcs = ["cond_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
