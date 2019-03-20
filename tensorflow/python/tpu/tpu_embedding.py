@@ -587,13 +587,6 @@ class TPUEmbedding(object):
   def _validate_generate_enqueue_ops_sparse_features_list(
       self, sparse_features_list):
     """Validate `sparse_features_list`."""
-    if len(sparse_features_list) != self._num_cores:
-      raise ValueError('Length of `sparse_features_list` should match the '
-                       'number of cores; '
-                       '`len(sparse_features_list)` is {}, '
-                       'number of cores is {}.'.format(
-                           len(sparse_features_list), self._num_cores))
-
     feature_set = set(self._feature_to_table_dict.keys())
     contiguous_device = None
     for i, sparse_features in enumerate(sparse_features_list):
