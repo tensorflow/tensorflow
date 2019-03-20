@@ -398,6 +398,11 @@ class ExponentialMovingAverage(object):
     # TODO(touts): op_scope
     if var_list is None:
       var_list = variables.trainable_variables()
+    for v in var_list:
+      if isinstance(v, ops.EagerTensor):
+        raise TypeError(
+            "tf.train.ExponentialMovingAverage does not support non-Variable"
+            " tensors when eager execution is enabled.")
     zero_debias_true = set()  # set of vars to set `zero_debias=True`
     for var in var_list:
       if var.dtype.base_dtype not in [
