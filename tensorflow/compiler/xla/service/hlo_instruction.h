@@ -78,6 +78,7 @@ class HloPrintOptions {
         print_metadata_(true),
         print_backend_config_(true),
         compact_operands_(false),
+        include_layout_in_shapes_(true),
         print_operand_shape_(true),
         print_operand_names_(true),
         print_program_shape_(true),
@@ -176,6 +177,13 @@ class HloPrintOptions {
     return *this;
   }
 
+  // If true, include the layout in any shapes that are printed (instruction
+  // and operands).
+  HloPrintOptions& set_include_layout_in_shapes(bool value) {
+    include_layout_in_shapes_ = value;
+    return *this;
+  }
+
   // If true, canonicalizes instructions' name. Instead of using "%foo.1" as
   // the name of an instruction, we use "%tmp_1", "%tmp_2" etc.
   HloPrintOptions& set_canonicalize_instruction_names(bool value) {
@@ -203,6 +211,7 @@ class HloPrintOptions {
   bool print_metadata() const { return print_metadata_; }
   bool print_backend_config() const { return print_backend_config_; }
   bool compact_operands() const { return compact_operands_; }
+  bool include_layout_in_shapes() const { return include_layout_in_shapes_; }
   bool print_operand_shape() const { return print_operand_shape_; }
   bool print_operand_names() const { return print_operand_names_; }
   bool print_program_shape() const { return print_program_shape_; }
@@ -222,6 +231,7 @@ class HloPrintOptions {
   bool print_metadata_;
   bool print_backend_config_;
   bool compact_operands_;
+  bool include_layout_in_shapes_;
   bool print_operand_shape_;
   bool print_operand_names_;
   bool print_program_shape_;
