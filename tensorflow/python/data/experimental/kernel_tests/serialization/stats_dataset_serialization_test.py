@@ -27,9 +27,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-# TODO(shivaniagrawal): Can not checkpoint input_pipeline with the
+# TODO(b/116814321): Can not checkpoint input_pipeline with the
 # transformation `stats_ops.set_stats_aggregator`, since we don't support
-# serializing StatsAggregator yet.
+# saving/restoring resources (StatsAggregator in this case) yet.
 class StatsDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
