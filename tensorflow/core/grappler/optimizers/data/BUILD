@@ -14,6 +14,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":filter_fusion",
+        ":filter_with_random_uniform_fusion",
         ":hoist_random_uniform",
         ":latency_all_edges",
         ":make_numa_aware",
@@ -26,7 +27,6 @@ cc_library(
         ":meta_optimizer",
         ":noop_elimination",
         ":shuffle_and_repeat_fusion",
-        ":filter_with_random_uniform_fusion",
     ],
 )
 
@@ -116,9 +116,9 @@ tf_cc_test(
     srcs = ["filter_with_random_uniform_fusion_test.cc"],
     visibility = ["//visibility:public"],
     deps = [
-        ":graph_utils",
         ":filter_with_random_uniform_fusion",
         ":graph_test_utils",
+        ":graph_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
