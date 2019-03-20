@@ -16,59 +16,65 @@
 // =============================================================================
 
 #include "mlir/Dialect/Traits.h"
+#include "llvm/ADT/SmallVector.h"
 #include "gmock/gmock.h"
 
 using namespace mlir::OpTrait::util;
 
+using llvm::SmallVector;
 using ::testing::ElementsAre;
 
 TEST(BroadcastShapeTest, CompatibleScalarAndScalar) {
-  auto result = getBroadcastedShape({}, {});
-  ASSERT_TRUE(result.hasValue());
-  EXPECT_TRUE(result->empty());
+  SmallVector<int64_t, 4> result;
+  ASSERT_TRUE(getBroadcastedShape({}, {}, result));
+  EXPECT_TRUE(result.empty());
 }
 
 TEST(BroadcastShapeTest, Compatible0DAnd1DTensor) {
-  auto result = getBroadcastedShape({}, {4});
-  ASSERT_TRUE(result.hasValue());
-  EXPECT_THAT(result.getValue(), ElementsAre(4));
+  SmallVector<int64_t, 4> result;
+  ASSERT_TRUE(getBroadcastedShape({}, {4}, result));
+  EXPECT_THAT(result, ElementsAre(4));
 }
 
 TEST(BroadcastShapeTest, Compatible0DAnd3DTensor) {
-  auto result = getBroadcastedShape({}, {3, 5, 4});
-  ASSERT_TRUE(result.hasValue());
-  EXPECT_THAT(result.getValue(), ElementsAre(3, 5, 4));
+  SmallVector<int64_t, 4> result;
+  ASSERT_TRUE(getBroadcastedShape({}, {3, 5, 4}, result));
+  EXPECT_THAT(result, ElementsAre(3, 5, 4));
 }
 
 TEST(BroadcastShapeTest, CompatibleTensorAndTensor) {
-  auto result = getBroadcastedShape({1, 7, 8, 9}, {8, 9});
-  ASSERT_TRUE(result.hasValue());
-  EXPECT_THAT(result.getValue(), ElementsAre(1, 7, 8, 9));
+  SmallVector<int64_t, 4> result;
+  ASSERT_TRUE(getBroadcastedShape({1, 7, 8, 9}, {8, 9}, result));
+  EXPECT_THAT(result, ElementsAre(1, 7, 8, 9));
 }
 
 TEST(BroadcastShapeTest, InterleavingOnes) {
-  auto result = getBroadcastedShape({8, 1, 2, 1, 4}, {5, 1, 7, 1});
-  ASSERT_TRUE(result.hasValue());
-  EXPECT_THAT(result.getValue(), ElementsAre(8, 5, 2, 7, 4));
+  SmallVector<int64_t, 4> result;
+  ASSERT_TRUE(getBroadcastedShape({8, 1, 2, 1, 4}, {5, 1, 7, 1}, result));
+  EXPECT_THAT(result, ElementsAre(8, 5, 2, 7, 4));
 }
 
 TEST(BroadcastShapeTest, InterleavingUnknowns) {
-  auto result = getBroadcastedShape({1, 2, -1, -1, -1}, {-1, -1, -1, 4, 1});
-  EXPECT_TRUE(result.hasValue());
-  EXPECT_THAT(result.getValue(), ElementsAre(-1, 2, -1, 4, -1));
+  SmallVector<int64_t, 4> result;
+  ASSERT_TRUE(
+      getBroadcastedShape({1, 2, -1, -1, -1}, {-1, -1, -1, 4, 1}, result));
+  EXPECT_THAT(result, ElementsAre(-1, 2, -1, 4, -1));
 }
 
 TEST(BroadcastShapeTest, IncompatibleLowDim) {
-  auto result = getBroadcastedShape({4, 3, 5, 5}, {3, 5, 4});
-  EXPECT_FALSE(result.hasValue());
+  SmallVector<int64_t, 4> result;
+  ASSERT_FALSE(getBroadcastedShape({4, 3, 5, 5}, {3, 5, 4}, result));
+  EXPECT_TRUE(result.empty());
 }
 
 TEST(BroadcastShapeTest, IncompatibleMiddleDim) {
-  auto result = getBroadcastedShape({4, 3, 5, 5}, {3, 7, 5});
-  EXPECT_FALSE(result.hasValue());
+  SmallVector<int64_t, 4> result;
+  ASSERT_FALSE(getBroadcastedShape({4, 3, 5, 5}, {3, 7, 5}, result));
+  EXPECT_TRUE(result.empty());
 }
 
 TEST(BroadcastShapeTest, IncompatibleHighDim) {
-  auto result = getBroadcastedShape({3, 5, 5}, {4, 5, 5});
-  EXPECT_FALSE(result.hasValue());
+  SmallVector<int64_t, 4> result;
+  ASSERT_FALSE(getBroadcastedShape({3, 5, 5}, {4, 5, 5}, result));
+  EXPECT_TRUE(result.empty());
 }

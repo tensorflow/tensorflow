@@ -42,9 +42,9 @@ static bool isBroadcastableType(Type type) {
   return false;
 }
 
-Optional<SmallVector<int64_t, 4>>
-OpTrait::util::getBroadcastedShape(ArrayRef<int64_t> shape1,
-                                   ArrayRef<int64_t> shape2) {
+bool OpTrait::util::getBroadcastedShape(ArrayRef<int64_t> shape1,
+                                        ArrayRef<int64_t> shape2,
+                                        SmallVectorImpl<int64_t> &resultShape) {
   // To compute the result broadcasted shape, we compare operand shapes
   // element-wise: starting with the trailing dimensions, and working the
   // way backward. Two dimensions are compatible when
@@ -53,7 +53,7 @@ OpTrait::util::getBroadcastedShape(ArrayRef<int64_t> shape1,
   // The result shape has the maximum among the two inputs at every
   // dimension index.
 
-  SmallVector<int64_t, 4> resultShape;
+  resultShape.clear();
   if (shape1.size() > shape2.size()) {
     std::copy(shape1.begin(), shape1.end(), std::back_inserter(resultShape));
   } else {
@@ -89,12 +89,13 @@ OpTrait::util::getBroadcastedShape(ArrayRef<int64_t> shape1,
         *iR = *i2;
       } else {
         // This dimension of the two operand types is incompatible.
-        return llvm::None;
+        resultShape.clear();
+        return false;
       }
     }
   }
 
-  return resultShape;
+  return true;
 }
 
 /// Returns the result broadcast composition type from the two given types by
@@ -159,15 +160,15 @@ Type OpTrait::util::getBroadcastedType(Type type1, Type type2) {
   };
 
   // Get the shape of each type.
-  auto resultShape = getBroadcastedShape(getShape(type1), getShape(type2));
-  if (!resultShape)
+  SmallVector<int64_t, 4> resultShape;
+  if (!getBroadcastedShape(getShape(type1), getShape(type2), resultShape))
     return {};
 
   // Compose the final broadcasted type
   if (resultCompositeKind == StandardTypes::Vector)
-    return VectorType::get(*resultShape, scalarType);
+    return VectorType::get(resultShape, scalarType);
   if (resultCompositeKind == StandardTypes::RankedTensor)
-    return RankedTensorType::get(*resultShape, scalarType);
+    return RankedTensorType::get(resultShape, scalarType);
   return scalarType;
 }
 

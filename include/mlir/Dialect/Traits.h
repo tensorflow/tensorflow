@@ -36,8 +36,9 @@ bool verifyCompatibleOperandBroadcast(const Instruction *op);
 } // namespace impl
 
 namespace util {
-/// Returns the result broadcasted shape from the two given shapes. Returns
-/// llvm::None if the given two shapes are not broadcast compatible.
+/// Returns true and sets `resultShape` to the broadcasted shape from the two
+/// given shapes if they are broadcast compatible. Returns false and clears
+/// `resultShape` otherwise.
 ///
 /// The rules for determing the result shape are:
 ///
@@ -52,8 +53,9 @@ namespace util {
 /// - If one of the dimension is 1, the other dimension is the result.
 /// - If two dimensions are the same, that's the result.
 /// - Otherwise, incompatible shape.
-Optional<SmallVector<int64_t, 4>> getBroadcastedShape(ArrayRef<int64_t> shape1,
-                                                      ArrayRef<int64_t> shape2);
+bool getBroadcastedShape(ArrayRef<int64_t> shape1, ArrayRef<int64_t> shape2,
+                         SmallVectorImpl<int64_t> &resultShape);
+
 /// Returns the result broadcast composition type from the two given types by
 /// following NumPy broadcast semantics. Returned type may have dynamic shape if
 /// either of the input types has dynamic shape. Returns null type if the two
