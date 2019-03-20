@@ -66,8 +66,6 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
 
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
 
-uint64 GetShardingDeviceId(const HloInstruction* inst);
-
 // Convert a poplar/poplibs exception to a Tensorflow error Status
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
                                          const std::exception& e);

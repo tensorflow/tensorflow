@@ -12,6 +12,25 @@
 namespace xla {
 namespace poplarplugin {
 
+std::vector<int64> GetShardingDeviceId(const HloInstruction* inst) {
+  // This function works on the assumptions:
+  // * that all the instructions either have sharding or none of them do (see
+  //   ShardingPass).
+  // * If an instruction has sharding, then that sharding contains a unique
+  //   device.
+  std::vector<int64> sharding_info;
+  sharding_info.push_back(inst->has_sharding() &&
+                                  inst->sharding().HasUniqueDevice()
+                              ? inst->sharding().GetUniqueDevice()
+                              : 0);
+
+  return sharding_info;
+}
+
+int64 GetSingleShardingDeviceId(const HloInstruction* inst) {
+  return GetShardingDeviceId(inst)[0];
+}
+
 int64 CountShapes(const Shape& shape) {
   int64 n = 0;
   if (shape.IsTuple()) {

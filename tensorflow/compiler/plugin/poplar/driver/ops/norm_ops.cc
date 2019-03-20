@@ -76,7 +76,7 @@ StatusOr<poplar::program::Program> CreateNormInference(
   auto out = norm_graph_caching::DoCachedNormInference(
       norm_type, graph, res, operand_view, scale, offset, mean,
       variance_or_inv_std_dev, epsilon, optional_num_groups,
-      GetShardingDeviceId(inst), seq, GetDebugName(inst));
+      GetSingleShardingDeviceId(inst), seq, GetDebugName(inst));
 
   out = ShuffleNormOutputToTensorflow(out, feature_dimension);
 
@@ -135,7 +135,7 @@ StatusOr<poplar::program::Program> CreateNormTraining(
   std::tie(out, mean, variance_or_inv_std_dev) =
       norm_graph_caching::DoCachedNormTraining(
           norm_type, graph, res, operand_view, scale, offset, epsilon,
-          optional_num_groups, GetShardingDeviceId(inst), seq,
+          optional_num_groups, GetSingleShardingDeviceId(inst), seq,
           GetDebugName(inst));
 
   out = ShuffleNormOutputToTensorflow(out, feature_dimension);
@@ -209,7 +209,7 @@ StatusOr<poplar::program::Program> CreateNormGrad(
       norm_graph_caching::DoCachedNormGrad(
           norm_type, graph, res, operand_view, scale, mean,
           variance_or_inv_std_dev, grad_output_view, epsilon,
-          optional_num_groups, GetShardingDeviceId(inst), seq,
+          optional_num_groups, GetSingleShardingDeviceId(inst), seq,
           GetDebugName(inst));
 
   operand_grad = ShuffleNormOutputToTensorflow(operand_grad, feature_dimension);
@@ -252,7 +252,7 @@ StatusOr<poplar::program::Program> CreateNormStatistics(
   std::tie(mean, variance_or_inv_std_dev) =
       norm_graph_caching::DoCachedNormStatistics(
           norm_type, graph, res, operand_view, epsilon, optional_num_groups,
-          GetShardingDeviceId(inst), seq, GetDebugName(inst));
+          GetSingleShardingDeviceId(inst), seq, GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, mean));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, variance_or_inv_std_dev));

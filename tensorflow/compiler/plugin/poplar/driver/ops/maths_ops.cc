@@ -502,7 +502,7 @@ StatusOr<poplar::program::Program> CreateMatMulForDotOp(
 
   poplar::Tensor out = dot_graph_caching::DoCachedDot(
       graph, res, in0, in1, seq, GetMatMulPass(inst, res.annotations),
-      GetShardingDeviceId(inst), GetDebugName(inst));
+      GetSingleShardingDeviceId(inst), GetDebugName(inst));
 
   // Reshape to XLA shape
   out = out.reshape(PoplarShapeFromXlaShape(output_shape));
