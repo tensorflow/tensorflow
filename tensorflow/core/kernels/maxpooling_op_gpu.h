@@ -16,7 +16,6 @@ limitations under the License.
 #if !GOOGLE_CUDA && !TENSORFLOW_USE_ROCM
 #error This file must only be included when building with Cuda or ROCm  support
 #endif
-
 #ifndef TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
 #define TENSORFLOW_CORE_KERNELS_MAXPOOLING_OP_GPU_H_
 

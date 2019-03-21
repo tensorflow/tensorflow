@@ -26,7 +26,7 @@ limitations under the License.
 #endif
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/gpu_utils.h"
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #endif 
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
@@ -259,7 +259,7 @@ void DnnPoolingOp<T>::Compute(OpKernelContext* context,
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
@@ -424,7 +424,7 @@ void DnnPoolingGradOp<T>::Compute(
   auto* stream = context->op_device_context()->stream();
   OP_REQUIRES(context, stream, errors::Internal("No GPU stream available."));
 
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
   static int64 PoolingScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB

@@ -1697,6 +1697,7 @@ cuda_py_test(
     ],
     shard_count = 16,
     xla_enable_strict_auto_jit = True,
+    tags = ["no_gpu"],  # runs out of memory
 )
 
 tf_py_test(

@@ -1241,6 +1241,7 @@ tf_py_test(
     tags = [
             "notsan",
             "no_rocm",
+            "no_gpu",
            ],
 )
 
@@ -1297,7 +1298,10 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = ["no_rocm"],
+    tags = [
+            "no_rocm",
+            "no_gpu",
+    ],
 )
 
 tf_py_test(

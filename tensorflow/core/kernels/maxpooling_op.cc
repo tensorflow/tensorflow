@@ -41,7 +41,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA
   #include "cuda/include/cudnn.h"
 #endif 
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
@@ -319,7 +319,7 @@ class MaxPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 static void MaxPoolingBackwardCustomKernel(
@@ -649,7 +649,7 @@ class MaxPoolingGradGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <class T>
 class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {

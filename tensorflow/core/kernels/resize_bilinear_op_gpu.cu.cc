@@ -281,7 +281,7 @@ struct ResizeBilinear<GPUDevice, T> {
     const int total_count = batch * out_height * out_width * channels;
     if (total_count == 0) return;
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     GPU_LAUNCH_KERNEL(ResizeBilinearKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, images.data(), height_scale,
@@ -335,7 +335,7 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     // Accumulate.
     total_count = batch * resized_height * resized_width * channels;
     config = GetGpuLaunchConfig(total_count, d);
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     GPU_LAUNCH_KERNEL(ResizeBilinearGradKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, input_grad.data(), height_scale,

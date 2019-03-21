@@ -178,7 +178,7 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
     if (output_size == 0) return true;
 
     GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     GPU_LAUNCH_KERNEL((ResizeNearestNeighborNHWC<T>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         output_size, input.data(),
@@ -254,7 +254,7 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
     if (input_size == 0) return true;
 
     GpuLaunchConfig input_config = GetGpuLaunchConfig(input_size, d);
-#ifdef TENSORFLOW_USE_ROCM
+#if TENSORFLOW_USE_ROCM
     GPU_LAUNCH_KERNEL((ResizeNearestNeighborBackwardNHWC<T>),
         dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
         d.stream(),

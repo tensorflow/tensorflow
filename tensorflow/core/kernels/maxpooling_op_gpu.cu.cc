@@ -422,15 +422,15 @@ bool MaxPoolForwardWithOptionalArgmax<T>::operator()(
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
         dim3(kThreadsPerBlock), 0, d.stream(),
         output_size, bottom_data, height, width, channels, pooled_height,
-            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-            top_data, mask, include_batch_in_index);
+        pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+        top_data, mask, include_batch_in_index);
   } else {
     GPU_LAUNCH_KERNEL(MaxPoolForwardNHWC<false>,
         dim3((output_size + kThreadsPerBlock - 1) / kThreadsPerBlock),
         dim3(kThreadsPerBlock), 0, d.stream(),
         output_size, bottom_data, height, width, channels, pooled_height,
-            pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
-            top_data, mask, include_batch_in_index);
+        pooled_width, kernel_h, kernel_w, stride_h, stride_w, pad_t, pad_l,
+        top_data, mask, include_batch_in_index);
   }
   return d.ok();
 }
@@ -503,8 +503,8 @@ bool MaxPoolGradBackwardNoMask<T>::operator()(
       GPU_LAUNCH_KERNEL(MaxPoolGradBackwardNoMaskNCHW, dim3(config.block_count),
          dim3(config.thread_per_block), 0, d.stream(), num_kernels,
          bottom_data, output_data, pooled_height, pooled_width,
-        channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
-        pad_l, top_diff, bottom_diff);
+         channels, height, width, kernel_h, kernel_w, stride_h, stride_w, pad_t,
+         pad_l, top_diff, bottom_diff);
   }
   return d.ok();
 }
