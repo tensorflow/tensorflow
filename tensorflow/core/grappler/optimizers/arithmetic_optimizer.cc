@@ -3434,19 +3434,14 @@ void ArithmeticOptimizer::DedupComputations() {
     return;
   }
 
-  const absl::flat_hash_set<string> ops_to_traverse = {
-      "Identity", "IdentityN", "Reshape", "ExpandDims",
-      "Enter",    "Switch",    "Merge"};
-
   // Populate feed_inplace_op;
   absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
-
   for (const NodeDef& root : optimized_graph_->node()) {
     if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
 
     if (ModifiesInputsInPlace(root)) {
       const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
-        return node->op() == root.op() || ops_to_traverse.count(node->op()) > 0;
+        return node->op() == root.op() || !NeverForwardsInputs(*node);
       };
 
       DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
@@ -3672,14 +3667,16 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   options_.unary_ops_composition &=
       item.optimization_options().allow_non_differentiable_rewrites;
 
-  if (options_.dedup_computations) {
-    DedupComputations();
-  }
+  // Perform topological sort on the graph in order to help DedupComputations
+  // and AddOpsRewrite to optimize larger subgraphs starting from the roots with
+  // more inputs.
+  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
-  // Perform topological sort on the graph in order to help AddOpsRewrite to
-  // optimize larger subgraphs starting from the roots with more inputs.
-  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
+  if (options_.dedup_computations) {
+    DedupComputations();
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
+  }
 
   graph_properties_.reset(new GraphProperties(optimized_item));
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
