@@ -97,7 +97,7 @@ class MklDequantizeOp : public OpKernel {
       memory::primitive_desc dst_pd =
           memory::primitive_desc(dst_md, cpu_engine);
 
-      // If input is MKL shape, ouput is also MKL shape.
+      // If input is MKL shape, output is also MKL shape.
       // If input is TF shape, output is also TF shape.
       if (src_mkl_shape.IsMklTensor()) {
         output_mkl_shape.SetMklTensor(true);
@@ -124,7 +124,7 @@ class MklDequantizeOp : public OpKernel {
       bool is_signed = std::is_signed<T>::value;
       // If it is signed, we try to keep 0.0 being 0 and drop one bucket. For
       // example, if it is 8 bits, we have the range [-127, 127]. So for input
-      // range of [-x, x], the scale should be 254/(2*x).
+      // range of [-x, x], the scale should be (2*x)/254.
       //
       // If it is unsigned and num_bits == 8, the range with 8 bits is [0, 255].
       // If the input range is [0, x], then the scale is x/255 instead of 254 as
@@ -175,4 +175,4 @@ REGISTER_KERNEL_BUILDER(Name("_MklDequantize")
 
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL

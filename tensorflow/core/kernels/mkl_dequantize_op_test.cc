@@ -1,8 +1,11 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,9 +34,9 @@ TEST_F(MklDequantizeOpTest, small) {
                    .Input(FakeInput(DT_QUINT8))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
-                   .Input(FakeInput(DT_UINT8))  // MKl second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("mode", "SCALED")
                    .Attr("_kernel", "QuantizedMklOp")
@@ -53,7 +56,7 @@ TEST_F(MklDequantizeOpTest, small) {
   test::FillValues<float>(&expected,
                           {0.0, 7.84, 39.21, 31.37, 19.6, 90.2, 149.0, 200});
   const Tensor& output = *GetOutput(0);
-  const Tensor& output_mkl_shape = *GetOutput(1);
   test::ExpectTensorNear<float>(expected, output, 0.1);
 }
-}  // End namespace tensorflow
+
+}  // namespace tensorflow

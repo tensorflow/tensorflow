@@ -109,4 +109,4 @@ REGISTER_OP("_MklDequantize")
 
 }  // namespace tensorflow
 
-#endif
+#endif  // INTEL_MKL
