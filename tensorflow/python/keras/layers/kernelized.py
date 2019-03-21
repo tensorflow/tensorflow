@@ -112,7 +112,7 @@ class RandomFourierFeatures(base_layer.Layer):
       definitions above). When provided, it should be a positive float. If None,
       the implementation chooses a default value (1.0 typically). Both the
       approximation error of the kernel and the classification quality are
-      sensitive to this parameter. If trainable is set to True, this paramater
+      sensitive to this parameter. If trainable is set to True, this parameter
       is learned end-to-end during training and the provided value serves as an
       initialization value.
       NOTE: When this layer is used to map the initial features and then the

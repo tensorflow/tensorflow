@@ -37,7 +37,7 @@ using toco::port::StringF;
 namespace toco {
 namespace {
 
-// 'nslimit' is a graphviz (dot) paramater that limits the iterations during
+// 'nslimit' is a graphviz (dot) parameter that limits the iterations during
 // the layout phase. Omitting it allows infinite iterations, causing some
 // complex graphs to never finish. A value of 125 produces good graphs
 // while allowing complex graphs to finish.

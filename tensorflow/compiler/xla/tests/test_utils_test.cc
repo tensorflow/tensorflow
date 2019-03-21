@@ -258,7 +258,7 @@ XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
   auto module = ParseHloString(R"(
   HloModule Test
 
-ENTRY %module(paramater.0: f32[200,100,300], parameter.1: s32[10,2]) ->
+ENTRY %module(parameter.0: f32[200,100,300], parameter.1: s32[10,2]) ->
                                                           f32[10,300] {
   %parameter.0 = f32[200,100,300] parameter(0)
   %parameter.1 = s32[10,2] parameter(1)
