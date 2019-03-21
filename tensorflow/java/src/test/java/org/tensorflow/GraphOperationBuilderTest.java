@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -24,9 +24,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit tests for {@link org.tensorflow.OperationBuilder}. */
+/** Unit tests for {@link org.tensorflow.GraphOperationBuilder}. */
 @RunWith(JUnit4.class)
-public class OperationBuilderTest {
+public class GraphOperationBuilderTest {
   // TODO(ashankar): Restore this test once the C API gracefully handles mixing graphs and
   // operations instead of segfaulting.
   @Test
@@ -136,7 +136,8 @@ public class OperationBuilderTest {
       assertEquals(-1, n.shape().numDimensions());
       assertEquals(DataType.FLOAT, n.dataType());
 
-      n = g.opBuilder("Placeholder", "batch_of_vectors")
+      n =
+          g.opBuilder("Placeholder", "batch_of_vectors")
               .setAttr("dtype", DataType.FLOAT)
               .setAttr("shape", Shape.make(-1, 784))
               .build()
@@ -168,7 +169,7 @@ public class OperationBuilderTest {
         Tensor<Boolean> yes = Tensors.create(true);
         Tensor<Boolean> no = Tensors.create(false)) {
       Output<Boolean> placeholder = TestUtil.placeholder(g, "boolean", Boolean.class);
-      Operation check =
+      GraphOperation check =
           g.opBuilder("Assert", "assert")
               .addInput(placeholder)
               .addInputList(new Output<?>[] {placeholder})
