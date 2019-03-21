@@ -427,15 +427,13 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
             # name as the absolute name of the variable.
             kwargs["name"] = "%s/replica_%d/" % (var0name, i)
             # Initialize replicas with the same value:
-            if context.executing_eagerly() or ops.inside_function():
-              with ops.init_scope():
-                kwargs["initial_value"] = array_ops.identity(
-                    value_list[0].value())
-            else:
-              def initial_value_fn(device=d):
+            def initial_value_fn(device=d):
+              if context.executing_eagerly() or ops.inside_function():
+                return array_ops.identity(value_list[0].value())
+              else:
                 with ops.device(device):
                   return array_ops.identity(value_list[0].initial_value)
-              kwargs["initial_value"] = initial_value_fn
+            kwargs["initial_value"] = initial_value_fn
           with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             v = next_creator(*args, **kwargs)
           assert not isinstance(v, values.TPUMirroredVariable)
