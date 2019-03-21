@@ -1067,7 +1067,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
-    shard_count = 5,
+    shard_count = 1,
     # Times out in fastbuild mode.
     tags = ["optonly"],
     deps = [
