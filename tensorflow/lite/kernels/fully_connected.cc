@@ -109,21 +109,19 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const int batch_size = input_size / filter->dims->data[1];
   const int num_units = filter->dims->data[0];
 
-  TF_LITE_ENSURE_EQ(context, input_size, batch_size * filter->dims->data[1]);
   if (bias) {
     TF_LITE_ENSURE_EQ(context, NumElements(bias), SizeOfDimension(filter, 0));
   }
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
-  TfLiteType data_type = input->type;
-  if (data_type != kTfLiteFloat32 && data_type != kTfLiteInt32) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     double real_multiplier = 0.0;
     TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
         context, input, filter, bias, output, &real_multiplier));
     int exponent;
     QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
-    data->output_shift = -exponent;
+    data->output_shift = exponent;
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
@@ -298,7 +296,7 @@ void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
   op_params.weights_offset = -filter->params.zero_point;
   op_params.output_offset = output->params.zero_point;
   op_params.output_multiplier = data->output_multiplier;
-  op_params.output_shift = -data->output_shift;
+  op_params.output_shift = data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
   reference_integer_ops::FullyConnected(
@@ -327,7 +325,7 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     op_params.weights_offset = filter_offset;                            \
     op_params.output_offset = output_offset;                             \
     op_params.output_multiplier = data->output_multiplier;               \
-    op_params.output_shift = -data->output_shift;                        \
+    op_params.output_shift = data->output_shift;                         \
     op_params.quantized_activation_min = data->output_activation_min;    \
     op_params.quantized_activation_max = data->output_activation_max;    \
     type::FullyConnected(                                                \
@@ -406,7 +404,7 @@ TfLiteStatus EvalShuffledQuantized(TfLiteContext* context, TfLiteNode* node,
   {                                                                      \
     FullyConnectedParams op_params;                                      \
     op_params.output_multiplier = data->output_multiplier;               \
-    op_params.output_shift = -data->output_shift;                        \
+    op_params.output_shift = data->output_shift;                         \
     op_params.quantized_activation_min = data->output_activation_min;    \
     op_params.quantized_activation_max = data->output_activation_max;    \
     type::ShuffledFullyConnected(                                        \
@@ -470,7 +468,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  switch (filter->type) {  // Already know in/out types are same.
+  switch (filter->type) {
     case kTfLiteFloat32:
       return EvalFloat<kernel_type>(context, node, params, data, input, filter,
                                     bias, output);
