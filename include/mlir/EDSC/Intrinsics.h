@@ -66,6 +66,9 @@ struct EDSCInstructionBuilder : public InstructionHandle {
 };
 
 using alloc = EDSCValueBuilder<AllocOp>;
+using constant_float = EDSCValueBuilder<ConstantFloatOp>;
+using constant_index = EDSCValueBuilder<ConstantIndexOp>;
+using constant_int = EDSCValueBuilder<ConstantIntOp>;
 using dealloc = EDSCInstructionBuilder<DeallocOp>;
 using load = EDSCValueBuilder<LoadOp>;
 using ret = EDSCInstructionBuilder<ReturnOp>;

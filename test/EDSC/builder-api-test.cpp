@@ -63,12 +63,10 @@ TEST_FUNC(builder_dynamic_for_func_args) {
   ScopedContext scope(f.get());
   ValueHandle i(indexType), j(indexType), lb(f->getArgument(0)),
       ub(f->getArgument(1));
-  ValueHandle f7(
-      ValueHandle::create<ConstantFloatOp>(llvm::APFloat(7.0f), f32Type));
-  ValueHandle f13(
-      ValueHandle::create<ConstantFloatOp>(llvm::APFloat(13.0f), f32Type));
-  ValueHandle i7(ValueHandle::create<ConstantIntOp>(7, 32));
-  ValueHandle i13(ValueHandle::create<ConstantIntOp>(13, 32));
+  ValueHandle f7(constant_float(llvm::APFloat(7.0f), f32Type));
+  ValueHandle f13(constant_float(llvm::APFloat(13.0f), f32Type));
+  ValueHandle i7(constant_int(7, 32));
+  ValueHandle i13(constant_int(13, 32));
   LoopBuilder(&i, lb, ub, 3)({
       lb * index_t(3) + ub,
       lb + index_t(3),
