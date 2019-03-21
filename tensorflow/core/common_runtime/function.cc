@@ -1621,6 +1621,10 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     return errors::Internal("Inlining mismatch: ", validation.error_message());
   }
 
+  // We can't possibly introduce a duplicate control edge during function
+  // inlining, so we skip this check in calls to the 'g->AddControlEdge(...)'.
+  static constexpr bool kDoNotCheckDuplicates = true;
+
   // ------------------------------------------------------------------------ //
   // Helper functions to create `NoOp` and `Identity` nodes for auxiliary
   // control nodes and inlined function inputs and outputs.
@@ -1649,7 +1653,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       if (input_control_node == nullptr) {
         input_control_node = no_op("input_control_node");
       }
-      g->AddControlEdge(e->src(), input_control_node);
+      g->AddControlEdge(e->src(), input_control_node, kDoNotCheckDuplicates);
     } else {
       inputs[e->dst_input()] = {e->src(), e->src_output()};
     }
@@ -1702,7 +1706,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       bool has_inputs = absl::c_any_of(
           n->in_edges(), [](const Edge* e) { return !e->src()->IsSource(); });
       if (!has_inputs || IsFunctionCall(flib_def, *n)) {
-        g->AddControlEdge(input_control_node, clone);
+        g->AddControlEdge(input_control_node, clone, kDoNotCheckDuplicates);
       }
     }
   }
@@ -1729,11 +1733,11 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     Node* arg = node_map[fbody->arg_nodes[i]->id()];
     Node* n = identity("input", inputs[i]);
     if (input_control_node) {
-      g->AddControlEdge(input_control_node, n);
+      g->AddControlEdge(input_control_node, n, kDoNotCheckDuplicates);
     }
     for (const Edge* e : arg->out_edges()) {
       if (e->IsControlEdge()) {
-        g->AddControlEdge(n, e->dst());
+        g->AddControlEdge(n, e->dst(), kDoNotCheckDuplicates);
       } else {
         g->AddEdge(n, 0, e->dst(), e->dst_input());
       }
@@ -1775,7 +1779,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     outputs[i] = n;
     for (const Edge* e : ret->in_edges()) {
       if (e->IsControlEdge()) {
-        g->AddControlEdge(e->src(), n);
+        g->AddControlEdge(e->src(), n, kDoNotCheckDuplicates);
       }
     }
     g->RemoveNode(ret);  // 'ret' is disconnected.
@@ -1789,12 +1793,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     output_control_node = no_op("output_control_node");
     if (options.output_control_src == OutputControlSrc::kDataOutputs) {
       for (Node* n : outputs) {
-        g->AddControlEdge(n, output_control_node);
+        g->AddControlEdge(n, output_control_node, kDoNotCheckDuplicates);
       }
     } else {
       for (Node* fbody_node : fbody->control_ret_nodes) {
         Node* n = node_map[fbody_node->id()];
-        g->AddControlEdge(n, output_control_node);
+        g->AddControlEdge(n, output_control_node, kDoNotCheckDuplicates);
       }
     }
   }
@@ -1807,7 +1811,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   // always have input_control_node when we need it.
   if (output_control_node && output_control_node->in_edges().empty()) {
     if (input_control_node) {
-      g->AddControlEdge(input_control_node, output_control_node);
+      g->AddControlEdge(input_control_node, output_control_node,
+                        kDoNotCheckDuplicates);
     } else {
       VLOG(3) << "Function inlining potentially dropped execution frame "
                  "information from outgoing control edges.";
@@ -1816,7 +1821,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 
   for (const Edge* e : caller->out_edges()) {
     if (e->IsControlEdge()) {
-      g->AddControlEdge(output_control_node, e->dst());
+      g->AddControlEdge(output_control_node, e->dst(), kDoNotCheckDuplicates);
     } else {
       g->AddEdge(outputs[e->src_output()], 0, e->dst(), e->dst_input());
     }
