@@ -81,7 +81,7 @@ public:
 
   /// Verify a function argument attribute registered to this dialect.
   /// Returns true if the verification failed, false otherwise.
-  bool verifyFunctionArgAttribute(const Function *func, unsigned argIdx,
+  bool verifyFunctionArgAttribute(Function *func, unsigned argIdx,
                                   NamedAttribute argAttr) override;
 
 private:

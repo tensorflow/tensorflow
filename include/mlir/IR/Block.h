@@ -109,10 +109,7 @@ public:
 
   /// Returns the function that this block is part of, even if the block is
   /// nested under an operation region.
-  Function *getFunction();
-  const Function *getFunction() const {
-    return const_cast<Block *>(this)->getFunction();
-  }
+  Function *getFunction() const;
 
   /// Insert this block (which must not already be in a function) right before
   /// the specified block.
@@ -428,10 +425,7 @@ public:
 
   /// A Region is either a function body or a part of an operation.  If it is
   /// a Function body, then return this function, otherwise return null.
-  Function *getContainingFunction();
-  const Function *getContainingFunction() const {
-    return const_cast<Region *>(this)->getContainingFunction();
-  }
+  Function *getContainingFunction() const;
 
   /// Clone the internal blocks from this region into dest. Any
   /// cloned blocks are appended to the back of dest. If the mapper

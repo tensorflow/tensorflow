@@ -945,7 +945,7 @@ PYBIND11_MODULE(pybind, m) {
     return ValueHandle::create<ConstantFloatOp>(value, floatType);
   });
   m.def("constant_function", [](PythonFunction func) -> PythonValueHandle {
-    auto *function = reinterpret_cast<const Function *>(func.function);
+    auto *function = reinterpret_cast<Function *>(func.function);
     auto attr = FunctionAttr::get(function, function->getContext());
     return ValueHandle::create<ConstantOp>(function->getType(), attr);
   });

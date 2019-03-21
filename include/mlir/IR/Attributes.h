@@ -323,7 +323,7 @@ public:
   using ImplType = detail::FunctionAttributeStorage;
   using ValueType = Function *;
 
-  static FunctionAttr get(const Function *value, MLIRContext *context);
+  static FunctionAttr get(Function *value, MLIRContext *context);
 
   Function *getValue() const;
 

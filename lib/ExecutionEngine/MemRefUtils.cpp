@@ -66,7 +66,7 @@ allocMemRefDescriptor(Type type, bool allocateData = true,
 }
 
 llvm::Expected<SmallVector<void *, 8>>
-mlir::allocateMemRefArguments(const Function *func, float initialValue) {
+mlir::allocateMemRefArguments(Function *func, float initialValue) {
   SmallVector<void *, 8> args;
   args.reserve(func->getNumArguments());
   for (const auto &arg : func->getArguments()) {

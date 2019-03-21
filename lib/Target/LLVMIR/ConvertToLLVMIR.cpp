@@ -56,8 +56,8 @@ private:
   explicit ModuleTranslation(Module &module) : mlirModule(module) {}
 
   bool convertFunctions();
-  bool convertOneFunction(const Function &func);
-  void connectPHINodes(const Function &func);
+  bool convertOneFunction(Function &func);
+  void connectPHINodes(Function &func);
   bool convertBlock(const Block &bb, bool ignoreArguments);
   bool convertInstruction(const Instruction &inst, llvm::IRBuilder<> &builder);
 
@@ -72,7 +72,7 @@ private:
   std::unique_ptr<llvm::Module> llvmModule;
 
   // Mappings between original and translated values, used for lookups.
-  llvm::DenseMap<const Function *, llvm::Function *> functionMapping;
+  llvm::DenseMap<Function *, llvm::Function *> functionMapping;
   llvm::DenseMap<const Value *, llvm::Value *> valueMapping;
   llvm::DenseMap<const Block *, llvm::BasicBlock *> blockMapping;
 };
@@ -316,7 +316,7 @@ static const Value *getPHISourceValue(const Block *current, const Block *pred,
              : terminator.getSuccessorOperand(1, index);
 }
 
-void ModuleTranslation::connectPHINodes(const Function &func) {
+void ModuleTranslation::connectPHINodes(Function &func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
@@ -348,7 +348,7 @@ static void topologicalSortImpl(llvm::SetVector<const Block *> &blocks,
 }
 
 // Sort function blocks topologically.
-static llvm::SetVector<const Block *> topologicalSort(const Function &f) {
+static llvm::SetVector<const Block *> topologicalSort(Function &f) {
   // For each blocks that has not been visited yet (i.e. that has no
   // predecessors), add it to the list and traverse its successors in DFS
   // preorder.
@@ -362,7 +362,7 @@ static llvm::SetVector<const Block *> topologicalSort(const Function &f) {
   return blocks;
 }
 
-bool ModuleTranslation::convertOneFunction(const Function &func) {
+bool ModuleTranslation::convertOneFunction(Function &func) {
   // Clear the block and value mappings, they are only relevant within one
   // function.
   blockMapping.clear();
@@ -416,8 +416,8 @@ bool ModuleTranslation::convertOneFunction(const Function &func) {
 bool ModuleTranslation::convertFunctions() {
   // Declare all functions first because there may be function calls that form a
   // call graph with cycles.
-  for (const Function &function : mlirModule) {
-    const Function *functionPtr = &function;
+  for (Function &function : mlirModule) {
+    Function *functionPtr = &function;
     llvm::FunctionType *functionType = convertFunctionType(
         llvmModule->getContext(), function.getType(), function.getLoc());
     if (!functionType)
@@ -430,7 +430,7 @@ bool ModuleTranslation::convertFunctions() {
   }
 
   // Convert functions.
-  for (const Function &function : mlirModule) {
+  for (Function &function : mlirModule) {
     // Ignore external functions.
     if (function.isExternal())
       continue;

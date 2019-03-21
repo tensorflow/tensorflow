@@ -264,7 +264,7 @@ static bool verifyBBArguments(
 
 static bool verifyTerminatorSuccessors(const Instruction *op) {
   // Verify that the operands lines up with the BB arguments in the successor.
-  const Function *fn = op->getFunction();
+  Function *fn = op->getFunction();
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
     auto *succ = op->getSuccessor(i);
     if (succ->getFunction() != fn)

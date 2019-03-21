@@ -47,8 +47,8 @@ public:
   FunctionPassExecutor(FunctionPassExecutor &&) = default;
 
   // TODO(riverriddle) Allow copying.
-  FunctionPassExecutor(const FunctionPassExecutor &) = delete;
-  FunctionPassExecutor &operator=(const FunctionPassExecutor &) = delete;
+  FunctionPassExecutor(FunctionPassExecutor &) = delete;
+  FunctionPassExecutor &operator=(FunctionPassExecutor &) = delete;
 
   /// Run the executor on the given function.
   LogicalResult run(Function *function, FunctionAnalysisManager &fam);

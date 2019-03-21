@@ -49,7 +49,7 @@ Function::~Function() {
   FunctionAttr::dropFunctionReference(this);
 }
 
-MLIRContext *Function::getContext() const { return getType().getContext(); }
+MLIRContext *Function::getContext() { return getType().getContext(); }
 
 Module *llvm::ilist_traits<Function>::getContainingModule() {
   size_t Offset(
@@ -122,14 +122,14 @@ void Function::erase() {
 
 /// Emit a note about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.
-void Function::emitNote(const Twine &message) const {
+void Function::emitNote(const Twine &message) {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Note);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void Function::emitWarning(const Twine &message) const {
+void Function::emitWarning(const Twine &message) {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Warning);
 }
@@ -138,13 +138,13 @@ void Function::emitWarning(const Twine &message) const {
 /// any diagnostic handlers that may be listening.  This function always
 /// returns true.  NOTE: This may terminate the containing application, only use
 /// when the IR is in an inconsistent state.
-bool Function::emitError(const Twine &message) const {
+bool Function::emitError(const Twine &message) {
   return getContext()->emitError(getLoc(), message);
 }
 
 /// Clone the internal blocks from this function into dest and all attributes
 /// from this function to dest.
-void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) const {
+void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) {
   // Add the attributes of this function to dest.
   llvm::MapVector<Identifier, Attribute> newAttrs;
   for (auto &attr : dest->getAttrs())
@@ -169,7 +169,7 @@ void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) const {
 /// provided (leaving them alone if no entry is present). Replaces references
 /// to cloned sub-values with the corresponding value that is copied, and adds
 /// those mappings to the mapper.
-Function *Function::clone(BlockAndValueMapping &mapper) const {
+Function *Function::clone(BlockAndValueMapping &mapper) {
   FunctionType newType = type;
 
   // If the function has a body, then the user might be deleting arguments to
@@ -196,7 +196,7 @@ Function *Function::clone(BlockAndValueMapping &mapper) const {
   cloneInto(newFunc, mapper);
   return newFunc;
 }
-Function *Function::clone() const {
+Function *Function::clone() {
   BlockAndValueMapping mapper;
   return clone(mapper);
 }

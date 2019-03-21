@@ -25,7 +25,6 @@
 #include "mlir/IR/Function.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/ilist.h"
-#include <vector>
 
 namespace mlir {
 

@@ -565,7 +565,7 @@ public:
   using AttributeListSet =
       DenseSet<AttributeListStorage *, AttributeListKeyInfo>;
   AttributeListSet attributeLists;
-  DenseMap<const Function *, FunctionAttributeStorage *> functionAttrs;
+  DenseMap<Function *, FunctionAttributeStorage *> functionAttrs;
   DenseMap<std::pair<Type, Attribute>, SplatElementsAttributeStorage *>
       splatElementsAttrs;
   using DenseElementsAttrSet =
@@ -1160,7 +1160,7 @@ TypeAttr TypeAttr::get(Type type, MLIRContext *context) {
   });
 }
 
-FunctionAttr FunctionAttr::get(const Function *value, MLIRContext *context) {
+FunctionAttr FunctionAttr::get(Function *value, MLIRContext *context) {
   assert(value && "Cannot get FunctionAttr for a null function");
   auto &impl = context->getImpl();
 

@@ -60,12 +60,7 @@ public:
   }
 
   /// Return the function that this Value is defined in.
-  Function *getFunction();
-
-  /// Return the function that this Value is defined in.
-  const Function *getFunction() const {
-    return const_cast<Value *>(this)->getFunction();
-  }
+  Function *getFunction() const;
 
   /// If this value is the result of an operation, return the instruction
   /// that defines it.
@@ -119,10 +114,7 @@ public:
   }
 
   /// Return the function that this argument is defined in.
-  Function *getFunction();
-  const Function *getFunction() const {
-    return const_cast<BlockArgument *>(this)->getFunction();
-  }
+  Function *getFunction() const;
 
   Block *getOwner() { return owner; }
   const Block *getOwner() const { return owner; }

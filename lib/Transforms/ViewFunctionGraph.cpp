@@ -25,15 +25,14 @@ namespace llvm {
 
 // Specialize DOTGraphTraits to produce more readable output.
 template <>
-struct llvm::DOTGraphTraits<const Function *> : public DefaultDOTGraphTraits {
+struct llvm::DOTGraphTraits<Function *> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
-  static std::string getNodeLabel(const Block *Block, const Function *);
+  static std::string getNodeLabel(const Block *Block, Function *);
 };
 
-std::string
-llvm::DOTGraphTraits<const Function *>::getNodeLabel(const Block *Block,
-                                                     const Function *) {
+std::string llvm::DOTGraphTraits<Function *>::getNodeLabel(const Block *Block,
+                                                           Function *) {
   // Reuse the print output for the node labels.
   std::string outStreamStr;
   raw_string_ostream os(outStreamStr);
@@ -56,19 +55,18 @@ llvm::DOTGraphTraits<const Function *>::getNodeLabel(const Block *Block,
 
 } // end namespace llvm
 
-void mlir::viewGraph(const Function &function, const llvm::Twine &name,
+void mlir::viewGraph(Function &function, const llvm::Twine &name,
                      bool shortNames, const llvm::Twine &title,
                      llvm::GraphProgram::Name program) {
   llvm::ViewGraph(&function, name, shortNames, title, program);
 }
 
-llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os,
-                                    const Function *function, bool shortNames,
-                                    const llvm::Twine &title) {
+llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Function *function,
+                                    bool shortNames, const llvm::Twine &title) {
   return llvm::WriteGraph(os, function, shortNames, title);
 }
 
-void mlir::Function::viewGraph() const {
+void mlir::Function::viewGraph() {
   ::mlir::viewGraph(*this, llvm::Twine("cfgfunc ") + getName().str());
 }
 

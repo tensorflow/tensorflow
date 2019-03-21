@@ -295,7 +295,7 @@ public:
   }
 
   void print(Module *module);
-  void printFunctionReference(const Function *func);
+  void printFunctionReference(Function *func);
   void printAttributeAndType(Attribute attr) {
     printAttributeOptionalType(attr, /*includeType=*/true);
   }
@@ -304,7 +304,7 @@ public:
   }
 
   void printType(Type type);
-  void print(const Function *fn);
+  void print(Function *fn);
   void printLocation(Location loc);
 
   void printAffineMap(AffineMap map);
@@ -489,7 +489,7 @@ void ModulePrinter::print(Module *module) {
     if (!alias.empty())
       os << '!' << alias << " = type " << type << '\n';
   }
-  for (auto const &fn : *module)
+  for (auto &fn : *module)
     print(&fn);
 }
 
@@ -525,7 +525,7 @@ static void printFloatValue(const APFloat &apValue, raw_ostream &os) {
   os << str;
 }
 
-void ModulePrinter::printFunctionReference(const Function *func) {
+void ModulePrinter::printFunctionReference(Function *func) {
   os << '@' << func->getName();
 }
 
@@ -1051,7 +1051,7 @@ namespace {
 // CFG and ML functions.
 class FunctionPrinter : public ModulePrinter, private OpAsmPrinter {
 public:
-  FunctionPrinter(const Function *function, ModulePrinter &other);
+  FunctionPrinter(Function *function, ModulePrinter &other);
 
   // Prints the function as a whole.
   void print();
@@ -1082,7 +1082,7 @@ public:
   void printAffineExpr(AffineExpr expr) {
     return ModulePrinter::printAffineExpr(expr);
   }
-  void printFunctionReference(const Function *func) {
+  void printFunctionReference(Function *func) {
     return ModulePrinter::printFunctionReference(func);
   }
   void printOperand(const Value *value) { printValueID(value); }
@@ -1132,7 +1132,7 @@ protected:
   void printValueID(const Value *value, bool printResultNo = true) const;
 
 private:
-  const Function *function;
+  Function *function;
 
   /// This is the value ID for each SSA value in the current function.  If this
   /// returns ~0, then the valueID has an entry in valueNames.
@@ -1162,7 +1162,7 @@ private:
 };
 } // end anonymous namespace
 
-FunctionPrinter::FunctionPrinter(const Function *function, ModulePrinter &other)
+FunctionPrinter::FunctionPrinter(Function *function, ModulePrinter &other)
     : ModulePrinter(other), function(function) {
 
   for (auto &block : *function)
@@ -1527,9 +1527,7 @@ void FunctionPrinter::printSuccessorAndUseList(const Instruction *term,
 }
 
 // Prints function with initialized module state.
-void ModulePrinter::print(const Function *fn) {
-  FunctionPrinter(fn, *this).print();
-}
+void ModulePrinter::print(Function *fn) { FunctionPrinter(fn, *this).print(); }
 
 //===----------------------------------------------------------------------===//
 // print and dump methods
@@ -1642,12 +1640,12 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
   FunctionPrinter(getFunction(), modulePrinter).printBlockName(this);
 }
 
-void Function::print(raw_ostream &os) const {
+void Function::print(raw_ostream &os) {
   ModuleState state(getContext());
   ModulePrinter(os, state).print(this);
 }
 
-void Function::dump() const { print(llvm::errs()); }
+void Function::dump() { print(llvm::errs()); }
 
 void Module::print(raw_ostream &os) {
   ModuleState state(getContext());

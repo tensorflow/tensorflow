@@ -49,8 +49,8 @@ Instruction *Block::getContainingInst() {
   return getParent() ? getParent()->getContainingInst() : nullptr;
 }
 
-Function *Block::getFunction() {
-  Block *block = this;
+Function *Block::getFunction() const {
+  const Block *block = this;
   while (auto *inst = block->getContainingInst()) {
     block = inst->getBlock();
     if (!block)
@@ -273,7 +273,7 @@ Instruction *Region::getContainingInst() {
   return container.dyn_cast<Instruction *>();
 }
 
-Function *Region::getContainingFunction() {
+Function *Region::getContainingFunction() const {
   return container.dyn_cast<Function *>();
 }
 

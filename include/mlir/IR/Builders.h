@@ -108,7 +108,7 @@ public:
   AffineMapAttr getAffineMapAttr(AffineMap map);
   IntegerSetAttr getIntegerSetAttr(IntegerSet set);
   TypeAttr getTypeAttr(Type type);
-  FunctionAttr getFunctionAttr(const Function *value);
+  FunctionAttr getFunctionAttr(Function *value);
   ElementsAttr getSplatElementsAttr(VectorOrTensorType type, Attribute elt);
   ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
                                     ArrayRef<char> data);

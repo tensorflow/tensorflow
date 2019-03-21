@@ -56,7 +56,7 @@ public:
     return value.emitError(message);
   }
 
-  bool failure(const Twine &message, const Function &fn) {
+  bool failure(const Twine &message, Function &fn) {
     return fn.emitError(message);
   }
 
@@ -79,7 +79,7 @@ public:
   }
 
   template <typename ErrorContext>
-  bool verifyAttribute(Attribute attr, const ErrorContext &ctx) {
+  bool verifyAttribute(Attribute attr, ErrorContext &ctx) {
     if (!attr.isOrContainsFunction())
       return false;
 
@@ -112,12 +112,12 @@ public:
   bool verifyDominance(const Block &block);
   bool verifyInstDominance(const Instruction &inst);
 
-  explicit FuncVerifier(const Function &fn)
+  explicit FuncVerifier(Function &fn)
       : fn(fn), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
 
 private:
   /// The function being checked.
-  const Function &fn;
+  Function &fn;
 
   /// Dominance information for this function, when checking dominance.
   DominanceInfo *domInfo = nullptr;
@@ -288,7 +288,7 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
     if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      op);
-    if (verifyAttribute(attr.second, op))
+    if (verifyAttribute(attr.second, const_cast<Instruction &>(op)))
       return true;
 
     // Check for any optional dialect specific attributes.
@@ -353,7 +353,7 @@ bool FuncVerifier::verifyInstDominance(const Instruction &inst) {
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
 /// returns true.
-bool Function::verify() const { return FuncVerifier(*this).verify(); }
+bool Function::verify() { return FuncVerifier(*this).verify(); }
 
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and

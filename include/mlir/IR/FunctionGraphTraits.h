@@ -102,23 +102,6 @@ struct GraphTraits<mlir::Function *> : public GraphTraits<mlir::Block *> {
 };
 
 template <>
-struct GraphTraits<const mlir::Function *>
-    : public GraphTraits<const mlir::Block *> {
-  using GraphType = const mlir::Function *;
-  using NodeRef = const mlir::Block *;
-
-  static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
-
-  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
-  static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn->begin());
-  }
-  static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn->end());
-  }
-};
-
-template <>
 struct GraphTraits<Inverse<mlir::Function *>>
     : public GraphTraits<Inverse<mlir::Block *>> {
   using GraphType = Inverse<mlir::Function *>;
@@ -127,23 +110,6 @@ struct GraphTraits<Inverse<mlir::Function *>>
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
   using nodes_iterator = pointer_iterator<mlir::Function::iterator>;
-  static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn.Graph->begin());
-  }
-  static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn.Graph->end());
-  }
-};
-
-template <>
-struct GraphTraits<Inverse<const mlir::Function *>>
-    : public GraphTraits<Inverse<const mlir::Block *>> {
-  using GraphType = Inverse<const mlir::Function *>;
-  using NodeRef = NodeRef;
-
-  static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
-
-  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn.Graph->begin());
   }
@@ -169,23 +135,6 @@ struct GraphTraits<mlir::Region *> : public GraphTraits<mlir::Block *> {
 };
 
 template <>
-struct GraphTraits<const mlir::Region *>
-    : public GraphTraits<const mlir::Block *> {
-  using GraphType = const mlir::Region *;
-  using NodeRef = const mlir::Block *;
-
-  static NodeRef getEntryNode(GraphType fn) { return &fn->front(); }
-
-  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
-  static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn->begin());
-  }
-  static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn->end());
-  }
-};
-
-template <>
 struct GraphTraits<Inverse<mlir::Region *>>
     : public GraphTraits<Inverse<mlir::Block *>> {
   using GraphType = Inverse<mlir::Region *>;
@@ -194,23 +143,6 @@ struct GraphTraits<Inverse<mlir::Region *>>
   static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
 
   using nodes_iterator = pointer_iterator<mlir::Function::iterator>;
-  static nodes_iterator nodes_begin(GraphType fn) {
-    return nodes_iterator(fn.Graph->begin());
-  }
-  static nodes_iterator nodes_end(GraphType fn) {
-    return nodes_iterator(fn.Graph->end());
-  }
-};
-
-template <>
-struct GraphTraits<Inverse<const mlir::Region *>>
-    : public GraphTraits<Inverse<const mlir::Block *>> {
-  using GraphType = Inverse<const mlir::Region *>;
-  using NodeRef = NodeRef;
-
-  static NodeRef getEntryNode(GraphType fn) { return &fn.Graph->front(); }
-
-  using nodes_iterator = pointer_iterator<mlir::Function::const_iterator>;
   static nodes_iterator nodes_begin(GraphType fn) {
     return nodes_iterator(fn.Graph->begin());
   }
