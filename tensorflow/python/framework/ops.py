@@ -5184,12 +5184,14 @@ def device_v2(device_name):
   fields. Any fields which are specified override device annotations from outer
   scopes. For example:
 
+  ```python
   with tf.device('/job:foo'):
     # ops created here have devices with /job:foo
     with tf.device('/job:bar/task:0/device:gpu:2'):
       # ops created here have the fully specified device above
     with tf.device('/device:gpu:1'):
       # ops created here have the device '/job:foo/device:gpu:1'
+  ```
 
   Args:
     device_name: The device name to use in the context.
