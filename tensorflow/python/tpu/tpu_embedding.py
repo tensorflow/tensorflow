@@ -296,7 +296,7 @@ class TPUEmbedding(object):
                master,
                optimization_parameters=None,
                cluster_def=None,
-               pipeline_execution_with_tensor_core=True):
+               pipeline_execution_with_tensor_core=False):
     """API for using TPU for embedding lookups.
 
     Args:
