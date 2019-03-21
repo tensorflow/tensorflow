@@ -314,6 +314,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
@@ -359,6 +360,7 @@ cc_library(
     srcs = [],
     hdrs = [
         "common.h",
+        "reference/conv.h",
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
