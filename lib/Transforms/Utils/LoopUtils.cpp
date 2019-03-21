@@ -502,10 +502,14 @@ void mlir::sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth) {
 }
 
 // Factors out common behavior to add a new `iv` (resp. `iv` + `offset`) to the
-// lower (resp. upper) loop bound. When called for both results in:
+// lower (resp. upper) loop bound. When called for both the lower and upper
+// bounds, the resulting IR resembles:
 //
 // ```mlir
-//    for %i = max (`iv, ...) to min (`iv` + `offset`)
+//    for %i = max (`iv, ...) to min (`iv` + `offset`) {
+//      ...
+//    }
+// ```
 static void augmentMapAndBounds(FuncBuilder *b, Value *iv, AffineMap *map,
                                 SmallVector<Value *, 4> *operands,
                                 int64_t offset = 0) {
