@@ -450,6 +450,16 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
     loss = mape_obj(y_true, y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0.0, 3)
 
+  def test_no_reduction(self):
+    mape_obj = keras.losses.MeanAbsolutePercentageError(
+        reduction=losses_utils.ReductionV2.NONE)
+    y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
+    y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
+                                  shape=(2, 3),
+                                  dtype=dtypes.float32)
+    loss = mape_obj(y_true, y_pred, sample_weight=2.3)
+    loss = self.evaluate(loss)
+    self.assertArrayNear(loss, [621.8518, 352.6666], 1e-3)
 
 @test_util.run_all_in_graph_and_eager_modes
 class MeanSquaredLogarithmicErrorTest(test.TestCase):
