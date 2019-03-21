@@ -7,7 +7,8 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 licenses(["notice"])  # Apache 2.0
 
