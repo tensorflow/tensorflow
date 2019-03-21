@@ -137,6 +137,16 @@ void RnnBatchStep(
                hidden_state_ptr_batch, output_ptr_batch);
 }
 
+#define TFLITE_QUANTIZE_GET_MIN_MAX(units, batch, quantized_batch, scale) \
+    for (int b = 0; b < batch_size; ++b) {                                \
+      const int offset = b * units;                                       \
+      tensor_utils::SymmetricQuantizeFloats(                              \
+          batch + offset, units,                                          \
+          quantized_batch + offset, &unused_min, &unused_max,             \
+          &scaling_factors[b]);                                           \
+      scaling_factors[b] *= scale;                                        \
+    }                                                                     \
+
 void RnnBatchStep(
     const float* input_ptr_batch, const int8_t* input_weights_ptr,
     float input_weights_scale, const float* aux_input_ptr_batch,
@@ -160,16 +170,10 @@ void RnnBatchStep(
       // Quantize input from float to uint8 + quantization params (scaling
       // factor).
       float unused_min, unused_max;
-      // TODO(mirkov,raziel): replace this for-loop with a MACRO (or function)
-      // whichever is faster.
-      for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr_batch + offset, input_size,
-            quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-        scaling_factors[b] *= input_weights_scale;
-      }
+      TFLITE_QUANTIZE_GET_MIN_MAX(input_size,
+                                  input_ptr_batch,
+                                  quantized_input_ptr_batch,
+                                  input_weights_scale)
 
       // Output += input * input_weights
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -181,14 +185,10 @@ void RnnBatchStep(
         !tensor_utils::IsZeroVector(aux_input_ptr_batch,
                                     batch_size * aux_input_size)) {
       float unused_min, unused_max;
-      for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * aux_input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            aux_input_ptr_batch + offset, aux_input_size,
-            aux_quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-        scaling_factors[b] *= aux_input_weights_scale;
-      }
+      TFLITE_QUANTIZE_GET_MIN_MAX(aux_input_size,
+                                  aux_input_ptr_batch,
+                                  aux_quantized_input_ptr_batch,
+                                  aux_input_weights_scale)
 
       // Output += aux_input * aux_input_weights
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -202,14 +202,10 @@ void RnnBatchStep(
                                     batch_size * num_units)) {
       // Quantize hidden_state
       float unused_min, unused_max;
-      for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * num_units;
-        tensor_utils::SymmetricQuantizeFloats(
-            hidden_state_ptr_batch + offset, num_units,
-            quantized_hidden_state_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-        scaling_factors[b] *= recurrent_weights_scale;
-      }
+      TFLITE_QUANTIZE_GET_MIN_MAX(num_units,
+                                  hidden_state_ptr_batch,
+                                  quantized_hidden_state_ptr_batch,
+                                  recurrent_weights_scale)
 
       // Output += recurrent_weights * hidden_state
       tensor_utils::MatrixBatchVectorMultiplyAccumulate(
@@ -235,16 +231,10 @@ void RnnBatchStep(
       // Quantize input from float to uint8 + quantization params (scaling
       // factor).
       float unused_min, unused_max;
-      // TODO(mirkov,raziel): replace this for-loop with a MACRO (or function)
-      // whichever is faster.
-      for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr_batch + offset, input_size,
-            quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-        scaling_factors[b] *= input_weights_scale;
-      }
+      TFLITE_QUANTIZE_GET_MIN_MAX(input_size,
+                                  input_ptr_batch,
+                                  quantized_input_ptr_batch,
+                                  input_weights_scale)
 
       // Output += input * input_weights
       for (int k = 0; k < batch_size; k++) {
@@ -260,14 +250,10 @@ void RnnBatchStep(
         !tensor_utils::IsZeroVector(aux_input_ptr_batch,
                                     batch_size * aux_input_size)) {
       float unused_min, unused_max;
-      for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * aux_input_size;
-        tensor_utils::SymmetricQuantizeFloats(
-            aux_input_ptr_batch + offset, aux_input_size,
-            aux_quantized_input_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-        scaling_factors[b] *= aux_input_weights_scale;
-      }
+      TFLITE_QUANTIZE_GET_MIN_MAX(aux_input_size,
+                                  aux_input_ptr_batch,
+                                  aux_quantized_input_ptr_batch,
+                                  aux_input_weights_scale)
 
       // Output += aux_input * aux_input_weights
       for (int k = 0; k < batch_size; k++) {
@@ -285,14 +271,10 @@ void RnnBatchStep(
                                     batch_size * num_units)) {
       // Quantize hidden_state
       float unused_min, unused_max;
-      for (int b = 0; b < batch_size; ++b) {
-        const int offset = b * num_units;
-        tensor_utils::SymmetricQuantizeFloats(
-            hidden_state_ptr_batch + offset, num_units,
-            quantized_hidden_state_ptr_batch + offset, &unused_min, &unused_max,
-            &scaling_factors[b]);
-        scaling_factors[b] *= recurrent_weights_scale;
-      }
+      TFLITE_QUANTIZE_GET_MIN_MAX(num_units,
+                                  hidden_state_ptr_batch,
+                                  quantized_hidden_state_ptr_batch,
+                                  recurrent_weights_scale)
 
       // Output += recurrent_weights * hidden_state
       for (int k = 0; k < batch_size; k++) {
