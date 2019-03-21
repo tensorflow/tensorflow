@@ -904,8 +904,9 @@ void CheckNonExistentIOArrays(const Model& model) {
     return;
   }
   static constexpr char general_comment[] =
-      "Is it a typo? To silence this message, pass this flag:  "
-      "allow_nonexistent_arrays";
+      "Is it a typo? This should not happen. If you trigger this error "
+      "please send a bug report (with code to reporduce this error), to the "
+      "TensorFlow Lite team.";
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
       continue;  // It is OK to request that a constant be an output.
