@@ -15588,6 +15588,29 @@ func EncodeJpeg(scope *Scope, image tf.Output, optional ...EncodeJpegAttr) (cont
 	return op.Output(0)
 }
 
+// JPEG encode image an image with provided quality.
+//
+// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	quality: An int quality to encode to.
+//
+// Returns The hue-adjusted image or images.
+func EncodeJpegVariableQuality(scope *Scope, images tf.Output, quality tf.Output) (contents tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "EncodeJpegVariableQuality",
+		Input: []tf.Input{
+			images, quality,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MultinomialAttr is an optional argument to Multinomial.
 type MultinomialAttr func(optionalAttr)
 
