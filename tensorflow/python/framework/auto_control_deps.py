@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
@@ -167,6 +168,65 @@ class AutomaticControlDependencies(object):
     self._n_operations = len(self._graph.get_operations())
     return self
 
+  def _process_switch(self, switch_op, ops_which_must_run,
+                      last_op_using_resource_tensor, merge_for_resource):
+    """Processes a switch node for a resource input.
+
+    When tensorflow creates a cond, it creates a control flow context for each
+    branch of the cond. Each external tensor accessed by that branch is routed
+    through a switch op, which gets created in the graph _after_ the op which
+    uses that tensor get created.
+
+    If the resource comes from another switch op we process that one first.
+
+    _process_switch creates a corresponding merge node for the switch node. This
+    merge node is added to the outer control flow context of the switch
+    node. We also ensure that:
+
+      1. The switch node executes after the previous op which used the resource
+         tensor
+
+      2. Any op which uses a resource output of the switch node executes before
+         the merge for the switch node.
+
+      3. The next op which uses the input resource to the switch node (which
+         might be another switch node for the other branch of the conditional)
+         will execute after the merge node is done.
+
+      4. The merge node is marked as must_run so it will run even if no
+         subsequent operation uses the resource.
+
+    Args:
+      switch_op: the switch op to be processed
+      ops_which_must_run: the set of ops which must run
+      last_op_using_resource_tensor: map from resource tensor to last op using
+        it
+      merge_for_resource: map from resource tensor to merge which must follow
+        all usages of it.
+    """
+    inp = switch_op.inputs[0]
+    if inp.dtype == dtypes_module.resource and inp.op.type == "Switch":
+      self._process_switch(inp.op, ops_which_must_run,
+                           last_op_using_resource_tensor, merge_for_resource)
+    if switch_op.outputs[0] in merge_for_resource:
+      return
+    new_merge = control_flow_ops.merge(switch_op.outputs,
+                                       name="artificial_merge")
+    new_merge[0].op._control_flow_context = (  # pylint: disable=protected-access
+        switch_op._control_flow_context.outer_context)  # pylint: disable=protected-access
+    # Ensures the merge always runs
+    ops_which_must_run.add(new_merge[0].op)
+    if inp in last_op_using_resource_tensor:
+      # Ensures the switch executes after the previous op using the resource.
+      switch_op._add_control_input(last_op_using_resource_tensor[inp])  # pylint: disable=protected-access
+    # Ensure the next op outside the cond happens after the merge.
+    last_op_using_resource_tensor[inp] = new_merge[0].op
+    if inp in merge_for_resource:
+      merge_for_resource[inp]._add_control_input(new_merge[0].op)  # pylint: disable=protected-access
+    for o in switch_op.outputs:
+      # Ensures the merge will execute after all ops inside the cond
+      merge_for_resource[o] = new_merge[0].op
+
   def __exit__(self, unused_type, unused_value, unused_traceback):
     if context.executing_eagerly():
       return
@@ -187,6 +247,8 @@ class AutomaticControlDependencies(object):
     last_op_using_resource_tensor = {}
     # set of conditional and loop exits
     ops_which_must_run = set()
+    # merge which must depend on ops which use this resource
+    merge_for_resource = {}
 
     new_operations = self._graph.get_operations()[self._n_operations:]
 
@@ -228,7 +290,16 @@ class AutomaticControlDependencies(object):
           or op_is_stateful(self._graph._registered_ops[op.type])):  # pylint: disable=protected-access
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
-      if op.type in ("Switch", "Merge", "Enter", "Exit", "NextIteration"):
+      if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
+        continue
+      # Make merges trigger all other computation which must run
+      if op.type == "Merge":
+        for o in ops_which_must_run:
+          op._add_control_input(o)  # pylint: disable=protected-access
+          for inp in o.inputs:
+            if inp in last_op_using_resource_tensor:
+              last_op_using_resource_tensor[inp] = op
+        ops_which_must_run = set([op])
         continue
       found_resource = False
       # Check for any resource inputs. If we find any, we update control_inputs
@@ -239,11 +310,19 @@ class AutomaticControlDependencies(object):
         if inp.dtype != dtypes_module.resource:
           continue
         found_resource = True
+        # Deal with switches, finally.
+        if inp.op.type == "Switch":
+          self._process_switch(inp.op, ops_which_must_run,
+                               last_op_using_resource_tensor,
+                               merge_for_resource)
         # Ensure uses of resources are serialized
         if inp in last_op_using_resource_tensor:
           if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
               is op._control_flow_context):  # pylint: disable=protected-access
             control_inputs.add(last_op_using_resource_tensor[inp])
+        # Ensure merges happen after the closing of a cond block
+        if inp in merge_for_resource:
+          merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
         last_op_using_resource_tensor[inp] = op
       if (op_is_stateful(op.op_def) and not found_resource
           and op._control_flow_context is None):  # pylint: disable=protected-access
