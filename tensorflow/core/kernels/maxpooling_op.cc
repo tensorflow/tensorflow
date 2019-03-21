@@ -41,9 +41,9 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
-#endif
+#ifdef GOOGLE_CUDA
+  #include "cuda/include/cudnn.h"
+#endif 
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_common_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -319,7 +319,7 @@ class MaxPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 static void MaxPoolingBackwardCustomKernel(
@@ -649,7 +649,7 @@ class MaxPoolingGradGradOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#ifdef GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <class T>
 class MaxPoolingGradGradOp<Eigen::GpuDevice, T> : public OpKernel {
@@ -1308,7 +1308,7 @@ struct LaunchMaxPoolingNoMask<Eigen::GpuDevice, T> {
         params.out_width, params.window_rows, params.window_cols,
         params.row_stride, params.col_stride, params.pad_rows, params.pad_cols,
         output->flat<T>().data(), nullptr, context->eigen_gpu_device(),
-        propagate_nans);
+        propagate_nans, false);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolForwardNoMask"));
@@ -1328,7 +1328,7 @@ struct LaunchMaxPoolingWithArgmax<Eigen::GpuDevice, T> {
         params.row_stride, params.col_stride, params.pad_rows, params.pad_cols,
         output->flat<T>().data(),
         reinterpret_cast<int64*>(argmax->flat<int64>().data()),
-        context->eigen_gpu_device(), propagate_nans);
+        context->eigen_gpu_device(), propagate_nans, include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolForwardWithArgmax"));
@@ -1351,7 +1351,8 @@ struct LaunchMaxPoolingGradWithArgmax<Eigen::GpuDevice, T> {
     bool status = functor::MaxPoolBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
-        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
+        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device(),
+        include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolBackwardWithArgmax"));
@@ -1375,7 +1376,8 @@ struct LaunchMaxPoolingGradGradWithArgmax<Eigen::GpuDevice, T> {
     bool status = functor::MaxPoolGradBackwardWithArgmax<T>()(
         output_size, input_size, grad_in.flat<T>().data(),
         reinterpret_cast<const int64*>(argmax.flat<int64>().data()), top_offset,
-        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device());
+        bottom_offset, grad_out->flat<T>().data(), context->eigen_gpu_device(),
+        include_batch_in_index);
     if (!status) {
       context->SetStatus(
           errors::Internal("Failed launching MaxPoolGradBackwardWithArgmax"));
