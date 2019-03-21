@@ -1173,6 +1173,22 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Const_Input) {
             "E(Zeta)|A->D;B->D:1;C->D:2;D->E");
 }
 
+TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Non_SCALED_Mode) {
+  InitGraph(
+      "node { name: 'A' op: 'QuantizedInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Dequantize'"
+      " attr { key: 'T'             value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'          value { s: 'MIN_FIRST' } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(QuantizedInput);B(Input);C(Input);D(Dequantize);"
+            "E(Zeta)|A->D;B->D:1;C->D:2;D->E");
+}
+
 // Rewrite test for _FusedConv2D Op with BiasAdd fusion
 TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Positive1) {
   InitGraph(
