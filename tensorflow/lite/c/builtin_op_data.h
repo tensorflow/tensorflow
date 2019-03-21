@@ -377,6 +377,10 @@ typedef struct {
   EmptyStructPlaceholder placeholder;
 } TfLiteMatrixDiagParams;
 
+typedef struct {
+  EmptyStructPlaceholder placeholder;
+} TfLiteMatrixSetDiagParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
