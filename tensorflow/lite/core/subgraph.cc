@@ -749,6 +749,7 @@ TfLiteStatus Subgraph::ResizeTensor(TfLiteContext* context,
   if (tensor->data.raw != nullptr &&
       EqualArrayAndTfLiteIntArray(tensor->dims, new_size->size,
                                   new_size->data)) {
+    TfLiteIntArrayFree(new_size);
     return kTfLiteOk;
   }
 
