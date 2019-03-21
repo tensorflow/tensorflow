@@ -87,18 +87,29 @@ git merge upstream/master --no-edit
   unit tests introduced from new commits upstream. Examine the reason behind
   those failed cases.
 - In case those cases can't be easily fixed, modify the bazel target for that
-  test to add the tag "no_rocm" to it.
+  test to add the `no_rocm` and/or `no_cuda` tags to it.
 
-  For example:
-  for the test `//tensorflow/python/kernel_tests:conv_ops_test`
-  the definition for the test-target `conv_ops_test` will be in the file `tensorflow/python/kernel_tests/BUILD`.
-  Adding a "tags = ["no_rocm",]" to that target, will result in removing this test from CI.
-  grep for "tags" in the tensorflow/.../BUILD files for a concrete example
+  For example:\
+  for the test `//tensorflow/python/kernel_tests:conv_ops_test`\
+  the definition for the test-target `conv_ops_test` will be in the file
+  `tensorflow/python/kernel_tests/BUILD`.
+  - Adding `tags = ["no_rocm",]` to that target, will result in removing this
+    test from rocm* CI runs.
+  - Adding `tags = ["no_cuda",]` to that target, will result in removing this
+    test from cuda* CI runs.
+  - Adding `tags = ["no_rocm","no_cuda",]` to that target, will result in
+    removing this test from both the rocm* and cuda* CI runs.
+  
+  grep for "tags" in the tensorflow/.../BUILD files for a concrete example of
+  how to add tags to a target
 
+  Note that
+  - `no_cuda` tag is for "our" consumption only, it should not be upstreamed.
+  - `no_gpu` tag is used to indicate which tests are excluded from GPU CI in the
+    upstream repo. We should not add this tag to any tests.
 
-- Document the list of excluded tests amending the commit. Also update:
-
-  http://confluence.amd.com/display/MLSE/Tensorflow+Unit+Tests+Status
+- Document the list of excluded tests amending the commit.
+  Also update [this  Excel spreadsheet](https://amdcloud-my.sharepoint.com/:x:/r/personal/deven_amd_com/Documents/TF%20CI%20Unit%20Test%20Status.xlsx?d=w42bd3e2e76534209bd0438aa92857fa6&csf=1&e=5zpGPh)
 
 - Push to the working branch once again to let the pull request be tested
   again. Repeat the process until we see a green check mark on the PR.
