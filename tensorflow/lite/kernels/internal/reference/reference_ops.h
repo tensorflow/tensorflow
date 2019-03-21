@@ -2229,22 +2229,22 @@ void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
   gemmlowp::ScopedProfilingLabel label("Split");
-  const int concat_dimensions = input_shape.DimensionsCount();
-  int axis = params.axis < 0 ? params.axis + concat_dimensions : params.axis;
+  const int split_dimensions = input_shape.DimensionsCount();
+  int axis = params.axis < 0 ? params.axis + split_dimensions : params.axis;
   int outputs_count = params.num_split;
-  TFLITE_DCHECK_LT(axis, concat_dimensions);
+  TFLITE_DCHECK_LT(axis, split_dimensions);
 
-  int64_t concat_size = 0;
+  int64_t split_size = 0;
   for (int i = 0; i < outputs_count; i++) {
-    TFLITE_DCHECK_EQ(output_shapes[i]->DimensionsCount(), concat_dimensions);
-    for (int j = 0; j < concat_dimensions; j++) {
+    TFLITE_DCHECK_EQ(output_shapes[i]->DimensionsCount(), split_dimensions);
+    for (int j = 0; j < split_dimensions; j++) {
       if (j != axis) {
         MatchingDim(*output_shapes[i], j, input_shape, j);
       }
     }
-    concat_size += output_shapes[i]->Dims(axis);
+    split_size += output_shapes[i]->Dims(axis);
   }
-  TFLITE_DCHECK_EQ(concat_size, input_shape.Dims(axis));
+  TFLITE_DCHECK_EQ(split_size, input_shape.Dims(axis));
   int64_t outer_size = 1;
   for (int i = 0; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
@@ -2252,7 +2252,7 @@ void Split(const SplitParams& params, const RuntimeShape& input_shape,
   // For all output arrays,
   // FlatSize() = outer_size * Dims(axis) * base_inner_size;
   int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < concat_dimensions; ++i) {
+  for (int i = axis + 1; i < split_dimensions; ++i) {
     base_inner_size *= input_shape.Dims(i);
   }
 

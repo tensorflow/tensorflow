@@ -28,7 +28,8 @@ from __future__ import print_function
 import os
 from absl.testing import parameterized
 
-from tensorflow.contrib.distribute.python import combinations
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -40,16 +41,17 @@ from tensorflow.python.training import warm_starting_util as ws_util
 class WarmStartingUtilWithDistributionStrategyTest(
     test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.default_strategy,
-                    combinations.one_device_strategy,
-                    combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus,
-                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-                    combinations.core_mirrored_strategy_with_two_gpus],
-      save_with_distribution=[True, False],
-      restore_with_distribution=[True, False],
-      mode=["graph"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.default_strategy,
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus,
+          ],
+          save_with_distribution=[True, False],
+          restore_with_distribution=[True, False],
+          mode=["graph"]))
   def testWarmStart(self, distribution, save_with_distribution,
                     restore_with_distribution):
 

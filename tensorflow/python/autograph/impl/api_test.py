@@ -31,6 +31,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
@@ -468,6 +469,27 @@ class ApiTest(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(True, self.evaluate(x))
+
+  def test_converted_call_defun_object_method(self):
+
+    opts = converter.ConversionOptions()
+
+    # pylint:disable=method-hidden
+    class TestClass(object):
+
+      def method(self):
+        return 1
+
+      def prepare(self):
+        self.method = function.defun(self.method)
+    # pylint:enable=method-hidden
+
+    tc = TestClass()
+    tc.prepare()
+
+    x = api.converted_call(tc.method, None, opts, (), {})
+
+    self.assertAllEqual(1, self.evaluate(x))
 
   @test_util.run_deprecated_v1
   def test_to_graph_basic(self):

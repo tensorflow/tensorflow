@@ -6523,6 +6523,43 @@ tf_cc_test(
     ],
 )
 
+tf_mkl_kernel_library(
+    name = "mkl_quantize_op",
+    srcs = ["mkl_quantize_op.cc"],
+    hdrs = [
+        "meta_support.h",
+        "reference_gemm.h",
+    ],
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "@gemmlowp",
+    ] + mkl_deps(),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_quantize_op_test",
+    size = "small",
+    srcs = ["mkl_quantize_op_test.cc"],
+    deps = [
+        ":mkl_quantize_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test_mkl(
     name = "mkl_quantized_pooling_ops_test",
     size = "small",

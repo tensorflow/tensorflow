@@ -20,13 +20,13 @@ from __future__ import print_function
 import os
 from absl.testing import parameterized
 import numpy as np
-
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.eager import test
 from tensorflow.python.estimator import keras as keras_lib
 from tensorflow.python.estimator import run_config as run_config_lib
@@ -261,17 +261,17 @@ def multi_input_output_model():
 # TODO(josh11b): Add combinations.one_device_strategy_gpu once it works with
 # TestDistributionStrategyWithCallbacks.test_callbacks_in_predict.
 strategies_minus_tpu = [
-    combinations.default_strategy,
-    combinations.one_device_strategy,
-    combinations.one_device_strategy_gpu,
-    combinations.mirrored_strategy_with_gpu_and_cpu,
-    combinations.mirrored_strategy_with_two_gpus,
-    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-    combinations.core_mirrored_strategy_with_two_gpus]
+    strategy_combinations.default_strategy,
+    strategy_combinations.one_device_strategy,
+    strategy_combinations.one_device_strategy_gpu,
+    strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+    strategy_combinations.mirrored_strategy_with_two_gpus
+]
 
 tpu_strategies = [
-    combinations.tpu_strategy,  # steps_per_run=2
-    combinations.tpu_strategy_one_step]
+    strategy_combinations.tpu_strategy,  # steps_per_run=2
+    strategy_combinations.tpu_strategy_one_step
+]
 
 
 def strategy_minus_tpu_combinations():
@@ -291,12 +291,11 @@ def all_strategy_combinations():
 def all_strategy_minus_default_and_tpu_combinations():
   return combinations.combine(
       distribution=[
-          combinations.one_device_strategy,
-          combinations.one_device_strategy_gpu,
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_two_gpus],
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.one_device_strategy_gpu,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
+      ],
       mode=['graph', 'eager'])
 
 
@@ -309,14 +308,14 @@ def strategy_and_optimizer_combinations():
   return combinations.times(
       all_strategy_combinations(),
       combinations.combine(optimizer=[
-          combinations.adagrad_optimizer_v1_fn,
-          combinations.adagrad_optimizer_keras_v2_fn,
-          combinations.adam_optimizer_v1_fn,
-          combinations.adam_optimizer_keras_v2_fn,
-          combinations.gradient_descent_optimizer_v1_fn,
-          combinations.gradient_descent_optimizer_keras_v2_fn,
-          combinations.rmsprop_optimizer_v1_fn,
-          combinations.rmsprop_optimizer_keras_v2_fn
+          strategy_combinations.adagrad_optimizer_v1_fn,
+          strategy_combinations.adagrad_optimizer_keras_v2_fn,
+          strategy_combinations.adam_optimizer_v1_fn,
+          strategy_combinations.adam_optimizer_keras_v2_fn,
+          strategy_combinations.gradient_descent_optimizer_v1_fn,
+          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
+          strategy_combinations.rmsprop_optimizer_v1_fn,
+          strategy_combinations.rmsprop_optimizer_keras_v2_fn
       ]))
 
 
@@ -337,13 +336,13 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     if os.path.isdir(self._base_dir):
       gfile.DeleteRecursively(self._base_dir)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_two_gpus],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus
+          ],
+          mode=['graph']))
   def test_train_functional_with_distribution_strategy(self, distribution):
     keras_model = simple_functional_model()
     keras_model.compile(
@@ -367,13 +366,13 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     writer_cache.FileWriterCache.clear()
     gfile.DeleteRecursively(self._config.model_dir)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_two_gpus],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus
+          ],
+          mode=['graph']))
   def test_train_sequential_with_distribution_strategy(self, distribution):
     keras_model = simple_sequential_model()
     keras_model.compile(
@@ -396,11 +395,12 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
     writer_cache.FileWriterCache.clear()
     gfile.DeleteRecursively(self._config.model_dir)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph']))
   def test_multi_inputs_multi_outputs_with_input_fn_as_dict(self, distribution):
     train_data, test_data = get_multi_inputs_multi_outputs_data()
 
@@ -448,11 +448,12 @@ class TestEstimatorDistributionStrategy(test_util.TensorFlowTestCase,
       eval_results = est_keras.evaluate(input_fn=eval_input_fn, steps=1)
       self.assertLess(eval_results['loss'], baseline_eval_results['loss'])
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph']))
   def test_keras_optimizer_with_distribution_strategy(self, distribution):
     keras_model = simple_sequential_model()
     keras_model.compile(
@@ -671,8 +672,8 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       # with batch_size
       model.predict(inputs, batch_size=8)
 
-  @combinations.generate(combinations.combine(
-      distribution=strategies_minus_tpu, mode=['graph']))
+  @combinations.generate(
+      combinations.combine(distribution=strategies_minus_tpu, mode=['graph']))
   def test_numpy_with_sample_weights(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -847,11 +848,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
   # as clone_model's input_tensors argument only seems to accept list and not
   # tuples or dict.
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
   def test_fit_with_tuple_and_dict_dataset_inputs(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -1024,11 +1026,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       model.evaluate(dataset, steps=2, verbose=1)
       model.predict(dataset, steps=2)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
   # TODO(b/120943676, b/120957836): Re-enable once the validation code is
   # restored.
   def DISABLED_test_dataset_wrong_input_shape(self, distribution):
@@ -1050,9 +1053,12 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
                                    'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.mirrored_strategy_with_gpu_and_cpu],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
   # TODO(b/120943676, b/120957836): Re-enable once the validation code is
   # restored.
   def DISABLED_test_dataset_no_batch_input_validation(self, distribution):
@@ -1072,9 +1078,10 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       with self.assertRaisesRegexp(ValueError, 'expected input to have shape'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.tpu_strategy_one_step],
-      mode=['graph']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[strategy_combinations.tpu_strategy_one_step],
+          mode=['graph']))
   def test_dataset_input_shape_fully_defined(self, distribution):
     with self.cached_session():
       with distribution.scope():
@@ -1091,13 +1098,13 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       with self.assertRaisesRegexp(ValueError, 'requires fully defined shapes'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_gpu_and_cpu,
-          combinations.mirrored_strategy_with_two_gpus,
-          combinations.core_mirrored_strategy_with_gpu_and_cpu,
-          combinations.core_mirrored_strategy_with_two_gpus],
-      mode=['graph', 'eager']))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.mirrored_strategy_with_two_gpus
+          ],
+          mode=['graph', 'eager']))
   def test_learning_phase_value(self, distribution):
     # TODO(anjalisridhar): Modify this test to use Lambdas since we can compare
     # meaningful values. Currently we don't pass the learning phase if the
@@ -1116,8 +1123,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
         model.compile(optimizer, loss, metrics=metrics)
 
       batch_size = 8
-      if isinstance(distribution, mirrored_strategy.CoreMirroredStrategy):
-        # CoreMirroredStrategy uses global batch size.
+      if isinstance(distribution, mirrored_strategy.MirroredStrategy):
+        # MirroredStrategy uses global batch size.
         batch_size = 8 * distribution.num_replicas_in_sync
 
       inputs = np.ones((10, 1), dtype=np.float32)
@@ -1239,7 +1246,8 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
   def loss_fn(_, y_pred):
     return math_ops.reduce_mean(y_pred)
 
-  @combinations.generate(all_strategy_combinations_minus_default())
+  @combinations.generate(
+      strategy_combinations.all_strategy_combinations_minus_default())
   def test_regularizer_loss(self, distribution):
     batch_size = 2
     if not distributed_training_utils.global_batch_size_supported(distribution):
@@ -1301,7 +1309,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(inputs, steps=1)
     model.evaluate(inputs, targets, steps=1)
 
-  @combinations.generate(all_strategy_combinations_minus_default())
+  @combinations.generate(
+      strategy_combinations.all_strategy_combinations_minus_default())
   def test_distribution_strategy_one_dimensional(self, distribution):
     with distribution.scope():
       inp = keras.layers.Input(shape=(10,))

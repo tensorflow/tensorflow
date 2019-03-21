@@ -10538,7 +10538,24 @@ func PreventGradient(scope *Scope, input tf.Output, optional ...PreventGradientA
 	return op.Output(0)
 }
 
-// Computes asin of x element-wise.
+// Computes the trignometric inverse sine of x element-wise.
+//
+// The `tf.math.asin` operation returns the inverse of `tf.math.sin`, such that
+// if `y = tf.math.sin(x)` then, `x = tf.math.asin(y)`.
+//
+// **Note**: The output of `tf.math.asin` will lie within the invertible range
+// of sine, i.e [-pi/2, pi/2].
+//
+// For example:
+//
+// ```python
+// # Note: [1.047, 0.785] ~= [(pi/3), (pi/4)]
+// x = tf.constant([1.047, 0.785])
+// y = tf.math.sin(x) # [0.8659266, 0.7068252]
+//
+// tf.math.asin(y) # [1.047, 0.785] = x
+// ```
+//
 func Asin(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -26689,7 +26706,24 @@ func ResourceApplyAdaMax(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output,
 	return scope.AddOperation(opspec)
 }
 
-// Computes atan of x element-wise.
+// Computes the trignometric inverse tangent of x element-wise.
+//
+// The `tf.math.atan` operation returns the inverse of `tf.math.tan`, such that
+// if `y = tf.math.tan(x)` then, `x = tf.math.atan(y)`.
+//
+// **Note**: The output of `tf.math.atan` will lie within the invertible range
+// of tan, i.e (-pi/2, pi/2).
+//
+// For example:
+//
+// ```python
+// # Note: [1.047, 0.785] ~= [(pi/3), (pi/4)]
+// x = tf.constant([1.047, 0.785])
+// y = tf.math.tan(x) # [1.731261, 0.99920404]
+//
+// tf.math.atan(y) # [1.047, 0.785] = x
+// ```
+//
 func Atan(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return

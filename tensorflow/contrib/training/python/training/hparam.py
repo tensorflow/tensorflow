@@ -545,7 +545,7 @@ class HParams(object):
       ValueError: If `values` cannot be parsed or a hyperparameter in `values`
       doesn't exist.
     """
-    type_map = dict()
+    type_map = {}
     for name, t in self._hparam_types.items():
       param_type, _ = t
       type_map[name] = param_type

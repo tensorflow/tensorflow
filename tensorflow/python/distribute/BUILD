@@ -496,3 +496,45 @@ py_library(
         "@six_archive//:six",
     ],
 )
+
+py_library(
+    name = "combinations",
+    srcs = ["combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "strategy_combinations",
+    srcs = ["strategy_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":combinations",
+        ":distribute_lib",
+        ":mirrored_strategy",
+        ":one_device_strategy",
+        ":parameter_server_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
+    ],
+)

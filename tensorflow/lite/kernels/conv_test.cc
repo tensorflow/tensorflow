@@ -64,7 +64,7 @@ class BaseConvolutionOpModel : public SingleOpModel {
             filter.per_channel_quantization_scales.size());
         std::vector<int64_t> bias_zero_points(
             filter.per_channel_quantization_scales.size());
-        for (int i = 0; i < filter.per_channel_quantization_scales.size();
+        for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
              ++i) {
           bias_scale[i] =
               input.scale * filter.per_channel_quantization_scales[i];
@@ -652,6 +652,24 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
                                  144, 131, 130,  //
                                  164, 131, 130,  //
                              }));
+}
+
+// Smoke test to ensure slightly irregular shapes safely partition into
+// multi-threaded tasks. See also b/128996474.
+TEST_P(ConvolutionOpTest, SimpleTestLargeIrregularQuantized) {
+  ConvolutionOpModel m(GetRegistration(),
+                       {TensorType_UINT8, {1, 1, 1, 1024}, -127, 128},
+                       {TensorType_UINT8, {1001, 1, 1, 1024}, -127, 128},
+                       {TensorType_UINT8, {1, 1, 1, 1001}, -127, 128});
+
+  m.SetNumThreads(1);
+  m.Invoke();
+
+  m.SetNumThreads(2);
+  m.Invoke();
+
+  m.SetNumThreads(3);
+  m.Invoke();
 }
 
 TEST_P(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
