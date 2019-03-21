@@ -210,9 +210,9 @@ bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry);
 bool IsFreeOfSideEffect(const NodeDef& node);  // use OpRegistry::Global()
 
-// Returns true if the takes a tensor reference as input, or if looking up its
-// OpDef failed.
-bool MaybeHasRefInput(const NodeDef& node);
+// Returns true if the takes a tensor reference as input.
+// Returns false if the op type is unknown.
+bool HasRefInput(const NodeDef& node);
 
 bool ModifiesFrameInfo(const NodeDef& node);
 
