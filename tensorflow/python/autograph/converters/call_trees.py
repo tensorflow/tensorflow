@@ -96,6 +96,7 @@ class CallTreeTransformer(converter.Base):
         assert starred_arg is None, 'Multiple *args should be impossible.'
         starred_arg = a
       else:
+        a = self.generic_visit(a)
         normal_args.append(a)
     if starred_arg is None:
       args = templates.replace_as_expression('(args,)', args=normal_args)
@@ -112,6 +113,7 @@ class CallTreeTransformer(converter.Base):
         assert kwargs_arg is None, 'Multiple **kwargs should be impossible.'
         kwargs_arg = k
       else:
+        k = self.generic_visit(k)
         normal_keywords.append(k)
     if kwargs_arg is None:
       kwargs = ast_util.keywords_to_dict(normal_keywords)
