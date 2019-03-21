@@ -31,11 +31,10 @@ from __future__ import print_function
 
 
 import tensorflow as tf
-
-
 import argparse
 import os
 import sys
+from tensorflow.lite.testing import generate_examples_lib
 
 # TODO(aselle): Disable GPU for now
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
@@ -77,7 +76,6 @@ bin_path = None
 
 
 def main(unused_args):
-  from tensorflow.lite.testing import generate_examples_lib
   params = generate_examples_lib.Params()
 
   params.output_path = FLAGS.output_path
