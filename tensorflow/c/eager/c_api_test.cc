@@ -1827,6 +1827,7 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengths) {
   TFE_DeleteTensorHandle(input2);
   TFE_DeleteTensorHandle(retvals[0]);
   TFE_DeleteTensorHandle(retvals[1]);
+  TFE_DeleteContext(ctx);
 }
 
 TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
@@ -1853,6 +1854,7 @@ TEST(CAPI, TestTFE_OpGetInputAndOutputLengthsFailForUnknownArguments) {
   TFE_DeleteOp(identityOp);
   TFE_DeleteTensorHandle(input1);
   TFE_DeleteTensorHandle(input2);
+  TFE_DeleteContext(ctx);
 }
 
 }  // namespace
