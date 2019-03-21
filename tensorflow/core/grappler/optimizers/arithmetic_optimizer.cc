@@ -1756,7 +1756,9 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   ~SqrtDivToRsqrtMulStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyDiv(*node);
+    // Note: div_no_nan(a, sqrt(b)) => mul_no_nan(a, rsqrt(b))
+    // for b == 0 would result in a / Inf instead of 0.
+    return IsAnyDiv(*node) && !IsDivNoNan(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1766,10 +1768,7 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     // elsewhere.
     if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
         (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
-      if (IsDivNoNan(*node)) {
-        // div_no_nan(a, sqrt(b)) => mul_no_nan(a, rsqrt(b))
-        node->set_op("MulNoNan");
-      } else if (IsXdivy(*node)) {
+      if (IsXdivy(*node)) {
         // xdivy(a, sqrt(b)) => mul_no_nan(rsqrt(b), a)
         node->set_op("MulNoNan");
         node->mutable_input()->SwapElements(0, 1);
