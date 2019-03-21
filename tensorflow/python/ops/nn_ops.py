@@ -4206,7 +4206,9 @@ def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-buil
 
 
 def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
-  r"""Finds values of the `n`-th order statistic for the last dimension.
+  r"""Finds values of the `n`-th smallest value for the last dimension.
+
+  Note that n is zero-indexed.
 
   If the input is a vector (rank-1), finds the entries which is the nth-smallest
   value in the vector and outputs their values as scalar tensor.
