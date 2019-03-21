@@ -1407,11 +1407,15 @@ class PoolingTest(test.TestCase):
           v2=v2)
 
     # Propagate the diff in cases of NaNs
-    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
-    expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
+    #
+    # The functionality associated with TF_ENABLE_NANPROP=1 is currently
+    # not supported on the ROCm platform
+    if not test.is_built_with_rocm() :
+      os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
+      expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
 
-    for v2 in [True, False]:
-      self._testMaxPoolGradDirect(
+      for v2 in [True, False]:
+        self._testMaxPoolGradDirect(
           input_data,
           output_backprop,
           expected_input_backprop_cudnn,
@@ -1487,11 +1491,15 @@ class PoolingTest(test.TestCase):
           v2=v2)
 
     # Propagate the diff in cases of NaNs
-    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
-    expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
+    #
+    # The functionality associated with TF_ENABLE_NANPROP=1 is currently
+    # not supported on the ROCm platform
+    if not test.is_built_with_rocm() :
+      os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
+      expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
 
-    for v2 in [True, False]:
-      self._testMaxPoolGradDirect(
+      for v2 in [True, False]:
+        self._testMaxPoolGradDirect(
           input_data,
           output_backprop,
           expected_input_backprop_cudnn,
