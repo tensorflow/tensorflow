@@ -662,8 +662,7 @@ class TPUEmbedding(object):
       Arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
     """
 
-    sample_idcs, embedding_idcs, aggregation_weights, table_ids = (
-        list(), list(), list(), list())
+    sample_idcs, embedding_idcs, aggregation_weights, table_ids = [], [], [], []
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:

@@ -264,10 +264,10 @@ class CollectiveKeys(object):
         recorded with an id.
     """
     self._group_key = group_key_start
-    self._group_key_table = dict()
+    self._group_key_table = {}
 
     # For instance keys with ids
-    self._instance_key_id_to_key_table = dict()
+    self._instance_key_id_to_key_table = {}
     self._instance_key_with_id_counter = instance_key_with_id_start
 
     # For instance keys without ids

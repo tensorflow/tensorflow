@@ -1201,7 +1201,7 @@ class RandomShuffleQueueTest(test.TestCase):
   def testSelectQueue(self):
     with self.cached_session():
       num_queues = 10
-      qlist = list()
+      qlist = []
       for _ in xrange(num_queues):
         qlist.append(
             data_flow_ops.RandomShuffleQueue(10, 0, dtypes_lib.float32))
