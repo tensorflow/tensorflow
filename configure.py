@@ -1501,8 +1501,8 @@ def set_other_mpi_vars(environ_cp):
         (mpi_home, mpi_home, mpi_home))
 
 
-def system_specific_test_config(env):
-  """Add default test flags required for TF tests to bazelrc."""
+def system_specific_config(env):
+  """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
   write_to_bazelrc(
@@ -1520,6 +1520,10 @@ def system_specific_test_config(env):
   elif is_macos():
     write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
     write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+    # TODO(pcloudy): Remove BAZEL_USE_CPP_ONLY_TOOLCHAIN after Bazel is upgraded
+    # to 0.24.0.
+    # For working around https://github.com/bazelbuild/bazel/issues/7607
+    write_to_bazelrc('build --action_env=BAZEL_USE_CPP_ONLY_TOOLCHAIN=1')
   elif is_linux():
     if env.get('TF_NEED_CUDA', None) == '1':
       write_to_bazelrc('test --test_tag_filters=-no_gpu')
@@ -1747,7 +1751,7 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  system_specific_test_config(os.environ)
+  system_specific_config(os.environ)
 
   if get_var(
       environ_cp, 'TF_CONFIGURE_APPLE_BAZEL_RULES',
