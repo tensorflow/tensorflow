@@ -28,8 +28,12 @@
 namespace mlir {
 namespace edsc {
 
+// A TemplatedIndexedValue brings an index notation over the template Load and
+// Store parameters.
 template <typename Load, typename Store> class TemplatedIndexedValue;
 
+// By default, edsc::IndexedValue provides an index notation around the affine
+// load and stores.
 using IndexedValue = TemplatedIndexedValue<intrinsics::load, intrinsics::store>;
 
 /// An IndexHandle is a simple wrapper around a ValueHandle.
@@ -155,18 +159,23 @@ private:
   ValueHandle base;
 };
 
-/// This helper class is an abstraction over memref, that purely for sugaring
+/// A TemplatedIndexedValue brings an index notation over the template Load and
+/// Store parameters. This helper class is an abstraction purely for sugaring
 /// purposes and allows writing compact expressions such as:
 ///
 /// ```mlir
+///    // `IndexedValue` provided by default in the mlir::edsc namespace.
+///    using IndexedValue =
+///      TemplatedIndexedValue<intrinsics::load, intrinsics::store>;
 ///    IndexedValue A(...), B(...), C(...);
 ///    For(ivs, zeros, shapeA, ones, {
 ///      C(ivs) = A(ivs) + B(ivs)
 ///    });
 /// ```
 ///
-/// Assigning to an IndexedValue emits an actual store operation, while using
-/// converting an IndexedValue to a ValueHandle emits an actual load operation.
+/// Assigning to an IndexedValue emits an actual `Store` operation, while
+/// converting an IndexedValue to a ValueHandle emits an actual `Load`
+/// operation.
 template <typename Load, typename Store> struct TemplatedIndexedValue {
   explicit TemplatedIndexedValue(Type t) : base(t) {}
   explicit TemplatedIndexedValue(Value *v)
