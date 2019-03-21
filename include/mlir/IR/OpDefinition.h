@@ -62,9 +62,9 @@ public:
   explicit OpPointer() : value(Instruction::getNull<OpType>().value) {}
   explicit OpPointer(OpType value) : value(value) {}
 
-  OpType &operator*() { return value; }
+  OpType &operator*() const { return const_cast<OpType &>(value); }
 
-  OpType *operator->() { return &value; }
+  OpType *operator->() const { return const_cast<OpType *>(&value); }
 
   operator bool() const { return value.getInstruction(); }
 
@@ -75,10 +75,10 @@ public:
 
   /// OpPointer can be implicitly converted to OpType*.
   /// Return `nullptr` if there is no associated Instruction*.
-  operator OpType *() {
+  operator OpType *() const {
     if (!value.getInstruction())
       return nullptr;
-    return &value;
+    return const_cast<OpType *>(&value);
   }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
@@ -86,60 +86,12 @@ public:
   /// only result.
   template <typename SFINAE = OpType>
   operator typename std::enable_if<IsSingleResult<SFINAE>::value,
-                                   Value *>::type() {
-    return value.getResult();
+                                   Value *>::type() const {
+    return const_cast<Value *>(value.getResult());
   }
 
 private:
   OpType value;
-
-  // Allow access to value to enable constructing an empty ConstOpPointer.
-  friend class ConstOpPointer<OpType>;
-};
-
-/// This pointer represents a notional "const Instruction*" but where the
-/// actual storage of the pointer is maintained in the templated "OpType" class.
-template <typename OpType>
-class ConstOpPointer {
-public:
-  explicit ConstOpPointer() : value(Instruction::getNull<OpType>().value) {}
-  explicit ConstOpPointer(OpType value) : value(value) {}
-  ConstOpPointer(OpPointer<OpType> pointer) : value(pointer.value) {}
-
-  const OpType &operator*() const { return value; }
-
-  const OpType *operator->() const { return &value; }
-
-  /// Return true if non-null.
-  operator bool() const { return value.getInstruction(); }
-
-  bool operator==(ConstOpPointer rhs) const {
-    return value.getInstruction() == rhs.value.getInstruction();
-  }
-  bool operator!=(ConstOpPointer rhs) const { return !(*this == rhs); }
-
-  /// ConstOpPointer can always be implicitly converted to const OpType*.
-  /// Return `nullptr` if there is no associated Instruction*.
-  operator const OpType *() const {
-    if (!value.getInstruction())
-      return nullptr;
-    return &value;
-  }
-
-  /// If the OpType operation includes the OneResult trait, then OpPointer can
-  /// be implicitly converted to an const Value*.  This yields the value of
-  /// the only result.
-  template <typename SFINAE = OpType>
-  operator typename std::enable_if<
-      std::is_convertible<
-          SFINAE *,
-          OpTrait::OneResult<typename SFINAE::ConcreteOpType> *>::value,
-      const Value *>::type() const {
-    return value.getResult();
-  }
-
-private:
-  const OpType value;
 };
 
 /// This is the concrete base class that holds the operation pointer and has

@@ -69,11 +69,11 @@ struct LoopUnroll : public FunctionPass<LoopUnroll> {
   const Optional<bool> unrollFull;
   // Callback to obtain unroll factors; if this has a callable target, takes
   // precedence over command-line argument or passed argument.
-  const std::function<unsigned(ConstOpPointer<AffineForOp>)> getUnrollFactor;
+  const std::function<unsigned(OpPointer<AffineForOp>)> getUnrollFactor;
 
   explicit LoopUnroll(Optional<unsigned> unrollFactor = None,
                       Optional<bool> unrollFull = None,
-                      const std::function<unsigned(ConstOpPointer<AffineForOp>)>
+                      const std::function<unsigned(OpPointer<AffineForOp>)>
                           &getUnrollFactor = nullptr)
       : unrollFactor(unrollFactor), unrollFull(unrollFull),
         getUnrollFactor(getUnrollFactor) {}
@@ -185,8 +185,7 @@ LogicalResult LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
 
 FunctionPassBase *mlir::createLoopUnrollPass(
     int unrollFactor, int unrollFull,
-    const std::function<unsigned(ConstOpPointer<AffineForOp>)>
-        &getUnrollFactor) {
+    const std::function<unsigned(OpPointer<AffineForOp>)> &getUnrollFactor) {
   return new LoopUnroll(
       unrollFactor == -1 ? None : Optional<unsigned>(unrollFactor),
       unrollFull == -1 ? None : Optional<bool>(unrollFull), getUnrollFactor);

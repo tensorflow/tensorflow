@@ -884,14 +884,14 @@ Block *AffineForOp::createBody() {
 
 const AffineBound AffineForOp::getLowerBound() const {
   auto lbMap = getLowerBoundMap();
-  return AffineBound(ConstOpPointer<AffineForOp>(*this), 0,
-                     lbMap.getNumInputs(), lbMap);
+  return AffineBound(OpPointer<AffineForOp>(*this), 0, lbMap.getNumInputs(),
+                     lbMap);
 }
 
 const AffineBound AffineForOp::getUpperBound() const {
   auto lbMap = getLowerBoundMap();
   auto ubMap = getUpperBoundMap();
-  return AffineBound(ConstOpPointer<AffineForOp>(*this), lbMap.getNumInputs(),
+  return AffineBound(OpPointer<AffineForOp>(*this), lbMap.getNumInputs(),
                      getNumOperands(), ubMap);
 }
 
@@ -1005,7 +1005,7 @@ bool mlir::isForInductionVar(const Value *val) {
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-OpPointer<AffineForOp> mlir::getForInductionVarOwner(Value *val) {
+OpPointer<AffineForOp> mlir::getForInductionVarOwner(const Value *val) {
   const BlockArgument *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
     return OpPointer<AffineForOp>();
@@ -1013,10 +1013,6 @@ OpPointer<AffineForOp> mlir::getForInductionVarOwner(Value *val) {
   if (!containingInst)
     return OpPointer<AffineForOp>();
   return containingInst->dyn_cast<AffineForOp>();
-}
-ConstOpPointer<AffineForOp> mlir::getForInductionVarOwner(const Value *val) {
-  auto nonConstOwner = getForInductionVarOwner(const_cast<Value *>(val));
-  return ConstOpPointer<AffineForOp>(nonConstOwner);
 }
 
 /// Extracts the induction variables from a list of AffineForOps and returns

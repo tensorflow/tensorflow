@@ -30,7 +30,6 @@
 namespace mlir {
 class AffineMap;
 class AffineForOp;
-template <typename T> class ConstOpPointer;
 class Function;
 class FuncBuilder;
 template <typename T> class OpPointer;
@@ -72,7 +71,7 @@ void promoteSingleIterationLoops(Function *f);
 /// part of the unrolled loop. Computes the bound as an AffineMap with its
 /// operands or a null map when the trip count can't be expressed as an affine
 /// expression.
-void getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
+void getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
                               unsigned unrollFactor, AffineMap *map,
                               SmallVectorImpl<Value *> *operands,
                               FuncBuilder *builder);

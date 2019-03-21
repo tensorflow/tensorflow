@@ -36,7 +36,6 @@
 namespace mlir {
 
 class AffineForOp;
-template <typename T> class ConstOpPointer;
 class Block;
 class FlatAffineConstraints;
 class Instruction;
@@ -237,7 +236,7 @@ unsigned getNumCommonSurroundingLoops(const Instruction &A,
 
 /// Gets the memory footprint of all data touched in the specified memory space
 /// in bytes; if the memory space is unspecified, considers all memory spaces.
-Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
+Optional<int64_t> getMemoryFootprintBytes(OpPointer<AffineForOp> forOp,
                                           int memorySpace = -1);
 
 /// Returns true if `forOp' is a parallel loop.

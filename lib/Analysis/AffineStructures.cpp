@@ -735,7 +735,7 @@ void FlatAffineConstraints::addInductionVarOrTerminalSymbol(Value *id) {
 }
 
 LogicalResult
-FlatAffineConstraints::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp) {
+FlatAffineConstraints::addAffineForOpDomain(OpPointer<AffineForOp> forOp) {
   unsigned pos;
   // Pre-condition for this method.
   if (!findId(*forOp->getInductionVar(), &pos)) {

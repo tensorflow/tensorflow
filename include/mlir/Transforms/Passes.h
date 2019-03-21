@@ -30,7 +30,7 @@
 namespace mlir {
 
 class AffineForOp;
-template <typename T> class ConstOpPointer;
+template <typename T> class OpPointer;
 class FunctionPassBase;
 class ModulePassBase;
 
@@ -60,10 +60,10 @@ FunctionPassBase *createMaterializeVectorsPass();
 /// factors supplied through other means. If -1 is passed as the unrollFactor
 /// and no callback is provided, anything passed from the command-line (if at
 /// all) or the default unroll factor is used (LoopUnroll:kDefaultUnrollFactor).
-FunctionPassBase *
-createLoopUnrollPass(int unrollFactor = -1, int unrollFull = -1,
-                     const std::function<unsigned(ConstOpPointer<AffineForOp>)>
-                         &getUnrollFactor = nullptr);
+FunctionPassBase *createLoopUnrollPass(
+    int unrollFactor = -1, int unrollFull = -1,
+    const std::function<unsigned(OpPointer<AffineForOp>)> &getUnrollFactor =
+        nullptr);
 
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command

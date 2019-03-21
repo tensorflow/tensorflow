@@ -43,7 +43,7 @@ using namespace mlir;
 /// part of the unrolled loop. Computes the bound as an AffineMap with its
 /// operands or a null map when the trip count can't be expressed as an affine
 /// expression.
-void mlir::getCleanupLoopLowerBound(ConstOpPointer<AffineForOp> forOp,
+void mlir::getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
                                     unsigned unrollFactor, AffineMap *map,
                                     SmallVectorImpl<Value *> *operands,
                                     FuncBuilder *b) {

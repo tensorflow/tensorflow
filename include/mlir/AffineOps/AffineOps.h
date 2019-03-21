@@ -244,8 +244,7 @@ bool isForInductionVar(const Value *val);
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-OpPointer<AffineForOp> getForInductionVarOwner(Value *val);
-ConstOpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
+OpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
 
 /// Extracts the induction variables from a list of AffineForOps and places them
 /// in the output argument `ivs`.
@@ -259,7 +258,7 @@ void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
 /// that of the for instruction it refers to.
 class AffineBound {
 public:
-  ConstOpPointer<AffineForOp> getAffineForOp() const { return inst; }
+  OpPointer<AffineForOp> getAffineForOp() const { return inst; }
   AffineMap getMap() const { return map; }
 
   /// Returns an AffineValueMap representing this bound.
@@ -285,15 +284,15 @@ public:
 
 private:
   // 'for' instruction that contains this bound.
-  ConstOpPointer<AffineForOp> inst;
+  OpPointer<AffineForOp> inst;
   // Start and end positions of this affine bound operands in the list of
   // the containing 'for' instruction operands.
   unsigned opStart, opEnd;
   // Affine map for this bound.
   AffineMap map;
 
-  AffineBound(ConstOpPointer<AffineForOp> inst, unsigned opStart,
-              unsigned opEnd, AffineMap map)
+  AffineBound(OpPointer<AffineForOp> inst, unsigned opStart, unsigned opEnd,
+              AffineMap map)
       : inst(inst), opStart(opStart), opEnd(opEnd), map(map) {}
 
   friend class AffineForOp;

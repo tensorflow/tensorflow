@@ -49,7 +49,7 @@ using namespace mlir;
 // pure analysis method relying on FlatAffineConstraints; the latter will also
 // be more powerful (since both inequalities and equalities will be considered).
 void mlir::buildTripCountMapAndOperands(
-    ConstOpPointer<AffineForOp> forOp, AffineMap *map,
+    OpPointer<AffineForOp> forOp, AffineMap *map,
     SmallVectorImpl<Value *> *tripCountOperands) {
   int64_t loopSpan;
 
@@ -118,7 +118,7 @@ void mlir::buildTripCountMapAndOperands(
 // works with analysis structures (FlatAffineConstraints) and thus doesn't
 // update the IR.
 llvm::Optional<uint64_t>
-mlir::getConstantTripCount(ConstOpPointer<AffineForOp> forOp) {
+mlir::getConstantTripCount(OpPointer<AffineForOp> forOp) {
   SmallVector<Value *, 4> operands;
   AffineMap map;
   buildTripCountMapAndOperands(forOp, &map, &operands);
@@ -144,7 +144,7 @@ mlir::getConstantTripCount(ConstOpPointer<AffineForOp> forOp) {
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
-uint64_t mlir::getLargestDivisorOfTripCount(ConstOpPointer<AffineForOp> forOp) {
+uint64_t mlir::getLargestDivisorOfTripCount(OpPointer<AffineForOp> forOp) {
   SmallVector<Value *, 4> operands;
   AffineMap map;
   buildTripCountMapAndOperands(forOp, &map, &operands);
@@ -283,9 +283,9 @@ static bool isVectorTransferReadOrWrite(const Instruction &inst) {
 }
 
 using VectorizableInstFun =
-    std::function<bool(ConstOpPointer<AffineForOp>, const Instruction &)>;
+    std::function<bool(OpPointer<AffineForOp>, const Instruction &)>;
 
-static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
+static bool isVectorizableLoopWithCond(OpPointer<AffineForOp> loop,
                                        VectorizableInstFun isVectorizableInst) {
   auto *forInst = const_cast<Instruction *>(loop->getInstruction());
   if (!matcher::isParallelLoop(*forInst) &&
@@ -341,8 +341,8 @@ static bool isVectorizableLoopWithCond(ConstOpPointer<AffineForOp> loop,
 }
 
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
-    ConstOpPointer<AffineForOp> loop, unsigned fastestVaryingDim) {
-  VectorizableInstFun fun([fastestVaryingDim](ConstOpPointer<AffineForOp> loop,
+    OpPointer<AffineForOp> loop, unsigned fastestVaryingDim) {
+  VectorizableInstFun fun([fastestVaryingDim](OpPointer<AffineForOp> loop,
                                               const Instruction &op) {
     auto load = op.dyn_cast<LoadOp>();
     auto store = op.dyn_cast<StoreOp>();
@@ -354,12 +354,10 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
   return isVectorizableLoopWithCond(loop, fun);
 }
 
-bool mlir::isVectorizableLoop(ConstOpPointer<AffineForOp> loop) {
+bool mlir::isVectorizableLoop(OpPointer<AffineForOp> loop) {
   VectorizableInstFun fun(
       // TODO: implement me
-      [](ConstOpPointer<AffineForOp> loop, const Instruction &op) {
-        return true;
-      });
+      [](OpPointer<AffineForOp> loop, const Instruction &op) { return true; });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
@@ -368,7 +366,7 @@ bool mlir::isVectorizableLoop(ConstOpPointer<AffineForOp> loop) {
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
-bool mlir::isInstwiseShiftValid(ConstOpPointer<AffineForOp> forOp,
+bool mlir::isInstwiseShiftValid(OpPointer<AffineForOp> forOp,
                                 ArrayRef<uint64_t> shifts) {
   auto *forBody = forOp->getBody();
   assert(shifts.size() == forBody->getInstructions().size());

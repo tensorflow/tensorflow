@@ -30,7 +30,7 @@ Bjarke Roune summarized the situation like this:
 > end up being templates (and if they never get instantiated in a const context,
 > then the point of `const` correctness has been defeated), you need to somehow
 > launder the const in a safe way or there will be `const_cast`s. These options
-> are all bad, probably so bad as to out-weigh the tremendous benefits of const.
+> are all bad, probably so bad as to out-weigh the benefits of const.
 
 # Reconsidering `const` in MLIR
 
@@ -60,7 +60,7 @@ like this:
 
 ```
 namespace llvm {
-class Instruction : ... {
+class Instruction : ...  {
   BasicBlock *Parent;
 public:
   // A const instruction returns a const parent pointer.

@@ -31,11 +31,10 @@
 
 namespace mlir {
 class BlockAndValueMapping;
-template <typename OpType> class ConstOpPointer;
 class Location;
 class MLIRContext;
-template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename OpType> class OpPointer;
+template <typename ObjectType, typename ElementType> class OperandIterator;
 template <typename ObjectType, typename ElementType> class ResultIterator;
 template <typename ObjectType, typename ElementType> class ResultTypeIterator;
 
@@ -431,7 +430,7 @@ public:
 
   /// The dyn_cast methods perform a dynamic cast from an Instruction to a typed
   /// Op like DimOp.  This returns a null OpPointer on failure.
-  template <typename OpClass> OpPointer<OpClass> dyn_cast() {
+  template <typename OpClass> OpPointer<OpClass> dyn_cast() const {
     if (isa<OpClass>()) {
       return cast<OpClass>();
     } else {
@@ -439,30 +438,12 @@ public:
     }
   }
 
-  /// The dyn_cast methods perform a dynamic cast from an Instruction to a typed
-  /// Op like DimOp.  This returns a null ConstOpPointer on failure.
-  template <typename OpClass> ConstOpPointer<OpClass> dyn_cast() const {
-    if (isa<OpClass>()) {
-      return cast<OpClass>();
-    } else {
-      return ConstOpPointer<OpClass>(OpClass(nullptr));
-    }
-  }
-
   /// The cast methods perform a cast from an Instruction to a typed Op like
   /// DimOp.  This aborts if the parameter to the template isn't an instance of
   /// the template type argument.
-  template <typename OpClass> OpPointer<OpClass> cast() {
+  template <typename OpClass> OpPointer<OpClass> cast() const {
     assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
     return OpPointer<OpClass>(OpClass(this));
-  }
-
-  /// The cast methods perform a cast from an Instruction to a typed Op like
-  /// DimOp.  This aborts if the parameter to the template isn't an instance of
-  /// the template type argument.
-  template <typename OpClass> ConstOpPointer<OpClass> cast() const {
-    assert(isa<OpClass>() && "cast<Ty>() argument of incompatible type!");
-    return ConstOpPointer<OpClass>(OpClass(this));
   }
 
   /// The is methods return true if the operation is a typed op (like DimOp) of

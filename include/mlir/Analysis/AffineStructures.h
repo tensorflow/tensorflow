@@ -385,7 +385,7 @@ public:
   /// instruction are added as trailing identifiers (either dimensional or
   /// symbolic depending on whether the operand is a valid ML Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.
-  LogicalResult addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
+  LogicalResult addAffineForOpDomain(OpPointer<AffineForOp> forOp);
 
   /// Adds a lower or an upper bound for the identifier at the specified
   /// position with constraints being drawn from the specified bound map and

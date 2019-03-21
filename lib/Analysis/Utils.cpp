@@ -733,9 +733,8 @@ static Optional<int64_t> getMemoryFootprintBytes(const Block &block,
   return totalSizeInBytes;
 }
 
-Optional<int64_t>
-mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
-                              int memorySpace) {
+Optional<int64_t> mlir::getMemoryFootprintBytes(OpPointer<AffineForOp> forOp,
+                                                int memorySpace) {
   auto *forInst = forOp->getInstruction();
   return ::getMemoryFootprintBytes(
       *forInst->getBlock(), Block::const_iterator(forInst),
