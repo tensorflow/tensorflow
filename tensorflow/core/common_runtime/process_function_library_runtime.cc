@@ -641,7 +641,6 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
-  DumpGraph("After all optimization passes", graph.get());
 
   if (options.graph_collector != nullptr) {
     GraphDef def;
@@ -653,6 +652,25 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
   TF_RETURN_IF_ERROR(
       PartitionFunctionGraph(device_set, std::move(graph), &subgraphs));
+
+  for (const auto& pair : subgraphs) {
+    DumpGraph(strings::StrCat("Before running POST_PARTITIONING passes (",
+                              pair.first, ")"),
+              pair.second.get());
+  }
+  optimization_options.graph = nullptr;
+  optimization_options.device_set = nullptr;
+  optimization_options.partition_graphs = &subgraphs;
+  // Normally POST_PARTITIONING passes are run by distributed workers.
+  // Distributed workers are currently not supported in this code path, so we
+  // run the passes here.
+  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+      OptimizationPassRegistry::POST_PARTITIONING, optimization_options));
+  for (const auto& pair : subgraphs) {
+    DumpGraph(
+        strings::StrCat("After all optimization passes (", pair.first, ")"),
+        pair.second.get());
+  }
 
   if (options.graph_collector != nullptr) {
     for (const auto& pair : subgraphs) {
