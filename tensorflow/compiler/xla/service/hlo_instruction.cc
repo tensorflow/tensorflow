@@ -2205,9 +2205,15 @@ string HloInstruction::ToStringWithCanonicalNameMap(
     StrAppend(&result, PrintName(name(), options), " = ");
   }
 
-  // Print opcode, operand(s) and shape.
-  StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()), " ",
-            HloOpcodeString(opcode()), "(",
+  // Print shape
+  if (options.include_layout_in_shapes()) {
+    StrAppend(&result, ShapeUtil::HumanStringWithLayout(shape()));
+  } else {
+    StrAppend(&result, ShapeUtil::HumanString(shape()));
+  }
+
+  // Print opcode, operand(s).
+  StrAppend(&result, " ", HloOpcodeString(opcode()), "(",
             OperandsToStringWithCanonicalNameMap(options, canonical_name_map),
             ")");
 
@@ -2251,7 +2257,11 @@ string HloInstruction::OperandsToStringWithCanonicalNameMap(
     }
     std::vector<string> str;
     if (options.print_operand_shape()) {
-      str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      if (options.include_layout_in_shapes()) {
+        str.push_back(ShapeUtil::HumanStringWithLayout(operand->shape()));
+      } else {
+        str.push_back(ShapeUtil::HumanString(operand->shape()));
+      }
     }
 
     // In a top-level HloInstruction::ToString() call, the operand name is not

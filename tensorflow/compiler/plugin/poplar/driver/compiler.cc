@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_wide_const.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/hlo_computation_name_uniquify.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inter_ipu_copy_inserter.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/non_linearity_recomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
@@ -189,6 +190,23 @@ bool ShardingEnabled(const HloModule* module) {
       }
     }
   }
+  return false;
+}
+
+int64 MaximalShard(const HloModule* module) {
+  std::vector<HloComputation*> comps = module->MakeNonfusionComputations();
+  int64 maximal_shard = 0;
+  for (const auto* c : comps) {
+    for (const auto* inst : c->instructions()) {
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding();
+        if (IsSupportedSharding(sharding)) {
+          maximal_shard = std::max(maximal_shard, sharding.GetUniqueDevice());
+        }
+      }
+    }
+  }
+  return maximal_shard;
 }
 
 bool AreAllOutputsParameters(
@@ -247,11 +265,20 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
     }
   }
 }
-}  // namespace
 
-static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
+std::string SerializeComputationToGraphDef(const HloComputation& comp) {
   return hlo_graph_dumper::HloComputationToDotGraph(comp, {});
 }
+
+HloPrintOptions GetPrintOptions() {
+  HloPrintOptions opts;
+  opts.set_print_operand_shape(false)
+      .set_print_percent(false)
+      .set_include_layout_in_shapes(false);
+  return opts;
+}
+
+}  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module,
@@ -337,14 +364,23 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   if (ShardingEnabled(module.get())) {
-    auto numIPUs = sharding_main_graph->getTarget().getNumIPUs();
-    auto tilesPerIPU = sharding_main_graph->getTarget().getTilesPerIPU();
-    for (unsigned ipu = 0; ipu < numIPUs; ++ipu) {
-      resources.shard_graphs.emplace_back(
-          sharding_main_graph->createVirtualGraph(ipu * tilesPerIPU,
-                                                  (ipu + 1) * tilesPerIPU));
+    auto num_ipus = sharding_main_graph->getTarget().getNumIPUs();
+    // Check that we have enough IPUs for this sharding configuration.
+    auto maximal_shard = MaximalShard(module.get());
+    if (maximal_shard >= num_ipus) {
+      return xla::ResourceExhaustedStrCat(
+          "Trying to compile a graph for ", maximal_shard + 1,
+          " shards, however the Multi-IPU device ordinal ",
+          stream_exec->device_ordinal(), " is a configuration which has ",
+          num_ipus, " IPU", (num_ipus > 1 ? "s." : "."));
     }
-    VLOG(1) << "Created " << numIPUs << " IPU shards";
+    auto tiles_per_ipu = sharding_main_graph->getTarget().getTilesPerIPU();
+    for (unsigned ipu = 0; ipu < num_ipus; ++ipu) {
+      resources.shard_graphs.emplace_back(
+          sharding_main_graph->createVirtualGraph(ipu * tiles_per_ipu,
+                                                  (ipu + 1) * tiles_per_ipu));
+    }
+    VLOG(1) << "Created " << num_ipus << " IPU shards";
   }
 
   {
@@ -408,6 +444,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<ExpressionOutliner>(resources.annotations);
     pipeline.AddPass<HloSubcomputationUnification>();
     pipeline.AddPass<ShardingPass>();
+    pipeline.AddPass<InterIpuCopyInserter>();
     pipeline.AddPass<HloDCE>();
     // Beyond this point non of the passes in the pipeline are allowed to modify
     // the instructions in the HloModule.
@@ -440,7 +477,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   VLOG(1) << "Compiling main computation " << entry->name();
-  XLA_VLOG_LINES(1, module->ToString());
+  XLA_VLOG_LINES(1, module->ToString(GetPrintOptions()));
 
   std::unique_ptr<poplar::Engine> engine;
   std::vector<poplar::program::Program> progs;

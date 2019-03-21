@@ -5,12 +5,60 @@
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 #include "absl/types/optional.h"
 
 namespace xla {
 namespace poplarplugin {
+
+bool IsSupportedSharding(const HloSharding& sharding) {
+  // We currently only support sharding with unique devices.
+  return sharding.HasUniqueDevice();
+}
+
+bool HaveSharding(HloComputation* comp) {
+  for (auto* inst : comp->instructions()) {
+    if (inst->has_sharding()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool HaveSharding(HloModule* module) {
+  for (auto* comp : module->computations()) {
+    if (IsPopOpsFusion(comp)) {
+      continue;
+    }
+
+    // If there is no sharding information, no need to continue
+    if (HaveSharding(comp)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+std::vector<int64> GetShardingDeviceId(const HloInstruction* inst) {
+  // This function works on the assumptions:
+  // * that all the instructions either have sharding or none of them do (see
+  //   ShardingPass).
+  // * If an instruction has sharding, then that sharding contains a unique
+  //   device.
+  std::vector<int64> sharding_info;
+  sharding_info.push_back(inst->has_sharding() &&
+                                  inst->sharding().HasUniqueDevice()
+                              ? inst->sharding().GetUniqueDevice()
+                              : 0);
+
+  return sharding_info;
+}
+
+int64 GetSingleShardingDeviceId(const HloInstruction* inst) {
+  return GetShardingDeviceId(inst)[0];
+}
 
 int64 CountShapes(const Shape& shape) {
   int64 n = 0;
@@ -154,11 +202,6 @@ bool IsRepeatLoop(const xla::HloInstruction* inst) {
     }
   }
   return false;
-}
-
-bool IsSupportedSharding(const HloSharding& sharding) {
-  // We currently only support sharding with unique devices.
-  return sharding.HasUniqueDevice();
 }
 
 bool IsInterIpuCopy(const HloInstruction* inst) {

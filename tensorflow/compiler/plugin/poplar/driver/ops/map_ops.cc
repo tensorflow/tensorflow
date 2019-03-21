@@ -117,8 +117,8 @@ GetOrCompileSubComputation(CompilerResources& res, const ArgVectors& inputs,
     }
   }
 
-  VLOG(1) << "Compiling sub-computation " << comp->name();
-  XLA_VLOG_LINES(1, comp->ToString());
+  VLOG(2) << "Compiling sub-computation " << comp->name();
+  XLA_VLOG_LINES(2, comp->ToString());
 
   auto visitor = std::make_shared<SubComputationVisitor>(
       res, inputs, inplace_inputs, dependent_subcomputations);

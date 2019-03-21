@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/op.h"
+#include "tensorflow/compiler/plugin/poplar/driver/xla_ipu_common.h"
+#include "tensorflow/compiler/plugin/poplar/kernels/ipu_kernels_common.h"
+
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 
 namespace tensorflow {
 
-REGISTER_OP("IpuConfigureHardware")
-    .Attr("config: string")
-    .SetIsStateful()
-    .Doc("IPU Hardware configuration.");
+class PopopsCrossReplicaSumOp : public XlaOpKernel {
+ public:
+  using XlaOpKernel::XlaOpKernel;
 
-REGISTER_OP("IpuEventTrace")
-    .Output("out: string")
-    .SetIsStateful()
-    .Doc("Fetch IPU trace events.");
+  void Compile(XlaOpKernelContext* ctx) override {
+    ctx->SetOutput(0, xla::CrossReplicaSum(ctx->Input(0)));
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(PopopsCrossReplicaSumOp);
+};
+
+REGISTER_XLA_OP(Name("IpuCrossReplicaSum").Device(DEVICE_IPU_XLA_JIT),
+                PopopsCrossReplicaSumOp);
+
 }  // namespace tensorflow

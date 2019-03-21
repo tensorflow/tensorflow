@@ -11,21 +11,23 @@ import json as js
 import numpy as np
 import re
 
-from tensorflow.core.framework import summary_pb2
-from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.protobuf import config_pb2
+from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.compiler.xla import xla_data_pb2
+from tensorflow.core.framework import summary_pb2
+from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.summary.summary import tensor_summary
 
-@contextlib.contextmanager
-def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
-                report_every_nth_execution=0, text_report=True, sharded=False,
-                compile_ipu_code=False, enable_ipu_events=False):
-  opts = config_pb2.IPUOptions()
+def configure_ipu_system(compilation_trace=True, io_trace=False,
+                         execution_trace=True, report_every_nth_execution=0,
+                         text_report=True, sharded=False,
+                         compile_ipu_code=False, enable_ipu_events=False,
+                         engine_opts=None):
+  opts = IpuOptions()
   opts.profiling.enable_ipu_trace_events = (compilation_trace or io_trace or
                                             execution_trace or
                                             enable_ipu_events)
@@ -37,12 +39,27 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
   opts.ipu_model_config.enable_ipu_model = True
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
+  if engine_opts:
+    for o in engine_opts.items():
+      opt = opts.compilation_options.add()
+      opt.option = o[0]
+      opt.value = o[1]
+
   if sharded:
     dev = opts.device_config.add()
     dev.auto_count = 2
 
-  with session_lib.Session(
-      config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+  g = ops.Graph()
+  with g.as_default():
+    cfg_op = gen_ipu_ops.ipu_configure_hardware(opts.SerializeToString())
+
+  with session_lib.Session(graph=g) as sess:
+    sess.run(cfg_op)
+
+
+@contextlib.contextmanager
+def ipu_session():
+  with session_lib.Session() as sess:
     yield sess
 
 

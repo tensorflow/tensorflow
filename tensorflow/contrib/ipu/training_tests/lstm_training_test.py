@@ -21,7 +21,6 @@ import numpy as np
 from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu import utils
 from tensorflow.contrib.ipu import popnn_rnn
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
@@ -81,7 +80,9 @@ def _RunLayer(layer_func, x, y):
 
   opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
   opts = ipu.utils.set_ipu_model_options(opts, compile_ipu_code=False)
-  with sl.Session(config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+  ipu.utils.configure_ipu_system(opts)
+
+  with sl.Session() as sess:
     sess.run(variables.global_variables_initializer())
     fd = {px: x,
           ph: np.ones(ph.shape),

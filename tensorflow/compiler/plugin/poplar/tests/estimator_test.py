@@ -12,7 +12,6 @@ import shutil
 import glob
 
 from tensorflow.python.platform import googletest
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -29,6 +28,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import training_util
 
+from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 
 import test_utils as tu
@@ -87,15 +87,9 @@ class IpuEstimatorTest(test_util.TensorFlowTestCase):
 
     shutil.rmtree("testlogs", True)
 
-    opts = config_pb2.IPUOptions()
-    opts.ipu_model_config.enable_ipu_model = True
-    opts.profiling.enable_ipu_trace_events = True
-    opts.profiling.enable_compilation_trace = True
-    opts.profiling.enable_io_trace = False
-    opts.profiling.enable_execution_trace = False
+    tu.configure_ipu_system()
 
-    sess_cfg = config_pb2.ConfigProto(ipu_options=opts)
-    run_cfg = run_config.RunConfig(session_config=sess_cfg)
+    run_cfg = run_config.RunConfig()
 
     classifier = estimator.Estimator(model_fn=model_fn,
                                      config=run_cfg,

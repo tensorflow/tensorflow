@@ -5,6 +5,7 @@ from __future__ import print_function
 import numpy as np
 import re
 
+from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.contrib.ipu import ipu_compiler
@@ -41,7 +42,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
       fd = {
         a: [1.0],
         b: [2.0],
@@ -53,19 +56,19 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
   def testCreateConfig(self):
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.auto_select_ipus(cfg, [1,1])
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+    self.assertTrue(isinstance(cfg, IpuOptions))
     self.assertTrue(len(cfg.device_config), 2)
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.auto_select_ipus(cfg, [4, 4])
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+    self.assertTrue(isinstance(cfg, IpuOptions))
     self.assertTrue(len(cfg.device_config), 2)
     self.assertTrue(cfg.device_config[0].auto_count, 4)
     self.assertTrue(cfg.device_config[1].auto_count, 4)
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.auto_select_ipus(cfg, [4, 4], number_of_replicas=[2, 1])
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+    self.assertTrue(isinstance(cfg, IpuOptions))
     self.assertTrue(len(cfg.device_config), 2)
     self.assertTrue(cfg.device_config[0].auto_count, 4)
     self.assertTrue(cfg.device_config[0].num_replicas, 2)
@@ -74,7 +77,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.select_ipus(cfg, [2, 3])
-    self.assertTrue(isinstance(cfg, config_pb2.IPUOptions))
+    self.assertTrue(isinstance(cfg, IpuOptions))
     self.assertTrue(len(cfg.device_config), 2)
     self.assertTrue(cfg.device_config[0].cfg_index, 2)
     self.assertTrue(cfg.device_config[1].cfg_index, 3)
@@ -113,7 +116,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
       # Discard any existing events
       sess.run(events)
 
@@ -146,7 +151,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
 
       fd = {
         a: [1],
@@ -211,7 +218,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
       # Initialize and then discard events relating to initialization
       sess.run(variables.global_variables_initializer())
 
@@ -241,7 +250,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
       # Discard any pending events
       sess.run(events)
 
@@ -265,7 +276,9 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
       sess.run(report)
       result = sess.run(z2, {x: np.ones([2, 2]),  y: np.ones([2, 2])})
 

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,17 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
 
-REGISTER_OP("IpuConfigureHardware")
-    .Attr("config: string")
-    .SetIsStateful()
-    .Doc("IPU Hardware configuration.");
+REGISTER_OP("IpuCrossReplicaSum")
+    .Input("input: dtype")
+    .Output("output: dtype")
+    .Attr("dtype: {float16, float32, int32}")
+    .SetShapeFn(shape_inference::UnchangedShape);
 
-REGISTER_OP("IpuEventTrace")
-    .Output("out: string")
-    .SetIsStateful()
-    .Doc("Fetch IPU trace events.");
 }  // namespace tensorflow

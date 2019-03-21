@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/conv_graph_caching.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/dot_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/norm_graph_caching.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/visitor_subcomputation.h"
@@ -80,6 +81,8 @@ struct CompilerResources {
   norm_graph_caching::NormGradGraphCache norm_grad_graph_cache;
 
   norm_graph_caching::NormStatisticsGraphCache norm_statistics_graph_cache;
+
+  dot_graph_caching::DotGraphCache dot_graph_cache;
 
   CompilerResources(const poplar::Device& dev, uint64 seed,
                     poprand::RandomGenMode mode,

@@ -31,7 +31,9 @@ class WideConstExpansionTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(execution_trace=False) as sess:
+    tu.configure_ipu_system(execution_trace=False)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
       result = sess.run(report)
       s = tu.extract_all_strings_from_event_trace(result)

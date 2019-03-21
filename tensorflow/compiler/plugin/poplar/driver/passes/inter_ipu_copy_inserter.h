@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_SHARDING_PASS_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_SHARDING_PASS_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_INTER_IPU_COPY_PASS_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_PASSES_INTER_IPU_COPY_PASS_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -25,16 +25,16 @@ class HloModule;
 namespace poplarplugin {
 
 /**
- * This adds sharding information to operations which do not have any, but are
- * parents of operations which do.
+ * Inserts inter-IPU copy operations between instructions which are on
+ * different IPUs.
  */
-class ShardingPass : public HloModulePass {
+class InterIpuCopyInserter : public HloModulePass {
  public:
-  ShardingPass();
+  InterIpuCopyInserter();
 
-  ~ShardingPass() = default;
+  ~InterIpuCopyInserter() = default;
 
-  absl::string_view name() const override { return "sharding-pass"; }
+  absl::string_view name() const override { return "inter-ipu-copy-inserter"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 };
