@@ -1712,7 +1712,6 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_ops",
     ],
-    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
