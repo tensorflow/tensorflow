@@ -263,6 +263,7 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
+    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
