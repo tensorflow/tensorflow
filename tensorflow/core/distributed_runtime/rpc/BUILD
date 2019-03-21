@@ -165,8 +165,9 @@ cc_library(
     srcs = ["grpc_response_cache.cc"],
     hdrs = ["grpc_response_cache.h"],
     deps = [
-        ":grpc_util",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
