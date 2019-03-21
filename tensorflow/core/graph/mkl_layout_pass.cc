@@ -313,6 +313,13 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedConv2DWithBiasSumAndReluAndRequantize";
     csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize =
         "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize";
+    csinfo_.quantized_depthwise_conv2d = "QuantizedDepthwiseConv2D";
+    csinfo_.quantized_depthwise_conv2d_with_bias =
+        "QuantizedDepthwiseConv2DWithBias";
+    csinfo_.quantized_depthwise_conv2d_with_bias_and_relu =
+        "QuantizedDepthwiseConv2DWithBiasAndRelu";
+    csinfo_.quantized_depthwise_conv2d_with_bias_and_relu_and_requantize =
+        "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize";
     csinfo_.quantize_v2 = "QuantizeV2";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
@@ -496,6 +503,25 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize,
          mkl_op_registry::GetMklOpName(
              csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_depthwise_conv2d,
+         mkl_op_registry::GetMklOpName(csinfo_.quantized_depthwise_conv2d),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantized_depthwise_conv2d_with_bias,
+                      mkl_op_registry::GetMklOpName(
+                          csinfo_.quantized_depthwise_conv2d_with_bias),
+                      CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_depthwise_conv2d_with_bias_and_relu,
+         mkl_op_registry::GetMklOpName(
+             csinfo_.quantized_depthwise_conv2d_with_bias_and_relu),
+         CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back(
+        {csinfo_.quantized_depthwise_conv2d_with_bias_and_relu_and_requantize,
+         mkl_op_registry::GetMklOpName(
+             csinfo_
+                 .quantized_depthwise_conv2d_with_bias_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite});
     rinfo_.push_back({csinfo_.quantize_v2,
                       mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
@@ -746,6 +772,10 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string quantized_conv2d_with_bias_sum_and_relu;
     string quantized_conv2d_with_bias_sum_and_relu_and_requantize;
     string quant_conv2d_with_bias_signed_sum_and_relu_and_requantize;
+    string quantized_depthwise_conv2d;
+    string quantized_depthwise_conv2d_with_bias;
+    string quantized_depthwise_conv2d_with_bias_and_relu;
+    string quantized_depthwise_conv2d_with_bias_and_relu_and_requantize;
     string quantize_v2;
     string relu;
     string relu_grad;
@@ -1910,7 +1940,11 @@ Status MklLayoutRewritePass::SetUpInputs(
       "QuantizedConv2DAndReluAndRequantize",
       "QuantizedConv2DWithBiasAndReluAndRequantize",
       "QuantizedConv2DWithBiasSumAndReluAndRequantize",
-      "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize"};
+      "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize",
+      "QuantizedDepthwiseConv2D",
+      "QuantizedDepthwiseConv2DWithBias",
+      "QuantizedDepthwiseConv2DWithBiasAndRelu",
+      "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"};
   bool should_check_workspace =
       std::find(std::begin(quant_ops), std::end(quant_ops),
                 old_node->type_string()) == std::end(quant_ops);

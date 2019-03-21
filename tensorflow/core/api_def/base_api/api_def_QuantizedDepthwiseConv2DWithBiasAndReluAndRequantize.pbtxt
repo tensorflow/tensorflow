@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
+  visibility: HIDDEN
+}

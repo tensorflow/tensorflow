@@ -1216,9 +1216,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument(
-        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
-        c->Value(last_dim));
+    return errors::InvalidArgument("input must have last dimension >= k = ",
+                                   c->Value(k_dim), " but is ",
+                                   c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1272,9 +1272,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument(
-            "Input must have last dimension > n = ", c->Value(n_dim),
-            " but is ", c->Value(last_dim));
+        return errors::InvalidArgument("Input must have last dimension > n = ",
+                                       c->Value(n_dim), " but is ",
+                                       c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -2884,6 +2884,7 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(5), 1, &channel));
       TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(6), 1, &channel));
+      // TODO(bhavanis): Need to use c->WithRankAtMost(...) for 7th input?
       TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
@@ -2918,4 +2919,83 @@ REGISTER_OP("QuantizedConv2DPerChannel")
       c->set_output(2, channel);
       return Status::OK();
     });
+
+REGISTER_OP("QuantizedDepthwiseConv2D")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("QuantizedDepthwiseConv2DWithBias")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndRelu")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: float")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("out_type: quantizedtype = DT_QINT32")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
+    .Input("input: Tinput")
+    .Input("filter: Tfilter")
+    .Input("bias: Tbias")
+    .Input("min_input: float")
+    .Input("max_input: float")
+    .Input("min_filter: float")
+    .Input("max_filter: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Output("output: out_type")
+    .Output("min_output: float")
+    .Output("max_output: float")
+    .Attr("Tinput: quantizedtype")
+    .Attr("Tfilter: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("out_type: quantizedtype = DT_QUINT8")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
 }  // namespace tensorflow
