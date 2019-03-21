@@ -18,12 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+import sys
+
+import six
+
 from tensorflow.python.autograph.operators import control_flow
+from tensorflow.python.autograph.pyct import errors
+from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -122,6 +131,29 @@ class WhileLoopTest(test.TestCase):
         body=lambda i, s: (i + 1, s + i),
         init_state=(0, 0))
     self.assertEqual((5, 10), results)
+
+  def test_python_infinite_loop(self):
+    if __debug__:
+      with test.mock.patch.object(control_flow, 'PYTHON_MAX_ITERATIONS', 1000):
+        with self.assertRaisesRegexp(errors.ExecutionError, 'iteration limit'):
+          control_flow.while_stmt(
+              test=lambda _: True,
+              body=lambda i: (i + 1,),
+              init_state=(0,))
+
+  def test_python_long_loop_unroll_warning(self):
+    if __debug__:
+      with ops.Graph().as_default():
+        out_capturer = six.StringIO()
+        with test.mock.patch.object(sys, 'stdout', out_capturer):
+          ag_logging.echo_log_to_stdout = True
+          sys.stdout = out_capturer
+          control_flow.while_stmt(
+              test=lambda i, _: i < 10000,
+              body=lambda i, _: (i + 1, gen_math_ops.add(i, 1),),
+              init_state=(0, None))
+        self.assertTrue(re.match(
+            r'.*ops.*loop.*large.*iterations.*Add.*', out_capturer.getvalue()))
 
 
 class IfStmtTest(test.TestCase):
