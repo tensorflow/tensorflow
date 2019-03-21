@@ -20,12 +20,22 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.autograph.pyct import errors
+from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
+
+
+LIMIT_PYTHON_ITERATIONS = True
+PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
+WARN_INEFFICIENT_UNROLL = True
+INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
+INEFFICIENT_UNROLL_MIN_OPS = 1
 
 
 def for_stmt(iter_, extra_test, body, init_state):
@@ -212,12 +222,86 @@ def _tf_while_stmt(test, body, init_state, opts):
   return retval
 
 
+class _PythonLoopChecker(object):
+  """Verifies Python loops for TF-specific limits."""
+
+  def __init__(self):
+    self.iterations = 0
+    self.check_inefficient_unroll = WARN_INEFFICIENT_UNROLL
+
+    # Triggered when we decided to test the op counts.
+    self.check_op_count_after_iteration = False
+
+  def _get_ops(self):
+    return ops.get_default_graph().get_operations()
+
+  def _check_unroll_limits(self):
+    if LIMIT_PYTHON_ITERATIONS and self.iterations > PYTHON_MAX_ITERATIONS:
+      raise errors.ExecutionError('Python', 'iteration limit exceeded')
+
+  def _stop_checking_inefficient_unroll(self):
+    self.check_inefficient_unroll = False
+    self.ops_before_iteration = None
+
+  def _verify_ineffcient_unroll(self):
+    """Checks for possibly-inefficient creation of ops in a Python loop."""
+    assert self.ops_before_iteration is not None
+    ops_after_iteration = self._get_ops()
+    new_ops = tuple(
+        op for op in ops_after_iteration if op not in self.ops_before_iteration)
+
+    if len(new_ops) < INEFFICIENT_UNROLL_MIN_OPS:
+      return False
+
+    # TODO(mdan): Add location information.
+    ag_logging.warn(
+        'TensorFlow ops are being created in a Python loop with large number'
+        ' of iterations. This can lead to slow startup. Did you mean to use a'
+        ' TensorFlow loop? For example, `while True:` is a Python loop, and'
+        ' `while tf.constant(True):` is a TensorFlow loop. The following'
+        ' ops were created after iteration %s: %s', self.iterations, new_ops)
+    return True
+
+  def before_iteration(self):
+    """Called before each iteration in a Python loop."""
+    if (self.check_inefficient_unroll and
+        self.iterations > INEFFICIENT_UNROLL_MIN_ITERATIONS):
+      self.ops_before_iteration = self._get_ops()
+      self.check_op_count_after_iteration = True
+
+  def after_iteration(self):
+    """Called after each iteration in a Python loop."""
+    self.iterations += 1
+
+    self._check_unroll_limits()
+
+    if self.check_inefficient_unroll and self.check_op_count_after_iteration:
+      did_warn = self._verify_ineffcient_unroll()
+      if did_warn:
+        self._stop_checking_inefficient_unroll()  # Only warn once.
+      elif self.iterations > INEFFICIENT_UNROLL_MIN_ITERATIONS + 3:
+        # Once deciding to check the op counts, only do it for a few iterations.
+        self._stop_checking_inefficient_unroll()
+
+
 def _py_while_stmt(test, body, init_state, opts):
   """Overload of while_stmt that executes a Python while loop."""
   del opts
+
+  if __debug__:
+    checker = _PythonLoopChecker()
+
   state = init_state
   while test(*state):
+
+    if __debug__:
+      checker.before_iteration()
+
     state = body(*state)
+
+    if __debug__:
+      checker.after_iteration()
+
   return state
 
 
