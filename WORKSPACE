@@ -8,7 +8,7 @@ http_archive(
     strip_prefix = "rules_closure-316e6133888bfc39fb860a4f1a31cfcbae485aef",
     urls = [
         "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",
-        "https://github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",  # 2018-12-21
+        "https://github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",  # 2019-03-21
     ],
 )
 
