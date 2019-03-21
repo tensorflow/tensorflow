@@ -294,4 +294,12 @@ class Interpreter(object):
     return self._interpreter.ResetVariableTensors()
 
   def set_num_threads(self, i):
+    """Set number of threads used by TFLite kernels.
+
+    If not set, kernels are running single-threaded. Note that currently,
+    only some kernels, such as conv, are multithreaded.
+
+    Args:
+      i: number of threads.
+    """
     return self._interpreter.SetNumThreads(i)
