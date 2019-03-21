@@ -56,75 +56,68 @@ class LLVM_Builder<string builder> {
   string llvmBuilder = builder;
 }
 
-def LLVM_OneResultOpBuilder {
-  code builder = [{
-      static void build(Builder *, OperationState *result,
-                        Type resultType, ArrayRef<Value *> operands,
-                        ArrayRef<NamedAttribute> attributes = {}) {
-      if (resultType) result->addTypes(resultType);
-      result->addOperands(operands);
-      for (auto namedAttr : attributes) {
-        result->addAttribute(namedAttr.first, namedAttr.second);
-      }
+def LLVM_OneResultOpBuilder : OpBuilder<
+  "Builder *, OperationState *result, Type resultType, "
+  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  [{
+    if (resultType) result->addTypes(resultType);
+    result->addOperands(operands);
+    for (auto namedAttr : attributes) {
+      result->addAttribute(namedAttr.first, namedAttr.second);
     }
-  }];
-}
+  }]>;
 
-def LLVM_ZeroResultOpBuilder {
-  code builder = [{
-    static void build(Builder *, OperationState *result,
-                      ArrayRef<Value *> operands,
-                      ArrayRef<NamedAttribute> attributes = {}) {
-      result->addOperands(operands);
-      for (auto namedAttr : attributes) {
-        result->addAttribute(namedAttr.first, namedAttr.second);
-      }
+def LLVM_ZeroResultOpBuilder : OpBuilder<
+  "Builder *, OperationState *result, ArrayRef<Value *> operands, "
+  "ArrayRef<NamedAttribute> attributes = {}",
+  [{
+    result->addOperands(operands);
+    for (auto namedAttr : attributes) {
+      result->addAttribute(namedAttr.first, namedAttr.second);
     }
-  }];
-}
+  }]>;
 
-class LLVM_TwoBuilders<code b1, code b2> {
-  code builder = !cast<code>(!strconcat(!cast<string>(b1), !cast<string>(b2)));
+class LLVM_TwoBuilders<OpBuilder b1, OpBuilder b2> {
+  list<OpBuilder> builders = [b1, b2];
 }
 
 // Base class for LLVM operations with one result.
 class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
     LLVM_Op<mnemonic, traits>, Results<(outs LLVM_Type:$res)> {
-  let builder = LLVM_OneResultOpBuilder.builder;
+  let builders = [LLVM_OneResultOpBuilder];
 }
+
+// Compatibility builder that takes an instance of wrapped llvm::VoidType
+// to indicate no result.
+def LLVM_VoidResultTypeOpBuilder : OpBuilder<
+  "Builder *builder, OperationState *result, Type resultType, "
+  "ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes = {}",
+  [{
+    auto llvmType = resultType.dyn_cast<LLVM::LLVMType>();
+    assert(llvmType && "result must be an LLVM type");
+    assert(llvmType.getUnderlyingType() &&
+            llvmType.getUnderlyingType()->isVoidTy() &&
+            "for zero-result operands, only 'void' is accepted as result type");
+    build(builder, result, operands, attributes);
+  }]>;
 
 // Base class for LLVM operations with zero results.
 class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_Op<mnemonic, traits>, Results<(outs)> {
-  let builder = LLVM_TwoBuilders<[{
-    // Compatibility builder that takes an instance of wrapped llvm::VoidType
-    // to indicate no result.
-    static void build(Builder *builder, OperationState *result, Type resultType,
-                      ArrayRef<Value *> operands,
-                      ArrayRef<NamedAttribute> attributes = {}) {
-      auto llvmType = resultType.dyn_cast<LLVM::LLVMType>();
-      assert(llvmType && "result must be an LLVM type");
-      assert(llvmType.getUnderlyingType() &&
-             llvmType.getUnderlyingType()->isVoidTy() &&
-             "for zero-result operands, only 'void' is accepted as result type");
-      build(builder, result, operands, attributes);
-    }
-  }],
-  LLVM_ZeroResultOpBuilder.builder>.builder;
-}
+    LLVM_Op<mnemonic, traits>, Results<(outs)>,
+    LLVM_TwoBuilders<LLVM_VoidResultTypeOpBuilder, LLVM_ZeroResultOpBuilder>;
 
 // Base class for LLVM terminator operations.  All terminator operations have
 // zero results and an optional list of successors.
 class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
     LLVM_Op<mnemonic, !listconcat(traits, [Terminator])>,
     Arguments<(ins Variadic<LLVM_Type>:$args)>, Results<(outs)> {
-  let builder = [{
-      static void build(Builder *builder, OperationState *result,
-                        ArrayRef<Value *> properOperands,
-                        ArrayRef<Block *> destinations,
-                        ArrayRef<ArrayRef<Value *>> operands = {},
-                        ArrayRef<NamedAttribute> attributes = {}) {
-      (void) builder;
+  let builders = [OpBuilder<
+    "Builder *, OperationState *result, "
+    "ArrayRef<Value *> properOperands, "
+    "ArrayRef<Block *> destinations, "
+    "ArrayRef<ArrayRef<Value *>> operands = {}, "
+    "ArrayRef<NamedAttribute> attributes = {}",
+    [{
       result->addOperands(properOperands);
       for (auto kvp : llvm::zip(destinations, operands)) {
         result->addSuccessor(std::get<0>(kvp), std::get<1>(kvp));
@@ -132,8 +125,8 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
       for (auto namedAttr : attributes) {
         result->addAttribute(namedAttr.first, namedAttr.second);
       }
-    }
-  }];
+    }]
+  >];
 }
 
 // Class for arithmetic binary instructions.
@@ -195,12 +188,9 @@ def LLVM_BitcastOp
 def LLVM_CallOp : LLVM_Op<"call">,
                   Arguments<(ins OptionalAttr<FunctionAttr>:$callee,
                              Variadic<LLVM_Type>)>,
-                  Results<(outs Variadic<LLVM_Type>)> {
-  let builder = LLVM_TwoBuilders<
-    LLVM_OneResultOpBuilder.builder,
-    LLVM_ZeroResultOpBuilder.builder
-  >.builder;
-
+                  Results<(outs Variadic<LLVM_Type>)>, 
+                  LLVM_TwoBuilders<LLVM_OneResultOpBuilder,
+                                   LLVM_ZeroResultOpBuilder> {
   let verifier = [{
     if (getNumResults() > 1)
       return emitOpError("must have 0 or 1 result");

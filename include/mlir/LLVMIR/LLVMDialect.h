@@ -61,13 +61,11 @@ public:
 
   llvm::Type *getUnderlyingType() const;
 };
-} // end namespace LLVM
 
 ///// Ops /////
 #define GET_OP_CLASSES
-#include "mlir/LLVMIR/LLVMOps.inc"
+#include "mlir/LLVMIR/LLVMOps.h.inc"
 
-namespace LLVM {
 class LLVMDialect : public Dialect {
 public:
   explicit LLVMDialect(MLIRContext *context);

@@ -65,11 +65,14 @@ llvm::Type *LLVMType::getUnderlyingType() const {
 LLVMDialect::LLVMDialect(MLIRContext *context)
     : Dialect("llvm", context), module("LLVMDialectModule", llvmContext) {
   addTypes<LLVMType>();
-#define GET_OP_LIST
   addOperations<
-#include "mlir/LLVMIR/LLVMOps.inc"
+#define GET_OP_LIST
+#include "mlir/LLVMIR/LLVMOps.cpp.inc"
       >();
 }
+
+#define GET_OP_CLASSES
+#include "mlir/LLVMIR/LLVMOps.cpp.inc"
 
 /// Parse a type registered to this dialect.
 Type LLVMDialect::parseType(StringRef tyData, Location loc,

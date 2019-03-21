@@ -44,7 +44,7 @@ public:
 };
 
 #define GET_OP_CLASSES
-#include "mlir/StandardOps/Ops.inc"
+#include "mlir/StandardOps/Ops.h.inc"
 
 /// The "alloc" operation allocates a region of memory, as specified by its
 /// memref type. For example:

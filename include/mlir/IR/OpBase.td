@@ -473,6 +473,33 @@ def ins;
 // Marker used to identify the result list for an op.
 def outs;
 
+// Class for defining a custom builder.
+//
+// TableGen generates several generic builders for each op by default (see
+// comment in the `Op` class). If the default generated ones cannot cover
+// some use case, custom builders can be defined using instances of this class.
+//
+// The signature of the builder is always
+//
+// ```c++
+// static void build(Builder *builder, OperationState *result,
+//                   <other-parameters>...) {
+//   <body>...
+// }
+// ```
+//
+// To define a custom builder, the parameter list (*including* the `Builder
+// *builder, OperationState *result` part) and body should be passed in
+// as separate template arguments to this class. This is because we generate
+// op declaration and definition into separate files. If an empty string is
+// passed in for `body`, then *only* the builder declaration will be
+// generated; this provides a way to define complicated builders entirely
+// in C++.
+class OpBuilder<string p, code b = ""> {
+  string params = p;
+  code body = b;
+}
+
 // Base class for all ops.
 class Op<string mnemonic, list<OpTrait> props = []> {
   // The mnemonic of the op.
@@ -498,21 +525,24 @@ class Op<string mnemonic, list<OpTrait> props = []> {
   // Define the hooks used for building, parsing, printing, verification.
 
   // Custom builder.
-  // If a derived class/def does not override this, then two default builders
+  // In addtion to the custom builder provided here, two default builders
   // are generated, with the following signatures:
   //
-  //   static void build(Builder* builder, OperationState* result,
-  //                     Type resultType0, Type resultType1, ...,
-  //                     Value arg0, Value arg1, ...,
-  //                     Attribute <attr0-name>, Attribute <attr1-name>, ...);
+  // ```c++
+  // static void build(Builder* builder, OperationState* result,
+  //                   Type <result0-name>, Type <result1-name>, ...,
+  //                   Value <arg0-name>, Value <arg1-name>, ...,
+  //                   Attribute <attr0-name>, Attribute <attr1-name>, ...);
+  // ```
+  // * where the attributes follow the same declaration order as in the op.
   //
-  //   * where the attributes follow the same declaration order as in the op.
-  //
-  //   static void build(Builder* builder, OperationState* result,
-  //                     ArrayRef<Type> resultTypes,
-  //                     ArrayRef<Value> args,
-  //                     ArrayRef<NamedAttribute> attributes);
-  code builder = ?;
+  // ```c++
+  // static void build(Builder* builder, OperationState* result,
+  //                   ArrayRef<Type> resultTypes,
+  //                   ArrayRef<Value> operands,
+  //                   ArrayRef<NamedAttribute> attributes);
+  // ```
+  list<OpBuilder> builders = ?;
 
   // Custom parser.
   code parser = ?;

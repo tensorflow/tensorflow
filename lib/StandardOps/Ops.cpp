@@ -64,7 +64,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
                 ExtractElementOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
                 StoreOp, TensorCastOp,
 #define GET_OP_LIST
-#include "mlir/StandardOps/Ops.inc"
+#include "mlir/StandardOps/Ops.cpp.inc"
                 >();
 }
 
@@ -2057,3 +2057,10 @@ bool TensorCastOp::verify() const {
 
   return false;
 }
+
+//===----------------------------------------------------------------------===//
+// TableGen'd op method definitions
+//===----------------------------------------------------------------------===//
+
+#define GET_OP_CLASSES
+#include "mlir/StandardOps/Ops.cpp.inc"
