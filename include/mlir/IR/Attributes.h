@@ -428,11 +428,17 @@ public:
   using DenseElementsAttr::getValues;
   using DenseElementsAttr::ImplType;
 
-  // Constructs a dense integer elements attribute from an array of APInt
-  // values. Each APInt value is expected to have the same bitwidth as the
-  // element type of 'type'.
+  /// Constructs a dense integer elements attribute from an array of APInt
+  /// values. Each APInt value is expected to have the same bitwidth as the
+  /// element type of 'type'.
   static DenseIntElementsAttr get(VectorOrTensorType type,
                                   ArrayRef<APInt> values);
+
+  /// Constructs a dense integer elements attribute from an array of integer
+  /// values. Each value is expected to be within the bitwidth of the element
+  /// type of 'type'.
+  static DenseIntElementsAttr get(VectorOrTensorType type,
+                                  ArrayRef<int64_t> values);
 
   /// Gets the integer value of each of the dense elements.
   void getValues(SmallVectorImpl<APInt> &values) const;

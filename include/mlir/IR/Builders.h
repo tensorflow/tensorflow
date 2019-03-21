@@ -114,6 +114,8 @@ public:
                                     ArrayRef<char> data);
   ElementsAttr getDenseElementsAttr(VectorOrTensorType type,
                                     ArrayRef<Attribute> values);
+  ElementsAttr getDenseIntElementsAttr(VectorOrTensorType type,
+                                       ArrayRef<int64_t> values);
   ElementsAttr getSparseElementsAttr(VectorOrTensorType type,
                                      DenseIntElementsAttr indices,
                                      DenseElementsAttr values);

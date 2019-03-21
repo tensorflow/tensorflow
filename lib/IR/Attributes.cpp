@@ -356,12 +356,28 @@ APInt DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
 
 /// DenseIntElementsAttr
 
-// Constructs a dense integer elements attribute from an array of APInt
-// values. Each APInt value is expected to have the same bitwidth as the
-// element type of 'type'.
+/// Constructs a dense integer elements attribute from an array of APInt
+/// values. Each APInt value is expected to have the same bitwidth as the
+/// element type of 'type'.
 DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
                                                ArrayRef<APInt> values) {
   return DenseElementsAttr::get(type, values).cast<DenseIntElementsAttr>();
+}
+
+/// Constructs a dense integer elements attribute from an array of integer
+/// values. Each value is expected to be within the bitwidth of the element
+/// type of 'type'.
+DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
+                                               ArrayRef<int64_t> values) {
+  auto eltType = type.getElementType();
+  size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
+
+  // Convert the raw integer values to APInt.
+  SmallVector<APInt, 8> apIntValues;
+  apIntValues.reserve(values.size());
+  for (auto value : values)
+    apIntValues.emplace_back(APInt(bitWidth, value));
+  return get(type, apIntValues);
 }
 
 void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {

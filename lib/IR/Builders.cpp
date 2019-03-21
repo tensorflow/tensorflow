@@ -185,6 +185,11 @@ ElementsAttr Builder::getDenseElementsAttr(VectorOrTensorType type,
   return DenseElementsAttr::get(type, values);
 }
 
+ElementsAttr Builder::getDenseIntElementsAttr(VectorOrTensorType type,
+                                              ArrayRef<int64_t> values) {
+  return DenseIntElementsAttr::get(type, values);
+}
+
 ElementsAttr Builder::getSparseElementsAttr(VectorOrTensorType type,
                                             DenseIntElementsAttr indices,
                                             DenseElementsAttr values) {
