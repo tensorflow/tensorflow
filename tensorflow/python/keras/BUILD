@@ -572,7 +572,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-	"no_gpu",
+	"no_cuda",
 	"no_rocm",
     ],
     shard_count = 4,
