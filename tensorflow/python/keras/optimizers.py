@@ -229,9 +229,6 @@ class RMSprop(Optimizer):
   at their default values
   (except the learning rate, which can be freely tuned).
 
-  This optimizer is usually a good choice for recurrent
-  neural networks.
-
   Arguments:
       lr: float >= 0. Learning rate.
       rho: float >= 0.
