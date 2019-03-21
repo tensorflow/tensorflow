@@ -162,7 +162,7 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
     }
   }
   PrintCantFindCudaMessage(
-      "Can't find directory containing CUDA libevice.  This may result in "
+      "Can't find directory containing CUDA libdevice.  This may result in "
       "compilation or runtime failures, if the program we try to run uses "
       "routines from libdevice.",
       hlo_module_config);
@@ -694,7 +694,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   }
 
   if (user_pre_optimization_hook_) {
-    TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
+    user_pre_optimization_hook_(llvm_module);
   }
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
@@ -753,7 +753,7 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/true);
 
   if (user_post_optimization_hook_) {
-    TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
+    user_post_optimization_hook_(llvm_module);
   }
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (DumpingEnabledForHloModule(*module)) {

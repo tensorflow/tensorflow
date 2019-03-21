@@ -522,6 +522,7 @@ tf_cc_test(
     name = "map_vectorization_test",
     srcs = ["map_vectorization_test.cc"],
     deps = [
+        ":function_utils",
         ":graph_utils",
         ":map_vectorization",
         "//tensorflow/core:array_ops_op_lib",
@@ -547,6 +548,7 @@ cc_library(
     hdrs = ["meta_optimizer.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:arithmetic_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",

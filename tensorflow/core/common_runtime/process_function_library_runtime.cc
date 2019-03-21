@@ -143,11 +143,32 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
                                  received_tensors, std::move(done));
 }
 
+Status ProcessFunctionLibraryRuntime::GetRetTypes(
+    FunctionLibraryRuntime::Handle h, DataTypeVector* ret_types) {
+  FunctionLibraryRuntime* flr = nullptr;
+  {
+    tf_shared_lock l(mu_);
+    auto miter = mdevice_data_.find(h);
+    if (miter != mdevice_data_.end()) {
+      *ret_types = miter->second->ret_types_;
+      return Status::OK();
+    }
+    auto fiter = function_data_.find(h);
+    if (fiter != function_data_.end()) {
+      flr = GetFLR(fiter->second->target_device());
+    }
+  }
+  if (flr != nullptr) {
+    return flr->GetRetTypes(h, ret_types);
+  }
+  return errors::InvalidArgument("Handle ", h, " not found.");
+}
+
 Status ProcessFunctionLibraryRuntime::GetDeviceIncarnation(
     const string& device_name, int64* incarnation) const {
   FunctionLibraryRuntime* flr = GetFLR(device_name);
   if (flr == nullptr) {
-    return errors::InvalidArgument("Device name: ", device_name, " not found");
+    return errors::InvalidArgument("Device name: ", device_name, " not found.");
   }
   *incarnation = flr->device()->attributes().incarnation();
   return Status::OK();
@@ -207,7 +228,7 @@ FunctionLibraryRuntime::Handle ProcessFunctionLibraryRuntime::AddHandleLocked(
     FunctionLibraryRuntime::LocalHandle local_handle) {
   auto h = next_handle_;
   function_data_[h] =
-      MakeUnique<FunctionData>(device_name, local_handle, function_key);
+      absl::make_unique<FunctionData>(device_name, local_handle, function_key);
   table_[function_key] = h;
   next_handle_++;
   return h;
@@ -291,6 +312,13 @@ void GetColocationGroup(const Node* node, string* group) {
   }
 }
 
+const string* AssignedOrRequestedDeviceName(const Node& node) {
+  if (node.has_assigned_device_name()) {
+    return &node.assigned_device_name();
+  }
+  return &node.requested_device();
+}
+
 }  // anonymous namespace
 
 Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
@@ -314,26 +342,27 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
   for (Node* node : graph->op_nodes()) {
     if (node->IsRetval()) {
       if (output_devices.empty()) {
+        VLOG(3) << "Trying to determine device for node " << node->name();
         // If output_devices are empty, the node producing retval
         // must have explicitly assigned device or a colocation constraint
         // to a node with explicitly assigned device.
         for (const auto& it : node->in_edges()) {
           if (!it->IsControlEdge()) {
             Node* src_node = it->src();
-            const string* src_device = &src_node->requested_device();
+            const string* src_device = AssignedOrRequestedDeviceName(*src_node);
             string colocation_group = "";
             GetColocationGroup(src_node, &colocation_group);
+            VLOG(3) << "Considering src: " << src_node->name()
+                    << " src_device: " << *src_device
+                    << " colo group: " << colocation_group;
             while (src_device->empty() && colocation_group.empty() &&
                    src_node->IsIdentity()) {
               src_node = *src_node->in_nodes().begin();
-              src_device = &src_node->requested_device();
-              if (src_device->empty()) {
-                // Some node (e.g. _Args) can have no requested_device,
-                // but have assigned_device.
-                src_device = &src_node->assigned_device_name();
-              }
-
+              src_device = AssignedOrRequestedDeviceName(*src_node);
               GetColocationGroup(src_node, &colocation_group);
+              VLOG(3) << "Considering src: " << src_node->name()
+                      << " src_device: " << *src_device
+                      << " colo group: " << colocation_group;
             }
 
             if (!colocation_group.empty()) {
@@ -375,6 +404,9 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                     "device. Matched devices are ",
                     devices);
               }
+              VLOG(3) << "Setting output device to "
+                      << matching_devices[0]->name() << " for node "
+                      << node->DebugString();
               node->set_assigned_device_name(matching_devices[0]->name());
             }
           }
@@ -385,6 +417,8 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
         int64 index = attr_value->i();
         // output_devices size is checked in InstantiateMultiDevice
         DCHECK_GT(output_devices.size(), index);
+        VLOG(3) << "Setting output device to " << output_devices[index]
+                << " for return at index " << index;
         node->set_assigned_device_name(output_devices[index]);
       }
     }
@@ -414,12 +448,11 @@ Status ValidateMultiDeviceOptions(
     const FunctionDef& fdef,
     const FunctionLibraryRuntime::InstantiateOptions& options) {
   const OpDef& signature = fdef.signature();
-  // Multi-device functions don't currently support list inputs or outputs
+  // Multi-device functions currently do not support list inputs or outputs.
   TF_RETURN_IF_ERROR(ValidateNoListArguments(signature.input_arg(), "input",
                                              signature.name()));
   TF_RETURN_IF_ERROR(ValidateNoListArguments(signature.output_arg(), "output",
                                              signature.name()));
-
   if (fdef.attr().count(FunctionLibraryDefinition::kIntsOnDeviceAttr) != 0 &&
       fdef.attr().at(FunctionLibraryDefinition::kIntsOnDeviceAttr).b()) {
     return errors::Unimplemented(
@@ -428,7 +461,6 @@ Status ValidateMultiDeviceOptions(
         "` attribute set. This attribute is not currently supported by "
         "multi-device functions.");
   }
-
   if (options.input_devices.size() != signature.input_arg_size()) {
     return errors::InvalidArgument(
         "InstantiateOptions.input_devices must have the same length "
@@ -439,26 +471,11 @@ Status ValidateMultiDeviceOptions(
   if (!options.output_devices.empty() &&
       options.output_devices.size() != signature.output_arg_size()) {
     return errors::InvalidArgument(
-        "InstantiateOptions.output_devices must either be empty or have "
-        "the same length as the number of arguments: output_devices length "
-        "= ",
+        "InstantiateOptions.output_devices must either be empty or have the "
+        "same length as the number of arguments: output_devices length = ",
         options.output_devices.size(),
         " number of arguments = ", signature.output_arg_size());
   }
-
-  if (!options.state_handle.empty()) {
-    return errors::Unimplemented(
-        "InstantiateOptions.state_handle is not supported for multi-device "
-        "functions. Function: ",
-        signature.name());
-  }
-  if (options.create_kernels_eagerly) {
-    return errors::Unimplemented(
-        "InstantiateOptions.create_kernels_eagerly is not supported for "
-        "multi-device functions. Function: ",
-        signature.name());
-  }
-
   return Status::OK();
 }
 
@@ -467,25 +484,24 @@ Status GetGraphAndRets(const string& function_name, AttrSlice attrs,
                        const FunctionLibraryDefinition* lib_def,
                        std::unique_ptr<Graph>* graph,
                        std::vector<string>* ret_node_names,
+                       DataTypeVector* ret_types,
                        std::vector<string>* control_ret_node_names) {
-  auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
-    return lib_def->LookUpOpDef(op, sig);
-  };
-  FunctionBody* tmp_fbody;
+  std::unique_ptr<FunctionBody> fbody;
   // TODO(iga): FunctionDefToBodyHelper copies fdef. Avoid this copy.
-  TF_RETURN_IF_ERROR(
-      FunctionDefToBodyHelper(*fdef, attrs, lib_def, get_func_sig, &tmp_fbody));
-  if (tmp_fbody == nullptr) {
+  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, attrs, lib_def, &fbody));
+  if (!fbody) {
     LOG(ERROR) << "Failed to get FunctionBody for \"" << function_name << "\"";
     return errors::Internal("Failed to construct FunctionBody for ",
                             function_name);
   }
-  std::unique_ptr<FunctionBody> fbody(tmp_fbody);
   *graph = std::unique_ptr<Graph>(fbody->graph);
   fbody->graph = nullptr;
   ret_node_names->reserve(fbody->ret_nodes.size());
   for (const Node* node : fbody->ret_nodes) {
     ret_node_names->push_back(node->name());
+  }
+  for (const auto& ret_type : fbody->ret_types) {
+    ret_types->push_back(ret_type);
   }
   control_ret_node_names->reserve(fbody->control_ret_nodes.size());
   for (const Node* node : fbody->control_ret_nodes) {
@@ -539,10 +555,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   std::unique_ptr<Graph> graph;
   std::vector<string> ret_node_names;
+  DataTypeVector ret_types;
   std::vector<string> control_ret_node_names;
 
   TF_RETURN_IF_ERROR(GetGraphAndRets(function_name, attrs, fdef, lib_def,
-                                     &graph, &ret_node_names,
+                                     &graph, &ret_node_names, &ret_types,
                                      &control_ret_node_names));
 
   if (options.graph_collector != nullptr) {
@@ -561,9 +578,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       options.input_devices, options.output_devices, device_set, graph.get()));
 
   std::unique_ptr<MultiDeviceFunctionData> data =
-      MakeUnique<MultiDeviceFunctionData>(function_name, function_key,
-                                          ret_node_names.size(),
-                                          lib_def->ReachableDefinitions(*fdef));
+      absl::make_unique<MultiDeviceFunctionData>(
+          function_name, function_key, ret_node_names.size(),
+          lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
@@ -646,6 +663,22 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     }
   }
 
+  // Mapping from a function body node name to the control output name.
+  std::unordered_map<string, string> node_name_to_control_ret;
+  for (const auto& control_ret : fdef->control_ret()) {
+    node_name_to_control_ret.emplace(control_ret.second, control_ret.first);
+  }
+
+  // We must preserve control returns in each of the function components,
+  // otherwise after function inlining we might prune side-effectful nodes.
+  const auto control_ret =
+      [&node_name_to_control_ret](const Node* n) -> absl::optional<string> {
+    const auto it = node_name_to_control_ret.find(n->name());
+    return it != node_name_to_control_ret.end()
+               ? absl::make_optional<string>(it->second)
+               : absl::nullopt;
+  };
+
   int i = 0;
   FunctionNameGenerator name_generator(&data->overlay_lib_, function_name);
   for (const auto& pair : subgraphs) {
@@ -661,13 +694,16 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         &comp_data->arg_alloc_attrs_, &comp_data->ret_alloc_attrs_));
     FunctionDef shard;
     string unique_name = name_generator.GetName();
-    TF_RETURN_IF_ERROR(GraphToFunctionDef(*subgraph, unique_name, &shard));
+    TF_RETURN_IF_ERROR(
+        GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
     FunctionLibraryRuntime* target_flr = GetFLR(target);
     TF_RETURN_IF_ERROR(data->overlay_lib_.AddFunctionDef(shard));
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.executor_type = options.executor_type;
     opts.target = target;
     opts.overlay_lib = &data->overlay_lib_;
+    opts.create_kernels_eagerly = options.create_kernels_eagerly;
+    opts.state_handle = options.state_handle;
     FunctionLibraryRuntime::Handle component_handle;
 
     TF_RETURN_IF_ERROR(target_flr->Instantiate(
@@ -766,11 +802,16 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     opts_copy.args_alloc_attrs = comp_data.arg_alloc_attrs_;
     opts_copy.rets_alloc_attrs = comp_data.ret_alloc_attrs_;
     opts_copy.remote_execution = false;
+
+    FunctionLibraryRuntime* flr = GetFLR(target);
+    // When target device has private thread pool, use the target device runner
+    thread::ThreadPool* pool = flr->device()->tensorflow_device_thread_pool();
+    opts_copy.runner = (pool == nullptr) ? opts_copy.runner : flr->runner();
     std::vector<Tensor> comp_args =
         GetArgsForIndices(comp_data.arg_indices_, args);
     std::vector<Tensor>* comp_rets = new std::vector<Tensor>;
     rets->resize(data->num_outputs_);
-    GetFLR(target)->Run(
+    flr->Run(
         opts_copy, handle, comp_args, comp_rets,
         [comp_rets, rets, comp_data, refcounted_done](const Status& status) {
           if (!status.ok()) {

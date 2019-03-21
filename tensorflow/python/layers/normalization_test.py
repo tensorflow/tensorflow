@@ -211,7 +211,7 @@ class BNTest(test.TestCase):
     self.assertEqual(len(vars_fused), 5)
     self.assertEqual(len(vars_nonfused), 5)
     for var_fused, var_nonfused in zip(vars_fused, vars_nonfused):
-      self.assertAllClose(var_fused, var_nonfused, atol=1e-6)
+      self.assertAllClose(var_fused, var_nonfused, atol=1e-5)
 
     image_val = np.random.rand(batch, height, width,
                                input_channels).astype(np.float32)

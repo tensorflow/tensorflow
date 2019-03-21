@@ -148,10 +148,12 @@ class WorkerHeartbeatManager(object):
         shutdown_mode=event_pb2.WAIT_FOR_COORDINATOR)
     self.configure(req)
 
-    # Wait for workers to shutdown.  This isn't strictly required
-    # but it avoids triggering multiple checkpoints with the same lame worker.
-    logging.info('Waiting %dms for worker shutdown.', timeout_ms)
-    time.sleep(timeout_ms / 1000)
+    # Wait for workers to shutdown. If we continue immediately, we can create a
+    # new heartbeat manager before the workers shutdown: this keeps the workers
+    # alive and can introduce confusing behavior.
+    sleep_sec = 10.0 + timeout_ms / 1000
+    logging.info('Waiting %.2f seconds for worker shutdown.', sleep_sec)
+    time.sleep(sleep_sec)
 
 
 def all_worker_devices(session):

@@ -2471,6 +2471,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1, 1>},
       {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1, 1>},
       {"MatMul", ConvertMatMulOperator},
+      {"MatrixDiag", ConvertSimpleOperator<MatrixDiagOperator, 1, 1>},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},

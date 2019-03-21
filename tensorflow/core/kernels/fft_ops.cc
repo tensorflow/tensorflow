@@ -28,9 +28,9 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -286,7 +286,7 @@ REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
 
 #undef FFT_LABEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace {
 template <typename T>
@@ -547,6 +547,6 @@ REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU),
                         FFTGPU<true, false, 3>);
 REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU),
                         FFTGPU<false, false, 3>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

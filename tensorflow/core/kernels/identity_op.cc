@@ -112,7 +112,7 @@ REGISTER_GPU_KERNEL(Variant);
 
 #undef REGISTER_GPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // A special GPU kernel for int32 and bool.
 // TODO(b/25387198): Also enable int32 in device memory. This kernel
 // registration requires all int32 inputs and outputs to be in host memory.
@@ -149,6 +149,6 @@ REGISTER_GPU_HOST_KERNEL(ResourceHandle);
 
 #undef REGISTER_GPU_HOST_KERNEL
 
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

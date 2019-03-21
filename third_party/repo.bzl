@@ -185,7 +185,7 @@ def _third_party_http_archive(ctx):
             _apply_patch(ctx, ctx.attr.patch_file)
         ctx.symlink(Label(ctx.attr.build_file), buildfile_path)
 
-    link_dict = dict()
+    link_dict = {}
     if use_syslib:
         link_dict.update(ctx.attr.system_link_files)
 

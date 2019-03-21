@@ -4,8 +4,4 @@ tf_module {
     name: "Feature"
     mtype: "<class \'enum.EnumMeta\'>"
   }
-  member {
-    name: "Verbosity"
-    mtype: "<class \'enum.EnumMeta\'>"
-  }
 }

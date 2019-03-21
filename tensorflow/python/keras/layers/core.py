@@ -48,6 +48,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -738,6 +739,10 @@ class Lambda(Layer):
     self._trainable_weights = []
     self._non_trainable_weights = []
 
+    function_args = tf_inspect.getfullargspec(self.function).args
+    self._fn_expects_training_arg = 'training' in function_args
+    self._fn_expects_mask_arg = 'mask' in function_args
+
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self._output_shape is None:
@@ -767,10 +772,12 @@ class Lambda(Layer):
     output_shapes = tf_utils.convert_shapes(self._output_shape, to_tuples=False)
     return nest.map_structure(_add_batch, output_shapes)
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs, mask=None, training=None):
     arguments = self.arguments
-    if generic_utils.has_arg(self.function, 'mask'):
+    if self._fn_expects_mask_arg:
       arguments['mask'] = mask
+    if self._fn_expects_training_arg:
+      arguments['training'] = training
     with variable_scope.variable_creator_scope(self._variable_creator):
       return self.function(inputs, **arguments)
 

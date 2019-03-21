@@ -52,15 +52,16 @@ class SubgraphQuantizer {
   TfLiteStatus AsymmetricQuantizeSoftmax(BuiltinOperator op_code,
                                          OperatorT* op);
 
-  // Asymmetric quantizes an Op with multiple inputs and outputs. E.g Add.
-  TfLiteStatus AsymmetricQuantizeInputsAndOutputs(BuiltinOperator op_code,
-                                                  OperatorT* op);
+  // Quantizes an Op with multiple inputs and outputs. E.g Add.
+  TfLiteStatus QuantizeInputsAndOutputs(BuiltinOperator op_code, OperatorT* op);
 
-  TfLiteStatus AsymmetricQuantizeTensor(BuiltinOperator op_code,
-                                        int32_t tensor_idx);
+  // Quantizes a tensor, if the tensor has a buffer, the buffer is quantized
+  // symmetrically, otherwise inputs and outputs quantization params are
+  // computed using min, max information present in the tensor.
+  TfLiteStatus QuantizeTensor(BuiltinOperator op_code, int32_t tensor_idx);
 
-  // Returns true if |tensor_idx| is one of the inputs in the subgraph.
-  bool IsSubgraphInput(int32_t tensor_idx) const;
+  // Returns true if |tensor_idx| is a tensor of type Float32.
+  bool IsFloat32TypeTensor(int32_t tensor_idx) const;
 
   ModelT* model_;
   SubGraphT* subgraph_;

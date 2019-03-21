@@ -72,7 +72,8 @@ def _create_cluster(num_workers,
                     has_eval=False,
                     protocol='grpc',
                     worker_config=None,
-                    ps_config=None):
+                    ps_config=None,
+                    eval_config=None):
   """Creates and starts local servers and returns the cluster_spec dict."""
   if _portpicker_import_error:
     raise _portpicker_import_error  # pylint: disable=raising-bad-type
@@ -124,7 +125,7 @@ def _create_cluster(num_workers,
         job_name='evaluator',
         protocol=protocol,
         task_index=0,
-        config=worker_config,
+        config=eval_config,
         start=True)
 
   return cluster_dict
@@ -153,6 +154,9 @@ def create_in_process_cluster(num_workers,
   ps_config = config_pb2.ConfigProto()
   ps_config.device_count['GPU'] = 0
 
+  eval_config = config_pb2.ConfigProto()
+  eval_config.experimental.collective_group_leader = ''
+
   # Create in-process servers. Once an in-process tensorflow server is created,
   # there is no way to terminate it. So we create one cluster per test process.
   # We could've started the server in another process, we could then kill that
@@ -169,6 +173,7 @@ def create_in_process_cluster(num_workers,
       has_eval=has_eval,
       worker_config=worker_config,
       ps_config=ps_config,
+      eval_config=eval_config,
       protocol='grpc')
 
 
@@ -316,13 +321,13 @@ class MockOsEnv(collections.Mapping):
   """A class that allows per-thread TF_CONFIG."""
 
   def __init__(self, *args):
-    self._dict = dict()
+    self._dict = {}
     self._thread_local = threading.local()
     super(MockOsEnv, self).__init__(*args)
 
   def get(self, key, default=None):
     if not hasattr(self._thread_local, 'dict'):
-      self._thread_local.dict = dict()
+      self._thread_local.dict = {}
     if key == 'TF_CONFIG':
       return dict.get(self._thread_local.dict, key, default)
     else:
@@ -330,7 +335,7 @@ class MockOsEnv(collections.Mapping):
 
   def __getitem__(self, key):
     if not hasattr(self._thread_local, 'dict'):
-      self._thread_local.dict = dict()
+      self._thread_local.dict = {}
     if key == 'TF_CONFIG':
       return dict.__getitem__(self._thread_local.dict, key)
     else:
@@ -338,7 +343,7 @@ class MockOsEnv(collections.Mapping):
 
   def __setitem__(self, key, val):
     if not hasattr(self._thread_local, 'dict'):
-      self._thread_local.dict = dict()
+      self._thread_local.dict = {}
     if key == 'TF_CONFIG':
       return dict.__setitem__(self._thread_local.dict, key, val)
     else:
@@ -346,7 +351,7 @@ class MockOsEnv(collections.Mapping):
 
   def __iter__(self):
     if not hasattr(self._thread_local, 'dict'):
-      self._thread_local.dict = dict()
+      self._thread_local.dict = {}
     for x in self._thread_local.dict:
       yield x
     for x in self._dict:
@@ -354,7 +359,7 @@ class MockOsEnv(collections.Mapping):
 
   def __len__(self):
     if not hasattr(self._thread_local, 'dict'):
-      self._thread_local.dict = dict()
+      self._thread_local.dict = {}
     return self._thread_local.dict.__len__() + self._dict.__len__()
 
 

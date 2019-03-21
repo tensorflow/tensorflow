@@ -23,6 +23,8 @@ limitations under the License.
 
 namespace {
 
+TEST(CAPI, Version) { EXPECT_STRNE("", TFL_Version()); }
+
 TEST(CApiSimple, Smoke) {
   TFL_Model* model = TFL_NewModelFromFile(
       "tensorflow/lite/testdata/add.bin");

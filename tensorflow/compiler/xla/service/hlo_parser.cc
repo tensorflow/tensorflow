@@ -744,6 +744,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:

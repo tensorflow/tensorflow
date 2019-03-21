@@ -1154,8 +1154,8 @@ def resize_images_v2(images,
     Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
     particularly when upsampling.
   *   <b>`gaussian`</b>: [Gaussian kernel](
-    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
-    sigma = 1.5 / 3.]
+    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3, 
+    sigma = 1.5 / 3.0.
   *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
     https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
     'antialias' has no effect when used with nearest neighbor interpolation.
