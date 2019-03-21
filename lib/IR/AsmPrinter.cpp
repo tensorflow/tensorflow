@@ -1111,7 +1111,7 @@ public:
                                 unsigned index) override;
 
   /// Print a region.
-  void printRegion(const Region &blocks, bool printEntryBlockArgs) override {
+  void printRegion(Region &blocks, bool printEntryBlockArgs) override {
     os << " {\n";
     if (!blocks.empty()) {
       auto *entryBlock = &blocks.front();

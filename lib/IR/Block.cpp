@@ -273,14 +273,14 @@ Instruction *Region::getContainingInst() {
   return container.dyn_cast<Instruction *>();
 }
 
-Function *Region::getContainingFunction() const {
+Function *Region::getContainingFunction() {
   return container.dyn_cast<Function *>();
 }
 
 /// Clone the internal blocks from this region into `dest`. Any
 /// cloned blocks are appended to the back of dest.
 void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
-                       MLIRContext *context) const {
+                       MLIRContext *context) {
   assert(dest && "expected valid region to clone into");
 
   // If the list is empty there is nothing to clone.

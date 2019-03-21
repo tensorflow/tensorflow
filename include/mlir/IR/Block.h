@@ -384,32 +384,22 @@ public:
 
   using RegionType = llvm::iplist<Block>;
   RegionType &getBlocks() { return blocks; }
-  const RegionType &getBlocks() const { return blocks; }
 
   // Iteration over the block in the function.
   using iterator = RegionType::iterator;
-  using const_iterator = RegionType::const_iterator;
   using reverse_iterator = RegionType::reverse_iterator;
-  using const_reverse_iterator = RegionType::const_reverse_iterator;
 
   iterator begin() { return blocks.begin(); }
   iterator end() { return blocks.end(); }
-  const_iterator begin() const { return blocks.begin(); }
-  const_iterator end() const { return blocks.end(); }
   reverse_iterator rbegin() { return blocks.rbegin(); }
   reverse_iterator rend() { return blocks.rend(); }
-  const_reverse_iterator rbegin() const { return blocks.rbegin(); }
-  const_reverse_iterator rend() const { return blocks.rend(); }
 
-  bool empty() const { return blocks.empty(); }
+  bool empty() { return blocks.empty(); }
   void push_back(Block *block) { blocks.push_back(block); }
   void push_front(Block *block) { blocks.push_front(block); }
 
   Block &back() { return blocks.back(); }
-  const Block &back() const { return const_cast<Region *>(this)->back(); }
-
   Block &front() { return blocks.front(); }
-  const Block &front() const { return const_cast<Region *>(this)->front(); }
 
   /// getSublistAccess() - Returns pointer to member of region.
   static RegionType Region::*getSublistAccess(Block *) {
@@ -419,20 +409,17 @@ public:
   /// A Region is either a function body or a part of an operation.  If it is
   /// part of an operation, then return the operation, otherwise return null.
   Instruction *getContainingInst();
-  const Instruction *getContainingInst() const {
-    return const_cast<Region *>(this)->getContainingInst();
-  }
 
   /// A Region is either a function body or a part of an operation.  If it is
   /// a Function body, then return this function, otherwise return null.
-  Function *getContainingFunction() const;
+  Function *getContainingFunction();
 
   /// Clone the internal blocks from this region into dest. Any
   /// cloned blocks are appended to the back of dest. If the mapper
   /// contains entries for block arguments, these arguments are not included
   /// in the respective cloned block.
   void cloneInto(Region *dest, BlockAndValueMapping &mapper,
-                 MLIRContext *context) const;
+                 MLIRContext *context);
 
 private:
   RegionType blocks;

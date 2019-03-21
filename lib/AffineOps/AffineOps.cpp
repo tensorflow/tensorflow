@@ -568,7 +568,7 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
 }
 
 bool AffineForOp::verify() const {
-  const auto &bodyRegion = getInstruction()->getRegion(0);
+  auto &bodyRegion = getInstruction()->getRegion(0);
 
   // The body region must contain a single basic block.
   if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
@@ -1057,7 +1057,7 @@ bool AffineIfOp::verify() const {
     return true;
 
   // Verify that the entry of each child region does not have arguments.
-  for (const auto &region : getInstruction()->getRegions()) {
+  for (auto &region : getInstruction()->getRegions()) {
     if (region.empty())
       continue;
 
@@ -1123,7 +1123,7 @@ void AffineIfOp::print(OpAsmPrinter *p) const {
   p->printRegion(getInstruction()->getRegion(0));
 
   // Print the 'else' regions if it has any blocks.
-  const auto &elseRegion = getInstruction()->getRegion(1);
+  auto &elseRegion = getInstruction()->getRegion(1);
   if (!elseRegion.empty()) {
     *p << " else";
     p->printRegion(elseRegion);

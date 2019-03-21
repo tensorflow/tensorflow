@@ -291,20 +291,15 @@ public:
   unsigned getNumRegions() const { return numRegions; }
 
   /// Returns the regions held by this operation.
-  MutableArrayRef<Region> getRegions() {
-    return {getTrailingObjects<Region>(), numRegions};
-  }
-  ArrayRef<Region> getRegions() const {
-    return const_cast<Instruction *>(this)->getRegions();
+  MutableArrayRef<Region> getRegions() const {
+    auto *regions = getTrailingObjects<Region>();
+    return {const_cast<Region *>(regions), numRegions};
   }
 
   /// Returns the region held by this operation at position 'index'.
-  Region &getRegion(unsigned index) {
+  Region &getRegion(unsigned index) const {
     assert(index < numRegions && "invalid region index");
     return getRegions()[index];
-  }
-  const Region &getRegion(unsigned index) const {
-    return const_cast<Instruction *>(this)->getRegion(index);
   }
 
   //===--------------------------------------------------------------------===//

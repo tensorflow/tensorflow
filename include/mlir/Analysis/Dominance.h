@@ -44,7 +44,7 @@ public:
   void recalculate(Function *function);
 
   /// Get the root dominance node of the given region.
-  DominanceInfoNode *getRootNode(const Region *region) {
+  DominanceInfoNode *getRootNode(Region *region) {
     assert(dominanceInfos.count(region) != 0);
     return dominanceInfos[region]->getRootNode();
   }
@@ -56,7 +56,7 @@ protected:
   bool properlyDominates(const Block *a, const Block *b);
 
   /// A mapping of regions to their base dominator tree.
-  llvm::DenseMap<const Region *, std::unique_ptr<base>> dominanceInfos;
+  llvm::DenseMap<Region *, std::unique_ptr<base>> dominanceInfos;
 };
 } // end namespace detail
 

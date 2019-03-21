@@ -147,7 +147,7 @@ public:
 
   /// Get the body region of the AffineForOp.
   Region &getRegion() { return getInstruction()->getRegion(0); }
-  const Region &getRegion() const { return getInstruction()->getRegion(0); }
+  Region &getRegion() const { return getInstruction()->getRegion(0); }
 
   /// Returns the induction variable for this loop.
   Value *getInductionVar();
@@ -331,13 +331,13 @@ public:
 
   /// Returns the 'then' region.
   Region &getThenBlocks();
-  const Region &getThenBlocks() const {
+  Region &getThenBlocks() const {
     return const_cast<AffineIfOp *>(this)->getThenBlocks();
   }
 
   /// Returns the 'else' blocks.
   Region &getElseBlocks();
-  const Region &getElseBlocks() const {
+  Region &getElseBlocks() const {
     return const_cast<AffineIfOp *>(this)->getElseBlocks();
   }
 
