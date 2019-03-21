@@ -462,19 +462,18 @@ class MklConvOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; ++i) {
-      OP_REQUIRES(
-          context,
-          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
-          errors::InvalidArgument("filter dimension is too large"));
+      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
+                                           std::numeric_limits<int>::max()),
+                  errors::InvalidArgument("filter dimension is too large"));
     }
 
     const int64 input_depth =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
                             : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(context, input_depth == filter.dim_size(2),
-                errors::InvalidArgument(
-                    "input and filter must have the same depth: ", input_depth,
-                    " vs ", filter.dim_size(2)));
+    OP_REQUIRES(
+        context, input_depth == filter.dim_size(2),
+        errors::InvalidArgument("input and filter must have the same depth: ",
+                                input_depth, " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -483,10 +482,9 @@ class MklConvOp : public OpKernel {
     const int64 input_rows_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
                             : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input rows are too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input rows are too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -495,10 +493,9 @@ class MklConvOp : public OpKernel {
     const int64 input_cols_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
                             : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("Input cols are too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("Input cols are too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -506,10 +503,9 @@ class MklConvOp : public OpKernel {
     const int64 input_batch_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
                             : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(
-        context,
-        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
-        errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
+                                         std::numeric_limits<int>::max()),
+                errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we
@@ -897,17 +893,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1791,25 +1785,22 @@ class MklQuantizedConv2DSumReluOp
       MklDnnShape summand_mkl_shape;
       GetMklShape(context, summand_idx, &summand_mkl_shape);
       auto dst_md = summand_mkl_shape.GetMklLayout();
-      if (summand_mkl_shape.IsMklTensor()) {
-        if (summand_type == DT_QINT8) {
-          OP_REQUIRES_OK(context, summand.BitcastFrom(summand, DT_QUINT8,
-                                                      summand.shape()));
-          dst_md.data.data_type =
-              static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
-          summand_mkl_shape.SetMklLayout(&dst_md);
-          summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
-        }
-        ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
-                                            summand_mkl_shape);
-        *output_tensor = const_cast<Tensor*>(&summand);
-        return;
-      } else {
-        TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
-                           "Current fusion is not successful."));
+
+      // TODO(mdfaijul): handle both non-MKL and MKL tensors
+      if (summand_type == DT_QINT8) {
+        OP_REQUIRES_OK(
+            context, summand.BitcastFrom(summand, DT_QUINT8, summand.shape()));
+        dst_md.data.data_type =
+            static_cast<mkldnn_data_type_t>(MklDnnType<Toutput>());
+        summand_mkl_shape.SetMklLayout(&dst_md);
+        summand_mkl_shape.SetElemType(MklDnnType<Toutput>());
       }
+      ForwardMklTensorInToOutWithMklShape(context, summand_idx, 0,
+                                          summand_mkl_shape);
+      *output_tensor = const_cast<Tensor*>(&summand);
+      return;
     }
-    // TODO(mdfaijul): Add cleaner code for non-mkl tensor
+
     MklConvOp<Device, quint8, qint8, Tbias, Toutput, Ttemp_output, int32,
               bias_enabled, false,
               false>::AllocateOutputTensor(context, conv_prim_desc,
