@@ -1492,6 +1492,8 @@ std::string GetTensorMappingJson(const poplar::Graph& graph,
   root["mappings"] = mappings;
 
   Json::StreamWriterBuilder json_builder;
+  json_builder["indentation"] = "";
+  json_builder["commentStyle"] = "None";
   std::string json_msg = Json::writeString(json_builder, root);
 
   if (VLOG_IS_ON(2)) {
