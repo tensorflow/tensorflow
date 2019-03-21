@@ -34,23 +34,36 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
     LowerFunctionalOpsPass::kLowerAsMultiDeviceFunctionAttr;
 
 constexpr const char* const kTpuReplicateAttr = "_tpu_replicate";
+constexpr const char* const kXlaClusterAttr = "_xla_compile_id";
 
-bool HasLowerUsingSwitchMergeAttr(const Node* n) {
+// Checks if boolean attribute is defined and it's value is 'true'.
+bool CheckBoolAttr(const Node* n, absl::string_view attr_name) {
   bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerUsingSwitchMergeAttr, &match);
+  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
   return s.ok() && match;
 }
 
-bool HasLowerAsMultiDeviceFunctionAttr(const Node* n) {
-  bool match;
-  Status s = GetNodeAttr(n->attrs(), kLowerAsMultiDeviceFunctionAttr, &match);
-  return s.ok() && match;
-}
-
-bool HasTpuReplicateAttr(const Node* n) {
+// Checks if string attribute is defined and it's not empty.
+bool CheckStringAttr(const Node* n, absl::string_view attr_name) {
   string match;
-  Status s = GetNodeAttr(n->attrs(), kTpuReplicateAttr, &match);
+  Status s = GetNodeAttr(n->attrs(), attr_name, &match);
   return s.ok() && !match.empty();
+}
+
+bool LowerUsingSwitchMergeIsOn(const Node* n) {
+  return CheckBoolAttr(n, kLowerUsingSwitchMergeAttr);
+}
+
+bool LowerAsMultiDeviceFunctionIsOn(const Node* n) {
+  return CheckBoolAttr(n, kLowerAsMultiDeviceFunctionAttr);
+}
+
+bool MarkedForTpuCompilation(const Node* n) {
+  return CheckStringAttr(n, kTpuReplicateAttr);
+}
+
+bool MarkedForXlaCompilation(const Node* n) {
+  return CheckStringAttr(n, kXlaClusterAttr);
 }
 
 bool HasRetvals(const Graph& g) {
@@ -106,18 +119,19 @@ Status LowerFunctionalOpsPass::Run(
   // lowered as well.
   for (int i = 2; i < g->num_node_ids(); ++i) {
     Node* n = g->FindNodeId(i);
-    if (n == nullptr) continue;            // deleted node
-    if (HasTpuReplicateAttr(n)) continue;  // marked for TPU compilation
+    if (n == nullptr) continue;  // deleted node
+    if (MarkedForTpuCompilation(n)) continue;
+    if (MarkedForXlaCompilation(n)) continue;
 
     // Always lower function calls produces by lowering If/While nodes.
     if (IsFunctionCall(*flib_def, *n) &&
-        (lower_function_calls || HasLowerAsMultiDeviceFunctionAttr(n))) {
+        (lower_function_calls || LowerAsMultiDeviceFunctionIsOn(n))) {
       TF_RETURN_IF_ERROR(RewriteFunctionCallNode(
           n, g, *flib_def, keep_lowered_function_call_node_fetchable));
       continue;
     }
 
-    if (HasLowerUsingSwitchMergeAttr(n)) {
+    if (LowerUsingSwitchMergeIsOn(n)) {
       if (n->type_string() == "If") {
         TF_RETURN_IF_ERROR(RewriteIfNode(n, g, *flib_def));
       } else if (n->type_string() == "While") {
