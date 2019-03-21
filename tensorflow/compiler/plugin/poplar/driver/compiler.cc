@@ -190,6 +190,23 @@ bool ShardingEnabled(const HloModule* module) {
       }
     }
   }
+  return false;
+}
+
+int64 MaximalShard(const HloModule* module) {
+  std::vector<HloComputation*> comps = module->MakeNonfusionComputations();
+  int64 maximal_shard = 0;
+  for (const auto* c : comps) {
+    for (const auto* inst : c->instructions()) {
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding();
+        if (IsSupportedSharding(sharding)) {
+          maximal_shard = std::max(maximal_shard, sharding.GetUniqueDevice());
+        }
+      }
+    }
+  }
+  return maximal_shard;
 }
 
 bool AreAllOutputsParameters(
@@ -347,14 +364,23 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   if (ShardingEnabled(module.get())) {
-    auto numIPUs = sharding_main_graph->getTarget().getNumIPUs();
-    auto tilesPerIPU = sharding_main_graph->getTarget().getTilesPerIPU();
-    for (unsigned ipu = 0; ipu < numIPUs; ++ipu) {
-      resources.shard_graphs.emplace_back(
-          sharding_main_graph->createVirtualGraph(ipu * tilesPerIPU,
-                                                  (ipu + 1) * tilesPerIPU));
+    auto num_ipus = sharding_main_graph->getTarget().getNumIPUs();
+    // Check that we have enough IPUs for this sharding configuration.
+    auto maximal_shard = MaximalShard(module.get());
+    if (maximal_shard >= num_ipus) {
+      return xla::ResourceExhaustedStrCat(
+          "Trying to compile a graph for ", maximal_shard + 1,
+          " shards, however the Multi-IPU device ordinal ",
+          stream_exec->device_ordinal(), " is a configuration which has ",
+          num_ipus, " IPU", (num_ipus > 1 ? "s." : "."));
     }
-    VLOG(1) << "Created " << numIPUs << " IPU shards";
+    auto tiles_per_ipu = sharding_main_graph->getTarget().getTilesPerIPU();
+    for (unsigned ipu = 0; ipu < num_ipus; ++ipu) {
+      resources.shard_graphs.emplace_back(
+          sharding_main_graph->createVirtualGraph(ipu * tiles_per_ipu,
+                                                  (ipu + 1) * tiles_per_ipu));
+    }
+    VLOG(1) << "Created " << num_ipus << " IPU shards";
   }
 
   {

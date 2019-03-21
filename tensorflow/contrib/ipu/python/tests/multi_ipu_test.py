@@ -28,6 +28,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.framework import errors
 
 class MultiIpuTest(test_util.TensorFlowTestCase):
 
@@ -53,7 +54,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -83,7 +84,6 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
           self.assertTrue(0 in tiles)
           self.assertTrue(1216 in tiles)
 
-
   def testMultipleConfigureIpuShouldFail(self):
     def my_graph(pa, pb, pc):
       with ops.device("/device:IPU:0"):
@@ -111,6 +111,33 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=True)
       ipu.utils.configure_ipu_system(cfg)
 
+  def testNotEnoughIpus(self):
+    def my_graph(pa, pb, pc):
+      with ipu.ops.ipu_shard(0):
+        o1 = pa + pb
+      with ipu.ops.ipu_shard(1):
+        o2 = pa + pc
+      with ipu.ops.ipu_shard(2):
+        out = o1 + o2
+        return out
+
+    with ops.device('cpu'):
+      pa = array_ops.placeholder(np.float32, [2], name="a")
+      pb = array_ops.placeholder(np.float32, [2], name="b")
+      pc = array_ops.placeholder(np.float32, [2], name="c")
+      report = gen_ipu_ops.ipu_event_trace()
+
+    with ops.device("/device:IPU:0"):
+      out = ipu_compiler.compile(my_graph, [pa, pb, pc])
+
+    cfg = ipu.utils.create_ipu_config(profiling=True)
+    cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
+    ipu.utils.configure_ipu_system(cfg)
+
+    with sl.Session() as sess:
+      with self.assertRaisesRegexp(errors.ResourceExhaustedError, 'Trying to compile a graph for'):
+        sess.run(out, {pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]})
 
   def testMultiIpuVariables(self):
     def my_graph(pa, pb, pc):
@@ -141,7 +168,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -201,7 +228,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
@@ -259,7 +286,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    cfg = ipu.utils.auto_select_ipus(cfg, 2, True)
+    cfg = ipu.utils.auto_select_ipus(cfg, 2)
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
