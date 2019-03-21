@@ -196,8 +196,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           return Status::OK();
         }
-        return loop_pred_(ctx, instantiated_captured_func_.get(), *out_tensors,
-                          end_of_sequence);
+        TF_RETURN_IF_ERROR(loop_pred_(ctx, instantiated_captured_func_.get(),
+                                      *out_tensors, end_of_sequence));
+        if (*end_of_sequence) {
+          out_tensors->clear();
+        }
+        return Status::OK();
       }
 
      protected:
