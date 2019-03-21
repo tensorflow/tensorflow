@@ -43,6 +43,7 @@ TEST(UtilTest, SimpleE2ETest) {
   std::string content;
   std::ifstream file(options.dump_output_to_file);
   std::getline(file, content);
+  file.close();
   EXPECT_EQ(content, expected);
 }
 

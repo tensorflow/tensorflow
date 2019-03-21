@@ -147,6 +147,7 @@ TEST_F(PredictorTest, BatchTest) {
                                   fields.begin() + 1, fields.end())));
   }
 
+  fin.close();
   EXPECT_EQ(total_triggers, total_items);
   EXPECT_GE(total_responses, total_triggers);
 }

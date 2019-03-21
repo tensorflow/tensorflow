@@ -74,6 +74,7 @@ TfLiteStatus ParseExamples(const char* filename,
   }
   std::string str((std::istreambuf_iterator<char>(fp)),
                   std::istreambuf_iterator<char>());
+  fp.close();
   size_t pos = 0;
 
   // \n and , delimit parse a file.

@@ -94,6 +94,8 @@ bool ConvertCsvData(const string& model_name, const string& in_name,
       ++invocation_count;
     }
   }
+  out_file.close();
+  in_file.close();
   return true;
 }
 
@@ -176,6 +178,7 @@ TEST_P(SpeechTest, DISABLED_AsrLmTest) {
   ASSERT_TRUE(
       testing::ParseAndRunTests(&in_file, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
+  in_file.close()
 }
 
 TEST_P(SpeechTest, DISABLED_EndpointerTest) {

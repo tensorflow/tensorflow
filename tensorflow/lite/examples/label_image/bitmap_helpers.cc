@@ -90,6 +90,7 @@ std::vector<uint8_t> read_bmp(const std::string& input_bmp_name, int* width,
   std::vector<uint8_t> img_bytes(len);
   file.seekg(0, std::ios::beg);
   file.read(reinterpret_cast<char*>(img_bytes.data()), len);
+  file.close();
   const int32_t header_size =
       *(reinterpret_cast<const int32_t*>(img_bytes.data() + 10));
   *width = *(reinterpret_cast<const int32_t*>(img_bytes.data() + 18));

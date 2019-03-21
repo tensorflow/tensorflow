@@ -212,6 +212,7 @@ tensorflow::Status ReadManifest(const string& original_file, const string& dir,
   std::ifstream manifest_fp(dir + "/manifest.txt");
   string manifest((std::istreambuf_iterator<char>(manifest_fp)),
                   std::istreambuf_iterator<char>());
+  manifest_fp.close();
   size_t pos = 0;
   int added = 0;
   while (true) {
@@ -274,6 +275,7 @@ TEST_P(OpsTest, RunZipTests) {
   }
 
   bool result = tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver);
+  tflite_stream.close();
   string message = test_driver.GetErrorMessage();
   if (bug_number.empty()) {
     if (FLAGS_use_nnapi && FLAGS_ignore_unsupported_nnapi && !result) {

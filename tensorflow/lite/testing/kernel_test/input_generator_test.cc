@@ -53,6 +53,7 @@ TEST(InputGeneratorTest, ReadWriteSimpleFile) {
   std::ifstream in(output_filename);
   std::string out;
   std::getline(in, out, '\n');
+  in.close();
   ASSERT_EQ(out, content);
 }
 

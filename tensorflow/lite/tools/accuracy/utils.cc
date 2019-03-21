@@ -71,6 +71,7 @@ Status ReadFileLines(const string& file_path,
   while (std::getline(stream, line)) {
     lines_output->push_back(line);
   }
+  stream.close();
   return Status::OK();
 }
 

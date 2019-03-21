@@ -138,9 +138,11 @@ void TfDriver::LoadModel(const string& bin_file_path) {
 
   tensorflow::GraphDef graphdef;
   if (!graphdef.ParseFromIstream(&model)) {
+    model.close();
     Invalidate("Failed to parse tensorflow graphdef");
     return;
   }
+  model.close();
 
   tensorflow::SessionOptions options;
   session_.reset(tensorflow::NewSession(options));

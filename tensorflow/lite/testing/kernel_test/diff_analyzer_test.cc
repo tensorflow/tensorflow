@@ -38,6 +38,7 @@ TEST(DiffAnalyzerTest, ZeroDiff) {
   std::ifstream file(output_file);
   std::getline(file, content);
   std::getline(file, content);
+  file.close();
   ASSERT_EQ(content, "0,0");
 }
 

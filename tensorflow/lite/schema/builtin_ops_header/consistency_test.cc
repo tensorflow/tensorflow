@@ -31,6 +31,7 @@ TEST(BuiltinOpsHeaderTest, TestConsistency) {
   ASSERT_TRUE(input_stream);
   std::string file_content((std::istreambuf_iterator<char>(input_stream)),
                            std::istreambuf_iterator<char>());
+  input_stream.close();
 
   std::ostringstream output_stream;
   tflite::builtin_ops_header::GenerateHeader(output_stream);

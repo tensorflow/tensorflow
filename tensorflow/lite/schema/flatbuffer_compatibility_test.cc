@@ -32,6 +32,7 @@ bool LoadFileRaw(const char *name, std::string *buf) {
   }
   std::string s((std::istreambuf_iterator<char>(fp)),
                 std::istreambuf_iterator<char>());
+  fp.close();
   if (s.empty()) {
     fprintf(stderr, "Read '%s' resulted in empty\n", name);
     return false;

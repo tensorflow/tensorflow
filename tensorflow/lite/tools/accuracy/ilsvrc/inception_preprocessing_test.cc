@@ -42,7 +42,11 @@ Status GetContents(const string& filename, string* output) {
     input.read(buffer, kBufferSize);
     output->append(buffer, input.gcount());
     if (!input.good()) {
-      if (input.eof()) return Status::OK();
+      if (input.eof()) {
+        input.close();
+        return Status::OK();
+      }
+      input.close();
       return Status(tensorflow::error::ABORTED, "Failed to read file.");
     }
   }
