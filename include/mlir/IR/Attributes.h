@@ -61,9 +61,10 @@ class AttributeListStorage;
 
 /// Attributes are known-constant values of operations and functions.
 ///
-/// Instances of the Attribute class are immutable, uniqued, immortal, and owned
-/// by MLIRContext.  As such, an Attribute is a POD interface to an underlying
-/// storage pointer.
+/// Instances of the Attribute class are references to immutable, uniqued,
+/// and immortal values owned by MLIRContext. As such, an Attribute is a thin
+/// wrapper around an underlying storage pointer. Attributes are usually passed
+/// by value.
 class Attribute {
 public:
   enum class Kind {
