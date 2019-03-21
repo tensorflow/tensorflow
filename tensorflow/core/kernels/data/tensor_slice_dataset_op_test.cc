@@ -161,7 +161,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, GetNext) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(tensor_slice_dataset_context.get(),
@@ -229,7 +229,7 @@ TEST_F(TensorSliceDatasetOpTest, DatasetNodeName) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   EXPECT_EQ(tensor_slice_dataset->node_name(), kNodeName);
 }
@@ -265,7 +265,7 @@ TEST_F(TensorSliceDatasetOpTest, DatasetTypeString) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   EXPECT_EQ(tensor_slice_dataset->type_string(), kOpName);
 }
@@ -301,7 +301,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   const DataTypeVector produced_output_dtypes =
       tensor_slice_dataset->output_dtypes();
@@ -342,7 +342,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, DatasetOutputShapes) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   const std::vector<PartialTensorShape> produced_output_shapes =
       tensor_slice_dataset->output_shapes();
@@ -385,7 +385,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Cardinality) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   EXPECT_EQ(tensor_slice_dataset->Cardinality(), inputs[0].tensor->dim_size(0));
 }
@@ -421,7 +421,7 @@ TEST_F(TensorSliceDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   std::unique_ptr<SerializationContext> serialization_context;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
@@ -463,7 +463,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(tensor_slice_dataset_context.get(),
@@ -510,7 +510,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, IteratorOutputShapes) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(tensor_slice_dataset_context.get(),
@@ -558,7 +558,7 @@ TEST_F(TensorSliceDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(tensor_slice_dataset_context.get(),
@@ -600,7 +600,7 @@ TEST_P(ParameterizedTensorSliceDatasetOpTest, Roundtrip) {
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
-  core::ScopedUnref scored_unref(tensor_slice_dataset);
+  core::ScopedUnref scoped_unref(tensor_slice_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(tensor_slice_dataset_context.get(),

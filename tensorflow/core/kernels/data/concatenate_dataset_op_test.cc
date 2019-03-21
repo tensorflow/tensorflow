@@ -169,7 +169,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, GetNext) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator;
@@ -243,7 +243,7 @@ TEST_F(ConcatenateDatasetOpTest, DatasetNodeName) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
 
   EXPECT_EQ(concatenate_dataset->node_name(), kNodeName);
 }
@@ -271,7 +271,7 @@ TEST_F(ConcatenateDatasetOpTest, DatasetTypeString) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
 
   EXPECT_EQ(concatenate_dataset->type_string(), kOpName);
 }
@@ -299,7 +299,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, DatasetOutputDtypes) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
   TF_EXPECT_OK(VerifyTypesMatch(concatenate_dataset->output_dtypes(),
                                 test_case.expected_output_dtypes));
 }
@@ -327,7 +327,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, DatasetOutputShapes) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
 
   TF_EXPECT_OK(VerifyShapesCompatible(concatenate_dataset->output_shapes(),
                                       test_case.expected_output_shapes));
@@ -356,7 +356,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, Cardinality) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
 
   EXPECT_EQ(concatenate_dataset->Cardinality(), test_case.expected_cardinality);
 }
@@ -384,7 +384,7 @@ TEST_F(ConcatenateDatasetOpTest, DatasetSave) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
@@ -417,7 +417,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, IteratorOutputDtypes) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator;
@@ -451,7 +451,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, IteratorOutputShapes) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator;
@@ -484,7 +484,7 @@ TEST_F(ConcatenateDatasetOpTest, IteratorOutputPrefix) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator;
@@ -515,7 +515,7 @@ TEST_P(ParameterizedConcatenateDatasetOpTest, Roundtrip) {
   DatasetBase *concatenate_dataset;
   TF_ASSERT_OK(CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(),
                              &concatenate_dataset));
-  core::ScopedUnref scored_unref(concatenate_dataset);
+  core::ScopedUnref scoped_unref(concatenate_dataset);
   std::unique_ptr<IteratorContext> iterator_ctx;
   TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator;
