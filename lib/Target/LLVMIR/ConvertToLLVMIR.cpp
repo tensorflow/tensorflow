@@ -50,10 +50,10 @@ public:
   // Translate the given MLIR module expressed in MLIR LLVM IR dialect into an
   // LLVM IR module.  The MLIR LLVM IR dialect holds a pointer to an
   // LLVMContext, the LLVM IR module will be created in that context.
-  static std::unique_ptr<llvm::Module> translateModule(const Module &m);
+  static std::unique_ptr<llvm::Module> translateModule(Module &m);
 
 private:
-  explicit ModuleTranslation(const Module &module) : mlirModule(module) {}
+  explicit ModuleTranslation(Module &module) : mlirModule(module) {}
 
   bool convertFunctions();
   bool convertOneFunction(const Function &func);
@@ -68,7 +68,7 @@ private:
                                   Location loc);
 
   // Original and translated module.
-  const Module &mlirModule;
+  Module &mlirModule;
   std::unique_ptr<llvm::Module> llvmModule;
 
   // Mappings between original and translated values, used for lookups.
@@ -442,8 +442,7 @@ bool ModuleTranslation::convertFunctions() {
   return false;
 }
 
-std::unique_ptr<llvm::Module>
-ModuleTranslation::translateModule(const Module &m) {
+std::unique_ptr<llvm::Module> ModuleTranslation::translateModule(Module &m) {
 
   Dialect *dialect = m.getContext()->getRegisteredDialect("llvm");
   assert(dialect && "LLVM dialect must be registered");
@@ -471,7 +470,7 @@ ModuleTranslation::translateModule(const Module &m) {
   return std::move(translator.llvmModule);
 }
 
-std::unique_ptr<llvm::Module> translateModuleToLLVMIR(const Module &m) {
+std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module &m) {
   return ModuleTranslation::translateModule(m);
 }
 

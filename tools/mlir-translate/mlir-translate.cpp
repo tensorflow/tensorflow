@@ -57,8 +57,7 @@ static Module *parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
   return parseSourceFile(sourceMgr, context);
 }
 
-static bool printMLIROutput(const Module &module,
-                            llvm::StringRef outputFilename) {
+static bool printMLIROutput(Module &module, llvm::StringRef outputFilename) {
   if (module.verify())
     return true;
   auto file = openOutputFile(outputFilename);

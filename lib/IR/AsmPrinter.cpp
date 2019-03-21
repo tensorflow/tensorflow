@@ -86,7 +86,7 @@ public:
   explicit ModuleState(MLIRContext *context) : context(context) {}
 
   // Initializes module state, populating affine map state.
-  void initialize(const Module *module);
+  void initialize(Module *module);
 
   StringRef getAffineMapAlias(AffineMap affineMap) const {
     return affineMapToAlias.lookup(affineMap);
@@ -266,7 +266,7 @@ void ModuleState::initializeSymbolAliases() {
 }
 
 // Initializes module state, populating affine map and integer set state.
-void ModuleState::initialize(const Module *module) {
+void ModuleState::initialize(Module *module) {
   for (auto &fn : *module) {
     visitType(fn.getType());
 
@@ -286,7 +286,7 @@ namespace {
 class ModulePrinter {
 public:
   ModulePrinter(raw_ostream &os, ModuleState &state) : os(os), state(state) {}
-  explicit ModulePrinter(const ModulePrinter &printer)
+  explicit ModulePrinter(ModulePrinter &printer)
       : os(printer.os), state(printer.state) {}
 
   template <typename Container, typename UnaryFunctor>
@@ -294,7 +294,7 @@ public:
     interleave(c.begin(), c.end(), each_fn, [&]() { os << ", "; });
   }
 
-  void print(const Module *module);
+  void print(Module *module);
   void printFunctionReference(const Function *func);
   void printAttributeAndType(Attribute attr) {
     printAttributeOptionalType(attr, /*includeType=*/true);
@@ -463,7 +463,7 @@ void ModulePrinter::printLocationInternal(Location loc, bool pretty) {
   }
 }
 
-void ModulePrinter::print(const Module *module) {
+void ModulePrinter::print(Module *module) {
   for (const auto &map : state.getAffineMapIds()) {
     StringRef alias = state.getAffineMapAlias(map);
     if (!alias.empty())
@@ -1051,7 +1051,7 @@ namespace {
 // CFG and ML functions.
 class FunctionPrinter : public ModulePrinter, private OpAsmPrinter {
 public:
-  FunctionPrinter(const Function *function, const ModulePrinter &other);
+  FunctionPrinter(const Function *function, ModulePrinter &other);
 
   // Prints the function as a whole.
   void print();
@@ -1162,8 +1162,7 @@ private:
 };
 } // end anonymous namespace
 
-FunctionPrinter::FunctionPrinter(const Function *function,
-                                 const ModulePrinter &other)
+FunctionPrinter::FunctionPrinter(const Function *function, ModulePrinter &other)
     : ModulePrinter(other), function(function) {
 
   for (auto &block : *function)
@@ -1650,13 +1649,13 @@ void Function::print(raw_ostream &os) const {
 
 void Function::dump() const { print(llvm::errs()); }
 
-void Module::print(raw_ostream &os) const {
+void Module::print(raw_ostream &os) {
   ModuleState state(getContext());
   state.initialize(this);
   ModulePrinter(os, state).print(this);
 }
 
-void Module::dump() const { print(llvm::errs()); }
+void Module::dump() { print(llvm::errs()); }
 
 void Location::print(raw_ostream &os) const {
   ModuleState state(nullptr);

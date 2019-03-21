@@ -358,7 +358,7 @@ bool Function::verify() const { return FuncVerifier(*this).verify(); }
 /// Perform (potentially expensive) checks of invariants, used to detect
 /// compiler bugs.  On error, this reports the error through the MLIRContext and
 /// returns true.
-bool Module::verify() const {
+bool Module::verify() {
 
   /// Check that each function is correct.
   for (auto &fn : *this) {

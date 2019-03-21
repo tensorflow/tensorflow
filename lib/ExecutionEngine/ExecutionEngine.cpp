@@ -273,7 +273,7 @@ void packFunctionArguments(llvm::Module *module) {
 // Out of line for PIMPL unique_ptr.
 ExecutionEngine::~ExecutionEngine() = default;
 
-std::unique_ptr<llvm::Module> translateModuleToLLVMIR(const Module &m);
+std::unique_ptr<llvm::Module> translateModuleToLLVMIR(Module &m);
 
 Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
     Module *m, std::function<llvm::Error(llvm::Module *)> transformer) {

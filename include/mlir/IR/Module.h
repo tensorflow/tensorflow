@@ -35,52 +35,38 @@ class Module {
 public:
   explicit Module(MLIRContext *context);
 
-  MLIRContext *getContext() const { return context; }
+  MLIRContext *getContext() { return context; }
 
   /// This is the list of functions in the module.
   using FunctionListType = llvm::iplist<Function>;
   FunctionListType &getFunctions() { return functions; }
-  const FunctionListType &getFunctions() const { return functions; }
 
   // Iteration over the functions in the module.
   using iterator = FunctionListType::iterator;
-  using const_iterator = FunctionListType::const_iterator;
   using reverse_iterator = FunctionListType::reverse_iterator;
-  using const_reverse_iterator = FunctionListType::const_reverse_iterator;
 
   iterator begin() { return functions.begin(); }
   iterator end() { return functions.end(); }
-  const_iterator begin() const { return functions.begin(); }
-  const_iterator end() const { return functions.end(); }
   reverse_iterator rbegin() { return functions.rbegin(); }
   reverse_iterator rend() { return functions.rend(); }
-  const_reverse_iterator rbegin() const { return functions.rbegin(); }
-  const_reverse_iterator rend() const { return functions.rend(); }
 
   // Interfaces for working with the symbol table.
 
   /// Look up a function with the specified name, returning null if no such
   /// name exists.  Function names never include the @ on them.
   Function *getNamedFunction(StringRef name);
-  const Function *getNamedFunction(StringRef name) const {
-    return const_cast<Module *>(this)->getNamedFunction(name);
-  }
 
   /// Look up a function with the specified name, returning null if no such
   /// name exists.  Function names never include the @ on them.
   Function *getNamedFunction(Identifier name);
 
-  const Function *getNamedFunction(Identifier name) const {
-    return const_cast<Module *>(this)->getNamedFunction(name);
-  }
-
   /// Perform (potentially expensive) checks of invariants, used to detect
   /// compiler bugs.  On error, this reports the error through the MLIRContext
   /// and returns true.
-  bool verify() const;
+  bool verify();
 
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os);
+  void dump();
 
 private:
   friend struct llvm::ilist_traits<Function>;
