@@ -708,6 +708,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_LOG_SOFTMAX:
     case BuiltinOperator_MATRIX_DIAG:
+    case BuiltinOperator_MATRIX_SET_DIAG:
     case BuiltinOperator_MAXIMUM:
     case BuiltinOperator_MINIMUM:
     case BuiltinOperator_NEG:
