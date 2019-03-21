@@ -294,7 +294,7 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def);
 // returned `NameRangeMap` objects.
 typedef gtl::FlatMap<StringPiece, std::pair<int, int>, hash<StringPiece>>
     NameRangeMap;
-Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
+Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
 Status NameRangesForNode(const Node& node, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs);
