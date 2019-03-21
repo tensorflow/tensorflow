@@ -1,4 +1,4 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,8 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/java/src/main/native/operation_builder_jni.h"
-
+#include "tensorflow/java/src/main/native/graph_operation_builder_jni.h"
 #include <cstring>
 #include <memory>
 #include "tensorflow/c/c_api.h"
@@ -51,7 +50,7 @@ TF_Tensor* requireTensor(JNIEnv* env, jlong handle) {
 }
 }  // namespace
 
-JNIEXPORT jlong JNICALL Java_org_tensorflow_OperationBuilder_allocate(
+JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphOperationBuilder_allocate(
     JNIEnv* env, jclass clazz, jlong graph_handle, jstring type, jstring name) {
   if (graph_handle == 0) {
     throwException(env, kIllegalStateException,
@@ -69,7 +68,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_OperationBuilder_allocate(
   return reinterpret_cast<jlong>(d);
 }
 
-JNIEXPORT jlong JNICALL Java_org_tensorflow_OperationBuilder_finish(
+JNIEXPORT jlong JNICALL Java_org_tensorflow_GraphOperationBuilder_finish(
     JNIEnv* env, jclass clazz, jlong handle) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return 0;
@@ -83,7 +82,7 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_OperationBuilder_finish(
   return 0;
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInput(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_addInput(
     JNIEnv* env, jclass clazz, jlong handle, jlong op_handle, jint index) {
   TF_Output out;
   if (!resolveOutput(env, op_handle, index, &out)) return;
@@ -92,7 +91,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInput(
   TF_AddInput(d, out);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_addInputList(
     JNIEnv* env, jclass clazz, jlong handle, jlongArray op_handles,
     jintArray indices) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -118,8 +117,11 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addInputList(
   TF_AddInputList(d, o.get(), n);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
-    JNIEnv* env, jclass clazz, jlong handle, jlong op_handle) {
+JNIEXPORT void JNICALL
+Java_org_tensorflow_GraphOperationBuilder_addControlInput(JNIEnv* env,
+                                                          jclass clazz,
+                                                          jlong handle,
+                                                          jlong op_handle) {
   if (op_handle == 0) {
     throwException(env, kIllegalStateException,
                    "control input is not valid, "
@@ -132,7 +134,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_addControlInput(
   TF_AddControlInput(d, control);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setDevice(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setDevice(
     JNIEnv* env, jclass clazz, jlong handle, jstring device) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
@@ -141,7 +143,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setDevice(
   env->ReleaseStringUTFChars(device, cdevice);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrString(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrString(
     JNIEnv* env, jclass clazz, jlong handle, jstring name, jbyteArray value) {
   static_assert(sizeof(jbyte) == 1,
                 "Require Java byte to be represented as a single byte");
@@ -154,41 +156,43 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrString(
   env->ReleaseStringUTFChars(name, cname);
 }
 
-#define DEFINE_SET_ATTR_SCALAR(name, jtype, ctype)                           \
-  JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttr##name( \
-      JNIEnv* env, jclass clazz, jlong handle, jstring name, jtype value) {  \
-    static_assert(                                                           \
-        sizeof(ctype) >= sizeof(jtype),                                      \
-        "Information loss when converting between Java and C types");        \
-    TF_OperationDescription* d = requireHandle(env, handle);                 \
-    if (d == nullptr) return;                                                \
-    const char* cname = env->GetStringUTFChars(name, nullptr);               \
-    TF_SetAttr##name(d, cname, static_cast<ctype>(value));                   \
-    env->ReleaseStringUTFChars(name, cname);                                 \
+#define DEFINE_SET_ATTR_SCALAR(name, jtype, ctype)                    \
+  JNIEXPORT void JNICALL                                              \
+      Java_org_tensorflow_GraphOperationBuilder_setAttr##name(        \
+          JNIEnv* env, jclass clazz, jlong handle, jstring name,      \
+          jtype value) {                                              \
+    static_assert(                                                    \
+        sizeof(ctype) >= sizeof(jtype),                               \
+        "Information loss when converting between Java and C types"); \
+    TF_OperationDescription* d = requireHandle(env, handle);          \
+    if (d == nullptr) return;                                         \
+    const char* cname = env->GetStringUTFChars(name, nullptr);        \
+    TF_SetAttr##name(d, cname, static_cast<ctype>(value));            \
+    env->ReleaseStringUTFChars(name, cname);                          \
   }
 
-#define DEFINE_SET_ATTR_LIST(name, jname, jtype, ctype)            \
-  JNIEXPORT void JNICALL                                           \
-      Java_org_tensorflow_OperationBuilder_setAttr##name##List(    \
-          JNIEnv* env, jclass clazz, jlong handle, jstring name,   \
-          jtype##Array value) {                                    \
-    TF_OperationDescription* d = requireHandle(env, handle);       \
-    if (d == nullptr) return;                                      \
-    const char* cname = env->GetStringUTFChars(name, nullptr);     \
-    /* Make a copy of the array to paper over any differences */   \
-    /* in byte representations of the jtype and ctype         */   \
-    /* For example, jint vs TF_DataType.                      */   \
-    /* If this copy turns out to be a problem in practice     */   \
-    /* can avoid it for many types.                           */   \
-    const int n = env->GetArrayLength(value);                      \
-    std::unique_ptr<ctype[]> cvalue(new ctype[n]);                 \
-    jtype* elems = env->Get##jname##ArrayElements(value, nullptr); \
-    for (int i = 0; i < n; ++i) {                                  \
-      cvalue[i] = static_cast<ctype>(elems[i]);                    \
-    }                                                              \
-    TF_SetAttr##name##List(d, cname, cvalue.get(), n);             \
-    env->Release##jname##ArrayElements(value, elems, JNI_ABORT);   \
-    env->ReleaseStringUTFChars(name, cname);                       \
+#define DEFINE_SET_ATTR_LIST(name, jname, jtype, ctype)              \
+  JNIEXPORT void JNICALL                                             \
+      Java_org_tensorflow_GraphOperationBuilder_setAttr##name##List( \
+          JNIEnv* env, jclass clazz, jlong handle, jstring name,     \
+          jtype##Array value) {                                      \
+    TF_OperationDescription* d = requireHandle(env, handle);         \
+    if (d == nullptr) return;                                        \
+    const char* cname = env->GetStringUTFChars(name, nullptr);       \
+    /* Make a copy of the array to paper over any differences */     \
+    /* in byte representations of the jtype and ctype         */     \
+    /* For example, jint vs TF_DataType.                      */     \
+    /* If this copy turns out to be a problem in practice     */     \
+    /* can avoid it for many types.                           */     \
+    const int n = env->GetArrayLength(value);                        \
+    std::unique_ptr<ctype[]> cvalue(new ctype[n]);                   \
+    jtype* elems = env->Get##jname##ArrayElements(value, nullptr);   \
+    for (int i = 0; i < n; ++i) {                                    \
+      cvalue[i] = static_cast<ctype>(elems[i]);                      \
+    }                                                                \
+    TF_SetAttr##name##List(d, cname, cvalue.get(), n);               \
+    env->Release##jname##ArrayElements(value, elems, JNI_ABORT);     \
+    env->ReleaseStringUTFChars(name, cname);                         \
   }
 
 #define DEFINE_SET_ATTR(name, jname, jtype, ctype) \
@@ -203,7 +207,7 @@ DEFINE_SET_ATTR(Type, Int, jint, TF_DataType);
 #undef DEFINE_SET_ATTR_LIST
 #undef DEFINE_SET_ATTR_SCALAR
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensor(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrTensor(
     JNIEnv* env, jclass clazz, jlong handle, jstring name,
     jlong tensor_handle) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -218,13 +222,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensor(
   env->ReleaseStringUTFChars(name, cname);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensorList(
+JNIEXPORT void JNICALL
+Java_org_tensorflow_GraphOperationBuilder_setAttrTensorList(
     JNIEnv* env, jclass clazz, jlong handle, jstring name,
     jlongArray tensor_handles) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
   const int n = env->GetArrayLength(tensor_handles);
-  std::unique_ptr<TF_Tensor* []> tensors(new TF_Tensor*[n]);
+  std::unique_ptr<TF_Tensor*[]> tensors(new TF_Tensor*[n]);
   jlong* jhandles = env->GetLongArrayElements(tensor_handles, nullptr);
   bool ok = true;
   for (int i = 0; i < n && ok; ++i) {
@@ -242,7 +247,7 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrTensorList(
   env->ReleaseStringUTFChars(name, cname);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
+JNIEXPORT void JNICALL Java_org_tensorflow_GraphOperationBuilder_setAttrShape(
     JNIEnv* env, jclass clazz, jlong handle, jstring name, jlongArray shape,
     jint num_dims) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -263,13 +268,14 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShape(
   env->ReleaseStringUTFChars(name, cname);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShapeList(
+JNIEXPORT void JNICALL
+Java_org_tensorflow_GraphOperationBuilder_setAttrShapeList(
     JNIEnv* env, jclass clazz, jlong handle, jstring name, jlongArray shapes,
     jintArray num_dims) {
   TF_OperationDescription* d = requireHandle(env, handle);
   if (d == nullptr) return;
   std::unique_ptr<int64_t[]> cshapes;
-  std::unique_ptr<int64_t* []> cdims;
+  std::unique_ptr<int64_t*[]> cdims;
   std::unique_ptr<int[]> cnum_dims;
   const int num_dims_length = env->GetArrayLength(num_dims);
   if (num_dims_length > 0) {
@@ -298,7 +304,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrShapeList(
   env->ReleaseStringUTFChars(name, cname);
 }
 
-JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
+JNIEXPORT void JNICALL
+Java_org_tensorflow_GraphOperationBuilder_setAttrStringList(
     JNIEnv* env, jclass object, jlong handle, jstring name,
     jobjectArray values) {
   TF_OperationDescription* d = requireHandle(env, handle);
@@ -308,8 +315,8 @@ JNIEXPORT void JNICALL Java_org_tensorflow_OperationBuilder_setAttrStringList(
   static_assert(sizeof(jbyte) == 1,
                 "Require Java byte to be represented as a single byte");
   std::unique_ptr<jbyteArray[]> jarrays(new jbyteArray[num_values]);
-  std::unique_ptr<jbyte* []> jvalues(new jbyte*[num_values]);
-  std::unique_ptr<void* []> cvalues(new void*[num_values]);
+  std::unique_ptr<jbyte*[]> jvalues(new jbyte*[num_values]);
+  std::unique_ptr<void*[]> cvalues(new void*[num_values]);
   std::unique_ptr<size_t[]> lengths(new size_t[num_values]);
 
   for (int i = 0; i < num_values; ++i) {
