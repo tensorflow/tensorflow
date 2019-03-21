@@ -1145,6 +1145,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'num_workers\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ExperimentalSamplingDataset"
+    argspec: "args=[\'input_dataset\', \'rate\', \'seed\', \'seed2\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ExperimentalScanDataset"
     argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'preserve_cardinality\'], varargs=None, keywords=None, defaults=None"
   }
