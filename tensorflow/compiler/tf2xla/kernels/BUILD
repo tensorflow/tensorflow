@@ -47,6 +47,7 @@ tf_kernel_library(
         "identity_op.cc",
         "image_ops.cc",
         "image_resize_ops.cc",
+        "in_topk_op.cc",
         "index_ops.cc",
         "l2loss_op.cc",
         "listdiff_op.cc",
