@@ -62,38 +62,3 @@ mlir::edsc::VectorView::VectorView(Value *v) : base(v) {
     steps.push_back(1);
   }
 }
-
-/// Operator overloadings.
-ValueHandle mlir::edsc::IndexedValue::operator+(ValueHandle e) {
-  using op::operator+;
-  return static_cast<ValueHandle>(*this) + e;
-}
-ValueHandle mlir::edsc::IndexedValue::operator-(ValueHandle e) {
-  using op::operator-;
-  return static_cast<ValueHandle>(*this) - e;
-}
-ValueHandle mlir::edsc::IndexedValue::operator*(ValueHandle e) {
-  using op::operator*;
-  return static_cast<ValueHandle>(*this) * e;
-}
-ValueHandle mlir::edsc::IndexedValue::operator/(ValueHandle e) {
-  using op::operator/;
-  return static_cast<ValueHandle>(*this) / e;
-}
-
-InstructionHandle mlir::edsc::IndexedValue::operator+=(ValueHandle e) {
-  using op::operator+;
-  return intrinsics::store(*this + e, getBase(), ValueHandleArray(indices));
-}
-InstructionHandle mlir::edsc::IndexedValue::operator-=(ValueHandle e) {
-  using op::operator-;
-  return intrinsics::store(*this - e, getBase(), ValueHandleArray(indices));
-}
-InstructionHandle mlir::edsc::IndexedValue::operator*=(ValueHandle e) {
-  using op::operator*;
-  return intrinsics::store(*this * e, getBase(), ValueHandleArray(indices));
-}
-InstructionHandle mlir::edsc::IndexedValue::operator/=(ValueHandle e) {
-  using op::operator/;
-  return intrinsics::store(*this / e, getBase(), ValueHandleArray(indices));
-}
