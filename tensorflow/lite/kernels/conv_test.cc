@@ -657,10 +657,14 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
 // Smoke test to ensure slightly irregular shapes safely partition into
 // multi-threaded tasks. See also b/128996474.
 TEST_P(ConvolutionOpTest, SimpleTestLargeIrregularQuantized) {
-  ConvolutionOpModel m(GetRegistration(),
-                       {TensorType_UINT8, {1, 1, 1, 1024}, -127, 128},
-                       {TensorType_UINT8, {1001, 1, 1, 1024}, -127, 128},
-                       {TensorType_UINT8, {1, 1, 1, 1001}, -127, 128});
+  QuantizedConvolutionOpModel m(
+      GetRegistration(), {TensorType_UINT8, {1, 1, 1, 1024}, -127, 128},
+      {TensorType_UINT8, {1001, 1, 1, 1024}, -127, 128},
+      {TensorType_UINT8, {1, 1, 1, 1001}, -127, 128});
+  m.QuantizeAndPopulate<uint8_t>(0 /*input*/, std::vector<float>(1024, 0));
+  m.QuantizeAndPopulate<uint8_t>(1 /*filter*/,
+                                 std::vector<float>(1001 * 1024, 0));
+  m.QuantizeAndPopulate<int32_t>(2 /*bias*/, std::vector<float>(1001, 1));
 
   m.SetNumThreads(1);
   m.Invoke();
@@ -670,6 +674,9 @@ TEST_P(ConvolutionOpTest, SimpleTestLargeIrregularQuantized) {
 
   m.SetNumThreads(3);
   m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(std::vector<uint8_t>(1001, 1)));
 }
 
 TEST_P(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
