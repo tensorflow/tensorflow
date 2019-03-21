@@ -18,6 +18,20 @@ The document below explains this design point from the viewpoint of "why make a
 change", to explain the rationale and the tradeoffs involved that led us to this
 potentially controversial design point.
 
+Bjarke Roune summarized the situation like this:
+
+> In my opinion `const` correctness is highly valuable, catching many bugs and
+> making it clear in a code base where the mutations happen. In my opinion
+> `const` correctness still isn't worth it in particular for IR elements because
+> of the special uses and properties of IRs, in particular that it is common to
+> transfer a pointer/reference to an instruction from an analysis to an
+> optimization which will change the instruction. The analysis should be const,
+> the optimization needs to get a non-`const` pointer. So all analyses either
+> end up being templates (and if they never get instantiated in a const context,
+> then the point of `const` correctness has been defeated), you need to somehow
+> launder the const in a safe way or there will be `const_cast`s. These options
+> are all bad, probably so bad as to out-weigh the tremendous benefits of const.
+
 # Reconsidering `const` in MLIR
 
 This document argues this design is introducing significant sub-optimalities
@@ -46,7 +60,7 @@ like this:
 
 ```
 namespace llvm {
-class Instruction : …  {
+class Instruction : ... {
   BasicBlock *Parent;
 public:
   // A const instruction returns a const parent pointer.
