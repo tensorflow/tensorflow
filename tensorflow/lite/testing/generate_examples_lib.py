@@ -96,6 +96,14 @@ class Params(object):
     self.save_graphdefs = False
     # Whether the TFLite Flex converter is being used.
     self.run_with_flex = False
+    # The function to convert a TensorFLow model to TFLite model.
+    # See the document for `toco_convert` function for its required signature.
+    # TODO(ycling): Decouple `toco_convert` function from this module, and
+    # remove the `toco` attribute in this class.
+    self.tflite_convert_function = toco_convert
+    # A map from regular expression to bug number. Any test failure with label
+    # matching the expression will be considered due to the corresponding bug.
+    self.known_bugs = KNOWN_BUGS
 
 
 class ExtraTocoOptions(object):
@@ -312,8 +320,7 @@ def make_control_dep_tests(zip_path):
       expected_tf_failures=3)
 
 
-def toco_convert(graph_def_str, input_tensors, output_tensors,
-                 extra_toco_options):
+def toco_convert(graph_def_str, input_tensors, output_tensors, **kwargs):
   """Convert a model's graph def into a tflite model.
 
   NOTE: this currently shells out to the toco binary, but we would like
@@ -323,12 +330,13 @@ def toco_convert(graph_def_str, input_tensors, output_tensors,
     graph_def_str: Graph def proto in serialized string format.
     input_tensors: List of input tensor tuples `(name, shape, type)`.
     output_tensors: List of output tensors (names).
-    extra_toco_options: Additional toco options.
+    **kwargs: Extra options to be passed.
 
   Returns:
     output tflite model, log_txt from conversion
     or None, log_txt if it did not convert properly.
   """
+  extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
   input_arrays = [x[0] for x in input_tensors]
   data_types = [_TF_TYPE_INFO[x[2]][1] for x in input_tensors]
   opts = toco_options(
@@ -497,9 +505,9 @@ def make_zip_of_tests(zip_path,
         graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
             graph_def=graph_def)
         graph_def = tf.graph_util.remove_training_nodes(graph_def)
-        tflite_model_binary, toco_log = toco_convert(
+        tflite_model_binary, toco_log = _params.tflite_convert_function(
             graph_def.SerializeToString(), input_tensors, output_tensors,
-            extra_toco_options)
+            extra_toco_options=extra_toco_options)
         report["toco"] = (report_lib.SUCCESS if tflite_model_binary is not None
                           else report_lib.FAILED)
         report["toco_log"] = toco_log
@@ -533,7 +541,7 @@ def make_zip_of_tests(zip_path,
       if report["toco"] == report_lib.FAILED:
         ignore_error = False
         if not _params.known_bugs_are_errors:
-          for pattern, bug_number in KNOWN_BUGS.items():
+          for pattern, bug_number in _params.known_bugs.items():
             if re.search(pattern, label):
               print("Ignored TOCO error due to bug %s" % bug_number)
               ignore_error = True
