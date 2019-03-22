@@ -95,3 +95,11 @@ def current():
     ops.get_default_graph()._apply_device_functions(op)  # pylint: disable=protected-access
     d = op.device
   return d
+
+
+def get_host_for_device(device):
+  """Returns the corresponding host device for the given device."""
+  spec = tf_device.DeviceSpec.from_string(device)
+  return tf_device.DeviceSpec(
+      job=spec.job, replica=spec.replica, task=spec.task,
+      device_type="CPU", device_index=0).to_string()

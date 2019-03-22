@@ -168,6 +168,7 @@ TEST_P(ParameterizedDatasetTest, GetNext) {
   if (test_case.count < 0) {
     // We test only a finite number of steps of the infinite sequence.
     for (int i = 0; i < 100; ++i) {
+      out_tensors.clear();
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence));
       for (const auto &tensor : out_tensors) {
@@ -521,6 +522,7 @@ TEST_P(ParameterizedDatasetTest, Roundtrip) {
     TF_EXPECT_OK(iterator->Restore(iterator_ctx.get(), &reader));
 
     while (cur_iteration < breakpoint) {
+      out_tensors.clear();
       TF_EXPECT_OK(iterator->GetNext(iterator_ctx.get(), &out_tensors,
                                      &end_of_sequence));
       if (!end_of_sequence) {

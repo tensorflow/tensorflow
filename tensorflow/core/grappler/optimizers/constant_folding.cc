@@ -3437,7 +3437,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   graph_contains_assign_or_inplace_op_ = false;
   for (const NodeDef& node : item.graph.node()) {
-    if (ModifiesInputsInPlace(node) || MaybeHasRefInput(node)) {
+    if (ModifiesInputsInPlace(node) || HasRefInput(node)) {
       graph_contains_assign_or_inplace_op_ = true;
       break;
     }

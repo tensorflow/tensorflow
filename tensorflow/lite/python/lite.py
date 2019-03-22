@@ -66,8 +66,11 @@ from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
-                             graph=None):
+def _run_graph_optimizations(graph_def,
+                             input_arrays,
+                             output_arrays,
+                             graph=None,
+                             config=None):
   """Apply standard TensorFlow optimizations to the graph_def.
 
   Args:
@@ -75,6 +78,7 @@ def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
     input_arrays: List of arrays that are considered inputs of the graph.
     output_arrays: List of arrays that are considered outputs of the graph.
     graph: TensorFlow Graph. Required when Eager mode is enabled. (default None)
+    config: tf.ConfigProto. (default None)
 
   Returns:
     A new, optimized GraphDef.
@@ -88,12 +92,13 @@ def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
     fetch_collection.node_list.value.append(array.name)
   meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
 
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-  # Avoid remapping as it creates ops like _FusedConv2D, which are not
-  # supported by TF Lite.
-  rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
+  if config is None:
+    config = _config_pb2.ConfigProto()
+    rewrite_options = config.graph_options.rewrite_options
+    rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
+    # Avoid remapping as it creates ops like _FusedConv2D, which are not
+    # supported by TF Lite.
+    rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
   return _tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
@@ -258,14 +263,14 @@ class TFLiteConverterV2(object):
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
       # Note that shape_list might be empty for scalar shapes.
-      shape_list = tensor.get_shape().as_list()
+      shape_list = tensor.shape.as_list()
       if None in shape_list[1:]:
         raise ValueError(
             "None is only supported in the 1st dimension. Tensor '{0}' has "
             "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
       elif shape_list and shape_list[0] is None:
         # Set the batch size to 1 if undefined.
-        shape = tensor.get_shape().as_list()
+        shape = tensor.shape.as_list()
         shape[0] = 1
         tensor.set_shape(shape)
 
@@ -411,7 +416,7 @@ class TFLiteConverter(object):
     Args:
       graph_def: Frozen TensorFlow GraphDef.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
       input_arrays_with_shape: Tuple of strings representing input tensor names
         and list of integers representing input shapes
@@ -460,13 +465,13 @@ class TFLiteConverter(object):
     Args:
       sess: TensorFlow Session.
       input_tensors: List of input tensors. Type and shape are computed using
-        `foo.get_shape()` and `foo.dtype`.
+        `foo.shape` and `foo.dtype`.
       output_tensors: List of output tensors (only .name is used from this).
 
     Returns:
       TFLiteConverter class.
     """
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   @classmethod
@@ -639,7 +644,7 @@ class TFLiteConverter(object):
       output_tensors = keras_model.outputs
     _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   def __setattr__(self, name, value):
@@ -678,7 +683,7 @@ class TFLiteConverter(object):
     # Checks dimensions in input tensor.
     if self._has_valid_tensors():
       for tensor in self._input_tensors:
-        shape = tensor.get_shape()
+        shape = tensor.shape
         if not shape:
           raise ValueError("Provide an input shape for input array "
                            "'{0}'.".format(_tensor_name(tensor)))
@@ -808,7 +813,7 @@ class TFLiteConverter(object):
                        "use input_shapes parameter.")
 
     for tensor in self._input_tensors:
-      shape = tensor.get_shape().as_list()
+      shape = tensor.shape.as_list()
       shape[0] = batch_size
       tensor.set_shape(shape)
 
@@ -885,22 +890,35 @@ def _is_frozen_graph(sess):
   return True
 
 
-def _freeze_graph(sess, output_tensors):
+def _freeze_graph(sess, input_tensors, output_tensors):
   """Returns a frozen GraphDef.
 
-  Freezes a graph with Variables in it. Otherwise the existing GraphDef is
-  returned.
+  Runs a Grappler pass and freezes a graph with Variables in it. Otherwise the
+  existing GraphDef is returned. The Grappler pass is only run on models that
+  are frozen in order to inline the functions in the graph.
 
   Args:
     sess: TensorFlow Session.
+    input_tensors: List of input tensors.
     output_tensors: List of output tensors (only .name is used from this).
 
   Returns:
     Frozen GraphDef.
   """
+  # Runs a Grappler pass in order to inline any functions in the graph.
+  config = _config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.optimizers.append("function")
+  graph_def = _run_graph_optimizations(
+      sess.graph_def,
+      input_tensors,
+      output_tensors,
+      graph=sess.graph,
+      config=config)
+
   if not _is_frozen_graph(sess):
     output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
     return _tf_graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, output_arrays)
+        sess, graph_def, output_arrays)
   else:
     return sess.graph_def

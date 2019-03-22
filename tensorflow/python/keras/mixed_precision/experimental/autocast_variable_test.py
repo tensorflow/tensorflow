@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -30,6 +32,7 @@ from tensorflow.python.keras.mixed_precision.experimental import autocast_variab
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import util as trackable_utils
 
 TESTCASES = ({
     'testcase_name': 'base',
@@ -219,6 +222,21 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
                          self.evaluate(x.assign_add(small_tensor)))
         self.assertEqual(1., self.evaluate(x.value()))
       self.assertEqual(1. + small_val, self.evaluate(x.value()))
+
+  @parameterized.named_parameters(*TESTCASES)
+  def test_checkpoint(self, distribute):
+    with get_distribute_scope(distribute):
+      x = get_var(1., dtypes.float32)
+      x = get_autocast_var(x, distribute)
+    self.evaluate(x.initializer)
+    self.evaluate(x.assign(123.))
+
+    checkpoint = trackable_utils.Checkpoint(x=x)
+    prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    save_path = checkpoint.save(prefix)
+    self.evaluate(x.assign(234.))
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.assertEqual(self.evaluate(x), 123.)
 
   @parameterized.named_parameters(*TESTCASES)
   def test_invalid_wrapped_variable(self, distribute):

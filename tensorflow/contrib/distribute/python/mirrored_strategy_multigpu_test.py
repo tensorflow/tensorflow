@@ -23,17 +23,17 @@ import sys
 
 from absl.testing import parameterized
 import numpy as np
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -62,13 +62,13 @@ from tensorflow.python.training import server_lib
 GPU_TEST = "test_gpu" in sys.argv[0]
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.mirrored_strategy_with_two_gpus,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_two_gpus],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+            strategy_combinations.mirrored_strategy_with_two_gpus,
+        ],
+        mode=["graph", "eager"]))
 class MirroredTwoDeviceDistributionTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.TwoDeviceDistributionTestBase,
@@ -164,14 +164,16 @@ class MirroredTwoDeviceDistributionTest(
   def testAllReduceMeanGradientTape(self, distribution):
     self._test_all_reduce_mean_gradient_tape(distribution)
 
+  def testSummaryForReplicaZeroOnly(self, distribution):
+    self._test_summary_for_replica_zero_only(distribution)
+
 
 def one_device_combinations():
   return combinations.combine(
       distribution=[
-          combinations.mirrored_strategy_with_one_cpu,
-          combinations.mirrored_strategy_with_one_gpu,
-          combinations.core_mirrored_strategy_with_one_cpu,
-          combinations.core_mirrored_strategy_with_one_gpu],
+          strategy_combinations.mirrored_strategy_with_one_cpu,
+          strategy_combinations.mirrored_strategy_with_one_gpu,
+      ],
       mode=["graph", "eager"])
 
 
@@ -218,10 +220,12 @@ class MirroredOneDeviceDistributionTest(
 class MirroredStrategyVariableCreatorStackTest(
     test.TestCase, parameterized.TestCase):
 
-  @combinations.generate(combinations.combine(
-      distribution=[combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.core_mirrored_strategy_with_gpu_and_cpu],
-      mode=["graph"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          ],
+          mode=["graph"]))
   def testCreatorStacksAreThreadLocal(self, distribution):
     def model_fn():
       replica_id_str = str(self.evaluate(_replica_id()))
@@ -246,15 +250,17 @@ class MirroredStrategyVariableCreatorStackTest(
         distribution.scope(), \
         variable_scope.variable_creator_scope(main_thread_creator):
       result = distribution.extended.call_for_each_replica(model_fn)
-      result = distribution.unwrap(result)
+      result = distribution.experimental_local_results(result)
       expected = ("main_thread:thread_0", "main_thread:thread_1")
       self.assertEqual(expected, result)
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class MirroredStrategyCallForEachReplicaTest(test.TestCase):
 
   def testExecutingEagerlyOutsideFunction(self, distribution):
@@ -266,7 +272,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     with distribution.scope():
       in_scope = ops.executing_eagerly_outside_functions()
       in_model_fn = distribution.extended.call_for_each_replica(model_fn)
-      unwrapped = distribution.unwrap(in_model_fn)
+      unwrapped = distribution.experimental_local_results(in_model_fn)
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
@@ -274,7 +280,7 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
     with func_graph.FuncGraph("fg").as_default(), distribution.scope():
       in_scope = ops.executing_eagerly_outside_functions()
       in_model_fn = distribution.extended.call_for_each_replica(model_fn)
-      unwrapped = distribution.unwrap(in_model_fn)
+      unwrapped = distribution.experimental_local_results(in_model_fn)
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
@@ -301,11 +307,13 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
           RuntimeError, "`merge_call` called while defining a new graph."):
         distribution.extended.call_for_each_replica(model_fn)
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class MirroredStrategyVariableCreationTest(test.TestCase):
 
   # TODO(priyag): Modify more tests to use this helper and check more
@@ -698,7 +706,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       # Apply updates
       self.evaluate(variables.global_variables_initializer())
-      self.evaluate([y for x in ret_ops for y in distribution.unwrap(x)])
+      self.evaluate([y for x in ret_ops  # pylint: disable=g-complex-comprehension
+                     for y in distribution.experimental_local_results(x)])
       expected_sum = 0.0
       expected_mean = 0.0
       for i, d in enumerate(distribution.extended.worker_devices):
@@ -744,7 +753,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.assertEqual(2, len(result))
       for v in result:
         self.assertIsInstance(v, values.DistributedValues)
-        _, v1 = distribution.unwrap(v)
+        _, v1 = distribution.experimental_local_results(v)
         self.assertStartsWith(v1._op.name, "replica_1/")
 
   def testSyncOnReadVariableUpdate(self, distribution):
@@ -790,11 +799,12 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.assertIs(distribution, sync_on_read.distribute_strategy)
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph"]))
 class MirroredStrategyNameScopeTest(test.TestCase):
   # NOTE(priyag): Names and name scopes are ignored in eager, hence we are not
   # testing this in eager mode.
@@ -813,7 +823,7 @@ class MirroredStrategyNameScopeTest(test.TestCase):
         self.assertEqual(2, len(result))
         for v, name in zip(result, ["a", "b"]):
           self.assertIsInstance(v, values.DistributedValues)
-          v0, v1 = distribution.unwrap(v)
+          v0, v1 = distribution.experimental_local_results(v)
           self.assertEqual("main/foo/" + name + ":0", v0.name)
           self.assertEqual("main/replica_1/foo/" + name + ":0", v1.name)
 
@@ -830,14 +840,15 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       self.assertEqual(2, len(result))
       for v, name in zip(result, ["a", "b"]):
         self.assertIsInstance(v, values.DistributedValues)
-        v0, v1 = distribution.unwrap(v)
+        v0, v1 = distribution.experimental_local_results(v)
         self.assertEqual("foo/" + name + ":0", v0.name)
         self.assertEqual("replica_1/foo/" + name + ":0", v1.name)
 
   # variable_scope.variable() respects name scopes when creating
   # variables. On the other hand variable_scope.get_variable() ignores name
-  # scopes when creating variables. We test both methods of creating variables
-  # to make sure that we have the same variable names in both cases.
+  # scopes but respects variable scope when creating variables. We test both
+  # methods of creating variables to make sure that we have the same
+  # variable names in both cases.
   def testNameScopeWithVariable(self, distribution):
     def in_cross_replica(_):
       c = variable_scope.variable(1.0, name="c")
@@ -857,9 +868,9 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       result_c = result[1]
       self.assertIsInstance(result_b, values.DistributedValues)
       self.assertIsInstance(result_c, values.DistributedValues)
-      a0, a1 = distribution.unwrap(a)
-      b0, b1 = distribution.unwrap(result_b)
-      c0, c1 = distribution.unwrap(result_c)
+      a0, a1 = distribution.experimental_local_results(a)
+      b0, b1 = distribution.experimental_local_results(result_b)
+      c0, c1 = distribution.experimental_local_results(result_c)
       self.assertEqual("main/a:0", a0.name)
       self.assertEqual("main/a/replica_1:0", a1.name)
       self.assertEqual("main/b:0", b0.name)
@@ -886,15 +897,45 @@ class MirroredStrategyNameScopeTest(test.TestCase):
       result_c = result[1]
       self.assertIsInstance(result_b, values.DistributedValues)
       self.assertIsInstance(result_c, values.DistributedValues)
-      a0, a1 = distribution.unwrap(a)
-      b0, b1 = distribution.unwrap(result_b)
-      c0, c1 = distribution.unwrap(result_c)
+      a0, a1 = distribution.experimental_local_results(a)
+      b0, b1 = distribution.experimental_local_results(result_b)
+      c0, c1 = distribution.experimental_local_results(result_c)
       self.assertEqual("a:0", a0.name)
       self.assertEqual("a/replica_1:0", a1.name)
       self.assertEqual("b:0", b0.name)
       self.assertEqual("b/replica_1:0", b1.name)
       self.assertEqual("c:0", c0.name)
       self.assertEqual("c/replica_1:0", c1.name)
+
+  def testVariableScopeWithGetVariable(self, distribution):
+
+    def in_cross_replica(_):
+      c = variable_scope.get_variable("c", [1])
+      return c
+
+    def model_fn():
+      b = variable_scope.get_variable("b", [1])
+      with variable_scope.variable_scope("foo"):
+        c = ds_context.get_replica_context().merge_call(in_cross_replica)
+      return b, c
+
+    with context.graph_mode(), distribution.scope():
+      with variable_scope.variable_scope("main"):
+        a = variable_scope.get_variable("a", [1])
+        result = distribution.extended.call_for_each_replica(model_fn)
+      result_b = result[0]
+      result_c = result[1]
+      self.assertIsInstance(result_b, values.DistributedValues)
+      self.assertIsInstance(result_c, values.DistributedValues)
+      a0, a1 = distribution.experimental_local_results(a)
+      b0, b1 = distribution.experimental_local_results(result_b)
+      c0, c1 = distribution.experimental_local_results(result_c)
+      self.assertEqual("main/a:0", a0.name)
+      self.assertEqual("main/a/replica_1:0", a1.name)
+      self.assertEqual("main/b:0", b0.name)
+      self.assertEqual("main/b/replica_1:0", b1.name)
+      self.assertEqual("main/foo/c:0", c0.name)
+      self.assertEqual("main/foo/c/replica_1:0", c1.name)
 
 
 @combinations.generate(
@@ -930,11 +971,12 @@ class MirroredThreeDeviceDistributionTest(
       self.assertEqual("foo:0", result.name)
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class MirroredVariableUpdateTest(test.TestCase):
   # The following tests check assign, assign_add and assign_sub on Mirrored
   # variables in replica and cross replica context.
@@ -958,7 +1000,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       with self.assertRaisesRegexp(
           ValueError, "You must specify an aggregation method to update a "
                       "MirroredVariable in Replica Context."):
-        self.evaluate(distribution.unwrap(
+        self.evaluate(distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(model_fn)))
 
   def testAssignMirroredVarReplicaContextWithSum(self, distribution):
@@ -980,7 +1022,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       with self.assertRaisesRegexp(
           ValueError, "A non-DistributedValues value 5.0 cannot be reduced "
           "with the given reduce op ReduceOp.SUM."):
-        self.evaluate(distribution.unwrap(
+        self.evaluate(distribution.experimental_local_results(
             distribution.extended.call_for_each_replica(model_fn)))
 
   def testAssignMirroredVarCrossDeviceContext(self, distribution):
@@ -1012,7 +1054,7 @@ class MirroredVariableUpdateTest(test.TestCase):
             mirrored_var.dtype)
         return mirrored_var.assign(value)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(0.5, self.evaluate(mirrored_var))
 
@@ -1030,7 +1072,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign(5.0)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(5.0, self.evaluate(mirrored_var))
 
@@ -1073,7 +1115,7 @@ class MirroredVariableUpdateTest(test.TestCase):
             mirrored_var.dtype)
         return mirrored_var.assign_add(value)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(1.5, self.evaluate(mirrored_var))
 
@@ -1091,7 +1133,7 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign_add(5.0)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(6.0, self.evaluate(mirrored_var))
 
@@ -1126,7 +1168,7 @@ class MirroredVariableUpdateTest(test.TestCase):
             mirrored_var.dtype)
         return mirrored_var.assign_sub(value)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(4.5, self.evaluate(mirrored_var))
 
@@ -1144,16 +1186,17 @@ class MirroredVariableUpdateTest(test.TestCase):
       def model_fn():
         return mirrored_var.assign_sub(1.0)
 
-      self.evaluate(distribution.unwrap(
+      self.evaluate(distribution.experimental_local_results(
           distribution.extended.call_for_each_replica(model_fn)))
       self.assertEqual(4.0, self.evaluate(mirrored_var))
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
 
   def testAssignMirroredVarInitializer(self, distribution):
@@ -1192,11 +1235,12 @@ class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
         self.assertTrue(self.evaluate(sync_on_read_var.is_initialized()))
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class SyncOnReadVariableAssignTest(test.TestCase):
 
   def testAssignReplicaLocalVarSumAggregation(self, distribution):
@@ -1282,11 +1326,12 @@ class MiniModel(keras_training.Model):
     return self.fc(inputs)
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
 class MirroredStrategyDefunTest(test.TestCase):
 
   def _call_and_check(self, distribution, model_fn, inputs, expected_result,
@@ -1561,6 +1606,12 @@ class MultiWorkerMirroredStrategyTestWithChief(
       strategy = mirrored_strategy.CoreMirroredStrategy()
       self.assertEqual(
           max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
+
+  def testSummaryForReplicaZeroOnly(self):
+    strategy = mirrored_strategy.CoreMirroredStrategy(
+        mirrored_strategy.all_local_devices())
+    strategy.configure(cluster_spec=self._cluster_spec)
+    self._test_summary_for_replica_zero_only(strategy)
 
 
 def _replica_id():

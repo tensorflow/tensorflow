@@ -640,7 +640,7 @@ public final class Constant<T> extends PrimitiveOp implements Operand<T> {
   private static <T> Constant<T> createWithTensor(Scope scope, Tensor<T> value) {
     return new Constant<T>(
         scope
-            .graph()
+            .env()
             .opBuilder("Const", scope.makeOpName("Const"))
             .setAttr("value", value)
             .setAttr("dtype", value.dataType())

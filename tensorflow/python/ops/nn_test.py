@@ -1397,7 +1397,7 @@ class ConvolutionTest(test_lib.TestCase):
 
 class ConvTransposeTest(test_lib.TestCase):
 
-  def test1DTensor(self):
+  def test1D(self):
     t = array_ops.ones([2, 4, 3])
     v = array_ops.ones([2, 5, 3])
     strides = 2
@@ -1407,7 +1407,17 @@ class ConvTransposeTest(test_lib.TestCase):
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
-  def test2DTensor(self):
+  def test1DTensor(self):
+    t = array_ops.ones([2, 4, 3])
+    v = array_ops.ones([2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv1d_transpose(t, v, [2, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 5]), strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2D(self):
     t = array_ops.ones([2, 4, 4, 3])
     v = array_ops.ones([2, 2, 5, 3])
     strides = 2
@@ -1417,13 +1427,35 @@ class ConvTransposeTest(test_lib.TestCase):
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
-  def test3DTensor(self):
+  def test2DTensor(self):
+    t = array_ops.ones([2, 4, 4, 3])
+    v = array_ops.ones([2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv2d_transpose_v2(t, v, [2, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 5]),
+                               strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3D(self):
     t = array_ops.ones([2, 4, 4, 4, 3])
     v = array_ops.ones([2, 2, 2, 5, 3])
     strides = 2
 
     y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
     y2 = nn_ops.conv_transpose(t, v, [2, 8, 8, 8, 5], strides)
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    t = array_ops.ones([2, 4, 4, 4, 3])
+    v = array_ops.ones([2, 2, 2, 5, 3])
+    strides = 2
+
+    y1 = nn_ops.conv3d_transpose_v2(t, v, [2, 8, 8, 8, 5], strides)
+    y2 = nn_ops.conv_transpose(t, v, constant_op.constant([2, 8, 8, 8, 5]),
+                               strides)
 
     self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
@@ -1438,7 +1470,9 @@ class ConvTransposeTest(test_lib.TestCase):
       nn_ops.conv_transpose(None, 2, [2, 3, 4, 2, 5, 1], "SAME")
 
   def testTensorsNoShape(self):
-    with self.assertRaisesRegex(ValueError, "output_shape cannot be None"):
+    with self.assertRaisesRegex(
+        ValueError,
+        "output_shape must be a tensor or sized collection."):
       nn_ops.conv_transpose(None, None, None, None)
 
 

@@ -384,7 +384,7 @@ class FuncGraph(ops.Graph):
       self,
       op_type,
       inputs,
-      dtypes,  # pylint: disable=redefined-outer-name
+      dtypes=None,  # pylint: disable=redefined-outer-name
       input_types=None,
       name=None,
       attrs=None,
@@ -401,8 +401,8 @@ class FuncGraph(ops.Graph):
       op_type: The `Operation` type to create. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
       inputs: A list of `Tensor` objects that will be inputs to the `Operation`.
-      dtypes: A list of `DType` objects that will be the types of the tensors
-        that the operation produces.
+      dtypes: (Optional) A list of `DType` objects that will be the types of the
+        tensors that the operation produces.
       input_types: (Optional.) A list of `DType`s that will be the types of
         the tensors that the operation consumes. By default, uses the base
         `DType` of each input in `inputs`. Operations that expect

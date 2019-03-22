@@ -58,9 +58,9 @@ class L1L2(Regularizer):
       return K.constant(0.)
     regularization = 0.
     if self.l1:
-      regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))
+      regularization += self.l1 * math_ops.reduce_sum(math_ops.abs(x))
     if self.l2:
-      regularization += math_ops.reduce_sum(self.l2 * math_ops.square(x))
+      regularization += self.l2 * math_ops.reduce_sum(math_ops.square(x))
     return regularization
 
   def get_config(self):

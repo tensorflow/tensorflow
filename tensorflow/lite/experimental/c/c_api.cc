@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/version.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,6 +49,8 @@ class CallbackErrorReporter : public tflite::ErrorReporter {
 }  // namespace
 
 // LINT.IfChange
+
+const char* TFL_Version() { return TFLITE_VERSION_STRING; }
 
 TFL_Model* TFL_NewModel(const void* model_data, size_t model_size) {
   auto model = tflite::FlatBufferModel::BuildFromBuffer(

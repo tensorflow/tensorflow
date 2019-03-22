@@ -1180,6 +1180,18 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
       self.assertAllClose(mask_outputs_val[0], np.any(model_input, axis=-1))
       self.assertAllClose(mask_outputs_val[1], np.any(model_input, axis=-1))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def test_external_keras_serialization_compat(self):
+    inputs = keras.Input(shape=(10,))
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    config = model.get_config()
+    # Checks that single inputs and outputs are still saved as 1-element lists.
+    # Saving as 1-element lists or not is equivalent in TF Keras, but only the
+    # 1-element list format is supported in TF.js and keras-team/Keras.
+    self.assertLen(config['input_layers'], 1)
+    self.assertLen(config['output_layers'], 1)
+
 
 class GraphUtilsTest(test.TestCase):
 

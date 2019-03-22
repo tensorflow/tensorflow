@@ -18,6 +18,7 @@ limitations under the License.
 #include <cmath>
 #include "absl/strings/str_replace.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace xla {
@@ -78,15 +79,15 @@ ENTRY MaxDifference {
                              {{"SIZE", absl::StrCat(num_elements)}});
 }
 
-StatusOr<F16BufferComparator> F16BufferComparator::Create(
-    se::DeviceMemory<Eigen::half> ref_buffer, Compiler* compiler,
-    DeviceMemoryAllocator* allocator, se::Stream* stream) {
-  auto stream_exec = stream->parent();
-  int64 num_elements = ref_buffer.ElementCount();
+StatusOr<BufferComparator> BufferComparator::Create(
+    const Shape& shape, se::StreamExecutor* stream_exec, Compiler* compiler) {
+  if (shape.element_type() != xla::F16) {
+    return Unimplemented("Unimplemented element type");
+  }
 
   // One may consider using hlo_runner to do all the compilation and execution.
   // However, as of the time hlo_runner doesn't support injection for Compiler*,
-  // Stream*, or even the allocator. We may revisit this in the future if it
+  // or Stream*. We may revisit this in the future if it
   // proves to be a maintenance burden.
   TF_ASSIGN_OR_RETURN(
       auto exec, ([&]() -> StatusOr<std::unique_ptr<Executable>> {
@@ -95,85 +96,82 @@ StatusOr<F16BufferComparator> F16BufferComparator::Create(
         debug_options.set_xla_backend_optimization_level(2);
         config.set_debug_options(debug_options);
         TF_ASSIGN_OR_RETURN(
-            auto module, ParseHloString(GetCompHloText(num_elements), config));
+            auto module,
+            ParseHloString(GetCompHloText(ShapeUtil::ElementsIn(shape)),
+                           config));
         TF_ASSIGN_OR_RETURN(
             module,
             compiler->RunHloPasses(std::move(module), stream_exec, nullptr));
         return compiler->RunBackend(std::move(module), stream_exec, nullptr);
       }()));
 
-  TF_ASSIGN_OR_RETURN(
-      auto shaped_buffer, ([&]() -> StatusOr<ScopedShapedBuffer> {
-        auto device_ordinal = stream_exec->device_ordinal();
-        TF_ASSIGN_OR_RETURN(
-            auto owning_buffer,
-            allocator->Allocate(device_ordinal, ref_buffer.size()));
-        se::DeviceMemory<Eigen::half> buffer(
-            owning_buffer.AsDeviceMemoryBase());
-        stream->ThenMemcpy(&buffer, ref_buffer, ref_buffer.size());
-        Shape shape = ShapeUtil::MakeShape(xla::F16, {num_elements});
-        ScopedShapedBuffer ret(shape, shape, allocator, device_ordinal);
-        ret.set_buffer(std::move(owning_buffer), {});
-        return std::move(ret);
-      }()));
-
-  return F16BufferComparator(stream, allocator, std::move(exec),
-                             std::move(shaped_buffer));
+  return BufferComparator(shape, std::move(exec));
 }
 
-StatusOr<bool> F16BufferComparator::CompareEqualImpl(
-    se::DeviceMemory<Eigen::half> test_buffer) {
-  if (ref_buffer_.root_buffer().size() != test_buffer.size()) {
-    return InternalError("Mismatched buffer size: %d vs %d",
-                         ref_buffer_.root_buffer().size(), test_buffer.size());
+StatusOr<bool> BufferComparator::CompareEqualImpl(
+    se::Stream* stream, DeviceMemoryAllocator* allocator,
+    se::DeviceMemoryBase lhs, se::DeviceMemoryBase rhs) {
+  if (lhs.size() != rhs.size()) {
+    return InternalError("Mismatched buffer size: %d bytes vs %d bytes",
+                         lhs.size(), rhs.size());
   }
 
-  int64 num_elements = test_buffer.ElementCount();
+  auto stream_exec = stream->parent();
+  auto to_shaped_buffer =
+      [stream_exec,
+       this](se::DeviceMemoryBase buffer) -> StatusOr<ShapedBuffer> {
+    auto device_ordinal = stream_exec->device_ordinal();
+    ShapedBuffer shaped(shape_, shape_, stream_exec->platform(),
+                        device_ordinal);
+    shaped.set_buffer(buffer, {});
+    return std::move(shaped);
+  };
 
-  TF_ASSIGN_OR_RETURN(
-      auto result_buffer, ([&]() -> StatusOr<ScopedShapedBuffer> {
-        auto stream_exec = stream_->parent();
-        Shape shape = ShapeUtil::MakeShape(xla::F16, {num_elements});
-        auto device_ordinal = stream_exec->device_ordinal();
-        ShapedBuffer shaped_test_buffer(shape, shape, stream_exec->platform(),
-                                        device_ordinal);
-        shaped_test_buffer.set_buffer(test_buffer, {});
-        ExecutableRunOptions run_options;
-        run_options.set_device_ordinal(stream_exec->device_ordinal());
-        run_options.set_stream(stream_);
-        run_options.set_allocator(allocator_);
-        ServiceExecutableRunOptions service_run_options(run_options);
-        return exec_->ExecuteOnStream(
-            &service_run_options, {&ref_buffer_, &shaped_test_buffer}, nullptr);
-      }()));
+  TF_ASSIGN_OR_RETURN(auto shaped_lhs, to_shaped_buffer(lhs));
+  TF_ASSIGN_OR_RETURN(auto shaped_rhs, to_shaped_buffer(rhs));
+
+  ExecutableRunOptions run_options;
+  run_options.set_device_ordinal(stream_exec->device_ordinal());
+  run_options.set_stream(stream);
+  run_options.set_allocator(allocator);
+  ServiceExecutableRunOptions service_run_options(run_options);
+
+  const ShapedBuffer* arg_buffers[] = {&shaped_lhs, &shaped_rhs};
+  TF_ASSIGN_OR_RETURN(auto result_buffer,
+                      comparator_exec_->ExecuteOnStream(&service_run_options,
+                                                        arg_buffers, nullptr));
 
   float result;
   CHECK(result_buffer.root_buffer().size() == sizeof(result));
-  stream_->ThenMemcpy(&result, result_buffer.root_buffer(), sizeof(result));
-  TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+  stream->ThenMemcpy(&result, result_buffer.root_buffer(), sizeof(result));
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return result < kTolerance;
 }
 
-StatusOr<bool> F16BufferComparator::CompareEqual(
-    se::DeviceMemory<Eigen::half> test_buffer) {
-  TF_ASSIGN_OR_RETURN(auto result, CompareEqualImpl(test_buffer));
+StatusOr<bool> BufferComparator::CompareEqual(se::Stream* stream,
+                                              DeviceMemoryAllocator* allocator,
+                                              se::DeviceMemoryBase lhs,
+                                              se::DeviceMemoryBase rhs) {
+  TF_ASSIGN_OR_RETURN(auto result,
+                      CompareEqualImpl(stream, allocator, lhs, rhs));
+
   if (result) {
     return true;
   }
-  // Host side code that does the same thing, but report some of the
+
+  // Host side code that does the same thing, but reports some of the
   // differences as well.
-  int64 n = test_buffer.ElementCount();
-  std::vector<half> host_ref_buffer(n), host_test_buffer(n);
-  stream_->ThenMemcpy(host_ref_buffer.data(), ref_buffer_.root_buffer(),
-                      ref_buffer_.root_buffer().size());
-  stream_->ThenMemcpy(host_test_buffer.data(), test_buffer, test_buffer.size());
-  TF_RETURN_IF_ERROR(stream_->BlockHostUntilDone());
+  int64 n = ShapeUtil::ElementsIn(shape_);
+  std::vector<half> host_lhs(n), host_rhs(n);
+  stream->ThenMemcpy(host_lhs.data(), lhs, lhs.size());
+  stream->ThenMemcpy(host_rhs.data(), rhs, rhs.size());
+  TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
 
   const auto canonicalize = [](float a) -> float {
-    constexpr float kBigNumer = 1048576.;
+    constexpr float kBigNumber = 1048576.;
     constexpr float kMaxFp16Value = 65504.;
     if (std::isnan(a)) {
-      return kBigNumer;
+      return kBigNumber;
     }
     if (std::isinf(a)) {
       if (a < 0) {
@@ -185,15 +183,15 @@ StatusOr<bool> F16BufferComparator::CompareEqual(
   };
   int differences_seen = 0;
   for (int64 i = 0; i < n && differences_seen < 10; i++) {
-    float original_ref = static_cast<float>(host_ref_buffer[i]);
-    float original_test = static_cast<float>(host_test_buffer[i]);
-    float ref = canonicalize(original_ref);
-    float test = canonicalize(original_test);
-    if (!(std::abs(ref - test) / (std::max(std::abs(ref), std::abs(test)) + 1) <
+    float original_lhs = static_cast<float>(host_lhs[i]);
+    float original_rhs = static_cast<float>(host_rhs[i]);
+    float lhs = canonicalize(original_lhs);
+    float rhs = canonicalize(original_rhs);
+    if (!(std::abs(lhs - rhs) / (std::max(std::abs(lhs), std::abs(rhs)) + 1) <
           kTolerance)) {
       differences_seen++;
-      LOG(ERROR) << "Difference at " << i << ": " << original_ref << " vs "
-                 << original_test;
+      LOG(ERROR) << "Difference at " << i << ": " << original_lhs << " vs "
+                 << original_rhs;
     }
   }
 

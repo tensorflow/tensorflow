@@ -21,6 +21,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "MapVectorizationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "NestedStructure"
     mtype: "<type \'type\'>"
   }

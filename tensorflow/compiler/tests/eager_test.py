@@ -623,6 +623,50 @@ class EagerFunctionTest(xla_test.XLATestCase):
       r = f(elems)
       self.assertAllEqual([2., 4., 12., 48., 240., 1440.], self.evaluate(r))
 
+  def testFeedDeviceMemoryToOpExpectingHostMemory(self):
+    @function.defun
+    def f(dims, value):
+      return array_ops.fill(dims, value)
+
+    with self.test_scope():
+      x = constant_op.constant([4], dtype=dtypes.int64)
+
+    y = f(x, 3)
+    self.assertAllEqual([3, 3, 3, 3], y)
+
+  def testRequestNotToCompile(self):
+    with self.test_scope():
+      def f(x):
+        with ops.device('device:CPU:0'):
+          y = 2.0 * x
+        return x, y
+
+      wholly_compiled_f = def_function.function(f)
+      op_by_op_f = function.defun_with_attributes(
+          f, attributes={'_XlaCompile': False})
+
+      x = constant_op.constant([0.0, 2.0], name='data')
+
+      # When function is wholly compiled, all outputs will be on the
+      # device on which it is run.
+      r_x, r_y = wholly_compiled_f(x)
+      self.assertAllEqual([0.0, 2.0], r_x)
+      self.assertAllEqual([0.0, 4.0], r_y)
+      if context.executing_eagerly():
+        # backing_device is only available for eager tensors.
+        self.assertRegexpMatches(r_x.backing_device, self.device)
+        self.assertRegexpMatches(r_y.backing_device, self.device)
+
+      # When function is executed op-by-op, requested devices will be
+      # respected.
+      r_x, r_y = op_by_op_f(x)
+      self.assertAllEqual([0.0, 2.0], r_x)
+      self.assertAllEqual([0.0, 4.0], r_y)
+      if context.executing_eagerly():
+        # backing_device is only available for eager tensors.
+        self.assertRegexpMatches(r_x.backing_device, self.device)
+        self.assertRegexpMatches(r_y.backing_device, 'device:CPU:0')
+
 
 class ExcessivePaddingTest(xla_test.XLATestCase):
   """Test that eager execution works with TPU flattened tensors.

@@ -297,6 +297,7 @@ check_deps(
         "@local_config_cuda//cuda:cudnn",
         "@local_config_cuda//cuda:curand",
         "@local_config_cuda//cuda:cusolver",
+        "@local_config_cuda//cuda:cusparse",
     ],
     deps = ["//tensorflow:libtensorflow_framework.so"],
 )

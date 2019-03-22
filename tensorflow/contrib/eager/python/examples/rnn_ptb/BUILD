@@ -32,7 +32,6 @@ cuda_py_test(
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow:tensorflow_py",
     ],
-    tags = ["no_oss"],  # b/123045964
 )
 
 cuda_py_test(

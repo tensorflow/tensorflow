@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -79,16 +80,6 @@ int NumIterations(const RewriterConfig& cfg) {
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer";
-}
-
-// Check if the graphdef contains nodes that indicate TPU execution.
-bool IsTPUGraphDef(const GraphDef& def) {
-  for (auto node : def.node()) {
-    if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
-      return true;
-    }
-  }
-  return false;
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
