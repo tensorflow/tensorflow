@@ -71,9 +71,15 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
 
 # Build HIP from source
-RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git && \
+#
+# adopt 2 patches yet merged in HIP:
+# - HIP PR #981: https://github.com/ROCm-Developer-Tools/HIP/pull/981
+#   - This PR addresses missing hipModuleGetGlobal() found in XLA tests
+# - HIP PR #982: https://github.com/ROCm-Developer-Tools/HIP/pull/982
+#   - This PR addresses ROCR runtime issue for 0-size symbols found in XLA tests
+RUN cd $HOME && git clone -b fix_hip_module_get_global https://github.com/ROCm-Developer-Tools/HIP.git && \
     mkdir HIP/build && cd HIP/build && \
-    git checkout -b 2019-03-06 0c4a40efcc974e5a4b2935fb84b3e8d368e9880b && \
+    git cherry-pick -n d941f19399e9b4f040aec5d41123e7073913cbc3 && \
     cmake .. && make package -j $(nproc) && dpkg -i ./hip*.deb
 
 # Set up paths
