@@ -142,12 +142,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     input_quantized->type = filter->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
 
-    // TODO(raziel): add this logic to ResizeTensor.
-    if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
-      TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
-      TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
-                                                       input_quantized_size));
-    }
+    TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
+    TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, input_quantized,
+                                                     input_quantized_size));
+
     node->temporaries->data[1] = data->scratch_tensor_index + 1;
     TfLiteTensor* scaling_factors = GetTemporary(context, node, /*index=*/1);
     scaling_factors->type = kTfLiteFloat32;
