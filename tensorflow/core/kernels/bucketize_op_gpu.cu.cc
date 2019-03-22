@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/kernels/bucketize_op.h"
-#include "tensorflow/core/kernels/cuda_device_array.h"
+#include "tensorflow/core/kernels/gpu_device_array.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -36,8 +36,8 @@ typedef Eigen::GpuDevice GPUDevice;
 template <typename T, bool useSharedMem>
 __global__ void BucketizeCustomKernel(
     const int32 size_in, const T* in, const int32 size_boundaries,
-    CudaDeviceArrayStruct<float> boundaries_array, int32* out) {
-  const float* boundaries = GetCudaDeviceArrayOnDevice(&boundaries_array);
+    GpuDeviceArrayStruct<float> boundaries_array, int32* out) {
+  const float* boundaries = GetGpuDeviceArrayOnDevice(&boundaries_array);
 
   extern __shared__ __align__(sizeof(float)) unsigned char shared_mem[];
   float* shared_mem_boundaries = reinterpret_cast<float*>(shared_mem);
@@ -85,8 +85,8 @@ struct BucketizeFunctor<GPUDevice, T> {
                         typename TTypes<int32, 1>::Tensor& output) {
     const GPUDevice& d = context->eigen_device<GPUDevice>();
 
-    CudaDeviceArrayOnHost<float> boundaries_array(context,
-                                                  boundaries_vector.size());
+    GpuDeviceArrayOnHost<float> boundaries_array(context,
+                                                 boundaries_vector.size());
     TF_RETURN_IF_ERROR(boundaries_array.Init());
     for (int i = 0; i < boundaries_vector.size(); ++i) {
       boundaries_array.Set(i, boundaries_vector[i]);

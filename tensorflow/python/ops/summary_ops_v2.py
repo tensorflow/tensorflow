@@ -60,11 +60,26 @@ _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
 _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 
 
-def _should_record_summaries_internal():
-  """Returns boolean Tensor if summaries should/shouldn't be recorded, or None.
+def _should_record_summaries_internal(default_state):
+  """Returns boolean Tensor if summaries should/shouldn't be recorded.
+
+  Now the summary condition is decided by logical "and" of two conditions:
+  ctx.summary_recording and ctx.summary_recording_distribution_strategy. The
+  former one is usually set by user, and the latter one is controlled by
+  DistributionStrategy (tf.distribute.ReplicaContext).
+
+  Args:
+    default_state: can be True or False. The default summary behavior when user
+      does not specify ctx.summary_recording and
+      ctx.summary_recording_distribution_strategy is True.
   """
-  condition = context.context().summary_recording
-  return condition() if callable(condition) else condition
+  ctx = context.context()
+  resolve = lambda x: x() if callable(x) else x
+  cond_distributed = resolve(ctx.summary_recording_distribution_strategy)
+  cond = resolve(ctx.summary_recording)
+  if cond is None:
+    cond = default_state
+  return math_ops.logical_and(cond_distributed, cond)
 
 
 def _should_record_summaries_v2():
@@ -73,14 +88,12 @@ def _should_record_summaries_v2():
   If no recording status has been set, this defaults to True, unlike the public
   should_record_summaries().
   """
-  result = _should_record_summaries_internal()
-  return True if result is None else result
+  return _should_record_summaries_internal(default_state=True)
 
 
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
-  result = _should_record_summaries_internal()
-  return False if result is None else result
+  return _should_record_summaries_internal(default_state=False)
 
 
 @tf_export("summary.record_if", v1=[])
@@ -1053,15 +1066,30 @@ _current_trace_context = None
 
 @tf_export("summary.trace_on", v1=[])
 def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-name
-  """Enables execution trace.
+  """Starts a trace to record computation graphs and profiling information.
+
+  Must be invoked in eager mode.
+
+  When enabled, TensorFlow runtime will collection information that can later be
+  exported and consumed by TensorBoard. The trace is activated across the entire
+  TensorFlow runtime and affects all threads of execution.
+
+  To stop the trace and export the collected information, use
+  `tf.summary.trace_export`. To stop the trace without exporting, use
+  `tf.summary.trace_off`.
 
   Args:
-    graph: whether to collect graphs used in execution
-    profiler: whether to enable profiler.
+    graph: If True, enables collection of executed graphs. It includes ones from
+        tf.function invocation and ones from the legacy graph mode. The default
+        is True.
+    profiler: If True, enables the advanced profiler. Enabling profiler
+        implicitly enables the graph collection. The profiler may incur a high
+        memory overhead. The default is False.
 
-  Returns:
-    None
   """
+  if ops.inside_function():
+    logging.warn("Cannot enable trace inside a tf.function.")
+    return
   if not context.context().executing_eagerly():
     logging.warn("Must enable trace in eager mode.")
     return
@@ -1083,7 +1111,10 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
 
 @tf_export("summary.trace_export", v1=[])
 def trace_export(name, step=None, profiler_outdir=None):
-  """Exports trace as a Summary and/or profile file.
+  """Stops and exports the active trace as a Summary and/or profile file.
+
+  Stops the trace and exports all metadata collected during the trace to the
+  default SummaryWriter, if one has been set.
 
   Args:
     name: A name for the summary to be written.
@@ -1093,9 +1124,6 @@ def trace_export(name, step=None, profiler_outdir=None):
     profiler_outdir: Output directory for profiler. It is required when profiler
       is enabled when trace was started. Otherwise, it is ignored.
 
-  Returns:
-    None
-
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
@@ -1104,6 +1132,9 @@ def trace_export(name, step=None, profiler_outdir=None):
   # the SummaryWriter's logdir.
   global _current_trace_context
 
+  if ops.inside_function():
+    logging.warn("Cannot export trace inside a tf.function.")
+    return
   if not context.context().executing_eagerly():
     logging.warn("Can only export trace while executing eagerly.")
     return
@@ -1130,7 +1161,7 @@ def trace_export(name, step=None, profiler_outdir=None):
 
 @tf_export("summary.trace_off", v1=[])
 def trace_off():
-  """Disables and resets the trace state."""
+  """Stops the current trace and discards any collected information."""
   global _current_trace_context
   with _current_trace_context_lock:
     _current_trace_context = None

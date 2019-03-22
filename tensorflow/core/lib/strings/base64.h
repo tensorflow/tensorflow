@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_STRINGS_B64_H_
-#define TENSORFLOW_LIB_STRINGS_B64_H_
+#ifndef TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_
+#define TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_
 
 #include <string>
 #include "tensorflow/core/lib/core/status.h"
@@ -34,4 +34,4 @@ Status Base64Decode(StringPiece data, string* decoded);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_STRINGS_B64_H_
+#endif  // TENSORFLOW_CORE_LIB_STRINGS_BASE64_H_

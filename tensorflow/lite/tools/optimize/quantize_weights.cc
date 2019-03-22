@@ -52,14 +52,15 @@ std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
   // TODO(suharshs): If this proves to be too slow, avoid calling it per tensor,
   // instead doing one sweep for the entire model.
   std::vector<ConsumerOpInfo> consumer_ops;
-  for (int op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
+  for (size_t op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
     OperatorT* op = subgraph->operators[op_idx].get();
     if (op == nullptr) {
       continue;
     }
-    for (int i = 0; i < op->inputs.size(); ++i) {
+    for (size_t i = 0; i < op->inputs.size(); ++i) {
       if (op->inputs[i] == tensor_idx) {
-        consumer_ops.push_back({op, op_idx, i});
+        consumer_ops.push_back(
+            {op, static_cast<int32_t>(op_idx), static_cast<int32_t>(i)});
       }
     }
   }
@@ -94,6 +95,9 @@ std::vector<int32_t> GetWeightInputIndices(const BuiltinOperator& op_code) {
   } else if (op_code == BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN) {
     // https://www.tensorflow.org/code/tensorflow/lite/kernels/bidirectional_sequence_rnn.cc
     return {1, 2, 4, 5};
+  } else if (op_code == BuiltinOperator_GATHER) {
+    // https://www.tensorflow.org/code/tensorflow/lite/kernels/gather.cc
+    return {0};
   }
   return {};
 }
@@ -190,41 +194,6 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
   return kTfLiteOk;
 }
 
-// Quantizes tensor using symmetric quantization with the min and max elements
-// of the tensor. This is need for operations with hybrid evaluation
-// implemented.
-TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
-  BufferT* buffer = model->buffers[tensor->buffer].get();
-  float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  uint64_t num_elements;
-  TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
-  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
-            << " elements.";
-
-  std::vector<int8_t> quantized_buffer;
-  quantized_buffer.resize(num_elements);
-
-  float min_value, max_value, scaling_factor;
-  tensor_utils::SymmetricQuantizeFloats(float_data, num_elements,
-                                        quantized_buffer.data(), &min_value,
-                                        &max_value, &scaling_factor);
-
-  if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
-  }
-  tensor->quantization->scale = std::vector<float>(1, scaling_factor);
-  tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
-
-  uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(quantized_buffer.data());
-  model->buffers[tensor->buffer]->data.assign(uint8_buffer,
-                                              uint8_buffer + num_elements);
-
-  // Update the tensor type.
-  tensor->type = TensorType_INT8;
-
-  return kTfLiteOk;
-}
-
 // Returns the index of the Dequantize op_code.
 // If a Dequantize op_code doesn't exist, adds it and returns its index.
 int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
@@ -284,6 +253,57 @@ void UpdateInt8OperatorVersions(ModelT* model) {
   }
 }
 
+// Returns true if the op in consumer_op_infos can pass through quantization.
+bool IsQuantizationPassThroughOps(
+    const ModelT* model, const std::vector<ConsumerOpInfo>& consumer_op_infos) {
+  if (consumer_op_infos.size() != 1) {
+    return false;
+  }
+  const OperatorT* consumer_op = consumer_op_infos.front().op;
+  const BuiltinOperator op_code =
+      model->operator_codes[consumer_op->opcode_index]->builtin_code;
+  return op_code == BuiltinOperator_GATHER;
+}
+
+// Copies quantization parameters from input to output and returns consumers of
+// the output tensor as a tuple with values:
+// - index of the output tensor
+// - pointer to the output tensor
+// - vector of consumers ops.
+std::tuple<int32_t, TensorT*, std::vector<ConsumerOpInfo>>
+PassQuantizationAndGetConsumers(
+    const ModelT* model, const SubGraphT* subgraph,
+    const std::vector<ConsumerOpInfo>& consumer_op_infos) {
+  const OperatorT* op = consumer_op_infos.front().op;
+  const BuiltinOperator op_code =
+      model->operator_codes[op->opcode_index]->builtin_code;
+  if (op->outputs.size() != 1) {
+    LOG(ERROR)
+        << "An op that passes quantization has more than one quantized output";
+    return std::make_tuple(-1, nullptr, std::vector<ConsumerOpInfo>());
+  }
+  const int32_t output_tensor_idx = op->outputs.front();
+  const auto input_idx = GetWeightInputIndices(op_code);
+  if (input_idx.size() != 1) {
+    LOG(ERROR)
+        << "An op that passes quantization has more than one quantized input";
+    return std::make_tuple(-1, nullptr, std::vector<ConsumerOpInfo>());
+  }
+  const int32_t input_tensor_idx = op->inputs[input_idx.front()];
+
+  // Propagate quantization params.
+  const TensorT* input_tensor = subgraph->tensors[input_tensor_idx].get();
+  TensorT* output_tensor = subgraph->tensors[output_tensor_idx].get();
+  if (!output_tensor->quantization) {
+    output_tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
+  *output_tensor->quantization = *input_tensor->quantization;
+  output_tensor->type = TensorType_INT8;
+  return std::make_tuple(
+      output_tensor_idx, output_tensor,
+      GetTensorConsumers(model, subgraph, output_tensor_idx));
+}
+
 TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
                                      const Model* input_model,
                                      bool use_hybrid_evaluation,
@@ -314,15 +334,24 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
   for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
     // Quantize the tensor.
     TF_LITE_ENSURE_STATUS(
-        SymmetricQuantizeTensor(model.get(), tensor_pair.second));
+        utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second));
   }
 
   // Examine the tensor consumers to determine which require dequantize ops.
   for (const auto& tensor_pair : tensor_map) {
-    const int32_t tensor_idx = tensor_pair.first;
+    int32_t tensor_idx = tensor_pair.first;
     TensorT* tensor = tensor_pair.second;
     std::vector<ConsumerOpInfo> consumer_op_infos =
         GetTensorConsumers(model.get(), subgraph, tensor_idx);
+    if (IsQuantizationPassThroughOps(model.get(), consumer_op_infos)) {
+      std::tie(tensor_idx, tensor, consumer_op_infos) =
+          PassQuantizationAndGetConsumers(model.get(), subgraph,
+                                          consumer_op_infos);
+      if (tensor_idx < 0) {
+        // Error message is already logged by PassQuantizationAndGetConsumers.
+        return kTfLiteError;
+      }
+    }
 
     std::vector<ConsumerOpInfo> dequant_op_infos;  // Ops that need dequants.
     for (ConsumerOpInfo& consumer_op_info : consumer_op_infos) {
@@ -341,8 +370,18 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
       }
     }
 
-    // If no ops require dequant, we are done for this tensor.
-    if (dequant_op_infos.empty()) {
+    // Check that this tensor is an output tensor.
+    int32_t output_index = -1;
+    for (int32_t i = 0; i < subgraph->outputs.size(); ++i) {
+      if (subgraph->outputs[i] == tensor_idx) {
+        output_index = i;
+        break;
+      }
+    }
+
+    // If no ops require dequant and it is not output, we are done for this
+    // tensor.
+    if (dequant_op_infos.empty() && output_index < 0) {
       continue;
     }
 
@@ -362,11 +401,15 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
 
     // Update the op_input of all the ops that need the created dequantize
     // operation.
-    int32_t min_op_idx = 0;
+    int32_t min_op_idx = subgraph->operators.size();
     for (ConsumerOpInfo& dequant_op_info : dequant_op_infos) {
       dequant_op_info.op->inputs[dequant_op_info.op_input_idx] =
           dequantize_output_idx;
       min_op_idx = std::min(dequant_op_info.op_idx, min_op_idx);
+    }
+    // Update output name.
+    if (output_index >= 0) {
+      subgraph->outputs[output_index] = dequantize_output_idx;
     }
 
     // Insert the newly created Dequantize operation before the earliest

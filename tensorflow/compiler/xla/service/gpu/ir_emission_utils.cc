@@ -142,6 +142,16 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
          target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
+const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
+
+bool IsCustomCallToCusolver(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCusolverCholeskyCallTarget;
+}
+
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
   return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);
@@ -159,12 +169,7 @@ bool IsReductionToVector(const HloInstruction& reduce) {
     }
   }
   return LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
-                                              dims_to_keep) &&
-         ShapeUtil::Equal(
-             reduce.shape(),
-             ShapeUtil::FilterDimensions(
-                 [&](int64 dim) { return absl::c_count(dims_to_keep, dim); },
-                 input->shape()));
+                                              dims_to_keep);
 }
 
 // This emits a device-side call to

@@ -25,13 +25,10 @@ import warnings
 import numpy as np
 import six
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import is_tensorrt_enabled
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
-from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
-from tensorflow.python.compiler.tensorrt.wrap_conversion import enable_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import importer
@@ -70,6 +67,10 @@ PRECISION_MODES = ["FP32", "FP16", "INT8"]
 
 def IsQuantizationMode(mode):
   return mode == "INT8"
+
+
+def IsQuantizationWithCalibration(params):
+  return IsQuantizationMode(params.precision_mode) and params.use_calibration
 
 
 class GraphState(object):
@@ -148,12 +149,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         return s
       return s.decode("utf-8")
 
-  @classmethod
-  def setUpClass(cls):
-    """Setup method for the module."""
-    super(TfTrtIntegrationTestBase, cls).setUpClass()
-    enable_test_value()
-
   def __init__(self, methodName="runTest"):  # pylint: disable=invalid-name
     super(TfTrtIntegrationTestBase, self).__init__(methodName)
     self._trt_test_params = None
@@ -162,7 +157,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     """Setup method."""
     super(TfTrtIntegrationTestBase, self).setUp()
     warnings.simplefilter("always")
-    clear_test_values("")
 
   def GetParams(self):
     """Return a TfTrtIntegrationTestParams for test, implemented by subclass."""
@@ -198,38 +192,9 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     return not (IsQuantizationMode(run_params.precision_mode) and
                 not run_params.use_calibration)
 
-  def VerifyRunForEngine(self, engine_name, graph_state, expect_run=True):
-    """Verify the state of a particular engine after sess.run()."""
-    if graph_state == GraphState.ORIGINAL:
-      self._ExpectCalibration(engine_name, "")
-      self._ExpectNativeSegment(engine_name, "")
-      self._ExpectTrtEngine(engine_name, "")
-    elif graph_state == GraphState.CALIBRATE:
-      self._ExpectCalibration(engine_name, "done")
-      self._ExpectNativeSegment(engine_name, "done")
-      self._ExpectTrtEngine(engine_name, "")
-    elif graph_state == GraphState.INFERENCE:
-      self._ExpectCalibration(engine_name, "")
-      if expect_run:
-        self._ExpectNativeSegment(engine_name, "")
-        self._ExpectTrtEngine(engine_name, "done")
-      else:
-        self._ExpectNativeSegment(engine_name, "done")
-        self._ExpectTrtEngine(engine_name, "")
-
-  def VerifyRun(self, run_params, graph_state):
-    """Verify the state of all engines after sess.run()."""
-    for engine_name in self.ExpectedEnginesToBuild(run_params):
-      expect_run = (engine_name in self.ExpectedEnginesToRun(run_params))
-      self.VerifyRunForEngine(engine_name, graph_state, expect_run)
-
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build, implemented by subclass."""
     raise NotImplementedError()
-
-  def ExpectedEnginesToRun(self, run_params):
-    """Return the expected engines to run."""
-    return self.ExpectedEnginesToBuild(run_params)
 
   def ExpectedAbsoluteTolerance(self, run_params):
     """The absolute tolerance to compare floating point results."""
@@ -244,13 +209,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       self._trt_test_params = self.GetParams()
     return self._trt_test_params
 
-  def _PrepareRun(self, graph_state):
-    """Set up necessary testing environment before calling sess.run()."""
-    # Clear test values added by TRTEngineOp.
-    clear_test_values("TRTEngineOp_.*:ExecuteTrtEngine")
-    clear_test_values("TRTEngineOp_.*:ExecuteCalibration")
-    clear_test_values("TRTEngineOp_.*:ExecuteNativeSegment")
-
   def _GetGPUOptions(self):
     gpu_options = config_pb2.GPUOptions()
     gpu_options.allow_growth = True
@@ -261,14 +219,16 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     conversion_params = self.GetConversionParams(run_params)
     if graph_state == GraphState.INFERENCE and run_params.use_optimizer:
       rewriter_cfg = trt_convert.TrtGraphConverter.get_tensorrt_rewriter_config(
-          conversion_params.rewriter_config, conversion_params.max_batch_size,
+          conversion_params.rewriter_config,
+          conversion_params.max_batch_size,
           conversion_params.max_workspace_size_bytes,
           conversion_params.precision_mode,
           conversion_params.minimum_segment_size,
           conversion_params.is_dynamic_op,
           conversion_params.maximum_cached_engines,
           conversion_params.cached_engine_batches,
-          conversion_params.use_calibration)
+          conversion_params.use_calibration,
+          use_function_backup=IsQuantizationWithCalibration(conversion_params))
 
       graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_cfg)
     else:
@@ -280,24 +240,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     config = config_pb2.ConfigProto(
         gpu_options=self._GetGPUOptions(), graph_options=graph_options)
     return config
-
-  def _ExpectTestValue(self, engine_name, method, expected_value):
-    label = "%s:%s" % (engine_name, method)
-    actual_value = get_test_value(label)
-    self.assertEqual(
-        expected_value,
-        actual_value,
-        msg="Unexpected test value with label %s. Actual: %s; expected: %s" %
-        (label, actual_value, expected_value))
-
-  def _ExpectCalibration(self, engine_name, value):
-    self._ExpectTestValue(engine_name, "ExecuteCalibration", value)
-
-  def _ExpectTrtEngine(self, engine_name, value):
-    self._ExpectTestValue(engine_name, "ExecuteTrtEngine", value)
-
-  def _ExpectNativeSegment(self, engine_name, value):
-    self._ExpectTestValue(engine_name, "ExecuteNativeSegment", value)
 
   def _GetFeedNames(self):
     params = self._GetParamsCached()
@@ -339,7 +281,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         for shape_index in range(len(inputs_data)):
           val = None
           for _ in range(num_runs):
-            self._PrepareRun(graph_state)
             new_val = sess.run(fetches,
                                self._GetFeedDict(inputs_data, shape_index))
             output_len = len(params.expected_output_dims[shape_index])
@@ -351,7 +292,6 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
             if val is not None:
               self.assertAllClose(val, new_val, atol=1.e-06, rtol=1.e-06)
             val = new_val
-            self.VerifyRun(run_params, graph_state)
           vals.append(val)
         return vals
 
@@ -369,7 +309,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
         is_dynamic_op=conversion_params.is_dynamic_op,
         maximum_cached_engines=conversion_params.maximum_cached_engines,
         cached_engine_batches=conversion_params.cached_engine_batches,
-        use_calibration=conversion_params.use_calibration)
+        use_calibration=conversion_params.use_calibration,
+        use_function_backup=IsQuantizationWithCalibration(conversion_params))
     return converter
 
   def _GetCalibratedInferGraph(self, run_params, gdef, inputs_data):
@@ -479,8 +420,8 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
     self.assertEqual(
         expected_input_map,
         actual_input_map,
-        msg="expected:\n%s\nvs actual:\n%s" % (sorted(
-            expected_input_map.items()), sorted(actual_input_map.items())))
+        msg="expected:\n%s\nvs actual:\n%s" %
+        (sorted(expected_input_map.items()), sorted(actual_input_map.items())))
 
   def _VerifyGraphDef(self, run_params, gdef, graph_state):
     self._WriteGraph(run_params, gdef, graph_state)
@@ -492,11 +433,16 @@ class TfTrtIntegrationTestBase(test_util.TensorFlowTestCase):
       if node.op == "TRTEngineOp":
         logging.info("Found TRTEngineOp: " + node.name)
         num_engines += 1
+        segment_funcdef_name = node.attr["segment_funcdef_name"].s
         function_name = node.name + "_native_segment"
-        self.assertIn(function_name, functions)
+        if IsQuantizationWithCalibration(run_params):
+          self.assertNotEmpty(segment_funcdef_name, node.name)
+          self.assertIn(function_name, functions)
+        else:
+          self.assertEmpty(segment_funcdef_name, node.name)
+          self.assertNotIn(function_name, functions)
         self.assertIn(node.name, expected_engines)
         self.assertTrue(len(node.attr["serialized_segment"].s), node.name)
-        self.assertTrue(len(node.attr["segment_funcdef_name"].s), node.name)
         self.assertEqual(
             self._ToBytes(run_params.precision_mode),
             node.attr["precision_mode"].s, node.name)

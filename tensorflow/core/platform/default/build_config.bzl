@@ -546,7 +546,11 @@ def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
 def tf_protos_all_impl():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return [
+        "//tensorflow/core:autotuning_proto_cc_impl",
+        "//tensorflow/core:conv_autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+    ]
 
 def tf_protos_all():
     return if_static(
@@ -573,7 +577,14 @@ def tf_protos_grappler():
     )
 
 def tf_additional_cupti_wrapper_deps():
-    return ["//tensorflow/core/platform/default/gpu:cupti_wrapper"]
+    return [
+        "//tensorflow/core/platform/default/gpu:cupti_wrapper",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ]
 
 def tf_additional_device_tracer_srcs():
     return ["platform/default/device_tracer.cc"]
@@ -769,7 +780,7 @@ def tf_additional_numa_deps():
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//conditions:default": [
             "@hwloc",
         ],
@@ -780,7 +791,7 @@ def tf_additional_numa_copts():
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//conditions:default": [
             "-Ithird_party/hwloc/hwloc-master/include",
             "-DTENSORFLOW_USE_NUMA",

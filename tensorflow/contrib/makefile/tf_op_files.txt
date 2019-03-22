@@ -1,3 +1,4 @@
+tensorflow/c/kernels/bitcast_op.cc
 tensorflow/contrib/boosted_trees/ops/model_ops.cc
 tensorflow/contrib/boosted_trees/ops/prediction_ops.cc
 tensorflow/contrib/boosted_trees/ops/quantile_ops.cc
@@ -256,6 +257,7 @@ tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
 tensorflow/core/kernels/stack.cc
 tensorflow/core/kernels/stack_ops.cc
+tensorflow/core/kernels/stateful_random_ops.cc
 tensorflow/core/kernels/stateless_random_ops.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/strided_slice_op_inst_0.cc

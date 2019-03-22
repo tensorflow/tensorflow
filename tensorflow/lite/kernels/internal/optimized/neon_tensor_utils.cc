@@ -381,7 +381,8 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride) {
 #ifdef __aarch64__
-  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0) {
+  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
+      m_rows >= n_batch) {
     if (n_batch % 4 == 0 && result_stride == 1) {
       // Benchmarks suggest that it's always better to use the batch code
       // when we can, even on small matrices.

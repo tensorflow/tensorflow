@@ -80,8 +80,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          auto_tuner_(params.dataset->buffer_size_) {
-    }
+          auto_tuner_(params.dataset->buffer_size_) {}
 
     ~Iterator() override {
       // Signal the prefetch thread to terminate it. We will then
@@ -269,9 +268,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
-        prefetch_thread_ = absl::WrapUnique<Thread>(ctx->env()->StartThread(
-            {}, "tf_data_prefetch",
-            [this, new_ctx]() { PrefetchThread(new_ctx); }));
+        prefetch_thread_ = ctx->StartThread(
+            "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
       return Status::OK();
     }
@@ -284,8 +282,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       while (true) {
-        std::vector<Tensor> value;
-
         // 1. Wait for a slot in the buffer.
         {
           mutex_lock l(mu_);
@@ -390,7 +386,10 @@ void PrefetchDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                  ParseScalarArgument<int64>(ctx, "buffer_size", &buffer_size));
   OP_REQUIRES(ctx,
               buffer_size >= 0 || buffer_size == PrefetchAutotuner::kAutoTune,
-              errors::InvalidArgument("buffer_size must be >= 0"));
+              errors::InvalidArgument("buffer_size must be >= 0 or set "
+                                      "buffer_size to be ",
+                                      PrefetchAutotuner::kAutoTune,
+                                      " for auto-tuning"));
 
   if (buffer_size == PrefetchAutotuner::kAutoTune) {
     metrics::RecordTFDataAutotune(kDatasetName);

@@ -202,6 +202,42 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
+HloCompareInstruction::HloCompareInstruction(const Shape& shape,
+                                             HloInstruction* lhs,
+                                             HloInstruction* rhs,
+                                             ComparisonDirection direction)
+    : HloInstruction(HloOpcode::kCompare, shape), direction_(direction) {
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+}
+
+HloInstructionProto HloCompareInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_comparison_direction(ComparisonDirectionToString(direction_));
+  return proto;
+}
+
+std::vector<string> HloCompareInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("direction=", ComparisonDirectionToString(direction()))};
+}
+
+bool HloCompareInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloCompareInstruction&>(other);
+  return direction() == casted_other.direction();
+}
+
+std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return absl::make_unique<HloCompareInstruction>(shape, new_operands[0],
+                                                  new_operands[1], direction());
+}
+
 namespace {
 
 // Converts a protocol buffer message (e.g., TriangularSolveOptions) to a vector
@@ -2282,19 +2318,19 @@ HloGatherInstruction::HloGatherInstruction(
   absl::c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
 }
 
-string HloGatherInstruction::GatherDimensionNumbersToString() const {
-  CHECK(gather_dimension_numbers_ != nullptr);
+/*static*/ string HloGatherInstruction::GatherDimensionNumbersToString(
+    const GatherDimensionNumbers& gather_dimension_numbers) {
   string offset_dims =
       StrCat("offset_dims={",
-             StrJoin(gather_dimension_numbers_->offset_dims(), ","), "}");
+             StrJoin(gather_dimension_numbers.offset_dims(), ","), "}");
   string collapsed_slice_dims = StrCat(
       "collapsed_slice_dims={",
-      StrJoin(gather_dimension_numbers_->collapsed_slice_dims(), ","), "}");
+      StrJoin(gather_dimension_numbers.collapsed_slice_dims(), ","), "}");
   string start_index_map =
       StrCat("start_index_map={",
-             StrJoin(gather_dimension_numbers_->start_index_map(), ","), "}");
-  string index_vector_dim = StrCat(
-      "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
+             StrJoin(gather_dimension_numbers.start_index_map(), ","), "}");
+  string index_vector_dim =
+      StrCat("index_vector_dim=", gather_dimension_numbers.index_vector_dim());
 
   return StrJoin<std::initializer_list<string>>(
       {offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim},
@@ -2331,7 +2367,7 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
 
 std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {GatherDimensionNumbersToString(),
+  return {GatherDimensionNumbersToString(gather_dimension_numbers()),
           StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
 }
 
@@ -2369,19 +2405,20 @@ HloScatterInstruction::HloScatterInstruction(
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
 }
 
-string HloScatterInstruction::ScatterDimensionNumbersToString() const {
-  string update_window_dims = StrCat(
-      "update_window_dims={",
-      StrJoin(scatter_dimension_numbers().update_window_dims(), ","), "}");
+/*static*/ string HloScatterInstruction::ScatterDimensionNumbersToString(
+    const ScatterDimensionNumbers& scatter_dimension_numbers) {
+  string update_window_dims =
+      StrCat("update_window_dims={",
+             StrJoin(scatter_dimension_numbers.update_window_dims(), ","), "}");
   string inserted_window_dims = StrCat(
       "inserted_window_dims={",
-      StrJoin(scatter_dimension_numbers().inserted_window_dims(), ","), "}");
+      StrJoin(scatter_dimension_numbers.inserted_window_dims(), ","), "}");
   string scatter_dims_to_operand_dims = StrCat(
       "scatter_dims_to_operand_dims={",
-      StrJoin(scatter_dimension_numbers().scatter_dims_to_operand_dims(), ","),
+      StrJoin(scatter_dimension_numbers.scatter_dims_to_operand_dims(), ","),
       "}");
-  string index_vector_dim = StrCat(
-      "index_vector_dim=", scatter_dimension_numbers().index_vector_dim());
+  string index_vector_dim =
+      StrCat("index_vector_dim=", scatter_dimension_numbers.index_vector_dim());
 
   return StrJoin<std::initializer_list<string>>(
       {update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims,
@@ -2418,7 +2455,7 @@ HloInstructionProto HloScatterInstruction::ToProto() const {
 
 std::vector<string> HloScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {ScatterDimensionNumbersToString()};
+  return {ScatterDimensionNumbersToString(scatter_dimension_numbers())};
 }
 
 bool HloScatterInstruction::IdenticalSlowPath(

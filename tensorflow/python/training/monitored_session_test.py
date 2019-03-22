@@ -32,6 +32,7 @@ from tensorflow.contrib.testing.python.framework import util_test
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import debug_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import distribute_coordinator
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -486,6 +487,32 @@ class MonitoredTrainingSessionWithDistributeCoordinatorTest(test.TestCase):
     # No checkpoint is saved.
     checkpoint = checkpoint_management.latest_checkpoint(logdir)
     self.assertIsNone(checkpoint)
+
+  def test_checkpoint_hook_enable_on_non_chief_with_collective_ops(self):
+    strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy()
+    strategy.extended._is_chief = False
+
+    context = distribute_coordinator._WorkerContext(strategy, None, 'worker', 1)
+
+    logdir = _test_dir(self.get_temp_dir(), 'test_save_checkpoint_disabled')
+    with ops.Graph().as_default():
+      gstep = variables_lib.get_or_create_global_step()
+      new_gstep = state_ops.assign_add(gstep, 1)
+      with context, monitored_session.MonitoredTrainingSession(
+          checkpoint_dir=logdir,
+          save_checkpoint_steps=100,
+          log_step_count_steps=10) as session:
+        for _ in range(100):
+          session.run(new_gstep)
+
+    # No checkpoint is saved.
+    checkpoint = checkpoint_management.latest_checkpoint(logdir)
+    self.assertIsNone(checkpoint)
+
+    # But saved to a temporary directory.
+    checkpoint = checkpoint_management.latest_checkpoint(
+        os.path.join(logdir, 'tmp_worker_1'))
+    self.assertIsNotNone(checkpoint)
 
 
 class StopAtNSession(monitored_session._WrappedSession):

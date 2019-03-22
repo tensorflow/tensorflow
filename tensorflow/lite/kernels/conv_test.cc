@@ -64,7 +64,7 @@ class BaseConvolutionOpModel : public SingleOpModel {
             filter.per_channel_quantization_scales.size());
         std::vector<int64_t> bias_zero_points(
             filter.per_channel_quantization_scales.size());
-        for (int i = 0; i < filter.per_channel_quantization_scales.size();
+        for (size_t i = 0; i < filter.per_channel_quantization_scales.size();
              ++i) {
           bias_scale[i] =
               input.scale * filter.per_channel_quantization_scales[i];
@@ -364,6 +364,18 @@ TEST_P(ConvolutionOpTest, HandCalculatedFloat32) {
   // |  187  |  234  |  261  |  121  |
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({105, 150, 183, 95, 235, 312, 357,
                                                178, 187, 234, 261, 121}));
+
+  // Add an additional test for the multi-threaded case, ensuring stability
+  // under different thread counts.
+  if (GetParam() == "MultithreadedOptimized") {
+    for (int i = 1; i < 4; ++i) {
+      m.SetNumThreads(i);
+      m.Invoke();
+      EXPECT_THAT(m.GetOutput(),
+                  ElementsAreArray({105, 150, 183, 95, 235, 312, 357, 178, 187,
+                                    234, 261, 121}));
+    }
+  }
 }
 
 TEST_P(ConvolutionOpTest, HandCalculatedWithBiasFloat32) {
@@ -640,6 +652,24 @@ TEST_P(ConvolutionOpTest, SimpleTestQuantized) {
                                  144, 131, 130,  //
                                  164, 131, 130,  //
                              }));
+}
+
+// Smoke test to ensure slightly irregular shapes safely partition into
+// multi-threaded tasks. See also b/128996474.
+TEST_P(ConvolutionOpTest, SimpleTestLargeIrregularQuantized) {
+  ConvolutionOpModel m(GetRegistration(),
+                       {TensorType_UINT8, {1, 1, 1, 1024}, -127, 128},
+                       {TensorType_UINT8, {1001, 1, 1, 1024}, -127, 128},
+                       {TensorType_UINT8, {1, 1, 1, 1001}, -127, 128});
+
+  m.SetNumThreads(1);
+  m.Invoke();
+
+  m.SetNumThreads(2);
+  m.Invoke();
+
+  m.SetNumThreads(3);
+  m.Invoke();
 }
 
 TEST_P(ConvolutionOpTest, SimpleTestQuantizedOutputMultiplierGreaterThan1) {
@@ -1118,7 +1148,7 @@ class PerChannelQuantizedConvolutionOpModel : public BaseConvolutionOpModel {
   }
 };
 
-TEST_P(ConvolutionOpTest, SimpleTest) {
+TEST_P(ConvolutionOpTest, SimplePerChannelTest) {
   PerChannelQuantizedConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,

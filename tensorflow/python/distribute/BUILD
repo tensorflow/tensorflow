@@ -102,6 +102,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -368,7 +369,6 @@ py_library(
     srcs = ["input_ops.py"],
     deps = [
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python/data/experimental/ops:filter_for_shard_ops",
         "//tensorflow/python/data/util:nest",
     ],
 )
@@ -388,6 +388,7 @@ cuda_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_test(
@@ -469,6 +470,16 @@ py_test(
 )
 
 py_library(
+    name = "summary_op_util",
+    srcs = ["summary_op_util.py"],
+    deps = [
+        ":distribute_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
+    ],
+)
+
+py_library(
     name = "values",
     srcs = ["values.py"],
     deps = [
@@ -483,5 +494,47 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "combinations",
+    srcs = ["combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:context",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "strategy_combinations",
+    srcs = ["strategy_combinations.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":combinations",
+        ":distribute_lib",
+        ":mirrored_strategy",
+        ":one_device_strategy",
+        ":parameter_server_strategy",
+        ":tpu_strategy",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "combinations_test",
+    srcs = ["combinations_test.py"],
+    deps = [
+        ":combinations",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/keras:backend",
     ],
 )

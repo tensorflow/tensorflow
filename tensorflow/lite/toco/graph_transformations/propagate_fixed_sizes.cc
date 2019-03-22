@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -1081,6 +1081,18 @@ void ProcessUnidirectionalSequenceLstmOperator(
 
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
+
+  constexpr int kInputActivationStateTensor = 18;
+  constexpr int kInputCellStateTensor = 19;
+
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
+
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -1095,12 +1107,6 @@ void ProcessUnidirectionalSequenceLstmOperator(
   if (!recurrent_to_output_weights_array.has_shape()) {
     return;
   }
-
-  constexpr int kInputActivationStateTensor = 18;
-  constexpr int kInputCellStateTensor = 19;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
-  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
 
   const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
   const int output_size = output_weights_shape.dims(1);
@@ -1122,6 +1128,14 @@ void ProcessUnidirectionalSequenceRnnOperator(
     return;
   }
 
+  constexpr int kHiddenStateTensor = 4;
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
+
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1137,10 +1151,6 @@ void ProcessUnidirectionalSequenceRnnOperator(
   if (!bias_array.has_shape()) {
     return;
   }
-
-  constexpr int kHiddenStateTensor = 4;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
 
   const auto& bias_shape = bias_array.shape();
   const int output_size = bias_shape.dims(0);
@@ -1707,11 +1717,16 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   const std::vector<int>& input_dims = input_array.shape().dims();
   std::vector<int> output_dims;
 
-  for (int i = 0; i < input_dims.size(); ++i) {
+  std::vector<int> squeeze_dims;
+  const int input_num_dims = input_dims.size();
+  for (int i : op->squeeze_dims) {
+    squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
+  }
+  for (int i = 0; i < input_num_dims; ++i) {
     if (input_dims[i] != 1 ||
-        (!op->squeeze_dims.empty() &&
-         std::find(op->squeeze_dims.begin(), op->squeeze_dims.end(), i) ==
-             op->squeeze_dims.end())) {
+        (!squeeze_dims.empty() &&
+         std::find(squeeze_dims.begin(), squeeze_dims.end(), i) ==
+             squeeze_dims.end())) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -2045,6 +2060,24 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
   idx_output_array.copy_shape(input_array.shape());
 }
 
+void ProcessMatrixDiagOperator(Model* model, MatrixDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 1);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  if (output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+  // Get the input_shape
+  auto& input_array = model->GetArray(op->inputs[0]);
+  Shape* mutable_shape = input_array.mutable_shape();
+  std::vector<int>* dims = mutable_shape->mutable_dims();
+  int dims_size = dims->size();
+  int last_dim = (*dims)[dims_size - 1];
+  dims->push_back(last_dim);
+  output_array.copy_shape(*mutable_shape);
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2347,6 +2380,9 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
       // The size of the output can only be known after evaluating the cond
       // tensor. Ignore shape propagation here and defer that to the
       // interpreter.
+      break;
+    case OperatorType::kMatrixDiag:
+      ProcessMatrixDiagOperator(model, static_cast<MatrixDiagOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

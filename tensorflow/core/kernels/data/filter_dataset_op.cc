@@ -40,22 +40,22 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
   explicit FilterDatasetOp(OpKernelConstruction* ctx)
       : UnaryDatasetOpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("predicate", &func_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES(ctx, short_circuit_indices_.size() <= 1,
+                errors::InvalidArgument(
+                    "predicate function has more than one return value."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
-
-    std::vector<int> indices;
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &indices));
-    OP_REQUIRES(ctx, indices.size() <= 1,
-                errors::InvalidArgument(
-                    "predicate function has more than one return value."));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     FilterIteratorPredicate filter_pred;
-    if (indices.empty()) {
+    if (short_circuit_indices_.empty()) {
       filter_pred = [](IteratorContext* ctx,
                        InstantiatedCapturedFunction* inst_captured_func,
                        const std::vector<Tensor>& args, bool* out_matched) {
@@ -72,11 +72,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       };
     } else {
-      filter_pred = [indices](IteratorContext* ctx,
-                              InstantiatedCapturedFunction* inst_captured_func,
-                              const std::vector<Tensor>& args,
-                              bool* out_matched) {
-        const Tensor& predicate = args[indices[0]];
+      int predicate_index = short_circuit_indices_[0];
+      filter_pred = [predicate_index](
+                        IteratorContext* ctx,
+                        InstantiatedCapturedFunction* inst_captured_func,
+                        const std::vector<Tensor>& args, bool* out_matched) {
+        const Tensor& predicate = args[predicate_index];
         if (predicate.dtype() != DT_BOOL || predicate.NumElements() != 1) {
           return errors::InvalidArgument(
               "Filter predicate `f` must return a scalar bool.");
@@ -293,6 +294,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
  private:
   NameAttrList func_;
+  std::vector<int> short_circuit_indices_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FilterDataset").Device(DEVICE_CPU),

@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import functools
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.python.framework import smart_cond
 from tensorflow.python.util import tf_inspect
@@ -42,16 +42,16 @@ class CustomLayer(tf.keras.layers.Layer):
         * regularization_losses: a list of callables to be added as losses
           of this Keras layer. Each one must accept zero arguments and return
           a scalare tensor.
-    output_shape: A tuple with the (possibly partial) output shape of `func`
-      *without* leading batch size (by analogy to Dense(..., input_shape=...)).
     trainable: Boolean controlling whether the trainable variables of `func`
       are reported as trainable variables of this layer.
     arguments: optionally, a dict with additional keyword arguments passed
       to `func`.
+    **kwargs: 'output_shape': A tuple with the (possibly partial) output
+      shape of the callable *without* leading batch size. Other arguments
+      are pass into the Layer constructor.
   """
 
-  def __init__(self, func, output_shape, trainable=False, arguments=None,
-               **kwargs):
+  def __init__(self, func, trainable=False, arguments=None, **kwargs):
     # Set self._{non,}_trainable_weights before calling Layer.__init__.
     if hasattr(func, 'trainable_variables'):
       self._trainable_weights = [v for v in func.trainable_variables]
@@ -64,6 +64,12 @@ class CustomLayer(tf.keras.layers.Layer):
                                      if v not in trainable_variables_set]
     else:
       self._non_trainable_weights = []  # TODO(arnoegw): Infer from `func`.
+
+    # TODO(b/124219898): We should be able to get the embedding dimension from
+    # the restored model.
+    if 'output_shape' in kwargs:
+      self._output_shape = tuple(kwargs.pop('output_shape'))
+
     super(CustomLayer, self).__init__(trainable=trainable, **kwargs)
     # Prepare to call `func`.
     self._func = func
@@ -72,9 +78,6 @@ class CustomLayer(tf.keras.layers.Layer):
         'training' in self._func_fullargspec.args or
         'training' in self._func_fullargspec.kwonlyargs)
     self._arguments = arguments or {}
-    # TODO(vbardiovsky): We should be able to get the embedding dimension from
-    # the restored model.
-    self._output_shape = tuple(output_shape)
     # Forward the callable's regularization losses (if any).
     if hasattr(func, 'regularization_losses'):
       for l in func.regularization_losses:
@@ -96,9 +99,7 @@ class CustomLayer(tf.keras.layers.Layer):
       result = smart_cond.smart_cond(training,
                                      lambda: f(training=True),
                                      lambda: f(training=False))
-    # TODO(vbardiovsky): Polymorphic function should return shaped tensor.
-    result.set_shape(self.compute_output_shape(x.shape))
+    # TODO(b/124219898): Polymorphic function should return shaped tensor.
+    if hasattr(self, '_output_shape'):
+      result.set_shape((x.shape[0],) + self._output_shape)
     return result
-
-  def compute_output_shape(self, input_shape):
-    return (input_shape[0],) + self._output_shape

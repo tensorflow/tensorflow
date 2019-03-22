@@ -21,12 +21,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import re
+import itertools
 import textwrap
 import threading
 
 import gast
-import six
 
 from tensorflow.python.util import tf_inspect
 
@@ -34,8 +33,19 @@ from tensorflow.python.util import tf_inspect
 _parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
 
 
-def parse_entity(entity):
-  """Returns the AST of given entity."""
+def parse_entity(entity, future_imports):
+  """Returns the AST and source code of given entity.
+
+  Args:
+    entity: A python function/method/class
+    future_imports: An iterable of future imports to use when parsing AST. (e.g.
+        ('print_statement', 'division', 'unicode_literals'))
+
+  Returns:
+    gast.AST, List[gast.AST], str: a tuple of the AST node corresponding
+    exactly to the entity; a list of future import AST nodes, and the string
+    that was parsed to generate the AST.
+  """
   try:
     with _parse_lock:
       source = tf_inspect.getsource_no_unwrap(entity)
@@ -57,9 +67,13 @@ def parse_entity(entity):
   # causing textwrap.dedent to not correctly dedent source code.
   # TODO(b/115884650): Automatic handling of comments/multiline strings.
   source = textwrap.dedent(source)
+  future_import_strings = ('from __future__ import {}'.format(name)
+                           for name in future_imports)
+  source = '\n'.join(itertools.chain(future_import_strings, [source]))
 
   try:
-    return parse_str(source), source
+    module_node = parse_str(source)
+    return _select_entity_node(module_node, source, future_imports)
 
   except IndentationError:
     # The text below lists the causes of this error known to us. There may
@@ -99,7 +113,8 @@ def parse_entity(entity):
     new_source = '\n'.join(lines)
 
     try:
-      return parse_str(new_source), new_source
+      module_node = parse_str(new_source)
+      return _select_entity_node(module_node, new_source, future_imports)
     except SyntaxError as e:
       raise_parse_failure(
           'If this is a lambda function, the error may be avoided by creating'
@@ -109,18 +124,7 @@ def parse_entity(entity):
 
 def parse_str(src):
   """Returns the AST of given piece of code."""
-  # TODO(mdan): This should exclude the module things are autowrapped in.
-
-  if six.PY2 and re.search('\\Wprint\\s*\\(', src):
-    # This special treatment is required because gast.parse is not aware of
-    # whether print_function was present in the original context.
-    src = 'from __future__ import print_function\n' + src
-    parsed_module = gast.parse(src)
-    parsed_module.body = parsed_module.body[1:]
-  else:
-    parsed_module = gast.parse(src)
-
-  return parsed_module
+  return gast.parse(src)
 
 
 def parse_expression(src):
@@ -139,3 +143,9 @@ def parse_expression(src):
     raise ValueError(
         'Expected a single expression, found instead %s' % node.body)
   return node.body[0].value
+
+
+def _select_entity_node(module_node, source, future_imports):
+  assert len(module_node.body) == 1 + len(future_imports)
+  return module_node.body[-1], module_node.body[:-1], source
+

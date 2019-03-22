@@ -80,7 +80,7 @@ static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
 
 // Tries to get the tuple index of the induction variable of a while loop.
 //
-// Checks that the loop condition and root both plumb the induction variable
+// Checks that the loop condition and body both plumb the induction variable
 // through the same tuple index, and that they both apply exactly one op to the
 // induction variable before  deciding whether to do another loop iteration (in
 // the loop condition's case) or packing the induction variable into the result
@@ -96,8 +96,7 @@ static optional<int64> GetGTEOperandIndex(const HloInstruction* instr,
 //   root = tuple(..., inc, ...)  // inc is N'th operand of tuple().
 //
 // If so, returns N.  Otherwise, returns nullopt.
-static optional<int64> GetLoopInductionVarTupleIdx(
-    const HloInstruction* while_op) {
+optional<int64> GetLoopInductionVarTupleIdx(const HloInstruction* while_op) {
   CHECK_EQ(while_op->opcode(), HloOpcode::kWhile);
   VLOG(2) << "Finding induction variable for loop "
           << while_op->ToShortString();
@@ -287,7 +286,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
   // Handle `i = K; i < N; ++i`.
   if (Match(while_cond_root,
             m::Op()
-                .WithOpcode(HloOpcode::kLt)
+                .WithComparisonDirection(ComparisonDirection::kLt)
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i < N: "
             << while_cond_root->ToString();
@@ -304,7 +303,7 @@ static optional<int64> PatternMatchLoopTripCount(HloInstruction* while_op,
   // Handle `i = K; i <= N; ++i`.
   if (Match(while_cond_root,
             m::Op()
-                .WithOpcode(HloOpcode::kLe)
+                .WithComparisonDirection(ComparisonDirection::kLe)
                 .WithOperand(0, m::Op().Is(while_cond_indvar)))) {
     VLOG(2) << "Pattern-match succeeded: loop condition is i <= N: "
             << while_cond_root->ToString();

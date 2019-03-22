@@ -389,21 +389,7 @@ def eager_py_func(func, inp, Tout, name=None):
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
 
-@deprecation.deprecated(
-    date=None,
-    instructions="""tf.py_func is deprecated in TF V2. Instead, there are two
-    options available in V2.
-    - tf.py_function takes a python function which manipulates tf eager
-    tensors instead of numpy arrays. It's easy to convert a tf eager tensor to
-    an ndarray (just call tensor.numpy()) but having access to eager tensors
-    means `tf.py_function`s can use accelerators such as GPUs as well as
-    being differentiable using a gradient tape.
-    - tf.numpy_function maintains the semantics of the deprecated tf.py_func
-    (it is not differentiable, and manipulates numpy arrays). It drops the
-    stateful argument making all functions stateful.
-    """)
-@tf_export(v1=["py_func"])
-def py_func(func, inp, Tout, stateful=True, name=None):
+def py_func_common(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func`, which takes numpy arrays as its
@@ -471,12 +457,35 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
 
+
+@deprecation.deprecated(
+    date=None,
+    instructions="""tf.py_func is deprecated in TF V2. Instead, there are two
+    options available in V2.
+    - tf.py_function takes a python function which manipulates tf eager
+    tensors instead of numpy arrays. It's easy to convert a tf eager tensor to
+    an ndarray (just call tensor.numpy()) but having access to eager tensors
+    means `tf.py_function`s can use accelerators such as GPUs as well as
+    being differentiable using a gradient tape.
+    - tf.numpy_function maintains the semantics of the deprecated tf.py_func
+    (it is not differentiable, and manipulates numpy arrays). It drops the
+    stateful argument making all functions stateful.
+    """)
+@tf_export(v1=["py_func"])
+def py_func(func, inp, Tout, stateful=True, name=None):
+  return py_func_common(func, inp, Tout, stateful, name=name)
+
+
+py_func.__doc__ = py_func_common.__doc__
+
+
 @tf_export("numpy_function", v1=[])
 def numpy_function(func, inp, Tout, name=None):
-  return py_func(func, inp, Tout, stateful=True, name=name)
+  return py_func_common(func, inp, Tout, stateful=True, name=name)
 
-numpy_function.__doc__ = py_func.__doc__.replace(
-    "py_func", "numpy_function")
+
+numpy_function.__doc__ = py_func_common.__doc__.replace("py_func",
+                                                        "numpy_function")
 
 
 ops.NotDifferentiable("PyFunc")

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 """Compiled parallel-for loop."""
-# pylint: disable=missing-docstring
+# pylint: disable=missing-docstring,g-direct-tensorflow-import
 
 from __future__ import absolute_import
 from __future__ import division
@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -94,13 +95,15 @@ def _is_stateful_pfor_op(op):
 class WhileOp(object):
   """Object for storing state for converting the outputs of a while_loop."""
 
-  def __init__(self, exit_node, pfor_ops):
+  def __init__(self, exit_node, pfor_ops, pfor_config):
     """Initializer.
 
     Args:
       exit_node: A tensor output from the while_loop.
       pfor_ops: list of ops inside the current pfor loop.
+      pfor_config: PForConfig object used while constructing loop body.
     """
+    self._pfor_config = pfor_config
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set([x._id for x in pfor_ops])
     assert isinstance(exit_node, ops.Tensor)
@@ -281,7 +284,8 @@ class WhileOp(object):
         loop_len,
         pfor_ops=self._pfor_ops,
         all_indices=indices,
-        all_indices_partitioned=cond_stacked)
+        all_indices_partitioned=cond_stacked,
+        pfor_config=self._pfor_config)
     # Map all inputs of Enter nodes in self._direct_enters to their converted
     # values.
     for enter in self._direct_enters:
@@ -903,6 +907,86 @@ def _fallback_converter(pfor_input):
   return tuple([wrap(ta.concat(), True) for ta in ta_list])
 
 
+class PForConfig(object):
+  """A configuration object used to communicate with loop body function."""
+
+  def __init__(self):
+    # This may be set to the number of iterations.
+    self._maybe_iters = None
+    # Map from output placeholder to the unvectorized tensor.
+    self._reduce_concat_map = {}
+    # Reverse map of `self._reduce_concat_map`.
+    self._reverse_reduce_concat_map = {}
+
+  def _has_reductions(self):
+    """True if some reductions where performed by loop body."""
+    return len(self._reduce_concat_map)
+
+  def _set_iters(self, iters):
+    """Set number of pfor iterations."""
+    self._maybe_iters = iters
+
+  # TODO(agarwal): handle reductions inside control flow constructs.
+  def reduce_concat(self, x):
+    """Performs a concat reduction on `x` across pfor iterations.
+
+    Note that this currently may not work inside a control flow construct.
+    Args:
+      x: an unvectorized Tensor.
+
+    Returns:
+      A Tensor that has rank one higher than `x`. The value is the vectorized
+      version of `x`, i.e. stacking the value of `x` across different pfor
+      iterations.
+    """
+    assert not context.executing_eagerly()
+    assert isinstance(x, ops.Tensor)
+    if x not in self._reduce_concat_map:
+      out_shape = tensor_shape.TensorShape([self._maybe_iters]).concatenate(
+          x.shape)
+      with ops.control_dependencies([x]):
+        # Control dependency to make sure out is converted after x.
+        out = array_ops.placeholder(x.dtype, out_shape)
+      self._reduce_concat_map[out] = x
+      self._reverse_reduce_concat_map[x] = out
+      return out
+    else:
+      return self._reverse_reduce_concat_map[x]
+
+  def reduce_mean(self, x):
+    """Performs a mean reduction on `x` across pfor iterations.
+
+    Note that this currently may not work inside a control flow construct.
+    Args:
+      x: an unvectorized Tensor.
+
+    Returns:
+      A Tensor that has same rank as `x`. The value is the mean of the values
+      of `x` across the pfor iterations.
+    """
+    y = self.reduce_concat(x)
+    return math_ops.reduce_mean(y, axis=0)
+
+  def reduce_sum(self, x):
+    """Performs a sum reduction on `x` across pfor iterations.
+
+    Note that this currently may not work inside a control flow construct.
+    Args:
+      x: an unvectorized Tensor.
+
+    Returns:
+      A Tensor that has same rank as `x`. The value is the sum of the values
+      of `x` across the pfor iterations.
+    """
+    y = self.reduce_concat(x)
+    return math_ops.reduce_sum(y, axis=0)
+
+  def _lookup_reduction(self, pl):
+    """Lookups Placeholder `pl` in the reduction map."""
+    assert isinstance(pl, ops.Tensor)
+    return self._reduce_concat_map.get(pl, None)
+
+
 class PFor(object):
   """Implementation of rewrite of parallel-for loops.
 
@@ -941,7 +1025,8 @@ class PFor(object):
                loop_len,
                pfor_ops,
                all_indices=None,
-               all_indices_partitioned=False):
+               all_indices_partitioned=False,
+               pfor_config=None):
     """Creates an object to rewrite a parallel-for loop.
 
     Args:
@@ -958,6 +1043,7 @@ class PFor(object):
       all_indices_partitioned: If True, this object is being constructed from a
        control flow construct where not all the pfor iterations are guaranteed
        to be active.
+      pfor_config: PForConfig object used while constructing the loop body.
     """
     assert isinstance(loop_var, ops.Tensor)
     assert loop_var.op.type == "Placeholder"
@@ -976,6 +1062,7 @@ class PFor(object):
     self._conversion_map[loop_var] = wrap(self.all_indices, True)
     self._pfor_ops = set(pfor_ops)
     self._pfor_op_ids = set([x._id for x in pfor_ops])
+    self._pfor_config = pfor_config
 
   def op_is_inside_loop(self, op):
     """True if op was created inside the pfor loop body."""
@@ -1113,7 +1200,8 @@ class PFor(object):
 
       is_while_loop = y_op.type == "Exit"
       if is_while_loop:
-        while_op = WhileOp(y, pfor_ops=self._pfor_ops)
+        while_op = WhileOp(
+            y, pfor_ops=self._pfor_ops, pfor_config=self._pfor_config)
         is_inside_loop = while_op.is_inside_loop
         # If all nodes in the while_loop graph were created inside the pfor, we
         # treat the whole loop subgraph as a single op (y_op) and try to convert
@@ -1185,10 +1273,32 @@ class PFor(object):
       control_dependencies = [] if is_while_loop else converted_control_ops
       with ops.control_dependencies(control_dependencies), ops.name_scope(
           y_op.name + "/pfor/"):
+        # Op is a placeholder for a reduction.
+        if (self._pfor_config is not None and
+            self._pfor_config._lookup_reduction(y) is not None):
+          # Handle reductions. Map the placeholder to the unvectorized input
+          # that is being reduced.
+          reduction_input = self._pfor_config._lookup_reduction(y)
+          assert isinstance(reduction_input, ops.Tensor), reduction_input
+          # Tensor being reduced should already be converted due to a control
+          # dependency on the created placeholder.
+          # Note that in cases where reduction_input is in an outer context, one
+          # needs to locate the corresponding Enter node and use that to lookup
+          # the conversion.
+          # TODO(agarwal): handle reductions inside control flow constructs.
+          assert reduction_input in self._conversion_map, (
+              "Unable to handle reduction of %s, possibly as it was used "
+              "inside a control flow construct. Note that reductions across "
+              "pfor iterations are currently not supported inside control flow "
+              "constructs." % reduction_input)
+          output = self._conversion_map[reduction_input]
+          # If original input is not stacked, we tile it. Also we always mark
+          # output as unstacked.
+          new_outputs = [wrap(self._unwrap_or_tile(output), False)]
         # None of the inputs and control inputs were converted.
-        if (not is_inside_loop or
-            (not is_stateful and not some_input_converted and
-             not some_control_input_converted)):
+        elif (not is_inside_loop or
+              (not is_stateful and not some_input_converted and
+               not some_control_input_converted)):
           if y == y_op:
             assert not isinstance(y_op, WhileOp)
             new_outputs = y_op
@@ -1960,72 +2070,73 @@ def _convert_cast(pfor_input):
 
 
 @RegisterPForWithArgs("Abs", math_ops.abs)
-@RegisterPForWithArgs("Acosh", math_ops.acosh)
 @RegisterPForWithArgs("Acos", math_ops.acos)
+@RegisterPForWithArgs("Acosh", math_ops.acosh)
 @RegisterPForWithArgs("Add", math_ops.add)
 @RegisterPForWithArgs("AddV2", math_ops.add_v2)
 @RegisterPForWithArgs("Angle", math_ops.angle)
-@RegisterPForWithArgs("Asinh", math_ops.asinh)
 @RegisterPForWithArgs("Asin", math_ops.asin)
+@RegisterPForWithArgs("Asinh", math_ops.asinh)
+@RegisterPForWithArgs("Atan", math_ops.atan)
 @RegisterPForWithArgs("Atan2", math_ops.atan2)
 @RegisterPForWithArgs("Atanh", math_ops.atanh)
-@RegisterPForWithArgs("Atan", math_ops.atan)
 @RegisterPForWithArgs("BesselI0e", math_ops.bessel_i0e)
 @RegisterPForWithArgs("BesselI1e", math_ops.bessel_i1e)
 @RegisterPForWithArgs("BitwiseAnd", bitwise_ops.bitwise_and)
 @RegisterPForWithArgs("BitwiseOr", bitwise_ops.bitwise_or)
 @RegisterPForWithArgs("BitwiseXor", bitwise_ops.bitwise_xor)
 @RegisterPForWithArgs("Ceil", math_ops.ceil)
-@RegisterPForWithArgs("ComplexAbs", math_ops.complex_abs)
 @RegisterPForWithArgs("Complex", math_ops.complex)
+@RegisterPForWithArgs("ComplexAbs", math_ops.complex_abs)
 @RegisterPForWithArgs("Conj", math_ops.conj)
-@RegisterPForWithArgs("Cosh", math_ops.cosh)
 @RegisterPForWithArgs("Cos", math_ops.cos)
+@RegisterPForWithArgs("Cosh", math_ops.cosh)
 @RegisterPForWithArgs("Digamma", math_ops.digamma)
 @RegisterPForWithArgs("Div", math_ops.div)
 @RegisterPForWithArgs("DivNoNan", math_ops.div_no_nan)
 @RegisterPForWithArgs("Elu", nn_ops.elu)
 @RegisterPForWithArgs("Equal", math_ops.equal)
-@RegisterPForWithArgs("Erfc", math_ops.erfc)
 @RegisterPForWithArgs("Erf", math_ops.erf)
-@RegisterPForWithArgs("Expm1", math_ops.expm1)
+@RegisterPForWithArgs("Erfc", math_ops.erfc)
 @RegisterPForWithArgs("Exp", math_ops.exp)
-@RegisterPForWithArgs("FloorDiv", math_ops.floor_div)
+@RegisterPForWithArgs("Expm1", math_ops.expm1)
 @RegisterPForWithArgs("Floor", math_ops.floor)
+@RegisterPForWithArgs("FloorDiv", math_ops.floor_div)
 @RegisterPForWithArgs("FloorMod", math_ops.floor_mod)
-@RegisterPForWithArgs("GreaterEqual", math_ops.greater_equal)
 @RegisterPForWithArgs("Greater", math_ops.greater)
-@RegisterPForWithArgs("Igammac", math_ops.igammac)
-@RegisterPForWithArgs("IgammaGradA", math_ops.igamma_grad_a)
+@RegisterPForWithArgs("GreaterEqual", math_ops.greater_equal)
 @RegisterPForWithArgs("Igamma", math_ops.igamma)
+@RegisterPForWithArgs("IgammaGradA", math_ops.igamma_grad_a)
+@RegisterPForWithArgs("Igammac", math_ops.igammac)
 @RegisterPForWithArgs("Imag", math_ops.imag)
-@RegisterPForWithArgs("Invert", bitwise_ops.invert)
 @RegisterPForWithArgs("Inv", math_ops.inv)
+@RegisterPForWithArgs("Invert", bitwise_ops.invert)
 @RegisterPForWithArgs("IsFinite", math_ops.is_finite)
 @RegisterPForWithArgs("IsInf", math_ops.is_inf)
 @RegisterPForWithArgs("LeftShift", bitwise_ops.left_shift)
-@RegisterPForWithArgs("LessEqual", math_ops.less_equal)
 @RegisterPForWithArgs("Less", math_ops.less)
+@RegisterPForWithArgs("LessEqual", math_ops.less_equal)
 @RegisterPForWithArgs("Lgamma", math_ops.lgamma)
+@RegisterPForWithArgs("Log", math_ops.log)
 @RegisterPForWithArgs("Log1p", math_ops.log1p)
 @RegisterPForWithArgs("LogicalAnd", math_ops.logical_and)
 @RegisterPForWithArgs("LogicalNot", math_ops.logical_not)
 @RegisterPForWithArgs("LogicalOr", math_ops.logical_or)
 @RegisterPForWithArgs("LogicalXor", math_ops.logical_xor)
-@RegisterPForWithArgs("Log", math_ops.log)
 @RegisterPForWithArgs("Maximum", math_ops.maximum)
 @RegisterPForWithArgs("Minimum", math_ops.minimum)
 @RegisterPForWithArgs("Mod", math_ops.mod)
 @RegisterPForWithArgs("Mul", math_ops.multiply)
+@RegisterPForWithArgs("MulNoNan", math_ops.mul_no_nan)
 @RegisterPForWithArgs("Neg", math_ops.negative)
 @RegisterPForWithArgs("NotEqual", math_ops.not_equal)
 @RegisterPForWithArgs("Polygamma", math_ops.polygamma)
 @RegisterPForWithArgs("Pow", math_ops.pow)
-@RegisterPForWithArgs("RealDiv", math_ops.divide)
 @RegisterPForWithArgs("Real", math_ops.real)
+@RegisterPForWithArgs("RealDiv", math_ops.divide)
 @RegisterPForWithArgs("Reciprocal", math_ops.reciprocal)
-@RegisterPForWithArgs("Relu6", nn_ops.relu6)
 @RegisterPForWithArgs("Relu", nn_ops.relu)
+@RegisterPForWithArgs("Relu6", nn_ops.relu6)
 @RegisterPForWithArgs("RightShift", bitwise_ops.right_shift)
 @RegisterPForWithArgs("Rint", math_ops.rint)
 @RegisterPForWithArgs("Round", math_ops.round)
@@ -2033,18 +2144,20 @@ def _convert_cast(pfor_input):
 @RegisterPForWithArgs("Selu", nn_ops.selu)
 @RegisterPForWithArgs("Sigmoid", math_ops.sigmoid)
 @RegisterPForWithArgs("Sign", math_ops.sign)
-@RegisterPForWithArgs("Sinh", math_ops.sinh)
 @RegisterPForWithArgs("Sin", math_ops.sin)
+@RegisterPForWithArgs("Sinh", math_ops.sinh)
 @RegisterPForWithArgs("Softplus", nn_ops.softplus)
 @RegisterPForWithArgs("Softsign", nn_ops.softsign)
 @RegisterPForWithArgs("Sqrt", math_ops.sqrt)
-@RegisterPForWithArgs("SquaredDifference", math_ops.squared_difference)
 @RegisterPForWithArgs("Square", math_ops.square)
+@RegisterPForWithArgs("SquaredDifference", math_ops.squared_difference)
 @RegisterPForWithArgs("Sub", math_ops.subtract)
-@RegisterPForWithArgs("Tanh", math_ops.tanh)
 @RegisterPForWithArgs("Tan", math_ops.tan)
+@RegisterPForWithArgs("Tanh", math_ops.tanh)
 @RegisterPForWithArgs("TruncateDiv", math_ops.truncate_div)
 @RegisterPForWithArgs("TruncateMod", math_ops.truncate_mod)
+@RegisterPForWithArgs("Xdivy", math_ops.xdivy)
+@RegisterPForWithArgs("Xlogy", math_ops.xlogy)
 @RegisterPForWithArgs("Zeta", math_ops.zeta)
 def _convert_cwise(pfor_input, op_type, op_func):
   # Note that ops handled here do not have attributes except "T" and "Tout", and

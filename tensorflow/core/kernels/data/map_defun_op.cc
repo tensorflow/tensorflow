@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_util.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -28,16 +29,18 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-void SetRunOptions(OpKernelContext* ctx, FunctionLibraryRuntime::Options* opts,
-                   bool always_collect_stats) {
-  opts->step_id = ctx->step_id();
-  opts->rendezvous = ctx->rendezvous();
-  if (always_collect_stats) {
-    opts->stats_collector = ctx->stats_collector();
-  }
-  opts->runner = ctx->runner();
-}
-
+// This op runs a given defun on slices of the input arguments. The function
+// given by "f" is assumed to be stateless, and is executed concurrently
+// on all the slices; up to batch_size (i.e. the 0th dimension of each argument)
+// functions will be scheduled at once.
+//
+// The "max_intra_op_parallelism" attr, which defaults to 1, can be used to
+// limit the intra op parallelism. To limit inter-op parallelism, a user
+// can set a private threadpool on the dataset using `tf.data.Options`'s
+// `ThreadingOptions`.
+//
+// Note that this op is not exposed to users directly, but is invoked in
+// tf.data rewrites.
 class MapDefunOp : public AsyncOpKernel {
  public:
   explicit MapDefunOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
@@ -50,6 +53,8 @@ class MapDefunOp : public AsyncOpKernel {
                    func_lib->Instantiate(func->name(), AttrSlice(&func->attr()),
                                          &func_handle_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("max_intra_op_parallelism",
+                                     &max_intra_op_parallelism_));
 
     OP_REQUIRES(ctx, ctx->num_inputs() >= 0,
                 errors::InvalidArgument("Must have at least one input."));
@@ -72,7 +77,7 @@ class MapDefunOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(ctx, s, done);
 
     FunctionLibraryRuntime::Options opts;
-    SetRunOptions(ctx, &opts, false);
+    SetRunOptions(ctx, &opts, compute_opts, /*always_collect_stats=*/false);
 
     // Run loop
     StatusCallback callback = std::bind(
@@ -124,9 +129,6 @@ class MapDefunOp : public AsyncOpKernel {
   }
 
  private:
-  FunctionLibraryRuntime::Handle func_handle_;
-  std::vector<PartialTensorShape> output_shapes_;
-
   struct ComputeOptions {
     // These vary per MapDefunOp::ComputeAsync call, but must persist until
     // all calls to the function are complete. This struct also encapsulates
@@ -136,6 +138,7 @@ class MapDefunOp : public AsyncOpKernel {
     const std::vector<TensorShape> arg_shapes;
     OpInputList captured_inputs;
     const int64 batch_size;
+    std::function<void(std::function<void()>)> runner;
 
     // Output of a compute call
     std::vector<PartialTensorShape> output_shapes GUARDED_BY(mu);
@@ -144,67 +147,21 @@ class MapDefunOp : public AsyncOpKernel {
 
     // Create a copy of output_shapes because every `Compute` may expect a
     // different output shape.
-    ComputeOptions(OpInputList args, OpInputList captured_inputs,
+    ComputeOptions(OpKernelContext* ctx, OpInputList args,
+                   OpInputList captured_inputs,
                    std::vector<TensorShape> arg_shapes, int64 batch_size,
-                   const std::vector<PartialTensorShape>& output_shapes_attr)
+                   const std::vector<PartialTensorShape>& output_shapes_attr,
+                   int max_parallelism)
         : args(args),
           arg_shapes(std::move(arg_shapes)),
           captured_inputs(captured_inputs),
           batch_size(batch_size),
-          output_shapes(output_shapes_attr) {}
+          output_shapes(output_shapes_attr) {
+      if (max_parallelism >= 1) {
+        runner = RunnerWithMaxParallelism(*ctx->runner(), max_parallelism);
+      }
+    }
   };
-
-  // Get inputs to Compute and check that they are valid.
-  Status SetupArgs(OpKernelContext* ctx, ComputeOptions** compute_opts) {
-    OpInputList arguments;
-    TF_RETURN_IF_ERROR(ctx->input_list("arguments", &arguments));
-    OpInputList captured_inputs;
-    TF_RETURN_IF_ERROR(ctx->input_list("captured_inputs", &captured_inputs));
-
-    int64 batch_size = arguments[0].dims() > 0 ? arguments[0].dim_size(0) : -1;
-
-    for (size_t i = 0; i < arguments.size(); ++i) {
-      if (arguments[i].dims() == 0) {
-        return errors::InvalidArgument(
-            "All inputs must have rank at least 1. Input ", i,
-            " has a rank of 0.");
-      } else if (arguments[i].dim_size(0) != batch_size) {
-        return errors::InvalidArgument(
-            "All inputs must have the same dimension 0. Input ", i,
-            " has leading dimension ", ctx->input(i).dim_size(0),
-            ", while all previous inputs have leading dimension ", batch_size);
-      }
-    }
-
-    std::vector<TensorShape> arg_shapes;
-    arg_shapes.reserve(arguments.size());
-
-    for (size_t i = 0; i < arguments.size(); ++i) {
-      arg_shapes.push_back(arguments[i].shape());
-      arg_shapes.at(i).RemoveDim(0);
-    }
-
-    *compute_opts =
-        new ComputeOptions(arguments, captured_inputs, std::move(arg_shapes),
-                           batch_size, output_shapes_);
-    return Status::OK();
-  }
-
-  Status SetupOutputs(OpKernelContext* ctx, ComputeOptions* opts) {
-    mutex_lock l(opts->mu);
-    TF_RETURN_IF_ERROR(ctx->output_list("output", &opts->output));
-
-    for (size_t i = 0; i < output_types().size(); ++i) {
-      if (output_shapes_.at(i).IsFullyDefined()) {
-        Tensor* out = nullptr;
-        TensorShape output_shape;
-        output_shapes_.at(i).AsTensorShape(&output_shape);
-        output_shape.InsertDim(0, opts->batch_size);
-        TF_RETURN_IF_ERROR(opts->output.allocate(i, output_shape, &out));
-      }
-    }
-    return Status::OK();
-  }
 
   class MapFunctionCallFrame : public CallFrameInterface {
    public:
@@ -288,8 +245,81 @@ class MapDefunOp : public AsyncOpKernel {
     ComputeOptions* const compute_opts_;  // Not owned
     const OpKernel* kernel_;
     const size_t iter_;
-  };
-};
+  };  // MapFunctionCallFrame
+
+  void SetRunOptions(OpKernelContext* ctx,
+                     FunctionLibraryRuntime::Options* opts,
+                     ComputeOptions* compute_opts, bool always_collect_stats) {
+    opts->step_id = ctx->step_id();
+    opts->rendezvous = ctx->rendezvous();
+    if (always_collect_stats) {
+      opts->stats_collector = ctx->stats_collector();
+    }
+    if (max_intra_op_parallelism_ >= 1) {
+      opts->runner = &compute_opts->runner;
+    } else {
+      opts->runner = ctx->runner();
+    }
+  }
+
+  // Get inputs to Compute and check that they are valid.
+  Status SetupArgs(OpKernelContext* ctx, ComputeOptions** compute_opts) {
+    OpInputList arguments;
+    TF_RETURN_IF_ERROR(ctx->input_list("arguments", &arguments));
+    OpInputList captured_inputs;
+    TF_RETURN_IF_ERROR(ctx->input_list("captured_inputs", &captured_inputs));
+
+    int64 batch_size = arguments[0].dims() > 0 ? arguments[0].dim_size(0) : -1;
+
+    for (size_t i = 0; i < arguments.size(); ++i) {
+      if (arguments[i].dims() == 0) {
+        return errors::InvalidArgument(
+            "All inputs must have rank at least 1. Input ", i,
+            " has a rank of 0.");
+      } else if (arguments[i].dim_size(0) != batch_size) {
+        return errors::InvalidArgument(
+            "All inputs must have the same dimension 0. Input ", i,
+            " has leading dimension ", ctx->input(i).dim_size(0),
+            ", while all previous inputs have leading dimension ", batch_size);
+      }
+    }
+
+    std::vector<TensorShape> arg_shapes;
+    arg_shapes.reserve(arguments.size());
+
+    for (size_t i = 0; i < arguments.size(); ++i) {
+      arg_shapes.push_back(arguments[i].shape());
+      arg_shapes.at(i).RemoveDim(0);
+    }
+
+    *compute_opts = new ComputeOptions(
+        ctx, arguments, captured_inputs, std::move(arg_shapes), batch_size,
+        output_shapes_, max_intra_op_parallelism_);
+    return Status::OK();
+  }
+
+  Status SetupOutputs(OpKernelContext* ctx, ComputeOptions* opts) {
+    mutex_lock l(opts->mu);
+    TF_RETURN_IF_ERROR(ctx->output_list("output", &opts->output));
+
+    for (size_t i = 0; i < output_types().size(); ++i) {
+      if (output_shapes_.at(i).IsFullyDefined()) {
+        Tensor* out = nullptr;
+        TensorShape output_shape;
+        output_shapes_.at(i).AsTensorShape(&output_shape);
+        output_shape.InsertDim(0, opts->batch_size);
+        TF_RETURN_IF_ERROR(opts->output.allocate(i, output_shape, &out));
+      }
+    }
+    return Status::OK();
+  }
+
+  FunctionLibraryRuntime::Handle func_handle_;
+  std::vector<PartialTensorShape> output_shapes_;
+  // If this value is positive, limit the max intra op parallelism when the
+  // function is run on slices of the input.
+  int max_intra_op_parallelism_;
+};  // MapDefunOp
 
 REGISTER_KERNEL_BUILDER(Name("MapDefun").Device(DEVICE_CPU), MapDefunOp);
 }  // namespace

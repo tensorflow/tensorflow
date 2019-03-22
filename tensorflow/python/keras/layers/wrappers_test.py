@@ -90,7 +90,8 @@ class TimeDistributedTest(test.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = set(trackable_util.list_objects(model))
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -154,17 +155,6 @@ class TimeDistributedTest(test.TestCase):
       model.add(keras.layers.Activation('relu'))
       model.compile(optimizer='rmsprop', loss='mse')
       self.assertEqual(len(model.losses), 1)
-
-  def test_TimeDistributed_learning_phase(self):
-    with self.cached_session():
-      # test layers that need learning_phase to be set
-      np.random.seed(1234)
-      x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
-          x, training=True)
-      model = keras.models.Model(x, y)
-      y = model.predict(np.random.random((10, 3, 2)))
-      self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
 
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():
@@ -332,7 +322,7 @@ class BidirectionalTest(test.TestCase):
           self.assertIn(v, checkpointed_objects)
 
         # test compute output shape
-        ref_shape = model.layers[-1].output.get_shape()
+        ref_shape = model.layers[-1].output.shape
         shape = model.layers[-1].compute_output_shape(
             (None, timesteps, dim))
         self.assertListEqual(shape.as_list(), ref_shape.as_list())
@@ -707,7 +697,7 @@ class BidirectionalTest(test.TestCase):
           rnn(units, return_state=True), merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
       self.assertEqual(len(outputs), 5)
-      self.assertEqual(outputs[0].get_shape().as_list(), [None, units * 2])
+      self.assertEqual(outputs[0].shape.as_list(), [None, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))
@@ -734,8 +724,7 @@ class BidirectionalTest(test.TestCase):
           merge_mode=merge_mode)
       outputs = _to_list(wrapped(masked_inputs, training=True))
       self.assertEqual(len(outputs), 1)
-      self.assertEqual(outputs[0].get_shape().as_list(),
-                       [None, timesteps, units * 2])
+      self.assertEqual(outputs[0].shape.as_list(), [None, timesteps, units * 2])
 
       model = keras.Model(inputs, outputs)
       y = _to_list(model.predict(x))

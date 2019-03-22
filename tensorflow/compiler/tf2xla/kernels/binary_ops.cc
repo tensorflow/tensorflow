@@ -79,7 +79,28 @@ static xla::XlaOp DivNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(DivNoNan,
                 DivNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-// Implementation of FloorDiv. Pseudo-code:
+// Implementation of MulNoNan. Pseudo-code:
+// if (y == 0) {
+//   return 0
+// } else {
+//   return x * y;
+// }
+static xla::XlaOp MulNoNanImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
+                               xla::XlaOp y, const BCast& broadcast_helper) {
+  std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  auto zero = XlaHelpers::Zero(b, dtype);
+  auto y_equals_0 = xla::Eq(y, zero);
+  auto zeros = xla::ZerosLike(x);
+  auto result = xla::Select(y_equals_0, zeros, xla::Mul(x, y));
+  return result;
+}
+XLA_MAKE_BINARY(MulNoNan,
+                MulNoNanImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+
+// Implementation of FloorDiv.
+//
+// For floating-point values, simply returns floor(x / y).  For integers, does:
+//
 // if ((x < 0) != (y < 0)) {
 //   T abs_x = std::abs(x);
 //   T abs_y = std::abs(y);
@@ -90,6 +111,9 @@ XLA_MAKE_BINARY(DivNoNan,
 static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
+  if (DataTypeIsFloating(dtype)) {
+    return xla::Floor(xla::Div(x, y));
+  }
   if (DataTypeIsUnsigned(dtype)) {
     return xla::Div(x, y);
   }
@@ -99,11 +123,7 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
   auto abs_x = xla::Abs(x);
   auto abs_y = xla::Abs(y);
   auto t = xla::Neg(xla::Sub(xla::Add(abs_x, abs_y), one));
-  auto result = xla::Select(different_sign, xla::Div(t, abs_y), xla::Div(x, y));
-  if (DataTypeIsFloating(dtype)) {
-    result = xla::Floor(result);
-  }
-  return result;
+  return xla::Select(different_sign, xla::Div(t, abs_y), xla::Div(x, y));
 }
 XLA_MAKE_BINARY(FloorDiv,
                 FloorDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
@@ -128,14 +148,17 @@ XLA_MAKE_BINARY(Xdivy, XdivyImpl(lhs, rhs, broadcast_helper));
 
 // Implementation of FloorMod. Pseudo-code:
 // T trunc_mod = std::fmod(x, y);
-// return (x < T(0)) == (y < T(0)) ? trunc_mod : std::fmod(trunc_mod + y, y);
+// return trunc_mod != 0 && (y < 0 != trunc_mod < 0) ? trunc_mod + y
+//                                                   : trunc_mod;
 static xla::XlaOp FloorModImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
                                xla::XlaOp y, const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
   auto zero = XlaHelpers::Zero(b, dtype);
-  auto same_sign = xla::Eq(xla::Lt(x, zero), xla::Lt(y, zero));
   auto trunc_mod = xla::Rem(x, y);
-  return xla::Select(same_sign, trunc_mod, xla::Rem(xla::Add(trunc_mod, y), y));
+  auto trunc_mod_not_zero = xla::Ne(trunc_mod, zero);
+  auto do_plus = xla::And(xla::Ne(xla::Lt(trunc_mod, zero), xla::Lt(y, zero)),
+                          trunc_mod_not_zero);
+  return xla::Select(do_plus, xla::Add(trunc_mod, y), trunc_mod);
 }
 XLA_MAKE_BINARY(FloorMod,
                 FloorModImpl(b, input_type(0), lhs, rhs, broadcast_helper));
@@ -159,7 +182,7 @@ XLA_MAKE_BINARY(RealDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(ReciprocalGrad, xla::Neg(xla::Mul(rhs, xla::Mul(lhs, lhs))));
 XLA_MAKE_BINARY(
     RsqrtGrad,
-    xla::Mul(xla::Pow(lhs, XlaHelpers::IntegerLiteral(b, input_type(0), 3)),
+    xla::Mul((lhs * lhs) * lhs,
              xla::Div(rhs, XlaHelpers::IntegerLiteral(b, input_type(0), -2)),
              extend_dimensions));
 XLA_MAKE_BINARY(

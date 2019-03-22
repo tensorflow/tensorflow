@@ -616,6 +616,8 @@ string Print(gtl::ArraySlice<const NodeDef*> nodes) {
         return strings::StrCat(DataTypeString(dt), "@", parsed.type, ":",
                                parsed.id);
       } else {
+        LOG(WARNING) << "Failed to parse device \"" << n.device() << "\" in "
+                     << n.op() << ":" << n.name();
         return strings::StrCat(DataTypeString(dt), "@",
                                "<FAILED_TO_PARSE_DEVICE>");
       }
@@ -680,7 +682,7 @@ Status AddDefaultAttrs(const string& op,
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
-  VLOG(3) << "Instantiation Function: " << Print(fdef);
+  VLOG(4) << "Instantiation Function: " << Print(fdef);
 
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
@@ -1373,8 +1375,7 @@ absl::flat_hash_set<string> ReachableFunctions(
   // For any functions, if it has attribute "api_implements" =
   // "some_interface" and it is reachable, then it means any other
   // function with same attribute name and value could also be potentially
-  // reachable, eg via implementation_selector swapping the
-  // nodedef.
+  // reachable, eg via implementation_selector swapping the nodedef.
   absl::flat_hash_set<string> reachable_api_interface;
 
   // Functions might be reachable from the nested function calls, so we keep a
@@ -1386,6 +1387,22 @@ absl::flat_hash_set<string> ReachableFunctions(
     const FunctionDef* func = flib.Find(func_name);
     if (func && reachable_funcs.find(func_name) == reachable_funcs.end()) {
       func_queue.push_back(func);
+    }
+  };
+
+  // If any function with certain API name is reachable, all the other functions
+  // with same API name should also be checked.
+  const auto add_function_with_api_interface = [&](const string& api_name) {
+    if (!reachable_api_interface.contains(api_name)) {
+      reachable_api_interface.insert(api_name);
+      for (const auto& func_name : flib.ListFunctionNames()) {
+        const auto& func_def = flib.Find(func_name);
+        const auto attr_it = func_def->attr().find(kApiImplements);
+        if (attr_it != func_def->attr().end() &&
+            attr_it->second.s() == api_name) {
+          add_to_func_queue(func_name);
+        }
+      }
     }
   };
 
@@ -1425,7 +1442,7 @@ absl::flat_hash_set<string> ReachableFunctions(
 
     const auto attr_it = func->attr().find(kApiImplements);
     if (attr_it != func->attr().end()) {
-      reachable_api_interface.insert(attr_it->second.s());
+      add_function_with_api_interface(attr_it->second.s());
     }
 
     // Find all the functions called from the function body.
@@ -1435,16 +1452,6 @@ absl::flat_hash_set<string> ReachableFunctions(
     // Check if the function has a registered gradient.
     const string grad_func_name = flib.FindGradient(func_name);
     if (!grad_func_name.empty()) add_to_func_queue(grad_func_name);
-  }
-
-  for (const auto& func_name : flib.ListFunctionNames()) {
-    const auto& func_def = flib.Find(func_name);
-    const auto attr_it = func_def->attr().find(kApiImplements);
-    if (attr_it != func_def->attr().end()) {
-      if (reachable_api_interface.contains(attr_it->second.s())) {
-        reachable_funcs.insert(func_name);
-      }
-    }
   }
 
   return reachable_funcs;

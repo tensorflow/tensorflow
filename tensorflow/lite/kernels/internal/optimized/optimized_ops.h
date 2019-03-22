@@ -20,6 +20,7 @@ limitations under the License.
 #include <sys/types.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <tuple>
@@ -34,6 +35,7 @@ limitations under the License.
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/optimized/im2col_utils.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/round.h"
@@ -45,6 +47,7 @@ namespace tflite {
 namespace optimized_ops {
 
 // Unoptimized reference ops:
+using reference_ops::AffineQuantize;
 using reference_ops::ArgMax;
 using reference_ops::ArgMinMax;
 using reference_ops::Broadcast4DSlowGreater;
@@ -773,7 +776,7 @@ inline void FullyConnected(
     const FullyConnectedParams& params, const RuntimeShape& input_shape,
     const float* input_data, const RuntimeShape& weights_shape,
     const float* weights_data, const RuntimeShape& bias_shape,
-    const float* bias_data, const RuntimeShape& output_shape,
+    const float* optional_bias_data, const RuntimeShape& output_shape,
     float* output_data) {
   gemmlowp::ScopedProfilingLabel label("FullyConnected");
   const float output_activation_min = params.float_activation_min;
@@ -797,9 +800,18 @@ inline void FullyConnected(
       MapAsMatrixWithLastDimAsRows(output_data, output_shape);
 
   Gemm(filter_matrix_map.transpose(), input_matrix_map, &output_matrix_map);
-  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
-                                   bias_shape, bias_data, output_shape,
-                                   output_data);
+
+  if (optional_bias_data != nullptr) {
+    AddBiasAndEvalActivationFunction(
+        output_activation_min, output_activation_max, bias_shape,
+        optional_bias_data, output_shape, output_data);
+  } else {
+    const int flat_size = output_shape.FlatSize();
+    for (int i = 0; i < flat_size; ++i) {
+      output_data[i] = ActivationFunctionWithMinMax(
+          output_data[i], output_activation_min, output_activation_max);
+    }
+  }
 }
 
 #ifdef USE_NEON
@@ -1108,8 +1120,8 @@ inline void FullyConnectedAsGEMV(
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
   std::vector<gemmlowp::Task*> tasks(thread_count);
-  const int kRowsPerWorker =
-      gemmlowp::RoundUp<kKernelRows>(output_rows / thread_count);
+  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
+      gemmlowp::CeilQuotient(output_rows, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; ++i) {
     int row_end = std::min(output_rows, row_start + kRowsPerWorker);
@@ -1727,8 +1739,8 @@ inline void ShuffledFullyConnected(
   // Multi-threaded case: use the gemmlowp context's threadpool.
   TFLITE_DCHECK_GT(thread_count, 1);
   std::vector<gemmlowp::Task*> tasks(thread_count);
-  const int kRowsPerWorker =
-      gemmlowp::RoundUp<kKernelRows>(output_depth / thread_count);
+  const int kRowsPerWorker = gemmlowp::RoundUp<kKernelRows>(
+      gemmlowp::CeilQuotient(output_depth, thread_count));
   int row_start = 0;
   for (int i = 0; i < thread_count; i++) {
     int row_end = std::min(output_depth, row_start + kRowsPerWorker);
@@ -1743,211 +1755,219 @@ inline void ShuffledFullyConnected(
   gemm_context->workers_pool()->Execute(tasks);
 }
 
-template <typename T>
-inline void ExtractPatchIntoBufferColumn(const RuntimeShape& input_shape, int w,
-                                         int h, int b, int kheight, int kwidth,
-                                         int stride_width, int stride_height,
-                                         int pad_width, int pad_height,
-                                         int in_width, int in_height,
-                                         int in_depth, int single_buffer_length,
-                                         int buffer_id, const T* in_data,
-                                         T* conv_buffer_data, uint8 zero_byte) {
-  gemmlowp::ScopedProfilingLabel label("ExtractPatchIntoBufferColumn");
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  // This chunk of code reshapes all the inputs corresponding to
-  // output (b, h, w) to a column vector in conv_buffer(:, buffer_id).
-  const int kwidth_times_indepth = kwidth * in_depth;
-  const int inwidth_times_indepth = in_width * in_depth;
-  const int ih_ungated_start = h * stride_height - pad_height;
-  const int ih_ungated_end = (ih_ungated_start + kheight);
-  const int ih_end = std::min(ih_ungated_end, in_height);
-  const int iw_ungated_start = w * stride_width - pad_width;
-  const int iw_ungated_end = (iw_ungated_start + kwidth);
-  const int iw_end = std::min(iw_ungated_end, in_width);
-  // If the patch is off the edge of the input image, skip writing those rows
-  // and columns from the patch into the output array.
-  const int h_offset = std::max(0, -ih_ungated_start);
-  const int w_offset = std::max(0, -iw_ungated_start);
-  const int ih_start = std::max(0, ih_ungated_start);
-  const int iw_start = std::max(0, iw_ungated_start);
-  const int single_row_num =
-      std::min(kwidth - w_offset, in_width - iw_start) * in_depth;
-  const int output_row_offset = (buffer_id * single_buffer_length);
-  int out_offset =
-      output_row_offset + (h_offset * kwidth + w_offset) * in_depth;
-  int in_offset = Offset(input_shape, b, ih_start, iw_start, 0);
+inline void MeanImpl(const tflite::MeanParams& op_params,
+                     const RuntimeShape& input_shape, const uint8_t* input_data,
+                     int32 input_zero_point, float input_scale,
+                     const RuntimeShape& output_shape, uint8_t* output_data,
+                     int32 output_zero_point, float output_scale,
+                     int start_depth, int end_depth) {
+  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8/MeanImpl");
 
-  // Express all of the calculations as padding around the input patch.
-  const int top_padding = h_offset;
-  const int bottom_padding = (ih_ungated_end - ih_end);
-  const int left_padding = w_offset;
-  const int right_padding = (iw_ungated_end - iw_end);
-  assert(single_row_num ==
-         ((kwidth - (left_padding + right_padding)) * in_depth));
-
-  // Write out zeroes to the elements representing the top rows of the input
-  // patch that are off the edge of the input image.
-  if (top_padding > 0) {
-    const int top_row_elements = (top_padding * kwidth * in_depth);
-    memset(conv_buffer_data + output_row_offset, zero_byte,
-           (top_row_elements * sizeof(T)));
-  }
-
-  // If the patch is on the interior of the input image horizontally, just copy
-  // over the rows sequentially, otherwise add zero padding at the start or end.
-  if ((left_padding == 0) && (right_padding == 0)) {
-    for (int ih = ih_start; ih < ih_end; ++ih) {
-      memcpy(conv_buffer_data + out_offset, in_data + in_offset,
-             single_row_num * sizeof(T));
-      out_offset += kwidth_times_indepth;
-      in_offset += inwidth_times_indepth;
-    }
-  } else {
-    for (int ih = ih_start; ih < ih_end; ++ih) {
-      if (left_padding > 0) {
-        const int left_start = (out_offset - (left_padding * in_depth));
-        memset(conv_buffer_data + left_start, zero_byte,
-               (left_padding * in_depth * sizeof(T)));
-      }
-      memcpy(conv_buffer_data + out_offset, in_data + in_offset,
-             single_row_num * sizeof(T));
-      if (right_padding > 0) {
-        const int right_start = (out_offset + single_row_num);
-        memset(conv_buffer_data + right_start, zero_byte,
-               (right_padding * in_depth * sizeof(T)));
-      }
-      out_offset += kwidth_times_indepth;
-      in_offset += inwidth_times_indepth;
-    }
-  }
-
-  // If the bottom of the patch falls off the input image, pad the values
-  // representing those input rows with zeroes.
-  if (bottom_padding > 0) {
-    const int bottom_row_elements = (bottom_padding * kwidth * in_depth);
-    const int bottom_start =
-        output_row_offset +
-        ((top_padding + (ih_end - ih_start)) * kwidth * in_depth);
-    memset(conv_buffer_data + bottom_start, zero_byte,
-           (bottom_row_elements * sizeof(T)));
-  }
-}
-
-template <typename T>
-void DilatedIm2col(const ConvParams& params, uint8 zero_byte,
-                   const RuntimeShape& input_shape, const T* input_data,
-                   const RuntimeShape& filter_shape,
-                   const RuntimeShape& output_shape, T* im2col_data) {
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const int dilation_width_factor = params.dilation_width_factor;
-  const int dilation_height_factor = params.dilation_height_factor;
-  const int pad_width = params.padding_values.width;
-  const int pad_height = params.padding_values.height;
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(filter_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
-
-  // For dilated convolution, the input pixels are not contiguous therefore we
-  // can't use the same opitimizations as Im2Col(). Though note this code would
-  // work fine for the non-dilated case too (though likely a bit slower).
-  gemmlowp::ScopedProfilingLabel label("DilatedIm2col");
-  TFLITE_DCHECK(dilation_width_factor != 1 || dilation_height_factor != 1);
-  TFLITE_DCHECK(im2col_data);
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  const int output_batch = output_shape.Dims(0);
+  const int output_height = output_shape.Dims(2);
+  const int output_width = output_shape.Dims(2);
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
-  const int input_depth = MatchingDim(input_shape, 3, filter_shape, 3);
-  const int filter_height = filter_shape.Dims(1);
-  const int filter_width = filter_shape.Dims(2);
-  const int output_height = output_shape.Dims(1);
-  const int output_width = output_shape.Dims(2);
-  MatchingDim(output_shape, 3, filter_shape, 0);
+  const float num_elements_in_axis = input_width * input_height;
 
-  // Construct the MxN sized im2col matrix.
-  // The rows M, are sub-ordered B x H x W
-  const RuntimeShape row_shape({1, batches, output_height, output_width});
-  // The columns, N, are sub-ordered Kh x Kw x Din
-  const RuntimeShape col_shape({1, filter_height, filter_width, input_depth});
-  // Use dimensions M and N to construct dims for indexing directly into im2col
-  const RuntimeShape im2col_shape(
-      {1, 1, row_shape.FlatSize(), col_shape.FlatSize()});
+  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
+  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_DCHECK_EQ(output_height, 1);
+  TFLITE_DCHECK_EQ(output_width, 1);
 
-  // Loop through the output rows (B x H x W)
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        // Each im2col row is an output pixel. Arrange the input data in this
-        // row in an order we can conveniently multiply with the filter data.
-        int row_offset = Offset(row_shape, 0, batch, out_y, out_x);
-        const int in_x_origin = (out_x * stride_width) - pad_width;
-        const int in_y_origin = (out_y * stride_height) - pad_height;
-        // Loop through all the pixels of the filter (Kh x Kw)
-        for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-          const int in_y = in_y_origin + dilation_height_factor * filter_y;
-          if ((in_y >= 0) && (in_y < input_height)) {
-            // Filter row is within the input data.
-            // Loop through all the filter pixels in this row.
-            for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-              const int in_x = in_x_origin + dilation_width_factor * filter_x;
-              int col_offset = Offset(col_shape, 0, filter_y, filter_x, 0);
-              T* dst = im2col_data +
-                       Offset(im2col_shape, 0, 0, row_offset, col_offset);
-              if ((in_x >= 0) && (in_x < input_width)) {
-                // Filter pixel is within the input, copy the input data.
-                T const* src =
-                    input_data + Offset(input_shape, batch, in_y, in_x, 0);
-                memcpy(dst, src, input_depth * sizeof(T));
-              } else {
-                // Filter pixel is outside the input, zero it out.
-                memset(dst, zero_byte, input_depth * sizeof(T));
-              }
-            }
-          } else {
-            // Filter row is outside the input, zero out the entire filter row.
-            int col_offset = Offset(col_shape, 0, filter_y, 0, 0);
-            T* dst = im2col_data +
-                     Offset(im2col_shape, 0, 0, row_offset, col_offset);
-            memset(dst, zero_byte, filter_width * input_depth * sizeof(T));
-          }
+  const bool ordinary_mean =
+      (input_zero_point == output_zero_point && input_scale == output_scale);
+  float scale, bias;
+  if (!ordinary_mean) {
+    scale = input_scale / output_scale;
+    bias = -input_zero_point * scale + 0.5;
+  }
+
+#ifdef USE_NEON
+  const float32x4_t num_elements_dup = vdupq_n_f32(num_elements_in_axis);
+  // This is only an approximation as NEON does not offer division instruction.
+  const float32x4_t num_elements_reverse = vrecpeq_f32(num_elements_dup);
+  const float32x4_t kRounding = vdupq_n_f32(0.5);
+  float32x4_t bias_dup;
+  float32x4_t output_zero_point_dup;
+  if (!ordinary_mean) {
+    bias_dup = vdupq_n_f32(bias);
+    output_zero_point_dup = vdupq_n_f32(output_zero_point);
+  }
+#endif
+
+  for (int out_b = 0; out_b < output_batch; ++out_b) {
+    int out_d = start_depth;
+#ifdef USE_NEON
+
+    for (; out_d < end_depth - 8; out_d += 8) {
+      float32x4_t temp_sum_1 = vdupq_n_f32(0);
+      float32x4_t temp_sum_2 = vdupq_n_f32(0);
+      for (int in_h = 0; in_h < input_height; ++in_h) {
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          const uint8_t* input_data_ptr =
+              input_data + Offset(input_shape, out_b, in_h, in_w, out_d);
+          uint8x8_t input_data_val = vld1_u8(input_data_ptr);
+          int16x8_t input_data_val_shift =
+              vreinterpretq_s16_u16(vmovl_u8(input_data_val));
+          float32x4_t input_float_1 =
+              vcvtq_f32_s32(vmovl_s16(vget_high_s16(input_data_val_shift)));
+          float32x4_t input_float_2 =
+              vcvtq_f32_s32(vmovl_s16(vget_low_s16(input_data_val_shift)));
+          temp_sum_1 = vaddq_f32(temp_sum_1, input_float_1);
+          temp_sum_2 = vaddq_f32(temp_sum_2, input_float_2);
         }
       }
+
+      float32x4_t mean_1 = vmulq_f32(temp_sum_1, num_elements_reverse);
+      float32x4_t mean_2 = vmulq_f32(temp_sum_2, num_elements_reverse);
+
+      if (!ordinary_mean) {
+        // maq is not supported, break down into two ops.
+        mean_1 = vmulq_n_f32(mean_1, scale);
+        mean_1 = vaddq_f32(mean_1, bias_dup);
+        mean_2 = vmulq_n_f32(mean_2, scale);
+        mean_2 = vaddq_f32(mean_2, bias_dup);
+      }
+
+      if (!ordinary_mean) {
+        mean_1 = vaddq_f32(mean_1, output_zero_point_dup);
+        mean_2 = vaddq_f32(mean_2, output_zero_point_dup);
+      }
+
+      // Rounding.
+      mean_1 = vaddq_f32(mean_1, kRounding);
+      mean_2 = vaddq_f32(mean_2, kRounding);
+      uint32x4_t casted_mean_1 = vcvtq_u32_f32(mean_1);
+      uint16x4_t narrow_range_mean_1 = vmovn_u32(casted_mean_1);
+      uint32x4_t casted_mean_2 = vcvtq_u32_f32(mean_2);
+      uint16x4_t narrow_range_mean_2 = vmovn_u32(casted_mean_2);
+      uint16x8_t combined_mean =
+          vcombine_u16(narrow_range_mean_2, narrow_range_mean_1);
+      uint8x8_t narrowed_combined_mean = vmovn_u16(combined_mean);
+      uint8_t* output_data_ptr =
+          output_data + Offset(output_shape, out_b, 0, 0, out_d);
+      vst1_u8(output_data_ptr, narrowed_combined_mean);
+    }
+#endif
+
+    for (; out_d < end_depth; ++out_d) {
+      float temp_value = 0;
+      for (int in_h = 0; in_h < input_height; ++in_h) {
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          temp_value +=
+              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+        }
+      }
+
+      temp_value = temp_value / num_elements_in_axis;
+      if (ordinary_mean) {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value));
+      } else {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            output_zero_point;
+      }
     }
   }
 }
 
-template <typename T>
-void Im2col(const ConvParams& params, int kheight, int kwidth, uint8 zero_byte,
-            const RuntimeShape& input_shape, const T* input_data,
-            const RuntimeShape& output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Im2col");
-  const int stride_width = params.stride_width;
-  const int stride_height = params.stride_height;
-  const int pad_width = params.padding_values.width;
-  const int pad_height = params.padding_values.height;
-  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+struct MeanWorkerTask : public gemmlowp::Task {
+  MeanWorkerTask(const tflite::MeanParams& op_params,
+                 const RuntimeShape& input_shape, const uint8_t* input_data,
+                 int32 input_zero_point, float input_scale,
+                 const RuntimeShape& output_shape, uint8_t* output_data,
+                 int32 output_zero_point, float output_scale, int start_height,
+                 int end_height)
+      : op_params_(op_params),
+        input_shape_(input_shape),
+        input_data_(input_data),
+        input_zero_point_(input_zero_point),
+        input_scale_(input_scale),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        output_zero_point_(output_zero_point),
+        output_scale_(output_scale),
+        start_height_(start_height),
+        end_height_(end_height) {}
 
-  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
-  const int input_depth = input_shape.Dims(3);
-  const int input_width = input_shape.Dims(2);
-  const int input_height = input_shape.Dims(1);
-  const int output_depth = output_shape.Dims(3);
-  const int output_width = output_shape.Dims(2);
+  void Run() override {
+    MeanImpl(op_params_, input_shape_, input_data_, input_zero_point_,
+             input_scale_, output_shape_, output_data_, output_zero_point_,
+             output_scale_, start_height_, end_height_);
+  }
+
+ private:
+  const tflite::MeanParams& op_params_;
+  const RuntimeShape& input_shape_;
+  const uint8_t* input_data_;
+  int32 input_zero_point_;
+  float input_scale_;
+  const RuntimeShape& output_shape_;
+  uint8_t* output_data_;
+  int32 output_zero_point_;
+  float output_scale_;
+  int start_height_;
+  int end_height_;
+  gemmlowp::GemmContext* gemm_context_;
+};
+
+inline void Mean(const tflite::MeanParams& op_params,
+                 const RuntimeShape& unextended_input_shape,
+                 const uint8_t* input_data, int32 input_zero_point,
+                 float input_scale, const RuntimeShape& unextended_output_shape,
+                 uint8_t* output_data, int32 output_zero_point,
+                 float output_scale, gemmlowp::GemmContext* gemm_context) {
+  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
+
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
   const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_depth = output_shape.Dims(3);
 
-  int buffer_id = 0;
-  // Loop over the output nodes.
-  for (int b = 0; b < batches; ++b) {
-    for (int h = 0; h < output_height; ++h) {
-      for (int w = 0; w < output_width; ++w) {
-        ExtractPatchIntoBufferColumn(
-            input_shape, w, h, b, kheight, kwidth, stride_width, stride_height,
-            pad_width, pad_height, input_width, input_height, input_depth,
-            output_depth, buffer_id, input_data, output_data, zero_byte);
-        ++buffer_id;
-      }
+  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
+  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_DCHECK_EQ(output_height, 1);
+  TFLITE_DCHECK_EQ(output_width, 1);
+
+  constexpr int kMinDepthPerThread = 8;
+  int thread_count = output_depth / kMinDepthPerThread;
+  thread_count = thread_count > 0 ? thread_count : 1;
+  const int capped_thread_count =
+      std::min(thread_count, gemm_context->max_num_threads());
+
+  if (thread_count == 1) {
+    MeanImpl(op_params, input_shape, input_data, input_zero_point, input_scale,
+             output_shape, output_data, output_zero_point, output_scale, 0,
+             output_depth);
+  } else {
+    // Instead parrallel for batch, we loop for the output_depth since batch
+    // is typical 1.
+    std::vector<gemmlowp::Task*> tasks(capped_thread_count);
+    int depth_start = 0;
+    for (int i = 0; i < capped_thread_count; ++i) {
+      // Try to distribute the tasks as even as possible.
+      int depth_end = depth_start +
+                      (output_depth - depth_start) / (capped_thread_count - i);
+      tasks[i] = new MeanWorkerTask(op_params, input_shape, input_data,
+                                    input_zero_point, input_scale, output_shape,
+                                    output_data, output_zero_point,
+                                    output_scale, depth_start, depth_end);
+      depth_start = depth_end;
     }
+    gemm_context->workers_pool()->Execute(tasks);
   }
 }
 
