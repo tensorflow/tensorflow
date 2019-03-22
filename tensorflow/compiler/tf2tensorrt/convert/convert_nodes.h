@@ -494,7 +494,8 @@ class Converter {
                          const std::vector<int>& order_with_batch_dim,
                          const nvinfer1::ITensor** output_tensor);
 
-  // Converts 'input' into 'tensor' with shape specified by 'dims'.
+  // Converts 'input' into 'tensor' with shape specified by 'dims' (which
+  // doesn't contain the batch dimension).
   //
   // If validation_only is true, it doesn't do the conversion but only do some
   // minimum validation for the eligibility of the conversion, and *tensor will
