@@ -615,7 +615,7 @@ As mentioned above, the one function you will need to implement for a completely
 new platform is debug logging. If your device is just a variation on an existing
 platform you may be able to reuse code that's already been written. To
 understand what's available, begin with the default reference implementation at
-[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc]),
+[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc),
 which uses fprintf and stderr. If your platform has this level of support for
 the C standard library in its toolchain, then you can just reuse this.
 Otherwise, you'll need to do some research into how your platform and device can
