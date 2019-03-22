@@ -38,9 +38,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 template <typename T>
 void Negate(const T* in_data, int num_elements, T* out_data) {
   // TODO(alanchiao): add vectorized version.
-  for (int i = 0; i < num_elements; ++i) {
-    out_data[i] = -in_data[i];
+  int index = 0;
+  for (; index < num_elements-1; index+=2) {
+    out_data[index] = -in_data[index];
+    out_data[index+1] = -in_data[index+1];
   }
+  if (num_elements&1) out_data[index] = -in_data[index];
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {

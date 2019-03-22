@@ -70,6 +70,15 @@ TEST(NegOpModel, NegInt64) {
   EXPECT_THAT(m.GetOutput<int64_t>(), ElementsAreArray({2, 1, 0, -1, -2, -3}));
 }
 
+TEST(NegOpModel, NegOddFloat) {
+  //Total number of elements is an odd value
+  NegOpModel m({TensorType_FLOAT32, {3, 3}}, {TensorType_FLOAT32, {3, 3}});
+  m.SetInput<float>({-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, -4.0f});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray({2.0f, 1.0f, 0.f, -1.0f, -2.0f, -3.0f, -4.0f, -5.0f, 4.0f}));
+}
+
 }  // namespace
 }  // namespace tflite
 
