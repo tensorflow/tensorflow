@@ -33,13 +33,13 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       const string& prefix)
       : wrapped_(stats_aggregator), tag_(tag), prefix_(prefix) {}
 
-  void AddToHistogram(const string& name,
-                      gtl::ArraySlice<double> values) override {
-    wrapped_->AddToHistogram(TaggedName(name), values);
+  void AddToHistogram(const string& name, gtl::ArraySlice<double> values,
+                      int64 steps) override {
+    wrapped_->AddToHistogram(TaggedName(name), values, steps);
   }
 
-  void AddScalar(const string& name, float value) override {
-    wrapped_->AddScalar(TaggedName(name), value);
+  void AddScalar(const string& name, float value, int64 steps) override {
+    wrapped_->AddScalar(TaggedName(name), value, steps);
   }
 
   void EncodeToProto(Summary* out_summary) override {
@@ -55,6 +55,10 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
       wrapped_->IncrementCounter(
           strings::StrCat("/tensorflow/", TaggedName(name)), label, val);
     }
+  }
+
+  Status SetSummaryWriter(SummaryWriterInterface* summary_writer) override {
+    return wrapped_->SetSummaryWriter(summary_writer);
   }
 
  private:

@@ -25,7 +25,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
+# TODO(b/116314787): add test coverage for StatsAggregatorV2.
+@test_util.run_v1_only("b/116314787, add test coverage")
 class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testLatencyStatsOptimization(self):
@@ -46,11 +47,13 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
         num_test_iterations=1)
     summary_t = aggregator.get_summary()
     summary_str = self.evaluate(summary_t)
-    self._assertSummaryHasCount(summary_str, "record_latency::TensorDataset/_1",
-                                1)
-    self._assertSummaryHasCount(summary_str, "record_latency::MapDataset/_4", 1)
-    self._assertSummaryHasCount(summary_str,
-                                "record_latency::PrefetchDataset/_6", 1)
+    self.assertSummaryHasCount(
+        summary_str, self.regexForNodeName("record_latency::TensorDataset"), 1)
+    self.assertSummaryHasCount(
+        summary_str, self.regexForNodeName("record_latency::MapDataset"), 1)
+    self.assertSummaryHasCount(
+        summary_str, self.regexForNodeName("record_latency::PrefetchDataset"),
+        1)
 
 
 if __name__ == "__main__":
