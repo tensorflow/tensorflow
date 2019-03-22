@@ -2861,7 +2861,7 @@ class TPUEstimator(estimator_lib.Estimator):
             graph.add_to_collection(_TPU_ENQUEUE_OPS, enqueue_op)
 
         if mode == model_fn_lib.ModeKeys.TRAIN:
-          compile_op, loss, host_call, scaffold, training_hooks = (
+          compile_op, loss, host_call, scaffold_fn, training_hooks = (
               _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
           if ctx.embedding_config:
             g = ops.get_default_graph()
@@ -2880,6 +2880,10 @@ class TPUEstimator(estimator_lib.Estimator):
                     slot_variable_names_by_table
                 ))
             tpu_init_ops.extend(embedding_variables_and_ops.load_ops())
+          # scaffold_fn must be called after variables for TPU embedding has
+          # been created on CPU, as user might reinitialize those from some
+          # checkpoint within scaffold_fn.
+          scaffold = _get_scaffold(scaffold_fn)
 
           host_ops = host_call.create_tpu_hostcall()
 
@@ -2972,7 +2976,7 @@ class TPUEstimator(estimator_lib.Estimator):
               scaffold=scaffold)
 
         if mode == model_fn_lib.ModeKeys.EVAL:
-          compile_op, total_loss, host_calls, scaffold, eval_hooks = (
+          compile_op, total_loss, host_calls, scaffold_fn, eval_hooks = (
               _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
           if ctx.embedding_config:
             g = ops.get_default_graph()
@@ -2987,6 +2991,10 @@ class TPUEstimator(estimator_lib.Estimator):
                     embedding_variable_name_by_table
                 ))
             tpu_init_ops.extend(embedding_variables_and_ops.load_ops())
+          # scaffold_fn must be called after variables for TPU embedding has
+          # been created on CPU, as user might reinitialize those from some
+          # checkpoint within scaffold_fn.
+          scaffold = _get_scaffold(scaffold_fn)
           iterations_per_loop_var = _create_or_get_iterations_per_loop()
           mean_loss = math_ops.div(
               total_loss,
@@ -3056,8 +3064,9 @@ class TPUEstimator(estimator_lib.Estimator):
         assert mode == model_fn_lib.ModeKeys.PREDICT
 
         (compile_op, dummy_predict_op, host_calls,
-         scaffold, prediction_hooks) = _predict_on_tpu_system(
+         scaffold_fn, prediction_hooks) = _predict_on_tpu_system(
              ctx, model_fn_wrapper, dequeue_fn)
+        scaffold = _get_scaffold(scaffold_fn)
         with ops.control_dependencies([dummy_predict_op]):
           internal_ops_to_run = _sync_variables_ops(ctx)
           with ops.control_dependencies(internal_ops_to_run):
@@ -3209,8 +3218,8 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       device_assignment=ctx.device_assignment)
 
   loss = loss[0]
-  scaffold = _get_scaffold(captured_scaffold_fn)
-  return compile_op, loss, host_calls, scaffold, captured_eval_hooks.get()
+  return (compile_op, loss, host_calls, captured_scaffold_fn,
+          captured_eval_hooks.get())
 
 
 def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
@@ -3234,8 +3243,8 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       device_assignment=ctx.device_assignment)
 
   loss = loss[0]
-  scaffold = _get_scaffold(captured_scaffold_fn)
-  return compile_op, loss, host_call, scaffold, captured_training_hooks.get()
+  return (compile_op, loss, host_call, captured_scaffold_fn,
+          captured_training_hooks.get())
 
 
 def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
@@ -3264,8 +3273,7 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
       device_assignment=ctx.device_assignment)
 
   dummy_predict_op = dummy_predict_op[0]
-  scaffold = _get_scaffold(captured_scaffold_fn)
-  return (compile_op, dummy_predict_op, host_calls, scaffold,
+  return (compile_op, dummy_predict_op, host_calls, captured_scaffold_fn,
           captured_predict_hooks.get())
 
 
