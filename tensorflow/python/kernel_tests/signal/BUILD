@@ -4,7 +4,7 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
 
 py_library(
@@ -18,7 +18,7 @@ py_library(
     ],
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "dct_ops_test",
     srcs = ["dct_ops_test.py"],
     additional_deps = [
@@ -33,7 +33,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "fft_ops_test",
     size = "medium",
     srcs = ["fft_ops_test.py"],
@@ -53,7 +53,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "mel_ops_test",
     srcs = ["mel_ops_test.py"],
     additional_deps = [
@@ -65,7 +65,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     additional_deps = [
@@ -81,7 +81,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
     additional_deps = [
@@ -99,7 +99,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "shape_ops_test",
     srcs = ["shape_ops_test.py"],
     additional_deps = [
@@ -117,7 +117,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "spectral_ops_test",
     size = "large",
     srcs = ["spectral_ops_test.py"],
@@ -142,7 +142,7 @@ cuda_py_tests(
     xla_enable_strict_auto_jit = True,
 )
 
-cuda_py_tests(
+cuda_py_test(
     name = "window_ops_test",
     srcs = ["window_ops_test.py"],
     additional_deps = [
