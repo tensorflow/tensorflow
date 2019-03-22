@@ -302,7 +302,7 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
         5.  Press Ctrl+c to exit
     4.  Press BTN2. An LED will flash for 1 second. Speak your utterance during
         this one second
-    5.  The debugger will print out four numbers. They are the probabilites for
+    5.  The debugger will print out four numbers. They are the probabilities for
         1.  no speech
         2.  unknown speech
         3.  yes
@@ -584,7 +584,7 @@ As mentioned above, the one function you will need to implement for a completely
 new platform is debug logging. If your device is just a variation on an existing
 platform you may be able to reuse code that's already been written. To
 understand what's available, begin with the default reference implementation at
-[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc]),
+[tensorflow/lite/experimental/micro/debug_log.cc](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/micro/debug_log.cc),
 which uses fprintf and stderr. If your platform has this level of support for
 the C standard library in its toolchain, then you can just reuse this.
 Otherwise, you'll need to do some research into how your platform and device can
