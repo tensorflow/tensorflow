@@ -3363,8 +3363,8 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
+    flaky = 1,  # test fails on rocm (on rare occasions) 
     tags = [
-        "no_rocm",  # flaky test
         "no_windows",
     ],
     # b/127344411: xla_enable_strict_auto_jit = True,
