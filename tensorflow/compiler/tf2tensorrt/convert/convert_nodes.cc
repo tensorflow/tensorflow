@@ -977,29 +977,29 @@ static void InitializeTrtPlugins() {
   static bool plugin_initialized = false;
   static Logger trt_logger;
   mutex_lock lock(plugin_mutex);
-  if (!plugin_initialized) {
-    plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
-    if (!plugin_initialized) {
-      LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
-                    "fail later.";
-    }
+  if (plugin_initialized) return;
 
-    int num_trt_plugins = 0;
-    nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
-        getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
-    if (!trt_plugin_creator_list) {
-      LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
-    } else {
-      VLOG(1) << "Found the following " << num_trt_plugins
-              << " TensorRT plugins in registry:";
-      for (int i = 0; i < num_trt_plugins; ++i) {
-        if (!trt_plugin_creator_list[i]) {
-          LOG(WARNING) << "TensorRT plugin at index " << i
-                       << " is not accessible (null pointer returned by "
-                          "getPluginCreatorList for this plugin)";
-        } else {
-          VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
-        }
+  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
+  if (!plugin_initialized) {
+    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
+                  "fail later.";
+  }
+
+  int num_trt_plugins = 0;
+  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
+      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
+  if (!trt_plugin_creator_list) {
+    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+  } else {
+    VLOG(1) << "Found the following " << num_trt_plugins
+            << " TensorRT plugins in registry:";
+    for (int i = 0; i < num_trt_plugins; ++i) {
+      if (!trt_plugin_creator_list[i]) {
+        LOG(WARNING) << "TensorRT plugin at index " << i
+                     << " is not accessible (null pointer returned by "
+                        "getPluginCreatorList for this plugin)";
+      } else {
+        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
       }
     }
   }
@@ -4088,13 +4088,13 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
   TFAttrs attrs(node_def);
   bool share_location = (boxes_dims.d[1] == 1);
   const bool pad_per_class = attrs.get<bool>("pad_per_class");
-  int topK;
+  int top_k;
   if (pad_per_class) {
-    topK = std::min(max_size_per_class * num_classes, max_total_size);
+    top_k = std::min(max_size_per_class * num_classes, max_total_size);
   } else {
-    topK = max_total_size;
+    top_k = max_total_size;
   }
-  const int keepTopK = topK;
+  const int keep_top_k = top_k;
   float score_thresh =
       *(static_cast<float*>(const_cast<void*>(score_threshold.GetValues())));
   const int background_id = -1;
@@ -4105,9 +4105,9 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
                             nvinfer1::PluginFieldType::kINT32, 1},
       nvinfer1::PluginField{"numClasses", &num_classes,
                             nvinfer1::PluginFieldType::kINT32, 1},
-      nvinfer1::PluginField{"topK", &topK, nvinfer1::PluginFieldType::kINT32,
+      nvinfer1::PluginField{"topK", &top_k, nvinfer1::PluginFieldType::kINT32,
                             1},
-      nvinfer1::PluginField{"keepTopK", &keepTopK,
+      nvinfer1::PluginField{"keepTopK", &keep_top_k,
                             nvinfer1::PluginFieldType::kINT32, 1},
       nvinfer1::PluginField{"scoreThreshold", &score_thresh,
                             nvinfer1::PluginFieldType::kFLOAT32, 1},
@@ -4135,7 +4135,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   // Add plugin to network
   nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
-      &plugin_inputs[0], int(plugin_inputs.size()), *plugin);
+      &plugin_inputs[0], static_cast<int>(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
