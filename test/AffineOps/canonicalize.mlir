@@ -23,10 +23,25 @@
 // CHECK-DAG: [[MAP13B:#map[0-9]+]] = (d0) -> ((d0 * 4 - 4) floordiv 3)
 
 // Affine maps for test case: arg_used_as_dim_and_symbol
-// CHECK-DAG: [[MAP14:#map[0-9]+]] = (d0, d1, d2)[s0, s1] -> (-d0 - d1 + d2 + s0 + s1)
+// CHECK-DAG: [[MAP14:#map[0-9]+]] = (d0) -> (d0)
 
 // Affine maps for test case: partial_fold_map
-// CHECK-DAG: [[MAP15:#map[0-9]+]] = (d0, d1) -> (d0 - d1)
+// CHECK-DAG: [[MAP15:#map[0-9]+]] = ()[s0, s1] -> (s0 - s1)
+
+// Affine maps for test cases: symbolic_composition_*
+// CHECK-DAG: [[map_symbolic_composition_a:#map[0-9]+]] = ()[s0] -> (s0 * 512)
+// CHECK-DAG: [[map_symbolic_composition_b:#map[0-9]+]] = ()[s0] -> (s0 * 4)
+// CHECK-DAG: [[map_symbolic_composition_c:#map[0-9]+]] = ()[s0, s1] -> (s0 * 3 + s1)
+// CHECK-DAG: [[map_symbolic_composition_d:#map[0-9]+]] = ()[s0, s1] -> (s1 * 3 + s0)
+
+// Affine maps for test cases: map_mix_dims_and_symbols_*
+// CHECK-DAG: [[map_mix_dims_and_symbols_b:#map[0-9]+]] = ()[s0, s1] -> (s1 + s0 * 42 + 6)
+// CHECK-DAG: [[map_mix_dims_and_symbols_c:#map[0-9]+]] = ()[s0, s1] -> (s1 * 4 + s0 * 168 - 4)
+// CHECK-DAG: [[map_mix_dims_and_symbols_d:#map[0-9]+]] = ()[s0, s1] -> ((s1 + s0 * 42 + 6) ceildiv 8)
+// CHECK-DAG: [[map_mix_dims_and_symbols_e:#map[0-9]+]] = ()[s0, s1] -> ((s1 * 4 + s0 * 168 - 4) floordiv 3)
+
+// Affine maps for test case: symbolic_semi_affine
+// CHECK-DAG: [[symbolic_semi_affine:#map[0-9]+]] = (d0)[s0] -> (d0 floordiv (s0 + 1))
 
 // CHECK-LABEL: func @compose_affine_maps_1dto2d_no_symbols() {
 func @compose_affine_maps_1dto2d_no_symbols() {
@@ -223,7 +238,7 @@ func @arg_used_as_dim_and_symbol(%arg0: memref<100x100xf32>, %arg1: index) {
         (%i0, %i1)[%arg1, %c9]
       %4 = affine.apply (d0, d1, d3) -> (d3 - (d0 + d1))
         (%arg1, %c9, %3)
-      // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP14]](%arg1, %c9, %i1)[%arg1, %c9]
+      // CHECK: [[I0:%[0-9]+]] = affine.apply [[MAP14]](%i1)
       // CHECK-NEXT: load %{{[0-9]+}}{{\[}}[[I0]], %arg1{{\]}}
       %5 = load %1[%4, %arg1] : memref<100x100xf32, 1>
     }
@@ -256,9 +271,121 @@ func @partial_fold_map(%arg0: memref<index>, %arg1: index, %arg2: index) {
   %c42 = constant 42 : index
   %2 = affine.apply (d0, d1) -> (d0 - d1) (%arg1, %c42)
   store %2, %arg0[] : memref<index>
-  // CHECK: [[X:%[0-9]+]] = affine.apply [[MAP15]](%arg1, %c42)
+  // CHECK: [[X:%[0-9]+]] = affine.apply [[MAP15]]()[%arg1, %c42]
   // CHECK-NEXT: store [[X]], %arg0
 
+  return
+}
+
+// CHECK-LABEL: func @symbolic_composition_a(%arg0: index, %arg1: index) -> index {
+func @symbolic_composition_a(%arg0: index, %arg1: index) -> index {
+  %0 = affine.apply (d0) -> (d0 * 4)(%arg0)
+  %1 = affine.apply ()[s0, s1] -> (8 * s0)()[%0, %arg0]
+  %2 = affine.apply ()[s0, s1] -> (16 * s1)()[%arg1, %1]
+  // CHECK: %{{.*}} = affine.apply [[map_symbolic_composition_a]]()[%arg0]
+  return %2 : index
+}
+
+// CHECK-LABEL: func @symbolic_composition_b(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
+func @symbolic_composition_b(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
+  %0 = affine.apply (d0) -> (d0)(%arg0)
+  %1 = affine.apply ()[s0, s1, s2, s3] -> (s0 + s1 + s2 + s3)()[%0, %0, %0, %0]
+  // CHECK: %{{.*}} = affine.apply [[map_symbolic_composition_b]]()[%arg0]
+  return %1 : index
+}
+
+// CHECK-LABEL: func @symbolic_composition_c(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
+func @symbolic_composition_c(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
+  %0 = affine.apply (d0) -> (d0)(%arg0)
+  %1 = affine.apply (d0) -> (d0)(%arg1)
+  %2 = affine.apply ()[s0, s1, s2, s3] -> (s0 + s1 + s2 + s3)()[%0, %0, %0, %1]
+  // CHECK: %{{.*}} = affine.apply [[map_symbolic_composition_c]]()[%arg0, %arg1]
+  return %2 : index
+}
+
+// CHECK-LABEL: func @symbolic_composition_d(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
+func @symbolic_composition_d(%arg0: index, %arg1: index, %arg2: index, %arg3: index) -> index {
+  %0 = affine.apply (d0) -> (d0)(%arg0)
+  %1 = affine.apply ()[s0] -> (s0)()[%arg1]
+  %2 = affine.apply ()[s0, s1, s2, s3] -> (s0 + s1 + s2 + s3)()[%0, %0, %0, %1]
+  // CHECK: %{{.*}} = affine.apply [[map_symbolic_composition_d]]()[%arg1, %arg0]
+  return %2 : index
+}
+
+
+// CHECK-LABEL: func @mix_dims_and_symbols_b(%arg0: index, %arg1: index) -> index {
+func @mix_dims_and_symbols_b(%arg0: index, %arg1: index) -> index {
+  %a = affine.apply (d0)[s0] -> (d0 - 1 + 42 * s0) (%arg0)[%arg1]
+  %b = affine.apply (d0) -> (d0 + 7) (%a)
+  // CHECK: {{.*}} = affine.apply [[map_mix_dims_and_symbols_b]]()[%arg1, %arg0]
+
+  return %b : index
+}
+
+// CHECK-LABEL: func @mix_dims_and_symbols_c(%arg0: index, %arg1: index) -> index {
+func @mix_dims_and_symbols_c(%arg0: index, %arg1: index) -> index {
+  %a = affine.apply (d0)[s0] -> (d0 - 1 + 42 * s0) (%arg0)[%arg1]
+  %b = affine.apply (d0) -> (d0 + 7) (%a)
+  %c = affine.apply (d0) -> (d0 * 4) (%a)
+  // CHECK: {{.*}} = affine.apply [[map_mix_dims_and_symbols_c]]()[%arg1, %arg0]
+  return %c : index
+}
+
+// CHECK-LABEL: func @mix_dims_and_symbols_d(%arg0: index, %arg1: index) -> index {
+func @mix_dims_and_symbols_d(%arg0: index, %arg1: index) -> index {
+  %a = affine.apply (d0)[s0] -> (d0 - 1 + 42 * s0) (%arg0)[%arg1]
+  %b = affine.apply (d0) -> (d0 + 7) (%a)
+  %c = affine.apply (d0) -> (d0 * 4) (%a)
+  %d = affine.apply ()[s0] -> (s0 ceildiv 8) ()[%b]
+  // CHECK: {{.*}} = affine.apply [[map_mix_dims_and_symbols_d]]()[%arg1, %arg0]
+  return %d : index
+}
+
+// CHECK-LABEL: func @mix_dims_and_symbols_e(%arg0: index, %arg1: index) -> index {
+func @mix_dims_and_symbols_e(%arg0: index, %arg1: index) -> index {
+  %a = affine.apply (d0)[s0] -> (d0 - 1 + 42 * s0) (%arg0)[%arg1]
+  %b = affine.apply (d0) -> (d0 + 7) (%a)
+  %c = affine.apply (d0) -> (d0 * 4) (%a)
+  %d = affine.apply ()[s0] -> (s0 ceildiv 8) ()[%b]
+  %e = affine.apply (d0) -> (d0 floordiv 3) (%c)
+  // CHECK: {{.*}} = affine.apply [[map_mix_dims_and_symbols_e]]()[%arg1, %arg0]
+  return %e : index
+}
+
+// CHECK-LABEL: func @mix_dims_and_symbols_f(%arg0: index, %arg1: index) -> index {
+func @mix_dims_and_symbols_f(%arg0: index, %arg1: index) -> index {
+  %a = affine.apply (d0)[s0] -> (d0 - 1 + 42 * s0) (%arg0)[%arg1]
+  %b = affine.apply (d0) -> (d0 + 7) (%a)
+  %c = affine.apply (d0) -> (d0 * 4) (%a)
+  %d = affine.apply ()[s0] -> (s0 ceildiv 8) ()[%b]
+  %e = affine.apply (d0) -> (d0 floordiv 3) (%c)
+  %f = affine.apply (d0, d1)[s0, s1] -> (d0 - s1 +  d1 - s0) (%d, %e)[%e, %d]
+  // CHECK: {{.*}} = constant 0 : index
+
+  return %f : index
+}
+
+// CHECK-LABEL: func @mix_dims_and_symbols_g(%arg0: index, %arg1: index) -> (index, index, index) {
+func @mix_dims_and_symbols_g(%M: index, %N: index) -> (index, index, index) {
+  %K = affine.apply (d0) -> (4*d0) (%M)
+  %res1 = affine.apply ()[s0, s1] -> (4 * s0)()[%N, %K]
+  %res2 = affine.apply ()[s0, s1] -> (s1)()[%N, %K]
+  %res3 = affine.apply ()[s0, s1] -> (1024)()[%N, %K]
+  // CHECK-DAG: {{.*}} = constant 1024 : index
+  // CHECK-DAG: {{.*}} = affine.apply [[map_symbolic_composition_b]]()[%arg1]
+  // CHECK-DAG: {{.*}} = affine.apply [[map_symbolic_composition_b]]()[%arg0]
+  return %res1, %res2, %res3 : index, index, index
+}
+
+// CHECK-LABEL: func @symbolic_semi_affine(%arg0: index, %arg1: index, %arg2: memref<?xf32>) {
+func @symbolic_semi_affine(%M: index, %N: index, %A: memref<?xf32>) {
+  %f1 = constant 1.0 : f32
+  for %i0 = 1 to 100 {
+    %1 = affine.apply ()[s0] -> (s0 + 1) ()[%M]
+    %2 = affine.apply (d0)[s0] -> (d0 floordiv s0) (%i0)[%1]
+    // CHECK-DAG: {{.*}} = affine.apply [[symbolic_semi_affine]](%i0)[%arg0]
+    store %f1, %A[%2] : memref<?xf32>
+  }
   return
 }
 
@@ -295,4 +422,3 @@ func @constant_fold_bounds(%N : index) {
   }
   return
 }
-

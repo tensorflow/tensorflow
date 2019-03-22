@@ -542,16 +542,21 @@ func @loop_nest_non_trivial_multiple_unroll_factor(%M : index, %N : index) {
 // UNROLL-BY-4-NOT: for
 // UNROLL-BY-4: return
 
-// Commented due to b/128340045
-// xUNROLL-BY-4-LABEL: func @loop_nest_non_trivial_multiple_unroll_factor
-// func @loop_nest_non_trivial_multiple_unroll_factor(%M : index, %N : index) {
-//  %K = affine.apply (d0) -> (4*d0) (%M)
-//  for %i = 0 to min ()[s0, s1] -> (4 * s0, s1, 1024)()[%N, %K] {
-//    "foo"() : () -> ()
-//  }
-//  return
-//}
-
+// UNROLL-BY-4-LABEL: func @loop_nest_non_trivial_multiple_unroll_factor_2
+func @loop_nest_non_trivial_multiple_unroll_factor_2(%M : index, %N : index) {
+  %K = affine.apply (d0) -> (4*d0) (%M)
+  for %i = 0 to min ()[s0, s1] -> (4 * s0, s1, 1024)()[%N, %K] {
+    "foo"() : () -> ()
+  }
+  // UNROLL-BY-4: for %i0 = 0 to min
+  // UNROLL-BY-4-NEXT: "foo"
+  // UNROLL-BY-4-NEXT: "foo"
+  // UNROLL-BY-4-NEXT: "foo"
+  // UNROLL-BY-4-NEXT: "foo"
+  // UNROLL-BY-4-NOT for
+  // UNROLL-BY-4: return
+  return
+}
 
 // UNROLL-BY-1-LABEL: func @unroll_by_one_should_promote_single_iteration_loop()
 func @unroll_by_one_should_promote_single_iteration_loop() {

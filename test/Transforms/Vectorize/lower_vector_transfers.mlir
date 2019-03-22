@@ -1,7 +1,7 @@
 // RUN: mlir-opt %s -lower-vector-transfers | FileCheck %s
 
 // CHECK: #[[ADD:map[0-9]+]] = (d0, d1) -> (d0 + d1)
-// CHECK: #[[SUB:map[0-9]+]] = (d0) -> (d0 - 1)
+// CHECK: #[[SUB:map[0-9]+]] = ()[s0] -> (s0 - 1)
 
 // CHECK-LABEL: func @materialize_read_1d() {
 func @materialize_read_1d() {
@@ -74,19 +74,19 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D0]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D0]]]
   // CHECK-NEXT:                {{.*}} = select
   // CHECK-NEXT:                %[[L0:.*]] = select
   //
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D1]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D1]]]
   // CHECK-NEXT:                {{.*}} = select
   // CHECK-NEXT:                %[[L1:.*]] = select
   //
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D2]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D2]]]
   // CHECK-NEXT:                {{.*}} = select
   // CHECK-NEXT:                %[[L2:.*]] = select
   //
@@ -95,7 +95,7 @@ func @materialize_read(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I3]], %[[I6]])
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}} : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I3]], %[[I6]])
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D3]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D3]]]
   // CHECK-NEXT:                {{.*}} = select
   // CHECK-NEXT:                %[[L3:.*]] = select
   //
@@ -154,7 +154,7 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, {{.*}} : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I0]], %[[I4]])
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D0]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D0]]]
   // CHECK-NEXT:                {{.*}} = select {{.*}}, {{.*}}, {{.*}} : index
   // CHECK-NEXT:                %[[S0:.*]] = select {{.*}}, %[[C0]], {{.*}} : index
   //
@@ -163,13 +163,13 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I1]], %[[I5]])
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, {{.*}} : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I1]], %[[I5]])
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D1]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D1]]]
   // CHECK-NEXT:                {{.*}} = select {{.*}}, {{.*}}, {{.*}} : index
   // CHECK-NEXT:                %[[S1:.*]] = select {{.*}}, %[[C0]], {{.*}} : index
   //
   // CHECK-NEXT:                {{.*}} = cmpi "slt", %[[I2]], %[[C0]] : index
   // CHECK-NEXT:                {{.*}} = cmpi "slt", %[[I2]], %3 : index
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D2]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D2]]]
   // CHECK-NEXT:                {{.*}} = select {{.*}}, %[[I2]], {{.*}} : index
   // CHECK-NEXT:                %[[S2:.*]] = select {{.*}}, %[[C0]], {{.*}} : index
   //
@@ -178,7 +178,7 @@ func @materialize_write(%M: index, %N: index, %O: index, %P: index) {
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I3]], %[[I6]])
   // CHECK-NEXT:                {{.*}} = cmpi "slt", {{.*}}, {{.*}} : index
   // CHECK-NEXT:                {{.*}} = affine.apply #[[ADD]](%[[I3]], %[[I6]])
-  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]](%[[D3]])
+  // CHECK-NEXT:                {{.*}} = affine.apply #[[SUB]]()[%[[D3]]]
   // CHECK-NEXT:                {{.*}} = select {{.*}}, {{.*}}, {{.*}} : index
   // CHECK-NEXT:                %[[S3:.*]] = select {{.*}}, %[[C0]], {{.*}} : index
   //

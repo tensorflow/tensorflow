@@ -81,9 +81,9 @@ TEST_FUNC(builder_dynamic_for_func_args) {
   // clang-format off
   // CHECK-LABEL: func @builder_dynamic_for_func_args(%arg0: index, %arg1: index) {
   // CHECK:  for %i0 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 3 {
-  // CHECK:  {{.*}} = affine.apply (d0) -> (d0 * 3)(%arg0)
-  // CHECK:  {{.*}} = affine.apply (d0, d1) -> (d0 * 3 + d1)(%arg0, %arg1)
-  // CHECK:  {{.*}} = affine.apply (d0) -> (d0 + 3)(%arg0)
+  // CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 * 3)()[%arg0]
+  // CHECK:  {{.*}} = affine.apply ()[s0, s1] -> (s1 + s0 * 3)()[%arg0, %arg1]
+  // CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 + 3)()[%arg0]
   // CHECK:  for %i1 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 2 {
   // CHECK:    {{.*}} = affine.apply (d0, d1) -> ((d0 + d1 * 3) floordiv 32)(%i0, %i1)
   // CHECK:    {{.*}} = affine.apply (d0, d1) -> (((d0 + d1 * 3) floordiv 32) * 31)(%i0, %i1)
@@ -117,8 +117,8 @@ TEST_FUNC(builder_dynamic_for) {
 
   // clang-format off
   // CHECK-LABEL: func @builder_dynamic_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
-  // CHECK:        %0 = affine.apply (d0, d1) -> (d0 - d1)(%arg0, %arg1)
-  // CHECK-NEXT:   %1 = affine.apply (d0, d1) -> (d0 + d1)(%arg2, %arg3)
+  // CHECK:        %0 = affine.apply ()[s0, s1] -> (s0 - s1)()[%arg0, %arg1]
+  // CHECK-NEXT:   %1 = affine.apply ()[s0, s1] -> (s0 + s1)()[%arg2, %arg3]
   // CHECK-NEXT:   for %i0 = (d0) -> (d0)(%0) to (d0) -> (d0)(%1) step 2 {
   // clang-format on
   f->print(llvm::outs());
