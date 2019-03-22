@@ -82,7 +82,7 @@ with tf.Session() as sess:
 EOF
 ${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
-DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
 
 {
   grep libcudnn.so /tmp/loadedlibs
