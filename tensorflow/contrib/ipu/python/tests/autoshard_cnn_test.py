@@ -207,7 +207,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       ipu_compiler.compile(my_net, inputs=[])
 
@@ -251,7 +251,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       ipu_compiler.compile(my_net, inputs=[])
 
@@ -301,7 +301,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       lr = array_ops.placeholder(dtypes.float32, [])
       ipu_compiler.compile(my_net, inputs=[lr])

@@ -28,7 +28,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import while_v2
 
 def while_loop(condition, body, inputs=None, infeed_queue=None,
-               use_while_v1=False):
+               use_while_v1=True):
   """Builds a while loop for IPUs.
 
   The set of loop-carried tensors corresponds to `inputs`.  Both
@@ -131,7 +131,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
   return outputs
 
 
-def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=False):
+def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
   """Builds a loop that executes a fixed number of iterations.
 
   The set of loop-carried tensors correspond to `inputs`.
