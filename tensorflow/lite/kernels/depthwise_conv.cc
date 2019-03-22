@@ -81,16 +81,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       reinterpret_cast<TfLiteDepthwiseConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  // TODO(ahentz): use could use GetOptionalInputTensor() here, but we need to
-  // decide whether we are OK with optional tensors being completely absent, as
-  // opposed to having -1 as their index.
-  bool hasBias = NumInputs(node) == 3;
-
-  TF_LITE_ENSURE(context, hasBias || NumInputs(node) == 2);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias = nullptr;
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
+  TF_LITE_ENSURE(context, bias || NumInputs(node) == 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
@@ -110,8 +105,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, output->type, data_type);
   TF_LITE_ENSURE_EQ(context, filter->type, data_type);
 
-  if (hasBias) {
-    bias = GetInput(context, node, kBiasTensor);
+  if (bias) {
     if (data_type == kTfLiteUInt8 || data_type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
@@ -300,8 +294,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* filter = GetInput(context, node, kFilterTensor);
-  const TfLiteTensor* bias =
-      (NumInputs(node) == 3) ? GetInput(context, node, kBiasTensor) : nullptr;
+  const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
   // TODO(aselle): Consider whether float conv and quantized conv should be
   // separate ops to avoid dispatch overhead here.
