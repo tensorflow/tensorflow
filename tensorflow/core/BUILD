@@ -3022,6 +3022,7 @@ tf_cuda_library(
         ":function_ops_op_lib",
         ":functional_grad",
         ":functional_ops_op_lib",
+        "@com_google_absl//absl/algorithm:container",
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/kernels:required",
     ]),
