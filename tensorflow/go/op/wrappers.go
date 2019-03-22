@@ -37152,10 +37152,11 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 	return op.Output(0)
 }
 
-// Decode the first frame of a GIF-encoded image to a uint8 tensor.
+// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
 //
-// GIF with frame or transparency compression are not supported
-// convert animated GIF from compressed to uncompressed by:
+// GIF images with frame or transparency compression are not supported.
+// On Linux and MacOS systems, convert animated GIFs from compressed to
+// uncompressed by running:
 //
 //     convert $src.gif -coalesce $dst.gif
 //
@@ -37165,7 +37166,7 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
 //
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB order
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
 func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
 	if scope.Err() != nil {
 		return
