@@ -57,9 +57,6 @@ class DType(object):
   * `tf.resource`: Handle to a mutable resource.
   * `tf.variant`: Values of arbitrary types.
 
-  In addition, variants of these types with the `_ref` suffix are
-  defined for reference-typed tensors.
-
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
   """
