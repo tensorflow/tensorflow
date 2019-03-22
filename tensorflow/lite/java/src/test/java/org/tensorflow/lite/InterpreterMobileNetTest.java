@@ -63,6 +63,8 @@ public final class InterpreterMobileNetTest {
   private static void runMobileNetFloatTest(Interpreter.Options options) {
     // Create a gray image.
     ByteBuffer img = ByteBuffer.allocateDirect(1 * 224 * 224 * 3 * 4);
+    img.order(ByteOrder.nativeOrder());
+    img.rewind();
     while (img.hasRemaining()) {
       img.putFloat(0.5f);
     }
