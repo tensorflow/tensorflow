@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import enum
+import enum  # pylint: disable=g-bad-import-order
 import threading
 import weakref
 import six
@@ -532,6 +532,8 @@ class DistributionStrategy(object):
       A `Tensor`.
     """
     _require_cross_replica_or_default_context_extended(self._extended)
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED
@@ -1172,6 +1174,8 @@ class DistributionStrategyExtended(object):
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     assert (reduce_op == reduce_util.ReduceOp.SUM or
             reduce_op == reduce_util.ReduceOp.MEAN)
     return self._reduce_to(reduce_op, value, destinations)
@@ -1193,6 +1197,8 @@ class DistributionStrategyExtended(object):
     # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     return self._batch_reduce_to(reduce_op, value_destination_pairs)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):
