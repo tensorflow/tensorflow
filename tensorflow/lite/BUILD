@@ -71,10 +71,14 @@ cc_library(
     ],
 )
 
+# TODO(b/122597976) Move this off of tf_cc_test for portability.
 tf_cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+    ],
     deps = [
         ":arena_planner",
         "//tensorflow/core:tflite_portable_logging",
