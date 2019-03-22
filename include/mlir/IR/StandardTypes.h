@@ -38,7 +38,6 @@ namespace detail {
 struct IntegerTypeStorage;
 struct VectorOrTensorTypeStorage;
 struct VectorTypeStorage;
-struct TensorTypeStorage;
 struct RankedTensorTypeStorage;
 struct UnrankedTensorTypeStorage;
 struct MemRefTypeStorage;
@@ -269,7 +268,6 @@ public:
 /// RankedTensorType and UnrankedTensorType.
 class TensorType : public VectorOrTensorType {
 public:
-  using ImplType = detail::TensorTypeStorage;
   using VectorOrTensorType::VectorOrTensorType;
 
   /// Return true if the specified element type is ok in a tensor.
