@@ -218,6 +218,23 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "contrib_mirrored_strategy_test",
+    srcs = ["contrib_mirrored_strategy_test.py"],
+    additional_deps = [
+        ":mirrored_strategy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:values",
+    ],
+    shard_count = 1,
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+    ],
+)
+
+cuda_py_test(
     name = "keras_multi_worker_test",
     srcs = ["keras_multi_worker_test.py"],
     additional_deps = [
