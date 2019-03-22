@@ -503,12 +503,15 @@ void InstantiatedCapturedFunction::RunAsync(
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-        // TODO(shivaniagrawal): add the dataset name containing this function,
-        // make it dataset()->node_name() + captured_func_->func().name().
+        // TODO(b/129085499) Utilize the `node_name` which would be unique than
+        // the prefix for the function execution time statistics.
+        // prefix_with_func_name would then be node_name + func_name.
         if (stats_aggregator) {
-          string prefix_with_func_name = strings::StrCat(
-              str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
-              "::", captured_func_->func().name());
+          string prefix_end =
+              str_util::Split(prefix, "::", str_util::SkipEmpty()).back();
+          string prefix_with_func_name =
+              strings::StrCat(prefix_end, stats_utils::kDelimiter,
+                              captured_func_->func().name());
           stats_aggregator->AddToHistogram(
               stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
               {static_cast<float>(stats_collector->processing_time())});
