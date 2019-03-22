@@ -22,6 +22,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "//tensorflow/core/distributed_runtime/rpc:grpc_client_cq_tag",
         "//tensorflow/core/distributed_runtime/rpc:grpc_state",
@@ -42,6 +43,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -54,14 +56,38 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xrt_client",
+    srcs = ["xrt_client.cc"],
+    hdrs = ["xrt_client.h"],
+    deps = [
+        ":xrt_tf_client",
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:hlo_proto",
+        "//tensorflow/compiler/xrt:xrt_proto",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
 tf_cc_test(
     name = "xrt_client_test",
     srcs = ["xrt_client_test.cc"],
     data = [":xrt_testlib_server"],
     deps = [
+        ":xrt_client",
         ":xrt_grpc_eager_client",
         ":xrt_tf_client",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:eager_service_proto_cc",
         "//tensorflow/core:framework",
