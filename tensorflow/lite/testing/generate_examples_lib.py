@@ -106,6 +106,16 @@ class Options(object):
     self.known_bugs = KNOWN_BUGS
 
 
+_MAKE_TEST_FUNCTIONS_MAP = {}
+
+
+def register_make_test_function(function, name=None):
+  if name is None:
+    name = function.__name__
+  _MAKE_TEST_FUNCTIONS_MAP[name] = function
+  return function
+
+
 class ExtraTocoOptions(object):
   """Additional toco options besides input, output, shape."""
 
@@ -287,6 +297,7 @@ def freeze_graph(session, outputs):
       session, session.graph.as_graph_def(), [x.op.name for x in outputs])
 
 
+@register_make_test_function
 def make_control_dep_tests(options):
   """Make a set of tests that use control dependencies."""
 
@@ -647,18 +658,22 @@ def make_pool_tests(pool_op_in):
   return f
 
 
+@register_make_test_function
 def make_l2_pool_tests(options):
   make_pool_tests(make_l2_pool)(options, expected_tf_failures=80)
 
 
+@register_make_test_function
 def make_avg_pool_tests(options):
   make_pool_tests(tf.nn.avg_pool)(options, expected_tf_failures=80)
 
 
+@register_make_test_function
 def make_max_pool_tests(options):
   make_pool_tests(tf.nn.max_pool)(options, expected_tf_failures=80)
 
 
+@register_make_test_function
 def make_abs_tests(options):
   """Make a set of tests to do relu."""
 
@@ -682,6 +697,7 @@ def make_abs_tests(options):
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
+@register_make_test_function
 def make_elu_tests(options):
   """Make a set of tests to do (float) tf.nn.elu."""
 
@@ -709,6 +725,7 @@ def make_elu_tests(options):
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
+@register_make_test_function
 def make_relu_tests(options):
   """Make a set of tests to do relu."""
 
@@ -733,6 +750,7 @@ def make_relu_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_relu1_tests(options):
   """Make a set of tests to do relu1."""
 
@@ -759,6 +777,7 @@ def make_relu1_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_relu6_tests(options):
   """Make a set of tests to do relu6."""
 
@@ -783,6 +802,7 @@ def make_relu6_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_prelu_tests(options):
   """Make a set of tests to do PReLU."""
 
@@ -840,6 +860,7 @@ def make_prelu_tests(options):
       use_frozen_graph=True)
 
 
+@register_make_test_function
 def make_leaky_relu_tests(options):
   """Make a set of tests to do LeakyRelu."""
 
@@ -870,6 +891,7 @@ def make_leaky_relu_tests(options):
 
 # This function tests various TensorFLow functions that generates Const op,
 # including `tf.ones`, `tf.zeros` and random functions.
+@register_make_test_function
 def make_constant_tests(options):
   """Make a set of tests to do constant ops."""
 
@@ -1092,37 +1114,44 @@ def make_reduce_tests(reduce_op,
   return f
 
 
+@register_make_test_function
 def make_mean_tests(options):
   """Make a set of tests to do mean."""
   return make_reduce_tests(tf.reduce_mean)(options)
 
 
+@register_make_test_function
 def make_sum_tests(options):
   """Make a set of tests to do sum."""
   return make_reduce_tests(tf.reduce_sum)(options)
 
 
+@register_make_test_function
 def make_reduce_prod_tests(options):
   """Make a set of tests to do prod."""
   # set min max value to be -2, 2 to avoid overflow.
   return make_reduce_tests(tf.reduce_prod, -2, 2)(options)
 
 
+@register_make_test_function
 def make_reduce_max_tests(options):
   """Make a set of tests to do max."""
   return make_reduce_tests(tf.reduce_max)(options)
 
 
+@register_make_test_function
 def make_reduce_min_tests(options):
   """Make a set of tests to do min."""
   return make_reduce_tests(tf.reduce_min)(options)
 
 
+@register_make_test_function
 def make_reduce_any_tests(options):
   """Make a set of tests to do any."""
   return make_reduce_tests(tf.reduce_any, boolean_tensor_only=True)(options)
 
 
+@register_make_test_function
 def make_exp_tests(options):
   """Make a set of tests to do exp."""
 
@@ -1151,6 +1180,7 @@ def make_exp_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_cos_tests(options):
   """Make a set of tests to do cos."""
 
@@ -1179,6 +1209,7 @@ def make_cos_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_log_softmax_tests(options):
   """Make a set of tests to do log_softmax."""
 
@@ -1210,6 +1241,7 @@ def make_log_softmax_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_maximum_tests(options):
   """Make a set of tests to do maximum."""
 
@@ -1250,6 +1282,7 @@ def make_maximum_tests(options):
       expected_tf_failures=8)
 
 
+@register_make_test_function
 def make_minimum_tests(options):
   """Make a set of tests to do minimum."""
 
@@ -1295,10 +1328,12 @@ def make_binary_op_tests_func(binary_operator):
   return lambda options: make_binary_op_tests(options, binary_operator)
 
 
+@register_make_test_function
 def make_add_tests(options):
   make_binary_op_tests(options, tf.add)
 
 
+@register_make_test_function
 def make_add_n_tests(options):
   """Make a set of tests for AddN op."""
 
@@ -1344,34 +1379,42 @@ def make_add_n_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_div_tests(options):
   make_binary_op_tests(options, tf.div)
 
 
+@register_make_test_function
 def make_sub_tests(options):
   make_binary_op_tests(options, tf.subtract)
 
 
+@register_make_test_function
 def make_mul_tests(options):
   make_binary_op_tests(options, tf.multiply)
 
 
+@register_make_test_function
 def make_pow_tests(options):
   make_binary_op_tests(options, tf.pow, expected_tf_failures=7)
 
 
+@register_make_test_function
 def make_floor_div_tests(options):
   make_binary_op_tests(options, tf.floor_div)
 
 
+@register_make_test_function
 def make_floor_mod_tests(options):
   make_binary_op_tests(options, tf.floormod)
 
 
+@register_make_test_function
 def make_squared_difference_tests(options):
   make_binary_op_tests(options, tf.squared_difference)
 
 
+@register_make_test_function
 def make_gather_tests(options):
   """Make a set of tests to do gather."""
 
@@ -1425,6 +1468,7 @@ def make_gather_tests(options):
       expected_tf_failures=12)
 
 
+@register_make_test_function
 def make_gather_nd_tests(options):
   """Make a set of tests to do gather_nd."""
 
@@ -1474,6 +1518,7 @@ def make_gather_nd_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_gather_with_constant_tests(options):
   """Make a set of test which feed a constant to gather toco."""
 
@@ -1503,6 +1548,7 @@ def make_gather_with_constant_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_global_batch_norm_tests(options):
   """Make a set of tests to do batch_norm_with_global_normalization."""
 
@@ -1542,6 +1588,7 @@ def make_global_batch_norm_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_fused_batch_norm_tests(options):
   """Make a set of tests to do fused_batch_norm."""
 
@@ -1580,6 +1627,7 @@ def make_fused_batch_norm_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_conv_tests(options):
   """Make a set of tests to do convolution."""
 
@@ -1646,6 +1694,7 @@ def make_conv_tests(options):
 
 # Note: This is a regression test for a bug (b/122651451) that Toco incorrectly
 # erases the reduction indices array while it's shared with other ops.
+@register_make_test_function
 def make_l2norm_shared_epsilon_tests(options):
   """Regression test for a bug (b/122651451)."""
 
@@ -1677,6 +1726,7 @@ def make_l2norm_shared_epsilon_tests(options):
 # Note: This is a regression test for a bug (b/112436267) that Toco incorrectly
 # fuses weights when multiple Conv2D/FULLY_CONNECTED ops share the same constant
 # weight tensor.
+@register_make_test_function
 def make_conv_with_shared_weights_tests(options):
   """Make a test where 2 Conv ops shared the same constant weight tensor."""
 
@@ -1750,6 +1800,7 @@ def make_conv_with_shared_weights_tests(options):
 # Note: This is a regression test for a bug (b/112303004) that Toco incorrectly
 # transforms Conv into DepthwiseConv when two Conv ops share the same constant
 # weight tensor.
+@register_make_test_function
 def make_conv_to_depthwiseconv_with_shared_weights_tests(options):
   """Make a test where 2 Conv ops shared the same constant weight tensor."""
 
@@ -1812,6 +1863,7 @@ def make_conv_to_depthwiseconv_with_shared_weights_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_depthwiseconv_tests(options):
   """Make a set of tests to do convolution."""
 
@@ -1891,6 +1943,7 @@ def make_depthwiseconv_tests(options):
       expected_tf_failures=4)
 
 
+@register_make_test_function
 def make_split_tests(options):
   """Make a set of tests to do tf.split."""
 
@@ -1919,6 +1972,7 @@ def make_split_tests(options):
       expected_tf_failures=112)
 
 
+@register_make_test_function
 def make_splitv_tests(options):
   """Make a set of tests to do tf.split_v."""
 
@@ -1947,6 +2001,7 @@ def make_splitv_tests(options):
       expected_tf_failures=158)
 
 
+@register_make_test_function
 def make_concat_tests(options):
   """Make a set of tests to do concatenation."""
 
@@ -1994,6 +2049,7 @@ def make_concat_tests(options):
       expected_tf_failures=60)
 
 
+@register_make_test_function
 def make_fully_connected_tests(options):
   """Make a set of tests to do fully_connected."""
 
@@ -2060,6 +2116,7 @@ def make_fully_connected_tests(options):
       expected_tf_failures=10)
 
 
+@register_make_test_function
 def make_l2norm_tests(options):
   """Make a set of tests to do l2norm."""
 
@@ -2095,6 +2152,7 @@ def make_l2norm_tests(options):
       expected_tf_failures=9)
 
 
+@register_make_test_function
 def make_local_response_norm_tests(options):
   """Make a set of tests to do local_response_norm."""
 
@@ -2125,6 +2183,7 @@ def make_local_response_norm_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_pad_tests(options):
   """Make a set of tests to do pad."""
 
@@ -2184,6 +2243,7 @@ def make_pad_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_padv2_tests(options):
   """Make a set of tests to do padv2."""
 
@@ -2247,6 +2307,7 @@ def make_padv2_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_reshape_tests(options):
   """Make a set of tests to do reshape."""
 
@@ -2292,6 +2353,7 @@ def make_reshape_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_shape_tests(options):
   """Make a set of tests to do shape."""
 
@@ -2318,6 +2380,7 @@ def make_shape_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_rank_tests(options):
   """Make a set of tests to do rank."""
 
@@ -2341,6 +2404,7 @@ def make_rank_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_one_hot_tests(options):
   """Make a set of tests to do one_hot."""
 
@@ -2400,6 +2464,7 @@ def make_one_hot_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_resize_bilinear_tests(options):
   """Make a set of tests to do resize_bilinear."""
 
@@ -2426,6 +2491,7 @@ def make_resize_bilinear_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_resize_nearest_neighbor_tests(options):
   """Make a set of tests to do resize_nearest_neighbor."""
 
@@ -2456,6 +2522,7 @@ def make_resize_nearest_neighbor_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_sigmoid_tests(options):
   """Make a set of tests to do sigmoid."""
 
@@ -2479,6 +2546,7 @@ def make_sigmoid_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_softmax_tests(options):
   """Make a set of tests to do softmax."""
 
@@ -2507,6 +2575,7 @@ def make_softmax_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_space_to_depth_tests(options):
   """Make a set of tests to do space_to_depth."""
 
@@ -2531,6 +2600,7 @@ def make_space_to_depth_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_space_to_batch_nd_tests(options):
   """Make a set of tests to do space_to_batch_nd."""
 
@@ -2608,6 +2678,7 @@ def make_space_to_batch_nd_tests(options):
       expected_tf_failures=56)
 
 
+@register_make_test_function
 def make_batch_to_space_nd_tests(options):
   """Make a set of tests to do batch_to_space_nd."""
 
@@ -2671,6 +2742,7 @@ def make_batch_to_space_nd_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_transpose_tests(options):
   """Make a set of tests to do transpose."""
 
@@ -2726,6 +2798,7 @@ def make_transpose_tests(options):
       expected_tf_failures=9)
 
 
+@register_make_test_function
 def make_squeeze_tests(options):
   """Make a set of tests to do squeeze."""
 
@@ -2769,6 +2842,7 @@ def make_squeeze_tests(options):
       expected_tf_failures=12)
 
 
+@register_make_test_function
 def make_squeeze_transpose_tests(options):
   """Make a set of tests to do squeeze followed by transpose."""
 
@@ -2870,6 +2944,7 @@ def _make_strided_slice_tests(options, test_parameters,
       expected_tf_failures=expected_tf_failures)
 
 
+@register_make_test_function
 def make_strided_slice_tests(options):
   """Make a set of tests to do strided_slice."""
 
@@ -2944,6 +3019,7 @@ def make_strided_slice_tests(options):
   _make_strided_slice_tests(options, test_parameters, expected_tf_failures=2)
 
 
+@register_make_test_function
 def make_strided_slice_1d_exhaustive_tests(options):
   """Make a set of exhaustive tests for 1D strided_slice."""
   test_parameters = [
@@ -2967,6 +3043,7 @@ def make_strided_slice_1d_exhaustive_tests(options):
 # For verifying https://github.com/tensorflow/tensorflow/issues/23599
 # TODO(chaomei): refactor the test to cover more cases, like negative stride,
 # negative array index etc.
+@register_make_test_function
 def make_resolve_constant_strided_slice_tests(options):
   """Make a set of tests to show strided_slice yields incorrect results."""
 
@@ -2993,6 +3070,7 @@ def make_resolve_constant_strided_slice_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_lstm_tests(options):
   """Make a set of tests to do basic Lstm cell."""
 
@@ -3079,6 +3157,7 @@ def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
       padding=padding, data_format=data_format))
 
 
+@register_make_test_function
 def make_topk_tests(options):
   """Make a set of tests to do topk."""
 
@@ -3117,6 +3196,7 @@ def make_topk_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_arg_min_max_tests(options):
   """Make a set of tests to do arg_max."""
 
@@ -3154,6 +3234,7 @@ def make_arg_min_max_tests(options):
       expected_tf_failures=4)
 
 
+@register_make_test_function
 def make_equal_tests(options):
   """Make a set of tests to do equal."""
 
@@ -3194,6 +3275,7 @@ def make_equal_tests(options):
       expected_tf_failures=3)
 
 
+@register_make_test_function
 def make_not_equal_tests(options):
   """Make a set of tests to do not equal."""
 
@@ -3233,6 +3315,7 @@ def make_not_equal_tests(options):
       expected_tf_failures=3)
 
 
+@register_make_test_function
 def make_greater_tests(options):
   """Make a set of tests to do greater."""
 
@@ -3272,6 +3355,7 @@ def make_greater_tests(options):
       expected_tf_failures=3)
 
 
+@register_make_test_function
 def make_greater_equal_tests(options):
   """Make a set of tests to do greater_equal."""
 
@@ -3311,6 +3395,7 @@ def make_greater_equal_tests(options):
       expected_tf_failures=3)
 
 
+@register_make_test_function
 def make_less_tests(options):
   """Make a set of tests to do less."""
 
@@ -3350,6 +3435,7 @@ def make_less_tests(options):
       expected_tf_failures=3)
 
 
+@register_make_test_function
 def make_less_equal_tests(options):
   """Make a set of tests to do less_equal."""
 
@@ -3389,6 +3475,7 @@ def make_less_equal_tests(options):
       expected_tf_failures=3)
 
 
+@register_make_test_function
 def make_floor_tests(options):
   """Make a set of tests to do floor."""
 
@@ -3414,6 +3501,7 @@ def make_floor_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_ceil_tests(options):
   """Make a set of tests to do ceil."""
 
@@ -3440,6 +3528,7 @@ def make_ceil_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_neg_tests(options):
   """Make a set of tests to do neg."""
 
@@ -3465,6 +3554,7 @@ def make_neg_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_zeros_like_tests(options):
   """Make a set of tests to do zeros_like."""
 
@@ -3527,31 +3617,37 @@ def _make_elementwise_tests(op):
   return f
 
 
+@register_make_test_function
 def make_sin_tests(options):
   """Make a set of tests to do sin."""
   return _make_elementwise_tests(tf.sin)(options)
 
 
+@register_make_test_function
 def make_log_tests(options):
   """Make a set of tests to do log."""
   return _make_elementwise_tests(tf.log)(options)
 
 
+@register_make_test_function
 def make_sqrt_tests(options):
   """Make a set of tests to do sqrt."""
   return _make_elementwise_tests(tf.sqrt)(options)
 
 
+@register_make_test_function
 def make_rsqrt_tests(options):
   """Make a set of tests to do 1/sqrt."""
   return _make_elementwise_tests(tf.rsqrt)(options)
 
 
+@register_make_test_function
 def make_square_tests(options):
   """Make a set of tests to do square."""
   return _make_elementwise_tests(tf.square)(options)
 
 
+@register_make_test_function
 def make_where_tests(options):
   """Make a set of tests to do where."""
 
@@ -3585,6 +3681,7 @@ def make_where_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_slice_tests(options):
   """Make a set of tests to do slice."""
 
@@ -3646,6 +3743,7 @@ def make_slice_tests(options):
       expected_tf_failures=18)
 
 
+@register_make_test_function
 def make_conv2d_transpose_tests(options):
   """Make a set of tests to do transpose_conv."""
 
@@ -3688,6 +3786,7 @@ def make_conv2d_transpose_tests(options):
 # "conv2d" operation to get the output, then we use the output to feed in
 # tf.nn.conv2d_backprop_input.
 # This test will depend on the "conv2d" operation's correctness.
+@register_make_test_function
 def make_transpose_conv_tests(options):
   """Make a set of tests to do transpose_conv."""
 
@@ -3745,6 +3844,7 @@ def make_transpose_conv_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_tile_tests(options):
   """Make a set of tests to do tile."""
   test_parameters = [{
@@ -3784,6 +3884,7 @@ def make_tile_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_expand_dims_tests(options):
   """Make a set of tests to do expand_dims."""
 
@@ -3813,6 +3914,7 @@ def make_expand_dims_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_sparse_to_dense_tests(options):
   """Make a set of tests to do sparse to dense."""
 
@@ -3875,6 +3977,7 @@ def make_sparse_to_dense_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_pack_tests(options):
   """Make a set of tests to do stack."""
 
@@ -3938,6 +4041,7 @@ def make_pack_tests(options):
       expected_tf_failures=72)
 
 
+@register_make_test_function
 def make_unpack_tests(options):
   """Make a set of tests to do unstack."""
 
@@ -3968,6 +4072,7 @@ def make_unpack_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_range_tests(options):
   """Make a set of tests to do range."""
 
@@ -3999,6 +4104,7 @@ def make_range_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_fill_tests(options):
   """Make a set of tests to do fill."""
 
@@ -4072,16 +4178,19 @@ def _make_logical_tests(op):
   return logical
 
 
+@register_make_test_function
 def make_logical_or_tests(options):
   """Make a set of tests to do logical_or."""
   return _make_logical_tests(tf.logical_or)(options, expected_tf_failures=1)
 
 
+@register_make_test_function
 def make_logical_and_tests(options):
   """Make a set of tests to do logical_and."""
   return _make_logical_tests(tf.logical_and)(options, expected_tf_failures=1)
 
 
+@register_make_test_function
 def make_logical_xor_tests(options):
   """Make a set of tests to do logical_xor.
 
@@ -4090,6 +4199,7 @@ def make_logical_xor_tests(options):
   return _make_logical_tests(tf.logical_xor)(options, expected_tf_failures=1)
 
 
+@register_make_test_function
 def make_mirror_pad_tests(options):
   """Make a set of tests to do mirror_pad."""
 
@@ -4173,6 +4283,7 @@ def make_mirror_pad_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_unroll_batch_matmul_tests(options):
   """Make a set of tests to test unroll_batch_matmul."""
 
@@ -4213,6 +4324,7 @@ def make_unroll_batch_matmul_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_placeholder_with_default_tests(options):
   """Make a set of tests to test placeholder_with_default."""
 
@@ -4239,6 +4351,7 @@ def make_placeholder_with_default_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_unique_tests(options):
   """Make a set of tests for Unique op."""
 
@@ -4284,6 +4397,7 @@ def make_unique_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_reverse_v2_tests(options):
   """Make a set of tests to do reverse_v2."""
 
@@ -4314,6 +4428,7 @@ def make_reverse_v2_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_reverse_sequence_tests(options):
   """Make a set of tests to do reverse_sequence."""
 
@@ -4361,6 +4476,7 @@ def make_reverse_sequence_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_matrix_diag_tests(options):
   """Make a set of tests for tf.matrix_diag op."""
 
@@ -4388,6 +4504,7 @@ def make_matrix_diag_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_matrix_set_diag_tests(options):
   """Make a set of tests for tf.matrix_set_diag op."""
 
@@ -4421,6 +4538,7 @@ def make_matrix_set_diag_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 def make_eye_tests(options):
   """Make a set of tests for tf.eye op."""
 
@@ -4461,6 +4579,7 @@ def make_eye_tests(options):
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
 
 
+@register_make_test_function
 @test_util.enable_control_flow_v2
 def make_unidirectional_sequence_lstm_tests(options):
   """Make a set of tests to do unidirectional_sequence_lstm."""
@@ -4538,6 +4657,7 @@ def make_unidirectional_sequence_lstm_tests(options):
       use_frozen_graph=True)
 
 
+@register_make_test_function
 @test_util.enable_control_flow_v2
 def make_unidirectional_sequence_rnn_tests(options):
   """Make a set of tests to do unidirectional_sequence_rnn."""
@@ -4634,11 +4754,8 @@ def generate_examples(options):
   # generated_test_conversion_modes() in build_def.bzl.
   test_function = ("make_%s_tests" % (out.replace(".zip", "").replace(
       "pb2lite", "").replace("toco-flex", "").rstrip("_")))
-  if test_function not in globals():
+  if test_function not in _MAKE_TEST_FUNCTIONS_MAP:
     raise RuntimeError("Can't find a test function to create %r. Tried %r" %
                        (out, test_function))
 
-  # TODO(ahentz): accessing globals() is not very elegant. We should either
-  # break this file into multiple tests or use decorator-based registration to
-  # avoid using globals().
-  globals()[test_function](options)
+  _MAKE_TEST_FUNCTIONS_MAP[test_function](options)
