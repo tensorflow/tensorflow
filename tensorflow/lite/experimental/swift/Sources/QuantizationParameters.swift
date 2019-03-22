@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import Foundation
-
 /// Parameters that determine the mapping of quantized values to real values. Quantized values can
 /// be mapped to float values using the following conversion:
 /// `realValue = scale * (quantizedValue - zeroPoint)`.
