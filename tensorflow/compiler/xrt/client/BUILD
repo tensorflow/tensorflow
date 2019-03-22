@@ -30,12 +30,37 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "xrt_tf_client",
+    srcs = ["xrt_tf_client.cc"],
+    hdrs = ["xrt_tf_client.h"],
+    deps = [
+        ":xrt_grpc_eager_client",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:eager_service_proto_cc",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_channel",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
+    ],
+)
+
 tf_cc_test(
     name = "xrt_client_test",
     srcs = ["xrt_client_test.cc"],
     data = [":xrt_testlib_server"],
     deps = [
         ":xrt_grpc_eager_client",
+        ":xrt_tf_client",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/core:eager_service_proto_cc",
