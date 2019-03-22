@@ -89,6 +89,7 @@ void TfLiteTensorDataFree(TfLiteTensor* t) {
     free(t->data.raw);
   }
   t->data.raw = NULL;
+  t->allocation_type = kTfLiteMemNone;
 }
 
 void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
