@@ -211,6 +211,31 @@ class TestStrategyTest(test.TestCase):
         ds_context.experimental_set_strategy(None)
     _assert_in_default_state(self)
 
+  def testSameScopeNesting(self):
+    _assert_in_default_state(self)
+    dist = _TestStrategy()
+    scope_a = dist.scope()
+    with scope_a:
+      self.assertIs(dist, ds_context.get_strategy())
+      scope_b = dist.scope()
+      with scope_b:
+        self.assertIs(dist, ds_context.get_strategy())
+        with scope_a:
+          self.assertIs(dist, ds_context.get_strategy())
+        self.assertIs(dist, ds_context.get_strategy())
+      self.assertIs(dist, ds_context.get_strategy())
+      dist2 = _TestStrategy()
+      scope2 = dist2.scope()
+      with self.assertRaisesRegexp(
+          RuntimeError,
+          "Mixing different tf.distribute.Strategy objects"):
+        with scope2:
+          pass
+    _assert_in_default_state(self)
+    with scope_b:
+      self.assertIs(dist, ds_context.get_strategy())
+    _assert_in_default_state(self)
+
 
 class DefaultDistributionStrategyTest(test.TestCase):
 
