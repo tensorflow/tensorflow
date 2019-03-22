@@ -318,7 +318,7 @@ class NNTest(PForTestCase):
 
   def test_max_pool3d(self):
 
-    if test_lib.is_built_with_rocm():
+    if test.is_built_with_rocm():
       self.skipTest("5D tensors are not yet supported in ROCm")
 
     with backprop.GradientTape(persistent=True) as g:
