@@ -26,6 +26,7 @@ limitations under the License.
 #include "net/grpc/public/include/grpcpp/generic/generic_stub.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
@@ -51,23 +52,28 @@ class XrtGrpcEagerClient {
 
   void CreateContextAsync(const eager::CreateContextRequest* request,
                           eager::CreateContextResponse* response,
-                          StatusCallback done);
+                          StatusCallback done,
+                          CallOptions* call_opts = nullptr);
   void EnqueueAsync(const eager::EnqueueRequest* request,
-                    eager::EnqueueResponse* response, StatusCallback done);
+                    eager::EnqueueResponse* response, StatusCallback done,
+                    CallOptions* call_opts = nullptr);
   void WaitQueueDoneAsync(const eager::WaitQueueDoneRequest* request,
                           eager::WaitQueueDoneResponse* response,
-                          StatusCallback done);
+                          StatusCallback done,
+                          CallOptions* call_opts = nullptr);
   void KeepAliveAsync(const eager::KeepAliveRequest* request,
-                      eager::KeepAliveResponse* response, StatusCallback done);
+                      eager::KeepAliveResponse* response, StatusCallback done,
+                      CallOptions* call_opts = nullptr);
   void CloseContextAsync(const eager::CloseContextRequest* request,
                          eager::CloseContextResponse* response,
-                         StatusCallback done);
+                         StatusCallback done, CallOptions* call_opts = nullptr);
   void RegisterFunctionAsync(const eager::RegisterFunctionRequest* request,
                              eager::RegisterFunctionResponse* response,
-                             StatusCallback done);
+                             StatusCallback done,
+                             CallOptions* call_opts = nullptr);
   void SendTensorAsync(const eager::SendTensorRequest* request,
-                       eager::SendTensorResponse* response,
-                       StatusCallback done);
+                       eager::SendTensorResponse* response, StatusCallback done,
+                       CallOptions* call_opts = nullptr);
 
   // The following two methods are actually from the WorkerService API, not
   // EagerService, but are necessary for using remote Eager, and we include them
@@ -75,7 +81,8 @@ class XrtGrpcEagerClient {
 
   // We use RecvTensor to copy tensors back from a remote worker to the client.
   void RecvTensorAsync(const RecvTensorRequest* request,
-                       RecvTensorResponse* response, StatusCallback done);
+                       RecvTensorResponse* response, StatusCallback done,
+                       CallOptions* call_opts = nullptr);
 
   // We use GetStatus to discover device incarnation values for use in
   // RecvTensor.
@@ -83,17 +90,22 @@ class XrtGrpcEagerClient {
   // TFE server implementation. Remove this API call and use the device
   // information from CreateContext once the bug fix is deployed everywhere.
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response, StatusCallback done);
+                      GetStatusResponse* response, StatusCallback done,
+                      CallOptions* call_opts = nullptr);
 
   // Helper method for calling any of the ...Async methods synchronously.
   template <typename Request, typename Response, typename Method>
-  Status SyncCall(Method m, const Request* request, Response* response) {
+  Status SyncCall(Method m, const Request* request, Response* response,
+                  CallOptions* call_opts = nullptr) {
     absl::Notification done;
     Status status;
-    (this->*(m))(request, response, [&](Status s) {
-      status = s;
-      done.Notify();
-    });
+    (this->*(m))(
+        request, response,
+        [&](Status s) {
+          status = s;
+          done.Notify();
+        },
+        call_opts);
     done.WaitForNotification();
     return status;
   }
