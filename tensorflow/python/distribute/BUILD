@@ -547,3 +547,18 @@ py_test(
         "//tensorflow/python/keras:backend",
     ],
 )
+
+py_library(
+    name = "multi_worker_test_base",
+    srcs = ["multi_worker_test_base.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
+    ],
+)

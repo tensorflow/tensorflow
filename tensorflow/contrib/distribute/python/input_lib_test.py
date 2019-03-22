@@ -19,11 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
