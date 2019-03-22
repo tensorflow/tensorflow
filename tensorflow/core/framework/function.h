@@ -311,6 +311,18 @@ class FunctionCallFrame : public CallFrameInterface {
 // This class is thread-safe.
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
+  // Ops created for function arguments bear the name given by `kArgOp`; those
+  // created for return values bear the name given by `kRetOp`.
+  static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kDeviceArgOp = "_DeviceArg";
+  static constexpr const char* const kRetOp = "_Retval";
+  static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
+  static constexpr const char* const kIntsOnDeviceAttr =
+      "experimental_ints_on_device";
+
+  static constexpr const char* const kGradientOp = "SymbolicGradient";
+  static constexpr const char* const kFuncAttr = "f";
+
   // Note: This constructor grabs `lib_def`'s lock in shared mode.
   FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
@@ -321,7 +333,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       delete;
 
   // Returns True if the library contains `func`, False otherwise.
-  bool Contains(const string& func) const;
+  virtual bool Contains(const string& func) const;
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
@@ -392,19 +404,8 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Generates new function name with the specified prefix that is unique
   // across this library.
-  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
-
-  // Ops created for function arguments bear the name given by `kArgOp`; those
-  // created for return values bear the name given by `kRetOp`.
-  static constexpr const char* const kArgOp = "_Arg";
-  static constexpr const char* const kDeviceArgOp = "_DeviceArg";
-  static constexpr const char* const kRetOp = "_Retval";
-  static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
-  static constexpr const char* const kIntsOnDeviceAttr =
-      "experimental_ints_on_device";
-
-  static constexpr const char* const kGradientOp = "SymbolicGradient";
-  static constexpr const char* const kFuncAttr = "f";
+  virtual string UniqueFunctionName(StringPiece prefix) const
+      LOCKS_EXCLUDED(mu_);
 
   // Given a node def 'ndef', inspects attributes of the callee
   // function to derive the attribute 'value' for 'attr'. Returns OK
@@ -420,15 +421,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status GetAttr(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
-  FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
+  virtual FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
 
-  size_t num_functions() const {
+  virtual size_t num_functions() const {
     tf_shared_lock l(mu_);
     return function_defs_.size();
   }
 
   // Returns all the function names in the FunctionLibraryDefinition.
-  std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
+  virtual std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
 
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
@@ -436,10 +437,20 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Returns a copy of `*this` with only the subset of functions that are
   // reachable from the nodes of `graph` or `func`.
-  FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
-  FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+  //
+  // NOTE: This method will only consider graph-level dependencies which might
+  // result in pruning functions that are actually "reachable". For example, the
+  // ReduceDatasetOp takes as an input a DT_VARIANT that represents a dataset
+  // and this method will fail to identify any functions used in the dataset as
+  // reachable.
+  virtual FunctionLibraryDefinition ReachableDefinitions(
+      const GraphDef& graph) const;
+  virtual FunctionLibraryDefinition ReachableDefinitions(
+      const FunctionDef& func) const;
 
  private:
+  friend class FunctionLibraryDefinitionOverlay;
+
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
@@ -449,27 +460,22 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     OpRegistrationData op_registration_data;
   };
 
-  const FunctionDef* FindHelper(const string& func) const
+  virtual const FunctionDef* FindHelper(const string& func) const
       SHARED_LOCKS_REQUIRED(mu_);
   string FindGradientHelper(const string& func) const
       SHARED_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
+  virtual Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  mutable mutex mu_;
-  const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
-      function_defs_ GUARDED_BY(mu_);
-  gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
-
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
-  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const LOCKS_EXCLUDED(mu_);
+  virtual const FunctionDef* GetAttrImpl(const NodeDef& ndef) const
+      LOCKS_EXCLUDED(mu_);
 
   // Remove all functions in `funcs` and all gradients of functions in
   // `funcs_with_grads` from this library.
@@ -480,11 +486,75 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Remove `func` from the library. Returns non-OK Status unless `func` is in
   // the library. This should only be called when there is a guarantee that the
   // function being removed hasn't been retrieved with `Find`.
-  Status RemoveFunctionHelper(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  virtual Status RemoveFunctionHelper(const string& func)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove gradient of function `func` from the library. Returns non-OK Status
   // unless `func` has a gradient.
   Status RemoveGradient(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  mutable mutex mu_;
+  const OpRegistryInterface* const default_registry_;
+  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
+      function_defs_ GUARDED_BY(mu_);
+  gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
+};
+
+// This class can be used to extend an immutable `FunctionLibraryDefinition`
+// "base" with a mutable "overlay", providing an alternative to copying the base
+// in order to extend it.
+//
+// Any operations that mutate an instance of this class (e.g. `AddFunctionDef`
+// or `RemoveFunction`) will only affect the overlay, while operations that
+// access information about an instance of this class (e.g. `Contains` or
+// `num_functions`) will consider both the base and the overlay.
+//
+// This class is thread-safe but does not assume the ownership of the base. This
+// means that to use it safely, the lifetime of the base should extend past the
+// lifetime of the overlay.
+class FunctionLibraryDefinitionOverlay : public FunctionLibraryDefinition {
+ public:
+  FunctionLibraryDefinitionOverlay(
+      const FunctionLibraryDefinition* base_lib_def)
+      : FunctionLibraryDefinition(base_lib_def->default_registry(), {}),
+        base_lib_def_(base_lib_def) {}
+
+  bool Contains(const string& func) const override;
+
+  Status LookUp(const string& op_type_name,
+                const OpRegistrationData** op_reg_data) const override
+      LOCKS_EXCLUDED(mu_);
+
+  string UniqueFunctionName(StringPiece prefix) const override
+      LOCKS_EXCLUDED(mu_);
+
+  FunctionDefLibrary ToProto() const override LOCKS_EXCLUDED(mu_);
+
+  size_t num_functions() const override {
+    tf_shared_lock l(mu_);
+    return function_defs_.size();
+  }
+
+  std::vector<string> ListFunctionNames() const override LOCKS_EXCLUDED(mu_);
+
+  FunctionLibraryDefinition ReachableDefinitions(
+      const GraphDef& graph) const override;
+  FunctionLibraryDefinition ReachableDefinitions(
+      const FunctionDef& func) const override;
+
+ protected:
+  const FunctionDef* FindHelper(const string& func) const override
+      SHARED_LOCKS_REQUIRED(mu_);
+
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  Status RemoveFunctionHelper(const string& func) override
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+ private:
+  const FunctionLibraryDefinition* const base_lib_def_
+      GUARDED_BY(mu_);  // not owned
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -532,17 +602,13 @@ class FunctionLibraryRuntime {
 
     // This interface is EXPERIMENTAL and subject to change.
     //
-    // If non-null, the runtime will use `overlay_lib` to resolve
-    // function(s) named in `function_name` and `attrs`. Otherwise,
-    // the runtime will use its internal library.
-    // NOTE(mrry): If provided, all functions defined in `overlay_lib`
-    // must be self-contained, and cannot refer to functions defined
-    // in other libraries.
-    // TODO(mrry): Provide a mechanism for sharing core functions
-    // between a set of libraries (e.g. by allowing a
-    // `FunctionLibraryDefinition` to store an `outer_scope` pointer
-    // and implementing name resolution across libraries).
-    const FunctionLibraryDefinition* overlay_lib = nullptr;
+    // If non-null, the runtime will use `lib_def` to resolve function(s) named
+    // in `function_name` and `attrs`. Otherwise, the runtime will use its
+    // internal library.
+    //
+    // NOTE(mrry): If provided, all functions defined in `lib_def` must be
+    // self-contained, and cannot refer to functions defined in other libraries.
+    const FunctionLibraryDefinition* lib_def = nullptr;
 
     // This interface is EXPERIMENTAL and subject to change.
     //
@@ -656,9 +722,10 @@ class FunctionLibraryRuntime {
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
   // Returns true iff the function named `function_name` is stateful.
+  //
   // NOTE(mrry): This method assumes that the runtime is associated with a
   // default function library, and looks up `function_name` in that library.
-  // It does not support overlay libraries.
+  // It does not support overriding the function library.
   virtual bool IsStateful(const string& function_name) = 0;
 
   // Returns the device on which the function executes.
@@ -673,9 +740,11 @@ class FunctionLibraryRuntime {
   virtual const DeviceMgr* device_mgr() const = 0;
 
   // Returns the function library definition that backs this runtime.
+  //
   // NOTE(mrry): The returned library definition is the default function library
-  // for this runtime. The runtime may instantiate functions from separate
-  // overlay libraries, which are not returned by this function.
+  // for this runtime. The caller may override the function library used by the
+  // runtime to instantiate functions, which will not be reflected in the return
+  // value of this function.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
 

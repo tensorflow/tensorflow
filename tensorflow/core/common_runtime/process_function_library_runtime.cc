@@ -543,7 +543,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   }
 
   const FunctionLibraryDefinition* lib_def =
-      options.overlay_lib == nullptr ? lib_def_ : options.overlay_lib;
+      options.lib_def == nullptr ? lib_def_ : options.lib_def;
 
   const FunctionDef* fdef = lib_def->Find(function_name);
   if (fdef == nullptr) {
@@ -578,9 +578,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       options.input_devices, options.output_devices, device_set, graph.get()));
 
   std::unique_ptr<MultiDeviceFunctionData> data =
-      absl::make_unique<MultiDeviceFunctionData>(
-          function_name, function_key, ret_node_names.size(),
-          lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
+      absl::make_unique<MultiDeviceFunctionData>(function_name, function_key,
+                                                 ret_node_names.size(), lib_def,
+                                                 std::move(ret_types));
 
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
@@ -589,7 +589,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   session_options.config = options.config_proto;
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
-  optimization_options.flib_def = &data->overlay_lib_;
+  optimization_options.flib_def = &data->lib_def_;
   optimization_options.device_set = &device_set;
 
   DumpGraph("Before running PRE_PLACEMENT passes", graph.get());
@@ -630,7 +630,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     DumpGraph("Before running graph optimization fn", graph.get());
     Status status = options.optimize_graph_fn(
         std::move(ret_node_names), std::move(control_ret_node_names),
-        &data->overlay_lib_, device_set, cpu_device, &graph);
+        &data->lib_def_, device_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
@@ -698,7 +698,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   };
 
   int i = 0;
-  FunctionNameGenerator name_generator(&data->overlay_lib_, function_name);
+  FunctionNameGenerator name_generator(&data->lib_def_, function_name);
   for (const auto& pair : subgraphs) {
     i += 1;
     // TODO(iga): Fail gracefully if the set of devices corresponds
@@ -715,11 +715,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     TF_RETURN_IF_ERROR(
         GraphToFunctionDef(*subgraph, unique_name, control_ret, &shard));
     FunctionLibraryRuntime* target_flr = GetFLR(target);
-    TF_RETURN_IF_ERROR(data->overlay_lib_.AddFunctionDef(shard));
+    TF_RETURN_IF_ERROR(data->lib_def_.AddFunctionDef(shard));
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.executor_type = options.executor_type;
     opts.target = target;
-    opts.overlay_lib = &data->overlay_lib_;
+    opts.lib_def = &data->lib_def_;
     opts.create_kernels_eagerly = options.create_kernels_eagerly;
     opts.state_handle = options.state_handle;
     FunctionLibraryRuntime::Handle component_handle;

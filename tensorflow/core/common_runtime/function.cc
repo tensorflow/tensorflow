@@ -152,25 +152,25 @@ static Node* AddRet(Graph* g, Endpoint input, int index) {
 }
 
 // FunctionLibraryRuntime implementation that forwards all the function calls to
-// the base runtime implementation, and only overrides overlay lib in calls to
-// Instantiate (if caller doesn't provide its own overlay lib).
+// the base runtime implementation, and only overrides FunctionLibraryDefinition
+// in calls to Instantiate (if caller doesn't provide the
+// InstantiateOptions::lib_def option).
 //
-// When function library runtime (FunctionLibraryRuntimeImpl specifically)
-// instantiates function into a Graph object, it also creates an Executor for
+// When the function library runtime (FunctionLibraryRuntimeImpl specifically)
+// instantiates a function into a Graph object, it also creates an Executor for
 // it. That executor has a pointer to the function library runtime instance,
 // that is used to instantiate all nested function calls.
 //
-// If the original function was instantiated using overlay lib, we must preserve
-// that overlay lib in the executor's function library runtime.
+// The function library definition used to instantiate the function must be
+// preserved in the Executor's function library runtime.
 //
 // IMPORTANT: This runtime is intended for use only in executors created for
 // functions instantiated into a graph in FunctionLibraryRuntimeImpl.
 class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
  public:
-  FunctionLibraryRuntimeOverlay(
-      FunctionLibraryRuntime* base_flr,
-      const FunctionLibraryDefinition* overlay_lib_def)
-      : base_flr_(base_flr), overlay_lib_def_(overlay_lib_def) {}
+  FunctionLibraryRuntimeOverlay(FunctionLibraryRuntime* base_flr,
+                                const FunctionLibraryDefinition* lib_def)
+      : base_flr_(base_flr), lib_def_(lib_def) {}
   ~FunctionLibraryRuntimeOverlay() override;
 
   Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -209,8 +209,8 @@ class FunctionLibraryRuntimeOverlay : public FunctionLibraryRuntime {
                FunctionLibraryRuntime** out_flr) override;
 
  private:
-  FunctionLibraryRuntime* base_flr_;                  // not owned
-  const FunctionLibraryDefinition* overlay_lib_def_;  // not owned
+  FunctionLibraryRuntime* base_flr_;          // not owned
+  const FunctionLibraryDefinition* lib_def_;  // not owned
 };
 
 FunctionLibraryRuntimeOverlay::~FunctionLibraryRuntimeOverlay() = default;
@@ -218,11 +218,11 @@ FunctionLibraryRuntimeOverlay::~FunctionLibraryRuntimeOverlay() = default;
 Status FunctionLibraryRuntimeOverlay::Instantiate(
     const string& function_name, AttrSlice attrs,
     const InstantiateOptions& options, Handle* handle) {
-  // We automatically add overlay lib to all instantiations, if the caller
-  // doesn't provide its own override.
-  if (!options.overlay_lib && overlay_lib_def_) {
+  // We automatically set the `lib_def` option for all instantiations, if the
+  // caller doesn't set this option explicitly.
+  if (!options.lib_def && lib_def_) {
     InstantiateOptions options_copy = options;
-    options_copy.overlay_lib = overlay_lib_def_;
+    options_copy.lib_def = lib_def_;
     return base_flr_->Instantiate(function_name, attrs, options_copy, handle);
   } else {
     return base_flr_->Instantiate(function_name, attrs, options, handle);
@@ -256,13 +256,13 @@ void FunctionLibraryRuntimeOverlay::Run(const Options& opts, Handle handle,
 }
 
 Status FunctionLibraryRuntimeOverlay::CreateKernel(const NodeDef&, OpKernel**) {
-  // We don't have access base_lib_def_ in base function library runtime (aka
-  // FunctionLibraryRuntimeImpl), so to make sure we do not create kernel with
-  // wrong lib_def we just disable creation of new kernels through overlays.
+  // We don't have access to base_lib_def_ in base function library runtime (aka
+  // FunctionLibraryRuntimeImpl), so to make sure we do not create a kernel with
+  // the wrong lib_def we just disable creation of new kernels through overlays.
   //
-  // When we call Instantiate from the base runtime with overlay lib override,
-  // the base runtime implementation is responsible for correctly passing custom
-  // overlay lib to all kernel constructions.
+  // When we call Instantiate from the base runtime with the lib_def option,
+  // the base runtime implementation is responsible for correctly passing it
+  // through to all kernel constructions.
   return errors::Internal(
       "Overlay function library runtime doesn't support kernel creation.");
 }
@@ -270,7 +270,7 @@ Status FunctionLibraryRuntimeOverlay::CreateKernel(const NodeDef&, OpKernel**) {
 bool FunctionLibraryRuntimeOverlay::IsStateful(const string& function_name) {
   // Important: we do not forward lookup to the base FLR.
   const OpDef* op_def;
-  const Status s = overlay_lib_def_->LookUpOpDef(function_name, &op_def);
+  const Status s = lib_def_->LookUpOpDef(function_name, &op_def);
   return s.ok() && op_def->is_stateful();
 }
 
@@ -289,8 +289,7 @@ const DeviceMgr* FunctionLibraryRuntimeOverlay::device_mgr() const {
 
 const FunctionLibraryDefinition*
 FunctionLibraryRuntimeOverlay::GetFunctionLibraryDefinition() const {
-  return overlay_lib_def_ ? overlay_lib_def_
-                          : base_flr_->GetFunctionLibraryDefinition();
+  return lib_def_ ? lib_def_ : base_flr_->GetFunctionLibraryDefinition();
 }
 
 string FunctionLibraryRuntimeOverlay::DebugString(Handle handle) {
@@ -305,9 +304,9 @@ Status FunctionLibraryRuntimeOverlay::Clone(
     std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
     std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
     FunctionLibraryRuntime** out_flr) {
-  // NOTE(ezhulenev): Cloned FunctionLibraryRuntime will be missing overlay lib,
-  // but that's ok because we anyway do not copy/clone instantiated items from
-  // the base FLR.
+  // NOTE(ezhulenev): The cloned FunctionLibraryRuntime will be missing the
+  // FunctionLibraryDefinition override, but that's ok because we anyway do not
+  // copy / clone instantiated items from the base FLR.
   return base_flr_->Clone(out_lib_def, out_pflr, out_flr);
 }
 
@@ -391,8 +390,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // object, and an executor is created for the graph.
   struct Item {
     uint64 instantiation_counter = 0;
-    const Graph* graph = nullptr;                            // Owned by exec.
-    const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
+    const Graph* graph = nullptr;                        // Owned by exec.
+    const FunctionLibraryDefinition* lib_def = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
     FunctionLibraryRuntimeOverlay* overlay_flr = nullptr;
@@ -587,7 +586,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
   // cached already.
   InstantiateOptions options;
   if (lib_def != base_lib_def_) {
-    options.overlay_lib = lib_def;
+    options.lib_def = lib_def;
   }
   Handle handle;
   TF_RETURN_IF_ERROR(
@@ -657,7 +656,7 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     // f is a user-defined function.
     InstantiateOptions options;
     if (lib_def != base_lib_def_) {
-      options.overlay_lib = lib_def;
+      options.lib_def = lib_def;
     }
     Handle f_handle;
     TF_RETURN_IF_ERROR(
@@ -724,7 +723,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   }
 
   const FunctionLibraryDefinition* lib_def =
-      options.overlay_lib ? options.overlay_lib : base_lib_def_;
+      options.lib_def ? options.lib_def : base_lib_def_;
   std::unique_ptr<FunctionBody> fbody;
   if (function_name == kGradientOp) {
     const AttrValue* f = attrs.Find(kFuncAttr);
@@ -759,12 +758,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
       item->func_graph = fbody.release();
-      item->overlay_lib = options.overlay_lib;
+      item->lib_def = options.lib_def;
       item->instantiation_counter = 1;
       item->executor_type = ExecutorType(options, attrs);
-      if (options.overlay_lib) {
+      if (options.lib_def) {
         item->overlay_flr =
-            new FunctionLibraryRuntimeOverlay(this, options.overlay_lib);
+            new FunctionLibraryRuntimeOverlay(this, options.lib_def);
       }
       local_handle = next_handle_++;
       items_.emplace(local_handle, std::unique_ptr<Item>(item));
@@ -887,7 +886,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   {
     tf_shared_lock l(mu_);
     fbody = (*item)->func_graph;
-    lib_def = (*item)->overlay_lib;
+    lib_def = (*item)->lib_def;
     executor_type = (*item)->executor_type;
   }
   if (!lib_def) {
