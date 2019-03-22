@@ -33,7 +33,8 @@ class TestNPUtils(test.TestCase):
                        (3, num_classes),
                        (4, 3, num_classes),
                        (5, 4, 3, num_classes),
-                       (3, num_classes)]
+                       (3, num_classes),
+                       (3, 2, num_classes)]
     labels = [np.random.randint(0, num_classes, shape) for shape in shapes]
     one_hots = [
         keras.utils.to_categorical(label, num_classes) for label in labels]
