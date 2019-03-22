@@ -94,6 +94,16 @@ class Zeros(Initializer):
   """Initializer that generates tensors initialized to 0."""
 
   def __call__(self, shape, dtype=dtypes.float32):
+  """Returns a tensor object initialized as specified by the initializer.
+
+    Args:
+      shape: Shape of the tensor.
+      dtype: Optional dtype of the tensor. Only numeric or boolean dtypes are
+       supported.
+
+    Raises:
+      ValuesError: If the dtype is not numeric or boolean.
+    """
     dtype = dtypes.as_dtype(dtype)
     return array_ops.zeros(shape, dtype)
 
