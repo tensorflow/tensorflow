@@ -57,11 +57,10 @@ tf_cc_test(
     ],
 )
 
-
 cc_library(
     name = "llvm_util",
     srcs = ["llvm_util.cc"],
-    hdrs = ["llvm_util.h",],
+    hdrs = ["llvm_util.h"],
     deps = [
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
@@ -139,9 +138,7 @@ cc_library(
 cc_library(
     name = "kernel_tiling",
     srcs = ["kernel_tiling.cc"],
-    hdrs = [
-          "kernel_tiling.h", 
-    ],
+    hdrs = ["kernel_tiling.h"],
     deps = [
         ":ir_array",
         ":llvm_util",

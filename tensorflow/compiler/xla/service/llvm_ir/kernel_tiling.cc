@@ -159,7 +159,7 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
 
 IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
   llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
-      gpu::TargetIntrinsicID::kBlockidx, {}, {}, b_);
+      gpu::TargetIntrinsicID::kBlockIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
                             llvm::cast<llvm::Instruction>(block_id));
   llvm::Value* linear_block_id =
@@ -220,7 +220,7 @@ KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
   llvm::CallInst* thread_id_raw = gpu::EmitCallToTargetIntrinsic(
-      gpu::TargetIntrinsicID::kThreadidx, {}, {}, b_);
+      gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,

@@ -171,7 +171,6 @@ cc_library(
         "ir_emitter_context.h",
         "ir_emitter_nested.h",
         "ir_emitter_unnested.h",
-        "target_util.h"
     ],
     deps = [
         ":buffer_allocations",

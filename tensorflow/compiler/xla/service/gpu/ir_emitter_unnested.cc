@@ -2110,14 +2110,14 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildWhileThunk(
 
   // Generate thunk sequence for while 'condition'.
   HloComputation* condition = hlo->while_condition();
-  IrEmitterUnnested ir_emitter_condition(
-      hlo_module_config_, condition, ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_condition(hlo_module_config_, condition,
+                                         ir_emitter_context_);
   TF_CHECK_OK(condition->Accept(&ir_emitter_condition));
 
   // Generate thunk sequence for while 'body'.
   HloComputation* body = hlo->while_body();
-  IrEmitterUnnested ir_emitter_body(
-      hlo_module_config_, body, ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
+                                    ir_emitter_context_);
   TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return absl::make_unique<WhileThunk>(
@@ -2134,8 +2134,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
 
   // Generate thunk sequence for while 'body' (will be used a For loop body).
   HloComputation* body = hlo->while_body();
-  IrEmitterUnnested ir_emitter_body(
-      hlo_module_config_, body, ir_emitter_context_);
+  IrEmitterUnnested ir_emitter_body(hlo_module_config_, body,
+                                    ir_emitter_context_);
   TF_CHECK_OK(body->Accept(&ir_emitter_body));
 
   return absl::make_unique<ForThunk>(
@@ -3168,7 +3168,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
           });
 
       // Wait for all threads to reach this point using `__syncthreads` in CUDA.
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierid, {}, {}, &b_);
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
     }
 
     llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers, y, x);
@@ -3190,7 +3190,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     // buffer for the current tile before we move on to process the next tile
     // and overwrite the shared memory buffers.
     if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
-      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierid, {}, {}, &b_);
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
     }
   };
 

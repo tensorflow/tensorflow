@@ -93,7 +93,6 @@ llvm::CallInst* EmitCallToIntrinsic(
   return b->CreateCall(intrinsic, AsArrayRef(operands));
 }
 
-
 llvm::Value* EmitFloatMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
                           llvm::IRBuilder<>* b) {
   if (b->getFastMathFlags().noNaNs()) {
