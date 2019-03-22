@@ -229,10 +229,8 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
     def my_net():
-      def my_model(loss):
+      def my_model(loss, x, y):
         with ipu.ops.ipu_scope("/device:IPU:0"):
-          x, y = infeed_queue.get_next()
-
           lstm_cell = rnn_cell.LSTMCell(128)
           x, _ = rnn.dynamic_rnn(cell=lstm_cell, inputs=x,
                                  dtype=dtypes.float32, time_major=True)
