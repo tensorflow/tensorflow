@@ -1005,6 +1005,34 @@ XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
 
 class VariadicReduceTest : public HloTestBase {};
 
+XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R2x2_simple)) {
+  absl::string_view hlo_string = R"(
+  HloModule Reduce_R3x2_to_R1x2_simple
+
+  add {
+    op1 = f32[] parameter(0)
+    op2 = f32[] parameter(1)
+    acc1 = f32[] parameter(2)
+    acc2 = f32[] parameter(3)
+    out1 = f32[] add(acc1, op1)
+    out2 = f32[] add(acc2, op2)
+    ROOT result = (f32[], f32[]) tuple(out1, out2)
+  }
+
+  ENTRY main {
+    inp1 = f32[3,4,5] parameter(0)
+    inp2 = f32[3,4,5] parameter(1)
+    zero = f32[] constant(0)
+
+    ROOT out = (f32[3,5], f32[3,5]) reduce(inp1, inp2, zero, zero),
+      dimensions={1},
+      to_apply=add
+  }
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R1x2_simple)) {
   absl::string_view hlo_string = R"(
   HloModule Reduce_R3x2_to_R1x2_simple
@@ -1066,29 +1094,29 @@ XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R1x2_to_R0x2_argmax)) {
     HloModule Reduce_R1x2_to_R0x2_argmax
 
     argmax {
-      running_max = u32[] parameter(0)
+      running_max = f32[] parameter(0)
       running_max_idx = u32[] parameter(1)
-      current_value = u32[] parameter(2)
+      current_value = f32[] parameter(2)
       current_value_idx = u32[] parameter(3)
 
-      current = (u32[], u32[]) tuple(running_max, running_max_idx)
-      potential = (u32[], u32[]) tuple(current_value, current_value_idx)
+      current = (f32[], u32[]) tuple(running_max, running_max_idx)
+      potential = (f32[], u32[]) tuple(current_value, current_value_idx)
 
       cmp_code = pred[] compare(current_value, running_max), direction=GT
 
-      new_max = u32[] select(cmp_code, current_value, running_max)
+      new_max = f32[] select(cmp_code, current_value, running_max)
       new_idx = u32[] select(cmp_code, current_value_idx, running_max_idx)
 
-      ROOT out = (u32[], u32[]) tuple(new_max, new_idx)
+      ROOT out = (f32[], u32[]) tuple(new_max, new_idx)
     }
 
     ENTRY main {
-      input = u32[100] parameter(0)
+      input = f32[100] parameter(0)
       idxs = u32[100]{0} iota(), iota_dimension=0
-      zero = u32[] constant(0)
+      zero = f32[] constant(0)
       zero_idx = u32[] constant(0)
 
-      ROOT out = (u32[], u32[]) reduce(
+      ROOT out = (f32[], u32[]) reduce(
         input, idxs, zero, zero_idx),
         dimensions={0},
         to_apply=%argmax
