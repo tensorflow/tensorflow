@@ -236,13 +236,13 @@ class RNN(Layer):
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
     time_major: The shape format of the `inputs` and `outputs` tensors.
-        If True, the inputs and outputs will be in shape
-        `(timesteps, batch, ...)`, whereas in the False case, it will be
-        `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
-        efficient because it avoids transposes at the beginning and end of the
-        RNN calculation. However, most TensorFlow data is batch-major, so by
-        default this function accepts input and emits output in batch-major
-        form.
+      If True, the inputs and outputs will be in shape
+      `(timesteps, batch, ...)`, whereas in the False case, it will be
+      `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form.
 
   Call arguments:
     inputs: Input tensor.
@@ -1851,6 +1851,14 @@ class GRU(RNN):
       Unrolling can speed-up a RNN,
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+      If True, the inputs and outputs will be in shape
+      `(timesteps, batch, ...)`, whereas in the False case, it will be
+      `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form. 
     reset_after: GRU convention (whether to apply reset gate after or
       before matrix multiplication). False = "before" (default),
       True = "after" (CuDNN compatible).
@@ -2466,6 +2474,14 @@ class LSTM(RNN):
       Unrolling can speed-up a RNN,
       although it tends to be more memory-intensive.
       Unrolling is only suitable for short sequences.
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+      If True, the inputs and outputs will be in shape
+      `(timesteps, batch, ...)`, whereas in the False case, it will be
+      `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+      efficient because it avoids transposes at the beginning and end of the
+      RNN calculation. However, most TensorFlow data is batch-major, so by
+      default this function accepts input and emits output in batch-major
+      form.
 
   Call arguments:
     inputs: A 3D tensor.
