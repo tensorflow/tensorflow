@@ -244,10 +244,7 @@ class DType(object):
 
     ```python
     DType(T)       .is_compatible_with(DType(T))        == True
-    DType(T)       .is_compatible_with(DType(T).as_ref) == True
-    DType(T).as_ref.is_compatible_with(DType(T))        == False
-    DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
-    ```
+   ```
 
     Args:
       other: A `DType` (or object that may be converted to a `DType`).
