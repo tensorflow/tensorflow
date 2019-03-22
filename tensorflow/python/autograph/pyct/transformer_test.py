@@ -32,6 +32,7 @@ class TransformerTest(test.TestCase):
     entity_info = transformer.EntityInfo(
         source_code=None,
         source_file=None,
+        future_features=(),
         namespace=None,
         arg_values=None,
         arg_types=None)
@@ -68,7 +69,7 @@ class TransformerTest(test.TestCase):
           return b, inner_function
       return a, TestClass
 
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
     test_function_node = node
@@ -141,7 +142,7 @@ class TransformerTest(test.TestCase):
           while True:
             raise '1'
 
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
     fn_body = node.body
@@ -207,7 +208,7 @@ class TransformerTest(test.TestCase):
             raise '1'
       return 'nor this'
 
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
     for_node = node.body[2]
@@ -238,7 +239,7 @@ class TransformerTest(test.TestCase):
         print(a)
       return None
 
-    node, _, _ = parser.parse_entity(no_exit, future_imports=())
+    node, _ = parser.parse_entity(no_exit, future_features=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -246,7 +247,7 @@ class TransformerTest(test.TestCase):
       for _ in a:
         print(a)
 
-    node, _, _ = parser.parse_entity(no_entry, future_imports=())
+    node, _ = parser.parse_entity(no_entry, future_features=())
     with self.assertRaises(AssertionError):
       tr.visit(node)
 
@@ -272,7 +273,7 @@ class TransformerTest(test.TestCase):
 
     tr = TestTransformer(self._simple_context())
 
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = tr.visit(node)
 
     self.assertEqual(len(node.body), 2)
@@ -302,7 +303,7 @@ class TransformerTest(test.TestCase):
 
     tr = BrokenTransformer(self._simple_context())
 
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+    node, _ = parser.parse_entity(test_function, future_features=())
     with self.assertRaises(ValueError) as cm:
       node = tr.visit(node)
     obtained_message = str(cm.exception)
@@ -333,7 +334,7 @@ class TransformerTest(test.TestCase):
 
     tr = BrokenTransformer(self._simple_context())
 
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+    node, _ = parser.parse_entity(test_function, future_features=())
     with self.assertRaises(ValueError) as cm:
       node = tr.visit(node)
     obtained_message = str(cm.exception)

@@ -72,6 +72,7 @@ class AnfTransformerTest(test.TestCase):
     entity_info = transformer.EntityInfo(
         source_code=None,
         source_file=None,
+        future_features=(),
         namespace=None,
         arg_values=None,
         arg_types=None)
@@ -81,9 +82,10 @@ class AnfTransformerTest(test.TestCase):
     def test_function():
       a = 0
       return a
-    node, _, _ = parser.parse_entity(test_function, future_imports=())
+
+    node, _ = parser.parse_entity(test_function, future_features=())
     node = anf.transform(node, self._simple_context())
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEqual(test_function(), result.test_function())
 
   def assert_same_ast(self, expected_node, node, msg=None):
@@ -97,8 +99,8 @@ class AnfTransformerTest(test.TestCase):
     # Testing the code bodies only.  Wrapping them in functions so the
     # syntax highlights nicely, but Python doesn't try to execute the
     # statements.
-    exp_node, _, _ = parser.parse_entity(expected_fn, future_imports=())
-    node, _, _ = parser.parse_entity(test_fn, future_imports=())
+    exp_node, _ = parser.parse_entity(expected_fn, future_features=())
+    node, _ = parser.parse_entity(test_fn, future_features=())
     node = anf.transform(
         node, self._simple_context(), gensym_source=DummyGensym)
     exp_name = exp_node.name
