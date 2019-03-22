@@ -27,42 +27,47 @@ common_linkopts = tflite_linkopts() + select({
     ],
 })
 
-cc_library(
-    name = "evaluation_stage",
-    srcs = ["evaluation_stage.cc"],
-    hdrs = ["evaluation_stage.h"],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
-        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-    ],
-)
+exports_files(glob([
+    "testdata/*.jpg",
+]))
 
 cc_library(
-    name = "identity_stage",
-    srcs = ["identity_stage.cc"],
-    hdrs = ["identity_stage.h"],
+    name = "image_preprocessing_stage",
+    srcs = ["image_preprocessing_stage.cc"],
+    hdrs = ["image_preprocessing_stage.h"],
     copts = tflite_copts(),
     deps = [
-        ":evaluation_stage",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core:stats_calculator_portable",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/profiling:time",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
-        "@com_google_absl//absl/container:flat_hash_map",
-    ],
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_jpeg_internal",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:jpeg_internal",
+        ],
+    }),
 )
 
 cc_test(
-    name = "evaluation_stage_test",
-    srcs = ["evaluation_stage_test.cc"],
+    name = "image_preprocessing_stage_test",
+    srcs = ["image_preprocessing_stage_test.cc"],
+    data = ["testdata/grace_hopper.jpg"],
     linkopts = common_linkopts,
     linkstatic = 1,
     deps = [
-        ":evaluation_stage",
-        ":identity_stage",
+        ":image_preprocessing_stage",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/tools/evaluation:evaluation_stage",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",

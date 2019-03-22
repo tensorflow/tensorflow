@@ -17,12 +17,7 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//visibility:public"])
 
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
-)
-
-tf_proto_library_cc(
+proto_library(
     name = "evaluation_stages_proto",
     srcs = [
         "evaluation_stages.proto",
@@ -30,11 +25,21 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+cc_proto_library(
+    name = "evaluation_stages_cc_proto",
+    deps = ["evaluation_stages_proto"],
+)
+
+proto_library(
     name = "evaluation_config_proto",
     srcs = [
         "evaluation_config.proto",
     ],
-    protodeps = [":evaluation_stages_proto"],
     visibility = ["//visibility:public"],
+    deps = [":evaluation_stages_proto"],
+)
+
+cc_proto_library(
+    name = "evaluation_config_cc_proto",
+    deps = ["evaluation_config_proto"],
 )
