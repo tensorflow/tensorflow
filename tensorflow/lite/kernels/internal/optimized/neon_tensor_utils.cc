@@ -49,6 +49,29 @@ void* aligned_alloc(size_t alignment, size_t size, void** freeing_buffer) {
              : ((char*)*freeing_buffer + (alignment - offset));  // NOLINT
 }
 
+#ifdef __MINGW32__
+static void* memmem(const void *haystack, size_t haystack_len, const void *needle, size_t needle_len) {
+  const char *begin;
+  const char *const last_possible = (const char *) haystack + haystack_len - needle_len;
+
+  if (needle_len == 0) {
+    return (void *) haystack;
+  }
+
+  if (__builtin_expect(haystack_len < needle_len, 0)) {
+    return NULL;
+  }
+
+  for (begin = (const char *) haystack; begin <= last_possible; ++begin) {
+    if (begin[0] == ((const char *) needle)[0] && !memcmp((const void *) &begin[1], (const void *) ((const char *) needle + 1), needle_len - 1)) {
+      return (void *) begin;
+    }
+  }
+
+  return NULL;
+}
+#endif
+
 // Use /proc/cpuinfo to test whether we have the right processor.
 bool HasSdotInstruction() {
   // TODO(strohman): Replace this with a proper API call once we are running
