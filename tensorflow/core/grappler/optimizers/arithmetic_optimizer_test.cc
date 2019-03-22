@@ -215,22 +215,20 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
   Output d = ops::Const(s.WithOpName("d"), {3.0f, 4.0f}, {1, 2});
   Output mul = ops::Mul(s.WithControlDependencies(d).WithOpName("mul"), c, c);
-  Output mul_no_nan = ops::MulNoNan(s.WithOpName("mul_no_nan"), c, c);
   Output id = ops::Identity(s.WithOpName("id"), mul);
-  Output id2 = ops::Identity(s.WithOpName("id2"), mul_no_nan);
 
   GrapplerItem item;
-  item.fetch = {"id", "id2"};
+  item.fetch = {"id"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  ASSERT_EQ(2, tensors_expected.size());
+  EXPECT_EQ(1, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyReplaceMulWithSquare(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  EXPECT_EQ(6, output.node_size());
+  EXPECT_EQ(4, output.node_size());
 
   NodeMap node_map(&output);
   const string p = "ArithmeticOptimizer/ReplaceMulWithSquare";
@@ -241,14 +239,8 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   EXPECT_EQ("c", square_node->input(0));
   EXPECT_EQ("^d", square_node->input(1));
 
-  const NodeDef* square_node2 =
-      node_map.GetNode(strings::StrCat(p, "_", "mul_no_nan"));
-  ASSERT_NE(square_node2, nullptr);
-  EXPECT_EQ("Square", square_node2->op());
-  EXPECT_EQ("c", square_node2->input(0));
-
   auto tensors = EvaluateNodes(output, item.fetch);
-  ASSERT_EQ(2, tensors.size());
+  EXPECT_EQ(1, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
