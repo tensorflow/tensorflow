@@ -183,6 +183,10 @@ def _cast_to_type_if_compatible(name, param_type, value):
   if (issubclass(param_type, numbers.Number) and
       not isinstance(value, numbers.Number)):
     raise ValueError(fail_msg)
+    
+  # Avoid converting a type 'type' - python doesn't handle this in the intuitive way
+  if issubclass(param_type, type):
+    return value
 
   return param_type(value)
 
