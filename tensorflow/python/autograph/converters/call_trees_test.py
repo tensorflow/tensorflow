@@ -36,7 +36,7 @@ class CallTreesTest(converter_testing.TestCase):
           converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
       self.assertListEqual(self.dynamic_calls, [((), {})])
 
-  def test_function_with_call_in_argument(self):
+  def test_function_with_expression_in_argument(self):
 
     def test_fn(f, g):
       return f(g() + 7) + 3
@@ -48,6 +48,20 @@ class CallTreesTest(converter_testing.TestCase):
       self.assertListEqual(self.dynamic_calls, [
           ((), {}),
           ((converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 7,), {}),
+      ])
+
+  def test_function_with_call_in_argument(self):
+
+    def test_fn(f, g):
+      return f(g()) + 3
+
+    with self.converted(test_fn, call_trees, {}) as result:
+      self.assertEqual(
+          result.test_fn(None, None),
+          converter_testing.RESULT_OF_MOCK_CONVERTED_CALL + 3)
+      self.assertListEqual(self.dynamic_calls, [
+          ((), {}),
+          ((converter_testing.RESULT_OF_MOCK_CONVERTED_CALL,), {}),
       ])
 
   def test_function_with_kwarg(self):
