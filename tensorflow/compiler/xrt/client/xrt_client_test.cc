@@ -18,9 +18,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xrt/client/xrt_grpc_eager_client.h"
+#include "tensorflow/compiler/xrt/client/xrt_tf_client.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_session.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_testlib.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
@@ -82,6 +86,54 @@ TEST_F(XrtClientTest, XrtGrpcEagerClientWorks) {
   eager::CloseContextResponse close_response;
   TF_ASSERT_OK(client->SyncCall(&XrtGrpcEagerClient::CloseContextAsync,
                                 &close_request, &close_response));
+}
+
+// Tests that we can connect to a server using the higher-level XrtTfClient API,
+// transfer tensors to the device, run an Add operator, and retrieve the result.
+TEST_F(XrtClientTest, XrtTfClientWorks) {
+  ChannelCreationFunction channel_func =
+      ConvertToChannelCreationFunction(NewHostPortGrpcChannel);
+  TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<GrpcChannelCache> channel_cache,
+                          GetGrpcChannelCache(cluster_def_, channel_func));
+
+  auto client = std::make_shared<XrtTfClient>(cluster_def_, channel_cache);
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::shared_ptr<XrtTfContext> context,
+      XrtTfContext::Create(XrtTfContext::Options(), client, /*job=*/"localhost",
+                           /*task=*/0));
+
+  auto a_proto = absl::make_unique<TensorProto>();
+  a_proto->set_dtype(DT_INT32);
+  a_proto->add_int_val(47);
+  XrtTensorHandle a =
+      context->SendTensor(std::move(a_proto), context->cpu_device_id());
+  auto b_proto = absl::make_unique<TensorProto>();
+  b_proto->set_dtype(DT_INT32);
+  b_proto->mutable_tensor_shape()->add_dim()->set_size(2);
+  b_proto->add_int_val(-101);
+  b_proto->add_int_val(3);
+  XrtTensorHandle b =
+      context->SendTensor(std::move(b_proto), context->cpu_device_id());
+
+  protobuf::Map<string, AttrValue> attrs;
+  attrs["T"] = MakeAttrValue(DT_INT32);
+  std::vector<XrtTensorHandle> add_outputs = context->EnqueueOp(
+      "Add", {&a, &b}, /*output_arity=*/1, attrs, context->cpu_device_id());
+  ASSERT_EQ(add_outputs.size(), 1);
+
+  std::shared_ptr<XrtRecvTensorFuture> future =
+      context->RecvTensor(add_outputs[0], DT_INT32, /*host_memory=*/false);
+
+  TF_ASSERT_OK_AND_ASSIGN(RecvTensorResponse * response, future->Get());
+  const TensorProto& out_proto = response->tensor();
+  EXPECT_EQ(out_proto.dtype(), DT_INT32);
+
+  ASSERT_EQ(out_proto.tensor_content().size(), sizeof(int32) * 2);
+  std::vector<int32> out(2);
+  out_proto.tensor_content().CopyToArray(reinterpret_cast<char*>(out.data()));
+  // TODO(phawkins): handle endian conversion.
+  EXPECT_EQ(out[0], -54);
+  EXPECT_EQ(out[1], 50);
 }
 
 }  // namespace tensorflow
