@@ -6973,7 +6973,7 @@ tf_mkl_kernel_library(
         "meta_support.h",
         "reference_gemm.h",
     ],
-    deps = if_mkl([
+    deps = [
         ":concat_lib_hdrs",
         ":conv_ops",
         ":cwise_op",
@@ -6992,7 +6992,7 @@ tf_mkl_kernel_library(
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "@gemmlowp",
-    ]) + mkl_deps(),
+    ] + mkl_deps(),
 )
 
 tf_cc_test_mkl(
