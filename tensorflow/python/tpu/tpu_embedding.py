@@ -315,7 +315,7 @@ class TPUEmbedding(object):
       cluster_def: A ClusterDef object describing the TPU cluster.
       pipeline_execution_with_tensor_core: setting this to `True` makes training
         faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
+        involve the same set of embedding IDs. Please see
         `tpu_embedding_configuration.proto` for details.
 
     Raises:
