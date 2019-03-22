@@ -263,6 +263,7 @@ tf_xla_py_test(
     name = "cond_test",
     size = "small",
     srcs = ["cond_test.py"],
+    disabled_backends = ["cpu_ondemand"],  # b/129021699
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",
@@ -1067,7 +1068,7 @@ tf_xla_py_test(
     name = "sort_ops_test",
     size = "medium",
     srcs = ["sort_ops_test.py"],
-    shard_count = 5,
+    shard_count = 1,
     # Times out in fastbuild mode.
     tags = ["optonly"],
     deps = [

@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,15 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
-#define TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
+#include "tensorflow/compiler/tf2xla/kernels/if_while_utils.h"
 
-#include "tensorflow/core/platform/platform.h"
+namespace tensorflow {
 
-#if defined(PLATFORM_GOOGLE)
-#include "tensorflow/core/platform/google/cupti_wrapper.h"
-#else
-#include "tensorflow/core/platform/default/gpu/cupti_wrapper.h"
-#endif
+const char kPropagateCompileTimeConsts[] = "_xla_propagate_compile_time_consts";
 
-#endif  // TENSORFLOW_CORE_PLATFORM_CUPTI_WRAPPER_H_
+}  // namespace tensorflow

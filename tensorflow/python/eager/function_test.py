@@ -2889,6 +2889,7 @@ class MultiDeviceTest(test.TestCase, parameterized.TestCase):
     dataset = (
         dataset_ops.DatasetV2.from_tensors(
             (array_ops.ones([784]), array_ops.ones([], dtypes.int32)))
+        .map(lambda x, y: (x, y))
         .repeat(10)
         .batch(32))
     optimizer = adam.Adam()

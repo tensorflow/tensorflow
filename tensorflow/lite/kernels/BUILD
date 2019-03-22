@@ -189,6 +189,7 @@ cc_library(
         "lsh_projection.cc",
         "lstm.cc",
         "matrix_diag.cc",
+        "matrix_set_diag.cc",
         "maximum_minimum.cc",
         "mfcc.cc",
         "mirror_pad.cc",
@@ -1412,6 +1413,18 @@ cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels/internal:types",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "matrix_set_diag_test",
+    size = "small",
+    srcs = ["matrix_set_diag_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
     ],
 )

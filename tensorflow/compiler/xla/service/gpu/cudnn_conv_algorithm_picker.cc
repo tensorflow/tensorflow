@@ -137,10 +137,11 @@ tensorflow::ComputeCapability GetComputeCapability(
 // caching would speed up compilation a lot.
 StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
+  const Shape& result_shape = instr->shape().tuple_shapes(0);
+
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
   // with some work on the HLO routines.
-  const bool cross_check_enabled =
-      instr->shape().tuple_shapes(0).element_type() == xla::F16;
+  const bool cross_check_enabled = result_shape.element_type() == xla::F16;
 
   // Don't run this function concurrently on the same GPU.
   //
@@ -216,20 +217,21 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     initialize_buffer(buffer);
     operand_buffers.push_back(buffer);
   }
-  TF_ASSIGN_OR_RETURN(
-      auto result_buffer,
-      input_output_allocator.AllocateBytes(
-          &stream, ShapeUtil::ByteSizeOf(instr->shape().tuple_shapes(0))));
+  TF_ASSIGN_OR_RETURN(auto result_buffer,
+                      input_output_allocator.AllocateBytes(
+                          &stream, ShapeUtil::ByteSizeOf(result_shape)));
   initialize_buffer(result_buffer);
 
   TF_ASSIGN_OR_RETURN(auto backend_config,
                       instr->backend_config<CudnnConvBackendConfig>());
 
-  optional<F16BufferComparator> comparator;
+  optional<BufferComparator> comparator;
   // Use the first algorithm that's supported as reference. There isn't a
   // particular reason to use it, as any algorithm sufficies. It doesn't make
   // this algorithm considered correct, though.
-  optional<AlgorithmDesc> first_algorithm;
+  se::DeviceMemoryBase reference_result_buffer;
+  AlgorithmDesc first_algorithm;
+
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
   std::vector<AutotuneResult> profile_results;
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
@@ -273,32 +275,37 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
 
     if (comparator.has_value()) {
       StatusOr<bool> compare_result = comparator->CompareEqual(
+          &stream, allocator,
+          se::DeviceMemory<Eigen::half>(reference_result_buffer),
           se::DeviceMemory<Eigen::half>(result_buffer));
       if (!compare_result.ok()) {
-        LOG(ERROR) << "Unable to compare "
-                   << AlgorithmToString(*first_algorithm) << " against "
-                   << AlgorithmToString(alg) << " for " << instr->ToString()
-                   << ": " << compare_result.status();
+        LOG(ERROR) << "Unable to compare " << AlgorithmToString(first_algorithm)
+                   << " against " << AlgorithmToString(alg) << " for "
+                   << instr->ToString() << ": " << compare_result.status();
         CHECK(!crash_on_checking_failure);
       } else if (!compare_result.ValueOrDie()) {
         LOG(ERROR) << "Results mismatch between different convolution "
                       "algorithms. This is likely a bug in convolution, or "
                       "an excessive loss of precision in convolution. "
                    << instr->ToString() << " for "
-                   << AlgorithmToString(*first_algorithm) << " vs "
+                   << AlgorithmToString(first_algorithm) << " vs "
                    << AlgorithmToString(alg);
         CHECK(!crash_on_checking_failure);
         auto* failure = result.mutable_reference_conv();
-        failure->set_algorithm(first_algorithm->algo_id());
-        failure->set_tensor_ops_enabled(first_algorithm->tensor_ops_enabled());
+        failure->set_algorithm(first_algorithm.algo_id());
+        failure->set_tensor_ops_enabled(first_algorithm.tensor_ops_enabled());
       }
     } else if (cross_check_enabled) {
-      auto comp = F16BufferComparator::Create(
-          se::DeviceMemory<Eigen::half>(result_buffer), compiler_, allocator,
-          &stream);
+      auto comp =
+          BufferComparator::Create(result_shape, stream.parent(), compiler_);
       if (comp.ok()) {
         comparator.emplace(comp.ConsumeValueOrDie());
-        first_algorithm.emplace(alg);
+        reference_result_buffer = result_buffer;
+        TF_ASSIGN_OR_RETURN(result_buffer,
+                            input_output_allocator.AllocateBytes(
+                                &stream, reference_result_buffer.size()));
+        initialize_buffer(result_buffer);
+        first_algorithm = alg;
       } else {
         LOG(ERROR) << "Fail to initialize buffer comparator: " << comp.status()
                    << ", instruction: " << instr->ToString();

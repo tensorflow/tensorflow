@@ -362,7 +362,19 @@ message RecvTensorResponse {
   // Optional additional information about how to receive the tensor,
   // e.g. in the event that `RecvTensorRequest.dma_ok` was true.
   google.protobuf.Any transport_options = 4;
+
+  // Whether the receiver should send a MarkRecvFinishedRequest to the sender
+  // to ack the message.
+  bool require_ack = 5;
 }
+
+// Message for managing the response cache maintained on the sender side.
+// Currently only used by the gRPC worker service.
+message MarkRecvFinishedRequest {
+  int64 request_id = 1;
+}
+
+message MarkRecvFinishedResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -490,6 +502,10 @@ message RecvBufResponse {
   google.protobuf.Any transport_options = 4;
   // Optional, for timeline.
   int64 send_start_micros = 5;
+
+  // Whether the receiver should send a MarkRecvFinishedRequest to the sender
+  // to ack the message.
+  bool require_ack = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

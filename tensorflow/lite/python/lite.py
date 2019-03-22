@@ -66,8 +66,11 @@ from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
 
 
-def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
-                             graph=None):
+def _run_graph_optimizations(graph_def,
+                             input_arrays,
+                             output_arrays,
+                             graph=None,
+                             config=None):
   """Apply standard TensorFlow optimizations to the graph_def.
 
   Args:
@@ -75,6 +78,7 @@ def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
     input_arrays: List of arrays that are considered inputs of the graph.
     output_arrays: List of arrays that are considered outputs of the graph.
     graph: TensorFlow Graph. Required when Eager mode is enabled. (default None)
+    config: tf.ConfigProto. (default None)
 
   Returns:
     A new, optimized GraphDef.
@@ -88,12 +92,13 @@ def _run_graph_optimizations(graph_def, input_arrays, output_arrays,
     fetch_collection.node_list.value.append(array.name)
   meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
 
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-  # Avoid remapping as it creates ops like _FusedConv2D, which are not
-  # supported by TF Lite.
-  rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
+  if config is None:
+    config = _config_pb2.ConfigProto()
+    rewrite_options = config.graph_options.rewrite_options
+    rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
+    # Avoid remapping as it creates ops like _FusedConv2D, which are not
+    # supported by TF Lite.
+    rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
   return _tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
@@ -466,7 +471,7 @@ class TFLiteConverter(object):
     Returns:
       TFLiteConverter class.
     """
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   @classmethod
@@ -639,7 +644,7 @@ class TFLiteConverter(object):
       output_tensors = keras_model.outputs
     _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, output_tensors)
+    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   def __setattr__(self, name, value):
@@ -885,22 +890,35 @@ def _is_frozen_graph(sess):
   return True
 
 
-def _freeze_graph(sess, output_tensors):
+def _freeze_graph(sess, input_tensors, output_tensors):
   """Returns a frozen GraphDef.
 
-  Freezes a graph with Variables in it. Otherwise the existing GraphDef is
-  returned.
+  Runs a Grappler pass and freezes a graph with Variables in it. Otherwise the
+  existing GraphDef is returned. The Grappler pass is only run on models that
+  are frozen in order to inline the functions in the graph.
 
   Args:
     sess: TensorFlow Session.
+    input_tensors: List of input tensors.
     output_tensors: List of output tensors (only .name is used from this).
 
   Returns:
     Frozen GraphDef.
   """
+  # Runs a Grappler pass in order to inline any functions in the graph.
+  config = _config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.optimizers.append("function")
+  graph_def = _run_graph_optimizations(
+      sess.graph_def,
+      input_tensors,
+      output_tensors,
+      graph=sess.graph,
+      config=config)
+
   if not _is_frozen_graph(sess):
     output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
     return _tf_graph_util.convert_variables_to_constants(
-        sess, sess.graph_def, output_arrays)
+        sess, graph_def, output_arrays)
   else:
     return sess.graph_def

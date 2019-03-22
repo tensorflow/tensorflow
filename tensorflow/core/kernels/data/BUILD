@@ -70,7 +70,10 @@ cc_library(
     name = "stats_utils",
     srcs = ["stats_utils.cc"],
     hdrs = ["stats_utils.h"],
-    deps = ["//tensorflow/core:lib"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base:core_headers",
+    ],
 )
 
 cc_library(

@@ -56,11 +56,11 @@ class RPCState : public GrpcClientCQTag {
       : call_opts_(call_opts),
         threadpool_(threadpool),
         done_(std::move(done)),
+        timeout_in_ms_(timeout_in_ms),
+        max_retries_(max_retries),
         cq_(cq),
         stub_(stub),
         method_(method),
-        max_retries_(max_retries),
-        timeout_in_ms_(timeout_in_ms),
         fail_fast_(fail_fast) {
     response_ = response;
     ::grpc::Status s = GrpcMaybeUnparseProto(request, &request_buf_);

@@ -5965,7 +5965,12 @@ filegroup(
             "cwise_ops_sycl_common.h",
             "nextafter_op.cc",
         ] + ANDROID_TEXTUAL_HDRS,
-    ),
+    ) + [
+        # Referenced by stateful_random_ops.cc but excluded with the *gpu*
+        # rule above. Seems to have only have worked before because of
+        # hdrs_check loose.
+        "stateful_random_ops_cpu_gpu.h",
+    ],
     visibility = ["//visibility:public"],
 )
 

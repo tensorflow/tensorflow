@@ -148,13 +148,15 @@ def get_tpu_embedding_config_from_feature_columns(feature_columns):
 class EmbeddingConfigSpec(
     collections.namedtuple('EmbeddingConfigSpec', [
         'feature_columns', 'optimization_parameters', 'clipping_limit',
+        'pipeline_execution_with_tensor_core'
     ])):
   """Class to keep track of embedding config specification."""
 
   def __new__(cls,
               feature_columns,
               optimization_parameters,
-              clipping_limit=None):
+              clipping_limit=None,
+              pipeline_execution_with_tensor_core=False):
     """Creates an EmbeddingConfigSpec instance.
 
     Args:
@@ -164,6 +166,10 @@ class EmbeddingConfigSpec(
         optimizer will be applied to all embedding variables specified by
         `feature_columns`.
       clipping_limit: (Optional) Clipping limit (absolute value).
+      pipeline_execution_with_tensor_core: setting this to `True` makes training
+        faster, but trained model will be different if step N and step N+1
+        involve the same set of embedding IDs. Please see
+        `tpu_embedding_configuration.proto` for details.
 
     Returns:
       An EmbeddingConfigSpec instance.
@@ -199,7 +205,8 @@ class EmbeddingConfigSpec(
         cls,
         feature_columns=feature_columns,
         optimization_parameters=optimization_parameters,
-        clipping_limit=clipping_limit)
+        clipping_limit=clipping_limit,
+        pipeline_execution_with_tensor_core=pipeline_execution_with_tensor_core)
 
 
 class EmbeddingConfig(object):
@@ -263,7 +270,8 @@ class EmbeddingConfig(object):
         master,
         optimization_parameters,
         cluster_def,
-    )
+        pipeline_execution_with_tensor_core=self._embedding_config_spec
+        .pipeline_execution_with_tensor_core)
     return tpu_embedding_
 
   def get_tpu_embedding(self, mode):

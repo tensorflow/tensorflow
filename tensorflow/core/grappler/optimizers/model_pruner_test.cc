@@ -510,6 +510,29 @@ TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
   }
 }
 
+TEST_F(ModelPrunerTest, PruneNoOpsWithoutInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output c = ops::Const(s.WithOpName("c"), 0.0f, {10, 10});
+
+  GrapplerItem item;
+  item.fetch = {"c"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  // Add an explicit no-op node without inputs. It should be pruned even thought
+  // it has a path to the fetch node.
+  NodeDef* no_op = item.graph.add_node();
+  no_op->set_name("no_op");
+  no_op->set_op("NoOp");
+  item.graph.mutable_node(0)->add_input("^no_op");
+
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 1);
+  EXPECT_EQ(output.node(0).name(), "c");
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

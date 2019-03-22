@@ -7840,6 +7840,26 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 	return op.Output(0)
 }
 
+// Converts the given `resource_handle` representing an iterator to a string.
+//
+// Arguments:
+//	resource_handle: A handle to an iterator resource.
+//
+// Returns A string representation of the given handle.
+func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IteratorToStringHandle",
+		Input: []tf.Input{
+			resource_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Outputs a tensor containing the reduction across all input tensors.
 //
 // Outputs a tensor containing the reduction across all input tensors passed to ops
@@ -11750,6 +11770,31 @@ func ResourceScatterMul(scope *Scope, resource tf.Output, indices tf.Output, upd
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// JPEG encode input image with provided compression quality.
+//
+// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
+// `quality` is an int32 jpeg compression quality value between 0 and 100.
+//
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	quality: An int quality to encode to.
+//
+// Returns 0-D. JPEG-encoded image.
+func EncodeJpegVariableQuality(scope *Scope, images tf.Output, quality tf.Output) (contents tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "EncodeJpegVariableQuality",
+		Input: []tf.Input{
+			images, quality,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // Subtracts sparse updates from the variable referenced by `resource`.
@@ -16786,6 +16831,16 @@ func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
 // Returns the index with the largest value across dimensions of a tensor.
 //
 // Note that in case of ties the identity of the return value is not guaranteed.
+//
+// Usage:
+//   ```python
+//   import tensorflow as tf
+//   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+//   b = tf.math.argmax(input = a)
+//   c = tf.keras.backend.eval(b)
+//   # c = 4
+//   # here a[4] = 166.32 which is the largest element of a across axis 0
+//   ```
 //
 // Arguments:
 //
@@ -32539,6 +32594,16 @@ func ArgMinOutputType(value tf.DataType) ArgMinAttr {
 //
 // Note that in case of ties the identity of the return value is not guaranteed.
 //
+// Usage:
+//   ```python
+//   import tensorflow as tf
+//   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+//   b = tf.math.argmin(input = a)
+//   c = tf.keras.backend.eval(b)
+//   # c = 0
+//   # here a[0] = 1 which is the smallest element of a across axis 0
+//   ```
+//
 // Arguments:
 //
 //	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
@@ -37087,10 +37152,11 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 	return op.Output(0)
 }
 
-// Decode the first frame of a GIF-encoded image to a uint8 tensor.
+// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
 //
-// GIF with frame or transparency compression are not supported
-// convert animated GIF from compressed to uncompressed by:
+// GIF images with frame or transparency compression are not supported.
+// On Linux and MacOS systems, convert animated GIFs from compressed to
+// uncompressed by running:
 //
 //     convert $src.gif -coalesce $dst.gif
 //
@@ -37100,7 +37166,7 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
 //
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB order
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
 func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -39302,24 +39368,4 @@ func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.D
 		return
 	}
 	return components
-}
-
-// Converts the given `resource_handle` representing an iterator to a string.
-//
-// Arguments:
-//	resource_handle: A handle to an iterator resource.
-//
-// Returns A string representation of the given handle.
-func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IteratorToStringHandle",
-		Input: []tf.Input{
-			resource_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }
