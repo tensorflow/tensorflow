@@ -154,10 +154,17 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":distribute_lib",
+        ":input_lib",
+        ":reduce_util",
+        ":values",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
