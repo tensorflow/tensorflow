@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -42,8 +43,10 @@ NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   // Set the input of LatencyDataset node as `node`
   new_node.add_input(node.name());
 
+  string tag_name = strings::StrCat("record_latency",
+                                    data::stats_utils::kDelimiter, node.name());
   NodeDef* tag = graph_utils::AddScalarConstNode<StringPiece>(
-      StringPiece("record_latency_" + node.name()), graph);
+      StringPiece(tag_name), graph);
   new_node.add_input(tag->name());
 
   // Set `output_types` and `output_shapes` attributes.

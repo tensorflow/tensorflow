@@ -297,6 +297,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
 

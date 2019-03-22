@@ -342,20 +342,20 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
     for i in range(100):
       self.assertEqual(i * 2, self.evaluate(next_element1() + next_element2()))
       self._assertSummaryHasCount(
-          self.evaluate(aggregator.get_summary()), "dataset1_record_latency",
+          self.evaluate(aggregator.get_summary()), "dataset1::record_latency",
           float(i + 1))
       self._assertSummaryHasCount(
-          self.evaluate(aggregator.get_summary()), "dataset2_record_latency",
+          self.evaluate(aggregator.get_summary()), "dataset2::record_latency",
           float(i + 1))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element1())
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element2())
     self._assertSummaryHasCount(
-        self.evaluate(aggregator.get_summary()), "dataset1_record_latency",
+        self.evaluate(aggregator.get_summary()), "dataset1::record_latency",
         100.0)
     self._assertSummaryHasCount(
-        self.evaluate(aggregator.get_summary()), "dataset2_record_latency",
+        self.evaluate(aggregator.get_summary()), "dataset2::record_latency",
         100.0)
 
   def testMultiplePrefetchStats(self, dataset_transformation):
@@ -431,19 +431,19 @@ class FeatureStatsDatasetTest(
       self.evaluate(next_element())
     self._assertSummaryHasCount(
         self.evaluate(aggregator.get_summary()),
-        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "features_count"), total_records)
     self._assertSummaryHasCount(
         self.evaluate(aggregator.get_summary()),
-        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "feature_values_count"), total_records)
     self._assertSummaryHasSum(
         self.evaluate(aggregator.get_summary()),
-        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "features_count"), total_records * 4)
     self._assertSummaryHasSum(
         self.evaluate(aggregator.get_summary()),
-        self.regexForNodeName("record_stats_ExperimentalParseExampleDataset",
+        self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "feature_values_count"),
         self._sum_keywords(1) * num_epochs + 3 * total_records)
 
