@@ -318,9 +318,14 @@ class IteratorContext {
     Env* env = nullptr;
 
     // The FunctionLibraryDefinition used to look up user-defined functions.
+    //
+    // TODO(jsimsa): Rename to `lib_def`.
     std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
 
     // The FunctionLibraryRuntime object to be used to make function calls.
+    //
+    // TODO(jsimsa): Rename to `flr` and possibly consolidate with `lib_def`
+    // using `FunctionLibraryRuntimeOverlay`.
     FunctionLibraryRuntime* lib = nullptr;
 
     // A FunctionHandleCache that owns all the function handles. Not owned.

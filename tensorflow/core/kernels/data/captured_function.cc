@@ -128,7 +128,7 @@ Status CapturedFunction::Instantiate(
   // The context's runtime will be used for all subsequent calls.
   FunctionLibraryRuntime* lib = ctx->lib();
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  inst_opts.overlay_lib = ctx->function_library().get();
+  inst_opts.lib_def = ctx->function_library().get();
   inst_opts.create_kernels_eagerly = true;
   if (!use_inter_op_parallelism_) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
