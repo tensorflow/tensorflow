@@ -205,7 +205,7 @@ static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
   return true;
 }
 
-static void emitNoteForBlock(const Block &block, const Twine &message) {
+static void emitNoteForBlock(Block &block, const Twine &message) {
   auto *inst = block.getContainingInst();
   if (!inst) {
     block.getFunction()->emitNote(message);
@@ -543,11 +543,12 @@ bool DmaGeneration::runOnBlock(Block *block) {
 /// in the block for placing incoming (read) and outgoing (write) DMAs
 /// respectively. The lowest depth depends on whether the region being accessed
 /// is invariant with respect to one or more immediately surrounding loops.
-static void findHighestBlockForPlacement(
-    const MemRefRegion &region, const Block &block,
-    const Block::iterator &begin, const Block::iterator &end,
-    Block **dmaPlacementBlock, Block::iterator *dmaPlacementReadStart,
-    Block::iterator *dmaPlacementWriteStart) {
+static void
+findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
+                             Block::iterator &begin, Block::iterator &end,
+                             Block **dmaPlacementBlock,
+                             Block::iterator *dmaPlacementReadStart,
+                             Block::iterator *dmaPlacementWriteStart) {
   const auto *cst = region.getConstraints();
   SmallVector<Value *, 4> symbols;
   cst->getIdValues(cst->getNumDimIds(), cst->getNumDimAndSymbolIds(), &symbols);

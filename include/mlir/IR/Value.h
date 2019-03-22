@@ -116,8 +116,7 @@ public:
   /// Return the function that this argument is defined in.
   Function *getFunction() const;
 
-  Block *getOwner() { return owner; }
-  const Block *getOwner() const { return owner; }
+  Block *getOwner() const { return owner; }
 
   /// Returns the number of this argument.
   unsigned getArgNumber() const;

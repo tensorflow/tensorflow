@@ -1061,7 +1061,7 @@ public:
 
   // Methods to print instructions.
   void print(const Instruction *inst);
-  void print(const Block *block, bool printBlockArgs = true);
+  void print(Block *block, bool printBlockArgs = true);
 
   void printOperation(const Instruction *op);
   void printGenericOp(const Instruction *op);
@@ -1094,7 +1094,7 @@ public:
 
   enum { nameSentinel = ~0U };
 
-  void printBlockName(const Block *block) {
+  void printBlockName(Block *block) {
     auto id = getBlockID(block);
     if (id != ~0U)
       os << "^bb" << id;
@@ -1102,7 +1102,7 @@ public:
       os << "^INVALIDBLOCK";
   }
 
-  unsigned getBlockID(const Block *block) {
+  unsigned getBlockID(Block *block) {
     auto it = blockIDs.find(block);
     return it != blockIDs.end() ? it->second : ~0U;
   }
@@ -1128,7 +1128,7 @@ public:
 
 protected:
   void numberValueID(const Value *value);
-  void numberValuesInBlock(const Block &block);
+  void numberValuesInBlock(Block &block);
   void printValueID(const Value *value, bool printResultNo = true) const;
 
 private:
@@ -1140,7 +1140,7 @@ private:
   DenseMap<const Value *, StringRef> valueNames;
 
   /// This is the block ID for each  block in the current function.
-  DenseMap<const Block *, unsigned> blockIDs;
+  DenseMap<Block *, unsigned> blockIDs;
 
   /// This keeps track of all of the non-numeric names that are in flight,
   /// allowing us to check for duplicates.
@@ -1172,7 +1172,7 @@ FunctionPrinter::FunctionPrinter(Function *function, ModulePrinter &other)
 /// Number all of the SSA values in the specified block.  Values get numbered
 /// continuously throughout regions.  In particular, we traverse the regions
 /// held by operations and number values in depth-first pre-order.
-void FunctionPrinter::numberValuesInBlock(const Block &block) {
+void FunctionPrinter::numberValuesInBlock(Block &block) {
   // Each block gets a unique ID, and all of the instructions within it get
   // numbered as well.
   blockIDs[&block] = nextBlockID++;
@@ -1186,7 +1186,7 @@ void FunctionPrinter::numberValuesInBlock(const Block &block) {
     if (inst.getNumResults() != 0)
       numberValueID(inst.getResult(0));
     for (auto &region : inst.getRegions())
-      for (const auto &block : region)
+      for (auto &block : region)
         numberValuesInBlock(block);
   }
 }
@@ -1337,7 +1337,7 @@ void FunctionPrinter::printFunctionSignature() {
   }
 }
 
-void FunctionPrinter::print(const Block *block, bool printBlockArgs) {
+void FunctionPrinter::print(Block *block, bool printBlockArgs) {
   // Print the block label and argument list if requested.
   if (printBlockArgs) {
     os.indent(currentIndent);
@@ -1346,7 +1346,7 @@ void FunctionPrinter::print(const Block *block, bool printBlockArgs) {
     // Print the argument list if non-empty.
     if (!block->args_empty()) {
       os << '(';
-      interleaveComma(block->getArguments(), [&](const BlockArgument *arg) {
+      interleaveComma(block->getArguments(), [&](BlockArgument *arg) {
         printValueID(arg);
         os << ": ";
         printType(arg->getType());
@@ -1366,14 +1366,14 @@ void FunctionPrinter::print(const Block *block, bool printBlockArgs) {
     } else {
       // We want to print the predecessors in increasing numeric order, not in
       // whatever order the use-list is in, so gather and sort them.
-      SmallVector<std::pair<unsigned, const Block *>, 4> predIDs;
+      SmallVector<std::pair<unsigned, Block *>, 4> predIDs;
       for (auto *pred : block->getPredecessors())
         predIDs.push_back({getBlockID(pred), pred});
       llvm::array_pod_sort(predIDs.begin(), predIDs.end());
 
       os << "\t// " << predIDs.size() << " preds: ";
 
-      interleaveComma(predIDs, [&](std::pair<unsigned, const Block *> pred) {
+      interleaveComma(predIDs, [&](std::pair<unsigned, Block *> pred) {
         printBlockName(pred.second);
       });
     }
@@ -1615,7 +1615,7 @@ void Instruction::dump() const {
   llvm::errs() << "\n";
 }
 
-void Block::print(raw_ostream &os) const {
+void Block::print(raw_ostream &os) {
   auto *function = getFunction();
   if (!function) {
     os << "<<UNLINKED BLOCK>>\n";
@@ -1627,7 +1627,7 @@ void Block::print(raw_ostream &os) const {
   FunctionPrinter(function, modulePrinter).print(this);
 }
 
-void Block::dump() const { print(llvm::errs()); }
+void Block::dump() { print(llvm::errs()); }
 
 /// Print out the name of the block without printing its body.
 void Block::printAsOperand(raw_ostream &os, bool printType) {

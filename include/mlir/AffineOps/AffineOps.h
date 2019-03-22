@@ -142,11 +142,9 @@ public:
   Block *createBody();
 
   /// Get the body of the AffineForOp.
-  Block *getBody() { return &getRegion().front(); }
-  const Block *getBody() const { return &getRegion().front(); }
+  Block *getBody() const { return &getRegion().front(); }
 
   /// Get the body region of the AffineForOp.
-  Region &getRegion() { return getInstruction()->getRegion(0); }
   Region &getRegion() const { return getInstruction()->getRegion(0); }
 
   /// Returns the induction variable for this loop.

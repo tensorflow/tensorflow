@@ -60,8 +60,7 @@ void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
 
 /// Return true if the specified block A properly dominates block B.
 template <bool IsPostDom>
-bool DominanceInfoBase<IsPostDom>::properlyDominates(const Block *a,
-                                                     const Block *b) {
+bool DominanceInfoBase<IsPostDom>::properlyDominates(Block *a, Block *b) {
   // A block dominates itself but does not properly dominate itself.
   if (a == b)
     return false;

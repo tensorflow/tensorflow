@@ -49,8 +49,8 @@ Instruction *Block::getContainingInst() {
   return getParent() ? getParent()->getContainingInst() : nullptr;
 }
 
-Function *Block::getFunction() const {
-  const Block *block = this;
+Function *Block::getFunction() {
+  Block *block = this;
   while (auto *inst = block->getContainingInst()) {
     block = inst->getBlock();
     if (!block)
@@ -78,10 +78,10 @@ void Block::eraseFromFunction() {
 /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
 /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
 /// the latter fails.
-Instruction *Block::findAncestorInstInBlock(Instruction *inst) {
+Instruction *Block::findAncestorInstInBlock(const Instruction &inst) {
   // Traverse up the instruction hierarchy starting from the owner of operand to
   // find the ancestor instruction that resides in the block of 'forInst'.
-  auto *currInst = inst;
+  auto *currInst = const_cast<Instruction *>(&inst);
   while (currInst->getBlock() != this) {
     currInst = currInst->getParentInst();
     if (!currInst)
@@ -100,7 +100,7 @@ void Block::dropAllReferences() {
 
 /// Verifies the current ordering of child instructions. Returns false if the
 /// order is valid, true otherwise.
-bool Block::verifyInstOrder() const {
+bool Block::verifyInstOrder() {
   // The order is already known to be invalid.
   if (!isInstOrderValid())
     return false;
@@ -129,6 +129,17 @@ void Block::recomputeInstOrder() {
   unsigned orderIndex = 0;
   for (auto &inst : *this)
     inst.orderIndex = orderIndex++;
+}
+
+Block *PredecessorIterator::operator*() const {
+  // The use iterator points to an operand of a terminator.  The predecessor
+  // we return is the block that the terminator is embedded into.
+  return bbUseIterator.getUser()->getBlock();
+}
+
+/// Get the successor number in the predecessor terminator.
+unsigned PredecessorIterator::getSuccessorIndex() const {
+  return bbUseIterator->getOperandNumber();
 }
 
 //===----------------------------------------------------------------------===//
@@ -179,10 +190,10 @@ Instruction *Block::getTerminator() {
 }
 
 /// Return true if this block has no predecessors.
-bool Block::hasNoPredecessors() const { return pred_begin() == pred_end(); }
+bool Block::hasNoPredecessors() { return pred_begin() == pred_end(); }
 
 // Indexed successor access.
-unsigned Block::getNumSuccessors() const {
+unsigned Block::getNumSuccessors() {
   return empty() ? 0 : back().getNumSuccessors();
 }
 
@@ -288,7 +299,7 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
     return;
 
   iterator lastOldBlock = --dest->end();
-  for (const Block &block : *this) {
+  for (Block &block : *this) {
     Block *newBlock = new Block();
     mapper.map(&block, newBlock);
 

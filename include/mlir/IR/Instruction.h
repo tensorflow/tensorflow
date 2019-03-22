@@ -88,8 +88,7 @@ public:
   Instruction *clone(MLIRContext *context) const;
 
   /// Returns the instruction block that contains this instruction.
-  const Block *getBlock() const { return block; }
-  Block *getBlock() { return block; }
+  Block *getBlock() const { return block; }
 
   /// Return the context this operation is associated with.
   MLIRContext *getContext() const;
@@ -337,12 +336,9 @@ public:
     return getTrailingObjects<unsigned>()[index];
   }
 
-  Block *getSuccessor(unsigned index) {
+  Block *getSuccessor(unsigned index) const {
     assert(index < getNumSuccessors());
     return getBlockOperands()[index].get();
-  }
-  const Block *getSuccessor(unsigned index) const {
-    return const_cast<Instruction *>(this)->getSuccessor(index);
   }
   void setSuccessor(Block *block, unsigned index);
 
@@ -517,7 +513,7 @@ private:
   }
 
   // Provide a 'getParent' method for ilist_node_with_parent methods.
-  const Block *getParent() const { return getBlock(); }
+  Block *getParent() const { return getBlock(); }
 
   /// The instruction block that containts this instruction.
   Block *block = nullptr;

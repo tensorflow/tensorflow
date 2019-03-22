@@ -53,7 +53,7 @@ protected:
   using super = DominanceInfoBase<IsPostDom>;
 
   /// Return true if the specified block A properly dominates block B.
-  bool properlyDominates(const Block *a, const Block *b);
+  bool properlyDominates(Block *a, Block *b);
 
   /// A mapping of regions to their base dominator tree.
   llvm::DenseMap<Region *, std::unique_ptr<base>> dominanceInfos;
@@ -82,12 +82,12 @@ public:
   }
 
   /// Return true if the specified block A dominates block B.
-  bool dominates(const Block *a, const Block *b) {
+  bool dominates(Block *a, Block *b) {
     return a == b || properlyDominates(a, b);
   }
 
   /// Return true if the specified block A properly dominates block B.
-  bool properlyDominates(const Block *a, const Block *b) {
+  bool properlyDominates(Block *a, Block *b) {
     return super::properlyDominates(a, b);
   }
 };
@@ -106,12 +106,12 @@ public:
   }
 
   /// Return true if the specified block A properly postdominates block B.
-  bool properlyPostDominates(const Block *a, const Block *b) {
+  bool properlyPostDominates(Block *a, Block *b) {
     return super::properlyDominates(a, b);
   }
 
   /// Return true if the specified block A postdominates block B.
-  bool postDominates(const Block *a, const Block *b) {
+  bool postDominates(Block *a, Block *b) {
     return a == b || properlyPostDominates(a, b);
   }
 };

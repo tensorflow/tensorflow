@@ -36,7 +36,7 @@ class BlockAndValueMapping {
 public:
   /// Inserts a new mapping for 'from' to 'to'. If there is an existing mapping,
   /// it is overwritten.
-  void map(const Block *from, Block *to) { valueMap[from] = to; }
+  void map(Block *from, Block *to) { valueMap[from] = to; }
   void map(const Value *from, Value *to) { valueMap[from] = to; }
 
   /// Erases a mapping for 'from'.
@@ -49,7 +49,7 @@ public:
 
   /// Lookup a mapped value within the map. If a mapping for the provided value
   /// does not exist then return nullptr.
-  Block *lookupOrNull(const Block *from) const {
+  Block *lookupOrNull(Block *from) const {
     return lookupOrValue(from, (Block *)nullptr);
   }
   Value *lookupOrNull(const Value *from) const {

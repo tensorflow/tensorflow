@@ -576,7 +576,7 @@ bool AffineForOp::verify() const {
 
   // Check that the body defines as single block argument for the induction
   // variable.
-  const auto *body = getBody();
+  auto *body = getBody();
   if (body->getNumArguments() != 1 ||
       !body->getArgument(0)->getType().isIndex())
     return emitOpError("expected body to have a single index argument for the "
@@ -1068,7 +1068,7 @@ bool AffineIfOp::verify() const {
     if (region.front().back().isKnownTerminator())
       return emitOpError("expects region block to not have a terminator");
 
-    for (const auto &b : region)
+    for (auto &b : region)
       if (b.getNumArguments() != 0)
         return emitOpError(
             "requires that child entry blocks have no arguments");

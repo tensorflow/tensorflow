@@ -230,8 +230,8 @@ public:
   void operator()(ArrayRef<CapturableHandle> stmts);
 
 private:
-  BlockBuilder(const BlockBuilder &) = delete;
-  BlockBuilder &operator=(const BlockBuilder &other) = delete;
+  BlockBuilder(BlockBuilder &) = delete;
+  BlockBuilder &operator=(BlockBuilder &other) = delete;
 };
 
 /// Base class for ValueHandle, InstructionHandle and BlockHandle.

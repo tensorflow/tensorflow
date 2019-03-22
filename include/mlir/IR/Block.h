@@ -76,8 +76,8 @@ class Function;
 
 using BlockOperand = IROperandImpl<Block>;
 
-template <typename BlockType> class PredecessorIterator;
-template <typename BlockType> class SuccessorIterator;
+class PredecessorIterator;
+class SuccessorIterator;
 
 /// `Block` represents an ordered list of `Instruction`s.
 class Block : public IRObjectWithUseList,
@@ -97,19 +97,15 @@ public:
   }
 
   /// Blocks are maintained in a Region.
-  Region *getParent() const { return parentValidInstOrderPair.getPointer(); }
+  Region *getParent() { return parentValidInstOrderPair.getPointer(); }
 
   /// Returns the closest surrounding instruction that contains this block or
   /// nullptr if this is a top-level block.
   Instruction *getContainingInst();
 
-  const Instruction *getContainingInst() const {
-    return const_cast<Block *>(this)->getContainingInst();
-  }
-
   /// Returns the function that this block is part of, even if the block is
   /// nested under an operation region.
-  Function *getFunction() const;
+  Function *getFunction();
 
   /// Insert this block (which must not already be in a function) right before
   /// the specified block.
@@ -125,17 +121,16 @@ public:
   // This is the list of arguments to the block.
   using BlockArgListType = ArrayRef<BlockArgument *>;
 
-  // FIXME: Not const correct.
-  BlockArgListType getArguments() const { return arguments; }
+  BlockArgListType getArguments() { return arguments; }
 
   using args_iterator = BlockArgListType::iterator;
   using reverse_args_iterator = BlockArgListType::reverse_iterator;
-  args_iterator args_begin() const { return getArguments().begin(); }
-  args_iterator args_end() const { return getArguments().end(); }
-  reverse_args_iterator args_rbegin() const { return getArguments().rbegin(); }
-  reverse_args_iterator args_rend() const { return getArguments().rend(); }
+  args_iterator args_begin() { return getArguments().begin(); }
+  args_iterator args_end() { return getArguments().end(); }
+  reverse_args_iterator args_rbegin() { return getArguments().rbegin(); }
+  reverse_args_iterator args_rend() { return getArguments().rend(); }
 
-  bool args_empty() const { return arguments.empty(); }
+  bool args_empty() { return arguments.empty(); }
 
   /// Add one value to the argument list.
   BlockArgument *addArgument(Type type);
@@ -146,9 +141,8 @@ public:
   /// Erase the argument at 'index' and remove it from the argument list.
   void eraseArgument(unsigned index);
 
-  unsigned getNumArguments() const { return arguments.size(); }
+  unsigned getNumArguments() { return arguments.size(); }
   BlockArgument *getArgument(unsigned i) { return arguments[i]; }
-  const BlockArgument *getArgument(unsigned i) const { return arguments[i]; }
 
   //===--------------------------------------------------------------------===//
   // Instruction list management
@@ -157,44 +151,29 @@ public:
   /// This is the list of instructions in the block.
   using InstListType = llvm::iplist<Instruction>;
   InstListType &getInstructions() { return instructions; }
-  const InstListType &getInstructions() const { return instructions; }
 
   // Iteration over the instructions in the block.
   using iterator = InstListType::iterator;
-  using const_iterator = InstListType::const_iterator;
   using reverse_iterator = InstListType::reverse_iterator;
-  using const_reverse_iterator = InstListType::const_reverse_iterator;
 
   iterator begin() { return instructions.begin(); }
   iterator end() { return instructions.end(); }
-  const_iterator begin() const { return instructions.begin(); }
-  const_iterator end() const { return instructions.end(); }
   reverse_iterator rbegin() { return instructions.rbegin(); }
   reverse_iterator rend() { return instructions.rend(); }
-  const_reverse_iterator rbegin() const { return instructions.rbegin(); }
-  const_reverse_iterator rend() const { return instructions.rend(); }
 
-  bool empty() const { return instructions.empty(); }
+  bool empty() { return instructions.empty(); }
   void push_back(Instruction *inst) { instructions.push_back(inst); }
   void push_front(Instruction *inst) { instructions.push_front(inst); }
 
   Instruction &back() { return instructions.back(); }
-  const Instruction &back() const { return const_cast<Block *>(this)->back(); }
   Instruction &front() { return instructions.front(); }
-  const Instruction &front() const {
-    return const_cast<Block *>(this)->front();
-  }
 
   /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
   /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
   /// the latter fails.
   /// TODO: This is very specific functionality that should live somewhere else,
   /// probably in Dominance.cpp.
-  Instruction *findAncestorInstInBlock(Instruction *inst);
-  const Instruction *findAncestorInstInBlock(const Instruction &inst) const {
-    return const_cast<Block *>(this)->findAncestorInstInBlock(
-        const_cast<Instruction *>(&inst));
-  }
+  Instruction *findAncestorInstInBlock(const Instruction &inst);
 
   /// This drops all operand uses from instructions within this block, which is
   /// an essential step in breaking cyclic dependences between references when
@@ -203,7 +182,7 @@ public:
 
   /// Returns true if the ordering of the child instructions is valid, false
   /// otherwise.
-  bool isInstOrderValid() const { return parentValidInstOrderPair.getInt(); }
+  bool isInstOrderValid() { return parentValidInstOrderPair.getInt(); }
 
   /// Invalidates the current ordering of instructions.
   void invalidateInstOrder() {
@@ -214,7 +193,7 @@ public:
 
   /// Verifies the current ordering of child instructions matches the
   /// validInstOrder flag. Returns false if the order is valid, true otherwise.
-  bool verifyInstOrder() const;
+  bool verifyInstOrder();
 
   /// Recomputes the ordering of child instructions within the block.
   void recomputeInstOrder();
@@ -227,27 +206,18 @@ public:
   /// the block has a valid terminator instruction.
   Instruction *getTerminator();
 
-  const Instruction *getTerminator() const {
-    return const_cast<Block *>(this)->getTerminator();
-  }
-
   //===--------------------------------------------------------------------===//
   // Predecessors and successors.
   //===--------------------------------------------------------------------===//
 
   // Predecessor iteration.
-  using const_pred_iterator = PredecessorIterator<const Block>;
-  const_pred_iterator pred_begin() const;
-  const_pred_iterator pred_end() const;
-  llvm::iterator_range<const_pred_iterator> getPredecessors() const;
-
-  using pred_iterator = PredecessorIterator<Block>;
+  using pred_iterator = PredecessorIterator;
   pred_iterator pred_begin();
   pred_iterator pred_end();
   llvm::iterator_range<pred_iterator> getPredecessors();
 
   /// Return true if this block has no predecessors.
-  bool hasNoPredecessors() const;
+  bool hasNoPredecessors();
 
   /// If this block has exactly one predecessor, return it.  Otherwise, return
   /// null.
@@ -257,24 +227,12 @@ public:
   /// destinations) is not considered to be a single predecessor.
   Block *getSinglePredecessor();
 
-  const Block *getSinglePredecessor() const {
-    return const_cast<Block *>(this)->getSinglePredecessor();
-  }
-
   // Indexed successor access.
-  unsigned getNumSuccessors() const;
-  const Block *getSuccessor(unsigned i) const {
-    return const_cast<Block *>(this)->getSuccessor(i);
-  }
+  unsigned getNumSuccessors();
   Block *getSuccessor(unsigned i);
 
   // Successor iteration.
-  using const_succ_iterator = SuccessorIterator<const Block>;
-  const_succ_iterator succ_begin() const;
-  const_succ_iterator succ_end() const;
-  llvm::iterator_range<const_succ_iterator> getSuccessors() const;
-
-  using succ_iterator = SuccessorIterator<Block>;
+  using succ_iterator = SuccessorIterator;
   succ_iterator succ_begin();
   succ_iterator succ_end();
   llvm::iterator_range<succ_iterator> getSuccessors();
@@ -325,8 +283,8 @@ public:
     return &Block::instructions;
   }
 
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os);
+  void dump();
 
   /// Print out the name of the block without printing its body.
   /// NOTE: The printType argument is ignored.  We keep it for compatibility
@@ -344,8 +302,8 @@ private:
   /// This is the list of arguments to the block.
   std::vector<BlockArgument *> arguments;
 
-  Block(const Block &) = delete;
-  void operator=(const Block &) = delete;
+  Block(Block &) = delete;
+  void operator=(Block &) = delete;
 
   friend struct llvm::ilist_traits<Block>;
 };
@@ -437,28 +395,23 @@ private:
 /// BlockOperands that are embedded into terminator instructions.  From the
 /// operand, we can get the terminator that contains it, and it's parent block
 /// is the predecessor.
-template <typename BlockType>
 class PredecessorIterator
-    : public llvm::iterator_facade_base<PredecessorIterator<BlockType>,
-                                        std::forward_iterator_tag,
-                                        BlockType *> {
+    : public llvm::iterator_facade_base<PredecessorIterator,
+                                        std::forward_iterator_tag, Block *> {
 public:
   PredecessorIterator(BlockOperand *firstOperand)
       : bbUseIterator(firstOperand) {}
 
   PredecessorIterator &operator=(const PredecessorIterator &rhs) {
     bbUseIterator = rhs.bbUseIterator;
+    return *this;
   }
 
   bool operator==(const PredecessorIterator &rhs) const {
     return bbUseIterator == rhs.bbUseIterator;
   }
 
-  BlockType *operator*() const {
-    // The use iterator points to an operand of a terminator.  The predecessor
-    // we return is the block that the terminator is embedded into.
-    return bbUseIterator.getUser()->getBlock();
-  }
+  Block *operator*() const;
 
   PredecessorIterator &operator++() {
     ++bbUseIterator;
@@ -466,27 +419,12 @@ public:
   }
 
   /// Get the successor number in the predecessor terminator.
-  unsigned getSuccessorIndex() const {
-    return bbUseIterator->getOperandNumber();
-  }
+  unsigned getSuccessorIndex() const;
 
 private:
   using BBUseIterator = ValueUseIterator<BlockOperand>;
   BBUseIterator bbUseIterator;
 };
-
-inline auto Block::pred_begin() const -> const_pred_iterator {
-  return const_pred_iterator((BlockOperand *)getFirstUse());
-}
-
-inline auto Block::pred_end() const -> const_pred_iterator {
-  return const_pred_iterator(nullptr);
-}
-
-inline auto Block::getPredecessors() const
-    -> llvm::iterator_range<const_pred_iterator> {
-  return {pred_begin(), pred_end()};
-}
 
 inline auto Block::pred_begin() -> pred_iterator {
   return pred_iterator((BlockOperand *)getFirstUse());
@@ -505,45 +443,22 @@ inline auto Block::getPredecessors() -> llvm::iterator_range<pred_iterator> {
 //===----------------------------------------------------------------------===//
 
 /// This template implements the successor iterators for Block.
-template <typename BlockType>
 class SuccessorIterator final
-    : public IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
-                                     BlockType> {
+    : public IndexedAccessorIterator<SuccessorIterator, Block, Block> {
 public:
   /// Initializes the result iterator to the specified index.
-  SuccessorIterator(BlockType *object, unsigned index)
-      : IndexedAccessorIterator<SuccessorIterator<BlockType>, BlockType,
-                                BlockType>(object, index) {}
+  SuccessorIterator(Block *object, unsigned index)
+      : IndexedAccessorIterator<SuccessorIterator, Block, Block>(object,
+                                                                 index) {}
 
   SuccessorIterator(const SuccessorIterator &other)
       : SuccessorIterator(other.object, other.index) {}
 
-  /// Support converting to the const variant. This will be a no-op for const
-  /// variant.
-  operator SuccessorIterator<const BlockType>() const {
-    return SuccessorIterator<const BlockType>(this->object, this->index);
-  }
-
-  BlockType *operator*() const {
-    return this->object->getSuccessor(this->index);
-  }
+  Block *operator*() const { return this->object->getSuccessor(this->index); }
 
   /// Get the successor number in the terminator.
   unsigned getSuccessorIndex() const { return this->index; }
 };
-
-inline auto Block::succ_begin() const -> const_succ_iterator {
-  return const_succ_iterator(this, 0);
-}
-
-inline auto Block::succ_end() const -> const_succ_iterator {
-  return const_succ_iterator(this, getNumSuccessors());
-}
-
-inline auto Block::getSuccessors() const
-    -> llvm::iterator_range<const_succ_iterator> {
-  return {succ_begin(), succ_end()};
-}
 
 inline auto Block::succ_begin() -> succ_iterator {
   return succ_iterator(this, 0);

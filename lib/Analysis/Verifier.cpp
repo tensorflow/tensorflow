@@ -60,7 +60,7 @@ public:
     return fn.emitError(message);
   }
 
-  bool failure(const Twine &message, const Block &bb) {
+  bool failure(const Twine &message, Block &bb) {
     // Take the location information for the first instruction in the block.
     if (!bb.empty())
       return failure(message, bb.front());
@@ -107,9 +107,9 @@ public:
   }
 
   bool verify();
-  bool verifyBlock(const Block &block, bool isTopLevel);
+  bool verifyBlock(Block &block, bool isTopLevel);
   bool verifyOperation(const Instruction &op);
-  bool verifyDominance(const Block &block);
+  bool verifyDominance(Block &block);
   bool verifyInstDominance(const Instruction &inst);
 
   explicit FuncVerifier(Function &fn)
@@ -221,7 +221,7 @@ bool FuncVerifier::verify() {
 }
 
 // Returns if the given block is allowed to have no terminator.
-static bool canBlockHaveNoTerminator(const Block &block) {
+static bool canBlockHaveNoTerminator(Block &block) {
   // Allow the first block of an operation region to have no terminator if it is
   // the only block in the region.
   auto *parentList = block.getParent();
@@ -229,7 +229,7 @@ static bool canBlockHaveNoTerminator(const Block &block) {
          std::next(parentList->begin()) == parentList->end();
 }
 
-bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
+bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
       return failure("block argument not owned by block", block);
@@ -262,7 +262,7 @@ bool FuncVerifier::verifyBlock(const Block &block, bool isTopLevel) {
 
   // Verify that this block is not branching to a block of a different
   // region.
-  for (const Block *successor : block.getSuccessors())
+  for (Block *successor : block.getSuccessors())
     if (successor->getParent() != block.getParent())
       return failure("branching to block of a different region", block.back());
 
@@ -314,7 +314,7 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
   return false;
 }
 
-bool FuncVerifier::verifyDominance(const Block &block) {
+bool FuncVerifier::verifyDominance(Block &block) {
   // Verify the dominance of each of the held instructions.
   for (auto &inst : block)
     if (verifyInstDominance(inst))

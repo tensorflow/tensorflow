@@ -433,11 +433,12 @@ template LogicalResult mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
 // Block from the Block containing instruction, stopping at 'limitBlock'.
 static void findInstPosition(const Instruction *inst, Block *limitBlock,
                              SmallVectorImpl<unsigned> *positions) {
-  const Block *block = inst->getBlock();
+  Block *block = inst->getBlock();
   while (block != limitBlock) {
     // FIXME: This algorithm is unnecessarily O(n) and should be improved to not
     // rely on linear scans.
-    int instPosInBlock = std::distance(block->begin(), inst->getIterator());
+    int instPosInBlock = std::distance(
+        block->begin(), const_cast<Instruction *>(inst)->getIterator());
     positions->push_back(instPosInBlock);
     inst = block->getContainingInst();
     block = inst->getBlock();
@@ -680,20 +681,15 @@ unsigned mlir::getNumCommonSurroundingLoops(const Instruction &A,
   return numCommonLoops;
 }
 
-static Optional<int64_t> getMemoryFootprintBytes(const Block &block,
-                                                 Block::const_iterator start,
-                                                 Block::const_iterator end,
+static Optional<int64_t> getMemoryFootprintBytes(Block &block,
+                                                 Block::iterator start,
+                                                 Block::iterator end,
                                                  int memorySpace) {
   SmallDenseMap<Value *, std::unique_ptr<MemRefRegion>, 4> regions;
 
-  // Cast away constness since the walker uses non-const versions; but we
-  // guarantee that the visitor callback isn't mutating opInst.
-  auto *cStart = reinterpret_cast<Block::iterator *>(&start);
-  auto *cEnd = reinterpret_cast<Block::iterator *>(&end);
-
   // Walk this 'for' instruction to gather all memory regions.
   bool error = false;
-  const_cast<Block *>(&block)->walk(*cStart, *cEnd, [&](Instruction *opInst) {
+  const_cast<Block *>(&block)->walk(start, end, [&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
       // Neither load nor a store op.
       return;
@@ -737,8 +733,8 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(OpPointer<AffineForOp> forOp,
                                                 int memorySpace) {
   auto *forInst = forOp->getInstruction();
   return ::getMemoryFootprintBytes(
-      *forInst->getBlock(), Block::const_iterator(forInst),
-      std::next(Block::const_iterator(forInst)), memorySpace);
+      *forInst->getBlock(), Block::iterator(forInst),
+      std::next(Block::iterator(forInst)), memorySpace);
 }
 
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted

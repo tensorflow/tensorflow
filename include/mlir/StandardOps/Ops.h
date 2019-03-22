@@ -113,9 +113,7 @@ public:
 
   /// Return the block this branch jumps to.
   Block *getDest();
-  const Block *getDest() const {
-    return const_cast<BranchOp *>(this)->getDest();
-  }
+  Block *getDest() const { return const_cast<BranchOp *>(this)->getDest(); }
   void setDest(Block *block);
 
   /// Erase the operand at 'index' from the operand list.
@@ -322,13 +320,13 @@ public:
 
   /// Return the destination if the condition is true.
   Block *getTrueDest();
-  const Block *getTrueDest() const {
+  Block *getTrueDest() const {
     return const_cast<CondBranchOp *>(this)->getTrueDest();
   }
 
   /// Return the destination if the condition is false.
   Block *getFalseDest();
-  const Block *getFalseDest() const {
+  Block *getFalseDest() const {
     return const_cast<CondBranchOp *>(this)->getFalseDest();
   }
 

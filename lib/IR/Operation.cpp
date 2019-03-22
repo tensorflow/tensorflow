@@ -246,7 +246,7 @@ bool OpTrait::impl::verifySameOperandsAndResultType(const Instruction *op) {
 
 static bool verifyBBArguments(
     llvm::iterator_range<Instruction::const_operand_iterator> operands,
-    const Block *destBB, const Instruction *op) {
+    Block *destBB, const Instruction *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
   if (operandCount != destBB->getNumArguments())
     return op->emitError("branch has " + Twine(operandCount) +
@@ -276,7 +276,7 @@ static bool verifyTerminatorSuccessors(const Instruction *op) {
 }
 
 bool OpTrait::impl::verifyIsTerminator(const Instruction *op) {
-  const Block *block = op->getBlock();
+  Block *block = op->getBlock();
   // Verify that the operation is at the end of the respective parent block.
   if (!block || &block->back() != op)
     return op->emitOpError("must be the last instruction in the parent block");

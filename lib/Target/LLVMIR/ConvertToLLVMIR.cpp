@@ -58,7 +58,7 @@ private:
   bool convertFunctions();
   bool convertOneFunction(Function &func);
   void connectPHINodes(Function &func);
-  bool convertBlock(const Block &bb, bool ignoreArguments);
+  bool convertBlock(Block &bb, bool ignoreArguments);
   bool convertInstruction(const Instruction &inst, llvm::IRBuilder<> &builder);
 
   template <typename Range>
@@ -74,7 +74,7 @@ private:
   // Mappings between original and translated values, used for lookups.
   llvm::DenseMap<Function *, llvm::Function *> functionMapping;
   llvm::DenseMap<const Value *, llvm::Value *> valueMapping;
-  llvm::DenseMap<const Block *, llvm::BasicBlock *> blockMapping;
+  llvm::DenseMap<Block *, llvm::BasicBlock *> blockMapping;
 };
 } // end anonymous namespace
 
@@ -257,7 +257,7 @@ bool ModuleTranslation::convertInstruction(const Instruction &inst,
 // Convert block to LLVM IR.  Unless `ignoreArguments` is set, emit PHI nodes
 // to define values corresponding to the MLIR block arguments.  These nodes
 // are not connected to the source basic blocks, which may not exist yet.
-bool ModuleTranslation::convertBlock(const Block &bb, bool ignoreArguments) {
+bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   llvm::IRBuilder<> builder(blockMapping[&bb]);
 
   // Before traversing instructions, make block arguments available through
@@ -294,7 +294,7 @@ bool ModuleTranslation::convertBlock(const Block &bb, bool ignoreArguments) {
 
 // Get the SSA value passed to the current block from the terminator instruction
 // of its predecessor.
-static const Value *getPHISourceValue(const Block *current, const Block *pred,
+static const Value *getPHISourceValue(Block *current, Block *pred,
                                       unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
   if (terminator.isa<LLVM::BrOp>()) {
@@ -320,7 +320,7 @@ void ModuleTranslation::connectPHINodes(Function &func) {
   // Skip the first block, it cannot be branched to and its arguments correspond
   // to the arguments of the LLVM function.
   for (auto it = std::next(func.begin()), eit = func.end(); it != eit; ++it) {
-    const Block *bb = &*it;
+    Block *bb = &*it;
     llvm::BasicBlock *llvmBB = blockMapping.lookup(bb);
     auto phis = llvmBB->phis();
     auto numArguments = bb->getNumArguments();
@@ -328,7 +328,7 @@ void ModuleTranslation::connectPHINodes(Function &func) {
     for (auto &numberedPhiNode : llvm::enumerate(phis)) {
       auto &phiNode = numberedPhiNode.value();
       unsigned index = numberedPhiNode.index();
-      for (const auto *pred : bb->getPredecessors()) {
+      for (auto *pred : bb->getPredecessors()) {
         phiNode.addIncoming(valueMapping.lookup(getPHISourceValue(
                                 bb, pred, numArguments, index)),
                             blockMapping.lookup(pred));
@@ -338,22 +338,21 @@ void ModuleTranslation::connectPHINodes(Function &func) {
 }
 
 // TODO(mlir-team): implement an iterative version
-static void topologicalSortImpl(llvm::SetVector<const Block *> &blocks,
-                                const Block *b) {
+static void topologicalSortImpl(llvm::SetVector<Block *> &blocks, Block *b) {
   blocks.insert(b);
-  for (const Block *bb : b->getSuccessors()) {
+  for (Block *bb : b->getSuccessors()) {
     if (blocks.count(bb) == 0)
       topologicalSortImpl(blocks, bb);
   }
 }
 
 // Sort function blocks topologically.
-static llvm::SetVector<const Block *> topologicalSort(Function &f) {
+static llvm::SetVector<Block *> topologicalSort(Function &f) {
   // For each blocks that has not been visited yet (i.e. that has no
   // predecessors), add it to the list and traverse its successors in DFS
   // preorder.
-  llvm::SetVector<const Block *> blocks;
-  for (const Block &b : f.getBlocks()) {
+  llvm::SetVector<Block *> blocks;
+  for (Block &b : f.getBlocks()) {
     if (blocks.count(&b) == 0)
       topologicalSortImpl(blocks, &b);
   }
@@ -373,7 +372,7 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
   unsigned int argIdx = 0;
   for (const auto &kvp : llvm::zip(func.getArguments(), llvmFunc->args())) {
     llvm::Argument &llvmArg = std::get<1>(kvp);
-    const BlockArgument *mlirArg = std::get<0>(kvp);
+    BlockArgument *mlirArg = std::get<0>(kvp);
 
     if (auto attr = func.getArgAttrOfType<BoolAttr>(argIdx, "llvm.noalias")) {
       // NB: Attribute already verified to be boolean, so check if we can indeed
@@ -392,7 +391,7 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
 
   // First, create all blocks so we can jump to them.
   llvm::LLVMContext &llvmContext = llvmFunc->getContext();
-  for (const auto &bb : func) {
+  for (auto &bb : func) {
     auto *llvmBB = llvm::BasicBlock::Create(llvmContext);
     llvmBB->insertInto(llvmFunc);
     blockMapping[&bb] = llvmBB;
@@ -402,7 +401,7 @@ bool ModuleTranslation::convertOneFunction(Function &func) {
   // converted before uses.
   auto blocks = topologicalSort(func);
   for (auto indexedBB : llvm::enumerate(blocks)) {
-    const auto *bb = indexedBB.value();
+    auto *bb = indexedBB.value();
     if (convertBlock(*bb, /*ignoreArguments=*/indexedBB.index() == 0))
       return true;
   }

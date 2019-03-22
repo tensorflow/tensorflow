@@ -28,10 +28,10 @@ template <>
 struct llvm::DOTGraphTraits<Function *> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
-  static std::string getNodeLabel(const Block *Block, Function *);
+  static std::string getNodeLabel(Block *Block, Function *);
 };
 
-std::string llvm::DOTGraphTraits<Function *>::getNodeLabel(const Block *Block,
+std::string llvm::DOTGraphTraits<Function *>::getNodeLabel(Block *Block,
                                                            Function *) {
   // Reuse the print output for the node labels.
   std::string outStreamStr;

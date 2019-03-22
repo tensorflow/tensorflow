@@ -787,10 +787,7 @@ public:
     return this->getInstruction()->getNumSuccessorOperands(index);
   }
 
-  const Block *getSuccessor(unsigned index) const {
-    return this->getInstruction()->getSuccessor(index);
-  }
-  Block *getSuccessor(unsigned index) {
+  Block *getSuccessor(unsigned index) const {
     return this->getInstruction()->getSuccessor(index);
   }
 

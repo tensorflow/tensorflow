@@ -41,39 +41,10 @@ template <> struct GraphTraits<mlir::Block *> {
   static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
 };
 
-template <> struct GraphTraits<const mlir::Block *> {
-  using ChildIteratorType = mlir::Block::const_succ_iterator;
-  using Node = const mlir::Block;
-  using NodeRef = Node *;
-
-  static NodeRef getEntryNode(NodeRef bb) { return bb; }
-
-  static ChildIteratorType child_begin(NodeRef node) {
-    return node->succ_begin();
-  }
-  static ChildIteratorType child_end(NodeRef node) { return node->succ_end(); }
-};
-
 template <> struct GraphTraits<Inverse<mlir::Block *>> {
   using ChildIteratorType = mlir::Block::pred_iterator;
   using Node = mlir::Block;
   using NodeRef = Node *;
-  static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
-    return inverseGraph.Graph;
-  }
-  static inline ChildIteratorType child_begin(NodeRef node) {
-    return node->pred_begin();
-  }
-  static inline ChildIteratorType child_end(NodeRef node) {
-    return node->pred_end();
-  }
-};
-
-template <> struct GraphTraits<Inverse<const mlir::Block *>> {
-  using ChildIteratorType = mlir::Block::const_pred_iterator;
-  using Node = const mlir::Block;
-  using NodeRef = Node *;
-
   static NodeRef getEntryNode(Inverse<NodeRef> inverseGraph) {
     return inverseGraph.Graph;
   }
