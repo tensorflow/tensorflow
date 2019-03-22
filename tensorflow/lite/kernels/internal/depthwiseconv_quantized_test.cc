@@ -145,9 +145,29 @@ inline void DispatchDepthwiseConv(
       break;
 #endif
     }
-    case DepthwiseConvImplementation::kUseNeon3x3DotProduct:
-      // TODO(b/118426582) Placeholder for future dispatches.
+    case DepthwiseConvImplementation::kUseNeon3x3DotProduct: {
+#if defined(__ARM_FEATURE_DOTPROD) && defined(__aarch64__)
+      DotProduct3x3KernelType kernel_type =
+          optimized_ops::depthwise_conv::CategorizeDotProductKernel(
+              input_shape, filter_shape, params);
+
+      ASSERT_TRUE(
+          kernel_type == DotProduct3x3KernelType::kPlain ||
+          kernel_type == DotProduct3x3KernelType::kStride2 ||
+          kernel_type ==
+              DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
+          kernel_type ==
+              DotProduct3x3KernelType::kWithDepthMultiplicationStride2)
+          << "Kernel type = " << static_cast<int>(kernel_type);
+
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
+          DepthwiseConvImplementation::kUseNeon3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data);
+      return;
+#endif
       break;
+    }
     case DepthwiseConvImplementation::kUseCModel3x3DotProduct: {
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
@@ -181,7 +201,6 @@ inline void DispatchDepthwiseConv(
       return;
     }
     case DepthwiseConvImplementation::kUseUnwound3x3DotProduct: {
-      using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
@@ -200,7 +219,6 @@ inline void DispatchDepthwiseConv(
     }
     case DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct: {
 #if defined(USE_NEON)
-      using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
@@ -790,6 +808,22 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
         Values(kLooseIntrinsicsTolerance)              // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+#endif
+
+#if defined(__ARM_FEATURE_DOTPROD) && defined(__aarch64__)
+INSTANTIATE_TEST_SUITE_P(
+    NeonAsm, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::
+                   kUseNeon3x3DotProduct),             // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Bool(),                                        // test_stride
+        Bool(),                                        // test_pad
+        Bool(),                                        // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(false)                                  // loose_tolerance
         ),
     TestParam::TestNameSuffix);
 #endif

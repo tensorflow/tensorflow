@@ -49,8 +49,9 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     LoopIteratorPredicate loop_pred;
     if (short_circuit_indices_.empty()) {
@@ -195,8 +196,12 @@ class TakeWhileDatasetOp : public UnaryDatasetOpKernel {
           input_impl_.reset();
           return Status::OK();
         }
-        return loop_pred_(ctx, instantiated_captured_func_.get(), *out_tensors,
-                          end_of_sequence);
+        TF_RETURN_IF_ERROR(loop_pred_(ctx, instantiated_captured_func_.get(),
+                                      *out_tensors, end_of_sequence));
+        if (*end_of_sequence) {
+          out_tensors->clear();
+        }
+        return Status::OK();
       }
 
      protected:

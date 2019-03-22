@@ -170,7 +170,6 @@ Status TRTEngineOp::ConstructFunctionHandle(OpKernelContext* ctx) {
                             " can't be found in function library");
   }
   FunctionLibraryRuntime::InstantiateOptions inst_ops;
-  inst_ops.overlay_lib = nullptr;
   inst_ops.state_handle = "";
   inst_ops.target = ctx->device()->name();
   native_func_ = 0;
@@ -376,9 +375,9 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
   }
   EngineContext* engine_context = GetEngine(input_shapes, ctx);
   if (!engine_context->cuda_engine) {
-    LOG(WARNING) << "Engine retrieval for input shapes: "
-                 << TensorShapeUtils::ShapeListString(input_shapes)
-                 << " failed. Running native segment for " << name();
+    VLOG(1) << "Engine retrieval for input shapes: "
+            << TensorShapeUtils::ShapeListString(input_shapes)
+            << " failed. Running native segment for " << name();
     ExecuteNativeSegment(ctx, helper);
     return;
   }
@@ -625,14 +624,12 @@ EngineContext* TRTEngineOp::GetEngine(
         partial_shapes, &logger, allocator, calibrator_.get(), &engine,
         use_calibration_, &convert_successfully);
     if (!status.ok()) {
-      if (convert_successfully) {
-        // This means it fail to build the engine even when the network is built
-        // successfully, probably due to internal issues. In this case we don't
-        // retry in the future.
-        cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
-      }
-      LOG(WARNING) << "Engine creation for batch size " << batch_size
-                   << " failed " << status;
+      LOG(WARNING) << "Engine creation for " << name() << " failed. "
+                   << "The native segment will be used instead. "
+                   << "Reason: " << status;
+      // Store an empty engine in the cache for these input shapes so we don't
+      // try to build the same failing engine again.
+      cache.emplace(engine_input_shapes, absl::make_unique<EngineContext>());
       return &empty_context;
     }
     VLOG(1) << "Conversion is done";

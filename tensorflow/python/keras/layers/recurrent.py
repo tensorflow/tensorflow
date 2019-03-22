@@ -1511,7 +1511,7 @@ class SimpleRNN(RNN):
     return cls(**config)
 
 
-@keras_export('keras.layers.GRUCell')
+@keras_export(v1=['keras.layers.GRUCell'])
 class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
@@ -2049,7 +2049,7 @@ class GRU(RNN):
     return cls(**config)
 
 
-@keras_export('keras.layers.LSTMCell')
+@keras_export(v1=['keras.layers.LSTMCell'])
 class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 
@@ -2508,10 +2508,6 @@ class LSTM(RNN):
       logging.warning('`implementation=0` has been deprecated, '
                       'and now defaults to `implementation=1`.'
                       'Please update your layer call.')
-    if context.executing_eagerly() and context.num_gpus() > 0:
-      logging.warn('%s: Note that this layer is not optimized for performance. '
-                   'Please use tf.keras.layers.CuDNNLSTM for better '
-                   'performance on GPU.', self)
     cell = LSTMCell(
         units,
         activation=activation,

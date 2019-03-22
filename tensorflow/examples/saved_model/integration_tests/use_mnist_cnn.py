@@ -103,16 +103,13 @@ def main(argv):
       fake_tiny_data=FLAGS.fast_test_mode)
   model.compile(loss=tf.keras.losses.categorical_crossentropy,
                 optimizer=tf.keras.optimizers.SGD(),
-                metrics=['accuracy'],
-                # TODO(arnoegw): Remove after investigating huge allocs.
-                run_eagerly=True)
+                metrics=['accuracy'])
   print('Training on %s with %d trainable and %d untrainable variables.' %
         ('Fashion MNIST' if FLAGS.use_fashion_mnist else 'MNIST',
          len(model.trainable_variables), len(model.non_trainable_variables)))
   model.fit(x_train, y_train,
             batch_size=128,
             epochs=FLAGS.epochs,
-            steps_per_epoch=3,
             verbose=1,
             validation_data=(x_test, y_test))
 

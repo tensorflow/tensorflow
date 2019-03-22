@@ -61,10 +61,12 @@ class BufferComparatorTest : public testing::Test {
 
     TF_CHECK_OK(stream.BlockHostUntilDone());
 
-    return F16BufferComparator::Create(lhs_buffer, compiler_, &allocator_,
-                                       &stream)
+    return BufferComparator::Create(
+               ShapeUtil::MakeShape(
+                   xla::F16, {static_cast<int64>(lhs_buffer.ElementCount())}),
+               stream.parent(), compiler_)
         .ConsumeValueOrDie()
-        .CompareEqual(rhs_buffer)
+        .CompareEqual(&stream, &allocator_, lhs_buffer, rhs_buffer)
         .ConsumeValueOrDie();
   }
 

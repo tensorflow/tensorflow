@@ -235,6 +235,21 @@ def class_to_graph(c, program_ctx):
   if not members:
     raise ValueError('Cannot convert %s: it has no member methods.' % c)
 
+  # TODO(mdan): Don't clobber namespaces for each method in one class namespace.
+  # The assumption that one namespace suffices for all methods only holds if
+  # all methods were defined in the same module.
+  # If, instead, functions are imported from multiple modules and then spliced
+  # into the class, then each function has its own globals and __future__
+  # imports that need to stay separate.
+
+  # For example, C's methods could both have `global x` statements referring to
+  # mod1.x and mod2.x, but using one namespace for C would cause a conflict.
+  # from mod1 import f1
+  # from mod2 import f2
+  # class C(object):
+  #   method1 = f1
+  #   method2 = f2
+
   class_namespace = {}
   for _, m in members:
     # Only convert the members that are directly defined by the class.
@@ -250,7 +265,13 @@ def class_to_graph(c, program_ctx):
       class_namespace = namespace
     else:
       class_namespace.update(namespace)
-    converted_members[m] = nodes[0]
+    # TODO(brianklee): function_to_graph returns future import nodes and the
+    # converted function nodes. We discard all the future import nodes here
+    # which is buggy behavior, but really, the whole approach of gathering all
+    # of the converted function nodes in one place is intrinsically buggy.
+    # So this is a reminder to properly handle the future import nodes when we
+    # redo our approach to class conversion.
+    converted_members[m] = nodes[-1]
   namer = naming.Namer(class_namespace)
   class_name = namer.class_name(c.__name__)
 
@@ -335,9 +356,11 @@ def _add_self_references(namespace, autograph_module):
 def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
   """Specialization of `entity_to_graph` for callable functions."""
 
-  node, source = parser.parse_entity(f)
+  future_imports = inspect_utils.getfutureimports(f)
+  node, future_import_nodes, source = parser.parse_entity(
+      f, future_imports=future_imports)
   logging.log(3, 'Source code of %s:\n\n%s\n', f, source)
-  node = node.body[0]
+  # Parsed AST should contain future imports and one function def node.
 
   # In general, the output of inspect.getsource is inexact for lambdas because
   # it uses regex matching to adjust the exact location around the line number
@@ -387,7 +410,7 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
     new_name = f.__name__
     assert node.name == new_name
 
-  return [node], new_name, namespace
+  return future_import_nodes + [node], new_name, namespace
 
 
 def node_to_graph(node, context):

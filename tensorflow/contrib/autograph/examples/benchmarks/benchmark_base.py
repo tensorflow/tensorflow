@@ -47,7 +47,7 @@ class ReportingBenchmark(tf.test.Benchmark):
 
     avg_time = np.average(all_times)
 
-    extras = dict()
+    extras = {}
     extras['all_times'] = all_times
 
     if isinstance(name, tuple):

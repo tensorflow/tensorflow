@@ -535,6 +535,25 @@ TEST_F(HloVerifierTestAllowMixedPrecision, SelectMixedPrecisionAllowed) {
   ASSERT_TRUE(status.ok());
 }
 
+TEST_F(HloVerifierTest, SelectTupleNotAllowed) {
+  const char* const hlo_string = R"(
+  HloModule Module
+
+  ENTRY SelectWithTuple {
+    p0 = (f32[], f32[]) parameter(0)
+    p1 = (f32[], f32[]) parameter(1)
+    p2 = pred[] parameter(2)
+    ROOT select = (f32[], f32[]) select(p2, p0, p1)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(hlo_string));
+
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Select operation is not supported for tuples"));
+}
+
 TEST_F(HloVerifierTest, IotaNonArrayResult) {
   const char* const hlo_string = R"(
   HloModule IotaTupleResult

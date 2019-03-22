@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import six as _six
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_loaded_tensorrt_version
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -42,6 +44,15 @@ from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
+
+# Import TRT library. This is fine since we don't import TF-TRT in
+# tensorflow/python/compiler/__init__.py, and `import tensorflow` won't trigger
+# importing of TF-TRT. Note that TF-TRT is still included in GPU build since
+# tensorflow/python/BUILD depends on it.
+#
+# We need this import so that when users import this module, they can execute a
+# TRT-converted graph without calling any of the methods in this module.
+trt_ops.load_trt_ops()
 
 
 def _to_bytes(s):
@@ -497,12 +508,12 @@ class TrtGraphConverter(GraphConverter):
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
-        graph using calib_graph_to_infer_graph() after running calibration. if
-        set to False, quantization nodes will be expected for every tensor in
-        the graph (exlcuding those which will be fused). If a range is missing,
-        an error will occur. Please note that accuracy may be negatively
-        affected if there is a mismatch between which tensors TRT quantizes and
-        which tensors were trained with fake quantization.
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
       use_function_backup: if set to True, it will create a FunctionDef for each
         subgraph that is converted to TRT op, and if TRT ops fail to execute at
         runtime, it'll invoke that function as a fallback.
@@ -514,14 +525,6 @@ class TrtGraphConverter(GraphConverter):
       TypeError: if any of the parameters are of unexpected type.
       ValueError: if any of the parameters are of unexpected value.
     """
-    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-    # even if it cannot find TensorRT library.
-    trt_ops.load_trt_ops()
-    # pylint: disable=g-import-not-at-top,unused-import,line-too-long,unused-variable
-    # Import a random symbol to trigger loading of TRT library.
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-    # pylint: enable=g-import-not-at-top,unused-import,line-too-long,unused-variable
-
     if rewriter_config_template is not None and not isinstance(
         rewriter_config_template, rewriter_config_pb2.RewriterConfig):
       raise TypeError(
@@ -608,12 +611,12 @@ class TrtGraphConverter(GraphConverter):
       use_calibration: this argument is ignored if precision_mode is not INT8.
         If set to True, a calibration graph will be created to calibrate the
         missing ranges. The calibration graph must be converted to an inference
-        graph using calib_graph_to_infer_graph() after running calibration. if
-        set to False, quantization nodes will be expected for every tensor in
-        the graph (exlcuding those which will be fused). If a range is missing,
-        an error will occur. Please note that accuracy may be negatively
-        affected if there is a mismatch between which tensors TRT quantizes and
-        which tensors were trained with fake quantization.
+        graph by running calibration with calibrate(). If set to False,
+        quantization nodes will be expected for every tensor in the graph
+        (exlcuding those which will be fused). If a range is missing, an error
+        will occur. Please note that accuracy may be negatively affected if
+        there is a mismatch between which tensors TRT quantizes and which
+        tensors were trained with fake quantization.
       use_function_backup: if set to True, it will create a FunctionDef for each
         subgraph that is converted to TRT op, and if TRT ops fail to execute at
         runtime, it'll invoke that function as a fallback.
@@ -632,15 +635,6 @@ class TrtGraphConverter(GraphConverter):
 
     # TODO(laigd): move all the validations below to
     # get_tensorrt_rewriter_config().
-
-    # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-    # even if it cannot find TensorRT library.
-    trt_ops.load_trt_ops()
-    # pylint: disable=g-import-not-at-top,line-too-long
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_loaded_tensorrt_version
-    # pylint: enable=g-import-not-at-top,line-too-long
-
     # Check compatibility of TensorRT version.
     compiled_version = get_linked_tensorrt_version()
     loaded_version = get_loaded_tensorrt_version()
@@ -788,7 +782,6 @@ def create_inference_graph(
     is_dynamic_op=False,
     maximum_cached_engines=1,
     cached_engine_batches=None,
-    use_calibration=True,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
     input_saved_model_signature_key=None,
@@ -821,15 +814,6 @@ def create_inference_graph(
       determine the batch sizes of the cached engines, instead of making the
       decision on the fly. This is useful when we know the most common batch
       size(s) the application is going to generate.
-    use_calibration: this argument is ignored if precision_mode is not INT8. If
-      set to True, a calibration graph will be created to calibrate the missing
-      ranges. The calibration graph must be converted to an inference graph
-      using calib_graph_to_infer_graph() after running calibration. if set to
-      False, quantization nodes will be expected for every tensor in the graph
-      (exlcuding those which will be fused). If a range is missing, an error
-      will occur. Please note that accuracy may be negatively affected if there
-      is a mismatch between which tensors TRT quantizes and which tensors were
-      trained with fake quantization.
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
@@ -864,7 +848,6 @@ def create_inference_graph(
 
   Raises:
     ValueError: if the combination of the parameters is invalid.
-    RuntimeError: if the TensorRT library version is incompatible.
   """
   trt_converter = TrtGraphConverter(
       input_saved_model_dir=input_saved_model_dir,
@@ -880,7 +863,7 @@ def create_inference_graph(
       is_dynamic_op=is_dynamic_op,
       maximum_cached_engines=maximum_cached_engines,
       cached_engine_batches=cached_engine_batches,
-      use_calibration=use_calibration)
+      use_calibration=False)
   converted_graph_def = trt_converter.convert()
   if output_saved_model_dir:
     trt_converter.save(output_saved_model_dir)

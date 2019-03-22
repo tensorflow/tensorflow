@@ -1648,7 +1648,7 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
-  for (TFE_Py_Tape* tape : SafeTapeSet()) {
+  for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }
@@ -1701,7 +1701,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   tensorflow::Safe_PyObjectPtr seq =
       tensorflow::make_safe(PySequence_Fast(target, "expected a sequence"));
   int len = PySequence_Fast_GET_SIZE(seq.get());
-  tensorflow::gtl::FlatMap<tensorflow::int64, PyTapeTensor>
+  std::unordered_map<tensorflow::int64, PyTapeTensor>
       source_tensors_that_are_targets;
   for (int i = 0; i < len; ++i) {
     tensorflow::int64 target_id = target_vec[i];

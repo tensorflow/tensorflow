@@ -89,7 +89,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      &captured_func));
+                                      /*params=*/{}, &captured_func));
 
     if (num_parallel_calls == model::kAutoTune) {
       metrics::RecordTFDataAutotune(kDatasetName);

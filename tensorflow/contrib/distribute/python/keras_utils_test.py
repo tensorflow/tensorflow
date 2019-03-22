@@ -22,16 +22,16 @@ import collections
 import tempfile
 from absl.testing import parameterized
 import numpy as np
-
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import keras_test as keras_test_lib
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.keras import distribute_strategy_test as keras_test_lib
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import rmsprop as rms_prop_keras
 from tensorflow.python.ops import math_ops
@@ -166,8 +166,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_validating_dataset_input_tensors_with_shape_mismatch(
@@ -192,8 +191,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_validating_dataset_input_tensors_with_dtype_mismatch(
@@ -218,8 +216,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_unsupported_features(self, distribution):
@@ -281,8 +278,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_calling_with_unsupported_predefined_callbacks(self, distribution):
@@ -321,7 +317,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[combinations.one_device_strategy], mode=['graph']))
+          distribution=[strategy_combinations.one_device_strategy],
+          mode=['graph']))
   def test_distribution_strategy_with_add_metric_add_loss(self, distribution):
     with distribution.scope():
       x = keras.layers.Input(shape=(1,))
@@ -347,7 +344,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=[combinations.one_device_strategy], mode=['eager']))
+          distribution=[strategy_combinations.one_device_strategy],
+          mode=['eager']))
   def test_distribution_strategy_with_run_eagerly(self, distribution):
     with distribution.scope():
       x = keras.layers.Input(shape=(1,))
@@ -364,8 +362,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_distribution_strategy_on_subclassed_model(self, distribution):
@@ -393,8 +390,7 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_distribution_strategy_on_deferred_sequential_model(
@@ -421,8 +417,7 @@ class TestDistributionStrategyWithLossMasking(test.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=[
-              combinations.mirrored_strategy_with_gpu_and_cpu,
-              combinations.core_mirrored_strategy_with_gpu_and_cpu
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
           ],
           mode=['graph', 'eager']))
   def test_masking(self, distribution):

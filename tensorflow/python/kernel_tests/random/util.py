@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 
 
@@ -70,3 +72,26 @@ def test_moment_matching(
             total_variance)))
   return z_test_scores
 
+
+def chi_squared(x, bins):
+  """Pearson's Chi-squared test."""
+  x = np.ravel(x)
+  n = len(x)
+  histogram, _ = np.histogram(x, bins=bins, range=(0, 1))
+  expected = n / float(bins)
+  return np.sum(np.square(histogram - expected) / expected)
+
+
+def normal_cdf(x):
+  """Cumulative distribution function for a standard normal distribution."""
+  return 0.5 + 0.5 * np.vectorize(math.erf)(x / math.sqrt(2))
+
+
+def anderson_darling(x):
+  """Anderson-Darling test for a standard normal distribution."""
+  x = np.sort(np.ravel(x))
+  n = len(x)
+  i = np.linspace(1, n, n)
+  z = np.sum((2 * i - 1) * np.log(normal_cdf(x)) +
+             (2 * (n - i) + 1) * np.log(1 - normal_cdf(x)))
+  return -n - z / n
