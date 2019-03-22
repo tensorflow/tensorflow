@@ -207,11 +207,8 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
   if (FLAGS_gpuexec_cuda_sync_around_driver_calls) SynchronizeOrDie();
 
   auto* tls = &tls_data.get();
-  if (tls->depth++ > 0) {
-    CHECK(tls->id == cuda_context->id())
-        << "Trying to activate a CUDA context in the current thread which is "
-           "different than an existing instance of ScopedActivateContext.";
-
+  tls->depth++;
+  if (tls->id == cuda_context->id()) {
     if (kVerifyGpuContext) {
       CHECK_EQ(CurrentContext(), cuda_context->context());
     }
@@ -221,6 +218,8 @@ ScopedActivateContext::ScopedActivateContext(GpuContext* cuda_context) {
 
   VLOG(3) << "ScopedActivateContext switching context from " << tls->id
           << " to " << cuda_context->id();
+
+  to_restore_ = (tls->depth == 1 ? nullptr : tls->context);
 
   // Set the context and update thread local.
   CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(cuda_context->context()));
@@ -242,6 +241,15 @@ ScopedActivateContext::~ScopedActivateContext() {
 
   tls->depth--;
   DCHECK_GE(tls->depth, 0);
+  if (to_restore_ == nullptr) {
+    // Leave context, tls->id, and tls->context set.
+    return;
+  }
+
+  // Set context and update thread local.
+  CHECK_EQ(CUDA_SUCCESS, cuCtxSetCurrent(to_restore_->context()));
+  tls->id = to_restore_->id();
+  tls->context = to_restore_;
 }
 
 namespace {
@@ -956,8 +964,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 }
 
-/* static */ port::Status GpuDriver::RecordEvent(GpuContext*, CUevent event,
+/* static */ port::Status GpuDriver::RecordEvent(GpuContext* context,
+                                                 CUevent event,
                                                  CUstream stream) {
+  ScopedActivateContext activated{context};
   CUresult res = cuEventRecord(event, stream);
   switch (res) {
     case CUDA_SUCCESS:
@@ -976,8 +986,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   }
 }
 
-/* static */ port::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext*,
+/* static */ port::StatusOr<CUresult> GpuDriver::QueryEvent(GpuContext* context,
                                                             CUevent event) {
+  ScopedActivateContext activated{context};
   CUresult res = cuEventQuery(event);
   if (res != CUDA_SUCCESS && res != CUDA_ERROR_NOT_READY) {
     return port::Status(
@@ -1009,8 +1020,9 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   return true;
 }
 
-/* static */ bool GpuDriver::WaitStreamOnEvent(GpuContext*, CUstream stream,
-                                               CUevent event) {
+/* static */ bool GpuDriver::WaitStreamOnEvent(GpuContext* context,
+                                               CUstream stream, CUevent event) {
+  ScopedActivateContext activation(context);
   CUresult res = cuStreamWaitEvent(stream, event, 0 /* = flags */);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "could not wait stream on event: " << ToString(res);
