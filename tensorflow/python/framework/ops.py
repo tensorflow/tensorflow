@@ -5087,6 +5087,18 @@ class Graph(object):
         _distribution_strategy_stack)
 
   @property
+  def _global_distribute_strategy_scope(self):
+    """For implementing `tf.distribute.set_strategy()`."""
+    if not hasattr(self._thread_local, "distribute_strategy_scope"):
+      self._thread_local.distribute_strategy_scope = None
+    return self._thread_local.distribute_strategy_scope
+
+  @_global_distribute_strategy_scope.setter
+  def _global_distribute_strategy_scope(self, distribute_strategy_scope):
+    self._thread_local.distribute_strategy_scope = (
+        distribute_strategy_scope)
+
+  @property
   def _auto_cast_variable_read_dtype(self):
     """The dtype that instances of `AutoCastVariable` will be casted to.
 
