@@ -403,6 +403,19 @@ def FunctionAttr : Attr<CPred<"{0}.isa<FunctionAttr>()">, "function"> {
   let constBuilderCall = [{ {0}.getFunctionAttr({1}) }];
 }
 
+// Base class for attributes containing types. Example:
+//   def IntTypeAttr : TypeAttrBase<"IntegerType", "integer type attribute">
+// defines a type attribute containing an integer type.
+class TypeAttrBase<string retType, string description> :
+    Attr<AllOf<[
+      CPred<"{0}.isa<TypeAttr>()">,
+      CPred<"{0}.cast<TypeAttr>().getValue().isa<" # retType # ">()">]>,
+    description> {
+  let storageType = [{ TypeAttr }];
+  let returnType = retType;
+  let convertFromStorage = "{0}.getValue().cast<" # retType # ">()";
+}
+
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
 // materialized as needed.
