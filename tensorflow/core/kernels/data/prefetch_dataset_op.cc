@@ -139,13 +139,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       mutex_lock parent_l(parent_mu_);
       mutex_lock l(mu_);
       if (stats_aggregator) {
-        int64 steps = num_elements();
         stats_aggregator->AddScalar(
             stats_utils::BufferSizeScalarName(dataset()->node_name()),
-            static_cast<float>(buffer_.size()), steps);
+            static_cast<float>(buffer_.size()), num_elements());
         stats_aggregator->AddScalar(
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
-            static_cast<float>(auto_tuner_.buffer_limit()), steps);
+            static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
       return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
     }
@@ -233,18 +232,17 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                    bool* end_of_sequence) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
-        int64 steps = num_elements();
         stats_aggregator->AddToHistogram(
             stats_utils::BufferUtilizationHistogramName(dataset()->node_name()),
             {static_cast<float>(buffer_.size()) /
              static_cast<float>(auto_tuner_.buffer_limit())},
-            steps);
+            num_elements());
         stats_aggregator->AddScalar(
             stats_utils::BufferSizeScalarName(dataset()->node_name()),
-            static_cast<float>(buffer_.size()), steps);
+            static_cast<float>(buffer_.size()), num_elements());
         stats_aggregator->AddScalar(
             stats_utils::BufferCapacityScalarName(dataset()->node_name()),
-            static_cast<float>(auto_tuner_.buffer_limit()), steps);
+            static_cast<float>(auto_tuner_.buffer_limit()), num_elements());
       }
       // A new element is available. Forward the status from computing it, and
       // (if we successfully got an element) the output values.

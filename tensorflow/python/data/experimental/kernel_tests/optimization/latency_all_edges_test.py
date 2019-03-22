@@ -21,12 +21,9 @@ from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-# TODO(b/116314787): add test coverage for StatsAggregatorV2.
-@test_util.run_v1_only("b/116314787, add test coverage")
 class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testLatencyStatsOptimization(self):
@@ -45,15 +42,13 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
         expected_output=[1],
         requires_initialization=True,
         num_test_iterations=1)
-    summary_t = aggregator.get_summary()
-    summary_str = self.evaluate(summary_t)
-    self.assertSummaryHasCount(
-        summary_str, self.regexForNodeName("record_latency::TensorDataset"), 1)
-    self.assertSummaryHasCount(
-        summary_str, self.regexForNodeName("record_latency::MapDataset"), 1)
-    self.assertSummaryHasCount(
-        summary_str, self.regexForNodeName("record_latency::PrefetchDataset"),
-        1)
+    handle = self.getHandle(aggregator)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::TensorDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::MapDataset"), 1)
+    self.assertStatisticsHasCount(
+        handle, self.regexForNodeName("record_latency::PrefetchDataset"), 1)
 
 
 if __name__ == "__main__":

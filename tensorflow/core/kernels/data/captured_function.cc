@@ -514,7 +514,8 @@ void InstantiatedCapturedFunction::RunAsync(
                               captured_func_->func().name());
           stats_aggregator->AddToHistogram(
               stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
-              {static_cast<float>(stats_collector->processing_time())});
+              {static_cast<float>(stats_collector->processing_time())},
+              model->NumElements(prefix));
         }
         if (model) {
           model->AddProcessingTime(prefix, stats_collector->processing_time());
