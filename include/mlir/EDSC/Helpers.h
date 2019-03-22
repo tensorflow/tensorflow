@@ -77,7 +77,7 @@ struct IndexHandle : public ValueHandle {
   }
 };
 
-/// Helper structure to be used with EDSCValueBuilder / EDSCInstructionBuilder.
+/// Helper structure to be used with ValueBuilder / InstructionBuilder.
 /// It serves the purpose of removing boilerplate specialization for the sole
 /// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value*>.
 class ValueHandleArray {

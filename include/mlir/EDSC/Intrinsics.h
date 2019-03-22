@@ -48,33 +48,31 @@ namespace intrinsics {
 /// Implementing it as a subclass allows it to compose all the way to Value*.
 /// Without subclassing, implicit conversion to Value* would fail when composing
 /// in patterns such as: `select(a, b, select(c, d, e))`.
-template <typename Op> struct EDSCValueBuilder : public ValueHandle {
+template <typename Op> struct ValueBuilder : public ValueHandle {
   template <typename... Args>
-  EDSCValueBuilder(Args... args)
+  ValueBuilder(Args... args)
       : ValueHandle(ValueHandle::create<Op>(std::forward<Args>(args)...)) {}
-  EDSCValueBuilder() : ValueHandle(ValueHandle::create<Op>()) {}
+  ValueBuilder() : ValueHandle(ValueHandle::create<Op>()) {}
 };
 
-template <typename Op>
-struct EDSCInstructionBuilder : public InstructionHandle {
+template <typename Op> struct InstructionBuilder : public InstructionHandle {
   template <typename... Args>
-  EDSCInstructionBuilder(Args... args)
+  InstructionBuilder(Args... args)
       : InstructionHandle(
             InstructionHandle::create<Op>(std::forward<Args>(args)...)) {}
-  EDSCInstructionBuilder()
-      : InstructionHandle(InstructionHandle::create<Op>()) {}
+  InstructionBuilder() : InstructionHandle(InstructionHandle::create<Op>()) {}
 };
 
-using alloc = EDSCValueBuilder<AllocOp>;
-using constant_float = EDSCValueBuilder<ConstantFloatOp>;
-using constant_index = EDSCValueBuilder<ConstantIndexOp>;
-using constant_int = EDSCValueBuilder<ConstantIntOp>;
-using dealloc = EDSCInstructionBuilder<DeallocOp>;
-using load = EDSCValueBuilder<LoadOp>;
-using ret = EDSCInstructionBuilder<ReturnOp>;
-using select = EDSCValueBuilder<SelectOp>;
-using store = EDSCInstructionBuilder<StoreOp>;
-using vector_type_cast = EDSCValueBuilder<VectorTypeCastOp>;
+using alloc = ValueBuilder<AllocOp>;
+using constant_float = ValueBuilder<ConstantFloatOp>;
+using constant_index = ValueBuilder<ConstantIndexOp>;
+using constant_int = ValueBuilder<ConstantIntOp>;
+using dealloc = InstructionBuilder<DeallocOp>;
+using load = ValueBuilder<LoadOp>;
+using ret = InstructionBuilder<ReturnOp>;
+using select = ValueBuilder<SelectOp>;
+using store = InstructionBuilder<StoreOp>;
+using vector_type_cast = ValueBuilder<VectorTypeCastOp>;
 
 /// Branches into the mlir::Block* captured by BlockHandle `b` with `operands`.
 ///
