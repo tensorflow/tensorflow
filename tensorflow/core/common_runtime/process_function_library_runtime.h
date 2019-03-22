@@ -249,7 +249,9 @@ class ProcessFunctionLibraryRuntime {
   // access these resources to the appropriate devices.
   Status PinArgsAndRets(const std::vector<string>& input_devices,
                         const std::vector<string>& output_devices,
-                        const DeviceSet& device_set, Graph* graph) const;
+                        const DeviceSet& device_set,
+                        const std::vector<Node*>& arg_nodes,
+                        const std::vector<Node*>& ret_nodes) const;
 
   void RunMultiDevice(const FunctionLibraryRuntime::Options& opts,
                       FunctionLibraryRuntime::Handle handle,
