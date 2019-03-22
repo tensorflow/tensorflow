@@ -3445,7 +3445,7 @@ def make_neg_tests(options):
 
   test_parameters = [{
       "input_dtype": [tf.float32, tf.int32],
-      "input_shape": [[1, 3, 4, 3], [5]],
+      "input_shape": [[1, 3, 4, 3], [5], []],
   }]
 
   def build_graph(parameters):
