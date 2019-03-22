@@ -91,7 +91,7 @@ class Options(object):
     # error.
     self.known_bugs_are_errors = False
     # Raise an exception if any toco error is encountered.
-    self.ignore_toco_errors = False
+    self.ignore_converter_errors = False
     # Include intermediate graphdefs in the output zip files.
     self.save_graphdefs = False
     # Whether the TFLite Flex converter is being used.
@@ -611,7 +611,7 @@ def make_zip_of_tests(options,
                         "but that happened %d times") % (expected_tf_failures,
                                                          zip_path, tf_failures))
 
-  if not options.ignore_toco_errors and toco_errors > 0:
+  if not options.ignore_converter_errors and toco_errors > 0:
     raise RuntimeError(
         "Found %d errors while generating toco models" % toco_errors)
 
