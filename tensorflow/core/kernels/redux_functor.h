@@ -45,7 +45,7 @@ struct ReduceOuterDimensions {
     for (int i = num_dims - num_reduce_dims; i < num_dims; ++i)
       inner_dim *= input_dims[i];
 
-    if (1 == inner_dim) {
+    if (1 == outer_dim) {
       // Nothing to do but passing input to output.
       *output = input;
       return;
