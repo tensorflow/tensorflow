@@ -81,6 +81,9 @@ def IsVectorTypePred : CPred<"{0}.isa<VectorType>()">;
 // Whether a type is a TensorType.
 def IsTensorTypePred : CPred<"{0}.isa<TensorType>()">;
 
+// Whether a type is a VectorOrTensorType.
+def IsVectorOrTensorTypePred : CPred<"{0}.isa<VectorOrTensorType>()">;
+
 // For a TensorType, verify that it is a statically shaped tensor.
 def IsStaticShapeTensorTypePred :
   CPred<"{0}.cast<TensorType>().hasStaticShape()">;
@@ -591,6 +594,32 @@ class Arguments<dag args> {
 class Results<dag rets> {
   dag results = rets;
 }
+
+//===----------------------------------------------------------------------===//
+// Common type constraint predicates
+//===----------------------------------------------------------------------===//
+
+// Type Constraint operand `idx`'s Vector or Tensor Element type is `type`.
+class TCopVTEtIs<int idx, Type type> : AllOf<[
+   CPred<"{0}.getNumOperands() > " # idx>,
+   SubstLeaves<"{0}",  "{0}.getOperand(" # idx # ")->getType()",
+     IsVectorOrTensorTypePred>,
+   SubstLeaves<"{0}",  "{0}.getOperand(" # idx #
+     ")->getType().cast<VectorOrTensorType>().getElementType()",
+     type.predicate>]>;
+
+// Predicate to verify that the i'th operand and the j'th operand have the same
+// elemental type.
+// Type Constraint operand `i`'s Vector or Tensor Element type is Same As
+// operand `j`'s element type.
+class TCopVTEtIsSameAs<int i, int j> : AllOf<[
+    CPred<"{0}.getNumOperands() > std::max(" # i # "," # j # ")">,
+    SubstLeaves<"{0}",  "{0}.getOperand(" # i # ")->getType()",
+      IsVectorOrTensorTypePred>,
+    SubstLeaves<"{0}",  "{0}.getOperand(" # j # ")->getType()",
+      IsVectorOrTensorTypePred>,
+    // TODO: This could be made into C++ function instead.
+    CPred<"{0}.getOperand(" # i # ")->getType().cast<VectorOrTensorType>().getElementType() == {0}.getOperand(" # j # ")->getType().cast<VectorOrTensorType>().getElementType()">]>;
 
 //===----------------------------------------------------------------------===//
 // Patterns
