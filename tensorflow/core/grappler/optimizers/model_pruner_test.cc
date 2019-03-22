@@ -150,6 +150,7 @@ TEST_F(ModelPrunerTest, IdentityNInputPruning) {
   Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
   Output b = ops::Sqrt(s.WithOpName("b"), {a});
   Output c = ops::Const(s.WithOpName("c"), 3.0f, {10, 10});
+  // d will be pruned because it only has control outputs.
   Output d = ops::Const(s.WithOpName("d"), 4.0f, {10, 10});
   auto e =
       ops::IdentityN(s.WithOpName("e").WithControlDependencies(d), {a, b, c});
@@ -164,29 +165,27 @@ TEST_F(ModelPrunerTest, IdentityNInputPruning) {
   ModelPruner pruner;
   GraphDef output;
   Status status = pruner.Optimize(nullptr, item, &output);
+
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(7, output.node_size());
+  EXPECT_EQ(6, output.node_size());
   const NodeDef& new_g = output.node(0);
   EXPECT_EQ("g", new_g.name());
   const NodeDef& new_a = output.node(1);
   EXPECT_EQ("a", new_a.name());
   const NodeDef& new_b = output.node(2);
   EXPECT_EQ("b", new_b.name());
-  const NodeDef& new_d = output.node(3);
-  EXPECT_EQ("d", new_d.name());
-  const NodeDef& new_e = output.node(4);
+  const NodeDef& new_e = output.node(3);
   EXPECT_EQ("e", new_e.name());
-  const NodeDef& new_f = output.node(5);
+  const NodeDef& new_f = output.node(4);
   EXPECT_EQ("f", new_f.name());
-  const NodeDef& new_h = output.node(6);
+  const NodeDef& new_h = output.node(5);
   EXPECT_EQ("h", new_h.name());
 
   // Node "c" is pruned along with inputs leading to "c".
-  EXPECT_EQ(3, new_e.input_size());
+  EXPECT_EQ(2, new_e.input_size());
   EXPECT_EQ("a", new_e.input(0));
   EXPECT_EQ("b", new_e.input(1));
-  EXPECT_EQ("^d", new_e.input(2));
   EXPECT_EQ(2, new_f.input_size());
   EXPECT_EQ("e:1", new_f.input(0));
   EXPECT_EQ("e", new_f.input(1));
@@ -210,6 +209,7 @@ TEST_F(ModelPrunerTest, IdentityNInputPruningWithIdentityNInFetch) {
   Output a = ops::Const(s.WithOpName("a"), 2.0f, {10, 10});
   Output b = ops::Sqrt(s.WithOpName("b"), {a});
   Output c = ops::Const(s.WithOpName("c"), 3.0f, {10, 10});
+  // d will be pruned because it only has control outputs.
   Output d = ops::Const(s.WithOpName("d"), 4.0f, {10, 10});
   auto e =
       ops::IdentityN(s.WithOpName("e").WithControlDependencies(d), {a, b, c});
@@ -225,21 +225,18 @@ TEST_F(ModelPrunerTest, IdentityNInputPruningWithIdentityNInFetch) {
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(5, output.node_size());
+  EXPECT_EQ(4, output.node_size());
   const NodeDef& new_a = output.node(0);
   EXPECT_EQ("a", new_a.name());
   const NodeDef& new_b = output.node(1);
   EXPECT_EQ("b", new_b.name());
-  const NodeDef& new_d = output.node(2);
-  EXPECT_EQ("d", new_d.name());
-  const NodeDef& new_e = output.node(3);
+  const NodeDef& new_e = output.node(2);
   EXPECT_EQ("e", new_e.name());
-  const NodeDef& new_g = output.node(4);
+  const NodeDef& new_g = output.node(3);
   EXPECT_EQ("g", new_g.name());
 
-  EXPECT_EQ(2, new_e.input_size());
+  EXPECT_EQ(1, new_e.input_size());
   EXPECT_EQ("b", new_e.input(0));
-  EXPECT_EQ("^d", new_e.input(1));
   EXPECT_EQ(1, new_g.input_size());
   // Single output IdentityN (node "f") was pruned.
   EXPECT_EQ("e", new_g.input(0));
@@ -513,6 +510,7 @@ TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
 TEST_F(ModelPrunerTest, PruneNoOpsWithoutInputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c = ops::Const(s.WithOpName("c"), 0.0f, {10, 10});
+  Output c2 = ops::Const(s.WithOpName("c2"), 0.0f, {20, 10});
 
   GrapplerItem item;
   item.fetch = {"c"};
@@ -523,6 +521,7 @@ TEST_F(ModelPrunerTest, PruneNoOpsWithoutInputs) {
   no_op->set_name("no_op");
   no_op->set_op("NoOp");
   item.graph.mutable_node(0)->add_input("^no_op");
+  item.graph.mutable_node(0)->add_input("^c2");
 
   ModelPruner pruner;
   GraphDef output;
@@ -531,6 +530,7 @@ TEST_F(ModelPrunerTest, PruneNoOpsWithoutInputs) {
 
   EXPECT_EQ(output.node_size(), 1);
   EXPECT_EQ(output.node(0).name(), "c");
+  EXPECT_EQ(output.node(0).input_size(), 0);
 }
 
 }  // namespace
