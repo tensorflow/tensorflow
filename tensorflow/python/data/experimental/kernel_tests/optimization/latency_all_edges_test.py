@@ -46,11 +46,11 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
         num_test_iterations=1)
     summary_t = aggregator.get_summary()
     summary_str = self.evaluate(summary_t)
-    self._assertSummaryHasCount(summary_str, "record_latency_TensorDataset/_1",
+    self._assertSummaryHasCount(summary_str, "record_latency::TensorDataset/_1",
                                 1)
-    self._assertSummaryHasCount(summary_str, "record_latency_MapDataset/_4", 1)
+    self._assertSummaryHasCount(summary_str, "record_latency::MapDataset/_4", 1)
     self._assertSummaryHasCount(summary_str,
-                                "record_latency_PrefetchDataset/_6", 1)
+                                "record_latency::PrefetchDataset/_6", 1)
 
 
 if __name__ == "__main__":

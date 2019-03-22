@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -34,19 +35,11 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
 
   void AddToHistogram(const string& name,
                       gtl::ArraySlice<double> values) override {
-    if (!tag_.empty()) {
-      wrapped_->AddToHistogram(strings::StrCat(tag_, "_", name), values);
-    } else {
-      wrapped_->AddToHistogram(name, values);
-    }
+    wrapped_->AddToHistogram(TaggedName(name), values);
   }
 
   void AddScalar(const string& name, float value) override {
-    if (!tag_.empty()) {
-      wrapped_->AddScalar(strings::StrCat(tag_, "_", name), value);
-    } else {
-      wrapped_->AddScalar(name, value);
-    }
+    wrapped_->AddScalar(TaggedName(name), value);
   }
 
   void EncodeToProto(Summary* out_summary) override {
@@ -56,15 +49,23 @@ class StatsAggregatorWithTagAndPrefix : public StatsAggregator {
   void IncrementCounter(const string& name, const string& label,
                         int64 val) override {
     if (!prefix_.empty()) {
-      wrapped_->IncrementCounter(strings::StrCat(prefix_, "/", name), label,
-                                 val);
+      wrapped_->IncrementCounter(
+          strings::StrCat(prefix_, "/", TaggedName(name)), label, val);
     } else {
-      wrapped_->IncrementCounter(strings::StrCat("/tensorflow/", name), label,
-                                 val);
+      wrapped_->IncrementCounter(
+          strings::StrCat("/tensorflow/", TaggedName(name)), label, val);
     }
   }
 
  private:
+  string TaggedName(const string& name) const {
+    if (!tag_.empty()) {
+      string tagged_name = strings::StrCat(tag_, stats_utils::kDelimiter, name);
+      return tagged_name;
+    }
+    return name;
+  }
+
   std::shared_ptr<StatsAggregator> wrapped_;
   string tag_;
   string prefix_;
