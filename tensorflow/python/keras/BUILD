@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -331,8 +332,10 @@ py_library(
         "layers/merge.py",
         "layers/noise.py",
         "layers/normalization.py",
+        "layers/normalization_v2.py",
         "layers/pooling.py",
         "layers/recurrent.py",
+        "layers/recurrent_v2.py",
         "layers/serialization.py",
         "layers/wrappers.py",
         "utils/kernelized_utils.py",
@@ -538,10 +541,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 11,
-    tags = [
-        "no_windows",  # TODO(b/127888631)
-        "no_windows_gpu",  # TODO(b/127881287)
-    ],
 )
 
 tf_py_test(
@@ -591,8 +590,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    # TODO(b/128025959): Re-enable.
-    xla_enable_strict_auto_jit = False,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -605,6 +603,7 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -622,6 +621,7 @@ cuda_py_test(
         "no_rocm",
         "no_windows_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -674,6 +674,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -786,6 +787,20 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "recurrent_v2_test",
+    size = "medium",
+    srcs = ["layers/recurrent_v2_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 2,
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
     name = "separable_convolutional_test",
     size = "medium",
     srcs = ["layers/separable_convolutional_test.py"],
@@ -795,12 +810,13 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
-    name = "unified_lstm_test",
+    name = "lstm_v2_test",
     size = "medium",
-    srcs = ["layers/unified_lstm_test.py"],
+    srcs = ["layers/lstm_v2_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -809,12 +825,13 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
-    name = "unified_gru_test",
+    name = "gru_v2_test",
     size = "medium",
-    srcs = ["layers/unified_gru_test.py"],
+    srcs = ["layers/gru_v2_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -823,6 +840,7 @@ cuda_py_test(
     ],
     shard_count = 8,
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1022,12 +1040,26 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
     name = "training_gpu_test",
     size = "small",
     srcs = ["engine/training_gpu_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    xla_enable_strict_auto_jit = True,
+)
+
+tf_py_test(
+    name = "vis_utils_test",
+    size = "small",
+    srcs = ["utils/vis_utils_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
@@ -1179,7 +1211,6 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
-        "notap",  #TODO(b/123544294): Re-enable this test.
         "notsan",
     ],
 )
@@ -1373,4 +1404,41 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = ["notsan"],
+)
+
+py_library(
+    name = "distribute_strategy_test_lib",
+    srcs = [
+        "distribute_strategy_test.py",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/distribute:tpu_strategy",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "distribute_strategy_test",
+    srcs = ["distribute_strategy_test.py"],
+    full_precision = True,
+    main = "distribute_strategy_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":distribute_strategy_test_lib",
+    ],
 )

@@ -31,7 +31,7 @@ class GrpcTensorCodingTest : public ::testing::Test {
   void Validate(const Tensor& t, bool is_dead) {
     // Check by encoding to a ByteBuffer
     ::grpc::ByteBuffer buf;
-    grpc::EncodeTensorToByteBuffer(is_dead, t, &buf);
+    grpc::EncodeTensorToByteBuffer(is_dead, t, false, &buf);
 
     // Make a string
     std::vector<::grpc::Slice> slices;

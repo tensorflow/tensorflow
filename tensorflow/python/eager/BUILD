@@ -115,6 +115,7 @@ cuda_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/core/profiler:protos_all_py",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -143,6 +144,7 @@ cuda_py_test(
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -165,6 +167,7 @@ cuda_py_test(
         "//tensorflow/python:training",
     ],
     tags = ["no_rocm"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -182,6 +185,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:pywrap_tensorflow",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -196,6 +200,7 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -211,6 +216,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -228,6 +234,7 @@ cuda_py_test(
         "//tensorflow/python:resource_variable_ops",
     ],
     shard_count = 5,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -328,6 +335,7 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -405,6 +413,7 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python/keras",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_logged_benchmark(
@@ -451,6 +460,7 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -496,6 +506,7 @@ cuda_py_test(
     tags = [
         "optonly",  # The test is too slow in non-opt mode
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

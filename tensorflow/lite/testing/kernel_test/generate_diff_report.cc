@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/testing/kernel_test/diff_analyzer.h"
 
 int main(int argc, char** argv) {
-  string base, test, output;
+  std::string base, test, output;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("base", &base, "Path to the base serialized tensor."),
       tensorflow::Flag("test", &test, "Path to the test serialized tensor."),

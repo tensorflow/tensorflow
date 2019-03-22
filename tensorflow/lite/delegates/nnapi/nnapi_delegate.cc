@@ -88,6 +88,23 @@ bool IsHybridOperator(const TfLiteContext* context, int builtin_code,
   }
 }
 
+// When using NN API version 1.0 or 1.1, the condition below must be true for
+// quantized versions of the following ops:
+// * CONV_2D
+// * DEPTHWISE_CONV_2D
+// * FULLY_CONNECTED (where filter actually stands for weights)
+// The condition is relaxed and no longer required since version 1.2.
+bool IsRestrictedScalesCompliant(const TfLiteContext* context,
+                                 const TfLiteNode* node) {
+  const int input_id = node->inputs->data[0];
+  const int filter_id = node->inputs->data[1];
+  const int output_id = node->outputs->data[0];
+  const float input_scale = context->tensors[input_id].params.scale;
+  const float filter_scale = context->tensors[filter_id].params.scale;
+  const float output_scale = context->tensors[output_id].params.scale;
+  return input_scale * filter_scale < output_scale;
+}
+
 constexpr int32_t kMinSdkVersionForNNAPI = 27;
 constexpr int32_t kMinSdkVersionForNNAPI11 = 28;
 constexpr int32_t kMinSdkVersionForNNAPI12 = 29;
@@ -579,6 +596,12 @@ class NNAPIDelegateKernel {
             // Hybrid operators not supported before NNAPI 1.2.
             return nullptr;
           }
+          const auto input_type = context->tensors[node->inputs->data[0]].type;
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              input_type == kTfLiteUInt8 &&
+              !IsRestrictedScalesCompliant(context, node)) {
+            return nullptr;
+          }
           auto builtin =
               reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
           if (builtin->dilation_width_factor != 1 ||
@@ -600,6 +623,12 @@ class NNAPIDelegateKernel {
         break;
       case kTfLiteBuiltinDepthwiseConv2d:
         if (version == 1) {
+          const auto input_type = context->tensors[node->inputs->data[0]].type;
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              input_type == kTfLiteUInt8 &&
+              !IsRestrictedScalesCompliant(context, node)) {
+            return nullptr;
+          }
           return [](const NNAPIOpMappingArgs& mapping_args)
                      -> ANeuralNetworksOperationType {
             auto builtin = reinterpret_cast<TfLiteDepthwiseConvParams*>(
@@ -619,6 +648,12 @@ class NNAPIDelegateKernel {
           if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
               IsHybridOperator(context, builtin_code, node)) {
             // Hybrid operators not supported before NNAPI 1.2.
+            return nullptr;
+          }
+          const auto input_type = context->tensors[node->inputs->data[0]].type;
+          if (android_sdk_version < kMinSdkVersionForNNAPI12 &&
+              input_type == kTfLiteUInt8 &&
+              !IsRestrictedScalesCompliant(context, node)) {
             return nullptr;
           }
           return [](const NNAPIOpMappingArgs& mapping_args)
@@ -1286,7 +1321,18 @@ TfLiteDelegate* NnApiDelegate() {
             !nnapi->nnapi_exists) {
           return kTfLiteOk;
         }
-
+        // For NNAPI 1.2+, check if there is any accelerator available.
+        // If not, don't delegate to NNAPI's CPU reference implementation.
+        if (nnapi->android_sdk_version >= kMinSdkVersionForNNAPI12) {
+          uint32_t device_count = 0;
+          RETURN_TFLITE_ERROR_IF_NN_ERROR(
+              context, nnapi->ANeuralNetworks_getDeviceCount(&device_count));
+          // Any available accelerator will make the device_count larger than 1.
+          // More sophisticated check and whitelisting can be added later.
+          if (device_count <= 1) {
+            return kTfLiteOk;
+          }
+        }
         // Allocate one element in vector already since TensorFlow Lite uses
         // the first value as the number of nodes. The actual value will be set
         // later, after the vector has been filled.
@@ -1345,6 +1391,8 @@ TfLiteDelegate* NnApiDelegate() {
 
             .profiling_string = nullptr,
             .builtin_code = kTfLiteBuiltinDelegate,
+            .custom_name = "TfLiteNnapiDelegate",
+            .version = 1,
         };
 
         // Request TFLite to partition the graph and make kernels

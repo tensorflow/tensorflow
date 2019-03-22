@@ -40,8 +40,8 @@ class CancellableCall {
 
   void Start(const StatusCallback& done) {
     CancellationToken token = cancel_mgr_->get_cancellation_token();
-    const bool not_yet_cancelled = cancel_mgr_->RegisterCallback(
-        token, [this, token]() { opts_.StartCancel(); });
+    const bool not_yet_cancelled =
+        cancel_mgr_->RegisterCallback(token, [this]() { opts_.StartCancel(); });
     if (not_yet_cancelled) {
       IssueCall([this, token, done](const Status& s) {
         cancel_mgr_->DeregisterCallback(token);

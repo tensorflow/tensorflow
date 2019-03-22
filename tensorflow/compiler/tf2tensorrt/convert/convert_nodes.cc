@@ -116,6 +116,88 @@ inline Status ConvertDType(DataType tf_dtype, nvinfer1::DataType* trt_dtype) {
   return Status::OK();
 }
 
+class TFAttrs {
+ public:
+  explicit TFAttrs(const NodeDef& tf_node) {
+    for (const auto& attr : tf_node.attr()) {
+      attrs_.insert({attr.first, &attr.second});
+    }
+  }
+
+  bool count(const string& key) const { return attrs_.count(key); }
+
+  AttrValue const* at(const string& key) const {
+    if (!attrs_.count(key)) {
+      LOG(FATAL) << "Attribute not found: " << key;
+    }
+    return attrs_.at(key);
+  }
+
+  template <typename T>
+  T get(const string& key) const;
+
+  template <typename T>
+  T get(const string& key, const T& default_value) const {
+    return attrs_.count(key) ? this->get<T>(key) : default_value;
+  }
+
+  std::vector<string> GetAllAttrKeys() const {
+    std::vector<string> attr_list;
+    for (const auto& attr_item : attrs_) {
+      attr_list.emplace_back(attr_item.first);
+    }
+    return attr_list;
+  }
+
+ private:
+  typedef std::map<string, AttrValue const*> AttrMap;
+  AttrMap attrs_;
+};
+
+template <>
+string TFAttrs::get<string>(const string& key) const {
+  return this->at(key)->s();
+}
+
+template <>
+std::vector<int64> TFAttrs::get<std::vector<int64>>(const string& key) const {
+  auto attr = this->at(key)->list().i();
+  return std::vector<int64>(attr.begin(), attr.end());
+}
+
+template <>
+std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
+  auto attr = this->at(key)->list().f();
+  return std::vector<float>(attr.begin(), attr.end());
+}
+
+template <>
+nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
+  nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
+  TF_CHECK_OK(ConvertDType(this->at(key)->type(), &trt_dtype));
+  return trt_dtype;
+}
+
+template <>
+DataType TFAttrs::get<DataType>(const string& key) const {
+  return this->at(key)->type();
+}
+
+template <>
+float TFAttrs::get<float>(const string& key) const {
+  return this->at(key)->f();
+}
+
+template <>
+bool TFAttrs::get<bool>(const string& key) const {
+  return this->at(key)->b();
+}
+
+template <>
+int64 TFAttrs::get<int64>(const string& key) const {
+  return this->at(key)->i();
+}
+
 template <typename TensorShapeType>
 inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
                                            bool ignore_first_dim) {
@@ -367,27 +449,47 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   if (!layer) return nullptr;
   const nvinfer1::DataType trt_dtype = trt_weights.type;
   nvinfer1::ITensor* trt_tensor = layer->getOutput(0);
+#if !IS_TRT_VERSION_GE(5, 1, 3, 0)
   // TODO(laigd): there is a bug in TensorRT 5.0 library that, if we don't set
   // the data type below, it will always be kFLOAT regardless what the data type
   // of the weights is. Once NVIDIA fixes this bug, we should remove the data
   // type setting logic below and test should still pass.
   trt_tensor->setType(trt_dtype);
+#endif
   return trt_tensor;
 }
 
 Status CreateBroadcastableScalarConstant(OpConverterParams* params, float value,
                                          const nvinfer1::Dims& dims,
-                                         const nvinfer1::ITensor** tensor) {
+                                         const nvinfer1::ITensor** tensor,
+                                         const char* dtype_attr_name = "T") {
+  TFAttrs attrs(params->node_def);
+  DataType dtype;
+  if (attrs.count(dtype_attr_name)) {
+    dtype = attrs.get<DataType>(dtype_attr_name);
+  } else {
+    dtype = DT_FLOAT;  // Default to FP32.
+  }
+
   // In order to be broadcastable, the number of dims has to match.
   nvinfer1::Dims broadcastable_dims(dims);
   for (int i = 0; i < broadcastable_dims.nbDims; i++) {
     broadcastable_dims.d[i] = 1;
   }
-  TRT_ShapedWeights weights = params->weight_store->GetTempWeights(
-      DataType::DT_FLOAT, broadcastable_dims);
-  auto weights_ptr =
-      static_cast<float*>(const_cast<void*>(weights.GetValues()));
-  weights_ptr[0] = value;
+  TRT_ShapedWeights weights =
+      params->weight_store->GetTempWeights(dtype, broadcastable_dims);
+  void* raw_ptr = const_cast<void*>(weights.GetValues());
+  switch (dtype) {
+    case DataType::DT_FLOAT:
+      static_cast<float*>(raw_ptr)[0] = value;
+      break;
+    case DataType::DT_HALF:
+      static_cast<Eigen::half*>(raw_ptr)[0] = Eigen::half(value);
+      break;
+    default:
+      return errors::InvalidArgument("Unsupported data type ",
+                                     DataTypeString(dtype));
+  }
   *tensor = params->converter->CreateConstantLayer(weights, broadcastable_dims);
   TFTRT_RETURN_ERROR_IF_NULLPTR(*tensor, params->node_def.name());
   params->converter->ProvideQuantizationRange(
@@ -574,13 +676,13 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
 
   void setLocation(nvinfer1::TensorLocation location) override {}
 
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   bool setDynamicRange(float min, float max) override { return true; }
 
   float getDynamicRange() const override { return 0; }
 #endif
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
   bool dynamicRangeIsSet() const override { return true; }
 
   void resetDynamicRange() override {}
@@ -658,88 +760,6 @@ string TRT_TensorOrWeights::DebugString() const {
   }
   StrAppend(&output, ")");
   return output;
-}
-
-class TFAttrs {
- public:
-  explicit TFAttrs(const NodeDef& tf_node) {
-    for (const auto& attr : tf_node.attr()) {
-      attrs_.insert({attr.first, &attr.second});
-    }
-  }
-
-  bool count(const string& key) const { return attrs_.count(key); }
-
-  AttrValue const* at(const string& key) const {
-    if (!attrs_.count(key)) {
-      LOG(FATAL) << "Attribute not found: " << key;
-    }
-    return attrs_.at(key);
-  }
-
-  template <typename T>
-  T get(const string& key) const;
-
-  template <typename T>
-  T get(const string& key, const T& default_value) const {
-    return attrs_.count(key) ? this->get<T>(key) : default_value;
-  }
-
-  std::vector<string> GetAllAttrKeys() const {
-    std::vector<string> attr_list;
-    for (const auto& attr_item : attrs_) {
-      attr_list.emplace_back(attr_item.first);
-    }
-    return attr_list;
-  }
-
- private:
-  typedef std::map<string, AttrValue const*> AttrMap;
-  AttrMap attrs_;
-};
-
-template <>
-string TFAttrs::get<string>(const string& key) const {
-  return this->at(key)->s();
-}
-
-template <>
-std::vector<int64> TFAttrs::get<std::vector<int64>>(const string& key) const {
-  auto attr = this->at(key)->list().i();
-  return std::vector<int64>(attr.begin(), attr.end());
-}
-
-template <>
-std::vector<float> TFAttrs::get<std::vector<float>>(const string& key) const {
-  auto attr = this->at(key)->list().f();
-  return std::vector<float>(attr.begin(), attr.end());
-}
-
-template <>
-nvinfer1::DataType TFAttrs::get<nvinfer1::DataType>(const string& key) const {
-  nvinfer1::DataType trt_dtype(nvinfer1::DataType::kFLOAT);
-  TF_CHECK_OK(ConvertDType(this->at(key)->type(), &trt_dtype));
-  return trt_dtype;
-}
-
-template <>
-DataType TFAttrs::get<DataType>(const string& key) const {
-  return this->at(key)->type();
-}
-
-template <>
-float TFAttrs::get<float>(const string& key) const {
-  return this->at(key)->f();
-}
-
-template <>
-bool TFAttrs::get<bool>(const string& key) const {
-  return this->at(key)->b();
-}
-
-template <>
-int64 TFAttrs::get<int64>(const string& key) const {
-  return this->at(key)->i();
 }
 
 // TODO(jie): reorder4 & reorder2 should be merged?
@@ -1281,7 +1301,7 @@ void Converter::MaybeApplyQuantizationRanges() {
   // Infer ranges across marked ops.
   PropagateQuantizationRanges();
   // Apply ranges.
-#if NV_TENSORRT_MAJOR >= 5
+#if IS_TRT_VERSION_GE(5, 0, 0, 0)
   for (auto pair : quantization_ranges_) {
     nvinfer1::ITensor* tensor = pair.first;
     const float range = pair.second;
@@ -1433,26 +1453,27 @@ Status CheckInputsWeights(
 }
 
 Status AllowDataTypes(const OpConverterParams& params,
-                      const std::set<DataType>& allowed_dtypes) {
+                      const std::set<DataType>& allowed_dtypes,
+                      const char* dtype_attr_name = "T") {
   const auto& node_def = params.node_def;
-  TFAttrs attrs(params.node_def);
-  if (attrs.count("T")) {
-    const auto op_dtype = attrs.get<DataType>("T");
-    if (!allowed_dtypes.count(op_dtype)) {
-      // Build string list of allowed types.
-      std::ostringstream ss;
-      for (auto it = allowed_dtypes.begin(); it != allowed_dtypes.end(); ++it) {
-        if (it != allowed_dtypes.begin()) ss << ", ";
-        ss << DataTypeString(*it);
-      }
-      return errors::Unimplemented("Data type ", DataTypeString(op_dtype),
-                                   " is not supported for ", node_def.op(),
-                                   ", must be one of [", ss.str(), "], at ",
-                                   node_def.name());
-    }
+  TFAttrs attrs(node_def);
+  if (!attrs.count(dtype_attr_name)) {
+    return errors::InvalidArgument("Attribute with name ", dtype_attr_name,
+                                   " not found.");
   }
-  // If there is no T attribute, we can't determine the type of the op. We will
-  // allow it to convert for now.
+  const auto op_dtype = attrs.get<DataType>(dtype_attr_name);
+  if (!allowed_dtypes.count(op_dtype)) {
+    // Build string list of allowed types.
+    std::ostringstream ss;
+    for (auto it = allowed_dtypes.begin(); it != allowed_dtypes.end(); ++it) {
+      if (it != allowed_dtypes.begin()) ss << ", ";
+      ss << DataTypeString(*it);
+    }
+    return errors::Unimplemented("Data type ", DataTypeString(op_dtype),
+                                 " is not supported for ", node_def.op(),
+                                 ", must be one of [", ss.str(), "], at ",
+                                 node_def.name());
+  }
   return Status::OK();
 }
 
@@ -1923,6 +1944,7 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
       {"RealDiv", nvinfer1::ElementWiseOperation::kDIV},
       {"Minimum", nvinfer1::ElementWiseOperation::kMIN},
       {"Maximum", nvinfer1::ElementWiseOperation::kMAX},
+      {"Pow", nvinfer1::ElementWiseOperation::kPOW},
   };
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end()) {
@@ -2163,40 +2185,24 @@ Status ConvertExpandDims(OpConverterParams* params) {
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dim back.
-  input_dims.insert(input_dims.begin(), -1);
-  const int input_rank = input_dims.size();
   // Get axis to expand on.
-  TRT_ShapedWeights weights = inputs.at(1).weights();
-  if (weights.count() != 1) {
+  auto axis = inputs.at(1).weights().GetSpan<int>();
+  if (axis.size() != 1) {
     return errors::InvalidArgument("ExpandDims axis must be a scalar, at ",
                                    node_def.name());
   }
-  const int* weights_ptr =
-      static_cast<int*>(const_cast<void*>(weights.GetValues()));
-  int axis = weights_ptr[0];
-  // Make sure axis is valid.
-  if ((axis < (-input_rank - 1)) || (axis > input_rank)) {
-    return errors::InvalidArgument(
-        "Axis for ExpandDims is invalid, must be in the range "
-        "[-rank(input) - 1, rank(input)], at ",
-        node_def.name());
-  }
-  // Convert negative axis to corresponding positive axis.
-  if (axis < 0) axis += input_rank + 1;
-  if (axis == 0) {
-    return errors::Unimplemented(
-        "Modifying batch dimension is not supported for ExpandDims, at ",
-        node_def.name());
-  }
+  // Use rank = nbDims + 1 for ConvertAxis's bounds checking to account for
+  // ExpandDim's ability to add an axis at end of the shape.
+  int trt_axis;
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(axis[0], dims.nbDims + 1, node_def.name(), &trt_axis));
   if (params->validation_only) return Status::OK();
 
   // ExpandDims: Insert new dim of size 1.
-  input_dims.insert(input_dims.begin() + axis, 1);
+  input_dims.insert(input_dims.begin() + trt_axis, 1);
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
-                                               /*ignore_first_dim=*/true));
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
@@ -2215,9 +2221,6 @@ Status ConvertSqueeze(OpConverterParams* params) {
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dim back.
-  input_dims.insert(input_dims.begin(), -1);
-  const int input_rank = input_dims.size();
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
@@ -2225,29 +2228,20 @@ Status ConvertSqueeze(OpConverterParams* params) {
     return errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
   }
-  for (int axis : squeeze_dims) {
+  for (int tf_axis : squeeze_dims) {
     // Make sure axis is valid.
-    if ((axis < -input_rank) || (axis >= input_rank)) {
+    int trt_axis;
+    TF_RETURN_IF_ERROR(
+        ConvertAxis(tf_axis, dims.nbDims, node_def.name(), &trt_axis));
+    // Make sure target dimension is size 1.
+    if (input_dims[trt_axis] != 1) {
       return errors::InvalidArgument(
-          "Axis for Squeeze is invalid, must be in the range "
-          "[-rank(input), rank(input)), at ",
+          "Dimension ", tf_axis, " with size ", input_dims[trt_axis],
+          " cannot be squeezed because it must be size 1, at ",
           node_def.name());
     }
-    // Convert negative axis to corresponding positive axis.
-    if (axis < 0) axis += input_rank;
-    // Don't squeeze batch dim.
-    if (axis == 0) {
-      return errors::Unimplemented("Cannot squeeze batch dimension, at ",
-                                   node_def.name());
-    }
-    // Make sure target dimension is size 1.
-    if (input_dims[axis] != 1) {
-      return errors::InvalidArgument(
-          "Cannot squeeze ", axis, "th dimension ", input_dims[axis],
-          " which isn't size 1, at ", node_def.name());
-    }
     // Mark dim for removal by setting to 0.
-    input_dims[axis] = 0;
+    input_dims[trt_axis] = 0;
   }
   if (params->validation_only) return Status::OK();
 
@@ -2256,8 +2250,7 @@ Status ConvertSqueeze(OpConverterParams* params) {
                    input_dims.end());
   // Reshape tensor.
   nvinfer1::Dims new_dims;
-  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims,
-                                               /*ignore_first_dim=*/true));
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &new_dims));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
@@ -2296,9 +2289,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   }
 // TRT 5.1 adds a slice layer. For older versions, we attempt to use the
 // padding layer with negative padding.
-#if (NV_TENSORRT_MAJOR > 5 ||                               \
-     (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)) && \
-    0
+#if IS_TRT_VERSION_GE(5, 1, 3, 1)
   // TODO(laigd): TRT 5.1 RC has a bug when ISliceLayer is used along with
   // IConcatenationLayer, so disable ISliceLayer for now until it's fixed.
   // Use ISliceLayer.
@@ -3219,7 +3210,7 @@ UnaryOperationMap() {
             {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
             {"Abs", nvinfer1::UnaryOperation::kABS},
             {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
             {"Sin", nvinfer1::UnaryOperation::kSIN},
             {"Cos", nvinfer1::UnaryOperation::kCOS},
             {"Tan", nvinfer1::UnaryOperation::kTAN},
@@ -3312,7 +3303,7 @@ Status ConvertReduce(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  TRT_ShapedWeights index_list = inputs.at(1).weights();
+  auto tf_axes_list = inputs.at(1).weights().GetSpan<int>();
 
   TFAttrs attrs(node_def);
   // Only expect to handle INT32 as attributes for now
@@ -3321,22 +3312,17 @@ Status ConvertReduce(OpConverterParams* params) {
   }
 
   int axes = 0;
-  if (index_list.count() == 0) {
+  if (tf_axes_list.size() == 0) {
     return errors::InvalidArgument(
         "TRT cannot support reduce on all (batch) dimensions, at",
         node_def.name());
-  } else {
-    auto index_list_data =
-        static_cast<int*>(const_cast<void*>(index_list.GetValues()));
-    for (int i = 0; i < index_list.count(); i++) {
-      int axis = index_list_data[i];
-      if (axis < 0) axis += tensor->getDimensions().nbDims + 1;
-      if (axis == 0) {
-        return errors::InvalidArgument(
-            "TRT cannot reduce at batch dimension, at", node_def.name());
-      }
-      axes |= (1 << (axis - 1));
-    }
+  }
+  for (int i = 0; i < tf_axes_list.size(); i++) {
+    int trt_axis;
+    TF_RETURN_IF_ERROR(ConvertAxis(tf_axes_list[i],
+                                   tensor->getDimensions().nbDims,
+                                   node_def.name(), &trt_axis));
+    axes |= (1 << trt_axis);
   }
 
   nvinfer1::ReduceOperation reduce_operation;
@@ -3695,7 +3681,8 @@ Status ConvertGather(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"params", false}, {"indices", false}, {"axis", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32},
+      /*dtype_attr_name=*/"Tparams"));
   absl::Span<const int> axis = inputs.at(2).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
@@ -4005,7 +3992,7 @@ static void RegisterValidatableOpConverters(
     (*registration)[quantization_op_type] = ConvertQuantize;
   }
   for (auto binary_op_type :
-       {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum"}) {
+       {"Add", "Mul", "Sub", "Div", "RealDiv", "Maximum", "Minimum", "Pow"}) {
     (*registration)[binary_op_type] = ConvertBinary;
   }
   for (auto activation_op_type : {"Relu", "Sigmoid", "Tanh"}) {
@@ -4148,7 +4135,7 @@ Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,  // In topological order
     std::vector<EngineConnection>* connections, GraphDef* segment_def,
-    string* common_scope) {
+    string* scope_name) {
   std::set<string> marker_nodes;
   // Update connection shapes/data types and add corresponding input/output
   // nodes in the segment graphdef.
@@ -4281,9 +4268,7 @@ Status ConvertSegmentToGraphDef(
       snode->mutable_input()->RemoveLast();
     }
   }
-  *common_scope = local_scope;
-  VLOG(1) << "Converted TensorRT candidate segment @scope '" << local_scope
-          << "' to a GraphDef";
+  *scope_name = local_scope;
   return Status::OK();
 }
 

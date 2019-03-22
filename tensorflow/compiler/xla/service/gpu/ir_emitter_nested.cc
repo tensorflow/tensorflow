@@ -123,7 +123,7 @@ Status IrEmitterNested::EmitTargetElementLoop(
         ConstructIrArrayForOutputs(hlo);
     TF_RETURN_IF_ERROR(
         llvm_ir::LoopEmitter(element_generator, target_arrays, &b_).EmitLoop());
-    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_, module_);
+    llvm_ir::EmitTuple(GetIrArray(hlo, hlo), target_arrays, &b_);
     return Status::OK();
   }
   return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo), &b_)

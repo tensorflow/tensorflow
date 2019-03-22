@@ -39,40 +39,40 @@ class OptionsTest(test_base.DatasetTestBase):
 
   def testOptionsTwiceSame(self):
     options = dataset_ops.Options()
-    options.experimental_autotune = True
+    options.experimental_optimization.autotune = True
     ds = dataset_ops.Dataset.range(0).with_options(options).with_options(
         options)
     self.assertEqual(options, ds.options())
 
   def testOptionsTwiceDifferent(self):
     options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
+    options1.experimental_optimization.autotune = True
     options2 = dataset_ops.Options()
     options2.experimental_deterministic = False
     ds = dataset_ops.Dataset.range(0).with_options(options1).with_options(
         options2)
-    self.assertTrue(ds.options().experimental_autotune)
+    self.assertTrue(ds.options().experimental_optimization.autotune)
     # Explicitly check that flag is False since assertFalse allows None
     self.assertIs(ds.options().experimental_deterministic, False)
 
   def testOptionsTwiceDifferentError(self):
     options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
+    options1.experimental_optimization.autotune = True
     options2 = dataset_ops.Options()
-    options2.experimental_autotune = False
+    options2.experimental_optimization.autotune = False
     with self.assertRaisesRegexp(ValueError,
                                  "Cannot merge incompatible values"):
       dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
 
   def testOptionsMergeOptionsFromMultipleInputs(self):
     options1 = dataset_ops.Options()
-    options1.experimental_autotune = True
+    options1.experimental_optimization.autotune = True
     options2 = dataset_ops.Options()
     options2.experimental_deterministic = True
     ds = dataset_ops.Dataset.zip(
         (dataset_ops.Dataset.range(0).with_options(options1),
          dataset_ops.Dataset.range(0).with_options(options2)))
-    self.assertTrue(ds.options().experimental_autotune)
+    self.assertTrue(ds.options().experimental_optimization.autotune)
     self.assertTrue(ds.options().experimental_deterministic)
 
   def testOptionsHaveDefaults(self):

@@ -118,7 +118,7 @@ class InputLayer(base_layer.Layer):
                          'InputLayer, you should instantiate your model and '
                          'directly call it on your input.')
       self.is_placeholder = False
-      self._batch_input_shape = tuple(input_tensor.get_shape().as_list())
+      self._batch_input_shape = tuple(input_tensor.shape.as_list())
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.

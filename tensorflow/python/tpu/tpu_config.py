@@ -62,6 +62,8 @@ class TPUConfig(
       system before returning to CPU host for each `Session.run`. This means
       global step is increased `iterations_per_loop` times in one `Session.run`.
       It is recommended to be set as number of global steps for next checkpoint.
+      Note that in evaluation don't use this value, instead we run total eval
+      `steps` on TPU for a single `Session.run`.
     num_shards: (Deprecated, ignored by TPUEstimator).
       The number of model replicas in the system. For non-model-parallelism
       case, this number equals the total number of TPU cores. For

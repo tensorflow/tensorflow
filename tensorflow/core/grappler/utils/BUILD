@@ -60,12 +60,12 @@ tf_cc_test(
     name = "topological_sort_test",
     srcs = ["topological_sort_test.cc"],
     deps = [
-        ":benchmark_utils",
         ":topological_sort",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -257,12 +257,22 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "benchmark_utils",
-    hdrs = ["benchmark_utils.h"],
+    name = "tpu",
+    srcs = ["tpu.cc"],
+    hdrs = ["tpu.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ] + tf_protos_grappler(),
+)
+
+tf_cc_test(
+    name = "tpu_test",
+    srcs = ["tpu_test.cc"],
+    deps = [
+        ":tpu",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
 )

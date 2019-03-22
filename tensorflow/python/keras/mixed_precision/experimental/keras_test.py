@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -42,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
 
@@ -246,6 +249,30 @@ class KerasLayerTest(test.TestCase, parameterized.TestCase):
         # which is  1 - 1 * 2**-14
         self.assertEqual(self.evaluate(layer.v), 1 - 2 ** -14)
 
+  @parameterized.named_parameters(*TESTCASES)
+  @test_util.run_in_graph_and_eager_modes
+  def test_checkpointing_layer_weights(self, strategy_fn):
+    x = constant_op.constant([1.], dtype=dtypes.float16)
+    with strategy_fn().scope():
+      with policy.policy_scope('infer_float32_vars'):
+        layer = AddLayer(assert_type=dtypes.float16)
+        layer.build(())
+
+    layer.set_weights([np.array(100.)])
+    self.assertEqual(self.evaluate(layer(x)), 101.)
+
+    checkpoint = trackable_utils.Checkpoint(layer=layer)
+    prefix = os.path.join(self.get_temp_dir(), 'ckpt')
+    save_path = checkpoint.save(prefix)
+
+    layer.set_weights([np.array(200.)])
+    self.assertEqual(self.evaluate(layer(x)), 201.)
+    checkpoint.restore(save_path).assert_consumed().run_restore_ops()
+    self.assertEqual(layer.get_weights(), [100.])
+    self.assertEqual(self.evaluate(layer(x)), 101.)
+    # TODO(reedwm): Allow layers to be saved without using mixed precision, and
+    # restored with mixed precision? Or vice versa?
+
 
 class KerasModelTest(test.TestCase, parameterized.TestCase):
   """Test mixed precision with Keras models."""
@@ -376,6 +403,44 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         else:
           # Layer does not have weight regularizer
           self.assertEqual(backend.eval(layer.v), 1 - learning_rate)
+
+  @parameterized.named_parameters({
+      'testcase_name': 'base',
+      'strategy_fn': create_one_device_strategy,
+  }, {
+      'testcase_name': 'distribute',
+      'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'base_h5',
+      'strategy_fn': create_one_device_strategy,
+      'h5': True,
+  }, {
+      'testcase_name': 'distribute_h5',
+      'strategy_fn': create_mirrored_strategy,
+      'h5': True,
+  })
+  @test_util.run_in_graph_and_eager_modes
+  def test_save_weights(self, strategy_fn, h5=False):
+    with strategy_fn().scope():
+      with policy.policy_scope('infer_float32_vars'):
+        x = layers.Input(shape=(), batch_size=2, dtype=dtypes.float16)
+        layer = AddLayer(assert_type=dtypes.float16)
+        y = layer(x)
+        y = math_ops.cast(y, dtypes.float32)
+        model = models.Model(inputs=x, outputs=y)
+
+    model.set_weights([np.array(100.)])
+    x = np.ones((2, 1), dtype=np.float16)
+    self.assertAllClose(backend.get_value(model(x)), x + 100.)
+    suffix = '.h5' if h5 else ''
+    weights_file = os.path.join(self.get_temp_dir(), 'weights' + suffix)
+    model.save_weights(weights_file)
+
+    model.set_weights([np.array(200.)])
+    self.assertAllClose(backend.get_value(model(x)), x + 200.)
+    model.load_weights(weights_file)
+    self.assertAllClose(backend.get_value(model(x)), x + 100.)
+    self.assertEqual(model.get_weights(), [np.array(100.)])
 
 
 if __name__ == '__main__':

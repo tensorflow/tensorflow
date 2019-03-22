@@ -122,6 +122,82 @@ def set_inter_op_parallelism_threads(num_threads):
   context.context().inter_op_parallelism_threads = num_threads
 
 
+@tf_export('config.optimizer.get_jit')
+def get_optimizer_jit():
+  """Get if JIT compilation is enabled.
+
+  Note that optimizations are only applied in graph mode, (within tf.function).
+
+  Returns:
+    If JIT compilation is enabled.
+  """
+  return context.context().optimizer_jit
+
+
+@tf_export('config.optimizer.set_jit')
+def set_optimizer_jit(enabled):
+  """Set if JIT compilation is enabled.
+
+  Args:
+    enabled: Whether to enable JIT compilation.
+  """
+  context.context().optimizer_jit = enabled
+
+
+@tf_export('config.optimizer.get_experimental_options')
+def get_optimizer_experimental_options():
+  """Get experimental optimizer options.
+
+  Refer to tf.config.optimizer.set_experimental_options for a list of current
+  options.
+
+  Note that optimizations are only applied in graph mode, (within tf.function).
+  In addition, as these are experimental options, the list is subject to change.
+
+  Returns:
+    Dictionary of configured experimental optimizer options
+  """
+  return context.context().get_optimizer_experimental_options()
+
+
+@tf_export('config.optimizer.set_experimental_options')
+def set_optimizer_experimental_options(options):
+  """Set experimental optimizer options.
+
+  Note that optimizations are only applied in graph mode, (within tf.function).
+  In addition, as these are experimental options, the list is subject to change.
+
+  Args:
+    options: Dictionary of experimental optimizer options to configure.
+      Valid keys:
+      - layout_optimizer: Optimize tensor layouts
+        e.g. This will try to use NCHW layout on GPU which is faster.
+      - constant_folding: Fold constants
+        Statically infer the value of tensors when possible, and materialize the
+        result using constants.
+      - shape_optimization: Simplify computations made on shapes.
+      - remapping: Remap subgraphs onto more efficient implementations.
+      - arithmetic_optimization: Simplify arithmetic ops with common
+        sub-expression elimination and arithmetic simplification.
+      - dependency_optimization: Control dependency optimizations. Remove
+        redundant control dependencies, which may enable other optimization.
+        This optimizer is also essential for pruning Identity and NoOp nodes.
+      - loop_optimization: Loop optimizations.
+      - function_optimization: Function optimizations and inlining.
+      - debug_stripper: Strips debug-related nodes from the graph.
+      - disable_model_pruning: Disable removal of unnecessary ops from the graph
+      - scoped_allocator_optimization: Try to allocate some independent Op
+        outputs contiguously in order to merge or eliminate downstream Ops.
+      - pin_to_host_optimization: Force small ops onto the CPU.
+      - implementation_selector: Enable the swap of kernel implementations based
+        on the device placement.
+      - disable_meta_optimizer: Disable the entire meta optimizer.
+      - min_graph_nodes: The minimum number of nodes in a graph to optimizer.
+        For smaller graphs, optimization is skipped.
+  """
+  context.context().set_optimizer_experimental_options(options)
+
+
 @tf_export('config.get_soft_device_placement')
 def get_soft_device_placement():
   """Get if soft device placement is enabled.
@@ -147,7 +223,7 @@ def set_soft_device_placement(enabled):
     3. need to co-locate with reftype input(s) which are from CPU
 
   Args:
-    enabled: Whether to enabled soft placement.
+    enabled: Whether to enable soft placement.
   """
   context.context().soft_device_placement = enabled
 

@@ -545,7 +545,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // If all inputs have the same shape, rewrite whole group with a single AddN
     if (shapes.size() == 1) {
-      string node_name = OptimizedNodeName(root_scope_and_name);
+      string node_name = UniqueOptimizedNodeName(root_scope_and_name);
       AddInputsOfSymbolicallyEqualShape(*group.root_node, node_name,
                                         group.inputs);
       return node_name;
@@ -561,13 +561,13 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
 
     // optimized name for leaf AddN nodes
     auto leaf_node_name = [&root_scope_and_name, this](int i) {
-      return OptimizedNodeName(root_scope_and_name,
-                               strings::StrCat("Leaf_", i));
+      return UniqueOptimizedNodeName(root_scope_and_name,
+                                     strings::StrCat("Leaf_", i));
     };
     // optimized name for internal nodes of a tree built up from AddN leaves
     auto internal_node_name = [&root_scope_and_name, this](int i) {
-      return OptimizedNodeName(root_scope_and_name,
-                               strings::StrCat("Internal_", i));
+      return UniqueOptimizedNodeName(root_scope_and_name,
+                                     strings::StrCat("Internal_", i));
     };
 
     // Add/AddN nodes that must be added to the tree
@@ -588,8 +588,9 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
       add_ops.pop_front();
       const InputAndShape rhs = add_ops.front();
       add_ops.pop_front();
-      string name = add_ops.empty() ? OptimizedNodeName(root_scope_and_name)
-                                    : internal_node_name(internal_nodes++);
+      string name = add_ops.empty()
+                        ? UniqueOptimizedNodeName(root_scope_and_name)
+                        : internal_node_name(internal_nodes++);
       InputAndShape add = AddAggregatedInputs(*group.root_node, name, lhs, rhs);
       add_ops.push_front(add);
     } while (add_ops.size() > 1);
@@ -1755,7 +1756,9 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
   ~SqrtDivToRsqrtMulStage() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAnyDiv(*node);
+    // Note: div_no_nan(a, sqrt(b)) => mul_no_nan(a, rsqrt(b))
+    // for b == 0 would result in a / Inf instead of 0.
+    return IsAnyDiv(*node) && !IsDivNoNan(*node);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -1765,8 +1768,14 @@ class SqrtDivToRsqrtMulStage : public ArithmeticOptimizerStage {
     // elsewhere.
     if (IsSqrt(*y) && !IsInPreserveSet(*y) &&
         (NumNonControlOutputs(*y, *ctx().node_map) == 1)) {
-      // a / sqrt(b) = a * rsqrt(b)
-      node->set_op("Mul");
+      if (IsXdivy(*node)) {
+        // xdivy(a, sqrt(b)) => mul_no_nan(rsqrt(b), a)
+        node->set_op("MulNoNan");
+        node->mutable_input()->SwapElements(0, 1);
+      } else {
+        // div(a, sqrt(b)) => mul(a, rsqrt(b))
+        node->set_op("Mul");
+      }
       y->set_op("Rsqrt");
       AddToOptimizationQueue(node);
       AddToOptimizationQueue(y);
@@ -2101,7 +2110,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
     TF_RETURN_IF_ERROR(GetInputNode(tail->input(0), &source));
 
     // Check that value preserving chain is the only consumer of the Mul output.
-    TF_RETURN_IF_TRUE(!IsMul(*source));
+    TF_RETURN_IF_TRUE(!IsAnyMul(*source));
     TF_RETURN_IF_TRUE(NumNonControlOutputs(*source, *ctx().node_map) != 1);
 
     const NodeDef* mul = source;
@@ -2131,7 +2140,7 @@ class FoldMultiplyIntoConv : public ArithmeticOptimizerStage {
 
     // Create new node `scaled_weights`.
     NodeDef* scaled_weights = AddEmptyNode(scaled_weights_node_name);
-    scaled_weights->set_op("Mul");
+    scaled_weights->set_op(source->op());
     scaled_weights->set_device(weights->device());
     (*scaled_weights->mutable_attr())["T"] = weights->attr().at("dtype");
     AddToOptimizationQueue(scaled_weights);
@@ -2316,7 +2325,7 @@ class ReplaceMulWithSquare : public ArithmeticOptimizerStage {
   ~ReplaceMulWithSquare() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsMul(*node) && node->input(0) == node->input(1);
+    return IsAnyMul(*node) && node->input(0) == node->input(1);
   }
 
   Status TrySimplify(NodeDef* node, string* simplified_node_name) override {
@@ -3425,19 +3434,14 @@ void ArithmeticOptimizer::DedupComputations() {
     return;
   }
 
-  const absl::flat_hash_set<string> ops_to_traverse = {
-      "Identity", "IdentityN", "Reshape", "ExpandDims",
-      "Enter",    "Switch",    "Merge"};
-
   // Populate feed_inplace_op;
   absl::flat_hash_set<const NodeDef*> feeds_inplace_op;
-
   for (const NodeDef& root : optimized_graph_->node()) {
     if (feeds_inplace_op.find(&root) != feeds_inplace_op.end()) continue;
 
     if (ModifiesInputsInPlace(root)) {
       const auto is_continue_traversal = [&](const NodeDef* node) -> bool {
-        return node->op() == root.op() || ops_to_traverse.count(node->op()) > 0;
+        return node->op() == root.op() || !NeverForwardsInputs(*node);
       };
 
       DfsTraversal(graph_view, {&root}, TraversalDirection::kFollowInputs,
@@ -3663,14 +3667,16 @@ Status ArithmeticOptimizer::Optimize(Cluster* /*cluster*/,
   options_.unary_ops_composition &=
       item.optimization_options().allow_non_differentiable_rewrites;
 
-  if (options_.dedup_computations) {
-    DedupComputations();
-  }
+  // Perform topological sort on the graph in order to help DedupComputations
+  // and AddOpsRewrite to optimize larger subgraphs starting from the roots with
+  // more inputs.
+  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
   GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
 
-  // Perform topological sort on the graph in order to help AddOpsRewrite to
-  // optimize larger subgraphs starting from the roots with more inputs.
-  TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph_));
+  if (options_.dedup_computations) {
+    DedupComputations();
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
+  }
 
   graph_properties_.reset(new GraphProperties(optimized_item));
   const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;

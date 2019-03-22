@@ -668,10 +668,13 @@ Status SegmentGraph(const Graph* tf_graph,
     const string& segment_root = itr.first;
     // Return format does not require set comparator.
     std::set<const Node*> segment_nodes(itr.second.begin(), itr.second.end());
-    if (VLOG_IS_ON(1)) {
-      string s = "parent=" + segment_root + ":";
-      for (auto node : segment_nodes) s += " " + node->name();
-      VLOG(1) << "Segment " << segments->size() << ": " << s;
+    if (VLOG_IS_ON(1) && !segment_nodes.empty()) {
+      string s;
+      for (auto node : segment_nodes) {
+        StrAppend(&s, "\n[Op type: ", node->type_string(), "] ", node->name());
+      }
+      VLOG(1) << "Nodes in segment " << segments->size()
+              << " with parent=" << segment_root << ":" << s;
     }
 
     // Don't use small segments.

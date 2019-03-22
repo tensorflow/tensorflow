@@ -77,7 +77,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<CapturedFunction> captured_func;
     OP_REQUIRES_OK(
         ctx, CapturedFunction::Create(interleave_func_, ctx, "other_arguments",
-                                      &captured_func));
+                                      /*params=*/{}, &captured_func));
 
     *output =
         new Dataset(ctx, input, interleave_func_, std::move(captured_func),
