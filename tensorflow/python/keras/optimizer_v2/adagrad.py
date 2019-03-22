@@ -41,18 +41,18 @@ class Adagrad(optimizer_v2.OptimizerV2):
   the smaller the updates.
 
   Initialization:
+  $$accum_{g_0} := \text{initial_accumulator_value}$$
 
-  $$accum_g_0 := initial_accumulator_value$$
-
+  Update step:
   $$t := t + 1$$
-  $$accum_g_t := accum_g_{t-1} + g * g$$
-  $$theta_t := theta_{t-1} - lr * g / (\sqrt{accum_g_t} + \epsilon)$$
+  $$accum_{g_t} := accum_{g_{t-1}} + g^2$$
+  $$\theta_t := \theta_{t-1} - lr * g / (\sqrt{accum_{g_t}} + \epsilon)$$
 
-  References
-    See [paper]
-      (http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
-    or this
-      [intro](https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
+  References:
+
+  * [Paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf).
+  * [Introduction]
+    (https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
   """
 
   def __init__(self,

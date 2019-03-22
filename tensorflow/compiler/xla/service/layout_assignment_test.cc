@@ -1084,7 +1084,7 @@ TEST_F(LayoutAssignmentTest, TupleCopyOnLayoutMismatch) {
       tup.1 = (s32[], token[], f32[512,1024]{0,1}) parameter(0)
       counter.1 = s32[] get-tuple-element(tup.1), index=0
       five = s32[] constant(5)
-      ROOT lt = pred[] less-than(counter.1, five)
+      ROOT lt = pred[] compare(counter.1, five), direction=LT
     }
 
     body.2 (tup: (s32[], token[], f32[512,1024]{0,1})) -> (s32[], token[], f32[512,1024]{0,1}) {

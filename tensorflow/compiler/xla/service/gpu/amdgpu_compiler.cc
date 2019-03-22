@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
 #include "tensorflow/compiler/xla/service/gpu/amdgpu_executable.h"
-#include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_fused_conv_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_padding_legalization.h"
@@ -81,10 +80,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_trip_count_annotator.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -167,6 +168,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddPass<ConvolutionGroupConverter>(
         cost_model,
         /*convert_batch_groups_only=*/true);
+    // Expand the sort op to support stable sorting if required.
+    pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can
     // support BF16 operations without directly implementing a BF16 lowering for
     // most ops.
@@ -178,12 +181,6 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
       pass.AddInvariantChecker<HloVerifier>(/*layout_sensitive=*/false,
                                             /*allow_mixed_precision=*/false);
 
-      // If cudnn batchnorms are enabled, rewrite batchnorm HLOs to cudnn calls
-      // where possible.  Not every batchnorm op can be implemented as a call to
-      // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
-      if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
-        pass.AddPass<CudnnBatchNormRewriter>();
-      }
       pass.AddPass<BatchNormExpander>(
           /*rewrite_training_op=*/true,
           /*rewrite_inference_op=*/true,
@@ -217,6 +214,16 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
         TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
+    // Run WhileLoopTripCountAnnotator at the end of the simplification
+    // pipeline, before layout assignment and fusion.  This pass does some
+    // pattern-matching on while bodies/conditions, and this is where the HLO is
+    // "nicest".
+    //
+    // It's important that we don't make semantic changes (e.g. unrolling) to
+    // any `while` loops after this point, because otherwise the trip-count
+    // annotations added by this pass may not be correct after the
+    // modifications.
+    pipeline.AddPass<WhileLoopTripCountAnnotator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
@@ -436,13 +443,16 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
   VLOG(3) << "*** HLO After Optimization";
   XLA_VLOG_LINES(3, module->ToString());
+#if 0 
+  
   const string xla_dump_optimized_hlo_proto_to =
-      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
-  if (!xla_dump_optimized_hlo_proto_to.empty()) {
+      module->config().debug_options().xla_dump_hlo_as_text();
+  if (!xla_dump_optimized__hlo_proto_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
     TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
         proto, xla_dump_optimized_hlo_proto_to, module->name()));
   }
+#endif 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),
                                       &stream_exec->GetDeviceDescription(),
                                       &llvm_module);
@@ -462,7 +472,7 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   }
 
   if (user_pre_optimization_hook_) {
-    TF_CHECK_OK(user_pre_optimization_hook_(llvm_module));
+    user_pre_optimization_hook_(llvm_module);
   }
   string ir_module_string_before_opt;
   const bool embed_ir_in_executable =
@@ -474,15 +484,9 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   }
 
   const string& ir_dump_directory =
-      module->config().debug_options().xla_dump_ir_to();
+      module->config().debug_options().xla_dump_to();
 
-  if (!ir_dump_directory.empty()) {
-    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
-        /*directory_name=*/ir_dump_directory,
-        /*hlo_module_name=*/module->name(), llvm_module,
-        /*optimized=*/false));
-  }
-
+   llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/false);
   {
     XLA_SCOPED_LOGGING_TIMER(
         "AMDGPUCompiler::RunBackend - Running LLVM verifier");
@@ -518,14 +522,11 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
   }
 
   if (!ir_dump_directory.empty()) {
-    TF_RETURN_IF_ERROR(llvm_ir::DumpIRToDirectory(
-        /*directory_name=*/ir_dump_directory,
-        /*hlo_module_name=*/module->name(), llvm_module,
-        /*optimized=*/true));
+   llvm_ir::DumpIrIfEnabled(*module, llvm_module, /*optimized=*/false);
   }
 
   if (user_post_optimization_hook_) {
-    TF_CHECK_OK(user_post_optimization_hook_(llvm_module));
+    user_post_optimization_hook_(llvm_module);
   }
   VLOG(3) << "LLVM module after optimizations:";
   XLA_VLOG_LINES(3, llvm_ir::DumpModuleToString(llvm_module));

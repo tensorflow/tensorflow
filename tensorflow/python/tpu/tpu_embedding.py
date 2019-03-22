@@ -32,7 +32,6 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -64,10 +63,11 @@ class TableConfig(
         `tf.truncated_normal_initializer` with mean `0.0` and standard deviation
         `1/sqrt(dimension)`.
       combiner: A string specifying how to reduce if there are multiple entries
-        in a single row. Currently 'mean', 'sqrtn' and 'sum' are supported, with
-        'mean' the default. 'sqrtn' often achieves good accuracy, in particular
-        with bag-of-words columns. For more information, see
-        `tf.nn.embedding_lookup_sparse`.
+        in a single row. Currently 'mean', 'sqrtn', 'sum' and None are
+        supported, with 'mean' the default. 'sqrtn' often achieves good
+        accuracy, in particular with bag-of-words columns. For more information,
+        see `tf.nn.embedding_lookup_sparse`. None is only valid for dense rather
+        than sparse tensors.
 
     Returns:
       `TableConfig`.
@@ -90,7 +90,7 @@ class TableConfig(
       initializer = init_ops.truncated_normal_initializer(
           mean=0.0, stddev=1 / math.sqrt(dimension))
 
-    if combiner not in ('mean', 'sum', 'sqrtn'):
+    if combiner not in ('mean', 'sum', 'sqrtn', None):
       raise ValueError('Invalid combiner {}'.format(combiner))
 
     return super(TableConfig, cls).__new__(cls, vocabulary_size, dimension,
@@ -116,42 +116,33 @@ VariablesAndOps = collections.namedtuple(
 )
 
 
-# TODO(shizhiw): Factor `use_gradient_accumulation` and
-# `pipeline_execution_with_tensor_core` out of `_OptimizationParameters`.
 class _OptimizationParameters(object):
   """Parameters common to all optimizations."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation,
-               pipeline_execution_with_tensor_core):
+  def __init__(self, learning_rate, use_gradient_accumulation):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
-    self.pipeline_execution_with_tensor_core = (
-        pipeline_execution_with_tensor_core)
 
 
 class AdagradParameters(_OptimizationParameters):
   """Optimization parameters for Adagrad."""
 
-  def __init__(self, learning_rate, initial_accumulator,
-               use_gradient_accumulation=False,
-               pipeline_execution_with_tensor_core=True):
+  def __init__(self, learning_rate, initial_accumulator=0.1,
+               use_gradient_accumulation=True):
     """Optimization parameters for Adagrad.
 
     Args:
       learning_rate: used for updating embedding table.
       initial_accumulator: initial accumulator for Adagrad.
-      use_gradient_accumulation: setting this to `True` makes embedding
-         gradients calculation more accurate but slower. Please see
-         `optimization_parameters.proto` for details.
-         for details.
-      pipeline_execution_with_tensor_core: setting this to `True` makes training
-        faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
-        `tpu_embedding_configuration.proto` for details.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
+        for details.
     """
     super(AdagradParameters, self).__init__(learning_rate,
-                                            use_gradient_accumulation,
-                                            pipeline_execution_with_tensor_core)
+                                            use_gradient_accumulation)
+    if initial_accumulator <= 0:
+      raise ValueError('Adagrad initial_accumulator must be positive')
     self.initial_accumulator = initial_accumulator
 
 
@@ -164,8 +155,7 @@ class AdamParameters(_OptimizationParameters):
                epsilon=1e-08,
                lazy_adam=True,
                sum_inside_sqrt=True,
-               use_gradient_accumulation=False,
-               pipeline_execution_with_tensor_core=True):
+               use_gradient_accumulation=True):
     """Optimization parameters for Adam.
 
     Args:
@@ -179,18 +169,23 @@ class AdamParameters(_OptimizationParameters):
         Please see `optimization_parameters.proto` for details.
       sum_inside_sqrt: This improves training speed. Please see
         `optimization_parameters.proto` for details.
-      use_gradient_accumulation: setting this to `True` makes embedding
-        gradients calculation more accurate but slower. Please see
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
         `optimization_parameters.proto` for details.
         for details.
-      pipeline_execution_with_tensor_core: setting this to `True` makes training
-        faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
-        `tpu_embedding_configuration.proto` for details.
     """
     super(AdamParameters, self).__init__(learning_rate,
-                                         use_gradient_accumulation,
-                                         pipeline_execution_with_tensor_core)
+                                         use_gradient_accumulation)
+    if beta1 < 0. or beta1 >= 1.:
+      raise ValueError('beta1 must be between 0. and 1; got {}.'.format(beta1))
+    if beta2 < 0. or beta2 >= 1.:
+      raise ValueError('beta2 must be between 0. and 1; got {}.'.format(beta2))
+    if epsilon <= 0.:
+      raise ValueError('epsilon must be positive; got {}.'.format(epsilon))
+    if not use_gradient_accumulation and not lazy_adam:
+      raise ValueError(
+          'When disabling Lazy Adam, gradient accumulation must be used.')
+
     self.beta1 = beta1
     self.beta2 = beta2
     self.epsilon = epsilon
@@ -203,20 +198,11 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
   Args:
     learning_rate: a floating point value. The learning rate.
-    use_gradient_accumulation: setting this to `True` makes embedding
-      gradients calculation more accurate but slower. Please see
-         `optimization_parameters.proto` for details.
-    pipeline_execution_with_tensor_core: setting this to `True` makes training
-      faster, but trained model will be different if step N and step N+1
-      involve the same set of embedding ID. Please see
-      `tpu_embedding_configuration.proto` for details.
-    """
+  """
 
-  def __init__(self, learning_rate, use_gradient_accumulation=False,
-               pipeline_execution_with_tensor_core=True):
+  def __init__(self, learning_rate):
     super(StochasticGradientDescentParameters, self).__init__(
-        learning_rate, use_gradient_accumulation,
-        pipeline_execution_with_tensor_core)
+        learning_rate, False)
 
 
 class TPUEmbedding(object):
@@ -309,7 +295,8 @@ class TPUEmbedding(object):
                mode,
                master,
                optimization_parameters=None,
-               cluster_def=None):
+               cluster_def=None,
+               pipeline_execution_with_tensor_core=True):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -326,6 +313,10 @@ class TPUEmbedding(object):
         `Stochasticgradientdescentparameters`. Must be set in training and must
         be `None` in inference.
       cluster_def: A ClusterDef object describing the TPU cluster.
+      pipeline_execution_with_tensor_core: setting this to `True` makes training
+        faster, but trained model will be different if step N and step N+1
+        involve the same set of embedding ID. Please see
+        `tpu_embedding_configuration.proto` for details.
 
     Raises:
       ValueError: if any input is invalid.
@@ -333,12 +324,13 @@ class TPUEmbedding(object):
     _validate_table_to_config_dict(table_to_config_dict)
     # Avoid nondeterminism from `Dict` iteration order by using `OrderedDict`.
     self._table_to_config_dict = _create_ordered_dict(table_to_config_dict)
-    self._combiners = _create_combiners(self._table_to_config_dict)
 
     _validate_feature_to_table_dict(table_to_config_dict, feature_to_table_dict)
     self._feature_to_table_dict = _create_ordered_dict(feature_to_table_dict)
     self._table_to_features_dict = _create_table_to_features_dict(
         self._feature_to_table_dict)
+    self._combiners = _create_combiners(self._table_to_config_dict,
+                                        self._table_to_features_dict)
 
     self._batch_size = batch_size
 
@@ -384,6 +376,8 @@ class TPUEmbedding(object):
     # on get_slot().
     self._optimizer_handler = _get_optimization_handler(
         self._optimization_parameters)
+    self._pipeline_execution_with_tensor_core = (
+        pipeline_execution_with_tensor_core)
 
     self._config_proto = self._create_config_proto()
 
@@ -483,7 +477,7 @@ class TPUEmbedding(object):
     config_proto.num_tensor_cores = self._num_cores
     config_proto.sharding_strategy = elc.TPUEmbeddingConfiguration.DIV_DEFAULT
     config_proto.pipeline_execution_with_tensor_core = (
-        self._optimization_parameters.pipeline_execution_with_tensor_core)
+        self._pipeline_execution_with_tensor_core)
 
     return config_proto
 
@@ -576,7 +570,7 @@ class TPUEmbedding(object):
     Args:
       sparse_features_list: a list of dictionary mapping from string
         of feature names to sparse tensor. Each dictionary is for one
-        TPU core. Dictionaries for the same core should be contiguous
+        TPU core. Dictionaries for the same host should be contiguous
         on the list.
 
     Returns:
@@ -621,11 +615,13 @@ class TPUEmbedding(object):
       device = None
       device_feature = None
       for feature, tensor in six.iteritems(sparse_features):
-        if not isinstance(tensor, sparse_tensor.SparseTensor):
+        combiner = self._table_to_config_dict[
+            self._feature_to_table_dict[feature]].combiner
+        if not isinstance(tensor, sparse_tensor.SparseTensor) and combiner:
           raise ValueError('`sparse_features_list[{}]` has a feature that is '
-                           'not mapped to `SparseTensor`. '
-                           '`feature`: {}, type: {}'.format(
-                               i, feature, type(tensor)))
+                           'not mapped to `SparseTensor` and has a combiner. '
+                           '`feature`: {}, combiner: {}'.format(
+                               i, feature, combiner))
 
         # Check all features are on the same device.
         if device is None:
@@ -652,49 +648,43 @@ class TPUEmbedding(object):
 
   def _generate_enqueue_op(self, sparse_features, device_ordinal):
     with ops.colocate_with(list(sparse_features.values())[0]):
-      sample_idcs, embedding_idcs, aggregation_weights = (
-          self._format_for_tpu_embedding_sparse_batch(sparse_features))
-      return tpu_ops.enqueue_tpu_embedding_sparse_batch(
+      sample_idcs, embedding_idcs, aggregation_weights, table_ids = (
+          self._format_for_tpu_embedding_sparse_tensor_batch(sparse_features))
+      return tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
           sample_idcs,
           embedding_idcs,
           aggregation_weights,
-          combiners=self._combiners,
-          device_ordinal=device_ordinal)
+          table_ids,
+          device_ordinal=device_ordinal,
+          combiners=self._combiners)
 
-  def _format_for_tpu_embedding_sparse_batch(self, sparse_features):
-    """Format sparse features for `enqueue_tpu_embedding_sparse_batch()`.
+  def _format_for_tpu_embedding_sparse_tensor_batch(self, sparse_features):
+    """Format sparse features for `enqueue_tpu_embedding_sparse_tensor_batch()`.
 
     Args:
-      sparse_features: a `Dict` of `SparseTensor`s for embedding.
+      sparse_features: a `Dict` of tensors for embedding. Can be sparse or
+      dense.
 
     Returns:
-      Arguments for `enqueue_tpu_embedding_sparse_batch()`.
+      Arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
     """
 
-    sample_idcs, embedding_idcs, aggregation_weights = list(), list(), list()
-    for table in self._table_to_features_dict:
-      sample_t, indices_t, weights_t = list(), list(), list()
-
+    sample_idcs, embedding_idcs, aggregation_weights, table_ids = (
+        list(), list(), list(), list())
+    for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
-      for i, feature in enumerate(features):
+      for feature in features:
         tensor = sparse_features[feature]
-        sample_indices = tensor.indices[:, 0]
-        embedding_indices = tensor.values
-        weights = array_ops.ones_like(embedding_indices)
-        sample_t.append(i * self._batch_size_per_core + sample_indices)
-        indices_t.append(embedding_indices)
-        weights_t.append(weights)
+        if not isinstance(tensor, sparse_tensor.SparseTensor):
+          sample_idcs.append(array_ops.zeros([0], dtype=dtypes.int32))
+          embedding_idcs.append(tensor)
+        else:
+          sample_idcs.append(tensor.indices)
+          embedding_idcs.append(tensor.values)
+        aggregation_weights.append(array_ops.zeros([0]))
+        table_ids.append(table_id)
 
-      sample_idcs.append(
-          math_ops.cast(array_ops.concat(sample_t, axis=0), dtype=dtypes.int32))
-      embedding_idcs.append(
-          math_ops.cast(
-              array_ops.concat(indices_t, axis=0), dtype=dtypes.int32))
-      aggregation_weights.append(
-          math_ops.cast(
-              array_ops.concat(weights_t, axis=0), dtype=dtypes.float32))
-
-    return sample_idcs, embedding_idcs, aggregation_weights
+    return sample_idcs, embedding_idcs, aggregation_weights, table_ids
 
   def get_activations(self):
     """Get activations for features.
@@ -714,9 +704,8 @@ class TPUEmbedding(object):
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for lookup_id, feature in enumerate(features):
-        start_row = lookup_id * self._batch_size_per_core
-        end_row = start_row + self._batch_size_per_core
-        activations[feature] = recv_activations[table_id][start_row:end_row, :]
+        stride = len(self._table_to_features_dict[table])
+        activations[feature] = recv_activations[table_id][lookup_id::stride, :]
     return activations
 
   def generate_send_gradients_op(self, feature_to_gradient_dict):
@@ -742,8 +731,10 @@ class TPUEmbedding(object):
       table_gradients = [
           feature_to_gradient_dict[feature] for feature in features
       ]
-      concat_table_grads = array_ops.concat(table_gradients, axis=0)
-      gradients.append(concat_table_grads)
+      interleaved_table_grads = array_ops.reshape(
+          array_ops.stack(table_gradients, axis=1),
+          [-1, table_gradients[0].shape[1]])
+      gradients.append(interleaved_table_grads)
     return tpu_ops.send_tpu_embedding_gradients(
         inputs=gradients, config=self.config_proto.SerializeToString())
 
@@ -940,8 +931,7 @@ class _AdamHandler(_OptimizerHandler):
                   table_name=table,
                   num_shards=num_hosts,
                   shard_id=host_id))
-
-      load_op_list.append(load_parameters_op)
+        load_op_list.append(load_parameters_op)
       return load_op_list
 
     def retrieve_ops_fn():
@@ -1049,8 +1039,13 @@ def _create_ordered_dict(d):
   return collections.OrderedDict((k, d[k]) for k in sorted(d))
 
 
-def _create_combiners(table_to_config_dict):
-  return [table_to_config_dict[t].combiner for t in table_to_config_dict]
+def _create_combiners(table_to_config_dict, table_to_features_dict):
+  """Create a per feature list of combiners, ordered by table."""
+  combiners = []
+  for table in table_to_config_dict:
+    combiner = table_to_config_dict[table].combiner or 'sum'
+    combiners.extend([combiner] * len(table_to_features_dict[table]))
+  return combiners
 
 
 def _create_table_to_features_dict(feature_to_table_dict):

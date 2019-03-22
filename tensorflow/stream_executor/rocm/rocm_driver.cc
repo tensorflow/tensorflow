@@ -518,7 +518,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                       GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
   void* pointer = absl::bit_cast<void*>(location);
-  hipError_t res = tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
+  hipError_t res =
+      tensorflow::wrap::hipMemsetD32Async(pointer, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -670,7 +671,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = tensorflow::wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
+  hipError_t res =
+      tensorflow::wrap::hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to alloc " << bytes
                << " bytes on host: " << ToString(res);

@@ -26,6 +26,7 @@ limitations under the License.
 namespace tensorflow {
 
 Status GrpcStatusToTfStatus(const ::grpc::Status& status);
+Status GcpStatusToTfStatus(const ::google::cloud::Status& status);
 
 string RegexFromStringSet(const std::vector<string>& strs);
 
@@ -89,22 +90,21 @@ class BigtableReaderDatasetIterator : public DatasetIterator<Dataset> {
  public:
   explicit BigtableReaderDatasetIterator(
       const typename DatasetIterator<Dataset>::Params& params)
-      : DatasetIterator<Dataset>(params), iterator_(nullptr, false) {}
+      : DatasetIterator<Dataset>(params) {}
 
   Status GetNextInternal(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                          bool* end_of_sequence) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(EnsureIteratorInitialized());
     if (iterator_ == reader_->end()) {
-      grpc::Status status = reader_->Finish();
-      if (status.ok()) {
-        *end_of_sequence = true;
-        return Status::OK();
-      }
-      return GrpcStatusToTfStatus(status);
+      *end_of_sequence = true;
+      return Status::OK();
+    }
+    if (!*iterator_) {
+      return GcpStatusToTfStatus(iterator_->status());
     }
     *end_of_sequence = false;
-    google::cloud::bigtable::Row& row = *iterator_;
+    google::cloud::bigtable::Row& row = **iterator_;
     Status s = ParseRow(ctx, row, out_tensors);
     // Ensure we always advance.
     ++iterator_;

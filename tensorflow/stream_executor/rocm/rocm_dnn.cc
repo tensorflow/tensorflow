@@ -249,10 +249,10 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenCreateOpConvForward)                       \
   __macro(miopenCreateOpBiasForward)                       \
   __macro(miopenCreateOpActivationForward)                 \
-  __macro(miopenCreateOpActivationBackward)		   \
-  __macro(miopenCreateOpBatchNormInference)		   \
-  __macro(miopenCreateOpBatchNormForward)		   \
-  __macro(miopenCreateOpBatchNormBackward)		   \
+  __macro(miopenCreateOpActivationBackward)                \
+  __macro(miopenCreateOpBatchNormInference)                \
+  __macro(miopenCreateOpBatchNormForward)                  \
+  __macro(miopenCreateOpBatchNormBackward)                 \
   __macro(miopenCompileFusionPlan)                         \
   __macro(miopenFusionPlanGetOp)                           \
   __macro(miopenCreateOperatorArgs)                        \
@@ -615,7 +615,8 @@ class ScopedTensorDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedTensorDescriptor);
 };
 
-// Turns a FilterDescriptor structure into a miopen filter handle within a scope.
+// Turns a FilterDescriptor structure into a miopen filter handle within a
+// scope.
 class ScopedFilterDescriptor {
  public:
   ScopedFilterDescriptor(const FilterDescriptor& filter_descriptor,
@@ -631,8 +632,8 @@ class ScopedFilterDescriptor {
     const int nd = batch_descriptor.ndims() + 2;
 
     if (nd != 4) {
-      LOG(FATAL) << "miopen only supports 4D filters, dim=" << nd << "not allowed"
-                 << ToString(status);
+      LOG(FATAL) << "miopen only supports 4D filters, dim=" << nd
+                 << "not allowed" << ToString(status);
     }
 
     std::vector<int> dims(2 + filter_descriptor.ndims());
@@ -1229,22 +1230,22 @@ class ScopedFusionPlanConvolutionBiasActivation : public ScopedFusionPlanBase {
       miopenConvolutionDescriptor_t conv_descriptor,
       miopenTensorDescriptor_t bias_descriptor,
       ScopedActivationDescriptor& activation_descriptor) {
-    uint64 hashValue = tensorflow::Hash64("ConvolutionBiasActivation");
+    uint64 hash_value = tensorflow::Hash64("ConvolutionBiasActivation");
 
-    hashValue = tensorflow::Hash64Combine(
-        hashValue, tensorflow::hash<miopenHandle_t>()(miopen_handle));
+    hash_value = tensorflow::Hash64Combine(
+        hash_value, tensorflow::hash<miopenHandle_t>()(miopen_handle));
 
-    hashValue =
-        tensorflow::Hash64Combine(hashValue, GetHashValue(input_descriptor));
-    hashValue =
-        tensorflow::Hash64Combine(hashValue, GetHashValue(filter_descriptor));
-    hashValue =
-        tensorflow::Hash64Combine(hashValue, GetHashValue(conv_descriptor));
-    hashValue =
-        tensorflow::Hash64Combine(hashValue, GetHashValue(bias_descriptor));
-    hashValue = tensorflow::Hash64Combine(hashValue,
-                                          activation_descriptor.GetHashValue());
-    return hashValue;
+    hash_value =
+        tensorflow::Hash64Combine(hash_value, GetHashValue(input_descriptor));
+    hash_value =
+        tensorflow::Hash64Combine(hash_value, GetHashValue(filter_descriptor));
+    hash_value =
+        tensorflow::Hash64Combine(hash_value, GetHashValue(conv_descriptor));
+    hash_value =
+        tensorflow::Hash64Combine(hash_value, GetHashValue(bias_descriptor));
+    hash_value = tensorflow::Hash64Combine(
+        hash_value, activation_descriptor.GetHashValue());
+    return hash_value;
   }
 
  private:
@@ -2169,7 +2170,6 @@ bool MIOpenSupport::DoRnnBackwardImpl(
     DeviceMemory<T>* params_backprop_data,
     DeviceMemory<uint8>* reserve_space_data,
     ScratchAllocator* workspace_allocator) {
-
   // extract model parameters
   RnnModelDims model_dims;
   bool res = ExtractAndCheckRnnForward(
@@ -2372,7 +2372,6 @@ bool MIOpenSupport::DoRnnForward(
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-
   // ROCM TODO: output_profile_result is ignore for now
 
   const MIOpenRnnDescriptor& miopen_rnn_desc =
@@ -2414,7 +2413,6 @@ bool MIOpenSupport::DoRnnForward(
     ScratchAllocator* reserve_space_allocator,
     ScratchAllocator* workspace_allocator,
     dnn::ProfileResult* output_profile_result) {
-
   // ROCM TODO: output_profile_result is ignore for now
 
   const MIOpenRnnDescriptor& miopen_rnn_desc =
@@ -2597,18 +2595,17 @@ bool MIOpenSupport::DoRnnBackward(
 
 // This is the context required to use the TF scratch allocator:
 struct MIOpenAllocatorContext {
-    MIOpenAllocatorContext(ScratchAllocator *scratch_allocator, Stream *stream):
-    scratch_allocator_(scratch_allocator), stream_(stream) {};
+  MIOpenAllocatorContext(ScratchAllocator* scratch_allocator, Stream* stream)
+      : scratch_allocator_(scratch_allocator), stream_(stream) {}
 
-    ScratchAllocator*   scratch_allocator_;
-    Stream *stream_;
+  ScratchAllocator* scratch_allocator_;
+  Stream* stream_;
 };
 
-void *MIOpenAllocatorCallback(void * ctx, size_t size_in_bytes)
-{
-  auto *mac = static_cast<MIOpenAllocatorContext*> (ctx);
+void* MIOpenAllocatorCallback(void* ctx, size_t size_in_bytes) {
+  auto* mac = static_cast<MIOpenAllocatorContext*>(ctx);
   auto allocated =
-   mac->scratch_allocator_->AllocateBytes(mac->stream_, size_in_bytes);
+      mac->scratch_allocator_->AllocateBytes(mac->stream_, size_in_bytes);
 
   DeviceMemory<uint8> scratch;
   if (allocated.ok()) {

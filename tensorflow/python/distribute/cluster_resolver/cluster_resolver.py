@@ -51,7 +51,7 @@ def get_accelerator_devices(master, config_proto):
       device_match = DEVICE_TYPE_REGEX.match(name)
       if device_match:
         device_type = device_match.group(1)
-      if device_type == 'CPU':  # CPUs are not accelerators
+      if device_type == 'CPU' or device_type == 'XLA_CPU':  # Filter CPUs
         continue
       devices.append(session._DeviceAttributes(name, device_type, 0, 0))  # pylint: disable=protected-access
     return devices

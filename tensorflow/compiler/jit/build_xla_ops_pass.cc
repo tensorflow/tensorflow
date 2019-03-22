@@ -16,18 +16,20 @@ limitations under the License.
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
 #include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/array_ops.h"
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/control_flow_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/cc/ops/xla_jit_ops.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -211,11 +214,10 @@ void RemoveAllIncomingControlEdges(Graph* g, Node* n) {
   }
 }
 
-// Returns true (into `result`) if `node` must be compiled.
-Status NodeRequiresCompilation(Node* n, bool* result) {
+// Returns true (into `result`) if a node placed on `device` must be compiled.
+Status DeviceRequiresCompilation(const string& device, bool* result) {
   DeviceType device_type("");
-  TF_RETURN_IF_ERROR(
-      DeviceToDeviceType(n->assigned_device_name(), &device_type));
+  TF_RETURN_IF_ERROR(DeviceToDeviceType(device, &device_type));
   const XlaOpRegistry::DeviceRegistration* registration = nullptr;
   if (!XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration)) {
     return errors::Internal("Could not find compilation device ",
@@ -226,11 +228,97 @@ Status NodeRequiresCompilation(Node* n, bool* result) {
   return Status::OK();
 }
 
+// Replaces `n` with a `PartionedCall` op that calls the same function.
+Status ReplaceFunctionCallWithPartionedCall(
+    const GraphOptimizationPassOptions& options,
+    const FunctionLibraryDefinition& flib_def, Node* n, Graph* g,
+    const NameAttrList& func, const Scope& root) {
+  string config_string = options.session_options->config.SerializeAsString();
+
+  int input_count = absl::c_count_if(
+      n->in_edges(), [](const Edge* e) { return !e->IsControlEdge(); });
+
+  std::vector<Output> args(input_count);
+  for (const Edge* e : n->in_edges()) {
+    if (!e->IsControlEdge()) {
+      args[e->dst_input()] = Output(e->src(), e->src_output());
+    }
+  }
+
+  ops::PartitionedCall call(
+      root.WithOpName("partitioned_call"), args, n->output_types(), func,
+      ops::PartitionedCall::Attrs{}.ConfigProto(config_string));
+
+  for (const Edge* e : n->in_edges()) {
+    if (e->IsControlEdge()) {
+      g->AddControlEdge(e->src(), call.operation.node());
+    }
+  }
+
+  std::vector<const Edge*> edges_to_delete;
+
+  for (const Edge* e : n->out_edges()) {
+    edges_to_delete.push_back(e);
+    if (e->IsControlEdge()) {
+      g->AddControlEdge(call.operation.node(), e->dst());
+    } else {
+      g->AddEdge(call.operation.node(), e->src_output(), e->dst(),
+                 e->dst_input());
+    }
+  }
+
+  for (const Edge* e : edges_to_delete) {
+    g->RemoveEdge(e);
+  }
+
+  g->RemoveNode(n);
+  return Status::OK();
+}
+
+Status InferDeviceForCluster(Node* n, const string& function_name,
+                             const FunctionLibraryDefinition& flib_def,
+                             string* result) {
+  const FunctionDef* func_def = flib_def.Find(function_name);
+  TF_RET_CHECK(func_def) << "Could not find " << function_name;
+
+  std::set<string> device_names;
+  for (const NodeDef& ndef : func_def->node_def()) {
+    VLOG(3) << ndef.DebugString();
+    if (!ndef.device().empty()) {
+      device_names.insert(ndef.device());
+    }
+  }
+
+  if (!n->assigned_device_name().empty()) {
+    // TODO(sanjoy): We need this because EncapsulateSubgraphsPass drops device
+    // assignment when constant folding.  We should fix EncapsulateSubgraphsPass
+    // instead.
+    device_names.insert(n->assigned_device_name());
+  }
+
+  std::vector<string> device_names_vector;
+  absl::c_copy(device_names, std::back_inserter(device_names_vector));
+
+  Status s = PickDeviceForXla(device_names_vector, true, result);
+  if (s.ok()) {
+    VLOG(2) << "For " << function_name << " PickDeviceForXla("
+            << absl::StrJoin(device_names_vector, ", ") << ") -> " << *result;
+  }
+  return s;
+}
+
 Status ReplaceNodeWithXlaCompileAndXlaRun(
+    const GraphOptimizationPassOptions& options,
     const FunctionLibraryDefinition& flib_def, bool lazy_compilation_enabled,
     Graph* g, Node* n) {
+  XlaClusterInfo cluster_info;
+  TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
+
+  string device;
+  TF_RETURN_IF_ERROR(InferDeviceForCluster(n, cluster_info.function.name(),
+                                           flib_def, &device));
   bool requires_compilation;
-  TF_RETURN_IF_ERROR(NodeRequiresCompilation(n, &requires_compilation));
+  TF_RETURN_IF_ERROR(DeviceRequiresCompilation(device, &requires_compilation));
   if (!lazy_compilation_enabled) {
     requires_compilation = true;
   }
@@ -239,10 +327,7 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
   Scope root = NewInternalScope(g, &status, /*refiner=*/nullptr)
                    .NewSubScope(n->name())
                    .WithDevice(n->requested_device())
-                   .WithAssignedDevice(n->assigned_device_name());
-
-  XlaClusterInfo cluster_info;
-  TF_RETURN_IF_ERROR(GetXlaClusterInfo(n, &cluster_info));
+                   .WithAssignedDevice(device);
 
   ops::_XlaCompile xla_compile(root.WithOpName("xla_compile"),
                                /*constants=*/cluster_info.constant_inputs,
@@ -304,6 +389,9 @@ Status ReplaceNodeWithXlaCompileAndXlaRun(
     g->AddControlEdge(
         DataToControl(root, inverse_predicated_compilation_key).node(), n);
     n->ClearAttr(kXlaCompiledKernelAttr);
+
+    TF_RETURN_IF_ERROR(ReplaceFunctionCallWithPartionedCall(
+        options, flib_def, n, g, cluster_info.function, root));
   }
 
   return Status::OK();
@@ -334,11 +422,11 @@ Status BuildXlaOpsPass::Run(const GraphOptimizationPassOptions& options) {
 
   for (Node* n : xla_compiled_kernels) {
     TF_RETURN_IF_ERROR(ReplaceNodeWithXlaCompileAndXlaRun(
-        *options.flib_def, lazy_compilation_enabled, graph, n));
+        options, *options.flib_def, lazy_compilation_enabled, graph, n));
   }
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
+    DumpGraphToFile("build_xla_ops", *graph, options.flib_def);
   }
 
   return Status::OK();

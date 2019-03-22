@@ -28,8 +28,12 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsAnyMax(const NodeDef& node);
 bool IsAnyMaxPool(const NodeDef& node);
+bool IsAnyMin(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
+bool IsArgMax(const NodeDef& node);
+bool IsArgMin(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
 bool IsAssign(const NodeDef& node);
@@ -144,6 +148,7 @@ bool IsShapeN(const NodeDef& node);
 bool IsShuffle(const NodeDef& node);
 bool IsSigmoidGrad(const NodeDef& node);
 bool IsSnapshot(const NodeDef& node);
+bool IsSoftmax(const NodeDef& node);
 bool IsSoftplusGrad(const NodeDef& node);
 bool IsSoftsignGrad(const NodeDef& node);
 bool IsSplit(const NodeDef& node);
@@ -239,6 +244,10 @@ bool HasOpDef(const NodeDef& node);
 // Returns true if the op changes the scalar type of its first input elements
 // and preserves the number of elements.
 bool IsCastLike(const NodeDef& node);
+
+// Returns true if this op never forwards any of its inputs, i.e. always
+// allocates buffers for its inputs.
+bool NeverForwardsInputs(const NodeDef& node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -36,6 +36,7 @@ limitations under the License.
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/gpu_device_array.h"
+#include "tensorflow/core/kernels/split_lib_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
@@ -328,14 +329,6 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
 };
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-
-template <typename T, typename IntType>
-struct SplitVOpGPULaunch {
-  void Run(const Eigen::GpuDevice& d, bool fixed, const T* input,
-           int total_cols, int total_rows,
-           const GpuDeviceArrayStruct<IntType>& output_scan,
-           const GpuDeviceArrayStruct<T*>& output_ptr_data);
-};
 
 // Partial specialization for GPU
 template <typename T, typename Tlen>

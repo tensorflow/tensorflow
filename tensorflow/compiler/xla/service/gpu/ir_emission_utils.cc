@@ -143,6 +143,16 @@ bool IsCustomCallToDnnConvolution(const HloInstruction& hlo) {
          target == kCudnnConvBiasActivationForwardCallTarget;
 }
 
+const char* const kCusolverCholeskyCallTarget = "__cusolver$cholesky";
+
+bool IsCustomCallToCusolver(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCusolverCholeskyCallTarget;
+}
+
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
   return ImplementedAsGemm(hlo) || IsCustomCallToDnnBatchNorm(hlo) ||
          IsCustomCallToDnnConvolution(hlo);

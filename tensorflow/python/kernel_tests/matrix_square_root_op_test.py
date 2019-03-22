@@ -32,12 +32,12 @@ class SquareRootOpTest(test.TestCase):
 
   def _verifySquareRoot(self, matrix, np_type):
     matrix = matrix.astype(np_type)
-    with test_util.use_gpu():
-      # Verify that matmul(sqrtm(A), sqrtm(A)) = A
-      sqrt = gen_linalg_ops.matrix_square_root(matrix)
-      square = math_ops.matmul(sqrt, sqrt)
-      self.assertShapeEqual(matrix, square)
-      self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
+
+    # Verify that matmul(sqrtm(A), sqrtm(A)) = A
+    sqrt = gen_linalg_ops.matrix_square_root(matrix)
+    square = math_ops.matmul(sqrt, sqrt)
+    self.assertShapeEqual(matrix, square)
+    self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
 
   def _verifySquareRootReal(self, x):
     for np_type in [np.float32, np.float64]:

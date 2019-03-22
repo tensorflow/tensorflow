@@ -87,7 +87,7 @@ class LocalShapedBuffer {
   // analogous to std::unique_ptr::release().
   ShapedBuffer Release();
 
-  // Destructures a tuple-valued LocalShapedBuffer into its constitutent
+  // Destructures a tuple-valued LocalShapedBuffer into its constituent
   // elements in LocalShapedBufferTuple form.
   StatusOr<LocalShapedBufferTuple*> DestructureTuple();
 
@@ -358,7 +358,11 @@ class ComputationBuilder {
 
   LocalOp QR(const LocalOp& a, bool full_matrices);
 
-  LocalOp Cholesky(const LocalOp& a);
+  LocalOp Cholesky(const LocalOp& a, bool lower);
+
+  LocalOp Eigh(const LocalOp& a, bool lower);
+
+  LocalOp SVD(const LocalOp& a);
 
   // `transpose_a` is the integer value of a TriangularSolveOptions::Transpose
   // enum. We use an integer here so we don't have to teach SWIG about the

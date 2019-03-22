@@ -229,8 +229,9 @@ def model_iteration(model,
           elif step > 0:
             steps_per_epoch = step
             aggregator.num_samples_or_steps = steps_per_epoch
-            progbar.params['steps'] = steps_per_epoch
-            progbar.progbar.target = steps_per_epoch
+            if mode == ModeKeys.TRAIN:
+              progbar.params['steps'] = steps_per_epoch
+              progbar.progbar.target = steps_per_epoch
         else:
           # We ran out of batches while the user passed an iterator (legacy).
           callbacks.model.stop_training = True

@@ -69,7 +69,7 @@ class XrtAllocationTuple {
   std::vector<XrtAllocation*> elements_;
 };
 
-// Destructures a tuple-valued XrtAllocation into its constitutent elements
+// Destructures a tuple-valued XrtAllocation into its constituent elements
 // in XrtAllocationTuple form.
 //
 // Accepts a `session_target` argument, used in constructing the

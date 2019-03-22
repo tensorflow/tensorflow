@@ -735,7 +735,7 @@ def find_lib(repository_ctx, paths, check_soname = True):
     for path in [repository_ctx.path(path) for path in paths]:
         if not path.exists:
             continue
-        if check_soname and objdump != None:
+        if check_soname and objdump != None and not _is_windows(repository_ctx):
             output = repository_ctx.execute([objdump, "-p", str(path)]).stdout
             output = [line for line in output.splitlines() if "SONAME" in line]
             sonames = [line.strip().split(" ")[-1] for line in output]
@@ -1435,10 +1435,11 @@ def _create_local_cuda_repository(repository_ctx):
             wrapper_defines,
         )
 
+    cuda_defines.update(_get_win_cuda_defines(repository_ctx))
     _tpl(
         repository_ctx,
         "crosstool:CROSSTOOL",
-        cuda_defines + _get_win_cuda_defines(repository_ctx),
+        cuda_defines,
         out = "crosstool/CROSSTOOL",
     )
 

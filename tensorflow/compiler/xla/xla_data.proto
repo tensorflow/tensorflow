@@ -200,7 +200,7 @@ message ShapeProto {
   // in this field represents an upper bound on the size of the dimension.
   repeated int64 dimensions = 3;
 
-  // For tuples only, the shapes of constitutent shapes in the tuple sequence.
+  // For tuples only, the shapes of constituent shapes in the tuple sequence.
   repeated ShapeProto tuple_shapes = 4;
 
   // The layout used to back this shape.
@@ -564,6 +564,12 @@ message TriangularSolveOptions {
     ADJOINT = 3;       // Complex conjugate and transpose 'a'.
   };
   Transpose transpose_a = 4;
+}
+
+message CholeskyOptions {
+  // If true, uses the lower triangle of `a`. If false, uses the upper triangle
+  // of `a`.
+  bool lower = 1;
 }
 
 message OpSharding {

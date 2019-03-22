@@ -16,6 +16,7 @@ limitations under the License.
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
+#include <cmath>
 #include <fstream>
 #include <vector>
 
@@ -228,7 +229,9 @@ void DecodeLocation(const float* encoded_location, const float* box_priors,
   }
 }
 
-float DecodeScore(float encoded_score) { return 1 / (1 + exp(-encoded_score)); }
+float DecodeScore(float encoded_score) {
+  return 1 / (1 + std::exp(-encoded_score));
+}
 
 void DrawBox(const int image_width, const int image_height, int left, int top,
              int right, int bottom, tensorflow::TTypes<uint8>::Flat* image) {

@@ -71,10 +71,6 @@ string AggregationMulName(const string& name) {
   return AddPrefixToNodeName(name, kSimplifyAggregationMul, "");
 }
 
-string OptimizedName(const string& name) {
-  return AddPrefixToNodeName(name, kArithmeticOptimizer);
-}
-
 void VerifyGraphsMatch(const GraphDef& original_graph,
                        const GraphDef& optimized_graph, int line) {
   EXPECT_EQ(original_graph.node_size(), optimized_graph.node_size()) << line;
@@ -2483,6 +2479,144 @@ TEST_F(ArithmeticOptimizerTest, DoNotConvertSqrtDivToRsqrtMulDivisorFetchNode) {
   }
 }
 
+TEST_F(ArithmeticOptimizerTest, FuseSquaredDiff) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  Output sub_x_y = ops::Sub(s.WithOpName("sub_x_y"), x, y);
+  Output square_sub_x_y = ops::Square(s.WithOpName("output"), sub_x_y);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFuseSquaredDiff(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("sub_x_y", node.input(0));
+    } else if (node.name() == "sub_x_y") {
+      EXPECT_EQ("SquaredDifference", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotFuseSquaredDiffFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  Output sub_x_y = ops::Sub(s.WithOpName("sub_x_y"), x, y);
+  Output square_sub_x_y = ops::Square(s.WithOpName("output"), sub_x_y);
+
+  GrapplerItem item;
+  item.fetch = {"output", "sub_x_y"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFuseSquaredDiff(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(2, tensors.size());
+
+  for (int i = 0; i < tensors.size(); i++) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("Square", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("sub_x_y", node.input(0));
+    } else if (node.name() == "sub_x_y") {
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, ConvertLogSoftmax) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output softmax = ops::Softmax(s.WithOpName("softmax"), x);
+  Output logsoftmax = ops::Log(s.WithOpName("output"), softmax);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyLogSoftmax(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("LogSoftmax", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotConvertLogSoftmaxArgFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output floats = ops::Const(s.WithOpName("floats"),
+                             {0.7423212f, 0.19757693f, 0.53124744f}, {1, 3});
+  Output softmax = ops::Softmax(s.WithOpName("softmax"), floats);
+  Output final_output = ops::Log(s.WithOpName("final_output"), softmax);
+
+  GrapplerItem item;
+  item.fetch = {"softmax", "final_output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyLogSoftmax(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(2, tensors.size());
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  for (int i = 0; i < tensors.size(); i++) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
@@ -3252,6 +3386,47 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWise) {
       ++required_node_count;
     } else if (node.name() == "reduce_max") {
       EXPECT_EQ("Max", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      ++required_node_count;
+    }
+  }
+  EXPECT_EQ(2, required_node_count);
+}
+
+TEST_F(ArithmeticOptimizerTest, OptimizeArgMaxOrArgMinOfMonotonicElementWise) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  const auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
+  Output arg_max = ops::ArgMax(s.WithOpName("arg_max"), sqrt, 1);
+  Output final_out = ops::Identity(s.WithOpName("final_out"), arg_max);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorEqual<int64>(tensors_expected[0], tensors[0]);
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  // Check if the inputs are switched
+  int required_node_count = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "final_out") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("arg_max", node.input(0));
+      ++required_node_count;
+    } else if (node.name() == "arg_max") {
+      EXPECT_EQ("ArgMax", node.op());
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       ++required_node_count;

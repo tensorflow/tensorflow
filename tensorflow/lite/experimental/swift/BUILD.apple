@@ -1,4 +1,4 @@
-# TensorFlow Lite for Swift.
+# TensorFlow Lite for Swift
 
 package(default_visibility = ["//visibility:private"])
 
@@ -11,20 +11,14 @@ load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
 
 MINIMUM_OS_VERSION = "9.0"
 
-SWIFT_COPTS = [
-    "-wmo",
-]
-
 # Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
 DEFAULT_TAGS = [
     "apple",
-    "manual",
 ]
 
 swift_library(
     name = "TensorFlowLite",
     srcs = glob(["Sources/*.swift"]),
-    copts = SWIFT_COPTS,
     module_name = "TensorFlowLite",
     tags = DEFAULT_TAGS,
     deps = [
@@ -42,29 +36,9 @@ ios_unit_test(
         "nomsan",
         "notsan",
     ],
-    deps = [":TensorFlowLiteTestsLib"],
-)
-
-swift_library(
-    name = "TensorFlowLiteTestsLib",
-    testonly = 1,
-    srcs = glob(["Tests/*.swift"]),
-    copts = SWIFT_COPTS,
-    tags = DEFAULT_TAGS,
     deps = [
-        ":TensorFlowLite",
-        ":TestResources",
+        ":TestsLib",
     ],
-)
-
-objc_library(
-    name = "TestResources",
-    data = [
-        "//tensorflow/lite:testdata/add.bin",
-        "//tensorflow/lite:testdata/add_quantized.bin",
-        "//tensorflow/lite:testdata/multi_add.bin",
-    ],
-    tags = DEFAULT_TAGS,
 )
 
 ios_application(
@@ -81,26 +55,51 @@ ios_application(
     sdk_frameworks = [
         "CoreGraphics",
     ],
-    tags = DEFAULT_TAGS,
-    deps = [":TensorFlowLiteAppLib"],
+    tags = DEFAULT_TAGS + ["manual"],
+    deps = [
+        ":AppLib",
+    ],
 )
 
 swift_library(
-    name = "TensorFlowLiteAppLib",
-    srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
-    module_name = "TensorFlowLiteAppLib",
+    name = "TestsLib",
+    testonly = 1,
+    srcs = glob(["Tests/*.swift"]),
     tags = DEFAULT_TAGS,
     deps = [
+        ":Resources",
         ":TensorFlowLite",
-        ":TensorFlowLiteAppResources",
+    ],
+)
+
+swift_library(
+    name = "AppLib",
+    srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
+    module_name = "AppLib",
+    tags = DEFAULT_TAGS + ["manual"],
+    deps = [
+        ":AppResources",
+        ":TensorFlowLite",
     ],
 )
 
 objc_library(
-    name = "TensorFlowLiteAppResources",
+    name = "Resources",
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    tags = DEFAULT_TAGS,
+)
+
+objc_library(
+    name = "AppResources",
     data = glob([
         "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/*.storyboard",
     ]),
-    tags = DEFAULT_TAGS,
-    deps = [":TestResources"],
+    tags = DEFAULT_TAGS + ["manual"],
+    deps = [
+        ":Resources",
+    ],
 )

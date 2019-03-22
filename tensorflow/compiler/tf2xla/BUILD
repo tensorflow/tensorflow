@@ -85,7 +85,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":common",
-        ":dump_graph",
         ":functionalize_control_flow",
         ":tf2xla_proto",
         ":tf2xla_util",
@@ -202,7 +201,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
-        ":dump_graph",
         ":host_compute_metadata_proto",
         ":sharding_util",
         ":side_effect_util",
@@ -453,23 +451,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "dump_graph",
-    srcs = [
-        "dump_graph.cc",
-    ],
-    hdrs = [
-        "dump_graph.h",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "functionalize_control_flow_util",
     srcs = [
         "functionalize_control_flow_util.cc",
@@ -500,7 +481,6 @@ cc_library(
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -528,7 +508,6 @@ cc_library(
         ":functionalize_while",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -565,7 +544,6 @@ cc_library(
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",

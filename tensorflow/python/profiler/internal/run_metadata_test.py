@@ -111,6 +111,7 @@ def _run_loop_model():
 
 class RunMetadataTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGPU(self):
     if not test.is_gpu_available(cuda_only=True):
       return

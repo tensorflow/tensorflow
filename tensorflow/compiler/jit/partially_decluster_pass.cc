@@ -20,9 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/memory_types.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
@@ -272,12 +276,20 @@ Status MustCompileNode(const Node* n, bool* must_compile) {
 // We assume here that the extra repeated (repeated compared to a clustered f
 // where it will always be constant folded) host-side computation of f does not
 // regress performance in any significant manner.  We will have to revisit this
-// algorith with a more complex cost model if this assumption turns out to be
+// algorithm with a more complex cost model if this assumption turns out to be
 // incorrect.
-Status PartiallyDeclusterGraph(Graph* graph) {
+Status PartiallyDeclusterGraph(Graph* graph,
+                               const FunctionLibraryDefinition* flib_def,
+                               Env* env) {
   std::vector<bool> compile_time_const_nodes(graph->num_node_ids());
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-      *graph, nullptr, &compile_time_const_nodes, IsIntraClusterEdge));
+  OptimizerOptions opts;
+  auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+      nullptr, env, TF_GRAPH_DEF_VERSION, flib_def, opts);
+  FunctionLibraryRuntime* lib_runtime =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(*graph, nullptr,
+                                            &compile_time_const_nodes,
+                                            lib_runtime, IsIntraClusterEdge));
 
   std::vector<Node*> rpo;
   GetReversePostOrder(*graph, &rpo, /*stable_comparator=*/NodeComparatorName(),
@@ -341,7 +353,19 @@ Status PartiallyDeclusterPass::Run(
 
   TF_RETURN_IF_ERROR(
       reduce_device_to_host_copies::PartiallyDeclusterGraph(graph));
-  TF_RETURN_IF_ERROR(reduce_recompilation::PartiallyDeclusterGraph(graph));
+  if (options.flib_def == nullptr) {
+    return errors::InvalidArgument(
+        "GraphOptimizationPassOptions::flib_def must be set for "
+        "PartiallyDeclusterPass.");
+  }
+  if (options.session_options == nullptr ||
+      options.session_options->env == nullptr) {
+    return errors::InvalidArgument(
+        "GraphOptimizationPassOptions::session_options::env must be set for "
+        "PartiallyDeclusterPass.");
+  }
+  TF_RETURN_IF_ERROR(reduce_recompilation::PartiallyDeclusterGraph(
+      graph, options.flib_def, options.session_options->env));
 
   return Status::OK();
 }

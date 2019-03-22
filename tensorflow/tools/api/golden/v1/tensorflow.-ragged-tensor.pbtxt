@@ -40,6 +40,10 @@ tf_class {
     argspec: "args=[\'self\', \'axis\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "consumers"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_nested_row_lengths"
     argspec: "args=[\'cls\', \'flat_values\', \'nested_row_lengths\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

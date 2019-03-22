@@ -57,7 +57,7 @@ class TransposeConvOpModel : public SingleOpModel {
     resolver_ = absl::make_unique<SingleOpResolver>(
         BuiltinOperator_TRANSPOSE_CONV, registration);
     BuildInterpreter(
-        {GetShape(output_shape_), GetShape(input_), GetShape(filter_)});
+        {GetShape(output_shape_), GetShape(filter_), GetShape(input_)});
   }
 
   void SetOutputShape(std::initializer_list<int> i) {
@@ -97,8 +97,8 @@ class TransposeConvOpTest : public SingleOpTest {
 //     [1, 1, 1, 1 ],
 //     "SAME")
 TEST_P(TransposeConvOpTest, SimpleTest) {
-  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 4, 4, 1}},
-                         {TensorType_FLOAT32, {1, 3, 3, 1}},
+  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 3, 3, 1}},
+                         {TensorType_FLOAT32, {1, 4, 4, 1}},
                          {TensorType_FLOAT32, {}}, Padding_SAME, 1, 1);
   m.SetOutputShape({1, 4, 4, 1});
   m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
@@ -125,8 +125,8 @@ TEST_P(TransposeConvOpTest, SimpleTest) {
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[18, 1])
 TEST_P(TransposeConvOpTest, TwoFiltersTest) {
-  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 4, 4, 2}},
-                         {TensorType_FLOAT32, {1, 3, 3, 2}},
+  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 3, 3, 2}},
+                         {TensorType_FLOAT32, {1, 4, 4, 2}},
                          {TensorType_FLOAT32, {}}, Padding_SAME, 1, 1);
   m.SetOutputShape({1, 4, 4, 1});
   m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
@@ -153,8 +153,8 @@ TEST_P(TransposeConvOpTest, TwoFiltersTest) {
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[1, 18])
 TEST_P(TransposeConvOpTest, PaddingValidTest) {
-  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 4, 4, 2}},
-                         {TensorType_FLOAT32, {1, 3, 3, 2}},
+  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 3, 3, 2}},
+                         {TensorType_FLOAT32, {1, 4, 4, 2}},
                          {TensorType_FLOAT32, {}}, Padding_VALID, 1, 1);
   m.SetOutputShape({1, 6, 6, 1});
   m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
@@ -182,8 +182,8 @@ TEST_P(TransposeConvOpTest, PaddingValidTest) {
 //     [1, 2, 2, 1 ],
 //     "VALID")
 TEST_P(TransposeConvOpTest, StrideValidTest) {
-  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 2, 2, 1}},
-                         {TensorType_FLOAT32, {1, 3, 3, 1}},
+  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 3, 3, 1}},
+                         {TensorType_FLOAT32, {1, 2, 2, 1}},
                          {TensorType_FLOAT32, {}}, Padding_VALID, 2, 2);
   m.SetOutputShape({1, 5, 5, 1});
   m.SetFilter({1, 2, 3, 4, 5, 6, 7, 8, 9});
@@ -208,8 +208,8 @@ TEST_P(TransposeConvOpTest, StrideValidTest) {
 //     [1, 2, 2, 1 ],
 //     "VALID")
 TEST_P(TransposeConvOpTest, MultiChannelTest) {
-  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 2, 2, 1}},
-                         {TensorType_FLOAT32, {2, 3, 3, 1}},
+  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 3, 3, 1}},
+                         {TensorType_FLOAT32, {1, 2, 2, 1}},
                          {TensorType_FLOAT32, {}}, Padding_VALID, 2, 2);
   m.SetOutputShape({1, 5, 5, 2});
   m.SetFilter({1, 3, 5, 7, 9, 11, 13, 15, 17, 2, 4, 6, 8, 10, 12, 14, 16, 18});
@@ -238,8 +238,8 @@ TEST_P(TransposeConvOpTest, MultiChannelTest) {
 // And filter value is derived by:
 // filter = tf.reshape(tf.transpose(filter, perm=[3, 0, 1, 2]), shape=[-1])
 TEST_P(TransposeConvOpTest, AccuracyTest) {
-  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 1, 2, 1}},
-                         {TensorType_FLOAT32, {1, 3, 3, 1}},
+  TransposeConvOpModel m(GetRegistration(), {TensorType_FLOAT32, {1, 3, 3, 1}},
+                         {TensorType_FLOAT32, {1, 1, 2, 1}},
                          {TensorType_FLOAT32, {}}, Padding_SAME, 3, 3);
   m.SetOutputShape({1, 3, 4, 1});
   m.SetFilter({9, 5, 6, 9, 8, 5, 3, 1, 4});
