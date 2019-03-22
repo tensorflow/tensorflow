@@ -28,7 +28,6 @@ from tensorflow.python.data.experimental.ops import stats_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -316,7 +315,6 @@ class StatsDatasetTest(stats_dataset_test_base.StatsDatasetTestBase):
       self.evaluate(next_element())
 
 
-@test_util.run_v1_only("b/116314787, add test coverage")
 class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
 
   def testMapBufferUtilization(self):
@@ -371,7 +369,6 @@ class ThreadUtilizationStatsTest(stats_dataset_test_base.StatsDatasetTestBase):
         function_processing_time=True)
 
 
-@test_util.run_v1_only("b/116314787, add test coverage")
 class FeatureStatsDatasetTest(
     stats_dataset_test_base.StatsDatasetTestBase,
     reader_dataset_ops_test_base.MakeBatchedFeaturesDatasetTestBase):
@@ -380,7 +377,6 @@ class FeatureStatsDatasetTest(
     num_epochs = 5
     total_records = num_epochs * self._num_records
     batch_size = 2
-    aggregator = stats_aggregator.StatsAggregator()
 
     def dataset_fn():
       return self.make_batch_feature(
@@ -400,6 +396,7 @@ class FeatureStatsDatasetTest(
         num_output,
         check_elements=False)
 
+    aggregator = stats_aggregator.StatsAggregator()
     dataset = self.datasetExperimentalStats(
         dataset_fn(), aggregator, prefix="record_stats")
 
@@ -411,19 +408,19 @@ class FeatureStatsDatasetTest(
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
     handle = self.getHandle(aggregator)
-    self.assertSummaryHasCount(
+    self.assertStatisticsHasCount(
         handle,
         self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "features_count"), total_records)
-    self.assertSummaryHasCount(
+    self.assertStatisticsHasCount(
         handle,
         self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "feature_values_count"), total_records)
-    self.assertSummaryHasSum(
+    self.assertStatisticsHasSum(
         handle,
         self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "features_count"), total_records * 4)
-    self.assertSummaryHasSum(
+    self.assertStatisticsHasSum(
         handle,
         self.regexForNodeName("record_stats::ExperimentalParseExampleDataset",
                               "feature_values_count"),

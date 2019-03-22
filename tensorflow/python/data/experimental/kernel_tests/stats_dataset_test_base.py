@@ -65,20 +65,22 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
 
   def assertStatisticsContains(self, handle, tag, num_events=-1, offset=0):
     if tf2.enabled():
-      self.assertEventContains(handle, tag, num_events, offset)
+      self._assertEventContains(handle, tag, num_events, offset)
     else:
-      self.assertSummaryContains(handle, tag)
+      self._assertSummaryContains(handle, tag)
 
   def assertStatisticsHasCount(self,
                                handle,
                                tag,
                                count,
                                num_events=-1,
+                               greater_than=False,
                                offset=0):
     if tf2.enabled():
-      self.assertEventHasCount(handle, tag, count, num_events, offset)
+      self._assertEventHasCount(handle, tag, count, num_events, greater_than,
+                                offset)
     else:
-      self.assertSummaryHasCount(handle, tag, count)
+      self._assertSummaryHasCount(handle, tag, count, greater_than)
 
   def assertStatisticsHasSum(self,
                              handle,
@@ -87,9 +89,9 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
                              num_events=-1,
                              offset=0):
     if tf2.enabled():
-      self.assertEventHasSum(handle, tag, expected_value, num_events, offset)
+      self._assertEventHasSum(handle, tag, expected_value, num_events, offset)
     else:
-      self.assertSummaryHasSum(handle, tag, expected_value)
+      self._assertSummaryHasSum(handle, tag, expected_value)
 
   def assertStatisticsHasScalarValue(self,
                                      handle,
@@ -98,10 +100,10 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
                                      num_events=-1,
                                      offset=0):
     if tf2.enabled():
-      self.assertEventHasScalarValue(handle, tag, expected_value, num_events,
-                                     offset)
+      self._assertEventHasScalarValue(handle, tag, expected_value, num_events,
+                                      offset)
     else:
-      self.assertSummaryHasScalarValue(handle, tag, expected_value)
+      self._assertSummaryHasScalarValue(handle, tag, expected_value)
 
   def assertStatisticsHasRange(self,
                                handle,
@@ -111,12 +113,12 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
                                num_events=-1,
                                offset=0):
     if tf2.enabled():
-      self.assertEventHasRange(handle, tag, min_value, max_value, num_events,
-                               offset)
+      self._assertEventHasRange(handle, tag, min_value, max_value, num_events,
+                                offset)
     else:
-      self.assertSummaryHasRange(handle, tag, min_value, max_value)
+      self._assertSummaryHasRange(handle, tag, min_value, max_value)
 
-  def assertSummaryContains(self, summary_str, tag):
+  def _assertSummaryContains(self, summary_str, tag):
     summary_proto = summary_pb2.Summary()
     summary_proto.ParseFromString(summary_str)
     for value in summary_proto.value:
@@ -124,11 +126,11 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
-  def assertSummaryHasCount(self,
-                            summary_str,
-                            tag,
-                            expected_value,
-                            greater_than=False):
+  def _assertSummaryHasCount(self,
+                             summary_str,
+                             tag,
+                             expected_value,
+                             greater_than=False):
     summary_proto = summary_pb2.Summary()
     summary_proto.ParseFromString(summary_str)
     for value in summary_proto.value:
@@ -140,7 +142,7 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
-  def assertSummaryHasRange(self, summary_str, tag, min_value, max_value):
+  def _assertSummaryHasRange(self, summary_str, tag, min_value, max_value):
     summary_proto = summary_pb2.Summary()
     summary_proto.ParseFromString(summary_str)
     for value in summary_proto.value:
@@ -150,7 +152,7 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
-  def assertSummaryHasSum(self, summary_str, tag, expected_value):
+  def _assertSummaryHasSum(self, summary_str, tag, expected_value):
     summary_proto = summary_pb2.Summary()
     summary_proto.ParseFromString(summary_str)
     for value in summary_proto.value:
@@ -159,7 +161,7 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
-  def assertSummaryHasScalarValue(self, summary_str, tag, expected_value):
+  def _assertSummaryHasScalarValue(self, summary_str, tag, expected_value):
     summary_proto = summary_pb2.Summary()
     summary_proto.ParseFromString(summary_str)
     for value in summary_proto.value:
@@ -168,7 +170,8 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
         return
     self.fail("Expected tag %r not found in summary %r" % (tag, summary_proto))
 
-  def assertEventContains(self, logdir, tag, num_events, offset):
+  # TODO(b/116314787): add tests to check the correctness of steps as well.
+  def _assertEventContains(self, logdir, tag, num_events, offset):
     events = _events_from_logdir(logdir)
     if num_events == -1:
       self.assertGreater(len(events), 1)
@@ -181,23 +184,31 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
       self.assertTrue(
           re.match(tag, events[num_events - offset - 1].summary.value[0].tag))
 
-  def assertEventHasCount(self, logdir, tag, count, num_events, offset):
+  def _assertEventHasCount(self, logdir, tag, count, num_events, greater_than,
+                           offset):
     events = _events_from_logdir(logdir)
     if num_events == -1:
       self.assertGreater(len(events), 1)
       for event in events[::-1]:
         if re.match(tag, event.summary.value[0].tag):
-          self.assertEqual(count, event.summary.value[0].histo.num)
+          if greater_than:
+            self.assertGreaterEqual(event.summary.value[0].histo.num, count)
+          else:
+            self.assertEqual(count, event.summary.value[0].histo.num)
           return
       self.fail("Expected tag %r not found in event file in %r" % (tag, logdir))
     else:
       self.assertEqual(len(events), num_events)
       self.assertTrue(
           re.match(tag, events[num_events - offset - 1].summary.value[0].tag))
-      self.assertEqual(
-          events[num_events - offset - 1].summary.value[0].histo.num, count)
+      if greater_than:
+        self.assertGreaterEqual(
+            events[num_events - offset - 1].summary.value[0].histo.num, count)
+      else:
+        self.assertEqual(
+            events[num_events - offset - 1].summary.value[0].histo.num, count)
 
-  def assertEventHasSum(self, logdir, tag, expected_value, num_events, offset):
+  def _assertEventHasSum(self, logdir, tag, expected_value, num_events, offset):
     events = _events_from_logdir(logdir)
     if num_events == -1:
       self.assertGreater(len(events), 1)
@@ -214,8 +225,8 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
           events[num_events - offset - 1].summary.value[0].histo.sum,
           expected_value)
 
-  def assertEventHasRange(self, logdir, tag, min_value, max_value, num_events,
-                          offset):
+  def _assertEventHasRange(self, logdir, tag, min_value, max_value, num_events,
+                           offset):
     events = _events_from_logdir(logdir)
     if num_events == -1:
       self.assertGreater(len(events), 1)
@@ -234,8 +245,8 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
       self.assertGreaterEqual(
           max_value, events[num_events - offset - 1].summary.value[0].histo.max)
 
-  def assertEventHasScalarValue(self, logdir, tag, expected_value, num_events,
-                                offset):
+  def _assertEventHasScalarValue(self, logdir, tag, expected_value, num_events,
+                                 offset):
     events = _events_from_logdir(logdir)
     if num_events == -1:
       self.assertGreater(len(events), 1)
@@ -277,17 +288,16 @@ class StatsDatasetTestBase(test_base.DatasetTestBase):
       handle = self.getHandle(aggregator)
       for dataset_name in dataset_names:
         if function_processing_time:
-          self.assertSummaryHasCount(
+          self.assertStatisticsHasCount(
               handle, r"(.*)::execution_time$", float(i + 1), greater_than=True)
-        self.assertSummaryContains(
+        self.assertStatisticsContains(
             handle, self.regexForNodeName(dataset_name, "thread_utilization"))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(next_element())
     if function_processing_time:
-      if isinstance(aggregator, stats_aggregator.StatsAggregatorV1):
-        handle = self.getHandle(aggregator)
+      handle = self.getHandle(aggregator)
       for dataset_name in dataset_names:
-        self.assertSummaryHasCount(
+        self.assertStatisticsHasCount(
             handle,
             r"(.*)::execution_time$",
             float(num_output),

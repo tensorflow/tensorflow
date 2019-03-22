@@ -62,7 +62,6 @@ class StatsAggregatorV2(object):
 
   def __init__(self):
     self._resource = ged_ops.stats_aggregator_handle_v2()
-
     # There could be a conflict with multiple file writer in the same logdir,
     # (b/37351340). Possible workarounds till this bug is resolved are a) having
     # multiple dataset stats specific file inside log_dir and b) get default
@@ -72,9 +71,8 @@ class StatsAggregatorV2(object):
     # Creating a summary_writer here could potentially be replaced with getting
     # the default summary_writer if any, creating it otherwise or a public
     # method to associate summary writer.
-
     self._logdir = tempfile.mkdtemp()
-    self._summary_writer = summary_ops_v2.create_file_writer(
+    self._summary_writer = summary_ops_v2.create_file_writer_v2(
         self._logdir, max_queue=_DEFAULT_MAX_QUEUE)
     ged_ops.stats_aggregator_set_summary_writer(self._resource,
                                                 self._summary_writer._resource)  # pylint: disable=protected-access

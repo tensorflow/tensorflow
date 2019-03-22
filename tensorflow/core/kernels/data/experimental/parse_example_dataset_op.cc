@@ -265,7 +265,7 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       void MapFunc(IteratorContext* ctx, const string& prefix,
                    std::vector<Tensor> input, std::vector<Tensor>* output,
                    StatusCallback callback) override {
-        (*ctx->runner())([this, ctx, input, output, callback]() {
+        (*ctx->runner())([this, ctx, prefix, input, output, callback]() {
           thread::ThreadPool* device_threadpool =
               ctx->lib()->device()->tensorflow_cpu_worker_threads()->workers;
           std::vector<string> slice_vec;
@@ -341,19 +341,22 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   example_result.feature_stats.size());
               for (example::PerExampleFeatureStats feature_stats :
                    example_result.feature_stats) {
-                stats_aggregator->AddToHistogram(
-                    stats_utils::FeatureHistogramName(dataset_->node_name()),
-                    {static_cast<double>(feature_stats.features_count)});
                 stats_aggregator->IncrementCounter(
                     stats_utils::kFeaturesCount, "trainer",
                     feature_stats.features_count);
                 stats_aggregator->IncrementCounter(
                     stats_utils::kFeatureValuesCount, "trainer",
                     feature_stats.feature_values_count);
+                int64 steps = ctx->model()->NumElements(prefix);
+                stats_aggregator->AddToHistogram(
+                    stats_utils::FeatureHistogramName(dataset_->node_name()),
+                    {static_cast<double>(feature_stats.features_count)}, steps);
+
                 stats_aggregator->AddToHistogram(
                     stats_utils::FeatureValueHistogramName(
                         dataset_->node_name()),
-                    {static_cast<double>(feature_stats.feature_values_count)});
+                    {static_cast<double>(feature_stats.feature_values_count)},
+                    steps);
               }
             }
           }

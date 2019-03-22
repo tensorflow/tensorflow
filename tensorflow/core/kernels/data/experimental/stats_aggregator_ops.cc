@@ -180,13 +180,16 @@ class StatsAggregatorImplV2 : public StatsAggregator {
       SummaryWriterInterface* summary_writer_interface) override {
     mutex_lock l(mu_);
     if (summary_writer_interface_) {
-      return errors::FailedPrecondition(
-          "The SummaryWriter for a StatsAggregator may only be set once.");
-    } else {
-      summary_writer_interface_ = summary_writer_interface;
-      summary_writer_interface_->Ref();
-      return Status::OK();
+      summary_writer_interface_->Unref();
+      // If we create stats_aggregator twice in a program, we would end up with
+      // already existing resource. In this case emitting an error if a
+      // `summary_writer_resource` is present is not the intended behavior, we
+      // could either Unref the existing sumary_writer_resource or not set the
+      // new resource at all.
     }
+    summary_writer_interface_ = summary_writer_interface;
+    summary_writer_interface_->Ref();
+    return Status::OK();
   }
 
  private:

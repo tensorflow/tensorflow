@@ -211,11 +211,10 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             if (stats_aggregator) {
               mutex_lock l(mu_);
               dropped_elements_++;
-              int64 steps = num_elements();
               stats_aggregator->AddScalar(
                   stats_utils::DroppedElementsScalarName(
                       dataset()->node_name()),
-                  static_cast<float>(dropped_elements_), steps);
+                  static_cast<float>(dropped_elements_), num_elements());
 
               stats_aggregator->IncrementCounter(dataset()->node_name(),
                                                  stats_utils::kDroppedElements,
@@ -228,10 +227,9 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
         if (stats_aggregator) {
           mutex_lock l(mu_);
           filtered_elements_++;
-          int64 steps = num_elements();
           stats_aggregator->AddScalar(
               stats_utils::FilterdElementsScalarName(dataset()->node_name()),
-              static_cast<float>(filtered_elements_), steps);
+              static_cast<float>(filtered_elements_), num_elements());
 
           stats_aggregator->IncrementCounter(dataset()->node_name(),
                                              stats_utils::kFilteredElements,

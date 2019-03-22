@@ -401,7 +401,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           stats_aggregator->AddScalar(
               stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
               static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value));
+                  static_cast<float>(num_parallel_calls_->value),
+              num_elements());
         }
         cond_var_->notify_all();
       }
@@ -647,7 +648,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 stats_utils::ThreadUtilizationScalarName(
                     dataset()->node_name()),
                 static_cast<float>(num_calls_) /
-                    static_cast<float>(num_parallel_calls_->value));
+                    static_cast<float>(num_parallel_calls_->value),
+                num_elements());
           }
           for (const auto& call : new_calls) {
             CallFunction(ctx, call.first, call.second);
