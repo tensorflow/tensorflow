@@ -28,6 +28,7 @@ import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.autograph.pyct.testing import future_import_module
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
@@ -413,6 +414,12 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isbuiltin(range))
     self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
+
+  def test_getfutureimports_simple_case(self):
+    expected_imports = ('absolute_import', 'division', 'print_function',
+                        'with_statement')
+    self.assertEqual(inspect_utils.getfutureimports(future_import_module.f),
+                     expected_imports)
 
   def test_super_wrapper_for_dynamic_attrs(self):
 

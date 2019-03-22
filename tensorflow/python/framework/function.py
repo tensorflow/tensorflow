@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 # =============================================================================
 """Python front-end supports for functions.
 
-NOTE: functions are currently experimental and subject to change!
+NOTE: At this time, functions are experimental and subject to change!. Proceed
+with caution.
 """
 
 from __future__ import absolute_import
@@ -59,8 +60,8 @@ class Defun(object):
       def foo(x, y):
         ...
 
-  When you call the decorated function it will add `call` ops to the
-  default graph and adds the definition of the function into the
+  When you call the decorated function, it adds the `call` ops to the
+  default graph. In addition, it adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
 
@@ -261,7 +262,7 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
-    self._sub_functions = dict()  # Constructed with _definition or _c_func
+    self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
@@ -312,7 +313,7 @@ class _DefinedFunction(object):
 
   @property
   def grad_func_name(self):
-    """Its gradient function's name."""
+    """Returns the name of the gradient function."""
     return self._grad_func.name if self._grad_func else None
 
   @property
@@ -754,12 +755,12 @@ class _FuncGraph(ops.Graph):
         return var.value()
       return var
 
-  def create_op(self, op_type, inputs, data_types, **kwargs):
+  def create_op(self, op_type, inputs, dtypes=None, **kwargs):  # pylint: disable=redefined-outer-name
     for i, x in enumerate(inputs):
       if isinstance(x, ops.EagerTensor) or x.graph is not self:
         inputs[i] = self.capture(x)
-    return super(_FuncGraph, self).create_op(op_type, inputs, data_types,
-                                             **kwargs)
+    return super(_FuncGraph, self).create_op(op_type, inputs,
+                                             dtypes=dtypes, **kwargs)
 
   def capture(self, tensor, name=None):
     """Adds the given tensor to this graph and returns the captured tensor."""
@@ -1154,6 +1155,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   noinline = kwargs.pop("noinline", None)
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+
+  # For compatibility with previous behavior, Defun does not perform shape
+  # inference through its function call operations.
+  attrs["_disable_call_shape_inference"] = attr_value_pb2.AttrValue(b=True)
 
   compiled = kwargs.pop("compiled", None)
   separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)

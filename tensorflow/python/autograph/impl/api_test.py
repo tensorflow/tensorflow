@@ -31,6 +31,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import sequential
@@ -196,7 +197,7 @@ class ApiTest(test.TestCase):
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
           x //= api.converted_call(self.called_member, None,
-                                   converter.ConversionOptions(), (self, a), {})
+                                   converter.ConversionOptions(), (a,), {})
         return x
 
     tc = TestClass()
@@ -261,8 +262,32 @@ class ApiTest(test.TestCase):
 
     tc = TestClass(constant_op.constant(-1))
     x = api.converted_call(tc.test_method, None, converter.ConversionOptions(),
-                           (tc,), {})
+                           (), {})
     self.assertEqual(1, self.evaluate(x))
+
+  def test_converted_call_method_as_object_attribute(self):
+
+    class AnotherClass(object):
+
+      def __init__(self):
+        self.another_class_attr = constant_op.constant(1)
+
+      def method(self):
+        if self.another_class_attr > 0:
+          return self.another_class_attr + 1
+        return self.another_class_attr + 10
+
+    class TestClass(object):
+
+      def __init__(self, another_obj_method):
+        self.another_obj_method = another_obj_method
+
+    obj = AnotherClass()
+    tc = TestClass(obj.method)
+
+    x = api.converted_call('another_obj_method', tc,
+                           converter.ConversionOptions(), (), {})
+    self.assertEqual(self.evaluate(x), 2)
 
   def test_converted_call_method_converts_recursively(self):
 
@@ -281,8 +306,7 @@ class ApiTest(test.TestCase):
 
     tc = TestClass(constant_op.constant(-1))
     x = api.converted_call(tc.test_method, None,
-                           converter.ConversionOptions(recursive=True), (tc,),
-                           {})
+                           converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_method_by_class(self):
@@ -349,7 +373,8 @@ class ApiTest(test.TestCase):
                            (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
 
-    converted_f = api.to_graph(f)
+    converted_f = api.to_graph(
+        f, experimental_optional_features=converter.Feature.ALL)
     x = api.converted_call(converted_f, None, converter.ConversionOptions(),
                            (constant_op.constant(0),), {})
     self.assertTrue(self.evaluate(x))
@@ -444,6 +469,27 @@ class ApiTest(test.TestCase):
 
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual(True, self.evaluate(x))
+
+  def test_converted_call_defun_object_method(self):
+
+    opts = converter.ConversionOptions()
+
+    # pylint:disable=method-hidden
+    class TestClass(object):
+
+      def method(self):
+        return 1
+
+      def prepare(self):
+        self.method = function.defun(self.method)
+    # pylint:enable=method-hidden
+
+    tc = TestClass()
+    tc.prepare()
+
+    x = api.converted_call(tc.method, None, opts, (), {})
+
+    self.assertAllEqual(1, self.evaluate(x))
 
   @test_util.run_deprecated_v1
   def test_to_graph_basic(self):

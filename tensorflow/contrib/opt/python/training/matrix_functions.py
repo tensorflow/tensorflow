@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -57,7 +58,7 @@ def matrix_square_root(mat_a, mat_a_size, iter_count=100, ridge_epsilon=1e-4):
     current_err = math_ops.sqrt(math_ops.reduce_sum(residual * residual)) / norm
     return i + 1, current_mat_y, mat_y, current_mat_z, mat_z, current_err, err
 
-  identity = linalg_ops.eye(math_ops.to_int32(mat_a_size))
+  identity = linalg_ops.eye(math_ops.cast(mat_a_size, dtypes.int32))
   mat_a = mat_a + ridge_epsilon * identity
   norm = math_ops.sqrt(math_ops.reduce_sum(mat_a * mat_a))
   mat_init_y = mat_a / norm
@@ -100,7 +101,7 @@ def matrix_inverse_pth_root(mat_g,
     mat_g^alpha
   """
 
-  identity = linalg_ops.eye(math_ops.to_int32(mat_g_size))
+  identity = linalg_ops.eye(math_ops.cast(mat_g_size, dtypes.int32))
 
   def mat_power(mat_m, p):
     """Computes mat_m^p, for p a positive integer.

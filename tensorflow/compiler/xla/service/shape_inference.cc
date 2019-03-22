@@ -156,14 +156,6 @@ Status VerifyReducerShape(const ProgramShape& reducer_shape,
   return Status::OK();
 }
 
-bool IsTrivialWindowDimension(const WindowDimension& window_dimension) {
-  return window_dimension.size() == 1 && window_dimension.stride() == 1 &&
-         window_dimension.padding_low() == 0 &&
-         window_dimension.padding_high() == 0 &&
-         window_dimension.window_dilation() == 1 &&
-         window_dimension.base_dilation() == 1;
-}
-
 StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                                        const Window& window,
                                        PrimitiveType element_type,
@@ -205,7 +197,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           window.DebugString());
     }
 
-    if (base_shape.is_dynamic_dimension(i) && !IsTrivialWindowDimension(dim)) {
+    if (base_shape.is_dynamic_dimension(i) &&
+        !window_util::IsTrivialWindowDimension(dim)) {
       return Unimplemented(
           "Dynamic shape is not supported for non trivial window: %s",
           window_util::ToString(window));
@@ -313,6 +306,14 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             "Expected element type in shape to be integral, floating or "
             "complex for %s operation; got %s.",
             HloOpcodeString(opcode), PrimitiveType_Name(shape.element_type()));
+      }
+      return shape;
+    case HloOpcode::kPopulationCount:
+      if (!ShapeUtil::ElementIsIntegral(shape)) {
+        return InvalidArgument(
+            "Expected an integral element type in argument to PopulationCount "
+            "operation; got %s.",
+            PrimitiveType_Name(shape.element_type()));
       }
       return shape;
     case HloOpcode::kSign:
@@ -988,12 +989,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       }
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe: {
+    case HloOpcode::kCompare: {
       TF_ASSIGN_OR_RETURN(const Shape& shape,
                           InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                                         broadcast_dimensions));
@@ -1721,11 +1717,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   if (batch_group_count > 1 && input_batch % kernel_output_features != 0) {
     return InvalidArgument(
-        "Expected output feature dimension (value %d) to be divisible by "
-        "input_batch (value %d) for batch group count %d; "
+        "Expected input batch (value %d) to be divisible by output feature "
+        "dimension size (value %d) for batch group count %d; "
         "got <conv>(%s, %s)\n"
         "Dimension numbers: {%s}.",
-        kernel_output_features, input_batch, batch_group_count,
+        input_batch, kernel_output_features, batch_group_count,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
@@ -1742,7 +1738,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
+
   if (kernel_output_features % feature_group_count > 0) {
+    // A depthwise/grouped filter has the shape
+    // [space0, .. spaceN, GROUP_SIZE, NUM_OUTPUT_FEATURES]. When
+    // [space0, .. spaceN, GROUP_SIZE] is convolved with the input, a shape
+    // [space0, .. spaceN, feature_group_count] is formed. Therefore, the output
+    // feature count (which is equal to kernel output features) has to be a
+    // multiple of feature_group_count.
     return InvalidArgument(
         "Expected output feature dimension (value %d) to be divisible by "
         "feature_group_count (value %d); "
@@ -2804,6 +2807,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           inferred_shape.set_dynamic_dimension(i, true);
         }
       }
+    }
+
+    if (inferred_shape.IsTuple()) {
+      return InvalidArgument(
+          "Select operation is not supported for tuples: %s."
+          " Use tuple-select instead.",
+          ShapeUtil::HumanString(inferred_shape));
     }
     return inferred_shape;
   }

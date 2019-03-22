@@ -2551,6 +2551,12 @@ class Operation(object):
     shapes_list = attr_value_pb2.AttrValue.ListValue(shape=shapes)
     self._set_attr(attr_name, attr_value_pb2.AttrValue(list=shapes_list))
 
+  def _clear_attr(self, attr_name):
+    """Private method used to clear an attribute in the node_def."""
+    # pylint: disable=protected-access
+    c_api.ClearAttr(self._graph._c_graph, self._c_op, attr_name)
+    # pylint: enable=protected-access
+
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
 
@@ -2989,9 +2995,9 @@ class Graph(object):
     # Similarly, if one or more Session.run calls are going on, all mutate ops
     # have to wait until all Session.run calls have finished.
     self._group_lock = lock_util.GroupLock(num_groups=2)
-    self._nodes_by_id = dict()  # GUARDED_BY(self._lock)
+    self._nodes_by_id = {}  # GUARDED_BY(self._lock)
     self._next_id_counter = 0  # GUARDED_BY(self._lock)
-    self._nodes_by_name = dict()  # GUARDED_BY(self._lock)
+    self._nodes_by_name = {}  # GUARDED_BY(self._lock)
     self._version = 0  # GUARDED_BY(self._lock)
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
@@ -3082,18 +3088,25 @@ class Graph(object):
     Yields:
       `_variable_creator_scope` is a context manager with a side effect, but
       doesn't return a value.
+
+    Raises:
+      RuntimeError: If variable creator scopes are not properly nested.
     """
-    # This step makes a copy of the existing stack, and it also initializes
+    # This step keeps a reference to the existing stack, and it also initializes
     # self._thread_local._variable_creator_stack if it doesn't exist yet.
-    old = list(self._variable_creator_stack)
-    stack = self._thread_local._variable_creator_stack  # pylint: disable=protected-access
-    stack.append((priority, creator))
+    old = self._variable_creator_stack
+    new = list(old)
+    new.append((priority, creator))
     # Sorting is stable, so we'll put higher-priority creators later in the list
     # but otherwise maintain registration order.
-    stack.sort(key=lambda item: item[0])
+    new.sort(key=lambda item: item[0])
+    self._thread_local._variable_creator_stack = new  # pylint: disable=protected-access
     try:
       yield
     finally:
+      if self._thread_local._variable_creator_stack is not new:  # pylint: disable=protected-access
+        raise RuntimeError(
+            "Exiting variable_creator_scope without proper nesting.")
       self._thread_local._variable_creator_stack = old  # pylint: disable=protected-access
 
   # Note: this method is private because the API of tf.Graph() is public and
@@ -3102,7 +3115,25 @@ class Graph(object):
   def _variable_creator_stack(self):
     if not hasattr(self._thread_local, "_variable_creator_stack"):
       self._thread_local._variable_creator_stack = []  # pylint: disable=protected-access
-    return list(self._thread_local._variable_creator_stack)  # pylint: disable=protected-access
+
+    # This previously returned a copy of the stack instead of the stack itself,
+    # to guard against accidental mutation. Consider, however, code that wants
+    # to save and restore the variable creator stack:
+    #     def f():
+    #       original_stack = graph._variable_creator_stack
+    #       graph._variable_creator_stack = new_stack
+    #       ...  # Some code
+    #       graph._variable_creator_stack = original_stack
+    #
+    # And lets say you have some code that calls this function with some
+    # variable_creator:
+    #     def g():
+    #       with variable_scope.variable_creator_scope(creator):
+    #         f()
+    # When exiting the variable creator scope, it would see a different stack
+    # object than it expected leading to a "Exiting variable_creator_scope
+    # without proper nesting" error.
+    return self._thread_local._variable_creator_stack  # pylint: disable=protected-access
 
   @_variable_creator_stack.setter
   def _variable_creator_stack(self, variable_creator_stack):
@@ -3396,7 +3427,7 @@ class Graph(object):
       self,
       op_type,
       inputs,
-      dtypes,  # pylint: disable=redefined-outer-name
+      dtypes=None,  # pylint: disable=redefined-outer-name
       input_types=None,
       name=None,
       attrs=None,
@@ -3414,8 +3445,8 @@ class Graph(object):
       op_type: The `Operation` type to create. This corresponds to the
         `OpDef.name` field for the proto that defines the operation.
       inputs: A list of `Tensor` objects that will be inputs to the `Operation`.
-      dtypes: A list of `DType` objects that will be the types of the tensors
-        that the operation produces.
+      dtypes: (Optional) A list of `DType` objects that will be the types of the
+        tensors that the operation produces.
       input_types: (Optional.) A list of `DType`s that will be the types of
         the tensors that the operation consumes. By default, uses the base
         `DType` of each input in `inputs`. Operations that expect
@@ -4399,11 +4430,18 @@ class Graph(object):
     Yields:
       A context manager that specifies the default device to use for newly
       created ops.
+
+    Raises:
+      RuntimeError: If device scopes are not properly nested.
     """
     self._add_device_to_stack(device_name_or_function, offset=2)
+    old_top_of_stack = self._device_function_stack.peek_objs()[0]
     try:
       yield
     finally:
+      new_top_of_stack = self._device_function_stack.peek_objs()[0]
+      if old_top_of_stack is not new_top_of_stack:
+        raise RuntimeError("Exiting device scope without proper scope nesting.")
       self._device_function_stack.pop_obj()
 
   def _apply_device_functions(self, op):
@@ -5113,9 +5151,7 @@ class Graph(object):
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
-  See
-  `tf.Graph.device`
-  for more details.
+  See `tf.Graph.device` for more details.
 
   Args:
     device_name_or_function: The device name or function to use in
@@ -6236,7 +6272,7 @@ name_scope_cache = {}
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-@tf_export("name_scope")
+@tf_export(v1=["name_scope"])
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
@@ -6355,6 +6391,47 @@ class name_scope(object):  # pylint: disable=invalid-name
       self._name_scope.__exit__(type_arg, value_arg, traceback_arg)
       self._g_manager.__exit__(type_arg, value_arg, traceback_arg)
     return False  # False values do not suppress exceptions
+
+
+@tf_export("name_scope", v1=[])
+class name_scope_v2(name_scope):
+  """A context manager for use when defining a Python op.
+
+  This context manager pushes a name scope, which will make the name of all
+  operations added within it have a prefix.
+
+  For example, to define a new Python op called `my_op`:
+
+  ```python
+  def my_op(a, b, c, name=None):
+    with tf.name_scope("MyOp") as scope:
+      a = tf.convert_to_tensor(a, name="a")
+      b = tf.convert_to_tensor(b, name="b")
+      c = tf.convert_to_tensor(c, name="c")
+      # Define some computation that uses `a`, `b`, and `c`.
+      return foo_op(..., name=scope)
+  ```
+
+  When executed, the Tensors `a`, `b`, `c`, will have names `MyOp/a`, `MyOp/b`,
+  and `MyOp/c`.
+
+  If the scope name already exists, the name will be made unique by appending
+  `_n`. For example, calling `my_op` the second time will generate `MyOp_1/a`,
+  etc.
+  """
+
+  def __init__(self, name):
+    """Initialize the context manager.
+
+    Args:
+      name: The prefix to use on all names created within the name scope.
+
+    Raises:
+      ValueError: If name is None, or not a string.
+    """
+    if name is None or not isinstance(name, six.string_types):
+      raise ValueError("name for name_scope must be a string.")
+    super(name_scope_v2, self).__init__(name=None, default_name=name)
 
 
 def strip_name_scope(name, export_scope):

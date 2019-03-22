@@ -570,13 +570,10 @@ TEST_F(LayoutAssignmentTest, MakeOperandsTheSame) {
   OperandsMustBeTheSameLayoutAssignment layout_assignment(&computation_layout);
   EXPECT_IS_OK(layout_assignment.Run(m.get()).status());
 
-  EXPECT_EQ(HloOpcode::kCopy, concatenate->operand(0)->opcode());
-  EXPECT_THAT(concatenate->operand(0)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(concatenate->operand(1)->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
-  EXPECT_THAT(concatenate->shape().layout().minor_to_major(),
-              ElementsAre(1, 0));
+  EXPECT_EQ(concatenate->operand(0)->shape().layout().minor_to_major(),
+            concatenate->operand(1)->shape().layout().minor_to_major());
+  EXPECT_EQ(concatenate->shape().layout().minor_to_major(),
+            concatenate->operand(1)->shape().layout().minor_to_major());
 }
 
 // Test layout assignment of a transpose into a bitcast based on its operand.
@@ -1084,7 +1081,7 @@ TEST_F(LayoutAssignmentTest, TupleCopyOnLayoutMismatch) {
       tup.1 = (s32[], token[], f32[512,1024]{0,1}) parameter(0)
       counter.1 = s32[] get-tuple-element(tup.1), index=0
       five = s32[] constant(5)
-      ROOT lt = pred[] less-than(counter.1, five)
+      ROOT lt = pred[] compare(counter.1, five), direction=LT
     }
 
     body.2 (tup: (s32[], token[], f32[512,1024]{0,1})) -> (s32[], token[], f32[512,1024]{0,1}) {

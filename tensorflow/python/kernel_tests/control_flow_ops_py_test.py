@@ -135,6 +135,17 @@ def isum(s, maximum_iterations=None):
   return r_s
 
 
+def enqueue_print_op(s):
+  """Enqueues an op that prints a message to be captured in the test."""
+  return logging_ops.print_v2("ControlFlowOpsTest: " + s)
+
+
+def filter_test_messages(s):
+  """Returns a list of messages printed by enqueue_print_op."""
+  prefix = "ControlFlowOpsTest: "
+  return [l[len(prefix):] for l in s.split("\n") if l.startswith(prefix)]
+
+
 @test_util.with_control_flow_v2
 class ControlFlowTest(test.TestCase):
 
@@ -580,6 +591,7 @@ class ControlFlowTest(test.TestCase):
       result = self.evaluate(r)
     self.assertAllEqual(12, result)
 
+  @test_util.disable_xla("b/128638446")
   @test_util.run_in_graph_and_eager_modes
   def testCondPruning(self):
     v1 = variables.Variable(7)
@@ -657,7 +669,7 @@ class ControlFlowTest(test.TestCase):
   @test_util.run_gpu_only
   @test_util.run_deprecated_v1
   def testCond_Device(self):
-    x = constant_op.constant(-10)
+    x = constant_op.constant(-10.)
 
     # True branch function defined outside of device scope
     def true_fn():
@@ -674,6 +686,77 @@ class ControlFlowTest(test.TestCase):
       sess.run(r, options=options, run_metadata=run_metadata)
       # We expect that everything runs on CPU, even if GPU is available.
       self.assertEqual(len(run_metadata.partition_graphs), 1)
+
+  def _count_matching_switch_nodes_on_device(self, run_metadata, device_str):
+    # Returns the number of Switch nodes with type float32 placed on
+    # `device_str`.
+    device_graphs = [
+        g for g in run_metadata.partition_graphs
+        if device_str in g.node[0].device
+    ]
+    self.assertLen(device_graphs, 1)
+    switch_nodes = [
+        n for n in device_graphs[0].node if n.op == "Switch" and
+        n.attr["T"].type == dtypes.float32.as_datatype_enum
+    ]
+    return len(switch_nodes)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputOnCPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # We force `arg` to be on CPU here.
+    with ops.device("CPU:0"):
+      arg = x + 10.
+
+    def true_fn():
+      with ops.device("CPU:0"):
+        return arg + 1
+
+    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertEqual(len(run_metadata.partition_graphs), 2)
+      # Check that the Switch for `arg` gets placed on CPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 1)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 0)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCondSwitchColocatedWithInputWhenInputOnGPU(self):
+    x = array_ops.placeholder(dtypes.float32)
+
+    # `arg` is used in the cond then branch so a Switch node is created for it.
+    # We test that the Switch node gets placed on the same device as `arg`.
+    # Note: `arg` gets placed on GPU by default by the placer.
+    arg = x + 10.
+
+    def true_fn():
+      with ops.device("CPU:0"):
+        return arg + 1
+
+    r = control_flow_ops.cond(constant_op.constant(True), true_fn, lambda: 0.)
+
+    with session.Session() as sess:
+      run_metadata = config_pb2.RunMetadata()
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      sess.run(
+          r, feed_dict={x: -10.}, options=options, run_metadata=run_metadata)
+      self.assertEqual(len(run_metadata.partition_graphs), 2)
+      # Check that the Switch for `arg` gets placed on GPU.
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "CPU"), 0)
+      self.assertEqual(
+          self._count_matching_switch_nodes_on_device(run_metadata, "GPU"), 1)
 
   def testCondListOutput(self):
     with self.cached_session() as sess:
@@ -987,6 +1070,7 @@ class ControlFlowTest(test.TestCase):
                                                                   [1., 1.],
                                                                   [0., 0.]])
 
+  @test_util.disable_xla("b/128643464")
   def testCondGrad_MultiGather(self):
     # NOTE(skyewm): this test is interesting because the array_ops.gather and
     # ResourceVariable.sparse_read gradient functions returns IndexedSlices.
@@ -1063,13 +1147,18 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
       self.assertAllEqual(0.0, sess.run(result))
 
+  @test_util.disable_xla("b/128644469 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128676188 causes OOM on opensource gpu tests")
+
+    print_prefix = "testCondAutoControlDeps: "
 
     def branch_fn():
-      logging_ops.print_v2("A")
-      logging_ops.print_v2("B")
-      with ops.control_dependencies([logging_ops.print_v2("C")]):
+      enqueue_print_op("A")
+      enqueue_print_op("B")
+      with ops.control_dependencies([enqueue_print_op("C")]):
         return constant_op.constant(10)
 
     def build_cond():
@@ -1085,11 +1174,11 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_cond()), 10)
-        self.assertEqual(printed.contents(), "C\n")
+        self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_cond()), 10)
-        self.assertEqual(printed.contents(), "C\n")
+        self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
     # In defuns, all prints should execute in program order.
     # This doesn't work with legacy control flow.
@@ -1101,8 +1190,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(cond()), 10)
-      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
-                      printed.contents())
+      self.assertEqual(["A", "B", "C"],
+                       filter_test_messages(printed.contents()))
 
       @eager_function.defun
       def nested_cond():
@@ -1110,8 +1199,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_cond()), 10)
-      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
-                      printed.contents())
+      self.assertEqual(["A", "B", "C"],
+                       filter_test_messages(printed.contents()))
 
     # wrap_function should prune.
     def pruned_cond():
@@ -1120,7 +1209,7 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_cond()), 10)
-    self.assertEqual(printed.contents(), "C\n")
+    self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
     def pruned_nested_cond():
       return build_nested_cond()
@@ -1128,8 +1217,10 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_nested_cond()), 10)
-    self.assertEqual(printed.contents(), "C\n")
+    self.assertEqual(["C"], filter_test_messages(printed.contents()))
 
+
+  @test_util.disable_xla("b/128643646 PrintV2")
   @test_util.run_in_graph_and_eager_modes
   def testWhileAutoControlDeps(self):
     # Legacy while_loop fails this test because it produces deprecation notices
@@ -1137,14 +1228,14 @@ class ControlFlowTest(test.TestCase):
     if not control_flow_util.ENABLE_CONTROL_FLOW_V2: return
 
     def cond(i, unused_x):
-      logging_ops.print_v2("A")
+      enqueue_print_op("A")
       return i < 2
 
     def body(i, x):
-      logging_ops.print_v2("B")
-      with ops.control_dependencies([logging_ops.print_v2("C")]):
+      enqueue_print_op("B")
+      with ops.control_dependencies([enqueue_print_op("C")]):
         x = array_ops.identity(x)
-      with ops.control_dependencies([logging_ops.print_v2("D")]):
+      with ops.control_dependencies([enqueue_print_op("D")]):
         return i + 1, x
 
     def build_while():
@@ -1160,13 +1251,11 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_while()[0]), 2)
-        self.assertTrue(printed.contents().endswith("D\nD\n"),
-                        printed.contents())
+        self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_while()[0]), 2)
-        self.assertTrue(printed.contents().endswith("D\nD\n"),
-                        printed.contents())
+        self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
     # In defuns, all prints should execute in program order.
     @eager_function.defun
@@ -1175,8 +1264,8 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(while_loop()), 2)
-    self.assertTrue(printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
-                    printed.contents())
+    self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
+                     filter_test_messages(printed.contents()))
 
     @eager_function.defun
     def nested_while_loop():
@@ -1186,9 +1275,8 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertTrue(
-          printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
-          printed.contents())
+      self.assertEqual(["A", "B", "C", "D", "A", "B", "C", "D", "A"],
+                       filter_test_messages(printed.contents()))
 
     # wrap_function should prune.
     def pruned_while():
@@ -1197,7 +1285,7 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_while()), 2)
-    self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
+    self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
     def pruned_nested_while():
       return build_nested_while()[0]
@@ -1207,7 +1295,7 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
+      self.assertEqual(["D", "D"], filter_test_messages(printed.contents()))
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
@@ -1295,6 +1383,37 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(
           lambda i: i < 3, lambda i: i + 1, [0], maximum_iterations=1)
       self.assertEqual(1, self.evaluate(r))
+
+  @test_util.run_v1_only("b/120545219")
+  def testXLAGradInLoop(self):
+    # We have an optimization that moves certain reduction ops, this test makes
+    # sure we don't do that for XLA ops.
+
+    # Use dynamic inputs, which triggers the creation of "BroadcastGradientArgs"
+    # and "Shape" op.
+    input1 = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+    input2 = array_ops.placeholder(dtype=dtypes.float32, shape=[None, None])
+    def cond(i1, i2):
+      return False
+
+    def body(i1, i2):
+      return math_ops.add(i1, i2), math_ops.add(i1, i2)
+
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    xla_context.Enter()
+
+    out1, _ = control_flow_ops.while_loop(
+        cond, body, (input1, input2), maximum_iterations=2)
+    g = gradients_impl.gradients(out1, [input1])
+
+    for op in out1.graph.get_operations():
+      # Test that the "Shape" is directly passed to BroadcastGradientArgs
+      # instead of being pushed to the stack.
+      if op.type == "BroadcastGradientArgs":
+        self.assertEqual(op.inputs[0].op.type, "Shape")
+        self.assertEqual(op.inputs[1].op.type, "Shape")
+    xla_context.Exit()
+
 
   @test_util.disable_control_flow_v2("b/115776323 (max_iters)")
   @test_util.run_v1_only("b/120545219")
@@ -1409,9 +1528,11 @@ class ControlFlowTest(test.TestCase):
           r"while loop context '' \(currently defined in 'cond/.+'\)"):
         _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/123601232")
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128646372, b/128645947 fails in opensource build")
+
     v = constant_op.constant(1.0)
 
     p = array_ops.placeholder(dtype=dtypes.int32)
@@ -1454,12 +1575,14 @@ class ControlFlowTest(test.TestCase):
 
     with self.session(use_gpu=False) as sess:
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata_without_xla_context = config_pb2.RunMetadata()
       run_metadata = config_pb2.RunMetadata()
 
       final_value_without_xla_context = sess.run(
-          final_without_xla_context, feed_dict={
-              p: [0, 0, 0]
-          })
+          final_without_xla_context,
+          feed_dict={p: [0, 0, 0]},
+          options=opts,
+          run_metadata=run_metadata_without_xla_context)
 
       final_value_with_xla_context = sess.run(
           final_with_xla_context,
@@ -1467,12 +1590,21 @@ class ControlFlowTest(test.TestCase):
           options=opts,
           run_metadata=run_metadata)
 
-      node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        # With while_v2 on xla, run_metadata only contains the unlowered While
+        # op so node_stats does not have statistics for the pushes. So as a
+        # loose check we check the pushes in the lowered version.
+        node_stats = run_metadata_without_xla_context.step_stats.dev_stats[
+            0].node_stats
+        stack_push_op = "TensorListPushBack"
+      else:
+        node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+        stack_push_op = "StackPushV2"
       stack_push_count = len(
-          [x for x in node_stats if x.node_name.endswith("StackPushV2")])
+          [x for x in node_stats if x.node_name.endswith(stack_push_op)])
       # Pushes to the stack = product of maximum_iterations values;
       # the last two "3"s comes from size(p), when p == [0, 0, 0].
-      self.assertEqual(stack_push_count, 5 * 3 * 3)
+      self.assertEqual(stack_push_count, 5 * 3 * 3, str(node_stats))
 
       self.assertAllClose(final_value_with_xla_context,
                           final_value_without_xla_context)
@@ -2608,6 +2740,7 @@ class ControlFlowTest(test.TestCase):
 
       self.assertEqual(self.evaluate(fn()), 32.)
 
+  @test_util.disable_xla("b/128643381")
   def testWhileGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -2628,6 +2761,7 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
+  @test_util.disable_xla("b/128643461")
   def testWhileGrad_ResourceVarInNestedFunctionCall(self):
 
     @def_function.function
@@ -2653,6 +2787,8 @@ class ControlFlowTest(test.TestCase):
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
 
   def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
+    if test.is_gpu_available():
+      self.skipTest("b/128635252")
 
     @def_function.function
     def foo(x, var):
@@ -2676,6 +2812,7 @@ class ControlFlowTest(test.TestCase):
     self.assertIsInstance(grad, ops.IndexedSlicesValue)
     self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
 
+  @test_util.disable_xla("b/128639858")
   def testWhileCondGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function
@@ -2870,6 +3007,7 @@ class ControlFlowTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(self.evaluate(foo()), 9.0)
 
+  @test_util.disable_xla("b/128643398")
   def testNestedResourceAccess(self):
     var = resource_variable_ops.ResourceVariable(constant_op.constant(3.0))
 
@@ -4333,6 +4471,9 @@ class AssertTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testGuardedAssertDoesNotCopyWhenTrue(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/128646478 fails in opensource")
+
     with self.session(use_gpu=True) as sess:
       with ops.device(test.gpu_device_name()):
         value = constant_op.constant(1.0)
@@ -4364,7 +4505,8 @@ class AssertTest(test.TestCase):
       ]
       if "GPU" in [d.device_type for d in device_lib.list_local_devices()]:
         # A copy was performed for the unguarded assert
-        self.assertLess(0, len(unguarded_memcpy_nodestat_names))
+        self.assertLess(0, len(unguarded_memcpy_nodestat_names),
+                        str(unguarded_nodestat_names))
       # No copy was performed for the guarded assert
       self.assertEqual([], guarded_memcpy_nodestat_names)
 

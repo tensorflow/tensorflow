@@ -172,39 +172,6 @@ Status MutateBatchSize(const NodeDef& node, int64 num_workers,
   return Status::OK();
 }
 
-// There is one Sink node at least that is added to the end of the graph. We
-// find that node and return it. It is possible that there are multiple
-// Identity ops from the final Dataset op to that Sink node, but the recursive
-// graph traversal handles that.
-Status FindSinkNode(const GraphDef& graph_def, NodeDef* sink_node) {
-  absl::flat_hash_map<string, int> all_node_names;
-  absl::flat_hash_map<string, int> node_input_map;
-  for (int i = 0; i < graph_def.node_size(); ++i) {
-    all_node_names.insert_or_assign(graph_def.node(i).name(), i);
-    node_input_map.insert_or_assign(graph_def.node(i).name(), 0);
-  }
-  // Counts how many graph nodes is this node the input to. Candidate sink
-  // nodes are ones which are inputs into zero nodes.
-  for (const NodeDef& node : graph_def.node()) {
-    for (const string& input_name : node.input()) {
-      node_input_map[input_name]++;
-    }
-  }
-  for (const auto& it : node_input_map) {
-    if (it.second == 0) {
-      const NodeDef& sink_graph_node = graph_def.node(all_node_names[it.first]);
-      // Sometimes the searching surfaces Arg nodes in function cases that
-      // have no input. This check rejects those.
-      if (sink_graph_node.input_size() == 0) {
-        continue;
-      }
-      *sink_node = sink_graph_node;
-      return Status::OK();
-    }
-  }
-  return errors::InvalidArgument("Failed to find a sink node");
-}
-
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
                      GraphDef* output);
 
@@ -282,7 +249,7 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers,
   FunctionLibraryDefinition flib(OpRegistry::Global(), item.graph.library());
 
   NodeDef sink_node;
-  TF_RETURN_IF_ERROR(FindSinkNode(item.graph, &sink_node));
+  TF_RETURN_IF_ERROR(graph_utils::FindSinkNode(item.graph, &sink_node));
   TF_RETURN_IF_ERROR(
       RecursivelyHandleOp(sink_node, num_workers, &flib, &graph));
   *output->mutable_library() = flib.ToProto();

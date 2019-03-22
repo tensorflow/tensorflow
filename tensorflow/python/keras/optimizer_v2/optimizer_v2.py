@@ -27,15 +27,16 @@ import six
 
 from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.distribute import reduce_util as ds_reduce_util
-from tensorflow.python.distribute import values as distributed_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gradients
@@ -43,6 +44,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -358,7 +360,8 @@ class OptimizerV2(trackable.Trackable):
       ValueError: In case any gradient cannot be computed (e.g. if gradient
         function not implemented).
     """
-    grads = gradients.gradients(loss, params)
+    with backend.get_graph().as_default():
+      grads = gradients.gradients(loss, params)
     if None in grads:
       raise ValueError("An operation has `None` for gradient. "
                        "Please make sure that all of your ops have a "
@@ -396,6 +399,8 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
+    # Create iteration if necessary.
+    _ = self.iterations
     self._create_hypers()
     with ops.init_scope():
       self._create_slots(var_list)
@@ -438,11 +443,18 @@ class OptimizerV2(trackable.Trackable):
           update_ops.extend(
               distribution.extended.update(
                   var, apply_grad_to_update_var, args=(grad,), group=False))
-      with ops.control_dependencies(update_ops):
-        apply_updates = self._iterations.assign_add(1)
-      if not context.executing_eagerly():
-        apply_updates = apply_updates.op
-      return apply_updates
+
+      any_symbolic = any(isinstance(i, ops.Operation) or
+                         tf_utils.is_symbolic_tensor(i) for i in update_ops)
+      if not context.executing_eagerly() or any_symbolic:
+        # If the current context is graph mode or any of the update ops are
+        # symbolic then the step update should be carried out under a graph
+        # context. (eager updates execute immediately)
+        with ops._get_graph_from_inputs(update_ops).as_default():  # pylint: disable=protected-access
+          with ops.control_dependencies(update_ops):
+            return self._iterations.assign_add(1).op
+
+      return self._iterations.assign_add(1)
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)
@@ -455,6 +467,8 @@ class OptimizerV2(trackable.Trackable):
 
   def _set_hyper(self, name, value):
     """set hyper `name` to value. value can be callable, tensor, numeric."""
+    if isinstance(value, trackable.Trackable):
+      self._track_trackable(value, name, overwrite=True)
     if name not in self._hyper:
       self._hyper[name] = value
     else:
@@ -524,11 +538,13 @@ class OptimizerV2(trackable.Trackable):
             initializer, shape=var.shape, dtype=var.dtype)
       else:
         initial_value = initializer
-      weight = tf_variables.Variable(
-          name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-          dtype=var.dtype,
-          trainable=False,
-          initial_value=initial_value)
+      strategy = distribute_ctx.get_strategy()
+      with strategy.colocate_vars_with(var):
+        weight = tf_variables.Variable(
+            name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
+            dtype=var.dtype,
+            trainable=False,
+            initial_value=initial_value)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(
@@ -548,16 +564,8 @@ class OptimizerV2(trackable.Trackable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    if self._iterations is None:
-      with ops.device("cpu:0"):
-        self._iterations = self.add_weight(
-            "iter",
-            shape=[],
-            dtype=dtypes.int64,
-            trainable=False,
-            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._iterations)
-    for name, value in self._hyper.items():
+    # Iterate hyper values deterministically.
+    for name, value in sorted(self._hyper.items()):
       if isinstance(value, ops.Tensor) or callable(value):
         continue
       else:
@@ -572,13 +580,19 @@ class OptimizerV2(trackable.Trackable):
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
-    if not self._hypers_created:
-      self._create_hypers()
+    if self._iterations is None:
+      self._iterations = self.add_weight(
+          "iter",
+          shape=[],
+          dtype=dtypes.int64,
+          trainable=False,
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self._weights.append(self._iterations)
     return self._iterations
 
   @iterations.setter
   def iterations(self, variable):
-    if self._hypers_created:
+    if self._iterations is not None:
       raise RuntimeError("Cannot set `iterations` to a new Variable after"
                          "the Optimizer weights have been created")
     self._iterations = variable
@@ -647,9 +661,7 @@ class OptimizerV2(trackable.Trackable):
       return learning_rate_schedule.serialize(value)
     if callable(value):
       return value()
-    if isinstance(value, (ops.Tensor, tf_variables.Variable,
-                          distributed_values.TPUMirroredVariable,
-                          distributed_values.DistributedVariable)):
+    if tensor_util.is_tensor(value):
       return backend.get_value(value)
     return value
 
@@ -957,3 +969,37 @@ def _get_slot_key_from_var(var, slot_name):
 
   name = _var_key(var)
   return name + "/" + slot_name
+
+
+class _RestoredOptimizer(OptimizerV2):
+  """A non-functional Optimizer implementation for checkpoint compatibility.
+
+  Holds slot variables and hyperparameters when an optimizer is restored from a
+  SavedModel. These variables may be referenced in functions along with ops
+  created by the original optimizer, but currently we do not support using the
+  optimizer object iself (e.g. through `apply_gradients`).
+  """
+  # TODO(allenl): Make the restored optimizer functional by tracing its apply
+  # methods.
+
+  def __init__(self):
+    super(_RestoredOptimizer, self).__init__("_RestoredOptimizer")
+    self._hypers_created = True
+
+  def get_config(self):
+    # TODO(allenl): Save and restore the Optimizer's config
+    raise NotImplementedError(
+        "Restoring functional Optimzers from SavedModels is not currently "
+        "supported. Please file a feature request if this limitation bothers "
+        "you.")
+
+revived_types.register_revived_type(
+    "optimizer",
+    lambda obj: isinstance(obj, OptimizerV2),
+    versions=[revived_types.VersionedTypeRegistration(
+        object_factory=lambda proto: _RestoredOptimizer(),
+        version=1,
+        min_producer_version=1,
+        min_consumer_version=1,
+        setter=_RestoredOptimizer._set_hyper  # pylint: disable=protected-access
+    )])

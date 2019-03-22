@@ -57,9 +57,9 @@ class HasList(training.Model):
             [core.Dense(10)]))
     self.layer_list.extend(
         data_structures.List(
-            list(sequence=[core.Dense(11)]) + [core.Dense(12)]))
+            list([core.Dense(11)]) + [core.Dense(12)]))
     self.layers_with_updates = data_structures.List(
-        sequence=(normalization.BatchNormalization(),))
+        (normalization.BatchNormalization(),))
 
   def call(self, x):
     aggregation = 0.

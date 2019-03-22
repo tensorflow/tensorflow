@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
@@ -399,7 +400,7 @@ def _GatherGrad(op, grad):
   params = op.inputs[0]
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.to_int32(params_shape)
+    params_shape = math_ops.cast(params_shape, dtypes.int32)
 
   # Build appropriately shaped IndexedSlices
   indices = op.inputs[1]
@@ -422,7 +423,7 @@ def _GatherV2Grad(op, grad):
   params = op.inputs[0]
   with ops.colocate_with(params):
     params_shape = array_ops.shape(params, out_type=ops.dtypes.int64)
-    params_shape = math_ops.to_int32(params_shape)
+    params_shape = math_ops.cast(params_shape, dtypes.int32)
 
   indices = op.inputs[1]
   indices_size = array_ops.expand_dims(array_ops.size(indices), 0)
@@ -568,7 +569,7 @@ ops.NotDifferentiable("Size")
 @ops.RegisterGradient("Tile")
 def _TileGrad(op, grad):
   """Sum reduces grad along the tiled dimensions."""
-  input_shape = array_ops.shape(op.inputs[0])
+  input_shape = array_ops.shape(op.inputs[0], out_type=op.inputs[1].dtype)
   # We interleave multiples and input_shape to get split_shape,
   # reshape grad to split_shape, and reduce along all even
   # dimensions (the tiled dimensions) to get the result
@@ -582,10 +583,11 @@ def _TileGrad(op, grad):
   axes = math_ops.range(0, array_ops.size(split_shape), 2)
   # Sum reduces grad along the first dimension for IndexedSlices
   if isinstance(grad, ops.IndexedSlices):
+    input_shape_0 = math_ops.cast(input_shape[0], grad.indices.dtype)
     grad = math_ops.unsorted_segment_sum(
         grad.values,
-        math_ops.mod(grad.indices, input_shape[0]),
-        input_shape[0])
+        math_ops.mod(grad.indices, input_shape_0),
+        input_shape_0)
     split_shape = array_ops.concat([[1], split_shape[1:]], axis=0)
   input_grad = math_ops.reduce_sum(array_ops.reshape(grad, split_shape), axes)
   # Fix shape inference

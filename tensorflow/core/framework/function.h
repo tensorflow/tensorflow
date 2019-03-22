@@ -601,6 +601,9 @@ class FunctionLibraryRuntime {
   // as long as *this.
   virtual const FunctionBody* GetFunctionBody(Handle h) = 0;
 
+  // Returns the return types for the function identified by handle `h`.
+  virtual Status GetRetTypes(Handle h, DataTypeVector* ret_types) = 0;
+
   // Asynchronously invokes the instantiated function identified by
   // "handle".
   //
@@ -660,6 +663,11 @@ class FunctionLibraryRuntime {
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
+
+  // Returns the default runner in which the ops should be launched. If the
+  // device on which the function executes has a private thread pool, return
+  // runner on the device local thread pool.
+  virtual std::function<void(std::function<void()>)>* runner() = 0;
 
   // Get the DeviceMgr from which the device was obtained.
   virtual const DeviceMgr* device_mgr() const = 0;

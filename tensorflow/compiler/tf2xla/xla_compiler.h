@@ -417,11 +417,11 @@ class XlaCompiler {
   Status SetNodeToken(const string& node_name, const xla::XlaOp& op);
   xla::StatusOr<xla::XlaOp> GetNodeToken(const string& node_name);
 
- private:
   // Sets the function body `fbody` to the one registered as `function`.
   Status FindFunctionBody(const NameAttrList& function,
                           const FunctionBody** fbody);
 
+ private:
   // Returns the optimized graph object in this function body.
   std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
 

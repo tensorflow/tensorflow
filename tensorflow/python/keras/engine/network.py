@@ -521,11 +521,12 @@ class Network(base_layer.Layer):
         return layer
     raise ValueError('No such layer: ' + name)
 
-  @property
-  def _unfiltered_updates(self):
+  def _get_unfiltered_updates(self, check_trainable=True):
+    if check_trainable and not self.trainable and not self.stateful:
+      return []
     updates = []
     for layer in self.layers:
-      updates += layer._unfiltered_updates
+      updates += layer._get_unfiltered_updates(check_trainable=check_trainable)
     updates += list(self._updates)
     return updates
 
@@ -605,10 +606,8 @@ class Network(base_layer.Layer):
     Returns:
         A list of update ops.
     """
-    if not self.trainable and not self.stateful:
-      return []
 
-    updates = self._unfiltered_updates
+    updates = self._get_unfiltered_updates(check_trainable=True)
 
     # `updates` might contain irrelevant updates, so it needs to be filtered
     # with respect to inputs the model has been called on.
@@ -661,10 +660,11 @@ class Network(base_layer.Layer):
     # built symbolically, and captures the wrong tensors from a different
     # func graph (causing a crash later on when trying to execute the
     # graph function)
-    with ops.init_scope():
-      if context.executing_eagerly():
-        return [loss for loss in losses
-                if loss.graph == ops.get_default_graph()]
+    if ops.executing_eagerly_outside_functions():
+      return [
+          loss for loss in losses
+          if getattr(loss, 'graph', None) == ops.get_default_graph()
+      ]
 
     relevant_inputs = []
     for i in range(0, len(self._inbound_nodes)):
@@ -1107,6 +1107,9 @@ class Network(base_layer.Layer):
       model_inputs.append(
           tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
     model_inputs = nest.pack_sequence_as(self._nested_inputs, model_inputs)
+    # Preserve external Keras compat for Models with single input.
+    if not nest.is_sequence(model_inputs):
+      model_inputs = [model_inputs]
     model_inputs = tf_utils.convert_inner_node_data(model_inputs)
     config['input_layers'] = model_inputs
 
@@ -1120,6 +1123,9 @@ class Network(base_layer.Layer):
       model_outputs.append(
           tf_utils.ListWrapper([layer.name, new_node_index, tensor_index]))
     model_outputs = nest.pack_sequence_as(self._nested_outputs, model_outputs)
+    # Preserve external Keras compat for Models with single output.
+    if not nest.is_sequence(model_outputs):
+      model_outputs = [model_outputs]
     model_outputs = tf_utils.convert_inner_node_data(model_outputs)
     config['output_layers'] = model_outputs
     return copy.deepcopy(config)
