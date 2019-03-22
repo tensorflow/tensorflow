@@ -215,7 +215,7 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
     return EmitCallToTargetIntrinsic(
-        TargetIntrinsicID::kShfldownf32,
+        TargetIntrinsicID::kShflDownF32,
         {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
         builder);
   }
@@ -231,7 +231,7 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x, EmitCallToTargetIntrinsic(
-               TargetIntrinsicID::kShfldowni32,
+               TargetIntrinsicID::kShflDownI32,
                {all_warps_mask, builder->CreateExtractElement(x, i), offset,
                 builder->getInt32(kWarpSize - 1)},
                {}, builder),
@@ -279,10 +279,10 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadidx, {}, {}, b)),
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadidx, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
 }
 
 }  // namespace gpu
