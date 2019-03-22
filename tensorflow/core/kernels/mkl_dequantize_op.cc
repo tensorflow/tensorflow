@@ -106,7 +106,7 @@ class MklDequantizeOp : public OpKernel {
         output_mkl_shape.SetTfLayout(src_mkl_shape.GetDimension(),
                                      src_mkl_shape.GetSizesAsMklDnnDims(),
                                      src_mkl_shape.GetTfDataFormat());
-        output_tf_shape.AddDim((dst_pd.get_size() / sizeof(float)) + 1);
+        output_tf_shape.AddDim((dst_pd.get_size() / sizeof(float)));
       } else {
         output_mkl_shape.SetMklTensor(false);
         output_tf_shape = MklDnnDimsToTFShape(output_dims);
