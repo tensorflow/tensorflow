@@ -162,7 +162,7 @@ Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(
         while (func_node != nullptr) {
           node_name = func_node->input(0);
           func_node =
-            FunctionFindNodeDef(function, "Identity", node_name, ":output:0");
+              FunctionFindNodeDef(function, "Identity", node_name, ":output:0");
         }
         func_node = FunctionFindNodeDef(function, "StridedSlice", node_name,
                                         ":output:0");
@@ -250,14 +250,15 @@ Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(
     const auto* fused_sampling =
         graph.AddNode(MakeFusedNode(filter_node, rate, seed, seed2, &graph));
 
-    graph.UpdateFanouts(filter_node.name(), fused_sampling->name());
+    TF_RETURN_IF_ERROR(
+        graph.UpdateFanouts(filter_node.name(), fused_sampling->name()));
 
     // Mark the `Filter` node for removal.
     nodes_to_delete.insert(filter_node.name());
     stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
