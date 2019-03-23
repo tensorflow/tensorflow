@@ -734,7 +734,7 @@ struct VectorizationState {
   // Map of old scalar Instruction to new vectorized Instruction.
   DenseMap<Instruction *, Instruction *> vectorizationMap;
   // Map of old scalar Value to new vectorized Value.
-  DenseMap<const Value *, Value *> replacementMap;
+  DenseMap<Value *, Value *> replacementMap;
   // The strategy drives which loop to vectorize by which amount.
   const VectorizationStrategy *strategy;
   // Use-def roots. These represent the starting points for the worklist in the
@@ -755,7 +755,7 @@ struct VectorizationState {
   void registerTerminal(Instruction *inst);
 
 private:
-  void registerReplacement(const Value *key, Value *value);
+  void registerReplacement(Value *key, Value *value);
 };
 
 } // end namespace
@@ -796,7 +796,7 @@ void VectorizationState::finishVectorizationPattern() {
   }
 }
 
-void VectorizationState::registerReplacement(const Value *key, Value *value) {
+void VectorizationState::registerReplacement(Value *key, Value *value) {
   assert(replacementMap.count(key) == 0 && "replacement already registered");
   replacementMap.insert(std::make_pair(key, value));
 }
@@ -858,8 +858,7 @@ static LogicalResult vectorizeAffineForOp(AffineForOp *loop, int64_t step,
   using namespace functional;
   loop->setStep(step);
 
-  FilterFunctionType notVectorizedThisPattern = [state](
-                                                    const Instruction &inst) {
+  FilterFunctionType notVectorizedThisPattern = [state](Instruction &inst) {
     if (!matcher::isLoadOrStore(inst)) {
       return false;
     }
@@ -893,7 +892,7 @@ static LogicalResult vectorizeAffineForOp(AffineForOp *loop, int64_t step,
 /// we can build a cost model and a search procedure.
 static FilterFunctionType
 isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
-  return [fastestVaryingMemRefDimension](const Instruction &forInst) {
+  return [fastestVaryingMemRefDimension](Instruction &forInst) {
     auto loop = forInst.cast<AffineForOp>();
     return isVectorizableLoopAlongFastestVaryingMemRefDim(
         loop, fastestVaryingMemRefDimension);

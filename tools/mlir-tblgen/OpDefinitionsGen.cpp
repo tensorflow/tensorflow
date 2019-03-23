@@ -321,8 +321,7 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
   }
   os << "\nprivate:\n"
      << "  friend class ::mlir::Instruction;\n";
-  os << "  explicit " << className
-     << "(const Instruction *state) : Op(state) {}\n"
+  os << "  explicit " << className << "(Instruction *state) : Op(state) {}\n"
      << "};";
 }
 

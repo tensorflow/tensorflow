@@ -102,22 +102,18 @@ public:
                     VectorType vectorType, Value *srcMemRef,
                     ArrayRef<Value *> srcIndices, AffineMap permutationMap,
                     Optional<Value *> paddingValue = None);
-  VectorType getResultType() const {
+  VectorType getResultType() {
     return getResult()->getType().cast<VectorType>();
   }
   Value *getVector() { return getResult(); }
-  const Value *getVector() const { return getResult(); }
   Value *getMemRef() { return getOperand(Offsets::MemRefOffset); }
-  const Value *getMemRef() const { return getOperand(Offsets::MemRefOffset); }
-  VectorType getVectorType() const { return getResultType(); }
-  MemRefType getMemRefType() const {
+  VectorType getVectorType() { return getResultType(); }
+  MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
   llvm::iterator_range<Instruction::operand_iterator> getIndices();
-  llvm::iterator_range<Instruction::const_operand_iterator> getIndices() const;
   Optional<Value *> getPaddingValue();
-  Optional<const Value *> getPaddingValue() const;
-  AffineMap getPermutationMap() const;
+  AffineMap getPermutationMap();
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
@@ -125,7 +121,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit VectorTransferReadOp(const Instruction *state) : Op(state) {}
+  explicit VectorTransferReadOp(Instruction *state) : Op(state) {}
 };
 
 /// VectorTransferWriteOp performs a blocking write from a super-vector to
@@ -172,18 +168,15 @@ public:
                     Value *dstMemRef, ArrayRef<Value *> dstIndices,
                     AffineMap permutationMap);
   Value *getVector() { return getOperand(Offsets::VectorOffset); }
-  const Value *getVector() const { return getOperand(Offsets::VectorOffset); }
-  VectorType getVectorType() const {
+  VectorType getVectorType() {
     return getVector()->getType().cast<VectorType>();
   }
   Value *getMemRef() { return getOperand(Offsets::MemRefOffset); }
-  const Value *getMemRef() const { return getOperand(Offsets::MemRefOffset); }
-  MemRefType getMemRefType() const {
+  MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
   llvm::iterator_range<Instruction::operand_iterator> getIndices();
-  llvm::iterator_range<Instruction::const_operand_iterator> getIndices() const;
-  AffineMap getPermutationMap() const;
+  AffineMap getPermutationMap();
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
@@ -191,7 +184,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit VectorTransferWriteOp(const Instruction *state) : Op(state) {}
+  explicit VectorTransferWriteOp(Instruction *state) : Op(state) {}
 };
 
 /// VectorTypeCastOp performs a conversion from a memref with scalar element to
@@ -215,7 +208,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit VectorTypeCastOp(const Instruction *state) : Op(state) {}
+  explicit VectorTypeCastOp(Instruction *state) : Op(state) {}
 };
 
 } // end namespace mlir

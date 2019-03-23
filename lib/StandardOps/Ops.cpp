@@ -36,7 +36,7 @@ using namespace mlir;
 
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
-void detail::printStandardBinaryOp(const Instruction *op, OpAsmPrinter *p) {
+void detail::printStandardBinaryOp(Instruction *op, OpAsmPrinter *p) {
   assert(op->getNumOperands() == 2 && "binary op should have two operands");
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
@@ -68,8 +68,8 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
                 >();
 }
 
-void mlir::printDimAndSymbolList(Instruction::const_operand_iterator begin,
-                                 Instruction::const_operand_iterator end,
+void mlir::printDimAndSymbolList(Instruction::operand_iterator begin,
+                                 Instruction::operand_iterator end,
                                  unsigned numDims, OpAsmPrinter *p) {
   *p << '(';
   p->printOperands(begin, begin + numDims);
@@ -1803,8 +1803,7 @@ void ReturnOp::print(OpAsmPrinter *p) {
     *p << " : ";
     interleave(
         operand_begin(), operand_end(),
-        [&](const Value *e) { p->printType(e->getType()); },
-        [&]() { *p << ", "; });
+        [&](Value *e) { p->printType(e->getType()); }, [&]() { *p << ", "; });
   }
 }
 

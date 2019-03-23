@@ -35,7 +35,7 @@ class Builder;
 namespace detail {
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
-void printStandardBinaryOp(const Instruction *op, OpAsmPrinter *p);
+void printStandardBinaryOp(Instruction *op, OpAsmPrinter *p);
 } // namespace detail
 
 class StandardOpsDialect : public Dialect {
@@ -69,9 +69,7 @@ class AllocOp
     : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
   /// The result of an alloc is always a MemRefType.
-  MemRefType getType() const {
-    return getResult()->getType().cast<MemRefType>();
-  }
+  MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
   static StringRef getOperationName() { return "std.alloc"; }
 
@@ -86,7 +84,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit AllocOp(const Instruction *state) : Op(state) {}
+  explicit AllocOp(Instruction *state) : Op(state) {}
 };
 
 /// The "br" operation represents a branch instruction in a function.
@@ -113,7 +111,6 @@ public:
 
   /// Return the block this branch jumps to.
   Block *getDest();
-  Block *getDest() const { return const_cast<BranchOp *>(this)->getDest(); }
   void setDest(Block *block);
 
   /// Erase the operand at 'index' from the operand list.
@@ -121,7 +118,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit BranchOp(const Instruction *state) : Op(state) {}
+  explicit BranchOp(Instruction *state) : Op(state) {}
 };
 
 /// The "call" operation represents a direct call to a function.  The operands
@@ -138,20 +135,14 @@ public:
   static void build(Builder *builder, OperationState *result, Function *callee,
                     ArrayRef<Value *> operands);
 
-  Function *getCallee() const {
+  Function *getCallee() {
     return getAttrOfType<FunctionAttr>("callee").getValue();
   }
 
   /// Get the argument operands to the called function.
-  llvm::iterator_range<const_operand_iterator> getArgOperands() const {
-    return {arg_operand_begin(), arg_operand_end()};
-  }
   llvm::iterator_range<operand_iterator> getArgOperands() {
     return {arg_operand_begin(), arg_operand_end()};
   }
-
-  const_operand_iterator arg_operand_begin() const { return operand_begin(); }
-  const_operand_iterator arg_operand_end() const { return operand_end(); }
 
   operand_iterator arg_operand_begin() { return operand_begin(); }
   operand_iterator arg_operand_end() { return operand_end(); }
@@ -163,7 +154,7 @@ public:
 
 protected:
   friend class Instruction;
-  explicit CallOp(const Instruction *state) : Op(state) {}
+  explicit CallOp(Instruction *state) : Op(state) {}
 };
 
 /// The "call_indirect" operation represents an indirect call to a value of
@@ -182,19 +173,12 @@ public:
   static void build(Builder *builder, OperationState *result, Value *callee,
                     ArrayRef<Value *> operands);
 
-  const Value *getCallee() const { return getOperand(0); }
   Value *getCallee() { return getOperand(0); }
 
   /// Get the argument operands to the called function.
-  llvm::iterator_range<const_operand_iterator> getArgOperands() const {
-    return {arg_operand_begin(), arg_operand_end()};
-  }
   llvm::iterator_range<operand_iterator> getArgOperands() {
     return {arg_operand_begin(), arg_operand_end()};
   }
-
-  const_operand_iterator arg_operand_begin() const { return ++operand_begin(); }
-  const_operand_iterator arg_operand_end() const { return operand_end(); }
 
   operand_iterator arg_operand_begin() { return ++operand_begin(); }
   operand_iterator arg_operand_end() { return operand_end(); }
@@ -208,7 +192,7 @@ public:
 
 protected:
   friend class Instruction;
-  explicit CallIndirectOp(const Instruction *state) : Op(state) {}
+  explicit CallIndirectOp(Instruction *state) : Op(state) {}
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -274,7 +258,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit CmpIOp(const Instruction *state) : Op(state) {}
+  explicit CmpIOp(Instruction *state) : Op(state) {}
 };
 
 /// The "cond_br" operation represents a conditional branch instruction in a
@@ -314,29 +298,20 @@ public:
                                           MLIRContext *context);
 
   // The condition operand is the first operand in the list.
-  Value *getCondition() { return getOperand(0); }
-  const Value *getCondition() const { return getOperand(0); }
+  Value *getCondition() const { return getOperand(0); }
 
   /// Return the destination if the condition is true.
   Block *getTrueDest();
-  Block *getTrueDest() const {
-    return const_cast<CondBranchOp *>(this)->getTrueDest();
-  }
 
   /// Return the destination if the condition is false.
   Block *getFalseDest();
-  Block *getFalseDest() const {
-    return const_cast<CondBranchOp *>(this)->getFalseDest();
-  }
 
   // Accessors for operands to the 'true' destination.
   Value *getTrueOperand(unsigned idx) {
     assert(idx < getNumTrueOperands());
     return getOperand(getTrueDestOperandIndex() + idx);
   }
-  const Value *getTrueOperand(unsigned idx) const {
-    return const_cast<CondBranchOp *>(this)->getTrueOperand(idx);
-  }
+
   void setTrueOperand(unsigned idx, Value *value) {
     assert(idx < getNumTrueOperands());
     setOperand(getTrueDestOperandIndex() + idx, value);
@@ -352,16 +327,6 @@ public:
     return {true_operand_begin(), true_operand_end()};
   }
 
-  const_operand_iterator true_operand_begin() const {
-    return operand_begin() + getTrueDestOperandIndex();
-  }
-  const_operand_iterator true_operand_end() const {
-    return true_operand_begin() + getNumTrueOperands();
-  }
-  llvm::iterator_range<const_operand_iterator> getTrueOperands() const {
-    return {true_operand_begin(), true_operand_end()};
-  }
-
   unsigned getNumTrueOperands() const;
 
   /// Erase the operand at 'index' from the true operand list.
@@ -372,7 +337,7 @@ public:
     assert(idx < getNumFalseOperands());
     return getOperand(getFalseDestOperandIndex() + idx);
   }
-  const Value *getFalseOperand(unsigned idx) const {
+  Value *getFalseOperand(unsigned idx) const {
     return const_cast<CondBranchOp *>(this)->getFalseOperand(idx);
   }
   void setFalseOperand(unsigned idx, Value *value) {
@@ -385,16 +350,6 @@ public:
     return false_operand_begin() + getNumFalseOperands();
   }
   llvm::iterator_range<operand_iterator> getFalseOperands() {
-    return {false_operand_begin(), false_operand_end()};
-  }
-
-  const_operand_iterator false_operand_begin() const {
-    return true_operand_end();
-  }
-  const_operand_iterator false_operand_end() const {
-    return false_operand_begin() + getNumFalseOperands();
-  }
-  llvm::iterator_range<const_operand_iterator> getFalseOperands() const {
     return {false_operand_begin(), false_operand_end()};
   }
 
@@ -413,7 +368,7 @@ private:
   }
 
   friend class Instruction;
-  explicit CondBranchOp(const Instruction *state) : Op(state) {}
+  explicit CondBranchOp(Instruction *state) : Op(state) {}
 };
 
 /// The "constant" operation requires a single attribute named "value".
@@ -445,7 +400,7 @@ public:
 
 protected:
   friend class Instruction;
-  explicit ConstantOp(const Instruction *state) : Op(state) {}
+  explicit ConstantOp(Instruction *state) : Op(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -467,7 +422,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit ConstantFloatOp(const Instruction *state) : ConstantOp(state) {}
+  explicit ConstantFloatOp(Instruction *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -494,7 +449,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit ConstantIntOp(const Instruction *state) : ConstantOp(state) {}
+  explicit ConstantIntOp(Instruction *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -515,7 +470,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit ConstantIndexOp(const Instruction *state) : ConstantOp(state) {}
+  explicit ConstantIndexOp(Instruction *state) : ConstantOp(state) {}
 };
 
 /// The "dealloc" operation frees the region of memory referenced by a memref
@@ -531,8 +486,7 @@ private:
 class DeallocOp
     : public Op<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
-  Value *getMemRef() { return getOperand(); }
-  const Value *getMemRef() const { return getOperand(); }
+  Value *getMemRef() const { return getOperand(); }
   void setMemRef(Value *value) { setOperand(value); }
 
   static StringRef getOperationName() { return "std.dealloc"; }
@@ -547,7 +501,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit DeallocOp(const Instruction *state) : Op(state) {}
+  explicit DeallocOp(Instruction *state) : Op(state) {}
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an
@@ -578,7 +532,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit DimOp(const Instruction *state) : Op(state) {}
+  explicit DimOp(Instruction *state) : Op(state) {}
 };
 
 // DmaStartOp starts a non-blocking DMA operation that transfers data from a
@@ -629,22 +583,19 @@ public:
                     Value *elementsPerStride = nullptr);
 
   // Returns the source MemRefType for this DMA operation.
-  const Value *getSrcMemRef() const { return getOperand(0); }
+  Value *getSrcMemRef() const { return getOperand(0); }
   // Returns the rank (number of indices) of the source MemRefType.
   unsigned getSrcMemRefRank() const {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
   // Returns the source memerf indices for this DMA operation.
-  llvm::iterator_range<Instruction::const_operand_iterator>
-  getSrcIndices() const {
+  llvm::iterator_range<Instruction::operand_iterator> getSrcIndices() {
     return {getInstruction()->operand_begin() + 1,
             getInstruction()->operand_begin() + 1 + getSrcMemRefRank()};
   }
 
   // Returns the destination MemRefType for this DMA operations.
-  const Value *getDstMemRef() const {
-    return getOperand(1 + getSrcMemRefRank());
-  }
+  Value *getDstMemRef() const { return getOperand(1 + getSrcMemRefRank()); }
   // Returns the rank (number of indices) of the destination MemRefType.
   unsigned getDstMemRefRank() const {
     return getDstMemRef()->getType().cast<MemRefType>().getRank();
@@ -657,20 +608,19 @@ public:
   }
 
   // Returns the destination memref indices for this DMA operation.
-  llvm::iterator_range<Instruction::const_operand_iterator>
-  getDstIndices() const {
+  llvm::iterator_range<Instruction::operand_iterator> getDstIndices() {
     return {getInstruction()->operand_begin() + 1 + getSrcMemRefRank() + 1,
             getInstruction()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
                 getDstMemRefRank()};
   }
 
   // Returns the number of elements being transferred by this DMA operation.
-  const Value *getNumElements() const {
+  Value *getNumElements() const {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank());
   }
 
   // Returns the Tag MemRef for this DMA operation.
-  const Value *getTagMemRef() const {
+  Value *getTagMemRef() const {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1);
   }
   // Returns the rank (number of indices) of the tag MemRefType.
@@ -679,8 +629,7 @@ public:
   }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Instruction::const_operand_iterator>
-  getTagIndices() const {
+  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() const {
     unsigned tagIndexStartPos =
         1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
     return {getInstruction()->operand_begin() + tagIndexStartPos,
@@ -725,22 +674,16 @@ public:
       return nullptr;
     return getOperand(getNumOperands() - 1 - 1);
   }
-  const Value *getStride() const {
-    return const_cast<DmaStartOp *>(this)->getStride();
-  }
 
   Value *getNumElementsPerStride() {
     if (!isStrided())
       return nullptr;
     return getOperand(getNumOperands() - 1);
   }
-  const Value *getNumElementsPerStride() const {
-    return const_cast<DmaStartOp *>(this)->getNumElementsPerStride();
-  }
 
 protected:
   friend class Instruction;
-  explicit DmaStartOp(const Instruction *state) : Op(state) {}
+  explicit DmaStartOp(Instruction *state) : Op(state) {}
 };
 
 // DmaWaitOp blocks until the completion of a DMA operation associated with the
@@ -765,12 +708,10 @@ public:
   static StringRef getOperationName() { return "std.dma_wait"; }
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
-  const Value *getTagMemRef() const { return getOperand(0); }
-  Value *getTagMemRef() { return getOperand(0); }
+  Value *getTagMemRef() const { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Instruction::const_operand_iterator>
-  getTagIndices() const {
+  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() const {
     return {getInstruction()->operand_begin() + 1,
             getInstruction()->operand_begin() + 1 + getTagMemRefRank()};
   }
@@ -781,9 +722,7 @@ public:
   }
 
   // Returns the number of elements transferred in the associated DMA operation.
-  const Value *getNumElements() const {
-    return getOperand(1 + getTagMemRefRank());
-  }
+  Value *getNumElements() const { return getOperand(1 + getTagMemRefRank()); }
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
@@ -792,7 +731,7 @@ public:
 
 protected:
   friend class Instruction;
-  explicit DmaWaitOp(const Instruction *state) : Op(state) {}
+  explicit DmaWaitOp(Instruction *state) : Op(state) {}
 };
 
 /// The "extract_element" op reads a tensor or vector and returns one element
@@ -813,15 +752,9 @@ public:
   static void build(Builder *builder, OperationState *result, Value *aggregate,
                     ArrayRef<Value *> indices = {});
 
-  Value *getAggregate() { return getOperand(0); }
-  const Value *getAggregate() const { return getOperand(0); }
+  Value *getAggregate() const { return getOperand(0); }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
-    return {getInstruction()->operand_begin() + 1,
-            getInstruction()->operand_end()};
-  }
-
-  llvm::iterator_range<Instruction::const_operand_iterator> getIndices() const {
     return {getInstruction()->operand_begin() + 1,
             getInstruction()->operand_end()};
   }
@@ -836,7 +769,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit ExtractElementOp(const Instruction *state) : Op(state) {}
+  explicit ExtractElementOp(Instruction *state) : Op(state) {}
 };
 
 /// The "load" op reads an element from a memref specified by an index list. The
@@ -854,19 +787,13 @@ public:
   static void build(Builder *builder, OperationState *result, Value *memref,
                     ArrayRef<Value *> indices = {});
 
-  Value *getMemRef() { return getOperand(0); }
-  const Value *getMemRef() const { return getOperand(0); }
+  Value *getMemRef() const { return getOperand(0); }
   void setMemRef(Value *value) { setOperand(0, value); }
   MemRefType getMemRefType() const {
     return getMemRef()->getType().cast<MemRefType>();
   }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
-    return {getInstruction()->operand_begin() + 1,
-            getInstruction()->operand_end()};
-  }
-
-  llvm::iterator_range<Instruction::const_operand_iterator> getIndices() const {
     return {getInstruction()->operand_begin() + 1,
             getInstruction()->operand_end()};
   }
@@ -881,7 +808,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit LoadOp(const Instruction *state) : Op(state) {}
+  explicit LoadOp(Instruction *state) : Op(state) {}
 };
 
 /// The "memref_cast" operation converts a memref from one type to an equivalent
@@ -914,7 +841,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit MemRefCastOp(const Instruction *state) : CastOp(state) {}
+  explicit MemRefCastOp(Instruction *state) : CastOp(state) {}
 };
 
 /// The "return" operation represents a return instruction within a function.
@@ -941,7 +868,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit ReturnOp(const Instruction *state) : Op(state) {}
+  explicit ReturnOp(Instruction *state) : Op(state) {}
 };
 
 /// The "select" operation chooses one value based on a binary condition
@@ -965,18 +892,15 @@ public:
   void print(OpAsmPrinter *p);
   bool verify();
 
-  Value *getCondition() { return getOperand(0); }
-  const Value *getCondition() const { return getOperand(0); }
-  Value *getTrueValue() { return getOperand(1); }
-  const Value *getTrueValue() const { return getOperand(1); }
-  Value *getFalseValue() { return getOperand(2); }
-  const Value *getFalseValue() const { return getOperand(2); }
+  Value *getCondition() const { return getOperand(0); }
+  Value *getTrueValue() const { return getOperand(1); }
+  Value *getFalseValue() const { return getOperand(2); }
 
   Value *fold();
 
 private:
   friend class Instruction;
-  explicit SelectOp(const Instruction *state) : Op(state) {}
+  explicit SelectOp(Instruction *state) : Op(state) {}
 };
 
 /// The "store" op writes an element to a memref specified by an index list.
@@ -997,22 +921,15 @@ public:
                     Value *valueToStore, Value *memref,
                     ArrayRef<Value *> indices = {});
 
-  Value *getValueToStore() { return getOperand(0); }
-  const Value *getValueToStore() const { return getOperand(0); }
+  Value *getValueToStore() const { return getOperand(0); }
 
   Value *getMemRef() { return getOperand(1); }
-  const Value *getMemRef() const { return getOperand(1); }
   void setMemRef(Value *value) { setOperand(1, value); }
-  MemRefType getMemRefType() const {
+  MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
-    return {getInstruction()->operand_begin() + 2,
-            getInstruction()->operand_end()};
-  }
-
-  llvm::iterator_range<Instruction::const_operand_iterator> getIndices() const {
     return {getInstruction()->operand_begin() + 2,
             getInstruction()->operand_end()};
   }
@@ -1028,7 +945,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit StoreOp(const Instruction *state) : Op(state) {}
+  explicit StoreOp(Instruction *state) : Op(state) {}
 };
 
 /// The "tensor_cast" operation converts a tensor from one type to an equivalent
@@ -1046,9 +963,7 @@ public:
   static StringRef getOperationName() { return "std.tensor_cast"; }
 
   /// The result of a tensor_cast is always a tensor.
-  TensorType getType() const {
-    return getResult()->getType().cast<TensorType>();
-  }
+  TensorType getType() { return getResult()->getType().cast<TensorType>(); }
 
   void print(OpAsmPrinter *p);
 
@@ -1056,13 +971,13 @@ public:
 
 private:
   friend class Instruction;
-  explicit TensorCastOp(const Instruction *state) : CastOp(state) {}
+  explicit TensorCastOp(Instruction *state) : CastOp(state) {}
 };
 
 /// Prints dimension and symbol list.
-void printDimAndSymbolList(Instruction::const_operand_iterator begin,
-                           Instruction::const_operand_iterator end,
-                           unsigned numDims, OpAsmPrinter *p);
+void printDimAndSymbolList(Instruction::operand_iterator begin,
+                           Instruction::operand_iterator end, unsigned numDims,
+                           OpAsmPrinter *p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.
 bool parseDimAndSymbolList(OpAsmParser *parser,

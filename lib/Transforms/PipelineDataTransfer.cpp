@@ -56,7 +56,7 @@ FunctionPassBase *mlir::createPipelineDataTransferPass() {
 // Returns the position of the tag memref operand given a DMA instruction.
 // Temporary utility: will be replaced when DmaStart/DmaFinish abstract op's are
 // added.  TODO(b/117228571)
-static unsigned getTagMemRefPos(const Instruction &dmaInst) {
+static unsigned getTagMemRefPos(Instruction &dmaInst) {
   assert(dmaInst.isa<DmaStartOp>() || dmaInst.isa<DmaWaitOp>());
   if (dmaInst.isa<DmaStartOp>()) {
     // Second to last operand.
@@ -323,7 +323,7 @@ void PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   findMatchingStartFinishInsts(forOp, startWaitPairs);
 
   // Store shift for instruction for later lookup for AffineApplyOp's.
-  DenseMap<const Instruction *, unsigned> instShiftMap;
+  DenseMap<Instruction *, unsigned> instShiftMap;
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
     assert(dmaStartInst->isa<DmaStartOp>());
@@ -341,13 +341,13 @@ void PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
       SmallVector<Instruction *, 4> affineApplyInsts;
       SmallVector<Value *, 4> operands(dmaStartInst->getOperands());
       getReachableAffineApplyOps(operands, affineApplyInsts);
-      for (const auto *inst : affineApplyInsts) {
+      for (auto *inst : affineApplyInsts) {
         instShiftMap[inst] = 0;
       }
     }
   }
   // Everything else (including compute ops and dma finish) are shifted by one.
-  for (const auto &inst : *forOp->getBody()) {
+  for (auto &inst : *forOp->getBody()) {
     if (instShiftMap.find(&inst) == instShiftMap.end()) {
       instShiftMap[&inst] = 1;
     }

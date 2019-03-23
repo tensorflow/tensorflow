@@ -110,13 +110,9 @@ void NestedPattern::matchOne(Instruction *inst,
   }
 }
 
-static bool isAffineForOp(const Instruction &inst) {
-  return inst.isa<AffineForOp>();
-}
+static bool isAffineForOp(Instruction &inst) { return inst.isa<AffineForOp>(); }
 
-static bool isAffineIfOp(const Instruction &inst) {
-  return inst.isa<AffineIfOp>();
-}
+static bool isAffineIfOp(Instruction &inst) { return inst.isa<AffineIfOp>(); }
 
 namespace mlir {
 namespace matcher {
@@ -129,7 +125,7 @@ NestedPattern If(NestedPattern child) {
   return NestedPattern(child, isAffineIfOp);
 }
 NestedPattern If(FilterFunctionType filter, NestedPattern child) {
-  return NestedPattern(child, [filter](const Instruction &inst) {
+  return NestedPattern(child, [filter](Instruction &inst) {
     return isAffineIfOp(inst) && filter(inst);
   });
 }
@@ -137,7 +133,7 @@ NestedPattern If(ArrayRef<NestedPattern> nested) {
   return NestedPattern(nested, isAffineIfOp);
 }
 NestedPattern If(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
-  return NestedPattern(nested, [filter](const Instruction &inst) {
+  return NestedPattern(nested, [filter](Instruction &inst) {
     return isAffineIfOp(inst) && filter(inst);
   });
 }
@@ -146,7 +142,7 @@ NestedPattern For(NestedPattern child) {
   return NestedPattern(child, isAffineForOp);
 }
 NestedPattern For(FilterFunctionType filter, NestedPattern child) {
-  return NestedPattern(child, [=](const Instruction &inst) {
+  return NestedPattern(child, [=](Instruction &inst) {
     return isAffineForOp(inst) && filter(inst);
   });
 }
@@ -154,24 +150,24 @@ NestedPattern For(ArrayRef<NestedPattern> nested) {
   return NestedPattern(nested, isAffineForOp);
 }
 NestedPattern For(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
-  return NestedPattern(nested, [=](const Instruction &inst) {
+  return NestedPattern(nested, [=](Instruction &inst) {
     return isAffineForOp(inst) && filter(inst);
   });
 }
 
 // TODO(ntv): parallel annotation on loops.
-bool isParallelLoop(const Instruction &inst) {
+bool isParallelLoop(Instruction &inst) {
   auto loop = inst.cast<AffineForOp>();
   return loop || true; // loop->isParallel();
 };
 
 // TODO(ntv): reduction annotation on loops.
-bool isReductionLoop(const Instruction &inst) {
+bool isReductionLoop(Instruction &inst) {
   auto loop = inst.cast<AffineForOp>();
   return loop || true; // loop->isReduction();
 };
 
-bool isLoadOrStore(const Instruction &inst) {
+bool isLoadOrStore(Instruction &inst) {
   return inst.isa<LoadOp>() || inst.isa<StoreOp>();
 };
 

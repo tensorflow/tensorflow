@@ -59,7 +59,7 @@ private:
   bool convertOneFunction(Function &func);
   void connectPHINodes(Function &func);
   bool convertBlock(Block &bb, bool ignoreArguments);
-  bool convertInstruction(const Instruction &inst, llvm::IRBuilder<> &builder);
+  bool convertInstruction(Instruction &inst, llvm::IRBuilder<> &builder);
 
   template <typename Range>
   SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
@@ -73,7 +73,7 @@ private:
 
   // Mappings between original and translated values, used for lookups.
   llvm::DenseMap<Function *, llvm::Function *> functionMapping;
-  llvm::DenseMap<const Value *, llvm::Value *> valueMapping;
+  llvm::DenseMap<Value *, llvm::Value *> valueMapping;
   llvm::DenseMap<Block *, llvm::BasicBlock *> blockMapping;
 };
 } // end anonymous namespace
@@ -185,7 +185,7 @@ template <typename Range>
 SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
   SmallVector<llvm::Value *, 8> remapped;
   remapped.reserve(llvm::size(values));
-  for (const Value *v : values) {
+  for (Value *v : values) {
     remapped.push_back(valueMapping.lookup(v));
   }
   return remapped;
@@ -195,7 +195,7 @@ SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
 // using the `builder`.  LLVM IR Builder does not have a generic interface so
 // this has to be a long chain of `if`s calling different functions with a
 // different number of arguments.
-bool ModuleTranslation::convertInstruction(const Instruction &inst,
+bool ModuleTranslation::convertInstruction(Instruction &inst,
                                            llvm::IRBuilder<> &builder) {
   auto extractPosition = [](ArrayAttr attr) {
     SmallVector<unsigned, 4> position;
@@ -212,8 +212,7 @@ bool ModuleTranslation::convertInstruction(const Instruction &inst,
   // itself.  Otherwise, this is an indirect call and the callee is the first
   // operand, look it up as a normal value.  Return the llvm::Value representing
   // the function result, which may be of llvm::VoidTy type.
-  auto convertCall = [this,
-                      &builder](const Instruction &inst) -> llvm::Value * {
+  auto convertCall = [this, &builder](Instruction &inst) -> llvm::Value * {
     auto operands = lookupValues(inst.getOperands());
     ArrayRef<llvm::Value *> operandsRef(operands);
     if (auto attr = inst.getAttrOfType<FunctionAttr>("callee")) {
@@ -270,7 +269,7 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
     auto predecessors = bb.getPredecessors();
     unsigned numPredecessors =
         std::distance(predecessors.begin(), predecessors.end());
-    for (const auto *arg : bb.getArguments()) {
+    for (auto *arg : bb.getArguments()) {
       auto wrappedType = arg->getType().dyn_cast<LLVM::LLVMType>();
       if (!wrappedType) {
         arg->getType().getContext()->emitError(
@@ -284,7 +283,7 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   }
 
   // Traverse instructions.
-  for (const auto &inst : bb) {
+  for (auto &inst : bb) {
     if (convertInstruction(inst, builder))
       return true;
   }
@@ -294,8 +293,8 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
 
 // Get the SSA value passed to the current block from the terminator instruction
 // of its predecessor.
-static const Value *getPHISourceValue(Block *current, Block *pred,
-                                      unsigned numArguments, unsigned index) {
+static Value *getPHISourceValue(Block *current, Block *pred,
+                                unsigned numArguments, unsigned index) {
   auto &terminator = *pred->getTerminator();
   if (terminator.isa<LLVM::BrOp>()) {
     return terminator.getOperand(index);

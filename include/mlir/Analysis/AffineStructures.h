@@ -443,16 +443,16 @@ public:
 
   /// Sets the identifier corresponding to the specified Value id to a
   /// constant. Asserts if the 'id' is not found.
-  void setIdToConstant(const Value &id, int64_t val);
+  void setIdToConstant(Value &id, int64_t val);
 
   /// Looks up the position of the identifier with the specified Value. Returns
   /// true if found (false otherwise). `pos' is set to the (column) position of
   /// the identifier.
-  bool findId(const Value &id, unsigned *pos) const;
+  bool findId(Value &id, unsigned *pos) const;
 
   /// Returns true if an identifier with the specified Value exists, false
   /// otherwise.
-  bool containsId(const Value &id) const;
+  bool containsId(Value &id) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
   // the kind of identifier. The coefficient column corresponding to the added

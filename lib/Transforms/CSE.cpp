@@ -39,7 +39,8 @@ using namespace mlir;
 namespace {
 // TODO(riverriddle) Handle commutative operations.
 struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
-  static unsigned getHashValue(const Instruction *op) {
+  static unsigned getHashValue(const Instruction *opC) {
+    auto *op = const_cast<Instruction *>(opC);
     // Hash the operations based upon their:
     //   - Instruction Name
     //   - Attributes
@@ -50,7 +51,9 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
         hash_combine_range(op->result_type_begin(), op->result_type_end()),
         hash_combine_range(op->operand_begin(), op->operand_end()));
   }
-  static bool isEqual(const Instruction *lhs, const Instruction *rhs) {
+  static bool isEqual(const Instruction *lhsC, const Instruction *rhsC) {
+    auto *lhs = const_cast<Instruction *>(lhsC);
+    auto *rhs = const_cast<Instruction *>(rhsC);
     if (lhs == rhs)
       return true;
     if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||

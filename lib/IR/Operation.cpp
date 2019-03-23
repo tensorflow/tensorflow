@@ -93,20 +93,19 @@ void OpState::emitNote(const Twine &message) const {
 // Op Trait implementations
 //===----------------------------------------------------------------------===//
 
-bool OpTrait::impl::verifyZeroOperands(const Instruction *op) {
+bool OpTrait::impl::verifyZeroOperands(Instruction *op) {
   if (op->getNumOperands() != 0)
     return op->emitOpError("requires zero operands");
   return false;
 }
 
-bool OpTrait::impl::verifyOneOperand(const Instruction *op) {
+bool OpTrait::impl::verifyOneOperand(Instruction *op) {
   if (op->getNumOperands() != 1)
     return op->emitOpError("requires a single operand");
   return false;
 }
 
-bool OpTrait::impl::verifyNOperands(const Instruction *op,
-                                    unsigned numOperands) {
+bool OpTrait::impl::verifyNOperands(Instruction *op, unsigned numOperands) {
   if (op->getNumOperands() != numOperands) {
     return op->emitOpError("expected " + Twine(numOperands) +
                            " operands, but found " +
@@ -115,7 +114,7 @@ bool OpTrait::impl::verifyNOperands(const Instruction *op,
   return false;
 }
 
-bool OpTrait::impl::verifyAtLeastNOperands(const Instruction *op,
+bool OpTrait::impl::verifyAtLeastNOperands(Instruction *op,
                                            unsigned numOperands) {
   if (op->getNumOperands() < numOperands)
     return op->emitOpError("expected " + Twine(numOperands) +
@@ -135,7 +134,7 @@ static Type getTensorOrVectorElementType(Type type) {
   return type;
 }
 
-bool OpTrait::impl::verifyOperandsAreIntegerLike(const Instruction *op) {
+bool OpTrait::impl::verifyOperandsAreIntegerLike(Instruction *op) {
   for (auto *operand : op->getOperands()) {
     auto type = getTensorOrVectorElementType(operand->getType());
     if (!type.isIntOrIndex())
@@ -144,7 +143,7 @@ bool OpTrait::impl::verifyOperandsAreIntegerLike(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifySameTypeOperands(const Instruction *op) {
+bool OpTrait::impl::verifySameTypeOperands(Instruction *op) {
   // Zero or one operand always have the "same" type.
   unsigned nOperands = op->getNumOperands();
   if (nOperands < 2)
@@ -158,26 +157,25 @@ bool OpTrait::impl::verifySameTypeOperands(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyZeroResult(const Instruction *op) {
+bool OpTrait::impl::verifyZeroResult(Instruction *op) {
   if (op->getNumResults() != 0)
     return op->emitOpError("requires zero results");
   return false;
 }
 
-bool OpTrait::impl::verifyOneResult(const Instruction *op) {
+bool OpTrait::impl::verifyOneResult(Instruction *op) {
   if (op->getNumResults() != 1)
     return op->emitOpError("requires one result");
   return false;
 }
 
-bool OpTrait::impl::verifyNResults(const Instruction *op,
-                                   unsigned numOperands) {
+bool OpTrait::impl::verifyNResults(Instruction *op, unsigned numOperands) {
   if (op->getNumResults() != numOperands)
     return op->emitOpError("expected " + Twine(numOperands) + " results");
   return false;
 }
 
-bool OpTrait::impl::verifyAtLeastNResults(const Instruction *op,
+bool OpTrait::impl::verifyAtLeastNResults(Instruction *op,
                                           unsigned numOperands) {
   if (op->getNumResults() < numOperands)
     return op->emitOpError("expected " + Twine(numOperands) +
@@ -206,7 +204,7 @@ static bool verifyShapeMatch(Type type1, Type type2) {
   return false;
 }
 
-bool OpTrait::impl::verifySameOperandsAndResultShape(const Instruction *op) {
+bool OpTrait::impl::verifySameOperandsAndResultShape(Instruction *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return true;
 
@@ -224,7 +222,7 @@ bool OpTrait::impl::verifySameOperandsAndResultShape(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifySameOperandsAndResultType(const Instruction *op) {
+bool OpTrait::impl::verifySameOperandsAndResultType(Instruction *op) {
   if (op->getNumOperands() == 0 || op->getNumResults() == 0)
     return true;
 
@@ -242,9 +240,9 @@ bool OpTrait::impl::verifySameOperandsAndResultType(const Instruction *op) {
   return false;
 }
 
-static bool verifyBBArguments(
-    llvm::iterator_range<Instruction::const_operand_iterator> operands,
-    Block *destBB, const Instruction *op) {
+static bool
+verifyBBArguments(llvm::iterator_range<Instruction::operand_iterator> operands,
+                  Block *destBB, Instruction *op) {
   unsigned operandCount = std::distance(operands.begin(), operands.end());
   if (operandCount != destBB->getNumArguments())
     return op->emitError("branch has " + Twine(operandCount) +
@@ -260,7 +258,7 @@ static bool verifyBBArguments(
   return false;
 }
 
-static bool verifyTerminatorSuccessors(const Instruction *op) {
+static bool verifyTerminatorSuccessors(Instruction *op) {
   // Verify that the operands lines up with the BB arguments in the successor.
   Function *fn = op->getFunction();
   for (unsigned i = 0, e = op->getNumSuccessors(); i != e; ++i) {
@@ -273,7 +271,7 @@ static bool verifyTerminatorSuccessors(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyIsTerminator(const Instruction *op) {
+bool OpTrait::impl::verifyIsTerminator(Instruction *op) {
   Block *block = op->getBlock();
   // Verify that the operation is at the end of the respective parent block.
   if (!block || &block->back() != op)
@@ -285,7 +283,7 @@ bool OpTrait::impl::verifyIsTerminator(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyResultsAreBoolLike(const Instruction *op) {
+bool OpTrait::impl::verifyResultsAreBoolLike(Instruction *op) {
   for (auto *result : op->getResults()) {
     auto elementType = getTensorOrVectorElementType(result->getType());
     bool isBoolType = elementType.isInteger(1);
@@ -296,7 +294,7 @@ bool OpTrait::impl::verifyResultsAreBoolLike(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyResultsAreFloatLike(const Instruction *op) {
+bool OpTrait::impl::verifyResultsAreFloatLike(Instruction *op) {
   for (auto *result : op->getResults()) {
     if (!getTensorOrVectorElementType(result->getType()).isa<FloatType>())
       return op->emitOpError("requires a floating point type");
@@ -305,7 +303,7 @@ bool OpTrait::impl::verifyResultsAreFloatLike(const Instruction *op) {
   return false;
 }
 
-bool OpTrait::impl::verifyResultsAreIntegerLike(const Instruction *op) {
+bool OpTrait::impl::verifyResultsAreIntegerLike(Instruction *op) {
   for (auto *result : op->getResults()) {
     auto type = getTensorOrVectorElementType(result->getType());
     if (!type.isIntOrIndex())
@@ -338,7 +336,7 @@ bool impl::parseBinaryOp(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type, result->types);
 }
 
-void impl::printBinaryOp(const Instruction *op, OpAsmPrinter *p) {
+void impl::printBinaryOp(Instruction *op, OpAsmPrinter *p) {
   assert(op->getNumOperands() == 2 && "binary op should have two operands");
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
@@ -377,7 +375,7 @@ bool impl::parseCastOp(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(dstType, result->types);
 }
 
-void impl::printCastOp(const Instruction *op, OpAsmPrinter *p) {
+void impl::printCastOp(Instruction *op, OpAsmPrinter *p) {
   *p << op->getName() << ' ' << *op->getOperand(0) << " : "
      << op->getOperand(0)->getType() << " to " << op->getResult(0)->getType();
 }

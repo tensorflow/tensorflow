@@ -35,7 +35,7 @@ class FuncBuilder;
 
 /// A utility function to check if a value is defined at the top level of a
 /// function. A value defined at the top level is always a valid symbol.
-bool isTopLevelSymbol(const Value *value);
+bool isTopLevelSymbol(Value *value);
 
 class AffineOpsDialect : public Dialect {
 public:
@@ -64,15 +64,15 @@ public:
                     ArrayRef<Value *> operands);
 
   /// Returns the affine map to be applied by this operation.
-  AffineMap getAffineMap() const {
+  AffineMap getAffineMap() {
     return getAttrOfType<AffineMapAttr>("map").getValue();
   }
 
   /// Returns true if the result of this operation can be used as dimension id.
-  bool isValidDim() const;
+  bool isValidDim();
 
   /// Returns true if the result of this operation is a symbol.
-  bool isValidSymbol() const;
+  bool isValidSymbol();
 
   static StringRef getOperationName() { return "affine.apply"; }
 
@@ -87,7 +87,7 @@ public:
 
 private:
   friend class Instruction;
-  explicit AffineApplyOp(const Instruction *state) : Op(state) {}
+  explicit AffineApplyOp(Instruction *state) : Op(state) {}
 };
 
 /// The "for" instruction represents an affine loop nest, defining an SSA value
@@ -141,16 +141,13 @@ public:
   Block *createBody();
 
   /// Get the body of the AffineForOp.
-  Block *getBody() const { return &getRegion().front(); }
+  Block *getBody() { return &getRegion().front(); }
 
   /// Get the body region of the AffineForOp.
-  Region &getRegion() const { return getInstruction()->getRegion(0); }
+  Region &getRegion() { return getInstruction()->getRegion(0); }
 
   /// Returns the induction variable for this loop.
   Value *getInductionVar();
-  const Value *getInductionVar() const {
-    return const_cast<AffineForOp *>(this)->getInductionVar();
-  }
 
   //===--------------------------------------------------------------------===//
   // Bounds and step
@@ -161,29 +158,27 @@ public:
 
   /// Returns operands for the lower bound map.
   operand_range getLowerBoundOperands();
-  const_operand_range getLowerBoundOperands() const;
 
   /// Returns operands for the upper bound map.
   operand_range getUpperBoundOperands();
-  const_operand_range getUpperBoundOperands() const;
 
   /// Returns information about the lower bound as a single object.
-  const AffineBound getLowerBound() const;
+  AffineBound getLowerBound();
 
   /// Returns information about the upper bound as a single object.
-  const AffineBound getUpperBound() const;
+  AffineBound getUpperBound();
 
   /// Returns loop step.
-  int64_t getStep() const {
+  int64_t getStep() {
     return getAttr(getStepAttrName()).cast<IntegerAttr>().getInt();
   }
 
   /// Returns affine map for the lower bound.
-  AffineMap getLowerBoundMap() const {
+  AffineMap getLowerBoundMap() {
     return getAttr(getLowerBoundAttrName()).cast<AffineMapAttr>().getValue();
   }
   /// Returns affine map for the upper bound. The upper bound is exclusive.
-  AffineMap getUpperBoundMap() const {
+  AffineMap getUpperBoundMap() {
     return getAttr(getUpperBoundAttrName()).cast<AffineMapAttr>().getValue();
   }
 
@@ -209,19 +204,19 @@ public:
   }
 
   /// Returns true if the lower bound is constant.
-  bool hasConstantLowerBound() const;
+  bool hasConstantLowerBound();
   /// Returns true if the upper bound is constant.
-  bool hasConstantUpperBound() const;
+  bool hasConstantUpperBound();
   /// Returns true if both bounds are constant.
-  bool hasConstantBounds() const {
+  bool hasConstantBounds() {
     return hasConstantLowerBound() && hasConstantUpperBound();
   }
   /// Returns the value of the constant lower bound.
   /// Fails assertion if the bound is non-constant.
-  int64_t getConstantLowerBound() const;
+  int64_t getConstantLowerBound();
   /// Returns the value of the constant upper bound. The upper bound is
   /// exclusive. Fails assertion if the bound is non-constant.
-  int64_t getConstantUpperBound() const;
+  int64_t getConstantUpperBound();
   /// Sets the lower bound to the given constant value.
   void setConstantLowerBound(int64_t value);
   /// Sets the upper bound to the given constant value.
@@ -229,19 +224,19 @@ public:
 
   /// Returns true if both the lower and upper bound have the same operand lists
   /// (same operands in the same order).
-  bool matchingBoundOperandList() const;
+  bool matchingBoundOperandList();
 
 private:
   friend class Instruction;
-  explicit AffineForOp(const Instruction *state) : Op(state) {}
+  explicit AffineForOp(Instruction *state) : Op(state) {}
 };
 
 /// Returns if the provided value is the induction variable of a AffineForOp.
-bool isForInductionVar(const Value *val);
+bool isForInductionVar(Value *val);
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-OpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
+OpPointer<AffineForOp> getForInductionVarOwner(Value *val);
 
 /// Extracts the induction variables from a list of AffineForOps and places them
 /// in the output argument `ivs`.
@@ -262,7 +257,7 @@ public:
   AffineValueMap getAsAffineValueMap();
 
   unsigned getNumOperands() const { return opEnd - opStart; }
-  const Value *getOperand(unsigned idx) const {
+  Value *getOperand(unsigned idx) const {
     return inst->getInstruction()->getOperand(opStart + idx);
   }
 
@@ -323,20 +318,14 @@ public:
   static StringRef getOperationName() { return "if"; }
   static StringRef getConditionAttrName() { return "condition"; }
 
-  IntegerSet getIntegerSet() const;
+  IntegerSet getIntegerSet();
   void setIntegerSet(IntegerSet newSet);
 
   /// Returns the 'then' region.
   Region &getThenBlocks();
-  Region &getThenBlocks() const {
-    return const_cast<AffineIfOp *>(this)->getThenBlocks();
-  }
 
   /// Returns the 'else' blocks.
   Region &getElseBlocks();
-  Region &getElseBlocks() const {
-    return const_cast<AffineIfOp *>(this)->getElseBlocks();
-  }
 
   bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -344,14 +333,14 @@ public:
 
 private:
   friend class Instruction;
-  explicit AffineIfOp(const Instruction *state) : Op(state) {}
+  explicit AffineIfOp(Instruction *state) : Op(state) {}
 };
 
 /// Returns true if the given Value can be used as a dimension id.
-bool isValidDim(const Value *value);
+bool isValidDim(Value *value);
 
 /// Returns true if the given Value can be used as a symbol.
-bool isValidSymbol(const Value *value);
+bool isValidSymbol(Value *value);
 
 /// Modifies both `map` and `operands` in-place so as to:
 /// 1. drop duplicate operands

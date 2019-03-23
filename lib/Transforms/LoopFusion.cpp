@@ -142,7 +142,7 @@ struct LoopNestStateCollector {
 };
 
 // TODO(b/117228571) Replace when this is modeled through side-effects/op traits
-static bool isMemRefDereferencingOp(const Instruction &op) {
+static bool isMemRefDereferencingOp(Instruction &op) {
   if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
       op.isa<DmaWaitOp>())
     return true;

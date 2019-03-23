@@ -179,7 +179,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(OpPointer<AffineForOp> forOp) {
   return gcd.getValue();
 }
 
-bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
+bool mlir::isAccessInvariant(Value &iv, Value &index) {
   assert(isForInductionVar(&iv) && "iv must be a AffineForOp");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<Instruction *, 4> affineApplyOps;
@@ -203,10 +203,9 @@ bool mlir::isAccessInvariant(const Value &iv, const Value &index) {
   return !(AffineValueMap(composeOp).isFunctionOf(0, const_cast<Value *>(&iv)));
 }
 
-llvm::DenseSet<const Value *>
-mlir::getInvariantAccesses(const Value &iv,
-                           llvm::ArrayRef<const Value *> indices) {
-  llvm::DenseSet<const Value *> res;
+llvm::DenseSet<Value *>
+mlir::getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices) {
+  llvm::DenseSet<Value *> res;
   for (unsigned idx = 0, n = indices.size(); idx < n; ++idx) {
     auto *val = indices[idx];
     if (isAccessInvariant(iv, *val)) {
@@ -236,29 +235,29 @@ mlir::getInvariantAccesses(const Value &iv,
 ///
 // TODO(ntv): check strides.
 template <typename LoadOrStoreOp>
-static bool isContiguousAccess(const Value &iv, const LoadOrStoreOp &memoryOp,
+static bool isContiguousAccess(Value &iv, OpPointer<LoadOrStoreOp> memoryOp,
                                unsigned fastestVaryingDim) {
   static_assert(std::is_same<LoadOrStoreOp, LoadOp>::value ||
                     std::is_same<LoadOrStoreOp, StoreOp>::value,
                 "Must be called on either const LoadOp & or const StoreOp &");
-  auto memRefType = memoryOp.getMemRefType();
+  auto memRefType = memoryOp->getMemRefType();
   if (fastestVaryingDim >= memRefType.getRank()) {
-    memoryOp.emitError("fastest varying dim out of bounds");
+    memoryOp->emitError("fastest varying dim out of bounds");
     return false;
   }
 
   auto layoutMap = memRefType.getAffineMaps();
   // TODO(ntv): remove dependence on Builder once we support non-identity
   // layout map.
-  Builder b(memoryOp.getInstruction()->getContext());
+  Builder b(memoryOp->getInstruction()->getContext());
   if (layoutMap.size() >= 2 ||
       (layoutMap.size() == 1 &&
        !(layoutMap[0] ==
          b.getMultiDimIdentityMap(layoutMap[0].getNumDims())))) {
-    return memoryOp.emitError("NYI: non-trivial layoutMap"), false;
+    return memoryOp->emitError("NYI: non-trivial layoutMap"), false;
   }
 
-  auto indices = memoryOp.getIndices();
+  auto indices = memoryOp->getIndices();
   auto numIndices = llvm::size(indices);
   unsigned d = 0;
   for (auto index : indices) {
@@ -278,12 +277,12 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
   return memRefType.getElementType().template isa<VectorType>();
 }
 
-static bool isVectorTransferReadOrWrite(const Instruction &inst) {
+static bool isVectorTransferReadOrWrite(Instruction &inst) {
   return inst.isa<VectorTransferReadOp>() || inst.isa<VectorTransferWriteOp>();
 }
 
 using VectorizableInstFun =
-    std::function<bool(OpPointer<AffineForOp>, const Instruction &)>;
+    std::function<bool(OpPointer<AffineForOp>, Instruction &)>;
 
 static bool isVectorizableLoopWithCond(OpPointer<AffineForOp> loop,
                                        VectorizableInstFun isVectorizableInst) {
@@ -302,7 +301,7 @@ static bool isVectorizableLoopWithCond(OpPointer<AffineForOp> loop,
   }
 
   // No vectorization across unknown regions.
-  auto regions = matcher::Op([](const Instruction &inst) -> bool {
+  auto regions = matcher::Op([](Instruction &inst) -> bool {
     return inst.getNumRegions() != 0 &&
            !(inst.isa<AffineIfOp>() || inst.isa<AffineForOp>());
   });
@@ -342,22 +341,22 @@ static bool isVectorizableLoopWithCond(OpPointer<AffineForOp> loop,
 
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
     OpPointer<AffineForOp> loop, unsigned fastestVaryingDim) {
-  VectorizableInstFun fun([fastestVaryingDim](OpPointer<AffineForOp> loop,
-                                              const Instruction &op) {
-    auto load = op.dyn_cast<LoadOp>();
-    auto store = op.dyn_cast<StoreOp>();
-    return load ? isContiguousAccess(*loop->getInductionVar(), *load,
-                                     fastestVaryingDim)
-                : isContiguousAccess(*loop->getInductionVar(), *store,
-                                     fastestVaryingDim);
-  });
+  VectorizableInstFun fun(
+      [fastestVaryingDim](OpPointer<AffineForOp> loop, Instruction &op) {
+        auto load = op.dyn_cast<LoadOp>();
+        auto store = op.dyn_cast<StoreOp>();
+        return load ? isContiguousAccess(*loop->getInductionVar(), load,
+                                         fastestVaryingDim)
+                    : isContiguousAccess(*loop->getInductionVar(), store,
+                                         fastestVaryingDim);
+      });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
 bool mlir::isVectorizableLoop(OpPointer<AffineForOp> loop) {
   VectorizableInstFun fun(
       // TODO: implement me
-      [](OpPointer<AffineForOp> loop, const Instruction &op) { return true; });
+      [](OpPointer<AffineForOp> loop, Instruction &op) { return true; });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
@@ -373,9 +372,9 @@ bool mlir::isInstwiseShiftValid(OpPointer<AffineForOp> forOp,
 
   // Work backwards over the body of the block so that the shift of a use's
   // ancestor instruction in the block gets recorded before it's looked up.
-  DenseMap<const Instruction *, uint64_t> forBodyShift;
+  DenseMap<Instruction *, uint64_t> forBodyShift;
   for (auto it : llvm::enumerate(llvm::reverse(forBody->getInstructions()))) {
-    const auto &inst = it.value();
+    auto &inst = it.value();
 
     // Get the index of the current instruction, note that we are iterating in
     // reverse so we need to fix it up.
@@ -387,7 +386,7 @@ bool mlir::isInstwiseShiftValid(OpPointer<AffineForOp> forOp,
 
     // Validate the results of this instruction if it were to be shifted.
     for (unsigned i = 0, e = inst.getNumResults(); i < e; ++i) {
-      const Value *result = inst.getResult(i);
+      Value *result = inst.getResult(i);
       for (const InstOperand &use : result->getUses()) {
         // If an ancestor instruction doesn't lie in the block of forOp,
         // there is no shift to check.

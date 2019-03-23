@@ -33,7 +33,7 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 /// Return the result number of this result.
-unsigned InstResult::getResultNumber() const {
+unsigned InstResult::getResultNumber() {
   // Results are always stored consecutively, so use pointer subtraction to
   // figure out what number this is.
   return this - &getOwner()->getInstResults()[0];
@@ -44,7 +44,7 @@ unsigned InstResult::getResultNumber() const {
 //===----------------------------------------------------------------------===//
 
 /// Return which operand this is in the operand list.
-template <> unsigned InstOperand::getOperandNumber() const {
+template <> unsigned InstOperand::getOperandNumber() {
   return this - &getOwner()->getInstOperands()[0];
 }
 
@@ -53,7 +53,7 @@ template <> unsigned InstOperand::getOperandNumber() const {
 //===----------------------------------------------------------------------===//
 
 /// Return which operand this is in the operand list.
-template <> unsigned BlockOperand::getOperandNumber() const {
+template <> unsigned BlockOperand::getOperandNumber() {
   return this - &getOwner()->getBlockOperands()[0];
 }
 
@@ -287,7 +287,7 @@ void Instruction::destroy() {
 }
 
 /// Return the context this operation is associated with.
-MLIRContext *Instruction::getContext() const {
+MLIRContext *Instruction::getContext() {
   // If we have a result or operand type, that is a constant time way to get
   // to the context.
   if (getNumResults())
@@ -300,11 +300,11 @@ MLIRContext *Instruction::getContext() const {
   return getFunction()->getContext();
 }
 
-Instruction *Instruction::getParentInst() const {
+Instruction *Instruction::getParentInst() {
   return block ? block->getContainingInst() : nullptr;
 }
 
-Function *Instruction::getFunction() const {
+Function *Instruction::getFunction() {
   return block ? block->getFunction() : nullptr;
 }
 
@@ -339,14 +339,14 @@ void Instruction::walkPostOrder(
 
 /// Emit a note about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.
-void Instruction::emitNote(const Twine &message) const {
+void Instruction::emitNote(const Twine &message) {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Note);
 }
 
 /// Emit a warning about this instruction, reporting up to any diagnostic
 /// handlers that may be listening.
-void Instruction::emitWarning(const Twine &message) const {
+void Instruction::emitWarning(const Twine &message) {
   getContext()->emitDiagnostic(getLoc(), message,
                                MLIRContext::DiagnosticKind::Warning);
 }
@@ -355,7 +355,7 @@ void Instruction::emitWarning(const Twine &message) const {
 /// any diagnostic handlers that may be listening.  This function always
 /// returns true.  NOTE: This may terminate the containing application, only
 /// use when the IR is in an inconsistent state.
-bool Instruction::emitError(const Twine &message) const {
+bool Instruction::emitError(const Twine &message) {
   return getContext()->emitError(getLoc(), message);
 }
 
@@ -364,7 +364,7 @@ bool Instruction::emitError(const Twine &message) const {
 /// of the parent block.
 /// Note: This function has an average complexity of O(1), but worst case may
 /// take O(N) where N is the number of instructions within the parent block.
-bool Instruction::isBeforeInBlock(const Instruction *other) const {
+bool Instruction::isBeforeInBlock(Instruction *other) {
   assert(block && "Instructions without parent blocks have no order.");
   assert(other && other->block == block &&
          "Expected other instruction to have the same parent block.");
@@ -490,7 +490,7 @@ void Instruction::dropAllReferences() {
 }
 
 /// Return true if there are no users of any results of this operation.
-bool Instruction::use_empty() const {
+bool Instruction::use_empty() {
   for (auto *result : getResults())
     if (!result->use_empty())
       return false;
@@ -502,10 +502,6 @@ void Instruction::setSuccessor(Block *block, unsigned index) {
   getBlockOperands()[index].set(block);
 }
 
-auto Instruction::getNonSuccessorOperands() const -> const_operand_range {
-  return {const_operand_iterator(this, 0),
-          const_operand_iterator(this, getSuccessorOperandIndex(0))};
-}
 auto Instruction::getNonSuccessorOperands() -> operand_range {
   return {operand_iterator(this, 0),
           operand_iterator(this, getSuccessorOperandIndex(0))};
@@ -513,7 +509,7 @@ auto Instruction::getNonSuccessorOperands() -> operand_range {
 
 /// Get the index of the first operand of the successor at the provided
 /// index.
-unsigned Instruction::getSuccessorOperandIndex(unsigned index) const {
+unsigned Instruction::getSuccessorOperandIndex(unsigned index) {
   assert(!isKnownNonTerminator() && "only terminators may have successors");
   assert(index < getNumSuccessors());
 
@@ -527,13 +523,6 @@ unsigned Instruction::getSuccessorOperandIndex(unsigned index) const {
   return getNumOperands() - postSuccessorOpCount;
 }
 
-auto Instruction::getSuccessorOperands(unsigned index) const
-    -> const_operand_range {
-  unsigned succOperandIndex = getSuccessorOperandIndex(index);
-  return {const_operand_iterator(this, succOperandIndex),
-          const_operand_iterator(this, succOperandIndex +
-                                           getNumSuccessorOperands(index))};
-}
 auto Instruction::getSuccessorOperands(unsigned index) -> operand_range {
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {operand_iterator(this, succOperandIndex),
@@ -544,19 +533,16 @@ auto Instruction::getSuccessorOperands(unsigned index) -> operand_range {
 /// Attempt to constant fold this operation with the specified constant
 /// operand values.  If successful, this fills in the results vector.  If not,
 /// results is unspecified.
-LogicalResult
-Instruction::constantFold(ArrayRef<Attribute> operands,
-                          SmallVectorImpl<Attribute> &results) const {
-  auto *inst = const_cast<Instruction *>(this);
-
+LogicalResult Instruction::constantFold(ArrayRef<Attribute> operands,
+                                        SmallVectorImpl<Attribute> &results) {
   if (auto *abstractOp = getAbstractOperation()) {
     // If we have a registered operation definition matching this one, use it to
     // try to constant fold the operation.
-    if (succeeded(abstractOp->constantFoldHook(inst, operands, results)))
+    if (succeeded(abstractOp->constantFoldHook(this, operands, results)))
       return success();
 
     // Otherwise, fall back on the dialect hook to handle it.
-    return abstractOp->dialect.constantFoldHook(inst, operands, results);
+    return abstractOp->dialect.constantFoldHook(this, operands, results);
   }
 
   // If this operation hasn't been registered or doesn't have abstract
@@ -564,7 +550,7 @@ Instruction::constantFold(ArrayRef<Attribute> operands,
   auto opName = getName().getStringRef();
   auto dialectPrefix = opName.split('.').first;
   if (auto *dialect = getContext()->getRegisteredDialect(dialectPrefix))
-    return dialect->constantFoldHook(inst, operands, results);
+    return dialect->constantFoldHook(this, operands, results);
 
   return failure();
 }
@@ -582,7 +568,7 @@ LogicalResult Instruction::fold(SmallVectorImpl<Value *> &results) {
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-bool Instruction::emitOpError(const Twine &message) const {
+bool Instruction::emitOpError(const Twine &message) {
   return emitError(Twine('\'') + getName().getStringRef() + "' op " + message);
 }
 
@@ -596,7 +582,7 @@ bool Instruction::emitOpError(const Twine &message) const {
 /// sub-instructions to the corresponding instruction that is copied, and adds
 /// those mappings to the map.
 Instruction *Instruction::clone(BlockAndValueMapping &mapper,
-                                MLIRContext *context) const {
+                                MLIRContext *context) {
   SmallVector<Value *, 8> operands;
   SmallVector<Block *, 2> successors;
 
@@ -605,7 +591,7 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
   if (getNumSuccessors() == 0) {
     // Non-branching operations can just add all the operands.
     for (auto *opValue : getOperands())
-      operands.push_back(mapper.lookupOrDefault(const_cast<Value *>(opValue)));
+      operands.push_back(mapper.lookupOrDefault(opValue));
   } else {
     // We add the operands separated by nullptr's for each successor.
     unsigned firstSuccOperand =
@@ -614,21 +600,18 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
 
     unsigned i = 0;
     for (; i != firstSuccOperand; ++i)
-      operands.push_back(
-          mapper.lookupOrDefault(const_cast<Value *>(InstOperands[i].get())));
+      operands.push_back(mapper.lookupOrDefault(InstOperands[i].get()));
 
     successors.reserve(getNumSuccessors());
     for (unsigned succ = 0, e = getNumSuccessors(); succ != e; ++succ) {
-      successors.push_back(
-          mapper.lookupOrDefault(const_cast<Block *>(getSuccessor(succ))));
+      successors.push_back(mapper.lookupOrDefault(getSuccessor(succ)));
 
       // Add sentinel to delineate successor operands.
       operands.push_back(nullptr);
 
       // Remap the successors operands.
       for (auto *operand : getSuccessorOperands(succ))
-        operands.push_back(
-            mapper.lookupOrDefault(const_cast<Value *>(operand)));
+        operands.push_back(mapper.lookupOrDefault(operand));
     }
   }
 
@@ -652,7 +635,7 @@ Instruction *Instruction::clone(BlockAndValueMapping &mapper,
   return newOp;
 }
 
-Instruction *Instruction::clone(MLIRContext *context) const {
+Instruction *Instruction::clone(MLIRContext *context) {
   BlockAndValueMapping mapper;
   return clone(mapper, context);
 }

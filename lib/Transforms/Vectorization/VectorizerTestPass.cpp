@@ -105,7 +105,7 @@ void VectorizerTestPass::testVectorShapeRatio(Function *f) {
       VectorType::get(shape, FloatType::getF32(f->getContext()));
   // Only filter instructions that operate on a strict super-vector and have one
   // return. This makes testing easier.
-  auto filter = [subVectorType](const Instruction &inst) {
+  auto filter = [subVectorType](Instruction &inst) {
     assert(subVectorType.getElementType() ==
                FloatType::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
@@ -150,7 +150,7 @@ static NestedPattern patternTestSlicingOps() {
   using functional::map;
   using matcher::Op;
   // Match all OpInstructions with the kTestSlicingOpName name.
-  auto filter = [](const Instruction &inst) {
+  auto filter = [](Instruction &inst) {
     return inst.getName().getStringRef() == kTestSlicingOpName;
   };
   return Op(filter);
@@ -199,7 +199,7 @@ void VectorizerTestPass::testSlicing(Function *f) {
   }
 }
 
-static bool customOpWithAffineMapAttribute(const Instruction &inst) {
+static bool customOpWithAffineMapAttribute(Instruction &inst) {
   return inst.getName().getStringRef() ==
          VectorizerTestPass::kTestAffineMapOpName;
 }
@@ -225,11 +225,11 @@ void VectorizerTestPass::testComposeMaps(Function *f) {
   simplifyAffineMap(res).print(outs() << "\nComposed map: ");
 }
 
-static bool affineApplyOp(const Instruction &inst) {
+static bool affineApplyOp(Instruction &inst) {
   return inst.isa<AffineApplyOp>();
 }
 
-static bool singleResultAffineApplyOpWithoutUses(const Instruction &inst) {
+static bool singleResultAffineApplyOpWithoutUses(Instruction &inst) {
   auto app = inst.dyn_cast<AffineApplyOp>();
   return app && app->use_empty();
 }

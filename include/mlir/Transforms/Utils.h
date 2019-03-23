@@ -69,12 +69,12 @@ class Function;
 //  extra operands, note that 'indexRemap' would just be applied to existing
 //  indices (%i, %j).
 //  TODO(bondhugula): allow extraIndices to be added at any position.
-bool replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
+bool replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                               ArrayRef<Value *> extraIndices = {},
                               AffineMap indexRemap = AffineMap(),
                               ArrayRef<Value *> extraOperands = {},
-                              const Instruction *domInstFilter = nullptr,
-                              const Instruction *postDomInstFilter = nullptr);
+                              Instruction *domInstFilter = nullptr,
+                              Instruction *postDomInstFilter = nullptr);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition

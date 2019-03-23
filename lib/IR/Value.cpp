@@ -29,7 +29,7 @@ Instruction *Value::getDefiningInst() {
 }
 
 /// Return the function that this Value is defined in.
-Function *Value::getFunction() const {
+Function *Value::getFunction() {
   switch (getKind()) {
   case Value::Kind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
@@ -64,14 +64,14 @@ void IRObjectWithUseList::dropAllUses() {
 //===----------------------------------------------------------------------===//
 
 /// Return the function that this argument is defined in.
-Function *BlockArgument::getFunction() const {
+Function *BlockArgument::getFunction() {
   if (auto *owner = getOwner())
     return owner->getFunction();
   return nullptr;
 }
 
 /// Returns if the current argument is a function argument.
-bool BlockArgument::isFunctionArgument() const {
+bool BlockArgument::isFunctionArgument() {
   auto *containingFn = getFunction();
   return containingFn && &containingFn->front() == getOwner();
 }

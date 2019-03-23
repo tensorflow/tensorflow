@@ -118,7 +118,7 @@ LogicalResult mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
 // 'indexSet' correspond to the loops surounding 'inst' from outermost to
 // innermost.
 // TODO(andydavis) Add support to handle IfInsts surrounding 'inst'.
-static LogicalResult getInstIndexSet(const Instruction *inst,
+static LogicalResult getInstIndexSet(Instruction *inst,
                                      FlatAffineConstraints *indexSet) {
   // TODO(andydavis) Extend this to gather enclosing IfInsts and consider
   // factoring it out into a utility function.
@@ -147,25 +147,25 @@ static LogicalResult getInstIndexSet(const Instruction *inst,
 // of maps to check. So getSrcDimOrSymPos would be "getPos(value, {0, 2})".
 class ValuePositionMap {
 public:
-  void addSrcValue(const Value *value) {
+  void addSrcValue(Value *value) {
     if (addValueAt(value, &srcDimPosMap, numSrcDims))
       ++numSrcDims;
   }
-  void addDstValue(const Value *value) {
+  void addDstValue(Value *value) {
     if (addValueAt(value, &dstDimPosMap, numDstDims))
       ++numDstDims;
   }
-  void addSymbolValue(const Value *value) {
+  void addSymbolValue(Value *value) {
     if (addValueAt(value, &symbolPosMap, numSymbols))
       ++numSymbols;
   }
-  unsigned getSrcDimOrSymPos(const Value *value) const {
+  unsigned getSrcDimOrSymPos(Value *value) const {
     return getDimOrSymPos(value, srcDimPosMap, 0);
   }
-  unsigned getDstDimOrSymPos(const Value *value) const {
+  unsigned getDstDimOrSymPos(Value *value) const {
     return getDimOrSymPos(value, dstDimPosMap, numSrcDims);
   }
-  unsigned getSymPos(const Value *value) const {
+  unsigned getSymPos(Value *value) const {
     auto it = symbolPosMap.find(value);
     assert(it != symbolPosMap.end());
     return numSrcDims + numDstDims + it->second;
@@ -177,7 +177,7 @@ public:
   unsigned getNumSymbols() const { return numSymbols; }
 
 private:
-  bool addValueAt(const Value *value, DenseMap<const Value *, unsigned> *posMap,
+  bool addValueAt(Value *value, DenseMap<Value *, unsigned> *posMap,
                   unsigned position) {
     auto it = posMap->find(value);
     if (it == posMap->end()) {
@@ -186,8 +186,8 @@ private:
     }
     return false;
   }
-  unsigned getDimOrSymPos(const Value *value,
-                          const DenseMap<const Value *, unsigned> &dimPosMap,
+  unsigned getDimOrSymPos(Value *value,
+                          const DenseMap<Value *, unsigned> &dimPosMap,
                           unsigned dimPosOffset) const {
     auto it = dimPosMap.find(value);
     if (it != dimPosMap.end()) {
@@ -201,9 +201,9 @@ private:
   unsigned numSrcDims = 0;
   unsigned numDstDims = 0;
   unsigned numSymbols = 0;
-  DenseMap<const Value *, unsigned> srcDimPosMap;
-  DenseMap<const Value *, unsigned> dstDimPosMap;
-  DenseMap<const Value *, unsigned> symbolPosMap;
+  DenseMap<Value *, unsigned> srcDimPosMap;
+  DenseMap<Value *, unsigned> dstDimPosMap;
+  DenseMap<Value *, unsigned> symbolPosMap;
 };
 
 // Builds a map from Value to identifier position in a new merged identifier
@@ -451,7 +451,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
   }
 
   // Add equality constraints for any operands that are defined by constant ops.
-  auto addEqForConstOperands = [&](ArrayRef<const Value *> operands) {
+  auto addEqForConstOperands = [&](ArrayRef<Value *> operands) {
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       if (isForInductionVar(operands[i]))
         continue;

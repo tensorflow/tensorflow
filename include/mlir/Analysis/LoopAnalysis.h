@@ -72,7 +72,7 @@ uint64_t getLargestDivisorOfTripCount(OpPointer<AffineForOp> forOp);
 ///
 /// Returns false in cases with more than one AffineApplyOp, this is
 /// conservative.
-bool isAccessInvariant(const Value &iv, const Value &index);
+bool isAccessInvariant(Value &iv, Value &index);
 
 /// Given an induction variable `iv` of type AffineForOp and `indices` of type
 /// IndexType, returns the set of `indices` that are independent of `iv`.
@@ -83,8 +83,8 @@ bool isAccessInvariant(const Value &iv, const Value &index);
 ///
 /// Returns false in cases with more than one AffineApplyOp, this is
 /// conservative.
-llvm::DenseSet<const Value *, llvm::DenseMapInfo<const Value *>>
-getInvariantAccesses(const Value &iv, llvm::ArrayRef<const Value *> indices);
+llvm::DenseSet<Value *, llvm::DenseMapInfo<Value *>>
+getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices);
 
 /// Checks whether the loop is structurally vectorizable; i.e.:
 /// 1. the loop has proper dependence semantics (parallel, reduction, etc);

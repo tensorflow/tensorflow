@@ -26,7 +26,7 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 /// Returns the number of this argument.
-unsigned BlockArgument::getArgNumber() const {
+unsigned BlockArgument::getArgNumber() {
   // Arguments are not stored in place, so we have to find it within the list.
   auto argList = getOwner()->getArguments();
   return std::distance(argList.begin(), llvm::find(argList, this));
@@ -78,7 +78,7 @@ void Block::eraseFromFunction() {
 /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
 /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
 /// the latter fails.
-Instruction *Block::findAncestorInstInBlock(const Instruction &inst) {
+Instruction *Block::findAncestorInstInBlock(Instruction &inst) {
   // Traverse up the instruction hierarchy starting from the owner of operand to
   // find the ancestor instruction that resides in the block of 'forInst'.
   auto *currInst = const_cast<Instruction *>(&inst);
@@ -109,7 +109,7 @@ bool Block::verifyInstOrder() {
       std::next(instructions.begin()) == instructions.end())
     return false;
 
-  const Instruction *prev = nullptr;
+  Instruction *prev = nullptr;
   for (auto &i : *this) {
     // The previous instruction must have a smaller order index than the next as
     // it appears earlier in the list.
@@ -306,12 +306,12 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
     // Clone the block arguments. The user might be deleting arguments to the
     // block by specifying them in the mapper. If so, we don't add the
     // argument to the cloned block.
-    for (const auto *arg : block.getArguments())
+    for (auto *arg : block.getArguments())
       if (!mapper.contains(arg))
         mapper.map(arg, newBlock->addArgument(arg->getType()));
 
     // Clone and remap the instructions within this block.
-    for (const auto &inst : block)
+    for (auto &inst : block)
       newBlock->push_back(inst.clone(mapper, context));
 
     dest->push_back(newBlock);

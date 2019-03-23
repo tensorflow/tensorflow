@@ -94,8 +94,8 @@ private:
 /// aggressive unrolling. As experience has shown, it is generally better to use
 /// a plain walk over instructions to match flat patterns but the current
 /// implementation is competitive nonetheless.
-using FilterFunctionType = std::function<bool(const Instruction &)>;
-static bool defaultFilterFunction(const Instruction &) { return true; };
+using FilterFunctionType = std::function<bool(Instruction &)>;
+static bool defaultFilterFunction(Instruction &) { return true; };
 struct NestedPattern {
   NestedPattern(ArrayRef<NestedPattern> nested,
                 FilterFunctionType filter = defaultFilterFunction);
@@ -182,9 +182,9 @@ NestedPattern For(ArrayRef<NestedPattern> nested = {});
 NestedPattern For(FilterFunctionType filter,
                   ArrayRef<NestedPattern> nested = {});
 
-bool isParallelLoop(const Instruction &inst);
-bool isReductionLoop(const Instruction &inst);
-bool isLoadOrStore(const Instruction &inst);
+bool isParallelLoop(Instruction &inst);
+bool isReductionLoop(Instruction &inst);
+bool isLoadOrStore(Instruction &inst);
 
 } // end namespace matcher
 } // end namespace mlir

@@ -47,5 +47,5 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);
 // CHECK: private:
 // CHECK:   friend class ::mlir::Instruction;
-// CHECK:   explicit AOp(const Instruction *state) : Op(state) {}
+// CHECK:   explicit AOp(Instruction *state) : Op(state) {}
 // CHECK: };

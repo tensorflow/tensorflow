@@ -45,8 +45,8 @@ using namespace mlir;
 using namespace mlir::edsc;
 using namespace mlir::edsc::detail;
 
-static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
-  const auto *inst = v.getDefiningInst();
+static void printDefininingStatement(llvm::raw_ostream &os, Value &v) {
+  auto *inst = v.getDefiningInst();
   if (inst) {
     inst->print(os);
     return;

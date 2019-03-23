@@ -37,19 +37,19 @@ using namespace mlir;
 /// Return true if this operation dereferences one or more memref's.
 // Temporary utility: will be replaced when this is modeled through
 // side-effects/op traits. TODO(b/117228571)
-static bool isMemRefDereferencingOp(const Instruction &op) {
+static bool isMemRefDereferencingOp(Instruction &op) {
   if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
       op.isa<DmaWaitOp>())
     return true;
   return false;
 }
 
-bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
+bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,
                                     ArrayRef<Value *> extraOperands,
-                                    const Instruction *domInstFilter,
-                                    const Instruction *postDomInstFilter) {
+                                    Instruction *domInstFilter,
+                                    Instruction *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -167,7 +167,7 @@ bool mlir::replaceAllMemRefUsesWith(const Value *oldMemRef, Value *newMemRef,
 
     // Result types don't change. Both memref's are of the same elemental type.
     state.types.reserve(opInst->getNumResults());
-    for (const auto *result : opInst->getResults())
+    for (auto *result : opInst->getResults())
       state.types.push_back(result->getType());
 
     // Attributes also do not change.

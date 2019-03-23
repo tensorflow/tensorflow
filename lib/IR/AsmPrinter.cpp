@@ -138,7 +138,7 @@ private:
   void recordTypeReference(Type ty) { usedTypes.insert(ty); }
 
   // Visit functions.
-  void visitInstruction(const Instruction *inst);
+  void visitInstruction(Instruction *inst);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
 
@@ -189,7 +189,7 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitInstruction(const Instruction *inst) {
+void ModuleState::visitInstruction(Instruction *inst) {
   // Visit all the types used in the operation.
   for (auto *operand : inst->getOperands())
     visitType(operand->getType());
@@ -1060,11 +1060,11 @@ public:
   void printFunctionSignature();
 
   // Methods to print instructions.
-  void print(const Instruction *inst);
+  void print(Instruction *inst);
   void print(Block *block, bool printBlockArgs = true);
 
-  void printOperation(const Instruction *op);
-  void printGenericOp(const Instruction *op);
+  void printOperation(Instruction *op);
+  void printGenericOp(Instruction *op);
 
   // Implement OpAsmPrinter.
   raw_ostream &getStream() const { return os; }
@@ -1085,7 +1085,7 @@ public:
   void printFunctionReference(Function *func) {
     return ModulePrinter::printFunctionReference(func);
   }
-  void printOperand(const Value *value) { printValueID(value); }
+  void printOperand(Value *value) { printValueID(value); }
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) {
@@ -1107,8 +1107,7 @@ public:
     return it != blockIDs.end() ? it->second : ~0U;
   }
 
-  void printSuccessorAndUseList(const Instruction *term,
-                                unsigned index) override;
+  void printSuccessorAndUseList(Instruction *term, unsigned index) override;
 
   /// Print a region.
   void printRegion(Region &blocks, bool printEntryBlockArgs) override {
@@ -1127,17 +1126,17 @@ public:
   const static unsigned indentWidth = 2;
 
 protected:
-  void numberValueID(const Value *value);
+  void numberValueID(Value *value);
   void numberValuesInBlock(Block &block);
-  void printValueID(const Value *value, bool printResultNo = true) const;
+  void printValueID(Value *value, bool printResultNo = true) const;
 
 private:
   Function *function;
 
   /// This is the value ID for each SSA value in the current function.  If this
   /// returns ~0, then the valueID has an entry in valueNames.
-  DenseMap<const Value *, unsigned> valueIDs;
-  DenseMap<const Value *, StringRef> valueNames;
+  DenseMap<Value *, unsigned> valueIDs;
+  DenseMap<Value *, StringRef> valueNames;
 
   /// This is the block ID for each  block in the current function.
   DenseMap<Block *, unsigned> blockIDs;
@@ -1191,7 +1190,7 @@ void FunctionPrinter::numberValuesInBlock(Block &block) {
   }
 }
 
-void FunctionPrinter::numberValueID(const Value *value) {
+void FunctionPrinter::numberValueID(Value *value) {
   assert(!valueIDs.count(value) && "Value numbered multiple times");
 
   SmallString<32> specialNameBuffer;
@@ -1389,14 +1388,13 @@ void FunctionPrinter::print(Block *block, bool printBlockArgs) {
   currentIndent -= indentWidth;
 }
 
-void FunctionPrinter::print(const Instruction *inst) {
+void FunctionPrinter::print(Instruction *inst) {
   os.indent(currentIndent);
   printOperation(inst);
   printTrailingLocation(inst->getLoc());
 }
 
-void FunctionPrinter::printValueID(const Value *value,
-                                   bool printResultNo) const {
+void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
   int resultNo = -1;
   auto lookupValue = value;
 
@@ -1434,7 +1432,7 @@ void FunctionPrinter::printValueID(const Value *value,
     os << '#' << resultNo;
 }
 
-void FunctionPrinter::printOperation(const Instruction *op) {
+void FunctionPrinter::printOperation(Instruction *op) {
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
     os << " = ";
@@ -1454,7 +1452,7 @@ void FunctionPrinter::printOperation(const Instruction *op) {
   printGenericOp(op);
 }
 
-void FunctionPrinter::printGenericOp(const Instruction *op) {
+void FunctionPrinter::printGenericOp(Instruction *op) {
   os << '"';
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
@@ -1465,11 +1463,10 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
   for (unsigned i = 0; i < numSuccessors; ++i)
     totalNumSuccessorOperands += op->getNumSuccessorOperands(i);
   unsigned numProperOperands = op->getNumOperands() - totalNumSuccessorOperands;
-  SmallVector<const Value *, 8> properOperands(
+  SmallVector<Value *, 8> properOperands(
       op->operand_begin(), std::next(op->operand_begin(), numProperOperands));
 
-  interleaveComma(properOperands,
-                  [&](const Value *value) { printValueID(value); });
+  interleaveComma(properOperands, [&](Value *value) { printValueID(value); });
 
   os << ')';
 
@@ -1490,7 +1487,7 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
   // Print the type signature of the operation.
   os << " : (";
   interleaveComma(properOperands,
-                  [&](const Value *value) { printType(value->getType()); });
+                  [&](Value *value) { printType(value->getType()); });
   os << ") -> ";
 
   if (op->getNumResults() == 1 &&
@@ -1499,7 +1496,7 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
   } else {
     os << '(';
     interleaveComma(op->getResults(),
-                    [&](const Value *result) { printType(result->getType()); });
+                    [&](Value *result) { printType(result->getType()); });
     os << ')';
   }
 
@@ -1508,7 +1505,7 @@ void FunctionPrinter::printGenericOp(const Instruction *op) {
     printRegion(region, /*printEntryBlockArgs=*/true);
 }
 
-void FunctionPrinter::printSuccessorAndUseList(const Instruction *term,
+void FunctionPrinter::printSuccessorAndUseList(Instruction *term,
                                                unsigned index) {
   printBlockName(term->getSuccessor(index));
 
@@ -1518,11 +1515,10 @@ void FunctionPrinter::printSuccessorAndUseList(const Instruction *term,
 
   os << '(';
   interleaveComma(succOperands,
-                  [this](const Value *operand) { printValueID(operand); });
+                  [this](Value *operand) { printValueID(operand); });
   os << " : ";
-  interleaveComma(succOperands, [this](const Value *operand) {
-    printType(operand->getType());
-  });
+  interleaveComma(succOperands,
+                  [this](Value *operand) { printType(operand->getType()); });
   os << ')';
 }
 
@@ -1585,7 +1581,7 @@ void IntegerSet::print(raw_ostream &os) const {
   ModulePrinter(os, state).printIntegerSet(*this);
 }
 
-void Value::print(raw_ostream &os) const {
+void Value::print(raw_ostream &os) {
   switch (getKind()) {
   case Value::Kind::BlockArgument:
     // TODO: Improve this.
@@ -1596,9 +1592,9 @@ void Value::print(raw_ostream &os) const {
   }
 }
 
-void Value::dump() const { print(llvm::errs()); }
+void Value::dump() { print(llvm::errs()); }
 
-void Instruction::print(raw_ostream &os) const {
+void Instruction::print(raw_ostream &os) {
   auto *function = getFunction();
   if (!function) {
     os << "<<UNLINKED INSTRUCTION>>\n";
@@ -1610,7 +1606,7 @@ void Instruction::print(raw_ostream &os) const {
   FunctionPrinter(function, modulePrinter).print(this);
 }
 
-void Instruction::dump() const {
+void Instruction::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }

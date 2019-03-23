@@ -192,7 +192,7 @@ struct MaterializationState {
   VectorType superVectorType;
   VectorType hwVectorType;
   SmallVector<unsigned, 8> hwVectorInstance;
-  DenseMap<const Value *, Value *> *substitutionsMap;
+  DenseMap<Value *, Value *> *substitutionsMap;
 };
 
 struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
@@ -239,9 +239,9 @@ static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
   return res;
 }
 
-static Instruction *
-instantiate(FuncBuilder *b, Instruction *opInst, VectorType hwVectorType,
-            DenseMap<const Value *, Value *> *substitutionsMap);
+static Instruction *instantiate(FuncBuilder *b, Instruction *opInst,
+                                VectorType hwVectorType,
+                                DenseMap<Value *, Value *> *substitutionsMap);
 
 /// Not all Values belong to a program slice scoped within the immediately
 /// enclosing loop.
@@ -253,7 +253,7 @@ instantiate(FuncBuilder *b, Instruction *opInst, VectorType hwVectorType,
 ///
 /// If substitution fails, returns nullptr.
 static Value *substitute(Value *v, VectorType hwVectorType,
-                         DenseMap<const Value *, Value *> *substitutionsMap) {
+                         DenseMap<Value *, Value *> *substitutionsMap) {
   auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
     auto *opInst = v->getDefiningInst();
@@ -404,9 +404,9 @@ materializeAttributes(Instruction *opInst, VectorType hwVectorType) {
 /// substitutionsMap.
 ///
 /// If the underlying substitution fails, this fails too and returns nullptr.
-static Instruction *
-instantiate(FuncBuilder *b, Instruction *opInst, VectorType hwVectorType,
-            DenseMap<const Value *, Value *> *substitutionsMap) {
+static Instruction *instantiate(FuncBuilder *b, Instruction *opInst,
+                                VectorType hwVectorType,
+                                DenseMap<Value *, Value *> *substitutionsMap) {
   assert(!opInst->isa<VectorTransferReadOp>() &&
          "Should call the function specialized for VectorTransferReadOp");
   assert(!opInst->isa<VectorTransferWriteOp>() &&
@@ -481,10 +481,10 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
 /// `hwVectorType` int the covering of the super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Instruction *
-instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
-            ArrayRef<unsigned> hwVectorInstance,
-            DenseMap<const Value *, Value *> *substitutionsMap) {
+static Instruction *instantiate(FuncBuilder *b, VectorTransferReadOp *read,
+                                VectorType hwVectorType,
+                                ArrayRef<unsigned> hwVectorInstance,
+                                DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
       map(makePtrDynCaster<Value>(), read->getIndices());
   auto affineIndices =
@@ -505,10 +505,10 @@ instantiate(FuncBuilder *b, VectorTransferReadOp *read, VectorType hwVectorType,
 /// `hwVectorType` int the covering of th3e super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Instruction *
-instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
-            VectorType hwVectorType, ArrayRef<unsigned> hwVectorInstance,
-            DenseMap<const Value *, Value *> *substitutionsMap) {
+static Instruction *instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
+                                VectorType hwVectorType,
+                                ArrayRef<unsigned> hwVectorInstance,
+                                DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
       map(makePtrDynCaster<Value>(), write->getIndices());
   auto affineIndices =
@@ -624,7 +624,7 @@ static bool emitSlice(MaterializationState *state,
     // Fresh RAII instanceIndices and substitutionsMap.
     MaterializationState scopedState = *state;
     scopedState.hwVectorInstance = delinearize(idx, *ratio);
-    DenseMap<const Value *, Value *> substitutionMap;
+    DenseMap<Value *, Value *> substitutionMap;
     scopedState.substitutionsMap = &substitutionMap;
     // slice are topologically sorted, we can just clone them in order.
     for (auto *inst : *slice) {
@@ -749,7 +749,7 @@ void MaterializeVectorsPass::runOnFunction() {
 
   // Capture terminators; i.e. vector_transfer_write ops involving a strict
   // super-vector of subVectorType.
-  auto filter = [subVectorType](const Instruction &inst) {
+  auto filter = [subVectorType](Instruction &inst) {
     if (!inst.isa<VectorTransferWriteOp>()) {
       return false;
     }

@@ -42,7 +42,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 
 /// A utility function to check if a value is defined at the top level of a
 /// function. A value defined at the top level is always a valid symbol.
-bool mlir::isTopLevelSymbol(const Value *value) {
+bool mlir::isTopLevelSymbol(Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
     return arg->getOwner()->getParent()->getContainingFunction();
   return value->getDefiningInst()->getParentInst() == nullptr;
@@ -51,7 +51,7 @@ bool mlir::isTopLevelSymbol(const Value *value) {
 // Value can be used as a dimension id if it is valid as a symbol, or
 // it is an induction variable, or it is a result of affine apply operation
 // with dimension id arguments.
-bool mlir::isValidDim(const Value *value) {
+bool mlir::isValidDim(Value *value) {
   // The value must be an index type.
   if (!value->getType().isIndex())
     return false;
@@ -76,7 +76,7 @@ bool mlir::isValidDim(const Value *value) {
 // Value can be used as a symbol if it is a constant, or it is defined at
 // the top level, or it is a result of affine apply operation with symbol
 // arguments.
-bool mlir::isValidSymbol(const Value *value) {
+bool mlir::isValidSymbol(Value *value) {
   // The value must be an index type.
   if (!value->getType().isIndex())
     return false;
@@ -105,10 +105,9 @@ bool mlir::isValidSymbol(const Value *value) {
 /// was an invalid operand. An operation is provided to emit any necessary
 /// errors.
 template <typename OpTy>
-static bool
-verifyDimAndSymbolIdentifiers(const OpTy &op,
-                              Instruction::const_operand_range operands,
-                              unsigned numDims) {
+static bool verifyDimAndSymbolIdentifiers(OpTy &op,
+                                          Instruction::operand_range operands,
+                                          unsigned numDims) {
   unsigned opIt = 0;
   for (auto *operand : operands) {
     if (opIt++ < numDims) {
@@ -189,16 +188,16 @@ bool AffineApplyOp::verify() {
 // The result of the affine apply operation can be used as a dimension id if it
 // is a CFG value or if it is an Value, and all the operands are valid
 // dimension ids.
-bool AffineApplyOp::isValidDim() const {
+bool AffineApplyOp::isValidDim() {
   return llvm::all_of(getOperands(),
-                      [](const Value *op) { return mlir::isValidDim(op); });
+                      [](Value *op) { return mlir::isValidDim(op); });
 }
 
 // The result of the affine apply operation can be used as a symbol if it is
 // a CFG value or if it is an Value, and all the operands are symbols.
-bool AffineApplyOp::isValidSymbol() const {
+bool AffineApplyOp::isValidSymbol() {
   return llvm::all_of(getOperands(),
-                      [](const Value *op) { return mlir::isValidSymbol(op); });
+                      [](Value *op) { return mlir::isValidSymbol(op); });
 }
 
 Attribute AffineApplyOp::constantFold(ArrayRef<Attribute> operands,
@@ -1069,13 +1068,13 @@ Block *AffineForOp::createBody() {
   return body;
 }
 
-const AffineBound AffineForOp::getLowerBound() const {
+AffineBound AffineForOp::getLowerBound() {
   auto lbMap = getLowerBoundMap();
   return AffineBound(OpPointer<AffineForOp>(*this), 0, lbMap.getNumInputs(),
                      lbMap);
 }
 
-const AffineBound AffineForOp::getUpperBound() const {
+AffineBound AffineForOp::getUpperBound() {
   auto lbMap = getLowerBoundMap();
   auto ubMap = getUpperBoundMap();
   return AffineBound(OpPointer<AffineForOp>(*this), lbMap.getNumInputs(),
@@ -1124,19 +1123,19 @@ void AffineForOp::setUpperBoundMap(AffineMap map) {
   setAttr(getUpperBoundAttrName(), AffineMapAttr::get(map));
 }
 
-bool AffineForOp::hasConstantLowerBound() const {
+bool AffineForOp::hasConstantLowerBound() {
   return getLowerBoundMap().isSingleConstant();
 }
 
-bool AffineForOp::hasConstantUpperBound() const {
+bool AffineForOp::hasConstantUpperBound() {
   return getUpperBoundMap().isSingleConstant();
 }
 
-int64_t AffineForOp::getConstantLowerBound() const {
+int64_t AffineForOp::getConstantLowerBound() {
   return getLowerBoundMap().getSingleConstantResult();
 }
 
-int64_t AffineForOp::getConstantUpperBound() const {
+int64_t AffineForOp::getConstantUpperBound() {
   return getUpperBoundMap().getSingleConstantResult();
 }
 
@@ -1154,19 +1153,11 @@ AffineForOp::operand_range AffineForOp::getLowerBoundOperands() {
   return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
 }
 
-AffineForOp::const_operand_range AffineForOp::getLowerBoundOperands() const {
-  return {operand_begin(), operand_begin() + getLowerBoundMap().getNumInputs()};
-}
-
 AffineForOp::operand_range AffineForOp::getUpperBoundOperands() {
   return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
 }
 
-AffineForOp::const_operand_range AffineForOp::getUpperBoundOperands() const {
-  return {operand_begin() + getLowerBoundMap().getNumInputs(), operand_end()};
-}
-
-bool AffineForOp::matchingBoundOperandList() const {
+bool AffineForOp::matchingBoundOperandList() {
   auto lbMap = getLowerBoundMap();
   auto ubMap = getUpperBoundMap();
   if (lbMap.getNumDims() != ubMap.getNumDims() ||
@@ -1186,14 +1177,14 @@ bool AffineForOp::matchingBoundOperandList() const {
 Value *AffineForOp::getInductionVar() { return getBody()->getArgument(0); }
 
 /// Returns if the provided value is the induction variable of a AffineForOp.
-bool mlir::isForInductionVar(const Value *val) {
+bool mlir::isForInductionVar(Value *val) {
   return getForInductionVarOwner(val) != nullptr;
 }
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-OpPointer<AffineForOp> mlir::getForInductionVarOwner(const Value *val) {
-  const BlockArgument *ivArg = dyn_cast<BlockArgument>(val);
+OpPointer<AffineForOp> mlir::getForInductionVarOwner(Value *val) {
+  auto *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
     return OpPointer<AffineForOp>();
   auto *containingInst = ivArg->getOwner()->getParent()->getContainingInst();
@@ -1320,7 +1311,7 @@ void AffineIfOp::print(OpAsmPrinter *p) {
                            /*elidedAttrs=*/getConditionAttrName());
 }
 
-IntegerSet AffineIfOp::getIntegerSet() const {
+IntegerSet AffineIfOp::getIntegerSet() {
   return getAttrOfType<IntegerSetAttr>(getConditionAttrName()).getValue();
 }
 void AffineIfOp::setIntegerSet(IntegerSet newSet) {

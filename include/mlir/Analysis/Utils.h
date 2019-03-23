@@ -48,12 +48,12 @@ class Value;
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
 //  TODO(bondhugula): handle 'if' inst's.
-void getLoopIVs(const Instruction &inst,
+void getLoopIVs(Instruction &inst,
                 SmallVectorImpl<OpPointer<AffineForOp>> *loops);
 
 /// Returns the nesting depth of this instruction, i.e., the number of loops
 /// surrounding this instruction.
-unsigned getNestingDepth(const Instruction &stmt);
+unsigned getNestingDepth(Instruction &inst);
 
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
 /// at 'forOp'.
@@ -231,8 +231,7 @@ LogicalResult boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                                       bool emitError = true);
 
 /// Returns the number of surrounding loops common to both A and B.
-unsigned getNumCommonSurroundingLoops(const Instruction &A,
-                                      const Instruction &B);
+unsigned getNumCommonSurroundingLoops(Instruction &A, Instruction &B);
 
 /// Gets the memory footprint of all data touched in the specified memory space
 /// in bytes; if the memory space is unspecified, considers all memory spaces.

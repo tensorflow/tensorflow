@@ -39,7 +39,7 @@ using llvm::SmallDenseMap;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
-void mlir::getLoopIVs(const Instruction &inst,
+void mlir::getLoopIVs(Instruction &inst,
                       SmallVectorImpl<OpPointer<AffineForOp>> *loops) {
   auto *currInst = inst.getParentInst();
   OpPointer<AffineForOp> currAffineForOp;
@@ -431,7 +431,7 @@ template LogicalResult mlir::boundCheckLoadOrStoreOp(OpPointer<StoreOp> storeOp,
 
 // Returns in 'positions' the Block positions of 'inst' in each ancestor
 // Block from the Block containing instruction, stopping at 'limitBlock'.
-static void findInstPosition(const Instruction *inst, Block *limitBlock,
+static void findInstPosition(Instruction *inst, Block *limitBlock,
                              SmallVectorImpl<unsigned> *positions) {
   Block *block = inst->getBlock();
   while (block != limitBlock) {
@@ -653,8 +653,8 @@ bool MemRefAccess::isStore() const { return opInst->isa<StoreOp>(); }
 
 /// Returns the nesting depth of this statement, i.e., the number of loops
 /// surrounding this statement.
-unsigned mlir::getNestingDepth(const Instruction &inst) {
-  const Instruction *currInst = &inst;
+unsigned mlir::getNestingDepth(Instruction &inst) {
+  Instruction *currInst = &inst;
   unsigned depth = 0;
   while ((currInst = currInst->getParentInst())) {
     if (currInst->isa<AffineForOp>())
@@ -665,8 +665,7 @@ unsigned mlir::getNestingDepth(const Instruction &inst) {
 
 /// Returns the number of surrounding loops common to 'loopsA' and 'loopsB',
 /// where each lists loops from outer-most to inner-most in loop nest.
-unsigned mlir::getNumCommonSurroundingLoops(const Instruction &A,
-                                            const Instruction &B) {
+unsigned mlir::getNumCommonSurroundingLoops(Instruction &A, Instruction &B) {
   SmallVector<OpPointer<AffineForOp>, 4> loopsA, loopsB;
   getLoopIVs(A, &loopsA);
   getLoopIVs(B, &loopsB);

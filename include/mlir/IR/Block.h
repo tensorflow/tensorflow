@@ -173,7 +173,7 @@ public:
   /// the latter fails.
   /// TODO: This is very specific functionality that should live somewhere else,
   /// probably in Dominance.cpp.
-  Instruction *findAncestorInstInBlock(const Instruction &inst);
+  Instruction *findAncestorInstInBlock(Instruction &inst);
 
   /// This drops all operand uses from instructions within this block, which is
   /// an essential step in breaking cyclic dependences between references when

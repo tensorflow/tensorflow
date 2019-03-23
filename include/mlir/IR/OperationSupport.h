@@ -86,8 +86,8 @@ public:
   /// This hook implements the AsmPrinter for this operation.
   void (&printAssembly)(Instruction *op, OpAsmPrinter *p);
 
-  /// This hook implements the verifier for this operation.  It should emit an
-  /// error message and returns true if a problem is detected, or return false
+  /// This hook implements the verifier for this operation.  It should emits an
+  /// error message and returns true if a problem is detected, or returns false
   /// if everything is ok.
   bool (&verifyInvariants)(Instruction *op);
 

@@ -37,7 +37,7 @@ public:
   /// Inserts a new mapping for 'from' to 'to'. If there is an existing mapping,
   /// it is overwritten.
   void map(Block *from, Block *to) { valueMap[from] = to; }
-  void map(const Value *from, Value *to) { valueMap[from] = to; }
+  void map(Value *from, Value *to) { valueMap[from] = to; }
 
   /// Erases a mapping for 'from'.
   void erase(const IRObjectWithUseList *from) { valueMap.erase(from); }
@@ -52,7 +52,7 @@ public:
   Block *lookupOrNull(Block *from) const {
     return lookupOrValue(from, (Block *)nullptr);
   }
-  Value *lookupOrNull(const Value *from) const {
+  Value *lookupOrNull(Value *from) const {
     return lookupOrValue(from, (Value *)nullptr);
   }
 

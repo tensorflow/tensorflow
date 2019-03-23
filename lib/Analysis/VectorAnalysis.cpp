@@ -180,7 +180,7 @@ AffineMap mlir::makePermutationMap(
                               enclosingLoopToVectorDim);
 }
 
-bool mlir::matcher::operatesOnSuperVectors(const Instruction &opInst,
+bool mlir::matcher::operatesOnSuperVectors(Instruction &opInst,
                                            VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,

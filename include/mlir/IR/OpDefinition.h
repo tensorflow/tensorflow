@@ -103,7 +103,7 @@ private:
 class OpState {
 public:
   /// Return the operation that this refers to.
-  const Instruction *getInstruction() const { return state; }
+  Instruction *getInstruction() const { return state; }
   Instruction *getInstruction() { return state; }
 
   /// The source location the operation was defined or derived from.
@@ -176,7 +176,7 @@ protected:
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
-  explicit OpState(const Instruction *state)
+  explicit OpState(Instruction *state)
       : state(const_cast<Instruction *>(state)) {}
 
 private:
@@ -327,22 +327,22 @@ namespace OpTrait {
 // corresponding trait classes.  This avoids them being template
 // instantiated/duplicated.
 namespace impl {
-bool verifyZeroOperands(const Instruction *op);
-bool verifyOneOperand(const Instruction *op);
-bool verifyNOperands(const Instruction *op, unsigned numOperands);
-bool verifyAtLeastNOperands(const Instruction *op, unsigned numOperands);
-bool verifyOperandsAreIntegerLike(const Instruction *op);
-bool verifySameTypeOperands(const Instruction *op);
-bool verifyZeroResult(const Instruction *op);
-bool verifyOneResult(const Instruction *op);
-bool verifyNResults(const Instruction *op, unsigned numOperands);
-bool verifyAtLeastNResults(const Instruction *op, unsigned numOperands);
-bool verifySameOperandsAndResultShape(const Instruction *op);
-bool verifySameOperandsAndResultType(const Instruction *op);
-bool verifyResultsAreBoolLike(const Instruction *op);
-bool verifyResultsAreFloatLike(const Instruction *op);
-bool verifyResultsAreIntegerLike(const Instruction *op);
-bool verifyIsTerminator(const Instruction *op);
+bool verifyZeroOperands(Instruction *op);
+bool verifyOneOperand(Instruction *op);
+bool verifyNOperands(Instruction *op, unsigned numOperands);
+bool verifyAtLeastNOperands(Instruction *op, unsigned numOperands);
+bool verifyOperandsAreIntegerLike(Instruction *op);
+bool verifySameTypeOperands(Instruction *op);
+bool verifyZeroResult(Instruction *op);
+bool verifyOneResult(Instruction *op);
+bool verifyNResults(Instruction *op, unsigned numOperands);
+bool verifyAtLeastNResults(Instruction *op, unsigned numOperands);
+bool verifySameOperandsAndResultShape(Instruction *op);
+bool verifySameOperandsAndResultType(Instruction *op);
+bool verifyResultsAreBoolLike(Instruction *op);
+bool verifyResultsAreFloatLike(Instruction *op);
+bool verifyResultsAreIntegerLike(Instruction *op);
+bool verifyIsTerminator(Instruction *op);
 } // namespace impl
 
 /// Helper class for implementing traits.  Clients are not expected to interact
@@ -361,13 +361,13 @@ protected:
     auto *base = static_cast<OpState *>(concrete);
     return base->getInstruction();
   }
-  const Instruction *getInstruction() const {
+  Instruction *getInstruction() const {
     return const_cast<TraitBase *>(this)->getInstruction();
   }
 
   /// Provide default implementations of trait hooks.  This allows traits to
   /// provide exactly the overrides they care about.
-  static bool verifyTrait(const Instruction *op) { return false; }
+  static bool verifyTrait(Instruction *op) { return false; }
   static AbstractOperation::OperationProperties getTraitProperties() {
     return 0;
   }
@@ -378,7 +378,7 @@ protected:
 template <typename ConcreteType>
 class ZeroOperands : public TraitBase<ConcreteType, ZeroOperands> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyZeroOperands(op);
   }
 
@@ -393,17 +393,13 @@ private:
 template <typename ConcreteType>
 class OneOperand : public TraitBase<ConcreteType, OneOperand> {
 public:
-  const Value *getOperand() const {
-    return this->getInstruction()->getOperand(0);
-  }
-
-  Value *getOperand() { return this->getInstruction()->getOperand(0); }
+  Value *getOperand() const { return this->getInstruction()->getOperand(0); }
 
   void setOperand(Value *value) {
     this->getInstruction()->setOperand(0, value);
   }
 
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyOneOperand(op);
   }
 };
@@ -418,11 +414,7 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, NOperands<N>::Impl> {
   public:
-    const Value *getOperand(unsigned i) const {
-      return this->getInstruction()->getOperand(i);
-    }
-
-    Value *getOperand(unsigned i) {
+    Value *getOperand(unsigned i) const {
       return this->getInstruction()->getOperand(i);
     }
 
@@ -430,7 +422,7 @@ public:
       this->getInstruction()->setOperand(i, value);
     }
 
-    static bool verifyTrait(const Instruction *op) {
+    static bool verifyTrait(Instruction *op) {
       return impl::verifyNOperands(op, N);
     }
   };
@@ -449,11 +441,7 @@ public:
     unsigned getNumOperands() const {
       return this->getInstruction()->getNumOperands();
     }
-    const Value *getOperand(unsigned i) const {
-      return this->getInstruction()->getOperand(i);
-    }
-
-    Value *getOperand(unsigned i) {
+    Value *getOperand(unsigned i) const {
       return this->getInstruction()->getOperand(i);
     }
 
@@ -473,19 +461,7 @@ public:
       return this->getInstruction()->getOperands();
     }
 
-    // Support const operand iteration.
-    using const_operand_iterator = Instruction::const_operand_iterator;
-    const_operand_iterator operand_begin() const {
-      return this->getInstruction()->operand_begin();
-    }
-    const_operand_iterator operand_end() const {
-      return this->getInstruction()->operand_end();
-    }
-    llvm::iterator_range<const_operand_iterator> getOperands() const {
-      return this->getInstruction()->getOperands();
-    }
-
-    static bool verifyTrait(const Instruction *op) {
+    static bool verifyTrait(Instruction *op) {
       return impl::verifyAtLeastNOperands(op, N);
     }
   };
@@ -500,11 +476,7 @@ public:
     return this->getInstruction()->getNumOperands();
   }
 
-  const Value *getOperand(unsigned i) const {
-    return this->getInstruction()->getOperand(i);
-  }
-
-  Value *getOperand(unsigned i) {
+  Value *getOperand(unsigned i) const {
     return this->getInstruction()->getOperand(i);
   }
 
@@ -522,19 +494,6 @@ public:
     return this->getInstruction()->operand_end();
   }
   operand_range getOperands() { return this->getInstruction()->getOperands(); }
-
-  // Support const operand iteration.
-  using const_operand_iterator = Instruction::const_operand_iterator;
-  using const_operand_range = Instruction::const_operand_range;
-  const_operand_iterator operand_begin() const {
-    return this->getInstruction()->operand_begin();
-  }
-  const_operand_iterator operand_end() const {
-    return this->getInstruction()->operand_end();
-  }
-  const_operand_range getOperands() const {
-    return this->getInstruction()->getOperands();
-  }
 };
 
 /// This class provides return value APIs for ops that are known to have
@@ -542,7 +501,7 @@ public:
 template <typename ConcreteType>
 class ZeroResult : public TraitBase<ConcreteType, ZeroResult> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyZeroResult(op);
   }
 };
@@ -552,10 +511,7 @@ public:
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
-  Value *getResult() { return this->getInstruction()->getResult(0); }
-  const Value *getResult() const {
-    return this->getInstruction()->getResult(0);
-  }
+  Value *getResult() const { return this->getInstruction()->getResult(0); }
 
   Type getType() const { return getResult()->getType(); }
 
@@ -566,9 +522,7 @@ public:
     getResult()->replaceAllUsesWith(newValue);
   }
 
-  static bool verifyTrait(const Instruction *op) {
-    return impl::verifyOneResult(op);
-  }
+  static bool verifyTrait(Instruction *op) { return impl::verifyOneResult(op); }
 };
 
 /// This class provides the API for ops that are known to have a specified
@@ -583,17 +537,13 @@ public:
   public:
     static unsigned getNumResults() { return N; }
 
-    const Value *getResult(unsigned i) const {
-      return this->getInstruction()->getResult(i);
-    }
-
-    Value *getResult(unsigned i) {
+    Value *getResult(unsigned i) const {
       return this->getInstruction()->getResult(i);
     }
 
     Type getType(unsigned i) const { return getResult(i)->getType(); }
 
-    static bool verifyTrait(const Instruction *op) {
+    static bool verifyTrait(Instruction *op) {
       return impl::verifyNResults(op, N);
     }
   };
@@ -609,17 +559,13 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, AtLeastNResults<N>::Impl> {
   public:
-    const Value *getResult(unsigned i) const {
-      return this->getInstruction()->getResult(i);
-    }
-
-    Value *getResult(unsigned i) {
+    Value *getResult(unsigned i) const {
       return this->getInstruction()->getResult(i);
     }
 
     Type getType(unsigned i) const { return getResult(i)->getType(); }
 
-    static bool verifyTrait(const Instruction *op) {
+    static bool verifyTrait(Instruction *op) {
       return impl::verifyAtLeastNResults(op, N);
     }
   };
@@ -634,11 +580,9 @@ public:
     return this->getInstruction()->getNumResults();
   }
 
-  const Value *getResult(unsigned i) const {
+  Value *getResult(unsigned i) const {
     return this->getInstruction()->getResult(i);
   }
-
-  Value *getResult(unsigned i) { return this->getInstruction()->getResult(i); }
 
   void setResult(unsigned i, Value *value) {
     this->getInstruction()->setResult(i, value);
@@ -653,18 +597,6 @@ public:
   llvm::iterator_range<result_iterator> getResults() {
     return this->getInstruction()->getResults();
   }
-
-  // Support const result iteration.
-  using const_result_iterator = Instruction::const_result_iterator;
-  const_result_iterator result_begin() const {
-    return this->getInstruction()->result_begin();
-  }
-  const_result_iterator result_end() const {
-    return this->getInstruction()->result_end();
-  }
-  llvm::iterator_range<const_result_iterator> getResults() const {
-    return this->getInstruction()->getResults();
-  }
 };
 
 /// This class provides verification for ops that are known to have the same
@@ -674,7 +606,7 @@ template <typename ConcreteType>
 class SameOperandsAndResultShape
     : public TraitBase<ConcreteType, SameOperandsAndResultShape> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifySameOperandsAndResultShape(op);
   }
 };
@@ -689,7 +621,7 @@ template <typename ConcreteType>
 class SameOperandsAndResultType
     : public TraitBase<ConcreteType, SameOperandsAndResultType> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifySameOperandsAndResultType(op);
   }
 };
@@ -699,7 +631,7 @@ public:
 template <typename ConcreteType>
 class ResultsAreBoolLike : public TraitBase<ConcreteType, ResultsAreBoolLike> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyResultsAreBoolLike(op);
   }
 };
@@ -710,7 +642,7 @@ template <typename ConcreteType>
 class ResultsAreFloatLike
     : public TraitBase<ConcreteType, ResultsAreFloatLike> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyResultsAreFloatLike(op);
   }
 };
@@ -721,7 +653,7 @@ template <typename ConcreteType>
 class ResultsAreIntegerLike
     : public TraitBase<ConcreteType, ResultsAreIntegerLike> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyResultsAreIntegerLike(op);
   }
 };
@@ -752,7 +684,7 @@ template <typename ConcreteType>
 class OperandsAreIntegerLike
     : public TraitBase<ConcreteType, OperandsAreIntegerLike> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyOperandsAreIntegerLike(op);
   }
 };
@@ -762,7 +694,7 @@ public:
 template <typename ConcreteType>
 class SameTypeOperands : public TraitBase<ConcreteType, SameTypeOperands> {
 public:
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifySameTypeOperands(op);
   }
 };
@@ -775,7 +707,7 @@ public:
     return static_cast<AbstractOperation::OperationProperties>(
         OperationProperty::Terminator);
   }
-  static bool verifyTrait(const Instruction *op) {
+  static bool verifyTrait(Instruction *op) {
     return impl::verifyIsTerminator(op);
   }
 
@@ -820,10 +752,7 @@ class Op : public OpState,
                                  Traits<ConcreteType>...>::value> {
 public:
   /// Return the operation that this refers to.
-  const Instruction *getInstruction() const {
-    return OpState::getInstruction();
-  }
-  Instruction *getInstruction() { return OpState::getInstruction(); }
+  Instruction *getInstruction() const { return OpState::getInstruction(); }
 
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in
@@ -875,20 +804,20 @@ public:
   using ConcreteOpType = ConcreteType;
 
 protected:
-  explicit Op(const Instruction *state) : OpState(state) {}
+  explicit Op(Instruction *state) : OpState(state) {}
 
 private:
   template <typename... Types> struct BaseVerifier;
 
   template <typename First, typename... Rest>
   struct BaseVerifier<First, Rest...> {
-    static bool verifyTrait(const Instruction *op) {
+    static bool verifyTrait(Instruction *op) {
       return First::verifyTrait(op) || BaseVerifier<Rest...>::verifyTrait(op);
     }
   };
 
   template <typename...> struct BaseVerifier {
-    static bool verifyTrait(const Instruction *op) { return false; }
+    static bool verifyTrait(Instruction *op) { return false; }
   };
 
   template <typename... Types> struct BaseProperties;
@@ -917,7 +846,7 @@ bool parseBinaryOp(OpAsmParser *parser, OperationState *result);
 // Prints the given binary `op` in custom assembly form if both the two operands
 // and the result have the same time. Otherwise, prints the generic assembly
 // form.
-void printBinaryOp(const Instruction *op, OpAsmPrinter *p);
+void printBinaryOp(Instruction *op, OpAsmPrinter *p);
 } // namespace impl
 
 // These functions are out-of-line implementations of the methods in CastOp,
@@ -926,7 +855,7 @@ namespace impl {
 void buildCastOp(Builder *builder, OperationState *result, Value *source,
                  Type destType);
 bool parseCastOp(OpAsmParser *parser, OperationState *result);
-void printCastOp(const Instruction *op, OpAsmPrinter *p);
+void printCastOp(Instruction *op, OpAsmPrinter *p);
 } // namespace impl
 
 /// This template is used for operations that are cast operations, that have a
@@ -951,7 +880,7 @@ public:
   }
 
 protected:
-  explicit CastOp(const Instruction *state)
+  explicit CastOp(Instruction *state)
       : Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
            OpTrait::HasNoSideEffect, Traits...>(state) {}
 };

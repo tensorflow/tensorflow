@@ -477,7 +477,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
 
   // Get to the first load, store, or for op.
   auto curBegin =
-      std::find_if(block->begin(), block->end(), [&](const Instruction &inst) {
+      std::find_if(block->begin(), block->end(), [&](Instruction &inst) {
         return inst.isa<LoadOp>() || inst.isa<StoreOp>() ||
                inst.isa<AffineForOp>();
       });

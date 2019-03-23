@@ -97,7 +97,7 @@ public:
 
   /// Return the owner of this operand.
   Instruction *getOwner() { return owner; }
-  const Instruction *getOwner() const { return owner; }
+  Instruction *getOwner() const { return owner; }
 
   /// \brief Remove this use of the operand.
   void drop() {
@@ -176,13 +176,13 @@ public:
       : IROperand(owner, value) {}
 
   /// Return the current value being used by this operand.
-  IRValueTy *get() const { return (IRValueTy *)IROperand::get(); }
+  IRValueTy *get() { return (IRValueTy *)IROperand::get(); }
 
   /// Set the current value being used by this operand.
   void set(IRValueTy *newValue) { IROperand::set(newValue); }
 
   /// Return which operand this is in the operand list of the User.
-  unsigned getOperandNumber() const;
+  unsigned getOperandNumber();
 };
 
 /// An iterator over all uses of a ValueBase.

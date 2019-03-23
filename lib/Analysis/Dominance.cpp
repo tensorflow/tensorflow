@@ -101,8 +101,7 @@ template class mlir::detail::DominanceInfoBase</*IsPostDom=*/false>;
 //===----------------------------------------------------------------------===//
 
 /// Return true if instruction A properly dominates instruction B.
-bool DominanceInfo::properlyDominates(const Instruction *a,
-                                      const Instruction *b) {
+bool DominanceInfo::properlyDominates(Instruction *a, Instruction *b) {
   auto *aBlock = a->getBlock(), *bBlock = b->getBlock();
 
   // If the blocks are the same, then check if b is before a in the block.
@@ -122,7 +121,7 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
 }
 
 /// Return true if value A properly dominates instruction B.
-bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
+bool DominanceInfo::properlyDominates(Value *a, Instruction *b) {
   if (auto *aInst = a->getDefiningInst())
     return properlyDominates(aInst, b);
 
@@ -136,8 +135,7 @@ bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
 //===----------------------------------------------------------------------===//
 
 /// Returns true if statement 'a' properly postdominates statement b.
-bool PostDominanceInfo::properlyPostDominates(const Instruction *a,
-                                              const Instruction *b) {
+bool PostDominanceInfo::properlyPostDominates(Instruction *a, Instruction *b) {
   auto *aBlock = a->getBlock(), *bBlock = b->getBlock();
 
   // If the blocks are the same, check if b is before a in the block.
@@ -145,7 +143,7 @@ bool PostDominanceInfo::properlyPostDominates(const Instruction *a,
     return b->isBeforeInBlock(a);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
-  if (const auto *bAncestor = a->getBlock()->findAncestorInstInBlock(*b))
+  if (auto *bAncestor = a->getBlock()->findAncestorInstInBlock(*b))
     // Since we already know that aBlock != bBlock, here bAncestor != b.
     // a and bAncestor are in the same block; check if 'a' postdominates
     // bAncestor.

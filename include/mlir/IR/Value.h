@@ -48,9 +48,9 @@ public:
 
   ~Value() {}
 
-  Kind getKind() const { return typeAndKind.getInt(); }
+  Kind getKind() { return typeAndKind.getInt(); }
 
-  Type getType() const { return typeAndKind.getPointer(); }
+  Type getType() { return typeAndKind.getPointer(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
@@ -60,26 +60,23 @@ public:
   }
 
   /// Return the function that this Value is defined in.
-  Function *getFunction() const;
+  Function *getFunction();
 
   /// If this value is the result of an operation, return the instruction
   /// that defines it.
   Instruction *getDefiningInst();
-  const Instruction *getDefiningInst() const {
-    return const_cast<Value *>(this)->getDefiningInst();
-  }
 
   using use_iterator = ValueUseIterator<InstOperand>;
   using use_range = llvm::iterator_range<use_iterator>;
 
-  inline use_iterator use_begin() const;
-  inline use_iterator use_end() const;
+  inline use_iterator use_begin();
+  inline use_iterator use_end();
 
   /// Returns a range of all uses, which is useful for iterating over all uses.
-  inline use_range getUses() const;
+  inline use_range getUses();
 
-  void print(raw_ostream &os) const;
-  void dump() const;
+  void print(raw_ostream &os);
+  void dump();
 
 protected:
   Value(Kind kind, Type type) : typeAndKind(type, kind) {}
@@ -88,21 +85,19 @@ private:
   const llvm::PointerIntPair<Type, 1, Kind> typeAndKind;
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, const Value &value) {
+inline raw_ostream &operator<<(raw_ostream &os, Value &value) {
   value.print(os);
   return os;
 }
 
 // Utility functions for iterating through Value uses.
-inline auto Value::use_begin() const -> use_iterator {
+inline auto Value::use_begin() -> use_iterator {
   return use_iterator((InstOperand *)getFirstUse());
 }
 
-inline auto Value::use_end() const -> use_iterator {
-  return use_iterator(nullptr);
-}
+inline auto Value::use_end() -> use_iterator { return use_iterator(nullptr); }
 
-inline auto Value::getUses() const -> llvm::iterator_range<use_iterator> {
+inline auto Value::getUses() -> llvm::iterator_range<use_iterator> {
   return {use_begin(), use_end()};
 }
 
@@ -110,19 +105,19 @@ inline auto Value::getUses() const -> llvm::iterator_range<use_iterator> {
 class BlockArgument : public Value {
 public:
   static bool classof(const Value *value) {
-    return value->getKind() == Kind::BlockArgument;
+    return const_cast<Value *>(value)->getKind() == Kind::BlockArgument;
   }
 
   /// Return the function that this argument is defined in.
-  Function *getFunction() const;
+  Function *getFunction();
 
-  Block *getOwner() const { return owner; }
+  Block *getOwner() { return owner; }
 
   /// Returns the number of this argument.
-  unsigned getArgNumber() const;
+  unsigned getArgNumber();
 
   /// Returns if the current argument is a function argument.
-  bool isFunctionArgument() const;
+  bool isFunctionArgument();
 
 private:
   friend class Block; // For access to private constructor.
@@ -142,14 +137,13 @@ public:
       : Value(Value::Kind::InstResult, type), owner(owner) {}
 
   static bool classof(const Value *value) {
-    return value->getKind() == Kind::InstResult;
+    return const_cast<Value *>(value)->getKind() == Kind::InstResult;
   }
 
   Instruction *getOwner() { return owner; }
-  const Instruction *getOwner() const { return owner; }
 
   /// Returns the number of this result.
-  unsigned getResultNumber() const;
+  unsigned getResultNumber();
 
 private:
   /// The owner of this operand.

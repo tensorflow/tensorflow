@@ -677,7 +677,7 @@ LogicalResult FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
 }
 
 // Turn a dimension into a symbol.
-static void turnDimIntoSymbol(FlatAffineConstraints *cst, const Value &id) {
+static void turnDimIntoSymbol(FlatAffineConstraints *cst, Value &id) {
   unsigned pos;
   if (cst->findId(id, &pos) && pos < cst->getNumDimIds()) {
     swapId(cst, pos, cst->getNumDimIds() - 1);
@@ -686,7 +686,7 @@ static void turnDimIntoSymbol(FlatAffineConstraints *cst, const Value &id) {
 }
 
 // Turn a symbol into a dimension.
-static void turnSymbolIntoDim(FlatAffineConstraints *cst, const Value &id) {
+static void turnSymbolIntoDim(FlatAffineConstraints *cst, Value &id) {
   unsigned pos;
   if (cst->findId(id, &pos) && pos >= cst->getNumDimIds() &&
       pos < cst->getNumDimAndSymbolIds()) {
@@ -1669,7 +1669,7 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
   if (localVarCst.getNumLocalIds() > 0) {
     // Set values for localVarCst.
     localVarCst.setIdValues(0, localVarCst.getNumDimAndSymbolIds(), operands);
-    for (const auto *operand : operands) {
+    for (auto *operand : operands) {
       unsigned pos;
       if (findId(*operand, &pos)) {
         if (pos >= getNumDimIds() && pos < getNumDimAndSymbolIds()) {
@@ -1689,7 +1689,7 @@ FlatAffineConstraints::addLowerOrUpperBound(unsigned pos, AffineMap boundMap,
   // this here since the constraint system changes after a bound is added.
   SmallVector<unsigned, 8> positions;
   unsigned numOperands = operands.size();
-  for (const auto *operand : operands) {
+  for (auto *operand : operands) {
     unsigned pos;
     if (!findId(*operand, &pos))
       assert(0 && "expected to be found");
@@ -1859,7 +1859,7 @@ void FlatAffineConstraints::addLocalFloorDiv(ArrayRef<int64_t> dividend,
   addInequality(bound);
 }
 
-bool FlatAffineConstraints::findId(const Value &id, unsigned *pos) const {
+bool FlatAffineConstraints::findId(Value &id, unsigned *pos) const {
   unsigned i = 0;
   for (const auto &mayBeId : ids) {
     if (mayBeId.hasValue() && mayBeId.getValue() == &id) {
@@ -1871,7 +1871,7 @@ bool FlatAffineConstraints::findId(const Value &id, unsigned *pos) const {
   return false;
 }
 
-bool FlatAffineConstraints::containsId(const Value &id) const {
+bool FlatAffineConstraints::containsId(Value &id) const {
   return llvm::any_of(ids, [&](const Optional<Value *> &mayBeId) {
     return mayBeId.hasValue() && mayBeId.getValue() == &id;
   });
@@ -1896,7 +1896,7 @@ void FlatAffineConstraints::setIdToConstant(unsigned pos, int64_t val) {
 
 /// Sets the specified identifer to a constant value; asserts if the id is not
 /// found.
-void FlatAffineConstraints::setIdToConstant(const Value &id, int64_t val) {
+void FlatAffineConstraints::setIdToConstant(Value &id, int64_t val) {
   unsigned pos;
   if (!findId(id, &pos))
     // This is a pre-condition for this method.

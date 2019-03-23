@@ -66,18 +66,18 @@ public:
   using super::super;
 
   /// Return true if instruction A properly dominates instruction B.
-  bool properlyDominates(const Instruction *a, const Instruction *b);
+  bool properlyDominates(Instruction *a, Instruction *b);
 
   /// Return true if instruction A dominates instruction B.
-  bool dominates(const Instruction *a, const Instruction *b) {
+  bool dominates(Instruction *a, Instruction *b) {
     return a == b || properlyDominates(a, b);
   }
 
   /// Return true if value A properly dominates instruction B.
-  bool properlyDominates(const Value *a, const Instruction *b);
+  bool properlyDominates(Value *a, Instruction *b);
 
   /// Return true if instruction A dominates instruction B.
-  bool dominates(const Value *a, const Instruction *b) {
+  bool dominates(Value *a, Instruction *b) {
     return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
   }
 
@@ -98,10 +98,10 @@ public:
   using super::super;
 
   /// Return true if instruction A properly postdominates instruction B.
-  bool properlyPostDominates(const Instruction *a, const Instruction *b);
+  bool properlyPostDominates(Instruction *a, Instruction *b);
 
   /// Return true if instruction A postdominates instruction B.
-  bool postDominates(const Instruction *a, const Instruction *b) {
+  bool postDominates(Instruction *a, Instruction *b) {
     return a == b || properlyPostDominates(a, b);
   }
 

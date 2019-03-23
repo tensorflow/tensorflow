@@ -52,7 +52,7 @@ namespace {
 ///
 class FuncVerifier {
 public:
-  bool failure(const Twine &message, const Instruction &value) {
+  bool failure(const Twine &message, Instruction &value) {
     return value.emitError(message);
   }
 
@@ -108,9 +108,9 @@ public:
 
   bool verify();
   bool verifyBlock(Block &block, bool isTopLevel);
-  bool verifyOperation(const Instruction &op);
+  bool verifyOperation(Instruction &op);
   bool verifyDominance(Block &block);
-  bool verifyInstDominance(const Instruction &inst);
+  bool verifyInstDominance(Instruction &inst);
 
   explicit FuncVerifier(Function &fn)
       : fn(fn), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
@@ -270,12 +270,12 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
 }
 
 /// Check the invariants of the specified operation.
-bool FuncVerifier::verifyOperation(const Instruction &op) {
+bool FuncVerifier::verifyOperation(Instruction &op) {
   if (op.getFunction() != &fn)
     return failure("operation in the wrong function", op);
 
   // Check that operands are non-nil and structurally ok.
-  for (const auto *operand : op.getOperands()) {
+  for (auto *operand : op.getOperands()) {
     if (!operand)
       return failure("null operand found", op);
 
@@ -322,7 +322,7 @@ bool FuncVerifier::verifyDominance(Block &block) {
   return false;
 }
 
-bool FuncVerifier::verifyInstDominance(const Instruction &inst) {
+bool FuncVerifier::verifyInstDominance(Instruction &inst) {
   // Check that operands properly dominate this use.
   for (unsigned operandNo = 0, e = inst.getNumOperands(); operandNo != e;
        ++operandNo) {

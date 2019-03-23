@@ -92,13 +92,6 @@ VectorTransferReadOp::getIndices() {
   return {begin, end};
 }
 
-llvm::iterator_range<Instruction::const_operand_iterator>
-VectorTransferReadOp::getIndices() const {
-  auto begin = getInstruction()->operand_begin() + Offsets::FirstIndexOffset;
-  auto end = begin + getMemRefType().getRank();
-  return {begin, end};
-}
-
 Optional<Value *> VectorTransferReadOp::getPaddingValue() {
   auto memRefRank = getMemRefType().getRank();
   if (getNumOperands() <= Offsets::FirstIndexOffset + memRefRank) {
@@ -107,16 +100,7 @@ Optional<Value *> VectorTransferReadOp::getPaddingValue() {
   return Optional<Value *>(getOperand(Offsets::FirstIndexOffset + memRefRank));
 }
 
-Optional<const Value *> VectorTransferReadOp::getPaddingValue() const {
-  auto memRefRank = getMemRefType().getRank();
-  if (getNumOperands() <= Offsets::FirstIndexOffset + memRefRank) {
-    return None;
-  }
-  return Optional<const Value *>(
-      getOperand(Offsets::FirstIndexOffset + memRefRank));
-}
-
-AffineMap VectorTransferReadOp::getPermutationMap() const {
+AffineMap VectorTransferReadOp::getPermutationMap() {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
@@ -134,7 +118,7 @@ void VectorTransferReadOp::print(OpAsmPrinter *p) {
   // Construct the FunctionType and print it.
   llvm::SmallVector<Type, 8> inputs{getMemRefType()};
   // Must have at least one actual index, see verify.
-  const Value *firstIndex = *(getIndices().begin());
+  Value *firstIndex = *getIndices().begin();
   Type indexType = firstIndex->getType();
   inputs.append(getMemRefType().getRank(), indexType);
   if (optionalPaddingValue) {
@@ -309,14 +293,7 @@ VectorTransferWriteOp::getIndices() {
   return {begin, end};
 }
 
-llvm::iterator_range<Instruction::const_operand_iterator>
-VectorTransferWriteOp::getIndices() const {
-  auto begin = getInstruction()->operand_begin() + Offsets::FirstIndexOffset;
-  auto end = begin + getMemRefType().getRank();
-  return {begin, end};
-}
-
-AffineMap VectorTransferWriteOp::getPermutationMap() const {
+AffineMap VectorTransferWriteOp::getPermutationMap() {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 

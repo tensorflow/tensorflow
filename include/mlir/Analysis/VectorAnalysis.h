@@ -135,7 +135,7 @@ namespace matcher {
 /// TODO(ntv): this could all be much simpler if we added a bit that a vector
 /// type to mark that a vector is a strict super-vector but it still does not
 /// warrant adding even 1 extra bit in the IR for now.
-bool operatesOnSuperVectors(const Instruction &inst, VectorType subVectorType);
+bool operatesOnSuperVectors(Instruction &inst, VectorType subVectorType);
 
 } // end namespace matcher
 } // end namespace mlir

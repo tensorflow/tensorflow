@@ -48,7 +48,7 @@ public:
   virtual raw_ostream &getStream() const = 0;
 
   /// Print implementations for various things an operation contains.
-  virtual void printOperand(const Value *value) = 0;
+  virtual void printOperand(Value *value) = 0;
 
   /// Print a comma separated list of operands.
   template <typename ContainerType>
@@ -76,8 +76,7 @@ public:
 
   /// Print a successor, and use list, of a terminator operation given the
   /// terminator and the successor index.
-  virtual void printSuccessorAndUseList(const Instruction *term,
-                                        unsigned index) = 0;
+  virtual void printSuccessorAndUseList(Instruction *term, unsigned index) = 0;
 
   /// If the specified operation has attributes, print out an attribute
   /// dictionary with their values.  elidedAttrs allows the client to ignore
@@ -87,7 +86,7 @@ public:
                                      ArrayRef<StringRef> elidedAttrs = {}) = 0;
 
   /// Print the entire operation with the default generic assembly form.
-  virtual void printGenericOp(const Instruction *op) = 0;
+  virtual void printGenericOp(Instruction *op) = 0;
 
   /// Prints a region.
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true) = 0;
@@ -98,7 +97,7 @@ private:
 };
 
 // Make the implementations convenient to use.
-inline OpAsmPrinter &operator<<(OpAsmPrinter &p, const Value &value) {
+inline OpAsmPrinter &operator<<(OpAsmPrinter &p, Value &value) {
   p.printOperand(&value);
   return p;
 }
