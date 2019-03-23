@@ -31,14 +31,14 @@ func @simple_loop() {
   "llvm.br"()[^bb1] : () -> ()
 
 // Constants are inlined in LLVM rather than a separate instruction.
-// CHECK: <label>:[[SIMPLE_bb1]]:
+// CHECK: [[SIMPLE_bb1]]:
 // CHECK-NEXT: br label %[[SIMPLE_bb2:[0-9]+]]
 ^bb1:   // pred: ^bb0
   %0 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
   %1 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
   "llvm.br"()[^bb2(%0 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[SIMPLE_bb2]]:
+// CHECK: [[SIMPLE_bb2]]:
 // CHECK-NEXT:   %{{[0-9]+}} = phi i64 [ %{{[0-9]+}}, %[[SIMPLE_bb3:[0-9]+]] ], [ 1, %[[SIMPLE_bb1]] ]
 // CHECK-NEXT:   %{{[0-9]+}} = icmp slt i64 %{{[0-9]+}}, 42
 // CHECK-NEXT:   br i1 %{{[0-9]+}}, label %[[SIMPLE_bb3]], label %[[SIMPLE_bb4:[0-9]+]]
@@ -46,7 +46,7 @@ func @simple_loop() {
   %3 = "llvm.icmp"(%2, %1) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%3)[^bb3, ^bb4] : (!llvm<"i1">) -> ()
 
-// CHECK: ; <label>:[[SIMPLE_bb3]]:
+// CHECK: [[SIMPLE_bb3]]:
 // CHECK-NEXT:   call void @body(i64 %{{[0-9]+}})
 // CHECK-NEXT:   %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
 // CHECK-NEXT:   br label %[[SIMPLE_bb2]]
@@ -56,7 +56,7 @@ func @simple_loop() {
   %5 = "llvm.add"(%2, %4) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb2(%5 : !llvm<"i64">)] : () -> ()
 
-// CHECK: ; <label>:[[SIMPLE_bb4]]:
+// CHECK: [[SIMPLE_bb4]]:
 // CHECK-NEXT:    ret void
 ^bb4:   // pred: ^bb2
   "llvm.return"() : () -> ()
@@ -100,14 +100,14 @@ func @func_args(%arg0: !llvm<"i32">, %arg1: !llvm<"i32">) -> !llvm<"i32"> {
   %0 = "llvm.constant"() {value: 0 : i32} : () -> !llvm<"i32">
   "llvm.br"()[^bb1] : () -> ()
 
-// CHECK: <label>:[[ARGS_bb1]]:
+// CHECK: [[ARGS_bb1]]:
 // CHECK-NEXT: br label %[[ARGS_bb2:[0-9]+]]
 ^bb1:   // pred: ^bb0
   %1 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
   %2 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
   "llvm.br"()[^bb2(%1 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[ARGS_bb2]]:
+// CHECK: [[ARGS_bb2]]:
 // CHECK-NEXT:   %5 = phi i64 [ %12, %[[ARGS_bb3:[0-9]+]] ], [ 0, %[[ARGS_bb1]] ]
 // CHECK-NEXT:   %6 = icmp slt i64 %5, 42
 // CHECK-NEXT:   br i1 %6, label %[[ARGS_bb3]], label %[[ARGS_bb4:[0-9]+]]
@@ -115,7 +115,7 @@ func @func_args(%arg0: !llvm<"i32">, %arg1: !llvm<"i32">) -> !llvm<"i32"> {
   %4 = "llvm.icmp"(%3, %2) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%4)[^bb3, ^bb4] : (!llvm<"i1">) -> ()
 
-// CHECK: <label>:[[ARGS_bb3]]:
+// CHECK: [[ARGS_bb3]]:
 // CHECK-NEXT:   %8 = call i64 @body_args(i64 %5)
 // CHECK-NEXT:   %9 = call i32 @other(i64 %8, i32 %0)
 // CHECK-NEXT:   %10 = call i32 @other(i64 %8, i32 %9)
@@ -131,7 +131,7 @@ func @func_args(%arg0: !llvm<"i32">, %arg1: !llvm<"i32">) -> !llvm<"i32"> {
   %10 = "llvm.add"(%3, %9) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb2(%10 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[ARGS_bb4]]:
+// CHECK: [[ARGS_bb4]]:
 // CHECK-NEXT:   %14 = call i32 @other(i64 0, i32 0)
 // CHECK-NEXT:   ret i32 %14
 ^bb4:   // pred: ^bb2
@@ -154,14 +154,14 @@ func @post(!llvm<"i64">)
 func @imperfectly_nested_loops() {
   "llvm.br"()[^bb1] : () -> ()
 
-// CHECK: <label>:[[IMPER_bb1]]:
+// CHECK: [[IMPER_bb1]]:
 // CHECK-NEXT:   br label %[[IMPER_bb2:[0-9]+]]
 ^bb1:   // pred: ^bb0
   %0 = "llvm.constant"() {value: 0 : index} : () -> !llvm<"i64">
   %1 = "llvm.constant"() {value: 42 : index} : () -> !llvm<"i64">
   "llvm.br"()[^bb2(%0 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[IMPER_bb2]]:
+// CHECK: [[IMPER_bb2]]:
 // CHECK-NEXT:   %3 = phi i64 [ %13, %[[IMPER_bb7:[0-9]+]] ], [ 0, %[[IMPER_bb1]] ]
 // CHECK-NEXT:   %4 = icmp slt i64 %3, 42
 // CHECK-NEXT:   br i1 %4, label %[[IMPER_bb3:[0-9]+]], label %[[IMPER_bb8:[0-9]+]]
@@ -169,21 +169,21 @@ func @imperfectly_nested_loops() {
   %3 = "llvm.icmp"(%2, %1) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%3)[^bb3, ^bb8] : (!llvm<"i1">) -> ()
 
-// CHECK: <label>:[[IMPER_bb3]]:
+// CHECK: [[IMPER_bb3]]:
 // CHECK-NEXT:   call void @pre(i64 %3)
 // CHECK-NEXT:   br label %[[IMPER_bb4:[0-9]+]]
 ^bb3:   // pred: ^bb2
   "llvm.call"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   "llvm.br"()[^bb4] : () -> ()
 
-// CHECK: <label>:[[IMPER_bb4]]:
+// CHECK: [[IMPER_bb4]]:
 // CHECK-NEXT:   br label %[[IMPER_bb5:[0-9]+]]
 ^bb4:   // pred: ^bb3
   %4 = "llvm.constant"() {value: 7 : index} : () -> !llvm<"i64">
   %5 = "llvm.constant"() {value: 56 : index} : () -> !llvm<"i64">
   "llvm.br"()[^bb5(%4 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[IMPER_bb5]]:
+// CHECK: [[IMPER_bb5]]:
 // CHECK-NEXT:   %8 = phi i64 [ %11, %[[IMPER_bb6:[0-9]+]] ], [ 7, %[[IMPER_bb4]] ]
 // CHECK-NEXT:   %9 = icmp slt i64 %8, 56
 // CHECK-NEXT:   br i1 %9, label %[[IMPER_bb6]], label %[[IMPER_bb7]]
@@ -191,7 +191,7 @@ func @imperfectly_nested_loops() {
   %7 = "llvm.icmp"(%6, %5) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%7)[^bb6, ^bb7] : (!llvm<"i1">) -> ()
 
-// CHECK: <label>:[[IMPER_bb6]]:
+// CHECK: [[IMPER_bb6]]:
 // CHECK-NEXT:   call void @body2(i64 %3, i64 %8)
 // CHECK-NEXT:   %11 = add i64 %8, 2
 // CHECK-NEXT:   br label %[[IMPER_bb5]]
@@ -201,7 +201,7 @@ func @imperfectly_nested_loops() {
   %9 = "llvm.add"(%6, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb5(%9 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[IMPER_bb7]]:
+// CHECK: [[IMPER_bb7]]:
 // CHECK-NEXT:   call void @post(i64 %3)
 // CHECK-NEXT:   %13 = add i64 %3, 1
 // CHECK-NEXT:   br label %[[IMPER_bb2]]
@@ -211,7 +211,7 @@ func @imperfectly_nested_loops() {
   %11 = "llvm.add"(%2, %10) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb2(%11 : !llvm<"i64">)] : () -> ()
 
-// CHECK: <label>:[[IMPER_bb8]]:
+// CHECK: [[IMPER_bb8]]:
 // CHECK-NEXT:   ret void
 ^bb8:   // pred: ^bb2
   "llvm.return"() : () -> ()
@@ -226,43 +226,43 @@ func @body3(!llvm<"i64">, !llvm<"i64">)
 // A complete function transformation check.
 // CHECK-LABEL: define void @more_imperfectly_nested_loops() {
 // CHECK-NEXT:   br label %1
-// CHECK: ; <label>:1:                                      ; preds = %0
+// CHECK: 1:                                      ; preds = %0
 // CHECK-NEXT:   br label %2
-// CHECK: ; <label>:2:                                      ; preds = %19, %1
+// CHECK: 2:                                      ; preds = %19, %1
 // CHECK-NEXT:   %3 = phi i64 [ %20, %19 ], [ 0, %1 ]
 // CHECK-NEXT:   %4 = icmp slt i64 %3, 42
 // CHECK-NEXT:   br i1 %4, label %5, label %21
-// CHECK: ; <label>:5:                                      ; preds = %2
+// CHECK: 5:                                      ; preds = %2
 // CHECK-NEXT:   call void @pre(i64 %3)
 // CHECK-NEXT:   br label %6
-// CHECK: ; <label>:6:                                      ; preds = %5
+// CHECK: 6:                                      ; preds = %5
 // CHECK-NEXT:   br label %7
-// CHECK: ; <label>:7:                                      ; preds = %10, %6
+// CHECK: 7:                                      ; preds = %10, %6
 // CHECK-NEXT:   %8 = phi i64 [ %11, %10 ], [ 7, %6 ]
 // CHECK-NEXT:   %9 = icmp slt i64 %8, 56
 // CHECK-NEXT:   br i1 %9, label %10, label %12
-// CHECK: ; <label>:10:                                     ; preds = %7
+// CHECK: 10:                                     ; preds = %7
 // CHECK-NEXT:   call void @body2(i64 %3, i64 %8)
 // CHECK-NEXT:   %11 = add i64 %8, 2
 // CHECK-NEXT:   br label %7
-// CHECK: ; <label>:12:                                     ; preds = %7
+// CHECK: 12:                                     ; preds = %7
 // CHECK-NEXT:   call void @mid(i64 %3)
 // CHECK-NEXT:   br label %13
-// CHECK: ; <label>:13:                                     ; preds = %12
+// CHECK: 13:                                     ; preds = %12
 // CHECK-NEXT:   br label %14
-// CHECK: ; <label>:14:                                     ; preds = %17, %13
+// CHECK: 14:                                     ; preds = %17, %13
 // CHECK-NEXT:   %15 = phi i64 [ %18, %17 ], [ 18, %13 ]
 // CHECK-NEXT:   %16 = icmp slt i64 %15, 37
 // CHECK-NEXT:   br i1 %16, label %17, label %19
-// CHECK: ; <label>:17:                                     ; preds = %14
+// CHECK: 17:                                     ; preds = %14
 // CHECK-NEXT:   call void @body3(i64 %3, i64 %15)
 // CHECK-NEXT:   %18 = add i64 %15, 3
 // CHECK-NEXT:   br label %14
-// CHECK: ; <label>:19:                                     ; preds = %14
+// CHECK: 19:                                     ; preds = %14
 // CHECK-NEXT:   call void @post(i64 %3)
 // CHECK-NEXT:   %20 = add i64 %3, 1
 // CHECK-NEXT:   br label %2
-// CHECK: ; <label>:21:                                     ; preds = %2
+// CHECK: 21:                                     ; preds = %2
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func @more_imperfectly_nested_loops() {
@@ -777,13 +777,13 @@ func @cond_br_arguments(%arg0: !llvm<"i1">, %arg1: !llvm<"i1">) {
 // CHECK-NEXT:   br i1 %0, label %3, label %5
   "llvm.cond_br"(%arg0)[^bb2(%arg0 : !llvm<"i1">), ^bb3] : (!llvm<"i1">) -> ()
 
-// CHECK:      ; <label>:3:
+// CHECK:      3:
 // CHECK-NEXT:   %4 = phi i1 [ %1, %5 ], [ %0, %2 ]
 ^bb2(%0 : !llvm<"i1">):
 // CHECK-NEXT:   ret void
   "llvm.return"() : () -> ()
 
-// CHECK:      ; <label>:5:
+// CHECK:      5:
 ^bb3:
 // CHECK-NEXT:   br label %3
   "llvm.br"()[^bb2(%arg1 : !llvm<"i1">)] : () -> ()
