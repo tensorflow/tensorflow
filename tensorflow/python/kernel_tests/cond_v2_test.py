@@ -744,7 +744,7 @@ class CondV2Test(test.TestCase):
 
     nested_if_ops = []
     for func in ops.get_default_graph()._functions.values():
-      nested_if_ops.extend(op for op in func._graph.get_operations()
+      nested_if_ops.extend(op for op in func.graph.get_operations()
                            if op.type == "If")
     self.assertEqual(len(nested_if_ops), 1)
     with self.assertRaises(ValueError):
