@@ -237,6 +237,13 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
 
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
   std::vector<AutotuneResult> profile_results;
+
+  const bool crash_on_checking_failure =
+      instr->GetModule()
+          ->config()
+          .debug_options()
+          .xla_gpu_crash_on_verification_failures();
+
   for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
@@ -270,12 +277,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
         tensorflow::proto_utils::ToDurationProto(
             absl::Milliseconds(profile_result.elapsed_time_in_ms()));
 
-    const bool crash_on_checking_failure =
-        instr->GetModule()
-            ->config()
-            .debug_options()
-            .xla_gpu_crash_on_verification_failures();
-
     if (comparator.has_value()) {
       StatusOr<bool> compare_result = comparator->CompareEqual(
           &stream, allocator, reference_result_buffer, result_buffer);
@@ -296,7 +297,6 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
                    << instr->ToString() << " for "
                    << AlgorithmToString(first_algorithm) << " vs "
                    << AlgorithmToString(alg);
-        CHECK(!crash_on_checking_failure);
         auto* failure = result.mutable_reference_conv();
         failure->set_algorithm(first_algorithm.algo_id());
         failure->set_tensor_ops_enabled(first_algorithm.tensor_ops_enabled());
@@ -338,6 +338,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
     *log.mutable_cudnn_version() = GetCudnnVersion(stream_exec_);
     VLOG(2) << "Autotuning result:\n" << log.DebugString();
     tensorflow::Logger::Singleton()->LogProto(log);
+  }
+
+  for (const auto& result : profile_results) {
+    if (result.has_reference_conv()) {
+      CHECK(!crash_on_checking_failure);
+    }
   }
 
   auto* profile_results_end = profile_results.data() + profile_results.size();
