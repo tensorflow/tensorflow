@@ -327,6 +327,7 @@ class SingleOpModel {
   }
 
   void SetNumThreads(int num_threads) {
+    CHECK(interpreter_ != nullptr);
     interpreter_->SetNumThreads(num_threads);
   }
 
