@@ -1021,6 +1021,8 @@ class Dense(Layer):
     rank = common_shapes.rank(inputs)
     if rank > 2:
       # Broadcasting is required for the inputs.
+      # Computing sum of products of inputs and weights -> (self.kernel) on axes -> ([[rank-1], [0]])
+      # tensordot(inputs, weights, axes)
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.
       if not context.executing_eagerly():
