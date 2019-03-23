@@ -266,7 +266,7 @@ OpMethodBody &OpMethodBody::operator<<(int content) {
 
 void OpMethodBody::writeTo(raw_ostream &os) const {
   os << body;
-  if (body.back() != '\n')
+  if (body.empty() || body.back() != '\n')
     os << "\n";
 }
 
