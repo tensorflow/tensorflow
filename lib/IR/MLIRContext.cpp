@@ -969,10 +969,7 @@ BoolAttr BoolAttr::get(bool value, MLIRContext *context) {
     return result;
 
   result = impl.attributeAllocator.Allocate<BoolAttributeStorage>();
-  new (result) BoolAttributeStorage{{Attribute::Kind::Bool,
-                                     /*isOrContainsFunction=*/false},
-                                    IntegerType::get(1, context),
-                                    value};
+  new (result) BoolAttributeStorage(IntegerType::get(1, context), value);
   return result;
 }
 
@@ -988,10 +985,7 @@ IntegerAttr IntegerAttr::get(Type type, const APInt &value) {
         IntegerAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
     auto rawMem = impl.attributeAllocator.Allocate(
         byteSize, alignof(IntegerAttributeStorage));
-    auto result = ::new (rawMem) IntegerAttributeStorage{
-        {Attribute::Kind::Integer, /*isOrContainsFunction=*/false},
-        type,
-        elements.size()};
+    auto result = ::new (rawMem) IntegerAttributeStorage(type, elements.size());
     std::uninitialized_copy(elements.begin(), elements.end(),
                             result->getTrailingObjects<uint64_t>());
     return result;
@@ -1057,11 +1051,8 @@ FloatAttr FloatAttr::get(Type type, const APFloat &value) {
         FloatAttributeStorage::totalSizeToAlloc<uint64_t>(elements.size());
     auto rawMem = impl.attributeAllocator.Allocate(
         byteSize, alignof(FloatAttributeStorage));
-    auto result = ::new (rawMem) FloatAttributeStorage{
-        {Attribute::Kind::Float, /*isOrContainsFunction=*/false},
-        value.getSemantics(),
-        type,
-        elements.size()};
+    auto result = ::new (rawMem)
+        FloatAttributeStorage(value.getSemantics(), type, elements.size());
     std::uninitialized_copy(elements.begin(), elements.end(),
                             result->getTrailingObjects<uint64_t>());
     return result;
@@ -1088,10 +1079,8 @@ StringAttr StringAttr::get(StringRef bytes, MLIRContext *context) {
   if (it->second)
     return it->second;
 
-  auto result = impl.attributeAllocator.Allocate<StringAttributeStorage>();
-  new (result) StringAttributeStorage{{Attribute::Kind::String,
-                                       /*isOrContainsFunction=*/false},
-                                      it->first()};
+  auto result = new (impl.attributeAllocator.Allocate<StringAttributeStorage>())
+      StringAttributeStorage(it->first());
   return it->second = result;
 }
 
@@ -1114,8 +1103,7 @@ ArrayAttr ArrayAttr::get(ArrayRef<Attribute> value, MLIRContext *context) {
       }
 
     // Initialize the memory using placement new.
-    return new (result)
-        ArrayAttributeStorage{{Attribute::Kind::Array, hasFunctionAttr}, value};
+    return new (result) ArrayAttributeStorage(hasFunctionAttr, value);
   });
 }
 
@@ -1126,10 +1114,7 @@ AffineMapAttr AffineMapAttr::get(AffineMap value) {
   // Safely get or create an attribute instance.
   return safeGetOrCreate(impl.affineMapAttrs, value, impl.attributeMutex, [&] {
     auto result = impl.attributeAllocator.Allocate<AffineMapAttributeStorage>();
-    return new (result)
-        AffineMapAttributeStorage{{Attribute::Kind::AffineMap,
-                                   /*isOrContainsFunction=*/false},
-                                  value};
+    return new (result) AffineMapAttributeStorage(value);
   });
 }
 
@@ -1141,10 +1126,7 @@ IntegerSetAttr IntegerSetAttr::get(IntegerSet value) {
   return safeGetOrCreate(impl.integerSetAttrs, value, impl.attributeMutex, [&] {
     auto result =
         impl.attributeAllocator.Allocate<IntegerSetAttributeStorage>();
-    return new (result)
-        IntegerSetAttributeStorage{{Attribute::Kind::IntegerSet,
-                                    /*isOrContainsFunction=*/false},
-                                   value};
+    return new (result) IntegerSetAttributeStorage(value);
   });
 }
 
@@ -1154,9 +1136,7 @@ TypeAttr TypeAttr::get(Type type, MLIRContext *context) {
   // Safely get or create an attribute instance.
   return safeGetOrCreate(impl.typeAttrs, type, impl.attributeMutex, [&] {
     auto result = impl.attributeAllocator.Allocate<TypeAttributeStorage>();
-    return new (result) TypeAttributeStorage{{Attribute::Kind::Type,
-                                              /*isOrContainsFunction=*/false},
-                                             type};
+    return new (result) TypeAttributeStorage(type);
   });
 }
 
@@ -1167,10 +1147,7 @@ FunctionAttr FunctionAttr::get(Function *value, MLIRContext *context) {
   // Safely get or create an attribute instance.
   return safeGetOrCreate(impl.functionAttrs, value, impl.attributeMutex, [&] {
     auto result = impl.attributeAllocator.Allocate<FunctionAttributeStorage>();
-    return new (result)
-        FunctionAttributeStorage{{Attribute::Kind::Function,
-                                  /*isOrContainsFunction=*/true},
-                                 const_cast<Function *>(value)};
+    return new (result) FunctionAttributeStorage(value);
   });
 }
 
@@ -1294,11 +1271,7 @@ SplatElementsAttr SplatElementsAttr::get(VectorOrTensorType type,
       impl.splatElementsAttrs, key, impl.attributeMutex, [&] {
         auto result =
             impl.attributeAllocator.Allocate<SplatElementsAttributeStorage>();
-        return new (result)
-            SplatElementsAttributeStorage{{{Attribute::Kind::SplatElements,
-                                            /*isOrContainsFunction=*/false},
-                                           type},
-                                          elt};
+        return new (result) SplatElementsAttributeStorage(type, elt);
       });
 }
 
@@ -1330,14 +1303,17 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
           llvm_unreachable("unexpected element type");
         }
 
-        auto *copy = (char *)impl.attributeAllocator.Allocate(data.size(), 64);
-        std::uninitialized_copy(data.begin(), data.end(), copy);
+        // If we have valid data, then make a copy in the context.
+        ArrayRef<char> copy;
+        if (!data.empty()) {
+          auto *rawCopy =
+              (char *)impl.attributeAllocator.Allocate(data.size(), 64);
+          std::uninitialized_copy(data.begin(), data.end(), rawCopy);
+          copy = {rawCopy, data.size()};
+        }
         auto *result =
             impl.attributeAllocator.Allocate<DenseElementsAttributeStorage>();
-        new (result) DenseElementsAttributeStorage{
-            {{kind, /*isOrContainsFunction=*/false}, type},
-            {copy, data.size()}};
-        return result;
+        return new (result) DenseElementsAttributeStorage(kind, type, copy);
       });
 }
 
@@ -1399,11 +1375,8 @@ OpaqueElementsAttr OpaqueElementsAttr::get(Dialect *dialect,
         // TODO: Provide a way to avoid copying content of large opaque tensors
         // This will likely require a new reference attribute kind.
         bytes = bytes.copy(impl.attributeAllocator);
-        return new (result) OpaqueElementsAttributeStorage{
-            {{Attribute::Kind::OpaqueElements, /*isOrContainsFunction=*/false},
-             type},
-            dialect,
-            bytes};
+        return new (result)
+            OpaqueElementsAttributeStorage(type, dialect, bytes);
       });
 }
 
@@ -1419,14 +1392,9 @@ SparseElementsAttr SparseElementsAttr::get(VectorOrTensorType type,
   // Safely get or create an attribute instance.
   return safeGetOrCreate(
       impl.sparseElementsAttrs, key, impl.attributeMutex, [&] {
-        auto result =
-            impl.attributeAllocator.Allocate<SparseElementsAttributeStorage>();
-        return new (result)
-            SparseElementsAttributeStorage{{{Attribute::Kind::SparseElements,
-                                             /*isOrContainsFunction=*/false},
-                                            type},
-                                           indices,
-                                           values};
+        return new (
+            impl.attributeAllocator.Allocate<SparseElementsAttributeStorage>())
+            SparseElementsAttributeStorage(type, indices, values);
       });
 }
 
