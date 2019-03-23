@@ -170,7 +170,8 @@ string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
-int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
 // Class to convert TF compile-time constants (e.g. Const nodes) to TRT weight.
 class TRT_ShapedWeights {
