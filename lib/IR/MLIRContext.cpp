@@ -1303,7 +1303,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
           llvm_unreachable("unexpected element type");
         }
 
-        // If we have valid data, then make a copy in the context.
+        // If the data buffer is non-empty, we copy it into the context.
         ArrayRef<char> copy;
         if (!data.empty()) {
           auto *rawCopy =
