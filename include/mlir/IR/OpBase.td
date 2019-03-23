@@ -472,8 +472,12 @@ class PredOpTrait<string d, Pred p> : OpTrait {
 def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
 def Commutative      : NativeOpTrait<"IsCommutative">;
+// op results are float or vectors/tensors thereof
+def FloatLikeResults : NativeOpTrait<"ResultsAreFloatLike">;
 // op has no side effect
 def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
+// op has same operand and result shape
+def SameValueShape   : NativeOpTrait<"SameOperandsAndResultShape">;
 // op has the same operand and result type
 def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
 // op is a terminator
