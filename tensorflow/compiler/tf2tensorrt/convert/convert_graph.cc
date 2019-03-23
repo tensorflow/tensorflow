@@ -611,17 +611,18 @@ Status CreateTRTNode(const ConversionParams& params,
       UpdateToEngineNode(infos, pos, *engine_nodes, /*is_input_edge=*/false,
                          conn.outside_node_name, &output_node, &port);
     }
-    VLOG(1) << "Updating " << engine_node->name() << ":" << conn.port_number
-            << " to " << output_node->name() << ":" << port;
     if (conn.is_control_edge()) {
+      VLOG(1) << "Updating control edge from " << engine_node->name() << " to "
+              << output_node->name();
       QCHECK_EQ(Graph::kControlSlot, port);
       graph->AddControlEdge(engine_node, output_node);
     } else {
-      auto new_edge =
-          graph->AddEdge(engine_node, conn.port_number, output_node, port);
-      QCHECK(new_edge) << "Adding a new edge failed " << engine_node->name()
-                       << ":" << conn.port_number << " -> "
-                       << output_node->name() << ":" << conn.outside_port;
+      VLOG(1) << "Updating data edge from " << engine_node->name() << ":"
+              << conn.port_number << " to " << output_node->name() << ":"
+              << port;
+      // Use UpdateEdge() to avoid adding the same edge multiple times.
+      TF_CHECK_OK(
+          graph->UpdateEdge(engine_node, conn.port_number, output_node, port));
     }
   }
   return Status::OK();
