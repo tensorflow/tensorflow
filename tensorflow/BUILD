@@ -15,7 +15,6 @@ exports_files([
     "leakr_file_type_recipe.ftrcp",
 ])
 
-load("//tensorflow:tensorflow.bzl", "VERSION")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
@@ -327,18 +326,6 @@ config_setting(
 )
 
 config_setting(
-    name = "macos_with_framework_shared_object",
-    define_values = {
-        "framework_shared_object": "true",
-    },
-    values = {
-        "apple_platform_type": "macos",
-        "cpu": "darwin",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "using_cuda_clang",
     define_values = {
         "using_cuda_clang": "true",
@@ -480,7 +467,7 @@ cc_library(
 # projects building with Bazel and importing TensorFlow as a dependency will not
 # depend on libtensorflow_framework.so unless they opt in.
 tf_cc_shared_object(
-    name = "tensorflow_framework",
+    name = "libtensorflow_framework.so",
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [],
@@ -490,8 +477,6 @@ tf_cc_shared_object(
         ],
     }),
     linkstatic = 1,
-    per_os_targets = True,
-    soversion = VERSION,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_impl",
@@ -523,6 +508,7 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
+            "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [
         ],
@@ -532,7 +518,6 @@ tf_cc_shared_object(
         ],
     }),
     per_os_targets = True,
-    soversion = VERSION,
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow
     win_def_file = select({
@@ -563,7 +548,6 @@ tf_cc_shared_object(
         ],
     }),
     per_os_targets = True,
-    soversion = VERSION,
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow_cc
     win_def_file = select({
