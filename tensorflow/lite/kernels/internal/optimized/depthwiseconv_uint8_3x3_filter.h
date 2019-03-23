@@ -3535,7 +3535,7 @@ inline void DepthwiseConv3x3Filter(
     const uint8* input_data, const RuntimeShape& filter_shape,
     const uint8* filter_data, const RuntimeShape& bias_shape,
     const int32* bias_data, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int thread_start, int thread_end, int thread_dim) {
   gemmlowp::ScopedProfilingLabel label(__PRETTY_FUNCTION__);
   DepthwiseConvParams params;
 
@@ -3586,6 +3586,7 @@ inline void DepthwiseConv3x3Filter(
   TFLITE_DCHECK(pad_height == 0 || pad_height == 1);
   TFLITE_DCHECK(pad_width == 0 || pad_width == 1);
   TFLITE_DCHECK(pad_width == pad_height);
+  TFLITE_DCHECK(thread_dim == 0 || thread_dim == 1);
 
   const int32 batches = MatchingDim(input_shape, 0, output_shape, 0);
   const int64_t input_batch_size = params.input_row_size * params.input_height;
@@ -3619,14 +3620,35 @@ inline void DepthwiseConv3x3Filter(
   // used in gemmlowp.
   uint8 shuffle_workspace[kDepthwiseConvScratchWorkspaceSize];
 
-  for (int32 b = 0; b < batches; ++b) {
+  int batch_start = 0;
+  int batch_end = batches;
+  int row_start = 0;
+  int row_end = params.output_height;
+
+  switch (thread_dim) {
+    case 0:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, batches);
+      batch_start = thread_start;
+      batch_end = thread_end;
+      break;
+    case 1:
+      TFLITE_DCHECK_GE(thread_start, 0);
+      TFLITE_DCHECK_LE(thread_end, params.output_height);
+      row_start = thread_start;
+      row_end = thread_end;
+      break;
+  }
+
+  for (int32 b = batch_start; b < batch_end; ++b) {
     const uint8* input_ptr = input_data + b * input_batch_size;
-    uint8* output_ptr = output_data + b * output_batch_size;
+    uint8* output_ptr = output_data + b * output_batch_size +
+                        row_start * params.output_width * params.output_depth;
 
     int32 out_x = 0;
-    int32 out_y = 0;
+    int32 out_y = row_start;
     int32 end_x = params.output_width;
-    int32 end_y = params.output_height;
+    int32 end_y = row_end;
 
     if (pad_width == 1 && pad_height == 1) {
       DepthwiseConvHandlePadding(input_ptr, filter_data, bias_data, output_ptr,
@@ -3635,8 +3657,8 @@ inline void DepthwiseConv3x3Filter(
       // Update extents now that the edges have been handled.
       out_x = 1;
       end_x = params.output_width - 1;
-      out_y = 1;
-      end_y = params.output_height - 1;
+      out_y = std::max(1, out_y);
+      end_y = std::min(params.output_height - 1, end_y);
       const int in_x = (out_x * stride_width) - pad_width;
       const int in_y = (out_y * stride_height) - pad_height;
       input_ptr += in_y * params.input_row_size + in_x * params.input_depth;

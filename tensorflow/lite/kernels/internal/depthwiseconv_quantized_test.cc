@@ -139,7 +139,8 @@ inline void DispatchDepthwiseConv(
       // Call kernel optimized for depthwise convolutions using 3x3 filters.
       optimized_ops::depthwise_conv::DepthwiseConv3x3Filter(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
 #else
       break;
@@ -242,7 +243,8 @@ inline void DispatchDepthwiseConv(
     case DepthwiseConvImplementation::kUseGenericKernel: {
       optimized_ops::depthwise_conv::DepthwiseConvGeneral(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     }
     case DepthwiseConvImplementation::kNone:
@@ -271,13 +273,15 @@ inline void DispatchDepthwiseConv(
       optimized_ops::DepthwiseConvWithRounding<
           DepthwiseConvOutputRounding::kAwayFromZero>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     case DepthwiseConvOutputRounding::kUpward:
       optimized_ops::DepthwiseConvWithRounding<
           DepthwiseConvOutputRounding::kUpward>(
           params, input_shape, input_data, filter_shape, filter_data,
-          bias_shape, bias_data, output_shape, output_data);
+          bias_shape, bias_data, output_shape, output_data, /*thread_start=*/0,
+          /*thread_end=*/output_shape.Dims(1), /*thread_dim=*/1);
       return;
     default:
       break;
