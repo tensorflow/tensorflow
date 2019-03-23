@@ -43,16 +43,16 @@ public:
   ~MLIRContext();
 
   /// Return information about all registered IR dialects.
-  std::vector<Dialect *> getRegisteredDialects() const;
+  std::vector<Dialect *> getRegisteredDialects();
 
   /// Get a registered IR dialect with the given namespace. If an exact match is
   /// not found, then return nullptr.
-  Dialect *getRegisteredDialect(StringRef name) const;
+  Dialect *getRegisteredDialect(StringRef name);
 
   /// Return information about all registered operations.  This isn't very
   /// efficient: typically you should ask the operations about their properties
   /// directly.
-  std::vector<AbstractOperation *> getRegisteredOperations() const;
+  std::vector<AbstractOperation *> getRegisteredOperations();
 
   /// This is the interpretation of a diagnostic that is emitted to the
   /// diagnostic handler below.
@@ -77,21 +77,21 @@ public:
   void registerDiagnosticHandler(const DiagnosticHandlerTy &handler);
 
   /// Return the current diagnostic handler, or null if none is present.
-  DiagnosticHandlerTy getDiagnosticHandler() const;
+  DiagnosticHandlerTy getDiagnosticHandler();
 
   /// Emit a diagnostic using the registered issue handle if present, or with
   /// the default behavior if not.  The MLIR compiler should not generally
   /// interact with this, it should use methods on Instruction instead.
   void emitDiagnostic(Location location, const Twine &message,
-                      DiagnosticKind kind) const;
+                      DiagnosticKind kind);
 
   /// Emit an error message using the registered issue handle if present, or to
   /// the standard error stream otherwise and return true.
-  bool emitError(Location location, const Twine &message) const;
+  bool emitError(Location location, const Twine &message);
 
   // This is effectively private given that only MLIRContext.cpp can see the
   // MLIRContextImpl type.
-  MLIRContextImpl &getImpl() const { return *impl.get(); }
+  MLIRContextImpl &getImpl() { return *impl.get(); }
 
 private:
   const std::unique_ptr<MLIRContextImpl> impl;

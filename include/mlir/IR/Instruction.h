@@ -34,9 +34,9 @@ class BlockAndValueMapping;
 class Location;
 class MLIRContext;
 template <typename OpType> class OpPointer;
-template <typename ObjectType, typename ElementType> class OperandIterator;
-template <typename ObjectType, typename ElementType> class ResultIterator;
-template <typename ObjectType, typename ElementType> class ResultTypeIterator;
+class OperandIterator;
+class ResultIterator;
+class ResultTypeIterator;
 
 /// Terminator operations can have Block operands to represent successors.
 using BlockOperand = IROperandImpl<Block>;
@@ -157,8 +157,8 @@ public:
     return getInstOperand(idx).set(value);
   }
 
-  // Support non-const operand iteration.
-  using operand_iterator = OperandIterator<Instruction, Value>;
+  // Support operand iteration.
+  using operand_iterator = OperandIterator;
   using operand_range = llvm::iterator_range<operand_iterator>;
 
   operand_iterator operand_begin();
@@ -185,7 +185,7 @@ public:
   Value *getResult(unsigned idx) { return &getInstResult(idx); }
 
   // Support result iteration.
-  using result_iterator = ResultIterator<Instruction, Value>;
+  using result_iterator = ResultIterator;
   result_iterator result_begin();
   result_iterator result_end();
   llvm::iterator_range<result_iterator> getResults();
@@ -197,7 +197,7 @@ public:
   InstResult &getInstResult(unsigned idx) { return getInstResults()[idx]; }
 
   // Support result type iteration.
-  using result_type_iterator = ResultTypeIterator<Instruction, Type>;
+  using result_type_iterator = ResultTypeIterator;
   result_type_iterator result_type_begin();
   result_type_iterator result_type_end();
   llvm::iterator_range<result_type_iterator> getResultTypes();
@@ -505,21 +505,17 @@ inline raw_ostream &operator<<(raw_ostream &os, Instruction &inst) {
   return os;
 }
 
-/// This template implements the const/non-const operand iterators for the
+/// This class implements the const/non-const operand iterators for the
 /// Instruction class in terms of getOperand(idx).
-template <typename ObjectType, typename ElementType>
 class OperandIterator final
-    : public IndexedAccessorIterator<OperandIterator<ObjectType, ElementType>,
-                                     ObjectType, ElementType> {
+    : public IndexedAccessorIterator<OperandIterator, Instruction, Value> {
 public:
   /// Initializes the operand iterator to the specified operand index.
-  OperandIterator(ObjectType *object, unsigned index)
-      : IndexedAccessorIterator<OperandIterator<ObjectType, ElementType>,
-                                ObjectType, ElementType>(object, index) {}
+  OperandIterator(Instruction *object, unsigned index)
+      : IndexedAccessorIterator<OperandIterator, Instruction, Value>(object,
+                                                                     index) {}
 
-  ElementType *operator*() const {
-    return this->object->getOperand(this->index);
-  }
+  Value *operator*() const { return this->object->getOperand(this->index); }
 };
 
 // Implement the inline operand iterator methods.
@@ -535,41 +531,28 @@ inline auto Instruction::getOperands() -> operand_range {
   return {operand_begin(), operand_end()};
 }
 
-/// This template implements the result iterators for the Instruction class
+/// This class implements the result iterators for the Instruction class
 /// in terms of getResult(idx).
-template <typename ObjectType, typename ElementType>
 class ResultIterator final
-    : public IndexedAccessorIterator<ResultIterator<ObjectType, ElementType>,
-                                     ObjectType, ElementType> {
+    : public IndexedAccessorIterator<ResultIterator, Instruction, Value> {
 public:
   /// Initializes the result iterator to the specified index.
-  ResultIterator(ObjectType *object, unsigned index)
-      : IndexedAccessorIterator<ResultIterator<ObjectType, ElementType>,
-                                ObjectType, ElementType>(object, index) {}
+  ResultIterator(Instruction *object, unsigned index)
+      : IndexedAccessorIterator<ResultIterator, Instruction, Value>(object,
+                                                                    index) {}
 
-  ElementType *operator*() const {
-    return this->object->getResult(this->index);
-  }
+  Value *operator*() const { return this->object->getResult(this->index); }
 };
 
-/// This template implements the result type iterators for the Instruction
+/// This class implements the result type iterators for the Instruction
 /// class in terms of getResult(idx)->getType().
-template <typename ObjectType, typename ElementType>
 class ResultTypeIterator final
-    : public IndexedAccessorIterator<
-          ResultTypeIterator<ObjectType, ElementType>, ObjectType,
-          ElementType> {
+    : public IndexedAccessorIterator<ResultTypeIterator, Instruction, Value> {
 public:
   /// Initializes the result type iterator to the specified index.
-  ResultTypeIterator(ObjectType *object, unsigned index)
-      : IndexedAccessorIterator<ResultTypeIterator<ObjectType, ElementType>,
-                                ObjectType, ElementType>(object, index) {}
-
-  /// Support converting to the const variant. This will be a no-op for const
-  /// variant.
-  operator ResultTypeIterator<const ObjectType, const ElementType>() const {
-    return ResultTypeIterator<const ObjectType, const ElementType>(this->object,
-                                                                   this->index);
+  ResultTypeIterator(Instruction *object, unsigned index)
+      : IndexedAccessorIterator<ResultTypeIterator, Instruction, Value>(object,
+                                                                        index) {
   }
 
   Type operator*() const {

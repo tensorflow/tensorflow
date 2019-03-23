@@ -35,7 +35,7 @@ class MLIRContext;
 class Identifier {
 public:
   /// Return an identifier for the specified string.
-  static Identifier get(StringRef str, const MLIRContext *context);
+  static Identifier get(StringRef str, MLIRContext *context);
   Identifier(const Identifier &) = default;
   Identifier &operator=(const Identifier &other) = default;
 

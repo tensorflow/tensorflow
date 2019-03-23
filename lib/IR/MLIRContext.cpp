@@ -616,7 +616,7 @@ void MLIRContext::registerDiagnosticHandler(
 }
 
 /// Return the current diagnostic handler, or null if none is present.
-auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
+auto MLIRContext::getDiagnosticHandler() -> DiagnosticHandlerTy {
   // Lock access to the context diagnostic handler.
   llvm::sys::SmartScopedReader<true> contextLock(getImpl().contextMutex);
   return getImpl().diagnosticHandler;
@@ -626,7 +626,7 @@ auto MLIRContext::getDiagnosticHandler() const -> DiagnosticHandlerTy {
 /// with the default behavior if not.  The MLIR compiler should not generally
 /// interact with this, it should use methods on Instruction instead.
 void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
-                                 DiagnosticKind kind) const {
+                                 DiagnosticKind kind) {
   // Check to see if we are emitting a diagnostic on a fused location.
   if (auto fusedLoc = location.dyn_cast<FusedLoc>()) {
     auto fusedLocs = fusedLoc->getLocations();
@@ -665,8 +665,7 @@ void MLIRContext::emitDiagnostic(Location location, const llvm::Twine &message,
   os.flush();
 }
 
-bool MLIRContext::emitError(Location location,
-                            const llvm::Twine &message) const {
+bool MLIRContext::emitError(Location location, const llvm::Twine &message) {
   emitDiagnostic(location, message, DiagnosticKind::Error);
   return true;
 }
@@ -676,7 +675,7 @@ bool MLIRContext::emitError(Location location,
 //===----------------------------------------------------------------------===//
 
 /// Return information about all registered IR dialects.
-std::vector<Dialect *> MLIRContext::getRegisteredDialects() const {
+std::vector<Dialect *> MLIRContext::getRegisteredDialects() {
   // Lock access to the context registry.
   llvm::sys::SmartScopedReader<true> registryLock(getImpl().contextMutex);
 
@@ -689,7 +688,7 @@ std::vector<Dialect *> MLIRContext::getRegisteredDialects() const {
 
 /// Get a registered IR dialect with the given namespace. If none is found,
 /// then return nullptr.
-Dialect *MLIRContext::getRegisteredDialect(StringRef name) const {
+Dialect *MLIRContext::getRegisteredDialect(StringRef name) {
   // Lock access to the context registry.
   llvm::sys::SmartScopedReader<true> registryLock(getImpl().contextMutex);
   for (auto &dialect : getImpl().dialects)
@@ -711,7 +710,7 @@ void Dialect::registerDialect(MLIRContext *context) {
 /// Return information about all registered operations.  This isn't very
 /// efficient, typically you should ask the operations about their properties
 /// directly.
-std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() const {
+std::vector<AbstractOperation *> MLIRContext::getRegisteredOperations() {
   std::vector<std::pair<StringRef, AbstractOperation *>> opsToSort;
 
   { // Lock access to the context registry.
@@ -783,7 +782,7 @@ const AbstractOperation *AbstractOperation::lookup(StringRef opName,
 //===----------------------------------------------------------------------===//
 
 /// Return an identifier for the specified string.
-Identifier Identifier::get(StringRef str, const MLIRContext *context) {
+Identifier Identifier::get(StringRef str, MLIRContext *context) {
   assert(!str.empty() && "Cannot create an empty identifier");
   assert(str.find('\0') == StringRef::npos &&
          "Cannot create an identifier with a nul character");

@@ -40,10 +40,10 @@ public:
   void map(Value *from, Value *to) { valueMap[from] = to; }
 
   /// Erases a mapping for 'from'.
-  void erase(const IRObjectWithUseList *from) { valueMap.erase(from); }
+  void erase(IRObjectWithUseList *from) { valueMap.erase(from); }
 
   /// Checks to see if a mapping for 'from' exists.
-  bool contains(const IRObjectWithUseList *from) const {
+  bool contains(IRObjectWithUseList *from) const {
     return valueMap.count(from);
   }
 
@@ -72,12 +72,12 @@ private:
   /// Utility lookupOrValue that looks up an existing key or returns the
   /// provided value. This function assumes that if a mapping does exist, then
   /// it is of 'T' type.
-  template <typename T> T *lookupOrValue(const T *from, T *value) const {
+  template <typename T> T *lookupOrValue(T *from, T *value) const {
     auto it = valueMap.find(from);
     return it != valueMap.end() ? static_cast<T *>(it->second) : value;
   }
 
-  llvm::DenseMap<const IRObjectWithUseList *, IRObjectWithUseList *> valueMap;
+  llvm::DenseMap<IRObjectWithUseList *, IRObjectWithUseList *> valueMap;
 };
 
 } // end namespace mlir
