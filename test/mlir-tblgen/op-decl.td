@@ -32,7 +32,7 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK: public:
 // CHECK:   static StringRef getOperationName();
 // CHECK:   Value *a();
-// CHECK:   SmallVector<Value *, 4> b();
+// CHECK:   Instruction::operand_range b();
 // CHECK:   Value *r();
 // CHECK:   APInt attr1();
 // CHECK:   Optional< APFloat > attr2();

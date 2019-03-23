@@ -485,14 +485,12 @@ void OpEmitter::genNamedOperandGetters() {
     } else {
       assert(i + 1 == e && "only the last operand can be variadic");
 
-      const char *const code1 =
-          R"(  assert(getInstruction()->getNumOperands() >= {0});
-  SmallVector<Value *, 4> operands(
-    std::next(getInstruction()->operand_begin(), {0}),
-    getInstruction()->operand_end());
-  return operands;)";
-      auto &m = opClass.newMethod("SmallVector<Value *, 4>", operand.name);
-      m.body() << formatv(code1, i);
+      const char *const code = R"(
+        assert(getInstruction()->getNumOperands() >= {0});
+        return {std::next(operand_begin(), {0}), operand_end()};
+      )";
+      auto &m = opClass.newMethod("Instruction::operand_range", operand.name);
+      m.body() << formatv(code, i);
     }
   }
 }
