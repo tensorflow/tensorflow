@@ -97,13 +97,12 @@ cc_library(
     ),
 )
 
-# TODO(b/122597976) Move this off of tf_cc_test for portability.
 tf_cc_test(
     name = "imagenet_topk_eval_test",
     srcs = ["imagenet_topk_eval_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = ["tflite_not_portable"],
+    tags = ["tflite_not_portable_ios"],
     deps = [
         ":imagenet_topk_eval",
         "@com_google_googletest//:gtest",
