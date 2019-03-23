@@ -3746,7 +3746,7 @@ Module *mlir::parseSourceFile(const llvm::SourceMgr &sourceMgr,
 /// This parses the file specified by the indicated filename and returns an
 /// MLIR module if it was valid.  If not, the error message is emitted through
 /// the error handler registered in the context, and a null pointer is returned.
-Module *parseSourceFile(StringRef filename, MLIRContext *context) {
+Module *mlir::parseSourceFile(StringRef filename, MLIRContext *context) {
   auto file_or_err = llvm::MemoryBuffer::getFile(filename);
   if (std::error_code error = file_or_err.getError()) {
     context->emitError(mlir::UnknownLoc::get(context),
