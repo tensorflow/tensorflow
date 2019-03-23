@@ -106,6 +106,9 @@ public:
   Instruction *getInstruction() const { return state; }
   Instruction *getInstruction() { return state; }
 
+  ///  Return the context this operation belongs to.
+  MLIRContext *getContext() { return getInstruction()->getContext(); }
+
   /// The source location the operation was defined or derived from.
   Location getLoc() const { return state->getLoc(); }
 
