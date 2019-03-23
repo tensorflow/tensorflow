@@ -32,21 +32,18 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK: public:
 // CHECK:   static StringRef getOperationName();
 // CHECK:   Value *a();
-// CHECK:   const Value *a() const;
 // CHECK:   SmallVector<Value *, 4> b();
-// CHECK:   const SmallVector<const Value *, 4> b() const;
 // CHECK:   Value *r();
-// CHECK:   const Value *r() const;
-// CHECK:   APInt attr1() const;
-// CHECK:   Optional< APFloat > attr2() const;
+// CHECK:   APInt attr1();
+// CHECK:   Optional< APFloat > attr2();
 // CHECK:   static void build(Value *val);
 // CHECK:   static void build(Builder *builder, OperationState *result, Type r, ArrayRef<Type> s, Value *a, ArrayRef<Value *> b, IntegerAttr attr1, /*optional*/FloatAttr attr2);
 // CHECK:   static void build(Builder *builder, OperationState *result, ArrayRef<Type> resultTypes, ArrayRef<Value *> args, ArrayRef<NamedAttribute> attributes);
 // CHECK:   static bool parse(OpAsmParser *parser, OperationState *result);
-// CHECK:   void print(OpAsmPrinter *p) const;
-// CHECK:   bool verify() const;
+// CHECK:   void print(OpAsmPrinter *p);
+// CHECK:   bool verify();
 // CHECK:   static void getCanonicalizationPatterns(OwningRewritePatternList &results, MLIRContext *context);
-// CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context) const;
+// CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context);
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);
 // CHECK: private:
 // CHECK:   friend class ::mlir::Instruction;

@@ -160,7 +160,6 @@ public:
   enum Property {
     MP_None = 0x0,
     MP_Static = 0x1, // Static method
-    MP_Const = 0x2,  // Const method
   };
 
   OpMethod(StringRef retType, StringRef name, StringRef params,
@@ -171,8 +170,6 @@ public:
 
   // Returns true if this is a static method.
   bool isStatic() const;
-  // Returns true if this is a const method.
-  bool isConst() const;
 
   // Writes the method as a declaration to the given `os`.
   void writeDeclTo(raw_ostream &os) const;
@@ -280,15 +277,12 @@ OpMethodSignature &OpMethod::signature() { return methodSignature; }
 OpMethodBody &OpMethod::body() { return methodBody; }
 
 bool OpMethod::isStatic() const { return properties & MP_Static; }
-bool OpMethod::isConst() const { return properties & MP_Const; }
 
 void OpMethod::writeDeclTo(raw_ostream &os) const {
   os.indent(2);
   if (isStatic())
     os << "static ";
   methodSignature.writeDeclTo(os);
-  if (isConst())
-    os << " const";
   os << ";";
 }
 
@@ -297,8 +291,6 @@ void OpMethod::writeDefTo(raw_ostream &os, StringRef namePrefix) const {
     return;
 
   methodSignature.writeDefTo(os, namePrefix);
-  if (isConst())
-    os << " const";
   os << " {\n";
   methodBody.writeTo(os);
   os << "}";
@@ -448,7 +440,7 @@ void OpEmitter::genAttrGetters() {
       getter = it.second;
 
     auto &method = opClass.newMethod(attr.getReturnType(), getter,
-                                     /*params=*/"", OpMethod::MP_Const);
+                                     /*params=*/"");
 
     // Emit the derived attribute body.
     if (attr.isDerivedAttr()) {
@@ -488,13 +480,8 @@ void OpEmitter::genNamedOperandGetters() {
       continue;
 
     if (!operand.constraint.isVariadic()) {
-      auto &m1 = opClass.newMethod("Value *", operand.name);
-      m1.body() << "  return this->getInstruction()->getOperand(" << i
-                << ");\n";
-      auto &m2 = opClass.newMethod("const Value *", operand.name, /*params=*/"",
-                                   OpMethod::MP_Const);
-      m2.body() << "  return this->getInstruction()->getOperand(" << i
-                << ");\n";
+      auto &m = opClass.newMethod("Value *", operand.name);
+      m.body() << "  return this->getInstruction()->getOperand(" << i << ");\n";
     } else {
       assert(i + 1 == e && "only the last operand can be variadic");
 
@@ -504,19 +491,8 @@ void OpEmitter::genNamedOperandGetters() {
     std::next(getInstruction()->operand_begin(), {0}),
     getInstruction()->operand_end());
   return operands;)";
-      auto &m1 = opClass.newMethod("SmallVector<Value *, 4>", operand.name);
-      m1.body() << formatv(code1, i);
-
-      const char *const code2 =
-          R"(  assert(getInstruction()->getNumOperands() >= {0});
-  SmallVector<const Value *, 4> operands(
-    std::next(getInstruction()->operand_begin(), {0}),
-    getInstruction()->operand_end());
-  return operands;)";
-      auto &m2 =
-          opClass.newMethod("const SmallVector<const Value *, 4>", operand.name,
-                            /*params=*/"", OpMethod::MP_Const);
-      m2.body() << formatv(code2, i);
+      auto &m = opClass.newMethod("SmallVector<Value *, 4>", operand.name);
+      m.body() << formatv(code1, i);
     }
   }
 }
@@ -527,11 +503,8 @@ void OpEmitter::genNamedResultGetters() {
     if (result.constraint.isVariadic() || result.name.empty())
       continue;
 
-    auto &m1 = opClass.newMethod("Value *", result.name);
-    m1.body() << "  return this->getInstruction()->getResult(" << i << ");\n";
-    auto &m2 = opClass.newMethod("const Value *", result.name, /*params=*/"",
-                                 OpMethod::MP_Const);
-    m2.body() << "  return this->getInstruction()->getResult(" << i << ");\n";
+    auto &m = opClass.newMethod("Value *", result.name);
+    m.body() << "  return this->getInstruction()->getResult(" << i << ");\n";
   }
 }
 
@@ -750,14 +723,14 @@ void OpEmitter::genFolderDecls() {
     if (hasSingleResult) {
       const char *const params =
           "ArrayRef<Attribute> operands, MLIRContext *context";
-      opClass.newMethod("Attribute", "constantFold", params, OpMethod::MP_Const,
+      opClass.newMethod("Attribute", "constantFold", params, OpMethod::MP_None,
                         /*declOnly=*/true);
     } else {
       const char *const params =
           "ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, "
           "MLIRContext *context";
       opClass.newMethod("LogicalResult", "constantFold", params,
-                        OpMethod::MP_Const, /*declOnly=*/true);
+                        OpMethod::MP_None, /*declOnly=*/true);
     }
   }
 
@@ -790,8 +763,7 @@ void OpEmitter::genPrinter() {
   if (!codeInit)
     return;
 
-  auto &method =
-      opClass.newMethod("void", "print", "OpAsmPrinter *p", OpMethod::MP_Const);
+  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter *p");
   auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");
   method.body() << "  " << printer;
 }
@@ -803,8 +775,7 @@ void OpEmitter::genVerifier() {
   if (!hasCustomVerify && op.getNumArgs() == 0 && op.getNumResults() == 0)
     return;
 
-  auto &method =
-      opClass.newMethod("bool", "verify", /*params=*/"", OpMethod::MP_Const);
+  auto &method = opClass.newMethod("bool", "verify", /*params=*/"");
   auto &body = method.body();
 
   // Verify the attributes have the correct type.

@@ -120,8 +120,8 @@ public:
   AffineMap getPermutationMap() const;
 
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
 private:
   friend class Instruction;
@@ -186,8 +186,8 @@ public:
   AffineMap getPermutationMap() const;
 
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
 private:
   friend class Instruction;
@@ -210,8 +210,8 @@ public:
   static void build(Builder *builder, OperationState *result, Value *srcVector,
                     Type dstType);
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
 private:
   friend class Instruction;

@@ -120,7 +120,7 @@ AffineMap VectorTransferReadOp::getPermutationMap() const {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
-void VectorTransferReadOp::print(OpAsmPrinter *p) const {
+void VectorTransferReadOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << " ";
   p->printOperand(getMemRef());
   *p << ", ";
@@ -208,7 +208,7 @@ bool VectorTransferReadOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(vectorType, result->types);
 }
 
-bool VectorTransferReadOp::verify() const {
+bool VectorTransferReadOp::verify() {
   // Consistency of memref type in function type.
   if (llvm::empty(getOperands())) {
     return emitOpError(
@@ -320,7 +320,7 @@ AffineMap VectorTransferWriteOp::getPermutationMap() const {
   return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
 }
 
-void VectorTransferWriteOp::print(OpAsmPrinter *p) const {
+void VectorTransferWriteOp::print(OpAsmPrinter *p) {
   *p << getOperationName();
   *p << " " << *getVector();
   *p << ", " << *getMemRef();
@@ -384,7 +384,7 @@ bool VectorTransferWriteOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(indexInfo, indexType, result->operands);
 }
 
-bool VectorTransferWriteOp::verify() const {
+bool VectorTransferWriteOp::verify() {
   // Consistency of memref type in function type.
   if (llvm::empty(getOperands())) {
     return emitOpError(
@@ -471,12 +471,12 @@ bool VectorTypeCastOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperand(operand, srcType, result->operands);
 }
 
-void VectorTypeCastOp::print(OpAsmPrinter *p) const {
+void VectorTypeCastOp::print(OpAsmPrinter *p) {
   *p << getOperationName() << ' ' << *getOperand() << " : "
      << getOperand()->getType() << ", " << getType();
 }
 
-bool VectorTypeCastOp::verify() const {
+bool VectorTypeCastOp::verify() {
   auto dstMemrefType = getType().dyn_cast<MemRefType>();
   if (!dstMemrefType)
     return emitOpError("expects target type to be a memref type");

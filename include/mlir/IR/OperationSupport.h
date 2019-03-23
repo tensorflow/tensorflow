@@ -78,22 +78,22 @@ public:
   Dialect &dialect;
 
   /// Return true if this "op class" can match against the specified operation.
-  bool (&isClassFor)(const Instruction *op);
+  bool (&isClassFor)(Instruction *op);
 
   /// Use the specified object to parse this ops custom assembly format.
   bool (&parseAssembly)(OpAsmParser *parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(const Instruction *op, OpAsmPrinter *p);
+  void (&printAssembly)(Instruction *op, OpAsmPrinter *p);
 
-  /// This hook implements the verifier for this operation.  It should emits an
-  /// error message and returns true if a problem is detected, or returns false
+  /// This hook implements the verifier for this operation.  It should emit an
+  /// error message and returns true if a problem is detected, or return false
   /// if everything is ok.
-  bool (&verifyInvariants)(const Instruction *op);
+  bool (&verifyInvariants)(Instruction *op);
 
   /// This hook implements a constant folder for this operation.  It fills in
   /// `results` on success.
-  LogicalResult (&constantFoldHook)(const Instruction *op,
+  LogicalResult (&constantFoldHook)(Instruction *op,
                                     ArrayRef<Attribute> operands,
                                     SmallVectorImpl<Attribute> &results);
 
@@ -146,11 +146,11 @@ public:
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
-      bool (&isClassFor)(const Instruction *op),
+      bool (&isClassFor)(Instruction *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(const Instruction *op, OpAsmPrinter *p),
-      bool (&verifyInvariants)(const Instruction *op),
-      LogicalResult (&constantFoldHook)(const Instruction *op,
+      void (&printAssembly)(Instruction *op, OpAsmPrinter *p),
+      bool (&verifyInvariants)(Instruction *op),
+      LogicalResult (&constantFoldHook)(Instruction *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results),
       LogicalResult (&foldHook)(Instruction *op,

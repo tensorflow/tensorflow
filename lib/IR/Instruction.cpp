@@ -547,14 +547,16 @@ auto Instruction::getSuccessorOperands(unsigned index) -> operand_range {
 LogicalResult
 Instruction::constantFold(ArrayRef<Attribute> operands,
                           SmallVectorImpl<Attribute> &results) const {
+  auto *inst = const_cast<Instruction *>(this);
+
   if (auto *abstractOp = getAbstractOperation()) {
     // If we have a registered operation definition matching this one, use it to
     // try to constant fold the operation.
-    if (succeeded(abstractOp->constantFoldHook(this, operands, results)))
+    if (succeeded(abstractOp->constantFoldHook(inst, operands, results)))
       return success();
 
     // Otherwise, fall back on the dialect hook to handle it.
-    return abstractOp->dialect.constantFoldHook(this, operands, results);
+    return abstractOp->dialect.constantFoldHook(inst, operands, results);
   }
 
   // If this operation hasn't been registered or doesn't have abstract
@@ -562,7 +564,7 @@ Instruction::constantFold(ArrayRef<Attribute> operands,
   auto opName = getName().getStringRef();
   auto dialectPrefix = opName.split('.').first;
   if (auto *dialect = getContext()->getRegisteredDialect(dialectPrefix))
-    return dialect->constantFoldHook(this, operands, results);
+    return dialect->constantFoldHook(inst, operands, results);
 
   return failure();
 }

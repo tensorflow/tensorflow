@@ -78,10 +78,9 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
+  void print(OpAsmPrinter *p);
+  bool verify();
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -125,9 +124,9 @@ public:
                     int64_t step = 1);
   static void build(Builder *builder, OperationState *result, int64_t lb,
                     int64_t ub, int64_t step = 1);
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -339,9 +338,9 @@ public:
     return const_cast<AffineIfOp *>(this)->getElseBlocks();
   }
 
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
 private:
   friend class Instruction;

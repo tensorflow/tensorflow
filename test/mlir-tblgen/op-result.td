@@ -7,7 +7,7 @@ def OneResultOp : Op<"one_result_op", []> {
 }
 
 // CHECK-LABEL: OneResultOp definitions
-// CHECK:      bool OneResultOp::verify() const {
+// CHECK:      bool OneResultOp::verify() {
 // CHECK:        if (!((this->getInstruction()->getResult(0)->getType().isInteger(32))))
 // CHECK-NEXT:     return emitOpError("result #0 must be 32-bit integer");
 

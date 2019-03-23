@@ -301,7 +301,7 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
 
   // If we can get operation info for this, check the custom hook.
   if (auto *opInfo = op.getAbstractOperation()) {
-    if (opInfo->verifyInvariants(&op))
+    if (opInfo->verifyInvariants(const_cast<Instruction *>(&op)))
       return true;
   }
 

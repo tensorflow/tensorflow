@@ -154,14 +154,14 @@ bool AffineApplyOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void AffineApplyOp::print(OpAsmPrinter *p) const {
+void AffineApplyOp::print(OpAsmPrinter *p) {
   auto map = getAffineMap();
   *p << "affine.apply " << map;
   printDimAndSymbolList(operand_begin(), operand_end(), map.getNumDims(), p);
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
 }
 
-bool AffineApplyOp::verify() const {
+bool AffineApplyOp::verify() {
   // Check that affine map attribute was specified.
   auto affineMapAttr = getAttrOfType<AffineMapAttr>("map");
   if (!affineMapAttr)
@@ -202,7 +202,7 @@ bool AffineApplyOp::isValidSymbol() const {
 }
 
 Attribute AffineApplyOp::constantFold(ArrayRef<Attribute> operands,
-                                      MLIRContext *context) const {
+                                      MLIRContext *context) {
   auto map = getAffineMap();
   SmallVector<Attribute, 1> result;
   if (failed(map.constantFold(operands, result)))
@@ -754,7 +754,7 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
   return build(builder, result, {}, lbMap, {}, ubMap, step);
 }
 
-bool AffineForOp::verify() const {
+bool AffineForOp::verify() {
   auto &bodyRegion = getInstruction()->getRegion(0);
 
   // The body region must contain a single basic block.
@@ -969,7 +969,7 @@ static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
                         map.getNumDims(), p);
 }
 
-void AffineForOp::print(OpAsmPrinter *p) const {
+void AffineForOp::print(OpAsmPrinter *p) {
   *p << "for ";
   p->printOperand(getBody()->getArgument(0));
   *p << " = ";
@@ -1225,7 +1225,7 @@ void AffineIfOp::build(Builder *builder, OperationState *result,
   result->reserveRegions(2);
 }
 
-bool AffineIfOp::verify() const {
+bool AffineIfOp::verify() {
   // Verify that we have a condition attribute.
   auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
   if (!conditionAttr)
@@ -1301,7 +1301,7 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void AffineIfOp::print(OpAsmPrinter *p) const {
+void AffineIfOp::print(OpAsmPrinter *p) {
   auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
   *p << "if " << conditionAttr;
   printDimAndSymbolList(operand_begin(), operand_end(),

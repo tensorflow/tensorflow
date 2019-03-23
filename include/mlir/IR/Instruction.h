@@ -440,7 +440,7 @@ public:
   /// The is methods return true if the operation is a typed op (like DimOp) of
   /// of the given class.
   template <typename OpClass> bool isa() const {
-    return OpClass::isClassFor(this);
+    return OpClass::isClassFor(const_cast<Instruction *>(this));
   }
 
   //===--------------------------------------------------------------------===//

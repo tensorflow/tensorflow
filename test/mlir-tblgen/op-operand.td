@@ -7,6 +7,6 @@ def OneOperandOp : Op<"one_operand_op", []> {
 }
 
 // CHECK-LABEL: OneOperandOp definitions
-// CHECK:      bool OneOperandOp::verify() const {
+// CHECK:      bool OneOperandOp::verify() {
 // CHECK:        if (!((this->getInstruction()->getOperand(0)->getType().isInteger(32))))
 // CHECK-NEXT:     return emitOpError("operand #0 must be 32-bit integer");

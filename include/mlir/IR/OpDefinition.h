@@ -163,7 +163,7 @@ public:
 protected:
   /// If the concrete type didn't implement a custom verifier hook, just fall
   /// back to this one which accepts everything.
-  bool verify() const { return false; }
+  bool verify() { return false; }
 
   /// Unless overridden, the custom assembly form of an op is always rejected.
   /// Op implementations should implement this to return true on failure.
@@ -172,7 +172,7 @@ protected:
   static bool parse(OpAsmParser *parser, OperationState *result);
 
   // The fallback for the printer is to print it the generic assembly form.
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
@@ -193,7 +193,7 @@ class FoldingHook {
 public:
   /// This is an implementation detail of the constant folder hook for
   /// AbstractOperation.
-  static LogicalResult constantFoldHook(const Instruction *op,
+  static LogicalResult constantFoldHook(Instruction *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results) {
     return op->cast<ConcreteType>()->constantFold(operands, results,
@@ -211,7 +211,7 @@ public:
   ///
   LogicalResult constantFold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<Attribute> &results,
-                             MLIRContext *context) const {
+                             MLIRContext *context) {
     return failure();
   }
 
@@ -256,7 +256,7 @@ class FoldingHook<ConcreteType, isSingleResult,
 public:
   /// This is an implementation detail of the constant folder hook for
   /// AbstractOperation.
-  static LogicalResult constantFoldHook(const Instruction *op,
+  static LogicalResult constantFoldHook(Instruction *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results) {
     auto result =
@@ -277,8 +277,7 @@ public:
   ///
   /// If not overridden, this fallback implementation always fails to fold.
   ///
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const {
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context) {
     return nullptr;
   }
 
@@ -830,7 +829,7 @@ public:
   /// This hook can be overridden with a more specific implementation in
   /// the subclass of Base.
   ///
-  static bool isClassFor(const Instruction *op) {
+  static bool isClassFor(Instruction *op) {
     return op->getName().getStringRef() == ConcreteType::getOperationName();
   }
 
@@ -844,7 +843,7 @@ public:
 
   /// This is the hook used by the AsmPrinter to emit this to the .mlir file.
   /// Op implementations should provide a print method.
-  static void printAssembly(const Instruction *op, OpAsmPrinter *p) {
+  static void printAssembly(Instruction *op, OpAsmPrinter *p) {
     auto opPointer = op->dyn_cast<ConcreteType>();
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
@@ -858,7 +857,7 @@ public:
   ///
   /// On success this returns false; on failure it emits an error to the
   /// diagnostic subsystem and returns true.
-  static bool verifyInvariants(const Instruction *op) {
+  static bool verifyInvariants(Instruction *op) {
     return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
            op->cast<ConcreteType>()->verify();
   }
@@ -947,7 +946,7 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result) {
     return impl::parseCastOp(parser, result);
   }
-  void print(OpAsmPrinter *p) const {
+  void print(OpAsmPrinter *p) {
     return impl::printCastOp(this->getInstruction(), p);
   }
 

@@ -61,9 +61,7 @@ bool OpState::parse(OpAsmParser *parser, OperationState *result) {
 }
 
 // The fallback for the printer is to print in the generic assembly form.
-void OpState::print(OpAsmPrinter *p) const {
-  p->printGenericOp(getInstruction());
-}
+void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getInstruction()); }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate

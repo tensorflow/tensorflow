@@ -178,7 +178,7 @@ Attribute constFoldBinaryOp(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   return constFoldBinaryOp<FloatAttr>(
       operands, [](APFloat a, APFloat b) { return a + b; });
 }
@@ -188,7 +188,7 @@ Attribute AddFOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute AddIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a + b; });
 }
@@ -211,7 +211,7 @@ void AllocOp::build(Builder *builder, OperationState *result,
   result->types.push_back(memrefType);
 }
 
-void AllocOp::print(OpAsmPrinter *p) const {
+void AllocOp::print(OpAsmPrinter *p) {
   MemRefType type = getType();
   *p << "alloc";
   // Print dynamic dimension operands.
@@ -247,7 +247,7 @@ bool AllocOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-bool AllocOp::verify() const {
+bool AllocOp::verify() {
   auto memRefType = getResult()->getType().dyn_cast<MemRefType>();
   if (!memRefType)
     return emitOpError("result must be a memref");
@@ -393,7 +393,7 @@ bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void BranchOp::print(OpAsmPrinter *p) const {
+void BranchOp::print(OpAsmPrinter *p) {
   *p << "br ";
   p->printSuccessorAndUseList(getInstruction(), 0);
 }
@@ -440,7 +440,7 @@ bool CallOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void CallOp::print(OpAsmPrinter *p) const {
+void CallOp::print(OpAsmPrinter *p) {
   *p << "call ";
   p->printFunctionReference(getCallee());
   *p << '(';
@@ -450,7 +450,7 @@ void CallOp::print(OpAsmPrinter *p) const {
   *p << " : " << getCallee()->getType();
 }
 
-bool CallOp::verify() const {
+bool CallOp::verify() {
   // Check that the callee attribute was specified.
   auto fnAttr = getAttrOfType<FunctionAttr>("callee");
   if (!fnAttr)
@@ -538,7 +538,7 @@ bool CallIndirectOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypesToList(calleeType.getResults(), result->types);
 }
 
-void CallIndirectOp::print(OpAsmPrinter *p) const {
+void CallIndirectOp::print(OpAsmPrinter *p) {
   *p << "call_indirect ";
   p->printOperand(getCallee());
   *p << '(';
@@ -549,7 +549,7 @@ void CallIndirectOp::print(OpAsmPrinter *p) const {
   *p << " : " << getCallee()->getType();
 }
 
-bool CallIndirectOp::verify() const {
+bool CallIndirectOp::verify() {
   // The callee must be a function.
   auto fnType = getCallee()->getType().dyn_cast<FunctionType>();
   if (!fnType)
@@ -712,7 +712,7 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void CmpIOp::print(OpAsmPrinter *p) const {
+void CmpIOp::print(OpAsmPrinter *p) {
   *p << "cmpi ";
 
   auto predicateValue =
@@ -734,7 +734,7 @@ void CmpIOp::print(OpAsmPrinter *p) const {
   *p << " : " << getOperand(0)->getType();
 }
 
-bool CmpIOp::verify() const {
+bool CmpIOp::verify() {
   auto predicateAttr = getAttrOfType<IntegerAttr>(getPredicateAttrName());
   if (!predicateAttr)
     return emitOpError("requires an integer attribute named 'predicate'");
@@ -778,7 +778,7 @@ static bool applyCmpPredicate(CmpIPredicate predicate, const APInt &lhs,
 
 // Constant folding hook for comparisons.
 Attribute CmpIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   assert(operands.size() == 2 && "cmpi takes two arguments");
 
   auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
@@ -870,7 +870,7 @@ bool CondBranchOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-void CondBranchOp::print(OpAsmPrinter *p) const {
+void CondBranchOp::print(OpAsmPrinter *p) {
   *p << "cond_br ";
   p->printOperand(getCondition());
   *p << ", ";
@@ -879,7 +879,7 @@ void CondBranchOp::print(OpAsmPrinter *p) const {
   p->printSuccessorAndUseList(getInstruction(), falseIndex);
 }
 
-bool CondBranchOp::verify() const {
+bool CondBranchOp::verify() {
   if (!getCondition()->getType().isInteger(1))
     return emitOpError("expected condition type was boolean (i1)");
   return false;
@@ -945,7 +945,7 @@ void ConstantOp::build(Builder *builder, OperationState *result,
   return build(builder, result, t, value);
 }
 
-void ConstantOp::print(OpAsmPrinter *p) const {
+void ConstantOp::print(OpAsmPrinter *p) {
   *p << "constant ";
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"value"});
 
@@ -981,7 +981,7 @@ bool ConstantOp::parse(OpAsmParser *parser, OperationState *result) {
 
 /// The constant op requires an attribute, and furthermore requires that it
 /// matches the return type.
-bool ConstantOp::verify() const {
+bool ConstantOp::verify() {
   auto value = getValue();
   if (!value)
     return emitOpError("requires a 'value' attribute");
@@ -1035,7 +1035,7 @@ bool ConstantOp::verify() const {
 }
 
 Attribute ConstantOp::constantFold(ArrayRef<Attribute> operands,
-                                   MLIRContext *context) const {
+                                   MLIRContext *context) {
   assert(operands.empty() && "constant has no operands");
   return getValue();
 }
@@ -1045,13 +1045,13 @@ void ConstantFloatOp::build(Builder *builder, OperationState *result,
   ConstantOp::build(builder, result, type, builder->getFloatAttr(type, value));
 }
 
-bool ConstantFloatOp::isClassFor(const Instruction *op) {
+bool ConstantFloatOp::isClassFor(Instruction *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<FloatType>();
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.
-bool ConstantIntOp::isClassFor(const Instruction *op) {
+bool ConstantIntOp::isClassFor(Instruction *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<IntegerType>();
 }
@@ -1073,7 +1073,7 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
-bool ConstantIndexOp::isClassFor(const Instruction *op) {
+bool ConstantIndexOp::isClassFor(Instruction *op) {
   return ConstantOp::isClassFor(op) && op->getResult(0)->getType().isIndex();
 }
 
@@ -1121,7 +1121,7 @@ void DeallocOp::build(Builder *builder, OperationState *result, Value *memref) {
   result->addOperands(memref);
 }
 
-void DeallocOp::print(OpAsmPrinter *p) const {
+void DeallocOp::print(OpAsmPrinter *p) {
   *p << "dealloc " << *getMemRef() << " : " << getMemRef()->getType();
 }
 
@@ -1133,7 +1133,7 @@ bool DeallocOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperand(memrefInfo, type, result->operands);
 }
 
-bool DeallocOp::verify() const {
+bool DeallocOp::verify() {
   if (!getMemRef()->getType().isa<MemRefType>())
     return emitOpError("operand must be a memref");
   return false;
@@ -1159,7 +1159,7 @@ void DimOp::build(Builder *builder, OperationState *result,
   result->types.push_back(type);
 }
 
-void DimOp::print(OpAsmPrinter *p) const {
+void DimOp::print(OpAsmPrinter *p) {
   *p << "dim " << *getOperand() << ", " << getIndex();
   p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"index"});
   *p << " : " << getOperand()->getType();
@@ -1180,7 +1180,7 @@ bool DimOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(indexType, result->types);
 }
 
-bool DimOp::verify() const {
+bool DimOp::verify() {
   // Check that we have an integer index operand.
   auto indexAttr = getAttrOfType<IntegerAttr>("index");
   if (!indexAttr)
@@ -1205,7 +1205,7 @@ bool DimOp::verify() const {
 }
 
 Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
-                              MLIRContext *context) const {
+                              MLIRContext *context) {
   // Constant fold dim when the size along the index referred to is a constant.
   auto opType = getOperand()->getType();
   int64_t indexSize = -1;
@@ -1226,7 +1226,7 @@ Attribute DimOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute DivISOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) const {
+                                MLIRContext *context) {
   assert(operands.size() == 2 && "binary operation takes two operands");
   (void)context;
 
@@ -1251,7 +1251,7 @@ Attribute DivISOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute DivIUOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) const {
+                                MLIRContext *context) {
   assert(operands.size() == 2 && "binary operation takes two operands");
   (void)context;
 
@@ -1291,7 +1291,7 @@ void DmaStartOp::build(Builder *builder, OperationState *result,
   }
 }
 
-void DmaStartOp::print(OpAsmPrinter *p) const {
+void DmaStartOp::print(OpAsmPrinter *p) {
   *p << "dma_start " << *getSrcMemRef() << '[';
   p->printOperands(getSrcIndices());
   *p << "], " << *getDstMemRef() << '[';
@@ -1405,7 +1405,7 @@ bool DmaStartOp::parse(OpAsmParser *parser, OperationState *result) {
   return false;
 }
 
-bool DmaStartOp::verify() const {
+bool DmaStartOp::verify() {
   // DMAs from different memory spaces supported.
   if (getSrcMemorySpace() == getDstMemorySpace()) {
     return emitOpError("DMA should be between different memory spaces");
@@ -1439,7 +1439,7 @@ void DmaWaitOp::build(Builder *builder, OperationState *result,
   result->addOperands(numElements);
 }
 
-void DmaWaitOp::print(OpAsmPrinter *p) const {
+void DmaWaitOp::print(OpAsmPrinter *p) {
   *p << "dma_wait ";
   // Print operands.
   p->printOperand(getTagMemRef());
@@ -1503,7 +1503,7 @@ void ExtractElementOp::build(Builder *builder, OperationState *result,
   result->types.push_back(aggregateType.getElementType());
 }
 
-void ExtractElementOp::print(OpAsmPrinter *p) const {
+void ExtractElementOp::print(OpAsmPrinter *p) {
   *p << "extract_element " << *getAggregate() << '[';
   p->printOperands(getIndices());
   *p << ']';
@@ -1527,7 +1527,7 @@ bool ExtractElementOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type.getElementType(), result->types);
 }
 
-bool ExtractElementOp::verify() const {
+bool ExtractElementOp::verify() {
   if (getNumOperands() == 0)
     return emitOpError("expected an aggregate to index into");
 
@@ -1551,7 +1551,7 @@ bool ExtractElementOp::verify() const {
 }
 
 Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
-                                         MLIRContext *context) const {
+                                         MLIRContext *context) {
   assert(operands.size() > 1 && "extract_element takes atleast one operands");
 
   // The aggregate operand must be a known constant.
@@ -1590,7 +1590,7 @@ void LoadOp::build(Builder *builder, OperationState *result, Value *memref,
   result->types.push_back(memrefType.getElementType());
 }
 
-void LoadOp::print(OpAsmPrinter *p) const {
+void LoadOp::print(OpAsmPrinter *p) {
   *p << "load " << *getMemRef() << '[';
   p->printOperands(getIndices());
   *p << ']';
@@ -1614,7 +1614,7 @@ bool LoadOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type.getElementType(), result->types);
 }
 
-bool LoadOp::verify() const {
+bool LoadOp::verify() {
   if (getNumOperands() == 0)
     return emitOpError("expected a memref to load from");
 
@@ -1650,12 +1650,12 @@ void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // MemRefCastOp
 //===----------------------------------------------------------------------===//
 
-void MemRefCastOp::print(OpAsmPrinter *p) const {
+void MemRefCastOp::print(OpAsmPrinter *p) {
   *p << "memref_cast " << *getOperand() << " : " << getOperand()->getType()
      << " to " << getType();
 }
 
-bool MemRefCastOp::verify() const {
+bool MemRefCastOp::verify() {
   auto opType = getOperand()->getType().dyn_cast<MemRefType>();
   auto resType = getType().dyn_cast<MemRefType>();
   if (!opType || !resType)
@@ -1693,7 +1693,7 @@ bool MemRefCastOp::verify() const {
 //===----------------------------------------------------------------------===//
 
 Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   return constFoldBinaryOp<FloatAttr>(
       operands, [](APFloat a, APFloat b) { return a * b; });
 }
@@ -1703,7 +1703,7 @@ Attribute MulFOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute MulIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   // TODO: Handle the overflow case.
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a * b; });
@@ -1724,7 +1724,7 @@ Value *MulIOp::fold() {
 //===----------------------------------------------------------------------===//
 
 Attribute RemISOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) const {
+                                MLIRContext *context) {
   assert(operands.size() == 2 && "remis takes two operands");
 
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
@@ -1753,7 +1753,7 @@ Attribute RemISOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute RemIUOp::constantFold(ArrayRef<Attribute> operands,
-                                MLIRContext *context) const {
+                                MLIRContext *context) {
   assert(operands.size() == 2 && "remiu takes two operands");
 
   auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
@@ -1795,7 +1795,7 @@ bool ReturnOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(opInfo, types, loc, result->operands);
 }
 
-void ReturnOp::print(OpAsmPrinter *p) const {
+void ReturnOp::print(OpAsmPrinter *p) {
   *p << "return";
   if (getNumOperands() > 0) {
     *p << ' ';
@@ -1808,7 +1808,7 @@ void ReturnOp::print(OpAsmPrinter *p) const {
   }
 }
 
-bool ReturnOp::verify() const {
+bool ReturnOp::verify() {
   auto *function = getInstruction()->getFunction();
 
   // The operand number and types must match the function signature.
@@ -1857,14 +1857,14 @@ bool SelectOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->addTypeToList(type, result->types);
 }
 
-void SelectOp::print(OpAsmPrinter *p) const {
+void SelectOp::print(OpAsmPrinter *p) {
   *p << "select ";
   p->printOperands(getInstruction()->getOperands());
   *p << " : " << getTrueValue()->getType();
   p->printOptionalAttrDict(getAttrs());
 }
 
-bool SelectOp::verify() const {
+bool SelectOp::verify() {
   auto conditionType = getCondition()->getType();
   auto trueType = getTrueValue()->getType();
   auto falseType = getFalseValue()->getType();
@@ -1905,7 +1905,7 @@ void StoreOp::build(Builder *builder, OperationState *result,
   result->addOperands(indices);
 }
 
-void StoreOp::print(OpAsmPrinter *p) const {
+void StoreOp::print(OpAsmPrinter *p) {
   *p << "store " << *getValueToStore();
   *p << ", " << *getMemRef() << '[';
   p->printOperands(getIndices());
@@ -1933,7 +1933,7 @@ bool StoreOp::parse(OpAsmParser *parser, OperationState *result) {
          parser->resolveOperands(indexInfo, affineIntTy, result->operands);
 }
 
-bool StoreOp::verify() const {
+bool StoreOp::verify() {
   if (getNumOperands() < 2)
     return emitOpError("expected a value to store and a memref");
 
@@ -1972,7 +1972,7 @@ void StoreOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   return constFoldBinaryOp<FloatAttr>(
       operands, [](APFloat a, APFloat b) { return a - b; });
 }
@@ -1982,7 +1982,7 @@ Attribute SubFOp::constantFold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 Attribute SubIOp::constantFold(ArrayRef<Attribute> operands,
-                               MLIRContext *context) const {
+                               MLIRContext *context) {
   return constFoldBinaryOp<IntegerAttr>(operands,
                                         [](APInt a, APInt b) { return a - b; });
 }
@@ -2020,12 +2020,12 @@ void SubIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // TensorCastOp
 //===----------------------------------------------------------------------===//
 
-void TensorCastOp::print(OpAsmPrinter *p) const {
+void TensorCastOp::print(OpAsmPrinter *p) {
   *p << "tensor_cast " << *getOperand() << " : " << getOperand()->getType()
      << " to " << getType();
 }
 
-bool TensorCastOp::verify() const {
+bool TensorCastOp::verify() {
   auto opType = getOperand()->getType().dyn_cast<TensorType>();
   auto resType = getType().dyn_cast<TensorType>();
   if (!opType || !resType)

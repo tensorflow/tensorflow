@@ -78,9 +78,9 @@ public:
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
                     MemRefType memrefType, ArrayRef<Value *> operands = {});
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
@@ -109,7 +109,7 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
   /// Return the block this branch jumps to.
   Block *getDest();
@@ -158,8 +158,8 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
 protected:
   friend class Instruction;
@@ -201,8 +201,8 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
@@ -268,10 +268,9 @@ public:
   static void build(Builder *builder, OperationState *result, CmpIPredicate,
                     Value *lhs, Value *rhs);
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
+  void print(OpAsmPrinter *p);
+  bool verify();
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
 private:
   friend class Instruction;
@@ -308,8 +307,8 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -440,10 +439,9 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
+  void print(OpAsmPrinter *p);
+  bool verify();
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
 protected:
   friend class Instruction;
@@ -465,7 +463,7 @@ public:
     return getAttrOfType<FloatAttr>("value").getValue();
   }
 
-  static bool isClassFor(const Instruction *op);
+  static bool isClassFor(Instruction *op);
 
 private:
   friend class Instruction;
@@ -492,7 +490,7 @@ public:
     return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
-  static bool isClassFor(const Instruction *op);
+  static bool isClassFor(Instruction *op);
 
 private:
   friend class Instruction;
@@ -513,7 +511,7 @@ public:
     return getAttrOfType<IntegerAttr>("value").getInt();
   }
 
-  static bool isClassFor(const Instruction *op);
+  static bool isClassFor(Instruction *op);
 
 private:
   friend class Instruction;
@@ -541,9 +539,9 @@ public:
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result, Value *memref);
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
@@ -564,8 +562,7 @@ public:
   static void build(Builder *builder, OperationState *result,
                     Value *memrefOrTensor, unsigned index);
 
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
   /// This returns the dimension number that the 'dim' is inspecting.
   unsigned getIndex() const {
@@ -575,9 +572,9 @@ public:
   static StringRef getOperationName() { return "std.dim"; }
 
   // Hooks to customize behavior of this op.
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
 private:
   friend class Instruction;
@@ -712,8 +709,8 @@ public:
 
   static StringRef getOperationName() { return "std.dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -789,7 +786,7 @@ public:
   }
 
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
@@ -832,11 +829,10 @@ public:
   static StringRef getOperationName() { return "std.extract_element"; }
 
   // Hooks to customize behavior of this op.
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  Attribute constantFold(ArrayRef<Attribute> operands,
-                         MLIRContext *context) const;
+  void print(OpAsmPrinter *p);
+  Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
 private:
   friend class Instruction;
@@ -877,9 +873,9 @@ public:
 
   static StringRef getOperationName() { return "std.load"; }
 
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
@@ -912,9 +908,9 @@ public:
     return getResult()->getType().cast<MemRefType>();
   }
 
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
-  bool verify() const;
+  bool verify();
 
 private:
   friend class Instruction;
@@ -940,8 +936,8 @@ public:
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
 private:
   friend class Instruction;
@@ -966,8 +962,8 @@ public:
   static void build(Builder *builder, OperationState *result, Value *condition,
                     Value *trueValue, Value *falseValue);
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
-  bool verify() const;
+  void print(OpAsmPrinter *p);
+  bool verify();
 
   Value *getCondition() { return getOperand(0); }
   const Value *getCondition() const { return getOperand(0); }
@@ -1023,9 +1019,9 @@ public:
 
   static StringRef getOperationName() { return "std.store"; }
 
-  bool verify() const;
+  bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
@@ -1054,9 +1050,9 @@ public:
     return getResult()->getType().cast<TensorType>();
   }
 
-  void print(OpAsmPrinter *p) const;
+  void print(OpAsmPrinter *p);
 
-  bool verify() const;
+  bool verify();
 
 private:
   friend class Instruction;

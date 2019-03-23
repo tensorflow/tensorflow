@@ -76,7 +76,7 @@ have a constant folder, the constant folder also needs to be added, e.g.,:
 
 ```c++
 Attribute SpecificOp::constantFold(ArrayRef<Attribute> operands,
-                                   MLIRContext *context) const {
+                                   MLIRContext *context) {
   if (unable_to_fold)
     return {};
   ....
