@@ -159,10 +159,10 @@ def if_emscripten(a):
         "//conditions:default": [],
     })
 
-def if_macos(a):
+def if_macos(a, otherwise = []):
     return select({
         clean_dep("//tensorflow:macos"): a,
-        "//conditions:default": [],
+        "//conditions:default": otherwise,
     })
 
 def if_ios(a):
@@ -386,12 +386,30 @@ def _rpath_linkopts(name):
 # Bazel-generated shared objects which must be linked into TensorFlow binaries
 # to define symbols from //tensorflow/core:framework and //tensorflow/core:lib.
 def tf_binary_additional_srcs():
-    return if_static(
-        extra_deps = [],
-        otherwise = [
+    return select({
+        clean_dep("//tensorflow:macos_with_framework_shared_object"): [
+            clean_dep("//tensorflow:libtensorflow_framework.dylib"),
+        ],
+        clean_dep("//tensorflow:framework_shared_object"): [
             clean_dep("//tensorflow:libtensorflow_framework.so"),
         ],
-    )
+        "//conditions:default": [
+        ],
+    })
+
+# Helper function for the per-OS tensorflow libraries
+def tf_shared_library_deps():
+    return select({
+        clean_dep("//tensorflow:macos"): [
+            clean_dep("//tensorflow:libtensorflow.dylib"),
+        ],
+        clean_dep("//tensorflow:windows"): [
+            clean_dep("//tensorflow:tensorflow.dll"),
+        ],
+        "//conditions:default": [
+            clean_dep("//tensorflow:libtensorflow.so"),
+        ],
+    }) + tf_binary_additional_srcs()
 
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
@@ -865,7 +883,9 @@ def tf_cc_test(
                 clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
-        data = data + tf_binary_dynamic_kernel_dsos(),
+        data = data +
+               tf_binary_dynamic_kernel_dsos() +
+               tf_binary_additional_srcs(),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this

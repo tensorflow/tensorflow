@@ -326,6 +326,18 @@ config_setting(
 )
 
 config_setting(
+    name = "macos_with_framework_shared_object",
+    define_values = {
+        "framework_shared_object": "true",
+    },
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "using_cuda_clang",
     define_values = {
         "using_cuda_clang": "true",
@@ -467,7 +479,7 @@ cc_library(
 # projects building with Bazel and importing TensorFlow as a dependency will not
 # depend on libtensorflow_framework.so unless they opt in.
 tf_cc_shared_object(
-    name = "libtensorflow_framework.so",
+    name = "tensorflow_framework",
     framework_so = [],
     linkopts = select({
         "//tensorflow:macos": [],
@@ -477,6 +489,7 @@ tf_cc_shared_object(
         ],
     }),
     linkstatic = 1,
+    per_os_targets = True,
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:core_cpu_impl",
@@ -508,7 +521,6 @@ tf_cc_shared_object(
     linkopts = select({
         "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
-            "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [
         ],
