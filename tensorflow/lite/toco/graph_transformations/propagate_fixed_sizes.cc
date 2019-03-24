@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -1683,8 +1684,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
         strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
         start_index);
 
-    int dim_size =
-        ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
+    int dim_size = std::ceil(static_cast<float>(stop_index - start_index) /
+                             op->strides[axis]);
 
     CHECK_GT(dim_size, 0)
         << "Output size for an axis must be greater than 0. Axis " << axis
