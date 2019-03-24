@@ -261,6 +261,7 @@ def generated_test_models():
         "global_batch_norm",
         "greater",
         "greater_equal",
+        "identity",
         "sum",
         "l2norm",
         "l2norm_shared_epsilon",
