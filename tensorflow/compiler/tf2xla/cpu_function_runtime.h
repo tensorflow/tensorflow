@@ -104,7 +104,10 @@ class BufferInfo {
  private:
   BufferInfo() = default;
 
-  enum class Kind : unsigned {
+  // The enum class Kind must be uint64 to ensure that the bit fields
+  // `kind_` and `size_` are merged and the resulting size of BufferInfo
+  // is 16 bytes (i.e. two 64 bit integers, used in `Encode()`).
+  enum class Kind : uint64 {
     kConstant,
     kTempBuffer,
     kEntryParameter,
