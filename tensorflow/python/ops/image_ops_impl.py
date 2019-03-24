@@ -2873,7 +2873,7 @@ def _fspecial_gauss(size, sigma):
   return array_ops.reshape(g, shape=[size, size, 1, 1])
 
 
-def _ssim_per_channel(img1, img2, max_val=1.0):
+def _ssim_per_channel(img1, img2, max_val=1.0, size = 11, sigma = 1.5):
   """Computes SSIM index between img1 and img2 per color channel.
 
   This function matches the standard SSIM implementation from:
@@ -2895,8 +2895,8 @@ def _ssim_per_channel(img1, img2, max_val=1.0):
     A pair of tensors containing and channel-wise SSIM and contrast-structure
     values. The shape is [..., channels].
   """
-  filter_size = constant_op.constant(11, dtype=dtypes.int32)
-  filter_sigma = constant_op.constant(1.5, dtype=img1.dtype)
+  filter_size = constant_op.constant(size, dtype=dtypes.int32)
+  filter_sigma = constant_op.constant(sigma, dtype=img1.dtype)
 
   shape1, shape2 = array_ops.shape_n([img1, img2])
   checks = [
@@ -2937,7 +2937,7 @@ def _ssim_per_channel(img1, img2, max_val=1.0):
 
 
 @tf_export('image.ssim')
-def ssim(img1, img2, max_val):
+def ssim(img1, img2, max_val, filter_size = 11, filter_sigma = 1.5):
   """Computes SSIM index between img1 and img2.
 
   This function is based on the standard SSIM implementation from:
@@ -2962,12 +2962,12 @@ def ssim(img1, img2, max_val):
       im1 = tf.decode_png('path/to/im1.png')
       im2 = tf.decode_png('path/to/im2.png')
       # Compute SSIM over tf.uint8 Tensors.
-      ssim1 = tf.image.ssim(im1, im2, max_val=255)
+      ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size = 11, filter_sigma = 1.5)
 
       # Compute SSIM over tf.float32 Tensors.
       im1 = tf.image.convert_image_dtype(im1, tf.float32)
       im2 = tf.image.convert_image_dtype(im2, tf.float32)
-      ssim2 = tf.image.ssim(im1, im2, max_val=1.0)
+      ssim2 = tf.image.ssim(im1, im2, max_val=1.0, filter_size = 11, filter_sigma = 1.5)
       # ssim1 and ssim2 both have type tf.float32 and are almost equal.
   ```
 
@@ -2992,7 +2992,7 @@ def ssim(img1, img2, max_val):
   max_val = convert_image_dtype(max_val, dtypes.float32)
   img1 = convert_image_dtype(img1, dtypes.float32)
   img2 = convert_image_dtype(img2, dtypes.float32)
-  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val)
+  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, size = filter_size, sigma = filter_sigma)
   # Compute average over color channels.
   return math_ops.reduce_mean(ssim_per_channel, [-1])
 
