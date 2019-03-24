@@ -136,7 +136,7 @@ TEST_FUNC(builder_max_min_for) {
   ValueHandle i(indexType), lb1(f->getArgument(0)), lb2(f->getArgument(1)),
       ub1(f->getArgument(2)), ub2(f->getArgument(3));
   LoopBuilder(&i, {lb1, lb2}, {ub1, ub2}, 1)({});
-  ret({});
+  ret();
 
   // clang-format off
   // CHECK-LABEL: func @builder_max_min_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
@@ -250,10 +250,10 @@ TEST_FUNC(builder_cond_branch) {
 
   BlockHandle b1, b2, functionBlock(&f->front());
   BlockBuilder(&b1, {&arg1})({
-      ret({}),
+      ret(),
   });
   BlockBuilder(&b2, {&arg2, &arg3})({
-      ret({}),
+      ret(),
   });
   // Get back to entry block and add a conditional branch
   BlockBuilder(functionBlock, Append())({
@@ -292,10 +292,10 @@ TEST_FUNC(builder_cond_branch_eager) {
   BlockHandle b1, b2;
   cond_br(funcArg, &b1, {&arg1}, {c32}, &b2, {&arg2, &arg3}, {c64, c42});
   BlockBuilder(b1, Append())({
-      ret({}),
+      ret(),
   });
   BlockBuilder(b2, Append())({
-      ret({}),
+      ret(),
   });
 
   // CHECK-LABEL: @builder_cond_branch_eager

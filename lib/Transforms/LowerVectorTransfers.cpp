@@ -274,7 +274,8 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   VectorView vectorView(transfer->getVector());
   SmallVector<IndexHandle, 8> ivs =
       IndexHandle::makeIndexHandles(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs = IndexHandle::makePIndexHandles(ivs);
+  SmallVector<ValueHandle *, 8> pivs =
+      IndexHandle::makeIndexHandlePointers(ivs);
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -289,7 +290,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
       // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
       local(ivs) = remote(clip(transfer, view, ivs)),
   });
-  ValueHandle vectorValue = load(vec, ValueHandleArray{index_t(0)});
+  ValueHandle vectorValue = load(vec, {constant_index(0)});
   (dealloc(tmp)); // vexing parse
 
   // 3. Propagate.
@@ -329,7 +330,8 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   VectorView vectorView(transfer->getVector());
   SmallVector<IndexHandle, 8> ivs =
       IndexHandle::makeIndexHandles(vectorView.rank());
-  SmallVector<ValueHandle *, 8> pivs = IndexHandle::makePIndexHandles(ivs);
+  SmallVector<ValueHandle *, 8> pivs =
+      IndexHandle::makeIndexHandlePointers(ivs);
   coalesceCopy(transfer, &pivs, &vectorView);
 
   auto lbs = vectorView.getLbs();
@@ -340,7 +342,7 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   ValueHandle tmp = alloc(tmpMemRefType());
   IndexedValue local(tmp);
   ValueHandle vec = vector_type_cast(tmp, vectorMemRefType());
-  store(vectorValue, vec, ValueHandleArray{index_t(0)});
+  store(vectorValue, vec, {constant_index(0)});
   LoopNestBuilder(pivs, lbs, ubs, steps)({
       // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
       remote(clip(transfer, view, ivs)) = local(ivs),

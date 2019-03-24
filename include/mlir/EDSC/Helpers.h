@@ -36,69 +36,6 @@ template <typename Load, typename Store> class TemplatedIndexedValue;
 // load and stores.
 using IndexedValue = TemplatedIndexedValue<intrinsics::load, intrinsics::store>;
 
-/// An IndexHandle is a simple wrapper around a ValueHandle.
-/// IndexHandles are ubiquitous enough to justify a new type to allow simple
-/// declarations without boilerplate such as:
-///
-/// ```c++
-///    IndexHandle i, j, k;
-/// ```
-struct IndexHandle : public ValueHandle {
-  explicit IndexHandle()
-      : ValueHandle(ScopedContext::getBuilder()->getIndexType()) {}
-  explicit IndexHandle(index_t v) : ValueHandle(v) {}
-  explicit IndexHandle(Value *v) : ValueHandle(v) {
-    assert(v->getType() == ScopedContext::getBuilder()->getIndexType() &&
-           "Expected index type");
-  }
-  explicit IndexHandle(ValueHandle v) : ValueHandle(v) {
-    assert(v.getType() == ScopedContext::getBuilder()->getIndexType() &&
-           "Expected index type");
-  }
-  IndexHandle &operator=(const ValueHandle &v) {
-    assert(v.getType() == ScopedContext::getBuilder()->getIndexType() &&
-           "Expected index type");
-    /// Creating a new IndexHandle(v) and then std::swap rightly complains the
-    /// binding has already occurred and that we should use another name.
-    this->t = v.getType();
-    this->v = v.getValue();
-    return *this;
-  }
-  static SmallVector<IndexHandle, 8> makeIndexHandles(unsigned rank) {
-    return SmallVector<IndexHandle, 8>(rank);
-  }
-  static SmallVector<ValueHandle *, 8>
-  makePIndexHandles(SmallVectorImpl<IndexHandle> &ivs) {
-    SmallVector<ValueHandle *, 8> pivs;
-    for (auto &iv : ivs) {
-      pivs.push_back(&iv);
-    }
-    return pivs;
-  }
-};
-
-/// Helper structure to be used with ValueBuilder / InstructionBuilder.
-/// It serves the purpose of removing boilerplate specialization for the sole
-/// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value*>.
-class ValueHandleArray {
-public:
-  ValueHandleArray(ArrayRef<ValueHandle> vals) {
-    values.append(vals.begin(), vals.end());
-  }
-  ValueHandleArray(ArrayRef<IndexHandle> vals) {
-    values.append(vals.begin(), vals.end());
-  }
-  ValueHandleArray(ArrayRef<index_t> vals) {
-    llvm::SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
-    values.append(tmp.begin(), tmp.end());
-  }
-  operator ArrayRef<Value *>() { return values; }
-
-private:
-  ValueHandleArray() = default;
-  llvm::SmallVector<Value *, 8> values;
-};
-
 // Base class for MemRefView and VectorView.
 class View {
 public:
@@ -207,16 +144,16 @@ template <typename Load, typename Store> struct TemplatedIndexedValue {
   // NOLINTNEXTLINE: unconventional-assign-operator
   InstructionHandle operator=(const TemplatedIndexedValue &rhs) {
     ValueHandle rrhs(rhs);
-    return Store(rrhs, getBase(), ValueHandleArray(indices));
+    return Store(rrhs, getBase(), {indices.begin(), indices.end()});
   }
   // NOLINTNEXTLINE: unconventional-assign-operator
   InstructionHandle operator=(ValueHandle rhs) {
-    return Store(rhs, getBase(), ValueHandleArray(indices));
+    return Store(rhs, getBase(), {indices.begin(), indices.end()});
   }
 
   /// Emits a `load` when converting to a ValueHandle.
   operator ValueHandle() const {
-    return Load(getBase(), ValueHandleArray(indices));
+    return Load(getBase(), {indices.begin(), indices.end()});
   }
 
   ValueHandle getBase() const { return base; }
@@ -297,25 +234,25 @@ template <typename Load, typename Store>
 InstructionHandle
 TemplatedIndexedValue<Load, Store>::operator+=(ValueHandle e) {
   using op::operator+;
-  return Store(*this + e, getBase(), ValueHandleArray(indices));
+  return Store(*this + e, getBase(), {indices.begin(), indices.end()});
 }
 template <typename Load, typename Store>
 InstructionHandle
 TemplatedIndexedValue<Load, Store>::operator-=(ValueHandle e) {
   using op::operator-;
-  return Store(*this - e, getBase(), ValueHandleArray(indices));
+  return Store(*this - e, getBase(), {indices.begin(), indices.end()});
 }
 template <typename Load, typename Store>
 InstructionHandle
 TemplatedIndexedValue<Load, Store>::operator*=(ValueHandle e) {
   using op::operator*;
-  return Store(*this * e, getBase(), ValueHandleArray(indices));
+  return Store(*this * e, getBase(), {indices.begin(), indices.end()});
 }
 template <typename Load, typename Store>
 InstructionHandle
 TemplatedIndexedValue<Load, Store>::operator/=(ValueHandle e) {
   using op::operator/;
-  return Store(*this / e, getBase(), ValueHandleArray(indices));
+  return Store(*this / e, getBase(), {indices.begin(), indices.end()});
 }
 
 } // namespace edsc

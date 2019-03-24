@@ -11,7 +11,7 @@ def X_AddOp : Op<"x.add">,
     // TODO: extract referenceImplementation to Op.
   code referenceImplementation = [{
     auto ivs = IndexHandle::makeIndexHandles(view_A.rank());
-    auto pivs = IndexHandle::makePIndexHandles(ivs);
+    auto pivs = IndexHandle::makeIndexHandlePointers(ivs);
     IndexedValue A(arg_A), B(arg_B), C(arg_C);
     LoopNestBuilder(pivs, view_A.getLbs(), view_A.getUbs(), view_A.getSteps())({
       C(ivs) = A(ivs) + B(ivs)

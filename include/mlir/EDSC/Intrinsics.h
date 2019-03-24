@@ -33,14 +33,83 @@ class Type;
 
 namespace edsc {
 
-class BlockHandle;
-class InstructionHandle;
-class ValueHandle;
+/// An IndexHandle is a simple wrapper around a ValueHandle.
+/// IndexHandles are ubiquitous enough to justify a new type to allow simple
+/// declarations without boilerplate such as:
+///
+/// ```c++
+///    IndexHandle i, j, k;
+/// ```
+struct IndexHandle : public ValueHandle {
+  explicit IndexHandle()
+      : ValueHandle(ScopedContext::getBuilder()->getIndexType()) {}
+  explicit IndexHandle(index_t v) : ValueHandle(v) {}
+  explicit IndexHandle(Value *v) : ValueHandle(v) {
+    assert(v->getType() == ScopedContext::getBuilder()->getIndexType() &&
+           "Expected index type");
+  }
+  explicit IndexHandle(ValueHandle v) : ValueHandle(v) {
+    assert(v.getType() == ScopedContext::getBuilder()->getIndexType() &&
+           "Expected index type");
+  }
+  IndexHandle &operator=(const ValueHandle &v) {
+    assert(v.getType() == ScopedContext::getBuilder()->getIndexType() &&
+           "Expected index type");
+    /// Creating a new IndexHandle(v) and then std::swap rightly complains the
+    /// binding has already occurred and that we should use another name.
+    this->t = v.getType();
+    this->v = v.getValue();
+    return *this;
+  }
+  static SmallVector<IndexHandle, 8> makeIndexHandles(unsigned rank) {
+    return SmallVector<IndexHandle, 8>(rank);
+  }
+  static SmallVector<ValueHandle *, 8>
+  makeIndexHandlePointers(SmallVectorImpl<IndexHandle> &ivs) {
+    SmallVector<ValueHandle *, 8> pivs;
+    pivs.reserve(ivs.size());
+    for (auto &iv : ivs) {
+      pivs.push_back(&iv);
+    }
+    return pivs;
+  }
+};
 
 /// Provides a set of first class intrinsics.
 /// In the future, most of intrinsics reated to Instruction that don't contain
 /// other instructions should be Tablegen'd.
 namespace intrinsics {
+namespace detail {
+/// Helper structure to be used with ValueBuilder / InstructionBuilder.
+/// It serves the purpose of removing boilerplate specialization for the sole
+/// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value*>.
+class ValueHandleArray {
+public:
+  ValueHandleArray(ArrayRef<ValueHandle> vals) {
+    values.append(vals.begin(), vals.end());
+  }
+  ValueHandleArray(ArrayRef<IndexHandle> vals) {
+    values.append(vals.begin(), vals.end());
+  }
+  ValueHandleArray(ArrayRef<index_t> vals) {
+    llvm::SmallVector<IndexHandle, 8> tmp(vals.begin(), vals.end());
+    values.append(tmp.begin(), tmp.end());
+  }
+  operator ArrayRef<Value *>() { return values; }
+
+private:
+  ValueHandleArray() = default;
+  llvm::SmallVector<Value *, 8> values;
+};
+
+template <typename T> inline T unpack(T value) { return value; }
+
+inline detail::ValueHandleArray unpack(ArrayRef<ValueHandle> values) {
+  return detail::ValueHandleArray(values);
+}
+
+} // namespace detail
+
 /// Helper variadic abstraction to allow extending to any MLIR op without
 /// boilerplate or Tablegen.
 /// Arguably a builder is not a ValueHandle but in practice it is only used as
@@ -51,7 +120,22 @@ namespace intrinsics {
 template <typename Op> struct ValueBuilder : public ValueHandle {
   template <typename... Args>
   ValueBuilder(Args... args)
-      : ValueHandle(ValueHandle::create<Op>(std::forward<Args>(args)...)) {}
+      : ValueHandle(ValueHandle::create<Op>(detail::unpack(args)...)) {}
+  ValueBuilder(ArrayRef<ValueHandle> vs)
+      : ValueBuilder(ValueBuilder::create<Op>(detail::unpack(vs))) {}
+  template <typename... Args>
+  ValueBuilder(ArrayRef<ValueHandle> vs, Args... args)
+      : ValueHandle(ValueHandle::create<Op>(detail::unpack(vs),
+                                            detail::unpack(args)...)) {}
+  template <typename T, typename... Args>
+  ValueBuilder(T t, ArrayRef<ValueHandle> vs, Args... args)
+      : ValueHandle(ValueHandle::create<Op>(
+            detail::unpack(t), detail::unpack(vs), detail::unpack(args)...)) {}
+  template <typename T1, typename T2, typename... Args>
+  ValueBuilder(T1 t1, T2 t2, ArrayRef<ValueHandle> vs, Args... args)
+      : ValueHandle(ValueHandle::create<Op>(
+            detail::unpack(t1), detail::unpack(t2), detail::unpack(vs),
+            detail::unpack(args)...)) {}
   ValueBuilder() : ValueHandle(ValueHandle::create<Op>()) {}
 };
 
@@ -59,7 +143,22 @@ template <typename Op> struct InstructionBuilder : public InstructionHandle {
   template <typename... Args>
   InstructionBuilder(Args... args)
       : InstructionHandle(
-            InstructionHandle::create<Op>(std::forward<Args>(args)...)) {}
+            InstructionHandle::create<Op>(detail::unpack(args)...)) {}
+  InstructionBuilder(ArrayRef<ValueHandle> vs)
+      : InstructionHandle(InstructionHandle::create<Op>(detail::unpack(vs))) {}
+  template <typename... Args>
+  InstructionBuilder(ArrayRef<ValueHandle> vs, Args... args)
+      : InstructionHandle(InstructionHandle::create<Op>(
+            detail::unpack(vs), detail::unpack(args)...)) {}
+  template <typename T, typename... Args>
+  InstructionBuilder(T t, ArrayRef<ValueHandle> vs, Args... args)
+      : InstructionHandle(InstructionHandle::create<Op>(
+            detail::unpack(t), detail::unpack(vs), detail::unpack(args)...)) {}
+  template <typename T1, typename T2, typename... Args>
+  InstructionBuilder(T1 t1, T2 t2, ArrayRef<ValueHandle> vs, Args... args)
+      : InstructionHandle(InstructionHandle::create<Op>(
+            detail::unpack(t1), detail::unpack(t2), detail::unpack(vs),
+            detail::unpack(args)...)) {}
   InstructionBuilder() : InstructionHandle(InstructionHandle::create<Op>()) {}
 };
 

@@ -956,7 +956,7 @@ PYBIND11_MODULE(pybind, m) {
       "ret",
       [](const std::vector<PythonValueHandle> &args) {
         std::vector<ValueHandle> values(args.begin(), args.end());
-        (intrinsics::ret(ValueHandleArray(values))); // vexing parse
+        (intrinsics::ret(ArrayRef<ValueHandle>{values})); // vexing parse
         return PythonValueHandle(nullptr);
       },
       py::arg("args") = std::vector<PythonValueHandle>());
