@@ -67,25 +67,25 @@ void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getInstruction()); }
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
-bool OpState::emitError(const Twine &message) const {
+bool OpState::emitError(const Twine &message) {
   return getInstruction()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
-bool OpState::emitOpError(const Twine &message) const {
+bool OpState::emitOpError(const Twine &message) {
   return getInstruction()->emitOpError(message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpState::emitWarning(const Twine &message) const {
+void OpState::emitWarning(const Twine &message) {
   getInstruction()->emitWarning(message);
 }
 
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
-void OpState::emitNote(const Twine &message) const {
+void OpState::emitNote(const Twine &message) {
   getInstruction()->emitNote(message);
 }
 

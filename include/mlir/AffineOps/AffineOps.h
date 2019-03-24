@@ -250,29 +250,27 @@ void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
 /// that of the for instruction it refers to.
 class AffineBound {
 public:
-  OpPointer<AffineForOp> getAffineForOp() const { return inst; }
-  AffineMap getMap() const { return map; }
+  OpPointer<AffineForOp> getAffineForOp() { return inst; }
+  AffineMap getMap() { return map; }
 
   /// Returns an AffineValueMap representing this bound.
   AffineValueMap getAsAffineValueMap();
 
-  unsigned getNumOperands() const { return opEnd - opStart; }
-  Value *getOperand(unsigned idx) const {
+  unsigned getNumOperands() { return opEnd - opStart; }
+  Value *getOperand(unsigned idx) {
     return inst->getInstruction()->getOperand(opStart + idx);
   }
 
   using operand_iterator = AffineForOp::operand_iterator;
   using operand_range = AffineForOp::operand_range;
 
-  operand_iterator operand_begin() const {
-    return const_cast<Instruction *>(inst->getInstruction())->operand_begin() +
-           opStart;
+  operand_iterator operand_begin() {
+    return inst->getInstruction()->operand_begin() + opStart;
   }
-  operand_iterator operand_end() const {
-    return const_cast<Instruction *>(inst->getInstruction())->operand_begin() +
-           opEnd;
+  operand_iterator operand_end() {
+    return inst->getInstruction()->operand_begin() + opEnd;
   }
-  operand_range getOperands() const { return {operand_begin(), operand_end()}; }
+  operand_range getOperands() { return {operand_begin(), operand_end()}; }
 
 private:
   // 'for' instruction that contains this bound.

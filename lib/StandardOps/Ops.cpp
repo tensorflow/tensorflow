@@ -898,7 +898,7 @@ Block *CondBranchOp::getFalseDest() {
   return getInstruction()->getSuccessor(falseIndex);
 }
 
-unsigned CondBranchOp::getNumTrueOperands() const {
+unsigned CondBranchOp::getNumTrueOperands() {
   return getInstruction()->getNumSuccessorOperands(trueIndex);
 }
 
@@ -906,7 +906,7 @@ void CondBranchOp::eraseTrueOperand(unsigned index) {
   getInstruction()->eraseSuccessorOperand(trueIndex, index);
 }
 
-unsigned CondBranchOp::getNumFalseOperands() const {
+unsigned CondBranchOp::getNumFalseOperands() {
   return getInstruction()->getNumSuccessorOperands(falseIndex);
 }
 

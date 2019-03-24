@@ -62,32 +62,34 @@ public:
   explicit OpPointer() : value(Instruction::getNull<OpType>().value) {}
   explicit OpPointer(OpType value) : value(value) {}
 
-  OpType &operator*() const { return const_cast<OpType &>(value); }
+  OpType &operator*() { return value; }
 
-  OpType *operator->() const { return const_cast<OpType *>(&value); }
+  OpType *operator->() { return &value; }
 
-  operator bool() const { return value.getInstruction(); }
+  explicit operator bool() { return value.getInstruction(); }
 
-  bool operator==(OpPointer rhs) const {
+  bool operator==(OpPointer rhs) {
     return value.getInstruction() == rhs.value.getInstruction();
   }
-  bool operator!=(OpPointer rhs) const { return !(*this == rhs); }
+  bool operator!=(OpPointer rhs) { return !(*this == rhs); }
 
   /// OpPointer can be implicitly converted to OpType*.
   /// Return `nullptr` if there is no associated Instruction*.
-  operator OpType *() const {
+  operator OpType *() {
     if (!value.getInstruction())
       return nullptr;
-    return const_cast<OpType *>(&value);
+    return &value;
   }
+
+  operator OpType() { return value; }
 
   /// If the OpType operation includes the OneResult trait, then OpPointer can
   /// be implicitly converted to an Value*.  This yields the value of the
   /// only result.
   template <typename SFINAE = OpType>
   operator typename std::enable_if<IsSingleResult<SFINAE>::value,
-                                   Value *>::type() const {
-    return const_cast<Value *>(value.getResult());
+                                   Value *>::type() {
+    return value.getResult();
   }
 
 private:
@@ -103,23 +105,22 @@ private:
 class OpState {
 public:
   /// Return the operation that this refers to.
-  Instruction *getInstruction() const { return state; }
   Instruction *getInstruction() { return state; }
 
   ///  Return the context this operation belongs to.
   MLIRContext *getContext() { return getInstruction()->getContext(); }
 
   /// The source location the operation was defined or derived from.
-  Location getLoc() const { return state->getLoc(); }
+  Location getLoc() { return state->getLoc(); }
 
   /// Return all of the attributes on this operation.
-  ArrayRef<NamedAttribute> getAttrs() const { return state->getAttrs(); }
+  ArrayRef<NamedAttribute> getAttrs() { return state->getAttrs(); }
 
   /// Return an attribute with the specified name.
-  Attribute getAttr(StringRef name) const { return state->getAttr(name); }
+  Attribute getAttr(StringRef name) { return state->getAttr(name); }
 
   /// If the operation has an attribute of the specified type, return it.
-  template <typename AttrClass> AttrClass getAttrOfType(StringRef name) const {
+  template <typename AttrClass> AttrClass getAttrOfType(StringRef name) {
     return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
 
@@ -133,7 +134,7 @@ public:
   }
 
   /// Return true if there are no users of any results of this operation.
-  bool use_empty() const { return state->use_empty(); }
+  bool use_empty() { return state->use_empty(); }
 
   /// Remove this operation from its parent block and delete it.
   void erase() { state->erase(); }
@@ -142,19 +143,19 @@ public:
   /// any diagnostic handlers that may be listening.  This function always
   /// returns true.  NOTE: This may terminate the containing application, only
   /// use when the IR is in an inconsistent state.
-  bool emitError(const Twine &message) const;
+  bool emitError(const Twine &message);
 
   /// Emit an error with the op name prefixed, like "'dim' op " which is
   /// convenient for verifiers.  This always returns true.
-  bool emitOpError(const Twine &message) const;
+  bool emitOpError(const Twine &message);
 
   /// Emit a warning about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  void emitWarning(const Twine &message) const;
+  void emitWarning(const Twine &message);
 
   /// Emit a note about this operation, reporting up to any diagnostic
   /// handlers that may be listening.
-  void emitNote(const Twine &message) const;
+  void emitNote(const Twine &message);
 
   // These are default implementations of customization hooks.
 public:
@@ -179,8 +180,7 @@ protected:
 
   /// Mutability management is handled by the OpWrapper/OpConstWrapper classes,
   /// so we can cast it away here.
-  explicit OpState(Instruction *state)
-      : state(const_cast<Instruction *>(state)) {}
+  explicit OpState(Instruction *state) : state(state) {}
 
 private:
   Instruction *state;
@@ -364,9 +364,6 @@ protected:
     auto *base = static_cast<OpState *>(concrete);
     return base->getInstruction();
   }
-  Instruction *getInstruction() const {
-    return const_cast<TraitBase *>(this)->getInstruction();
-  }
 
   /// Provide default implementations of trait hooks.  This allows traits to
   /// provide exactly the overrides they care about.
@@ -387,8 +384,8 @@ public:
 
 private:
   // Disable these.
-  void getOperand() const {}
-  void setOperand() const {}
+  void getOperand() {}
+  void setOperand() {}
 };
 
 /// This class provides the API for ops that are known to have exactly one
@@ -396,7 +393,7 @@ private:
 template <typename ConcreteType>
 class OneOperand : public TraitBase<ConcreteType, OneOperand> {
 public:
-  Value *getOperand() const { return this->getInstruction()->getOperand(0); }
+  Value *getOperand() { return this->getInstruction()->getOperand(0); }
 
   void setOperand(Value *value) {
     this->getInstruction()->setOperand(0, value);
@@ -417,7 +414,7 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, NOperands<N>::Impl> {
   public:
-    Value *getOperand(unsigned i) const {
+    Value *getOperand(unsigned i) {
       return this->getInstruction()->getOperand(i);
     }
 
@@ -441,10 +438,11 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, AtLeastNOperands<N>::Impl> {
   public:
-    unsigned getNumOperands() const {
+    unsigned getNumOperands() {
       return this->getInstruction()->getNumOperands();
     }
-    Value *getOperand(unsigned i) const {
+
+    Value *getOperand(unsigned i) {
       return this->getInstruction()->getOperand(i);
     }
 
@@ -452,7 +450,6 @@ public:
       this->getInstruction()->setOperand(i, value);
     }
 
-    // Support non-const operand iteration.
     using operand_iterator = Instruction::operand_iterator;
     operand_iterator operand_begin() {
       return this->getInstruction()->operand_begin();
@@ -475,11 +472,9 @@ public:
 template <typename ConcreteType>
 class VariadicOperands : public TraitBase<ConcreteType, VariadicOperands> {
 public:
-  unsigned getNumOperands() const {
-    return this->getInstruction()->getNumOperands();
-  }
+  unsigned getNumOperands() { return this->getInstruction()->getNumOperands(); }
 
-  Value *getOperand(unsigned i) const {
+  Value *getOperand(unsigned i) {
     return this->getInstruction()->getOperand(i);
   }
 
@@ -487,7 +482,7 @@ public:
     this->getInstruction()->setOperand(i, value);
   }
 
-  // Support non-const operand iteration.
+  // Support operand iteration.
   using operand_iterator = Instruction::operand_iterator;
   using operand_range = Instruction::operand_range;
   operand_iterator operand_begin() {
@@ -514,9 +509,9 @@ public:
 template <typename ConcreteType>
 class OneResult : public TraitBase<ConcreteType, OneResult> {
 public:
-  Value *getResult() const { return this->getInstruction()->getResult(0); }
+  Value *getResult() { return this->getInstruction()->getResult(0); }
 
-  Type getType() const { return getResult()->getType(); }
+  Type getType() { return getResult()->getType(); }
 
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
@@ -540,11 +535,11 @@ public:
   public:
     static unsigned getNumResults() { return N; }
 
-    Value *getResult(unsigned i) const {
+    Value *getResult(unsigned i) {
       return this->getInstruction()->getResult(i);
     }
 
-    Type getType(unsigned i) const { return getResult(i)->getType(); }
+    Type getType(unsigned i) { return getResult(i)->getType(); }
 
     static bool verifyTrait(Instruction *op) {
       return impl::verifyNResults(op, N);
@@ -562,11 +557,11 @@ public:
   template <typename ConcreteType>
   class Impl : public TraitBase<ConcreteType, AtLeastNResults<N>::Impl> {
   public:
-    Value *getResult(unsigned i) const {
+    Value *getResult(unsigned i) {
       return this->getInstruction()->getResult(i);
     }
 
-    Type getType(unsigned i) const { return getResult(i)->getType(); }
+    Type getType(unsigned i) { return getResult(i)->getType(); }
 
     static bool verifyTrait(Instruction *op) {
       return impl::verifyAtLeastNResults(op, N);
@@ -579,19 +574,15 @@ public:
 template <typename ConcreteType>
 class VariadicResults : public TraitBase<ConcreteType, VariadicResults> {
 public:
-  unsigned getNumResults() const {
-    return this->getInstruction()->getNumResults();
-  }
+  unsigned getNumResults() { return this->getInstruction()->getNumResults(); }
 
-  Value *getResult(unsigned i) const {
-    return this->getInstruction()->getResult(i);
-  }
+  Value *getResult(unsigned i) { return this->getInstruction()->getResult(i); }
 
   void setResult(unsigned i, Value *value) {
     this->getInstruction()->setResult(i, value);
   }
 
-  // Support non-const result iteration.
+  // Support result iteration.
   using result_iterator = Instruction::result_iterator;
   result_iterator result_begin() {
     return this->getInstruction()->result_begin();
@@ -714,14 +705,14 @@ public:
     return impl::verifyIsTerminator(op);
   }
 
-  unsigned getNumSuccessors() const {
+  unsigned getNumSuccessors() {
     return this->getInstruction()->getNumSuccessors();
   }
-  unsigned getNumSuccessorOperands(unsigned index) const {
+  unsigned getNumSuccessorOperands(unsigned index) {
     return this->getInstruction()->getNumSuccessorOperands(index);
   }
 
-  Block *getSuccessor(unsigned index) const {
+  Block *getSuccessor(unsigned index) {
     return this->getInstruction()->getSuccessor(index);
   }
 
@@ -755,7 +746,11 @@ class Op : public OpState,
                                  Traits<ConcreteType>...>::value> {
 public:
   /// Return the operation that this refers to.
-  Instruction *getInstruction() const { return OpState::getInstruction(); }
+  Instruction *getInstruction() { return OpState::getInstruction(); }
+
+  // FIXME: Remove this, this is just a transition to allow using -> and staging
+  // patches.
+  ConcreteType *operator->() { return static_cast<ConcreteType *>(this); }
 
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in

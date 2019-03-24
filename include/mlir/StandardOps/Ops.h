@@ -240,7 +240,7 @@ class CmpIOp
                 OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
                 OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
 public:
-  CmpIPredicate getPredicate() const {
+  CmpIPredicate getPredicate() {
     return (CmpIPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
         .getInt();
   }
@@ -298,7 +298,7 @@ public:
                                           MLIRContext *context);
 
   // The condition operand is the first operand in the list.
-  Value *getCondition() const { return getOperand(0); }
+  Value *getCondition() { return getOperand(0); }
 
   /// Return the destination if the condition is true.
   Block *getTrueDest();
@@ -327,7 +327,7 @@ public:
     return {true_operand_begin(), true_operand_end()};
   }
 
-  unsigned getNumTrueOperands() const;
+  unsigned getNumTrueOperands();
 
   /// Erase the operand at 'index' from the true operand list.
   void eraseTrueOperand(unsigned index);
@@ -336,9 +336,6 @@ public:
   Value *getFalseOperand(unsigned idx) {
     assert(idx < getNumFalseOperands());
     return getOperand(getFalseDestOperandIndex() + idx);
-  }
-  Value *getFalseOperand(unsigned idx) const {
-    return const_cast<CondBranchOp *>(this)->getFalseOperand(idx);
   }
   void setFalseOperand(unsigned idx, Value *value) {
     assert(idx < getNumFalseOperands());
@@ -353,17 +350,17 @@ public:
     return {false_operand_begin(), false_operand_end()};
   }
 
-  unsigned getNumFalseOperands() const;
+  unsigned getNumFalseOperands();
 
   /// Erase the operand at 'index' from the false operand list.
   void eraseFalseOperand(unsigned index);
 
 private:
   /// Get the index of the first true destination operand.
-  unsigned getTrueDestOperandIndex() const { return 1; }
+  unsigned getTrueDestOperandIndex() { return 1; }
 
   /// Get the index of the first false destination operand.
-  unsigned getFalseDestOperandIndex() const {
+  unsigned getFalseDestOperandIndex() {
     return getTrueDestOperandIndex() + getNumTrueOperands();
   }
 
@@ -388,7 +385,7 @@ public:
   /// attribute's type.
   static void build(Builder *builder, OperationState *result, Attribute value);
 
-  Attribute getValue() const { return getAttr("value"); }
+  Attribute getValue() { return getAttr("value"); }
 
   static StringRef getOperationName() { return "std.constant"; }
 
@@ -414,9 +411,7 @@ public:
   static void build(Builder *builder, OperationState *result,
                     const APFloat &value, FloatType type);
 
-  APFloat getValue() const {
-    return getAttrOfType<FloatAttr>("value").getValue();
-  }
+  APFloat getValue() { return getAttrOfType<FloatAttr>("value").getValue(); }
 
   static bool isClassFor(Instruction *op);
 
@@ -441,9 +436,7 @@ public:
   static void build(Builder *builder, OperationState *result, int64_t value,
                     Type type);
 
-  int64_t getValue() const {
-    return getAttrOfType<IntegerAttr>("value").getInt();
-  }
+  int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
   static bool isClassFor(Instruction *op);
 
@@ -462,9 +455,7 @@ public:
   /// Build a constant int op producing an index.
   static void build(Builder *builder, OperationState *result, int64_t value);
 
-  int64_t getValue() const {
-    return getAttrOfType<IntegerAttr>("value").getInt();
-  }
+  int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
   static bool isClassFor(Instruction *op);
 
@@ -486,7 +477,7 @@ private:
 class DeallocOp
     : public Op<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
-  Value *getMemRef() const { return getOperand(); }
+  Value *getMemRef() { return getOperand(); }
   void setMemRef(Value *value) { setOperand(value); }
 
   static StringRef getOperationName() { return "std.dealloc"; }
@@ -519,7 +510,7 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 
   /// This returns the dimension number that the 'dim' is inspecting.
-  unsigned getIndex() const {
+  unsigned getIndex() {
     return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
   }
 
@@ -583,9 +574,9 @@ public:
                     Value *elementsPerStride = nullptr);
 
   // Returns the source MemRefType for this DMA operation.
-  Value *getSrcMemRef() const { return getOperand(0); }
+  Value *getSrcMemRef() { return getOperand(0); }
   // Returns the rank (number of indices) of the source MemRefType.
-  unsigned getSrcMemRefRank() const {
+  unsigned getSrcMemRefRank() {
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
   // Returns the source memerf indices for this DMA operation.
@@ -595,15 +586,15 @@ public:
   }
 
   // Returns the destination MemRefType for this DMA operations.
-  Value *getDstMemRef() const { return getOperand(1 + getSrcMemRefRank()); }
+  Value *getDstMemRef() { return getOperand(1 + getSrcMemRefRank()); }
   // Returns the rank (number of indices) of the destination MemRefType.
-  unsigned getDstMemRefRank() const {
+  unsigned getDstMemRefRank() {
     return getDstMemRef()->getType().cast<MemRefType>().getRank();
   }
-  unsigned getSrcMemorySpace() const {
+  unsigned getSrcMemorySpace() {
     return getSrcMemRef()->getType().cast<MemRefType>().getMemorySpace();
   }
-  unsigned getDstMemorySpace() const {
+  unsigned getDstMemorySpace() {
     return getDstMemRef()->getType().cast<MemRefType>().getMemorySpace();
   }
 
@@ -615,21 +606,21 @@ public:
   }
 
   // Returns the number of elements being transferred by this DMA operation.
-  Value *getNumElements() const {
+  Value *getNumElements() {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank());
   }
 
   // Returns the Tag MemRef for this DMA operation.
-  Value *getTagMemRef() const {
+  Value *getTagMemRef() {
     return getOperand(1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1);
   }
   // Returns the rank (number of indices) of the tag MemRefType.
-  unsigned getTagMemRefRank() const {
+  unsigned getTagMemRefRank() {
     return getTagMemRef()->getType().cast<MemRefType>().getRank();
   }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() const {
+  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() {
     unsigned tagIndexStartPos =
         1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
     return {getInstruction()->operand_begin() + tagIndexStartPos,
@@ -638,12 +629,12 @@ public:
   }
 
   /// Returns true if this is a DMA from a faster memory space to a slower one.
-  bool isDestMemorySpaceFaster() const {
+  bool isDestMemorySpaceFaster() {
     return (getSrcMemorySpace() < getDstMemorySpace());
   }
 
   /// Returns true if this is a DMA from a slower memory space to a faster one.
-  bool isSrcMemorySpaceFaster() const {
+  bool isSrcMemorySpaceFaster() {
     // Assumes that a lower number is for a slower memory space.
     return (getDstMemorySpace() < getSrcMemorySpace());
   }
@@ -651,7 +642,7 @@ public:
   /// Given a DMA start operation, returns the operand position of either the
   /// source or destination memref depending on the one that is at the higher
   /// level of the memory hierarchy. Asserts failure if neither is true.
-  unsigned getFasterMemPos() const {
+  unsigned getFasterMemPos() {
     assert(isSrcMemorySpaceFaster() || isDestMemorySpaceFaster());
     return isSrcMemorySpaceFaster() ? 0 : getSrcMemRefRank() + 1;
   }
@@ -664,7 +655,7 @@ public:
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 
-  bool isStrided() const {
+  bool isStrided() {
     return getNumOperands() != 1 + getSrcMemRefRank() + 1 + getDstMemRefRank() +
                                    1 + 1 + getTagMemRefRank();
   }
@@ -708,21 +699,21 @@ public:
   static StringRef getOperationName() { return "std.dma_wait"; }
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
-  Value *getTagMemRef() const { return getOperand(0); }
+  Value *getTagMemRef() { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() const {
+  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() {
     return {getInstruction()->operand_begin() + 1,
             getInstruction()->operand_begin() + 1 + getTagMemRefRank()};
   }
 
   // Returns the rank (number of indices) of the tag memref.
-  unsigned getTagMemRefRank() const {
+  unsigned getTagMemRefRank() {
     return getTagMemRef()->getType().cast<MemRefType>().getRank();
   }
 
   // Returns the number of elements transferred in the associated DMA operation.
-  Value *getNumElements() const { return getOperand(1 + getTagMemRefRank()); }
+  Value *getNumElements() { return getOperand(1 + getTagMemRefRank()); }
 
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
@@ -752,7 +743,7 @@ public:
   static void build(Builder *builder, OperationState *result, Value *aggregate,
                     ArrayRef<Value *> indices = {});
 
-  Value *getAggregate() const { return getOperand(0); }
+  Value *getAggregate() { return getOperand(0); }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
     return {getInstruction()->operand_begin() + 1,
@@ -787,9 +778,9 @@ public:
   static void build(Builder *builder, OperationState *result, Value *memref,
                     ArrayRef<Value *> indices = {});
 
-  Value *getMemRef() const { return getOperand(0); }
+  Value *getMemRef() { return getOperand(0); }
   void setMemRef(Value *value) { setOperand(0, value); }
-  MemRefType getMemRefType() const {
+  MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
 
@@ -831,9 +822,7 @@ public:
   static StringRef getOperationName() { return "std.memref_cast"; }
 
   /// The result of a memref_cast is always a memref.
-  MemRefType getType() const {
-    return getResult()->getType().cast<MemRefType>();
-  }
+  MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
   void print(OpAsmPrinter *p);
 
@@ -892,9 +881,9 @@ public:
   void print(OpAsmPrinter *p);
   bool verify();
 
-  Value *getCondition() const { return getOperand(0); }
-  Value *getTrueValue() const { return getOperand(1); }
-  Value *getFalseValue() const { return getOperand(2); }
+  Value *getCondition() { return getOperand(0); }
+  Value *getTrueValue() { return getOperand(1); }
+  Value *getFalseValue() { return getOperand(2); }
 
   Value *fold();
 
@@ -921,7 +910,7 @@ public:
                     Value *valueToStore, Value *memref,
                     ArrayRef<Value *> indices = {});
 
-  Value *getValueToStore() const { return getOperand(0); }
+  Value *getValueToStore() { return getOperand(0); }
 
   Value *getMemRef() { return getOperand(1); }
   void setMemRef(Value *value) { setOperand(1, value); }

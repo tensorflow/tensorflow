@@ -135,7 +135,7 @@ LogicalResult mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
           forOp->getLoc(), forOp->getConstantLowerBound());
       iv->replaceAllUsesWith(constOp);
     } else {
-      const AffineBound lb = forOp->getLowerBound();
+      AffineBound lb = forOp->getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
       FuncBuilder builder(forInst->getBlock(), Block::iterator(forInst));
       if (lb.getMap() == builder.getDimIdentityMap()) {

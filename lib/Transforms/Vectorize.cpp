@@ -944,7 +944,7 @@ vectorizeLoopsAndLoadsRecursively(NestedMatch oneMatch,
 /// element type.
 /// If `type` is not a valid vector type or if the scalar constant is not a
 /// valid vector element type, returns nullptr.
-static Value *vectorizeConstant(Instruction *inst, const ConstantOp &constant,
+static Value *vectorizeConstant(Instruction *inst, ConstantOp constant,
                                 Type type) {
   if (!type || !type.isa<VectorType>() ||
       !VectorType::isValidElementType(constant.getType())) {
