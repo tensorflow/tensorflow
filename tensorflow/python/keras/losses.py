@@ -336,7 +336,7 @@ class CategoricalCrossentropy(Loss):
   loss = cce(
     [[1., 0., 0.], [0., 1., 0.], [0., 0., 1.]],
     [[.9, .05, .05], [.05, .89, .06], [.05, .01, .94]])
-  print('Loss: ', loss.numpy())  # Loss: 0.3239
+  print('Loss: ', loss.numpy())  # Loss: 0.0945
   ```
 
   Usage with tf.keras API:
