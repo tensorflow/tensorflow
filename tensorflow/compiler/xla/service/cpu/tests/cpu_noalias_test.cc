@@ -81,7 +81,6 @@ TEST_F(CpuNoAliasTest, Concat) {
   llvm::BasicBlock* bb = llvm::BasicBlock::Create(context, "body", func);
   llvm::IRBuilder<> b(bb);
   auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);
-  llvm_ir::IrArray::Index zero2D({zero, zero});
 
   llvm::ArrayType* array2d_type = llvm::ArrayType::get(
       llvm::ArrayType::get(llvm::Type::getFloatTy(context), 100), 100);
@@ -91,7 +90,8 @@ TEST_F(CpuNoAliasTest, Concat) {
         ir_module.getOrInsertGlobal("param_x", array2d_type);
     llvm_ir::IrArray param_x_array(param_x_val, param_shape);
     aa.AddAliasingInformationToIrArray(*param_x, &param_x_array);
-    param_x_array.EmitReadArrayElement(zero2D, &b)
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, param_shape, zero->getType());
+    param_x_array.EmitReadArrayElement(zero_2d, &b)
         ->setName("read_param_x_array");
   }
 
@@ -101,7 +101,8 @@ TEST_F(CpuNoAliasTest, Concat) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 4});
     llvm_ir::IrArray concat1_array(concat1_val, shape);
     aa.AddAliasingInformationToIrArray(*concat1, &concat1_array);
-    concat1_array.EmitReadArrayElement(zero2D, &b)
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
+    concat1_array.EmitReadArrayElement(zero_2d, &b)
         ->setName("read_concat1_array");
   }
 
@@ -111,7 +112,8 @@ TEST_F(CpuNoAliasTest, Concat) {
     auto shape = ShapeUtil::MakeShape(F32, {2, 6});
     llvm_ir::IrArray concat2_array(concat2_val, shape);
     aa.AddAliasingInformationToIrArray(*concat2, &concat2_array);
-    concat2_array.EmitReadArrayElement(zero2D, &b)
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
+    concat2_array.EmitReadArrayElement(zero_2d, &b)
         ->setName("read_concat2_array");
   }
 

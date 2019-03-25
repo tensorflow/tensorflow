@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
@@ -60,28 +61,6 @@ class IrArray {
       CHECK(index_ty->isIntegerTy());
     }
 
-    // Constructs an index from multi-dimensional index "multidim". The linear
-    // index is set to nullptr.
-    explicit Index(absl::Span<llvm::Value* const> multidim,
-                   llvm::Type* index_ty = nullptr)
-        : multidim_(multidim.begin(), multidim.end()) {
-      if (size() == 0) {
-        index_type_ = index_ty;
-      } else {
-        for (const auto* dim : multidim) {
-          CHECK_NE(dim, nullptr);
-        }
-        index_type_ = multidim[0]->getType();
-        if (index_ty != nullptr) {
-          CHECK_EQ(index_type_, index_ty);
-        }
-      }
-      CHECK_NE(index_type_, nullptr);
-      CHECK(absl::c_all_of(multidim, [&](llvm::Value* v) {
-        return index_type_ == v->getType();
-      }));
-    }
-
     // Constructs an index from linear index "linear" and computes the
     // multi-dimensional index from "linear" and "shape". "b" is the IR
     // builder to emit the index of each dimension in the multi-dimensional
@@ -107,12 +86,15 @@ class IrArray {
     // Returns an index that adds `addend` to the given `dim` of the object.
     Index AddOffsetToDim(llvm::Value* addend, int64 dim,
                          llvm::IRBuilder<>* b) const {
-      std::vector<llvm::Value*> multi_index = multidim();
-      multi_index[dim] = b->CreateAdd(multi_index[dim], addend);
-      return Index(multi_index, index_type_);
+      Index with_offset = *this;
+      with_offset.linear_ = nullptr;
+      with_offset.multidim_[dim] =
+          b->CreateAdd(with_offset.multidim_[dim], addend);
+      return with_offset;
     }
 
     const std::vector<llvm::Value*>& multidim() const { return multidim_; }
+    const std::vector<int64>& dims() const { return dims_; }
     llvm::Value* linear() const { return linear_; }
 
     size_t size() const { return multidim().size(); }
@@ -125,6 +107,12 @@ class IrArray {
     const_iterator end() const { return multidim().end(); }
 
     bool LinearValidOnShape(const Shape& a) const;
+
+    bool ShapeIsCompatible(const Shape& a) const {
+      Shape own_shape = ShapeUtil::MakeShape(a.element_type(), dims_);
+      *own_shape.mutable_layout() = layout_;
+      return ShapeUtil::Equal(own_shape, a);
+    }
 
     // Given that "this" is the target index of a reshape from `input_shape`
     // to `output_shape`, returns the source index.
