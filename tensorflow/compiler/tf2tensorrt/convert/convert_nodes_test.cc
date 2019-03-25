@@ -2325,7 +2325,7 @@ TEST_F(OpConverterTest, ConvertSquare) {
   TestConvertSquare<DT_HALF>(this);
 }
 
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
 TEST_F(OpConverterTest, ConvertCombinedNMS) {
   {
     // Input list is empty, should fail.
@@ -2370,8 +2370,11 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
 
   // Ok.
   const int kCombinedNMSOKCases = 1;
-  TestParams ok_params[kCombinedNMSOKCases] = {TestParams{
-      {1, 1, 4}, {1, 3}, 30, 10, .5f, 0.0f, {10, 4}, {10, 1}, {10, 1}}};
+  TestParams ok_params[kCombinedNMSOKCases] = {
+      // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
+      // implementation that, the extra output classes that are outside of the
+      // range specified by valid_detections[i] are not zeros but -1s.
+      TestParams{{1, 1, 4}, {1, 3}, 3, 2, .5f, 0, {2, 4}, {2}, {2}}};
   const int batch_size = 1;
 
   for (int i = 0; i < kCombinedNMSOKCases; ++i) {
@@ -2409,19 +2412,23 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
                              nmsed_scores.tensor()->getDimensions());
     ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_classes_dims,
                              nmsed_classes.tensor()->getDimensions());
-    ExpectTrtDimsEqualsArray({batch_size},
-                             valid_detections.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray({}, valid_detections.tensor()->getDimensions());
 
     DataVec output_data{
-        {"my_nms", ConstructTensor<float>(40)},
-        {"my_nms:1", ConstructTensor<float>(10)},
-        {"my_nms:2", ConstructTensor<float>(10)},
+        {"my_nms", ConstructTensor<float>(8)},
+        {"my_nms:1", ConstructTensor<float>(2)},
+        {"my_nms:2", ConstructTensor<float>(2)},
         {"my_nms:3", ConstructTensor<int32>(1)},
     };
-    const DataVec input_data{{"boxes", test::AsTensor<float>({0, 0, 0, 4})},
-                             {"scores", test::AsTensor<float>({0, 0, 0})}};
+    const DataVec input_data{
+        {"boxes", test::AsTensor<float>({0, 0, 0.3, 0.4})},
+        {"scores", test::AsTensor<float>({0.4, 0.7, 0.3})}};
     BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(0, 10, 4));
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4));
+    EXPECT_THAT(GetSpanForData<float>(output_data[1]), ElementsAre(0.7, 0.4));
+    EXPECT_THAT(GetSpanForData<float>(output_data[2]), ElementsAre(1, 0));
+    EXPECT_THAT(GetSpanForData<float>(output_data[3]), ElementsAre(2));
   }
 }
 
