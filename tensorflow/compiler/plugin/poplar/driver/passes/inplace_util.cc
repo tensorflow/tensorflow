@@ -244,44 +244,44 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     }
 
     // Not inplace ops.
-    case HloOpcode::kSelect:
+    case HloOpcode::kAfterAll:
+    case HloOpcode::kAllReduce:
+    case HloOpcode::kAllToAll:
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kClamp:
-    case HloOpcode::kTupleSelect:
-    case HloOpcode::kRng:
-    case HloOpcode::kSelectAndScatter:
     case HloOpcode::kConstant:
     case HloOpcode::kConvolution:
+    case HloOpcode::kDomain:
     case HloOpcode::kDot:
-    case HloOpcode::kIota:
-    case HloOpcode::kInfeed:
-    case HloOpcode::kOutfeed:
-    case HloOpcode::kReduce:
-    case HloOpcode::kParameter:
     case HloOpcode::kDynamicSlice:
-    case HloOpcode::kReduceWindow: {
+    case HloOpcode::kGather:
+    case HloOpcode::kInfeed:
+    case HloOpcode::kIota:
+    case HloOpcode::kOutfeed:
+    case HloOpcode::kParameter:
+    case HloOpcode::kReduce:
+    case HloOpcode::kReduceWindow:
+    case HloOpcode::kRng:
+    case HloOpcode::kScatter:
+    case HloOpcode::kSelect:
+    case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kTupleSelect: {
       return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
 
     // Unimplemented ops.
-    case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
-    case HloOpcode::kAllReduce:
-    case HloOpcode::kDomain:
     case HloOpcode::kFft:
-    case HloOpcode::kGather:
-    case HloOpcode::kAfterAll:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
-    case HloOpcode::kScatter:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
     case HloOpcode::kTrace:
     default: {
-      LOG(FATAL) << "Unrecognized op " << inst->opcode()
-                 << ". Classify whether it is an inplace op or not";
+      LOG(INFO) << "Unrecognized op " << inst->opcode()
+                << ". Classify whether it is an inplace op or not";
       return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
   }

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_timer.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
@@ -45,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 #include <list>
 #include <mutex>
@@ -247,7 +247,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   std::string GetDeviceTargetName() const;
 
-  Status ConfigurePoplarDevice(const tensorflow::IPUOptions&);
+  Status ConfigurePoplarDevice(const IpuOptions&);
 
   const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
 
@@ -283,11 +283,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
         .disable_graph_convolution_caching();
   }
 
-  bool NonLinearityRecomputaionEnabled() const {
+  bool NormInputRecomputationEnabled() const {
     // Re-computation of non linearities is enabled by default unless the user
     // has specifically told us not to do it.
-    return current_config_.speed_size_config().has_recompute_non_linearities()
-               ? current_config_.speed_size_config().recompute_non_linearities()
+    return current_config_.speed_size_config().has_recompute_norm_inputs()
+               ? current_config_.speed_size_config().recompute_norm_inputs()
                : false;
   }
 
@@ -540,7 +540,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   ArgsHandleMap args_map_;
   OutputsHandleMap outputs_map_;
 
-  tensorflow::IPUOptions current_config_;
+  bool hardware_configured_;
+
+  IpuOptions current_config_;
 
   std::list<tensorflow::IpuTraceEvent> reports_;
 

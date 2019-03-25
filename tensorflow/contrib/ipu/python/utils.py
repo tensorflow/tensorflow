@@ -16,15 +16,37 @@
 """Utility functions related to the Graphcore IPU."""
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.core.framework import graph_pb2
-from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 
 import json
 import re
 import time
+
+def configure_ipu_system(config, device="cpu"):
+  """Configure an IPU system.  Passing an IpuOptions protobuf created by the
+  `create_ipu_config` function.
+
+  Args:
+    :param config: An IpuOptions configuration protobuf
+    :param device: The CPU device which is local to the IPU hardware
+  """
+  if not(isinstance(config, IpuOptions)):
+    raise Exception(
+      "`config` must be an IpuOptions instance")
+
+  g = ops.Graph()
+  with g.as_default():
+    with ops.device(device):
+      cfg_op = gen_ipu_ops.ipu_configure_hardware(config.SerializeToString())
+
+  with session_lib.Session(graph=g) as sess:
+    sess.run(cfg_op)
+
 
 def create_ipu_config(profiling=False, enable_ipu_events=False,
                       use_poplar_text_report=False,
@@ -71,14 +93,14 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
 
   Returns:
 
-    :return: An empty IPUOptions configuration protobuf, suitable for using in
+    :return: An empty IpuOptions configuration protobuf, suitable for using in
              the creation of the ConfigProto session options.
   """
   if profiling and enable_ipu_events:
     raise Exception(
       "`profiling` and `enable_ipu_events` are mutually exclusive")
 
-  opts = config_pb2.IPUOptions()
+  opts = IpuOptions()
   opts.ipu_model_config.enable_ipu_model = True
   opts.ipu_model_config.compile_ipu_code = True
 
@@ -106,18 +128,18 @@ def set_compilation_options(opts, compilation_options=None):
     opts = set_compilation_options(opts,
         compilation_options={"debug.executionProfile": "compute_sets",
                              "target.workerStackSizeInBytes": "64"})
-
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
   Args:
-    :param opts: An IPUOptions session control protobuf.
+    :param opts: An IpuOptions session control protobuf.
     :param compilation_options: A dictionary of poplar compilation option flags
                                 to be sent to the executor.
   Returns:
 
-    :return: The IPUOptions configuration protobuf, with engine compilation
+    :return: The IpuOptions configuration protobuf, with engine compilation
              options set.
   """
   if not(isinstance(compilation_options, dict)):
@@ -140,18 +162,18 @@ def set_convolution_options(opts, convolution_options=None):
     opts = create_ipu_config()
     opts = set_convolution_options(opts,
         convolution_options={"tempMemoryBudget": "1000000"})
-
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
   Args:
-    :param opts: An IPUOptions session control protobuf.
+    :param opts: An IpuOptions session control protobuf.
     :param convolution_options: A dictionary of poplar option flags for the
                                 convolutions.
   Returns:
 
-    :return: The IPUOptions configuration protobuf, with convolution options
+    :return: The IpuOptions configuration protobuf, with convolution options
              set.
   """
   if not(isinstance(convolution_options, dict)):
@@ -174,18 +196,18 @@ def set_pooling_options(opts, pooling_options=None):
     opts = create_ipu_config()
     opts = set_pooling_options(opts,
         pooling_options={"poolUseIntrospectiveMapping": "false"})
-
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
   Args:
-    :param opts: An IPUOptions session control protobuf.
+    :param opts: An IpuOptions session control protobuf.
     :param pooling_options: A dictionary of poplar option flags for the
                             pooling operation.
   Returns:
 
-    :return: The IPUOptions configuration protobuf, with pooling options
+    :return: The IpuOptions configuration protobuf, with pooling options
              set.
   """
   if not(isinstance(pooling_options, dict)):
@@ -209,18 +231,18 @@ def set_report_options(opts, report_options=None):
     opts = create_ipu_config()
     opts = set_report_options(opts,
         report_options={"reportOption1": "false"})
-
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
   Args:
-    :param opts: An IPUOptions session control protobuf.
+    :param opts: An IpuOptions session control protobuf.
     :param report_options: A dictionary of poplar option flags for the
                            report generation.
   Returns:
 
-    :return: The IPUOptions configuration protobuf, with convolution options
+    :return: The IpuOptions configuration protobuf, with convolution options
              set.
   """
   if not(isinstance(report_options, dict)):
@@ -244,28 +266,28 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
 
   Returns:
 
-    :return: The IPUOptions configuration protobuf, with IPU model options
+    :return: The IpuOptions configuration protobuf, with IPU model options
              set.
   """
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   return opts
 
-def set_recomputation_options(opts, recompute_non_linearities=True):
+def set_recomputation_options(opts, recompute_norm_inputs=True):
   """Set re-computation options.
 
   Args:
-    :param recompute_non_linearities: Whether or not to re-compute the non
-      linearities during training. Enabling this option can reduce memory
-      usage at the expense of extra computation.
+    :param recompute_norm_inputs: Whether or not to re-compute the norm inputs
+      during training. Enabling this option can reduce memory usage at the
+      expense of extra computation.
 
   Returns:
 
-    :return: The IPUOptions configuration protobuf.
+    :return: The IpuOptions configuration protobuf.
   """
 
-  opts.speed_size_config.recompute_non_linearities = recompute_non_linearities
-  opts.speed_size_config.has_recompute_non_linearities = True
+  opts.speed_size_config.recompute_norm_inputs = recompute_norm_inputs
+  opts.speed_size_config.has_recompute_norm_inputs = True
 
   return opts
 
@@ -286,7 +308,8 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
     # Create a single device, with one IPU
     opts = create_ipu_config()
     opts = auto_select_ipus(opts, num_ipus=1)
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
@@ -294,7 +317,8 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
     # Create two devices, with 2 IPUs per device.
     opts = create_ipu_config()
     opts = auto_select_ipus(opts, num_ipus=[2,2])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
@@ -303,19 +327,20 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
     # in the second device.
     opts = create_ipu_config()
     opts = auto_select_ipus(opts, num_ipus=[1,2])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
   Args:
-    :param opts: An IPUOptions session control protobuf.
+    :param opts: An IpuOptions session control protobuf.
     :param num_ipus: List of IPUs per Tensorflow device
     :param sharded: Deprecated.
     :param number_of_replicas: The number of replicas to divide the device into.
                                This should be a divisor of the number of IPUs.
   Returns:
 
-    :return: The IPUOptions configuration protobuf, configured for
+    :return: The IpuOptions configuration protobuf, configured for
              auto-selecting a set of IPU devices.
   """
   if len(opts.device_config) > 0:
@@ -466,7 +491,8 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
     # configuration index 0
     opts = create_ipu_config()
     opts = select_ipus(opts, indices=[0])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
@@ -475,7 +501,8 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
     # configuration index 8
     opts = create_ipu_config()
     opts = select_ipus(opts, indices=[8])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
@@ -484,7 +511,8 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
     # 0 and 1
     opts = create_ipu_config()
     opts = select_ipus(opts, indices=[0, 1])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
@@ -495,7 +523,8 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
     # 00:da:00.0)
     opts = create_ipu_config()
     opts = select_ipus(opts, indices=[37, 38])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
@@ -504,19 +533,20 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
     # 0000:1a:00.0, 0000:1b:00.0, 0000:1c:00.0, 0000:1d:00.0.
     opts = create_ipu_config()
     opts = select_ipus(opts, indices=[0, 1, 2, 3])
-    with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
+    ipu.utils.configure_ipu_system(cfg)
+    with tf.Session() as s:
       ...
     ```
 
   Args:
-    :param opts: An IPUOptions session control protobuf.
+    :param opts: An IpuOptions session control protobuf.
     :param indicies: List of IPU configuration indicies.
     :param sharded: Deprecated.
     :param number_of_replicas: The number of replicas to divide the device into.
                                This should be a divisor of the number of IPUs.
   Returns:
 
-    :return: The IPUOptions configuration protobuf, with a number of devices
+    :return: The IpuOptions configuration protobuf, with a number of devices
              selected by IPU configuration index.
   """
 

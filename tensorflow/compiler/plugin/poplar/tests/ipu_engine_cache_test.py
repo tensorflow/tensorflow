@@ -8,12 +8,14 @@ from __future__ import print_function
 import numpy as np
 import os
 
+import test_utils as tu
+
+from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.core.protobuf import config_pb2
 
 class IpuEngineCacheTest(test_util.TensorFlowTestCase):
 
@@ -25,13 +27,11 @@ class IpuEngineCacheTest(test_util.TensorFlowTestCase):
             pb = array_ops.placeholder(np.float32, [2,2], name="b")
             output = pa + pb
 
-        opts = config_pb2.IPUOptions()
-        opts.ipu_model_config.enable_ipu_model = True
+        tu.configure_ipu_system()
 
         os.environ['TF_POPLAR_ENGINE_CACHE'] = cache_dir
 
-        with session_lib.Session(
-                config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+        with session_lib.Session() as sess:
 
             fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
             sess.run(output, fd)

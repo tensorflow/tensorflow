@@ -48,7 +48,23 @@ absl::optional<To> convert_scalar(const From& from) {
   return check_convert_ok(to, from) ? absl::optional<To>(to) : absl::nullopt;
 };
 
+// Check if there are any operations in the computation which have sharding
+// information
+bool HaveSharding(HloComputation* comp);
+
+// Check if there are any operations in the module which have sharding
+// information
+bool HaveSharding(HloModule* module);
+
+// Get the sharding info for the output tensors of the given op
+std::vector<int64> GetShardingDeviceId(const HloInstruction* inst);
+
+// Get the sharding Id of the output tensor, given the knowledge that the
+// sharding must be a single value.
+int64 GetSingleShardingDeviceId(const HloInstruction* inst);
+
 int64 CountShapes(const Shape& shape);
+
 // Find the index when embedding a shape into a tuple. The tuple_index is the
 // index of the shape in the new tuple, and the original_index is the index
 // of the tensor in the original shape.

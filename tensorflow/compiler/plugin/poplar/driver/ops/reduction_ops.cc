@@ -9,12 +9,15 @@
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/vertex_templates.h"
 
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_query.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
 #include <popnn/Pooling.hpp>
 #include <popnn/PoolingDef.hpp>
 #include <popops/Cast.hpp>
+#include <popops/Collectives.hpp>
 #include <popops/ElementWise.hpp>
 #include <popops/Pad.hpp>
 #include <popops/Reduce.hpp>
@@ -888,6 +891,37 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
   out = popops::pad(graph, out, paddingLower, paddingUpper, init_val);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
+  return seq;
+}
+
+StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map) {
+  poplar::program::Sequence seq;
+
+  poplar::Graph& graph = GetGraph(res, inst);
+
+  // If we aren't part of a replicated graph, then it's just an identity op
+  if (!res.replicated_graph) {
+    for (int i = 0; i < inst->operand_count(); ++i) {
+      TF_ASSIGN_OR_RETURN(auto in,
+                          FindInstructionInput(tensor_map, res, inst, i, seq));
+
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, in));
+    }
+  } else {
+    for (int i = 0; i < inst->operand_count(); ++i) {
+      TF_ASSIGN_OR_RETURN(auto in,
+                          FindInstructionInput(tensor_map, res, inst, i, seq));
+
+      auto out = popops::replicatedAllReduce(
+          res.replicated_graph.value(), res.main_graph, in,
+          popops::Operation::ADD, seq, GetDebugName(inst));
+
+      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
+    }
+  }
+
   return seq;
 }
 

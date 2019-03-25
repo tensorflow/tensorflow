@@ -24,6 +24,7 @@ genrule(
 tf_proto_library(
     name = "protos",
     srcs = [
+      "driver/config.proto",
       "driver/trace.proto",
       "driver/executable.proto",
     ],
@@ -83,7 +84,8 @@ cc_library(
         "driver/passes/hlo_computation_name_uniquify.cc",
         "driver/passes/inplace_finder.cc",
         "driver/passes/inplace_util.cc",
-        "driver/passes/non_linearity_recomputation.cc",
+        "driver/passes/inter_ipu_copy_inserter.cc",
+        "driver/passes/norm_input_recomputation.cc",
         "driver/passes/not_supported_gather_expander.cc",
         "driver/passes/not_supported_scatter_expander.cc",
         "driver/passes/root_token_replacer.cc",
@@ -119,7 +121,8 @@ cc_library(
         "driver/passes/hlo_computation_name_uniquify.h",
         "driver/passes/inplace_finder.h",
         "driver/passes/inplace_util.h",
-        "driver/passes/non_linearity_recomputation.h",
+        "driver/passes/inter_ipu_copy_inserter.h",
+        "driver/passes/norm_input_recomputation.h",
         "driver/passes/not_supported_gather_expander.h",
         "driver/passes/not_supported_scatter_expander.h",
         "driver/passes/root_token_replacer.h",
@@ -171,6 +174,7 @@ cc_library(
         "driver/executable.cc",
         "driver/executor.cc",
         "driver/ops/conv_graph_caching.cc",
+        "driver/ops/dot_graph_caching.cc",
         "driver/ops/conv_ops.cc",
         "driver/ops/custom_ops/custom_ops.cc",
         "driver/ops/custom_ops/poplibs_ops.cc",
@@ -208,6 +212,7 @@ cc_library(
         "driver/executable.h",
         "driver/executor.h",
         "driver/ops/conv_graph_caching.h",
+        "driver/ops/dot_graph_caching.h",
         "driver/ops/custom_ops/custom_ops.h",
         "driver/ops/custom_ops/poplibs_ops.h",
         "driver/ops/graph_caching_util.h",
@@ -281,6 +286,7 @@ cc_library(
         "kernels/popnn/norm.cc",
         "kernels/popnn/pooling.cc",
         "kernels/poprand/random.cc",
+        "kernels/popops/all_reduce.cc",
     ],
     hdrs = [
         "kernels/ipu_kernels_common.h",
@@ -343,6 +349,29 @@ tf_custom_op_py_library(
 )
 
 cc_library(
+    name = "popops_ops",
+    srcs = [
+        "ops/popops/cross_replica_sum.cc",
+    ],
+    deps = ["//tensorflow/core:framework"],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "popops_ops_wrapper_py",
+    out = "ops/gen_popops_ops.py",
+    deps = [":popops_ops"],
+    visibility = ["//tensorflow:internal"],
+)
+
+tf_custom_op_py_library(
+    name = "popops_ops_py",
+    kernels = [":popops_ops"],
+    deps = [":popops_ops_wrapper_py"],
+    srcs_version = "PY2AND3",
+)
+
+cc_library(
     name = "pop_datastream_ops",
     srcs = ["ops/datastream/feeds.cc"],
     deps = ["//tensorflow/core:framework"],
@@ -376,6 +405,7 @@ cc_library(
         ":poplar_backend",
         ":ipu_ops",
         ":popnn_ops",
+        ":popops_ops",
         ":pop_datastream_ops",
         "//tensorflow/compiler/jit/kernels:xla_ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
@@ -686,6 +716,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "inter_ipu_copy_inserter_test",
+    srcs = ["tests/inter_ipu_copy_inserter_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "dependency_replacer_test",
     srcs = ["tests/dependency_replacer_test.cc"],
     size = "small",
@@ -772,8 +813,8 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "non_linearity_recomputation_test",
-    srcs = ["tests/non_linearity_recomputation_test.cc"],
+    name = "norm_input_recomputation_test",
+    srcs = ["tests/norm_input_recomputation_test.cc"],
     extra_copts = [
         "-fexceptions",
     ],
@@ -1135,9 +1176,43 @@ py_test(
 )
 
 py_test(
+    name = "norm_graph_caching_sharded_test",
+    size = "medium",
+    srcs = ["tests/norm_graph_caching_sharded_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "conv_graph_caching_test",
     size = "medium",
     srcs = ["tests/conv_graph_caching_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "conv_graph_caching_sharded_test",
+    size = "medium",
+    srcs = ["tests/conv_graph_caching_sharded_test.py"],
     deps = [
         ":test_utils_py",
         ":ipu_ops_py",
@@ -1268,6 +1343,7 @@ test_suite(
         "commutative_instruction_reorder_operands_test",
         "constant_slice_folding_test",
         "conv3d_test",
+        "conv_graph_caching_sharded_test",
         "conv_graph_caching_test",
         "conv_test",
         "conversions_test",
@@ -1290,6 +1366,7 @@ test_suite(
         "hlo_hash_test",
         "hlo_matcher_test",
         "inplace_test",
+        "inter_ipu_copy_inserter_test",
         "ipu_engine_cache_test",
         "ipu_model_device_test",
         "ipu_outfeed_test",
@@ -1297,12 +1374,13 @@ test_suite(
         "matmul_test",
         "monitored_session_test",
         "multi_run_test",
-        "non_linearity_recomputation_test",
+        "norm_graph_caching_sharded_test",
         "norm_graph_caching_test",
+        "norm_input_recomputation_test",
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
-        "popops_custom_ops_test",
         "pop_datastream_test",
+        "popops_custom_ops_test",
         "reduce_test",
         "root_token_replacer_test",
         "scheduler_test",

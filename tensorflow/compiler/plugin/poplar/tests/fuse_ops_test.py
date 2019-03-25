@@ -35,6 +35,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -60,6 +62,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -90,6 +94,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -117,6 +123,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       fd = {
         pa: [-6.0, 0.0, 6.0]
@@ -140,6 +148,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       fd = {
@@ -168,6 +178,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -195,6 +207,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -227,6 +241,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -275,6 +291,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -307,6 +325,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -336,6 +356,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -367,6 +389,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -406,7 +430,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -440,7 +466,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -482,7 +510,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -520,7 +550,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -561,7 +593,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -590,7 +624,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
 
       sess.run(report)
 
@@ -624,7 +660,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
 
       sess.run(variables.global_variables_initializer())
 
@@ -665,6 +703,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(report)
@@ -701,6 +741,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())

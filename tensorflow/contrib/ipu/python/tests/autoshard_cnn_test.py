@@ -206,7 +206,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       ipu_compiler.compile(my_net, inputs=[])
 
@@ -250,7 +250,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       ipu_compiler.compile(my_net, inputs=[])
 
@@ -270,6 +270,54 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       self.assertTrue('SoftmaxCrossEntropyWithLogits' in op_types)
       self.assertTrue('ResourceApplyGradientDescent' in op_types)
 
+    def testSimpleXlaCompileTrainingInLoopWithParam(self):
+      dataset = create_increasing_dataset(3)
+
+      infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
+
+      def my_net(lr):
+        def my_model(loss, x, y):
+          with ops.device("/device:IPU:0"):
+            inp = x
+
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
+                                     use_bias=False)
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv2",
+                                     use_bias=False)
+            x = convolutional.conv2d(x, 8, 3, padding='same', name="conv3",
+                                     use_bias=False)
+            x = math_ops.reduce_max(x,  axis=[1, 2])
+
+            cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+            loss = math_ops.reduce_mean(cross_entropy)
+
+            optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
+            train = optim.minimize(cross_entropy)
+
+            autoshard.automatic_sharding(2, inp, loss, [])
+
+            return [loss, train]
+
+        loss = 0.0
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
+
+      lr = array_ops.placeholder(dtypes.float32, [])
+      ipu_compiler.compile(my_net, inputs=[lr])
+
+      body = get_single_while_op_body(ops.get_default_graph())
+      op_set = body.get_operations()
+      op_types = set()
+      for o in op_set:
+        if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
+          op_types.add(o.type)
+          self.assertTrue(o.get_attr('_XlaSharding') is not None)
+
+      self.assertTrue(len(op_types) > 10)
+      self.assertTrue('Conv2D' in op_types)
+      self.assertTrue('Conv2DBackpropInput' in op_types)
+      self.assertTrue('Conv2DBackpropFilter' in op_types)
+      self.assertTrue('ResourceApplyGradientDescent' in op_types)
+
     # TODO re-enable this when while loops can be compiled correctly : T7502
     # def testTfLstmXlaCompileTrainingInLoop(self):
     #   dataset = create_increasing_dataset(3, data_shape=[16, 2, 8],
@@ -278,9 +326,11 @@ class AutoshardTest(test_util.TensorFlowTestCase):
     #   infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
     #
     #   def my_net():
-    #     def my_model(loss, x, y):
+    #     def my_model(loss):
     #       with ops.device("/device:IPU:0"):
-    #         inp = x
+    #         inp, lab = infeed_queue.get_next()
+    #         x = inp
+    #         y = lab
     #
     #         lstm_cell = rnn_cell.LSTMCell(256)
     #         x, _ = rnn.dynamic_rnn(cell=lstm_cell, inputs=x,

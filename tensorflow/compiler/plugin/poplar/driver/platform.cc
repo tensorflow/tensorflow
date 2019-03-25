@@ -103,14 +103,25 @@ void PoplarPlatform::UnregisterTraceListener(se::TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
 }
 
-Status PoplarPlatform::ConfigurePoplarDevice(
-    int ordinal, const tensorflow::IPUOptions& opts) {
-  se::StreamExecutor* executor;
-  TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+Status PoplarPlatform::ConfigurePoplarDevices(const IpuOptions& opts) {
+  int num_devices = opts.device_config().size();
+  int max_devices = VisibleDeviceCount();
 
-  auto* e = static_cast<PoplarExecutor*>(executor->implementation());
+  if (num_devices == 0) {
+    num_devices = 1;
+  }
+  if (num_devices > max_devices) {
+    num_devices = max_devices;
+  }
 
-  TF_RETURN_IF_ERROR(e->ConfigurePoplarDevice(opts));
+  for (int ordinal = 0; ordinal < num_devices; ordinal++) {
+    se::StreamExecutor* executor;
+    TF_ASSIGN_OR_RETURN(executor, ExecutorForDevice(ordinal));
+
+    auto* e = static_cast<PoplarExecutor*>(executor->implementation());
+
+    TF_RETURN_IF_ERROR(e->ConfigurePoplarDevice(opts));
+  }
 
   return Status::OK();
 }

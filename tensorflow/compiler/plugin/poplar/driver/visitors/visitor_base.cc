@@ -179,7 +179,29 @@ Status BaseVisitor::HandleConvolution(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleAllReduce(HloInstruction* inst) {
-  return Unimplemented(inst);
+  VLOG(1) << "Processing " << inst->name();
+
+  auto reduction = inst->to_apply();
+  auto reduction_root = reduction->root_instruction();
+
+  if (reduction_root->opcode() != HloOpcode::kAdd) {
+    return xla::FailedPrecondition(
+        "Unsupported all-reduce reduction computation.");
+  }
+
+  for (auto& reduction_operand : reduction_root->operands()) {
+    if (reduction_operand->opcode() != HloOpcode::kParameter) {
+      return xla::FailedPrecondition(
+          "Unsupported all-reduce reduction computation.");
+    }
+  }
+
+  TF_ASSIGN_OR_RETURN(
+      auto seq, CreateReplicatedAllReduce(resources_, inst,
+                                          GetOutputShape(inst), tensor_map));
+
+  sequence.add(seq);
+  return Status::OK();
 }
 
 Status BaseVisitor::HandleRng(HloInstruction* inst) {

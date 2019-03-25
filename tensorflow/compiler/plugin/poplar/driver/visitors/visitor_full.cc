@@ -354,7 +354,7 @@ Status FullVisitor::HandleBatchNormGrad(HloInstruction* inst) {
 }
 
 Status FullVisitor::Postprocess(HloInstruction* inst) {
-  if (!inst->shape().IsTuple()) {
+  if (!(inst->shape().IsTuple() || inst->shape().IsToken())) {
     auto outs = FindInstructionOutputs(tensor_map, inst);
     if (outs.size() == 1) {
       if (!PoplarShapeMatchesXLAShape(outs[0], inst->shape())) {

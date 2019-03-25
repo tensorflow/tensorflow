@@ -66,8 +66,6 @@ Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
 
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
 
-uint64 GetShardingDeviceId(const HloInstruction* inst);
-
 // Convert a poplar/poplibs exception to a Tensorflow error Status
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,
                                          const std::exception& e);
@@ -304,6 +302,10 @@ StatusOr<poplar::program::Program> CreateInterIpuCopy(
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
 StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
+    CompilerResources& res, const HloInstruction* inst,
+    const xla::Shape& output, TensorMap& tensor_map);
+
+StatusOr<poplar::program::Program> CreateReplicatedAllReduce(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output, TensorMap& tensor_map);
 
