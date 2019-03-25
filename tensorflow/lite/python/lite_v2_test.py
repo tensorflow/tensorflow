@@ -100,7 +100,6 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
   @test_util.run_v2_only
   def testConstSavedModel(self):
     """Test a basic model with functions to make sure functions are inlined."""
-    self.skipTest('b/129162705')
     input_data = constant_op.constant(1., shape=[1])
     root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
