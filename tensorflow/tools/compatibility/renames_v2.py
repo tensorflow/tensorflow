@@ -369,6 +369,8 @@ renames = {
         'tf.signal.fft3d',
     'tf.fixed_size_partitioner':
         'tf.compat.v1.fixed_size_partitioner',
+    'tf.floor':
+        'tf.math.floor',
     'tf.floordiv':
         'tf.math.floordiv',
     'tf.get_collection':
