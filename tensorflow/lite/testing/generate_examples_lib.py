@@ -348,7 +348,7 @@ def make_control_dep_tests(options):
 
 
 def toco_convert(
-    options, graph_def_str, input_tensors, output_tensors, **kwargs):
+    options, graph_def, input_tensors, output_tensors, **kwargs):
   """Convert a model's graph def into a tflite model.
 
   NOTE: this currently shells out to the toco binary, but we would like
@@ -356,7 +356,7 @@ def toco_convert(
 
   Args:
     options: An Options instance.
-    graph_def_str: Graph def proto in serialized string format.
+    graph_def: A GraphDef object.
     input_tensors: List of input tensor tuples `(name, shape, type)`.
     output_tensors: List of output tensors (names).
     **kwargs: Extra options to be passed.
@@ -365,6 +365,15 @@ def toco_convert(
     output tflite model, log_txt from conversion
     or None, log_txt if it did not convert properly.
   """
+  # Convert ophint ops if presented.
+  graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
+      graph_def=graph_def)
+  # Warning: `remove_training_nodes` now incorreclty remove all
+  # TF Functions.
+  # TODO(ycling): Investigate. Required for functional control flow.
+  graph_def = tf.graph_util.remove_training_nodes(graph_def)
+  graph_def_str = graph_def.SerializeToString()
+
   extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
   input_arrays = [x[0] for x in input_tensors]
   data_types = [_TF_TYPE_INFO[x[2]][1] for x in input_tensors]
@@ -531,12 +540,8 @@ def make_zip_of_tests(options,
           extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
               "split_tflite_lstm_inputs"]
 
-        # Convert ophint ops if presented.
-        graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
-            graph_def=graph_def)
-        graph_def = tf.graph_util.remove_training_nodes(graph_def)
         tflite_model_binary, toco_log = options.tflite_convert_function(
-            options, graph_def.SerializeToString(), input_tensors,
+            options, graph_def, input_tensors,
             output_tensors, extra_toco_options=extra_toco_options)
         report["toco"] = (report_lib.SUCCESS if tflite_model_binary is not None
                           else report_lib.FAILED)
