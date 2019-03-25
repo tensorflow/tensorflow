@@ -92,14 +92,14 @@ FunctionPassBase *mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
 // location in destination's body.
 static inline void moveLoopBody(AffineForOp src, AffineForOp dest,
                                 Block::iterator loc) {
-  dest->getBody()->getInstructions().splice(loc,
-                                            src->getBody()->getInstructions());
+  dest.getBody()->getInstructions().splice(loc,
+                                           src.getBody()->getInstructions());
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' to the start of dest's
 // body.
 static inline void moveLoopBody(AffineForOp src, AffineForOp dest) {
-  moveLoopBody(src, dest, dest->getBody()->begin());
+  moveLoopBody(src, dest, dest.getBody()->begin());
 }
 
 /// Constructs and sets new loop bounds after tiling for the case of
@@ -114,18 +114,18 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
   assert(!origLoops.empty());
   assert(origLoops.size() == tileSizes.size());
 
-  FuncBuilder b(origLoops[0]->getInstruction());
+  FuncBuilder b(origLoops[0].getInstruction());
   unsigned width = origLoops.size();
 
   // Bounds for tile space loops.
   for (unsigned i = 0; i < width; i++) {
-    auto lbOperands = origLoops[i]->getLowerBoundOperands();
-    auto ubOperands = origLoops[i]->getUpperBoundOperands();
+    auto lbOperands = origLoops[i].getLowerBoundOperands();
+    auto ubOperands = origLoops[i].getUpperBoundOperands();
     SmallVector<Value *, 4> newLbOperands(lbOperands);
     SmallVector<Value *, 4> newUbOperands(ubOperands);
-    newLoops[i]->setLowerBound(newLbOperands, origLoops[i]->getLowerBoundMap());
-    newLoops[i]->setUpperBound(newUbOperands, origLoops[i]->getUpperBoundMap());
-    newLoops[i]->setStep(tileSizes[i]);
+    newLoops[i].setLowerBound(newLbOperands, origLoops[i].getLowerBoundMap());
+    newLoops[i].setUpperBound(newUbOperands, origLoops[i].getUpperBoundMap());
+    newLoops[i].setStep(tileSizes[i]);
   }
   // Bounds for intra-tile loops.
   for (unsigned i = 0; i < width; i++) {
@@ -133,24 +133,24 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
     auto mayBeConstantCount = getConstantTripCount(origLoops[i]);
     // The lower bound is just the tile-space loop.
     AffineMap lbMap = b.getDimIdentityMap();
-    newLoops[width + i]->setLowerBound(
-        /*operands=*/newLoops[i]->getInductionVar(), lbMap);
+    newLoops[width + i].setLowerBound(
+        /*operands=*/newLoops[i].getInductionVar(), lbMap);
 
     // Set the upper bound.
     if (mayBeConstantCount.hasValue() &&
         mayBeConstantCount.getValue() < tileSizes[i]) {
       // Trip count is less than tile size; upper bound is the trip count.
       auto ubMap = b.getConstantAffineMap(mayBeConstantCount.getValue());
-      newLoops[width + i]->setUpperBoundMap(ubMap);
+      newLoops[width + i].setUpperBoundMap(ubMap);
     } else if (largestDiv % tileSizes[i] != 0) {
       // Intra-tile loop ii goes from i to min(i + tileSize, ub_i).
       // Construct the upper bound map; the operands are the original operands
       // with 'i' (tile-space loop) appended to it. The new upper bound map is
       // the original one with an additional expression i + tileSize appended.
-      SmallVector<Value *, 4> ubOperands(origLoops[i]->getUpperBoundOperands());
-      ubOperands.push_back(newLoops[i]->getInductionVar());
+      SmallVector<Value *, 4> ubOperands(origLoops[i].getUpperBoundOperands());
+      ubOperands.push_back(newLoops[i].getInductionVar());
 
-      auto origUbMap = origLoops[i]->getUpperBoundMap();
+      auto origUbMap = origLoops[i].getUpperBoundMap();
       SmallVector<AffineExpr, 4> boundExprs;
       boundExprs.reserve(1 + origUbMap.getNumResults());
       auto dim = b.getAffineDimExpr(origUbMap.getNumInputs());
@@ -161,12 +161,12 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
                         origUbMap.getResults().end());
       auto ubMap =
           b.getAffineMap(origUbMap.getNumInputs() + 1, 0, boundExprs, {});
-      newLoops[width + i]->setUpperBound(/*operands=*/ubOperands, ubMap);
+      newLoops[width + i].setUpperBound(/*operands=*/ubOperands, ubMap);
     } else {
       // No need of the min expression.
       auto dim = b.getAffineDimExpr(0);
       auto ubMap = b.getAffineMap(1, 0, dim + tileSizes[i], {});
-      newLoops[width + i]->setUpperBound(newLoops[i]->getInductionVar(), ubMap);
+      newLoops[width + i].setUpperBound(newLoops[i].getInductionVar(), ubMap);
     }
   }
 }
@@ -181,14 +181,14 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Check if the supplied for inst's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
-    assert(band[i]->getInstruction()->getParentInst() ==
-           band[i - 1]->getInstruction());
+    assert(band[i].getInstruction()->getParentInst() ==
+           band[i - 1].getInstruction());
   }
 
   auto origLoops = band;
 
   AffineForOp rootAffineForOp = origLoops[0];
-  auto loc = rootAffineForOp->getLoc();
+  auto loc = rootAffineForOp.getLoc();
   // Note that width is at least one since band isn't empty.
   unsigned width = band.size();
 
@@ -196,19 +196,19 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   AffineForOp innermostPointLoop;
 
   // The outermost among the loops as we add more..
-  auto *topLoop = rootAffineForOp->getInstruction();
+  auto *topLoop = rootAffineForOp.getInstruction();
 
   // Add intra-tile (or point) loops.
   for (unsigned i = 0; i < width; i++) {
     FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto pointLoop = b.create<AffineForOp>(loc, 0, 0);
-    pointLoop->createBody();
-    pointLoop->getBody()->getInstructions().splice(
-        pointLoop->getBody()->begin(), topLoop->getBlock()->getInstructions(),
+    pointLoop.createBody();
+    pointLoop.getBody()->getInstructions().splice(
+        pointLoop.getBody()->begin(), topLoop->getBlock()->getInstructions(),
         topLoop);
     newLoops[2 * width - 1 - i] = pointLoop;
-    topLoop = pointLoop->getInstruction();
+    topLoop = pointLoop.getInstruction();
     if (i == 0)
       innermostPointLoop = pointLoop;
   }
@@ -218,12 +218,12 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
     FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto tileSpaceLoop = b.create<AffineForOp>(loc, 0, 0);
-    tileSpaceLoop->createBody();
-    tileSpaceLoop->getBody()->getInstructions().splice(
-        tileSpaceLoop->getBody()->begin(),
+    tileSpaceLoop.createBody();
+    tileSpaceLoop.getBody()->getInstructions().splice(
+        tileSpaceLoop.getBody()->begin(),
         topLoop->getBlock()->getInstructions(), topLoop);
     newLoops[2 * width - i - 1] = tileSpaceLoop;
-    topLoop = tileSpaceLoop->getInstruction();
+    topLoop = tileSpaceLoop.getInstruction();
   }
 
   // Move the loop body of the original nest to the new one.
@@ -236,19 +236,19 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   getIndexSet(band, &cst);
 
   if (!cst.isHyperRectangular(0, width)) {
-    rootAffineForOp->emitError("tiled code generation unimplemented for the "
-                               "non-hyperrectangular case");
+    rootAffineForOp.emitError("tiled code generation unimplemented for the "
+                              "non-hyperrectangular case");
     return failure();
   }
 
   constructTiledIndexSetHyperRect(origLoops, newLoops, tileSizes);
   // In this case, the point loop IVs just replace the original ones.
   for (unsigned i = 0; i < width; i++) {
-    origLoopIVs[i]->replaceAllUsesWith(newLoops[i + width]->getInductionVar());
+    origLoopIVs[i]->replaceAllUsesWith(newLoops[i + width].getInductionVar());
   }
 
   // Erase the old loop nest.
-  rootAffineForOp->erase();
+  rootAffineForOp.erase();
 
   return success();
 }
@@ -265,8 +265,8 @@ static void getTileableBands(Function *f,
     AffineForOp currInst = root;
     do {
       band.push_back(currInst);
-    } while (currInst->getBody()->getInstructions().size() == 1 &&
-             (currInst = currInst->getBody()->front().dyn_cast<AffineForOp>()));
+    } while (currInst.getBody()->getInstructions().size() == 1 &&
+             (currInst = currInst.getBody()->front().dyn_cast<AffineForOp>()));
     bands->push_back(band);
   };
 
@@ -341,8 +341,8 @@ void LoopTiling::getTileSizes(ArrayRef<AffineForOp> band,
     if (avoidMaxMinBounds)
       adjustToDivisorsOfTripCounts(band, tileSizes);
     LLVM_DEBUG(
-        rootForOp->emitWarning("memory footprint unknown: using default tile "
-                               "sizes adjusted to trip count divisors"));
+        rootForOp.emitWarning("memory footprint unknown: using default tile "
+                              "sizes adjusted to trip count divisors"));
     return;
   }
 
@@ -398,7 +398,7 @@ void LoopTiling::runOnFunction() {
         msg << tSize << " ";
       msg << "]\n";
       auto rootForOp = band[0];
-      rootForOp->emitNote(msg.str());
+      rootForOp.emitNote(msg.str());
     }
     if (failed(tileCodeGen(band, tileSizes)))
       return signalPassFailure();

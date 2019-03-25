@@ -403,7 +403,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
                                     zeroIndex, stride, numEltPerStride);
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
-    *nEnd = Block::iterator(op->getInstruction());
+    *nEnd = Block::iterator(op.getInstruction());
   }
 
   // Matching DMA wait to block on completion; tag always has a 0 index.
@@ -414,7 +414,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   if (*nEnd == end)
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
-    *nEnd = Block::iterator(tagDeallocOp->getInstruction());
+    *nEnd = Block::iterator(tagDeallocOp.getInstruction());
 
   // Generate dealloc for the DMA buffer.
   if (!existingBuf)
@@ -500,13 +500,13 @@ bool DmaGeneration::runOnBlock(Block *block) {
       // the footprint can't be calculated, we assume for now it fits. Recurse
       // inside if footprint for 'forOp' exceeds capacity, or when
       // clSkipNonUnitStrideLoop is set and the step size is not one.
-      bool recurseInner = clSkipNonUnitStrideLoop ? forOp->getStep() != 1
+      bool recurseInner = clSkipNonUnitStrideLoop ? forOp.getStep() != 1
                                                   : exceedsCapacity(forOp);
       if (recurseInner) {
         // We'll recurse and do the DMAs at an inner level for 'forInst'.
         runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
-        runOnBlock(forOp->getBody());
+        runOnBlock(forOp.getBody());
         // The next region starts right after the 'affine.for' instruction.
         curBegin = std::next(it);
       } else {
@@ -561,15 +561,15 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
   for (auto e = enclosingFors.rend(); it != e; ++it) {
     // TODO(bondhugula): also need to be checking this for regions symbols that
     // aren't loop IVs, whether we are within their resp. defs' dominance scope.
-    if (llvm::is_contained(symbols, (*it)->getInductionVar()))
+    if (llvm::is_contained(symbols, it->getInductionVar()))
       break;
   }
 
   if (it != enclosingFors.rbegin()) {
     auto lastInvariantIV = *std::prev(it);
-    *dmaPlacementReadStart = Block::iterator(lastInvariantIV->getInstruction());
+    *dmaPlacementReadStart = Block::iterator(lastInvariantIV.getInstruction());
     *dmaPlacementWriteStart = std::next(*dmaPlacementReadStart);
-    *dmaPlacementBlock = lastInvariantIV->getInstruction()->getBlock();
+    *dmaPlacementBlock = lastInvariantIV.getInstruction()->getBlock();
   } else {
     *dmaPlacementReadStart = begin;
     *dmaPlacementWriteStart = end;
@@ -737,9 +737,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   AffineForOp forOp;
   uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
-    forOp->emitNote(
-        Twine(sizeInKib) +
-        " KiB of DMA buffers in fast memory space for this block\n");
+    forOp.emitNote(Twine(sizeInKib) +
+                   " KiB of DMA buffers in fast memory space for this block\n");
   }
 
   if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {

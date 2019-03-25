@@ -51,7 +51,7 @@ public:
     if (!lhs || !rhs)
       return nullptr;
     auto op = builder.create<OpTy>(loc, lhs, rhs);
-    return op->getResult();
+    return op.getResult();
   }
 
   Value *visitAddExpr(AffineBinaryOpExpr expr) {
@@ -189,7 +189,7 @@ public:
         builder.getIntegerAttr(builder.getIndexType(), expr.getValue());
     auto op =
         builder.create<ConstantOp>(loc, builder.getIndexType(), valueAttr);
-    return op->getResult();
+    return op.getResult();
   }
 
   Value *visitDimExpr(AffineDimExpr expr) {
@@ -270,7 +270,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
   Value *value = *valueIt++;
   for (; valueIt != values.end(); ++valueIt) {
     auto cmpOp = builder.create<CmpIOp>(loc, predicate, value, *valueIt);
-    value = builder.create<SelectOp>(loc, cmpOp->getResult(), value, *valueIt);
+    value = builder.create<SelectOp>(loc, cmpOp.getResult(), value, *valueIt);
   }
 
   return value;
@@ -320,8 +320,8 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //      +--------------------------------+
 //
 bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
-  auto loc = forOp->getLoc();
-  auto *forInst = forOp->getInstruction();
+  auto loc = forOp.getLoc();
+  auto *forInst = forOp.getInstruction();
 
   // Start by splitting the block containing the 'affine.for' into two parts.
   // The part before will get the init code, the part after will be the end
@@ -339,19 +339,19 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   auto *bodyBlock = new Block();
   bodyBlock->insertBefore(endBlock);
 
-  auto *oldBody = forOp->getBody();
+  auto *oldBody = forOp.getBody();
   bodyBlock->getInstructions().splice(bodyBlock->begin(),
                                       oldBody->getInstructions(),
                                       oldBody->begin(), oldBody->end());
 
   // The code in the body of the forOp now uses 'iv' as its indvar.
-  forOp->getInductionVar()->replaceAllUsesWith(iv);
+  forOp.getInductionVar()->replaceAllUsesWith(iv);
 
   // Append the induction variable stepping logic and branch back to the exit
   // condition block.  Construct an affine expression f : (x -> x+step) and
   // apply this expression to the induction variable.
   FuncBuilder builder(bodyBlock);
-  auto affStep = builder.getAffineConstantExpr(forOp->getStep());
+  auto affStep = builder.getAffineConstantExpr(forOp.getStep());
   auto affDim = builder.getAffineDimExpr(0);
   auto stepped = expandAffineExpr(&builder, loc, affDim + affStep, iv, {});
   if (!stepped)
@@ -364,18 +364,18 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   builder.setInsertionPointToEnd(initBlock);
 
   // Compute loop bounds.
-  SmallVector<Value *, 8> operands(forOp->getLowerBoundOperands());
+  SmallVector<Value *, 8> operands(forOp.getLowerBoundOperands());
   auto lbValues = expandAffineMap(&builder, forInst->getLoc(),
-                                  forOp->getLowerBoundMap(), operands);
+                                  forOp.getLowerBoundMap(), operands);
   if (!lbValues)
     return true;
   Value *lowerBound =
       buildMinMaxReductionSeq(loc, CmpIPredicate::SGT, *lbValues, builder);
 
-  operands.assign(forOp->getUpperBoundOperands().begin(),
-                  forOp->getUpperBoundOperands().end());
+  operands.assign(forOp.getUpperBoundOperands().begin(),
+                  forOp.getUpperBoundOperands().end());
   auto ubValues = expandAffineMap(&builder, forInst->getLoc(),
-                                  forOp->getUpperBoundMap(), operands);
+                                  forOp.getUpperBoundMap(), operands);
   if (!ubValues)
     return true;
   Value *upperBound =
@@ -390,7 +390,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
                                endBlock, ArrayRef<Value *>());
 
   // Ok, we're done!
-  forOp->erase();
+  forOp.erase();
   return false;
 }
 
@@ -454,7 +454,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
 //      +--------------------------------+
 //
 bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
-  auto *ifInst = ifOp->getInstruction();
+  auto *ifInst = ifOp.getInstruction();
   auto loc = ifInst->getLoc();
 
   // Start by splitting the block containing the 'affine.if' into two parts. The
@@ -470,7 +470,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   thenBlock->insertBefore(continueBlock);
 
   // If the 'then' block is not empty, then splice the instructions.
-  auto &oldThenBlocks = ifOp->getThenBlocks();
+  auto &oldThenBlocks = ifOp.getThenBlocks();
   if (!oldThenBlocks.empty()) {
     // We currently only handle one 'then' block.
     if (std::next(oldThenBlocks.begin()) != oldThenBlocks.end())
@@ -489,7 +489,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   // Handle the 'else' block the same way, but we skip it if we have no else
   // code.
   Block *elseBlock = continueBlock;
-  auto &oldElseBlocks = ifOp->getElseBlocks();
+  auto &oldElseBlocks = ifOp.getElseBlocks();
   if (!oldElseBlocks.empty()) {
     // We currently only handle one 'else' block.
     if (std::next(oldElseBlocks.begin()) != oldElseBlocks.end())
@@ -507,7 +507,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   }
 
   // Ok, now we just have to handle the condition logic.
-  auto integerSet = ifOp->getIntegerSet();
+  auto integerSet = ifOp.getIntegerSet();
 
   // Implement short-circuit logic.  For each affine expression in the
   // 'affine.if' condition, convert it into an affine map and call
@@ -545,7 +545,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
     auto comparisonOp = builder.create<CmpIOp>(
         loc, isEquality ? CmpIPredicate::EQ : CmpIPredicate::SGE, affResult,
         zeroConstant);
-    builder.create<CondBranchOp>(loc, comparisonOp->getResult(), nextBlock,
+    builder.create<CondBranchOp>(loc, comparisonOp.getResult(), nextBlock,
                                  /*trueArgs*/ ArrayRef<Value *>(), elseBlock,
                                  /*falseArgs*/ ArrayRef<Value *>());
     builder.setInsertionPointToEnd(nextBlock);
@@ -570,19 +570,19 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
 // Convert an "affine.apply" operation into a sequence of arithmetic
 // instructions using the StandardOps dialect.  Return true on error.
 bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
-  FuncBuilder builder(op->getInstruction());
+  FuncBuilder builder(op.getInstruction());
   auto maybeExpandedMap =
-      expandAffineMap(&builder, op->getLoc(), op->getAffineMap(),
-                      llvm::to_vector<8>(op->getOperands()));
+      expandAffineMap(&builder, op.getLoc(), op.getAffineMap(),
+                      llvm::to_vector<8>(op.getOperands()));
   if (!maybeExpandedMap)
     return true;
 
-  Value *original = op->getResult();
+  Value *original = op.getResult();
   Value *expanded = (*maybeExpandedMap)[0];
   if (!expanded)
     return true;
   original->replaceAllUsesWith(expanded);
-  op->erase();
+  op.erase();
   return false;
 }
 

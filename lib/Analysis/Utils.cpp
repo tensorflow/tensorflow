@@ -374,7 +374,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                     std::is_same<LoadOrStoreOpPointer, StoreOp>::value,
                 "argument should be either a LoadOp or a StoreOp");
 
-  Instruction *opInst = loadOrStoreOp->getInstruction();
+  Instruction *opInst = loadOrStoreOp.getInstruction();
 
   MemRefRegion region(opInst->getLoc());
   if (failed(region.compute(opInst, /*loopDepth=*/0)))
@@ -458,7 +458,7 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
       return &inst;
     if (auto childAffineForOp = inst.dyn_cast<AffineForOp>())
       return getInstAtPosition(positions, level + 1,
-                               childAffineForOp->getBody());
+                               childAffineForOp.getBody());
 
     for (auto &region : inst.getRegions()) {
       for (auto &b : region)
@@ -537,9 +537,9 @@ LogicalResult mlir::getBackwardComputationSliceState(
   // TODO(andydavis, bondhugula) Use MemRef read/write regions instead of
   // using 'kSliceFusionBarrierAttrName'.
   for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
-    Value *iv = srcLoopIVs[i]->getInductionVar();
+    Value *iv = srcLoopIVs[i].getInductionVar();
     if (sequentialLoops.count(iv) == 0 &&
-        srcLoopIVs[i]->getAttr(kSliceFusionBarrierAttrName) == nullptr)
+        srcLoopIVs[i].getAttr(kSliceFusionBarrierAttrName) == nullptr)
       continue;
     for (unsigned j = i; j < numSrcLoopIVs; ++j) {
       sliceState->lbs[j] = AffineMap();
@@ -583,18 +583,18 @@ AffineForOp mlir::insertBackwardComputationSlice(
   // Find the inst block positions of 'srcOpInst' within 'srcLoopIVs'.
   SmallVector<unsigned, 4> positions;
   // TODO(andydavis): This code is incorrect since srcLoopIVs can be 0-d.
-  findInstPosition(srcOpInst, srcLoopIVs[0]->getInstruction()->getBlock(),
+  findInstPosition(srcOpInst, srcLoopIVs[0].getInstruction()->getBlock(),
                    &positions);
 
   // Clone src loop nest and insert it a the beginning of the instruction block
   // of the loop at 'dstLoopDepth' in 'dstLoopIVs'.
   auto dstAffineForOp = dstLoopIVs[dstLoopDepth - 1];
-  FuncBuilder b(dstAffineForOp->getBody(), dstAffineForOp->getBody()->begin());
+  FuncBuilder b(dstAffineForOp.getBody(), dstAffineForOp.getBody()->begin());
   auto sliceLoopNest =
-      b.clone(*srcLoopIVs[0]->getInstruction())->cast<AffineForOp>();
+      b.clone(*srcLoopIVs[0].getInstruction())->cast<AffineForOp>();
 
   Instruction *sliceInst =
-      getInstAtPosition(positions, /*level=*/0, sliceLoopNest->getBody());
+      getInstAtPosition(positions, /*level=*/0, sliceLoopNest.getBody());
   // Get loop nest surrounding 'sliceInst'.
   SmallVector<AffineForOp, 4> sliceSurroundingLoops;
   getLoopIVs(*sliceInst, &sliceSurroundingLoops);
@@ -611,9 +611,9 @@ AffineForOp mlir::insertBackwardComputationSlice(
   for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
     auto forOp = sliceSurroundingLoops[dstLoopDepth + i];
     if (AffineMap lbMap = sliceState->lbs[i])
-      forOp->setLowerBound(sliceState->lbOperands[i], lbMap);
+      forOp.setLowerBound(sliceState->lbOperands[i], lbMap);
     if (AffineMap ubMap = sliceState->ubs[i])
-      forOp->setUpperBound(sliceState->ubOperands[i], ubMap);
+      forOp.setUpperBound(sliceState->ubOperands[i], ubMap);
   }
   return sliceLoopNest;
 }
@@ -670,7 +670,7 @@ unsigned mlir::getNumCommonSurroundingLoops(Instruction &A, Instruction &B) {
   unsigned minNumLoops = std::min(loopsA.size(), loopsB.size());
   unsigned numCommonLoops = 0;
   for (unsigned i = 0; i < minNumLoops; ++i) {
-    if (loopsA[i]->getInstruction() != loopsB[i]->getInstruction())
+    if (loopsA[i].getInstruction() != loopsB[i].getInstruction())
       break;
     ++numCommonLoops;
   }
@@ -727,7 +727,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
 
 Optional<int64_t> mlir::getMemoryFootprintBytes(AffineForOp forOp,
                                                 int memorySpace) {
-  auto *forInst = forOp->getInstruction();
+  auto *forInst = forOp.getInstruction();
   return ::getMemoryFootprintBytes(
       *forInst->getBlock(), Block::iterator(forInst),
       std::next(Block::iterator(forInst)), memorySpace);
@@ -737,10 +737,10 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(AffineForOp forOp,
 /// at 'forOp'.
 void mlir::getSequentialLoops(
     AffineForOp forOp, llvm::SmallDenseSet<Value *, 8> *sequentialLoops) {
-  forOp->getInstruction()->walk([&](Instruction *inst) {
+  forOp.getInstruction()->walk([&](Instruction *inst) {
     if (auto innerFor = inst->dyn_cast<AffineForOp>())
       if (!isLoopParallel(innerFor))
-        sequentialLoops->insert(innerFor->getInductionVar());
+        sequentialLoops->insert(innerFor.getInductionVar());
   });
 }
 
@@ -748,13 +748,13 @@ void mlir::getSequentialLoops(
 bool mlir::isLoopParallel(AffineForOp forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
   SmallVector<Instruction *, 8> loadAndStoreOpInsts;
-  forOp->getInstruction()->walk([&](Instruction *opInst) {
+  forOp.getInstruction()->walk([&](Instruction *opInst) {
     if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>())
       loadAndStoreOpInsts.push_back(opInst);
   });
 
   // Dep check depth would be number of enclosing loops + 1.
-  unsigned depth = getNestingDepth(*forOp->getInstruction()) + 1;
+  unsigned depth = getNestingDepth(*forOp.getInstruction()) + 1;
 
   // Check dependences between all pairs of ops in 'loadAndStoreOpInsts'.
   for (auto *srcOpInst : loadAndStoreOpInsts) {

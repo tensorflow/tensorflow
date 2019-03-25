@@ -696,8 +696,8 @@ bool MemRefDependenceGraph::init(Function *f) {
         getLoopIVs(*use.getOwner(), &loops);
         if (loops.empty())
           continue;
-        assert(forToNodeMap.count(loops[0]->getInstruction()) > 0);
-        unsigned userLoopNestId = forToNodeMap[loops[0]->getInstruction()];
+        assert(forToNodeMap.count(loops[0].getInstruction()) > 0);
+        unsigned userLoopNestId = forToNodeMap[loops[0].getInstruction()];
         addEdge(node.id, userLoopNestId, value);
       }
     }
@@ -745,8 +745,8 @@ struct LoopNestStatsCollector {
 
   void collect(Instruction *inst) {
     inst->walk<AffineForOp>([&](AffineForOp forOp) {
-      auto *forInst = forOp->getInstruction();
-      auto *parentInst = forOp->getInstruction()->getParentInst();
+      auto *forInst = forOp.getInstruction();
+      auto *parentInst = forOp.getInstruction()->getParentInst();
       if (parentInst != nullptr) {
         assert(parentInst->isa<AffineForOp>() && "Expected parent AffineForOp");
         // Add mapping to 'forOp' from its parent AffineForOp.
@@ -756,7 +756,7 @@ struct LoopNestStatsCollector {
       // Record the number of op instructions in the body of 'forOp'.
       unsigned count = 0;
       stats->opCountMap[forInst] = 0;
-      for (auto &inst : *forOp->getBody()) {
+      for (auto &inst : *forOp.getBody()) {
         if (!inst.isa<AffineForOp>() && !inst.isa<AffineIfOp>())
           ++count;
       }
@@ -796,7 +796,7 @@ static int64_t getComputeCost(
   int64_t opCount = stats->opCountMap[forInst];
   if (stats->loopMap.count(forInst) > 0) {
     for (auto childForOp : stats->loopMap[forInst]) {
-      opCount += getComputeCost(childForOp->getInstruction(), stats,
+      opCount += getComputeCost(childForOp.getInstruction(), stats,
                                 tripCountOverrideMap, computeCostMap);
     }
   }
@@ -854,11 +854,11 @@ static bool buildSliceTripCountMap(
     AffineMap ubMap = sliceState->ubs[i];
     if (lbMap == AffineMap() || ubMap == AffineMap()) {
       // The iteration of src loop IV 'i' was not sliced. Use full loop bounds.
-      if (srcLoopIVs[i]->hasConstantLowerBound() &&
-          srcLoopIVs[i]->hasConstantUpperBound()) {
-        (*tripCountMap)[srcLoopIVs[i]->getInstruction()] =
-            srcLoopIVs[i]->getConstantUpperBound() -
-            srcLoopIVs[i]->getConstantLowerBound();
+      if (srcLoopIVs[i].hasConstantLowerBound() &&
+          srcLoopIVs[i].hasConstantUpperBound()) {
+        (*tripCountMap)[srcLoopIVs[i].getInstruction()] =
+            srcLoopIVs[i].getConstantUpperBound() -
+            srcLoopIVs[i].getConstantLowerBound();
         continue;
       }
       return false;
@@ -866,7 +866,7 @@ static bool buildSliceTripCountMap(
     Optional<uint64_t> tripCount = getConstDifference(lbMap, ubMap);
     if (!tripCount.hasValue())
       return false;
-    (*tripCountMap)[srcLoopIVs[i]->getInstruction()] = tripCount.getValue();
+    (*tripCountMap)[srcLoopIVs[i].getInstruction()] = tripCount.getValue();
   }
   return true;
 }
@@ -1060,12 +1060,12 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
   SmallVector<AffineForOp, 4> loops;
   AffineForOp curr = node->inst->cast<AffineForOp>();
   loops.push_back(curr);
-  auto *currBody = curr->getBody();
+  auto *currBody = curr.getBody();
   while (!currBody->empty() &&
          std::next(currBody->begin()) == currBody->end() &&
-         (curr = curr->getBody()->front().dyn_cast<AffineForOp>())) {
+         (curr = curr.getBody()->front().dyn_cast<AffineForOp>())) {
     loops.push_back(curr);
-    currBody = curr->getBody();
+    currBody = curr.getBody();
   }
   if (loops.size() < 2)
     return;
@@ -1091,7 +1091,7 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
     }
   }
   assert(loopNestRootIndex != -1 && "invalid root index");
-  node->inst = loops[loopNestRootIndex]->getInstruction();
+  node->inst = loops[loopNestRootIndex].getInstruction();
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
@@ -1119,7 +1119,7 @@ static Value *createPrivateMemRef(AffineForOp forOp,
                                   unsigned dstLoopDepth,
                                   Optional<unsigned> fastMemorySpace,
                                   uint64_t localBufSizeThreshold) {
-  auto *forInst = forOp->getInstruction();
+  auto *forInst = forOp.getInstruction();
 
   // Create builder to insert alloc op just before 'forOp'.
   FuncBuilder b(forInst);
@@ -1187,7 +1187,7 @@ static Value *createPrivateMemRef(AffineForOp forOp,
   for (auto dimSize : oldMemRefType.getShape()) {
     if (dimSize == -1)
       allocOperands.push_back(
-          top.create<DimOp>(forOp->getLoc(), oldMemRef, dynamicDimCount++));
+          top.create<DimOp>(forOp.getLoc(), oldMemRef, dynamicDimCount++));
   }
 
   // Create new private memref for fused loop 'forOp'.
@@ -1196,7 +1196,7 @@ static Value *createPrivateMemRef(AffineForOp forOp,
   // at the beginning of the function, because loop nests can be reordered
   // during the fusion pass.
   Value *newMemRef =
-      top.create<AllocOp>(forOp->getLoc(), newMemRefType, allocOperands);
+      top.create<AllocOp>(forOp.getLoc(), newMemRefType, allocOperands);
 
   // Build an AffineMap to remap access functions based on lower bound offsets.
   SmallVector<AffineExpr, 4> remapExprs;
@@ -1220,7 +1220,7 @@ static Value *createPrivateMemRef(AffineForOp forOp,
   bool ret =
       replaceAllMemRefUsesWith(oldMemRef, newMemRef, {}, indexRemap,
                                /*extraOperands=*/outerIVs,
-                               /*domInstFilter=*/&*forOp->getBody()->begin());
+                               /*domInstFilter=*/&*forOp.getBody()->begin());
   assert(ret && "replaceAllMemrefUsesWith should always succeed here");
   (void)ret;
   return newMemRef;
@@ -1437,7 +1437,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   // Walk src loop nest and collect stats.
   LoopNestStats srcLoopNestStats;
   LoopNestStatsCollector srcStatsCollector(&srcLoopNestStats);
-  srcStatsCollector.collect(srcLoopIVs[0]->getInstruction());
+  srcStatsCollector.collect(srcLoopIVs[0].getInstruction());
   // Currently only constant trip count loop nests are supported.
   if (srcStatsCollector.hasLoopWithNonConstTripCount) {
     LLVM_DEBUG(llvm::dbgs() << "Non-constant trip count loops unsupported.\n");
@@ -1449,7 +1449,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
   LoopNestStats dstLoopNestStats;
   LoopNestStatsCollector dstStatsCollector(&dstLoopNestStats);
-  dstStatsCollector.collect(dstLoopIVs[0]->getInstruction());
+  dstStatsCollector.collect(dstLoopIVs[0].getInstruction());
   // Currently only constant trip count loop nests are supported.
   if (dstStatsCollector.hasLoopWithNonConstTripCount) {
     LLVM_DEBUG(llvm::dbgs() << "Non-constant trip count loops unsupported.\n");
@@ -1484,7 +1484,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
   // Compute op instance count for the src loop nest without iteration slicing.
   uint64_t srcLoopNestCost =
-      getComputeCost(srcLoopIVs[0]->getInstruction(), &srcLoopNestStats,
+      getComputeCost(srcLoopIVs[0].getInstruction(), &srcLoopNestStats,
                      /*tripCountOverrideMap=*/nullptr,
                      /*computeCostMap=*/nullptr);
 
@@ -1504,7 +1504,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
   // Compute op instance count for the src loop nest.
   uint64_t dstLoopNestCost =
-      getComputeCost(dstLoopIVs[0]->getInstruction(), &dstLoopNestStats,
+      getComputeCost(dstLoopIVs[0].getInstruction(), &dstLoopNestStats,
                      /*tripCountOverrideMap=*/nullptr,
                      /*computeCostMap=*/nullptr);
 
@@ -1543,7 +1543,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
     // TODO(andydavis) Add load coalescing to memref data flow opt pass.
     if (storeLoadFwdGuaranteed) {
       // A single store disappears: -1 for that.
-      computeCostMap[srcLoopIVs[numSrcLoopIVs - 1]->getInstruction()] = -1;
+      computeCostMap[srcLoopIVs[numSrcLoopIVs - 1].getInstruction()] = -1;
       for (auto *loadOp : dstLoadOpInsts) {
         auto *parentInst = loadOp->getParentInst();
         if (parentInst && parentInst->isa<AffineForOp>())
@@ -1553,15 +1553,15 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
     // Compute op instance count for the src loop nest with iteration slicing.
     int64_t sliceComputeCost =
-        getComputeCost(srcLoopIVs[0]->getInstruction(), &srcLoopNestStats,
+        getComputeCost(srcLoopIVs[0].getInstruction(), &srcLoopNestStats,
                        /*tripCountOverrideMap=*/&sliceTripCountMap,
                        /*computeCostMap=*/&computeCostMap);
 
     // Compute cost of fusion for this depth.
-    computeCostMap[dstLoopIVs[i - 1]->getInstruction()] = sliceComputeCost;
+    computeCostMap[dstLoopIVs[i - 1].getInstruction()] = sliceComputeCost;
 
     int64_t fusedLoopNestComputeCost =
-        getComputeCost(dstLoopIVs[0]->getInstruction(), &dstLoopNestStats,
+        getComputeCost(dstLoopIVs[0].getInstruction(), &dstLoopNestStats,
                        /*tripCountOverrideMap=*/nullptr, &computeCostMap);
 
     double additionalComputeFraction =
@@ -1935,20 +1935,19 @@ public:
           auto sliceLoopNest = mlir::insertBackwardComputationSlice(
               srcStoreOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
           if (sliceLoopNest) {
-            LLVM_DEBUG(llvm::dbgs()
-                       << "\tslice loop nest:\n"
-                       << *sliceLoopNest->getInstruction() << "\n");
+            LLVM_DEBUG(llvm::dbgs() << "\tslice loop nest:\n"
+                                    << *sliceLoopNest.getInstruction() << "\n");
             // Move 'dstAffineForOp' before 'insertPointInst' if needed.
             auto dstAffineForOp = dstNode->inst->cast<AffineForOp>();
-            if (insertPointInst != dstAffineForOp->getInstruction()) {
-              dstAffineForOp->getInstruction()->moveBefore(insertPointInst);
+            if (insertPointInst != dstAffineForOp.getInstruction()) {
+              dstAffineForOp.getInstruction()->moveBefore(insertPointInst);
             }
             // Update edges between 'srcNode' and 'dstNode'.
             mdg->updateEdges(srcNode->id, dstNode->id, memref);
 
             // Collect slice loop stats.
             LoopNestStateCollector sliceCollector;
-            sliceCollector.collect(sliceLoopNest->getInstruction());
+            sliceCollector.collect(sliceLoopNest.getInstruction());
             // Promote single iteration slice loops to single IV value.
             for (auto forOp : sliceCollector.forOps) {
               promoteIfSingleIteration(forOp);
@@ -1974,7 +1973,7 @@ public:
 
             // Collect dst loop stats after memref privatizaton transformation.
             LoopNestStateCollector dstLoopCollector;
-            dstLoopCollector.collect(dstAffineForOp->getInstruction());
+            dstLoopCollector.collect(dstAffineForOp.getInstruction());
 
             // Add new load ops to current Node load op list 'loads' to
             // continue fusing based on new operands.
@@ -2097,8 +2096,8 @@ public:
       if (sliceLoopNest != nullptr) {
         auto dstForInst = dstNode->inst->cast<AffineForOp>();
         // Update instruction position of fused loop nest (if needed).
-        if (insertPointInst != dstForInst->getInstruction()) {
-          dstForInst->getInstruction()->moveBefore(insertPointInst);
+        if (insertPointInst != dstForInst.getInstruction()) {
+          dstForInst.getInstruction()->moveBefore(insertPointInst);
         }
         // Update data dependence graph state post fusion.
         updateStateAfterSiblingFusion(sliceLoopNest, sibNode, dstNode);
@@ -2190,7 +2189,7 @@ public:
 
     // Collect slice loop stats.
     LoopNestStateCollector sliceCollector;
-    sliceCollector.collect(sliceLoopNest->getInstruction());
+    sliceCollector.collect(sliceLoopNest.getInstruction());
     // Promote single iteration slice loops to single IV value.
     for (auto forOp : sliceCollector.forOps) {
       promoteIfSingleIteration(forOp);
@@ -2199,7 +2198,7 @@ public:
     // Collect dst loop stats after memref privatizaton transformation.
     auto dstForInst = dstNode->inst->cast<AffineForOp>();
     LoopNestStateCollector dstLoopCollector;
-    dstLoopCollector.collect(dstForInst->getInstruction());
+    dstLoopCollector.collect(dstForInst.getInstruction());
     // Clear and add back loads and stores
     mdg->clearNodeLoadAndStores(dstNode->id);
     mdg->addToNode(dstNode->id, dstLoopCollector.loadOpInsts,
@@ -2209,7 +2208,7 @@ public:
     // function.
     if (mdg->getOutEdgeCount(sibNode->id) == 0) {
       mdg->removeNode(sibNode->id);
-      sibNode->inst->cast<AffineForOp>()->erase();
+      sibNode->inst->cast<AffineForOp>().erase();
     }
   }
 

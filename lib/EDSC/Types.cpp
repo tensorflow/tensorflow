@@ -209,7 +209,7 @@ Expr::build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings,
     auto affInstr = makeComposedAffineApply(
         &b, b.getUnknownLoc(),
         getAttribute("map").cast<AffineMapAttr>().getValue(), operandValues);
-    return {affInstr->getResult()};
+    return {affInstr.getResult()};
   }
 
   auto state = OperationState(b.getContext(), b.getUnknownLoc(), getName());

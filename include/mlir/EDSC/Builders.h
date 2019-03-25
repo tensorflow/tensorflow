@@ -433,8 +433,8 @@ ValueHandle ValueHandle::create(Args... args) {
     return ValueHandle(inst->getResult(0));
   } else if (inst->getNumResults() == 0) {
     if (auto f = inst->dyn_cast<AffineForOp>()) {
-      f->createBody();
-      return ValueHandle(f->getInductionVar());
+      f.createBody();
+      return ValueHandle(f.getInductionVar());
     }
   }
   llvm_unreachable("unsupported instruction, use an InstructionHandle instead");

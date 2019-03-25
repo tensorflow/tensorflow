@@ -856,7 +856,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
 static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
                                           VectorizationState *state) {
   using namespace functional;
-  loop->setStep(step);
+  loop.setStep(step);
 
   FilterFunctionType notVectorizedThisPattern = [state](Instruction &inst) {
     if (!matcher::isLoadOrStore(inst)) {
@@ -868,15 +868,15 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
   };
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   SmallVector<NestedMatch, 8> loadAndStoresMatches;
-  loadAndStores.match(loop->getInstruction(), &loadAndStoresMatches);
+  loadAndStores.match(loop.getInstruction(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
     auto *opInst = ls.getMatchedInstruction();
     auto load = opInst->dyn_cast<LoadOp>();
     auto store = opInst->dyn_cast<StoreOp>();
     LLVM_DEBUG(opInst->print(dbgs()));
     LogicalResult result =
-        load ? vectorizeRootOrTerminal(loop->getInductionVar(), load, state)
-             : vectorizeRootOrTerminal(loop->getInductionVar(), store, state);
+        load ? vectorizeRootOrTerminal(loop.getInductionVar(), load, state)
+             : vectorizeRootOrTerminal(loop.getInductionVar(), store, state);
     if (failed(result)) {
       return failure();
     }
@@ -1164,18 +1164,17 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   /// Sets up error handling for this root loop. This is how the root match
   /// maintains a clone for handling failure and restores the proper state via
   /// RAII.
-  auto *loopInst = loop->getInstruction();
+  auto *loopInst = loop.getInstruction();
   FuncBuilder builder(loopInst);
   auto clonedLoop = builder.clone(*loopInst)->cast<AffineForOp>();
   struct Guard {
     LogicalResult failure() {
-      loop->getInductionVar()->replaceAllUsesWith(
-          clonedLoop->getInductionVar());
-      loop->erase();
+      loop.getInductionVar()->replaceAllUsesWith(clonedLoop.getInductionVar());
+      loop.erase();
       return mlir::failure();
     }
     LogicalResult success() {
-      clonedLoop->erase();
+      clonedLoop.erase();
       return mlir::success();
     }
     AffineForOp loop;

@@ -546,7 +546,7 @@ static Block *getCommonBlock(const MemRefAccess &srcAccess,
   auto *commonForValue = srcDomain.getIdValue(numCommonLoops - 1);
   auto forOp = getForInductionVarOwner(commonForValue);
   assert(forOp && "commonForValue was not an induction variable");
-  return forOp->getBody();
+  return forOp.getBody();
 }
 
 // Returns true if the ancestor operation instruction of 'srcAccess' appears

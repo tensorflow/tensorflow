@@ -115,7 +115,7 @@ static AffineMap makePermutationMap(
   for (auto kvp : enclosingLoopToVectorDim) {
     assert(kvp.second < perm.size());
     auto invariants = getInvariantAccesses(
-        *kvp.first->cast<AffineForOp>()->getInductionVar(), unwrappedIndices);
+        *kvp.first->cast<AffineForOp>().getInductionVar(), unwrappedIndices);
     unsigned numIndices = unwrappedIndices.size();
     unsigned countInvariantIndices = 0;
     for (unsigned dim = 0; dim < numIndices; ++dim) {

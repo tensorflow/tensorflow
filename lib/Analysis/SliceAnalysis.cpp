@@ -53,7 +53,7 @@ static void getForwardSliceImpl(Instruction *inst,
   }
 
   if (auto forOp = inst->dyn_cast<AffineForOp>()) {
-    for (auto &u : forOp->getInductionVar()->getUses()) {
+    for (auto &u : forOp.getInductionVar()->getUses()) {
       auto *ownerInst = u.getOwner();
       if (forwardSlice->count(ownerInst) == 0) {
         getForwardSliceImpl(ownerInst, forwardSlice, filter);

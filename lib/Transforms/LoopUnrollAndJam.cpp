@@ -155,7 +155,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   if (unrollJamFactor == 1)
     return promoteIfSingleIteration(forOp);
 
-  if (forOp->getBody()->empty())
+  if (forOp.getBody()->empty())
     return failure();
 
   // Loops where both lower and upper bounds are multi-result maps won't be
@@ -164,7 +164,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   // TODO(mlir-team): this may not be common, but we could support the case
   // where the lower bound is a multi-result map and the ub is a single result
   // one.
-  if (forOp->getLowerBoundMap().getNumResults() != 1)
+  if (forOp.getLowerBoundMap().getNumResults() != 1)
     return failure();
 
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
@@ -173,7 +173,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
       mayBeConstantTripCount.getValue() < unrollJamFactor)
     return failure();
 
-  auto *forInst = forOp->getInstruction();
+  auto *forInst = forOp.getInstruction();
 
   // Gather all sub-blocks to jam upon the loop being unrolled.
   JamBlockGatherer jbg;
@@ -193,21 +193,21 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
     SmallVector<Value *, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollJamFactor, &cleanupMap,
                              &cleanupOperands, &builder);
-    cleanupAffineForOp->setLowerBound(cleanupOperands, cleanupMap);
+    cleanupAffineForOp.setLowerBound(cleanupOperands, cleanupMap);
 
     // Promote the cleanup loop if it has turned into a single iteration loop.
     promoteIfSingleIteration(cleanupAffineForOp);
 
     // Adjust the upper bound of the original loop - it will be the same as the
     // cleanup loop's lower bound. Its lower bound remains unchanged.
-    forOp->setUpperBound(cleanupOperands, cleanupMap);
+    forOp.setUpperBound(cleanupOperands, cleanupMap);
   }
 
   // Scale the step of loop being unroll-jammed by the unroll-jam factor.
-  int64_t step = forOp->getStep();
-  forOp->setStep(step * unrollJamFactor);
+  int64_t step = forOp.getStep();
+  forOp.setStep(step * unrollJamFactor);
 
-  auto *forOpIV = forOp->getInductionVar();
+  auto *forOpIV = forOp.getInductionVar();
   for (auto &subBlock : subBlocks) {
     // Builder to insert unroll-jammed bodies. Insert right at the end of
     // sub-block.

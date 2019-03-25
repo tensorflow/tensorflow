@@ -52,7 +52,7 @@ static void printDefininingStatement(llvm::raw_ostream &os, Value &v) {
     return;
   }
   if (auto forInst = getForInductionVarOwner(&v)) {
-    forInst->getInstruction()->print(os);
+    forInst.getInstruction()->print(os);
   } else if (auto *bbArg = dyn_cast<BlockArgument>(&v)) {
     os << "block_argument";
   } else {
@@ -176,8 +176,8 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
         forOp = builder->create<AffineForOp>(
             location, lbs, builder->getMultiDimIdentityMap(lbs.size()), ubs,
             builder->getMultiDimIdentityMap(ubs.size()), step);
-      forOp->createBody();
-      res = forOp->getInductionVar();
+      forOp.createBody();
+      res = forOp.getInductionVar();
     }
   }
 
@@ -236,7 +236,7 @@ mlir::edsc::MLIREmitter &mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   bind(Bindable(stmt.getLHS()), val);
   if (stmt.getRHS().getKind() == ExprKind::For) {
     // Step into the loop.
-    builder->setInsertionPointToStart(getForInductionVarOwner(val)->getBody());
+    builder->setInsertionPointToStart(getForInductionVarOwner(val).getBody());
   }
   emitStmts(stmt.getEnclosedStmts());
   builder->setInsertionPoint(block, ip);

@@ -218,9 +218,9 @@ AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
       results(results.begin(), results.end()) {}
 
 AffineValueMap::AffineValueMap(AffineApplyOp applyOp)
-    : map(applyOp->getAffineMap()),
-      operands(applyOp->operand_begin(), applyOp->operand_end()) {
-  results.push_back(applyOp->getResult());
+    : map(applyOp.getAffineMap()),
+      operands(applyOp.operand_begin(), applyOp.operand_end()) {
+  results.push_back(applyOp.getResult());
 }
 
 AffineValueMap::AffineValueMap(AffineBound bound)
@@ -721,7 +721,7 @@ void FlatAffineConstraints::addInductionVarOrTerminalSymbol(Value *id) {
     addDimId(getNumDimIds(), id);
     if (failed(this->addAffineForOpDomain(loop)))
       LLVM_DEBUG(
-          loop->emitWarning("failed to add domain info to constraint system"));
+          loop.emitWarning("failed to add domain info to constraint system"));
     return;
   }
   // Add top level symbol.
@@ -737,15 +737,15 @@ void FlatAffineConstraints::addInductionVarOrTerminalSymbol(Value *id) {
 LogicalResult FlatAffineConstraints::addAffineForOpDomain(AffineForOp forOp) {
   unsigned pos;
   // Pre-condition for this method.
-  if (!findId(*forOp->getInductionVar(), &pos)) {
+  if (!findId(*forOp.getInductionVar(), &pos)) {
     assert(false && "Value not found");
     return failure();
   }
 
-  int64_t step = forOp->getStep();
+  int64_t step = forOp.getStep();
   if (step != 1) {
-    if (!forOp->hasConstantLowerBound())
-      forOp->emitWarning("domain conservatively approximated");
+    if (!forOp.hasConstantLowerBound())
+      forOp.emitWarning("domain conservatively approximated");
     else {
       // Add constraints for the stride.
       // (iv - lb) % step = 0 can be written as:
@@ -753,7 +753,7 @@ LogicalResult FlatAffineConstraints::addAffineForOpDomain(AffineForOp forOp) {
       // Add local variable 'q' and add the above equality.
       // The first constraint is q = (iv - lb) floordiv step
       SmallVector<int64_t, 8> dividend(getNumCols(), 0);
-      int64_t lb = forOp->getConstantLowerBound();
+      int64_t lb = forOp.getConstantLowerBound();
       dividend[pos] = 1;
       dividend.back() -= lb;
       addLocalFloorDiv(dividend, step);
@@ -767,25 +767,25 @@ LogicalResult FlatAffineConstraints::addAffineForOpDomain(AffineForOp forOp) {
     }
   }
 
-  if (forOp->hasConstantLowerBound()) {
-    addConstantLowerBound(pos, forOp->getConstantLowerBound());
+  if (forOp.hasConstantLowerBound()) {
+    addConstantLowerBound(pos, forOp.getConstantLowerBound());
   } else {
     // Non-constant lower bound case.
-    SmallVector<Value *, 4> lbOperands(forOp->getLowerBoundOperands().begin(),
-                                       forOp->getLowerBoundOperands().end());
-    if (failed(addLowerOrUpperBound(pos, forOp->getLowerBoundMap(), lbOperands,
+    SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands().begin(),
+                                       forOp.getLowerBoundOperands().end());
+    if (failed(addLowerOrUpperBound(pos, forOp.getLowerBoundMap(), lbOperands,
                                     /*eq=*/false, /*lower=*/true)))
       return failure();
   }
 
-  if (forOp->hasConstantUpperBound()) {
-    addConstantUpperBound(pos, forOp->getConstantUpperBound() - 1);
+  if (forOp.hasConstantUpperBound()) {
+    addConstantUpperBound(pos, forOp.getConstantUpperBound() - 1);
     return success();
   }
   // Non-constant upper bound case.
-  SmallVector<Value *, 4> ubOperands(forOp->getUpperBoundOperands().begin(),
-                                     forOp->getUpperBoundOperands().end());
-  return addLowerOrUpperBound(pos, forOp->getUpperBoundMap(), ubOperands,
+  SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands().begin(),
+                                     forOp.getUpperBoundOperands().end());
+  return addLowerOrUpperBound(pos, forOp.getUpperBoundMap(), ubOperands,
                               /*eq=*/false, /*lower=*/false);
 }
 

@@ -253,18 +253,14 @@ public:
 
   unsigned getNumOperands() { return opEnd - opStart; }
   Value *getOperand(unsigned idx) {
-    return inst->getInstruction()->getOperand(opStart + idx);
+    return inst.getInstruction()->getOperand(opStart + idx);
   }
 
   using operand_iterator = AffineForOp::operand_iterator;
   using operand_range = AffineForOp::operand_range;
 
-  operand_iterator operand_begin() {
-    return inst->getInstruction()->operand_begin() + opStart;
-  }
-  operand_iterator operand_end() {
-    return inst->getInstruction()->operand_begin() + opEnd;
-  }
+  operand_iterator operand_begin() { return inst.operand_begin() + opStart; }
+  operand_iterator operand_end() { return inst.operand_begin() + opEnd; }
   operand_range getOperands() { return {operand_begin(), operand_end()}; }
 
 private:

@@ -87,7 +87,7 @@ mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
   Instruction *inst =
       makeComposedAffineApply(ScopedContext::getBuilder(),
                               ScopedContext::getLocation(), map, operands)
-          ->getInstruction();
+          .getInstruction();
   assert(inst->getNumResults() == 1 && "Not a single result AffineApply");
   return ValueHandle(inst->getResult(0));
 }
@@ -103,8 +103,8 @@ ValueHandle ValueHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
   if (auto f = inst->dyn_cast<AffineForOp>()) {
     // Immediately create the loop body so we can just insert instructions right
     // away.
-    f->createBody();
-    return ValueHandle(f->getInductionVar());
+    f.createBody();
+    return ValueHandle(f.getInductionVar());
   }
   llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
 }
@@ -173,7 +173,7 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
         ubs, ScopedContext::getBuilder()->getMultiDimIdentityMap(ubs.size()),
         step);
   }
-  auto *body = getForInductionVarOwner(iv->getValue())->getBody();
+  auto *body = getForInductionVarOwner(iv->getValue()).getBody();
   enter(body);
 }
 

@@ -72,7 +72,7 @@ static unsigned getTagMemRefPos(Instruction &dmaInst) {
 /// added dimension by the loop IV of the specified 'affine.for' instruction
 /// modulo 2. Returns false if such a replacement cannot be performed.
 static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
-  auto *forBody = forOp->getBody();
+  auto *forBody = forOp.getBody();
   FuncBuilder bInner(forBody, forBody->begin());
   bInner.setInsertionPoint(forBody, forBody->begin());
 
@@ -93,7 +93,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto newMemRefType = doubleShape(oldMemRefType);
 
   // The double buffer is allocated right before 'forInst'.
-  auto *forInst = forOp->getInstruction();
+  auto *forInst = forOp.getInstruction();
   FuncBuilder bOuter(forInst);
   // Put together alloc operands for any dynamic dimensions of the memref.
   SmallVector<Value *, 4> allocOperands;
@@ -110,21 +110,21 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
 
   // Create 'iv mod 2' value to index the leading dimension.
   auto d0 = bInner.getAffineDimExpr(0);
-  int64_t step = forOp->getStep();
+  int64_t step = forOp.getStep();
   auto modTwoMap = bInner.getAffineMap(/*dimCount=*/1, /*symbolCount=*/0,
                                        {d0.floorDiv(step) % 2}, {});
-  auto ivModTwoOp = bInner.create<AffineApplyOp>(forOp->getLoc(), modTwoMap,
-                                                 forOp->getInductionVar());
+  auto ivModTwoOp = bInner.create<AffineApplyOp>(forOp.getLoc(), modTwoMap,
+                                                 forOp.getInductionVar());
 
   // replaceAllMemRefUsesWith will always succeed unless the forOp body has
   // non-deferencing uses of the memref (dealloc's are fine though).
-  if (!replaceAllMemRefUsesWith(
-          oldMemRef, newMemRef, /*extraIndices=*/{ivModTwoOp},
-          /*indexRemap=*/AffineMap(),
-          /*extraOperands=*/{},
-          /*domInstFilter=*/&*forOp->getBody()->begin())) {
+  if (!replaceAllMemRefUsesWith(oldMemRef, newMemRef,
+                                /*extraIndices=*/{ivModTwoOp},
+                                /*indexRemap=*/AffineMap(),
+                                /*extraOperands=*/{},
+                                /*domInstFilter=*/&*forOp.getBody()->begin())) {
     LLVM_DEBUG(
-        forOp->emitError("memref replacement for double buffering failed"));
+        forOp.emitError("memref replacement for double buffering failed"));
     ivModTwoOp->getInstruction()->erase();
     return false;
   }
@@ -180,14 +180,14 @@ static void findMatchingStartFinishInsts(
 
   // Collect outgoing DMA instructions - needed to check for dependences below.
   SmallVector<DmaStartOp, 4> outgoingDmaOps;
-  for (auto &inst : *forOp->getBody()) {
+  for (auto &inst : *forOp.getBody()) {
     auto dmaStartOp = inst.dyn_cast<DmaStartOp>();
     if (dmaStartOp && dmaStartOp->isSrcMemorySpaceFaster())
       outgoingDmaOps.push_back(dmaStartOp);
   }
 
   SmallVector<Instruction *, 4> dmaStartInsts, dmaFinishInsts;
-  for (auto &inst : *forOp->getBody()) {
+  for (auto &inst : *forOp.getBody()) {
     // Collect DMA finish instructions.
     if (inst.isa<DmaWaitOp>()) {
       dmaFinishInsts.push_back(&inst);
@@ -220,7 +220,7 @@ static void findMatchingStartFinishInsts(
       // We can double buffer regardless of dealloc's outside the loop.
       if (use.getOwner()->isa<DeallocOp>())
         continue;
-      if (!forOp->getBody()->findAncestorInstInBlock(*use.getOwner())) {
+      if (!forOp.getBody()->findAncestorInstInBlock(*use.getOwner())) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
         escapingUses = true;
@@ -249,8 +249,7 @@ static void findMatchingStartFinishInsts(
 void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
-    LLVM_DEBUG(
-        forOp->emitNote("won't pipeline due to unknown trip count loop"));
+    LLVM_DEBUG(forOp.emitNote("won't pipeline due to unknown trip count loop"));
     return;
   }
 
@@ -258,7 +257,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   findMatchingStartFinishInsts(forOp, startWaitPairs);
 
   if (startWaitPairs.empty()) {
-    LLVM_DEBUG(forOp->emitNote("No dma start/finish pairs\n"));
+    LLVM_DEBUG(forOp.emitNote("No dma start/finish pairs\n"));
     return;
   }
 
@@ -332,7 +331,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     mlir::createAffineComputationSlice(dmaStartInst, &sliceOps);
     if (!sliceOps.empty()) {
       for (auto sliceOp : sliceOps) {
-        instShiftMap[sliceOp->getInstruction()] = 0;
+        instShiftMap[sliceOp.getInstruction()] = 0;
       }
     } else {
       // If a slice wasn't created, the reachable affine.apply op's from its
@@ -346,16 +345,16 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     }
   }
   // Everything else (including compute ops and dma finish) are shifted by one.
-  for (auto &inst : *forOp->getBody()) {
+  for (auto &inst : *forOp.getBody()) {
     if (instShiftMap.find(&inst) == instShiftMap.end()) {
       instShiftMap[&inst] = 1;
     }
   }
 
   // Get shifts stored in map.
-  std::vector<uint64_t> shifts(forOp->getBody()->getInstructions().size());
+  std::vector<uint64_t> shifts(forOp.getBody()->getInstructions().size());
   unsigned s = 0;
-  for (auto &inst : *forOp->getBody()) {
+  for (auto &inst : *forOp.getBody()) {
     assert(instShiftMap.find(&inst) != instShiftMap.end());
     shifts[s++] = instShiftMap[&inst];
 

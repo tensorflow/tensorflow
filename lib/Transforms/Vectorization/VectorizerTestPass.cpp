@@ -231,7 +231,7 @@ static bool affineApplyOp(Instruction &inst) {
 
 static bool singleResultAffineApplyOpWithoutUses(Instruction &inst) {
   auto app = inst.dyn_cast<AffineApplyOp>();
-  return app && app->use_empty();
+  return app && app.use_empty();
 }
 
 void VectorizerTestPass::testNormalizeMaps(Function *f) {
@@ -249,8 +249,8 @@ void VectorizerTestPass::testNormalizeMaps(Function *f) {
     for (auto m : matches) {
       auto app = m.getMatchedInstruction()->cast<AffineApplyOp>();
       FuncBuilder b(m.getMatchedInstruction());
-      SmallVector<Value *, 8> operands(app->getOperands());
-      makeComposedAffineApply(&b, app->getLoc(), app->getAffineMap(), operands);
+      SmallVector<Value *, 8> operands(app.getOperands());
+      makeComposedAffineApply(&b, app.getLoc(), app.getAffineMap(), operands);
     }
   }
   // We should now be able to erase everything in reverse order in this test.

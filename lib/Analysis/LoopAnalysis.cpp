@@ -53,12 +53,12 @@ void mlir::buildTripCountMapAndOperands(
     SmallVectorImpl<Value *> *tripCountOperands) {
   int64_t loopSpan;
 
-  int64_t step = forOp->getStep();
-  FuncBuilder b(forOp->getInstruction());
+  int64_t step = forOp.getStep();
+  FuncBuilder b(forOp.getInstruction());
 
-  if (forOp->hasConstantBounds()) {
-    int64_t lb = forOp->getConstantLowerBound();
-    int64_t ub = forOp->getConstantUpperBound();
+  if (forOp.hasConstantBounds()) {
+    int64_t lb = forOp.getConstantLowerBound();
+    int64_t ub = forOp.getConstantUpperBound();
     loopSpan = ub - lb;
     if (loopSpan < 0)
       loopSpan = 0;
@@ -66,20 +66,20 @@ void mlir::buildTripCountMapAndOperands(
     tripCountOperands->clear();
     return;
   }
-  auto lbMap = forOp->getLowerBoundMap();
-  auto ubMap = forOp->getUpperBoundMap();
+  auto lbMap = forOp.getLowerBoundMap();
+  auto ubMap = forOp.getUpperBoundMap();
   if (lbMap.getNumResults() != 1) {
     *map = AffineMap();
     return;
   }
-  SmallVector<Value *, 4> lbOperands(forOp->getLowerBoundOperands());
-  SmallVector<Value *, 4> ubOperands(forOp->getUpperBoundOperands());
-  auto lb = b.create<AffineApplyOp>(forOp->getLoc(), lbMap, lbOperands);
+  SmallVector<Value *, 4> lbOperands(forOp.getLowerBoundOperands());
+  SmallVector<Value *, 4> ubOperands(forOp.getUpperBoundOperands());
+  auto lb = b.create<AffineApplyOp>(forOp.getLoc(), lbMap, lbOperands);
   SmallVector<Value *, 4> ubs;
   ubs.reserve(ubMap.getNumResults());
   for (auto ubExpr : ubMap.getResults())
     ubs.push_back(b.create<AffineApplyOp>(
-        forOp->getLoc(),
+        forOp.getLoc(),
         b.getAffineMap(ubMap.getNumDims(), ubMap.getNumSymbols(), {ubExpr}, {}),
         ubOperands));
 
@@ -102,8 +102,8 @@ void mlir::buildTripCountMapAndOperands(
   for (auto *v : ubs)
     if (v->use_empty())
       v->getDefiningInst()->erase();
-  if (lb->use_empty())
-    lb->erase();
+  if (lb.use_empty())
+    lb.erase();
 }
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
@@ -280,7 +280,7 @@ using VectorizableInstFun = std::function<bool(AffineForOp, Instruction &)>;
 
 static bool isVectorizableLoopWithCond(AffineForOp loop,
                                        VectorizableInstFun isVectorizableInst) {
-  auto *forInst = loop->getInstruction();
+  auto *forInst = loop.getInstruction();
   if (!matcher::isParallelLoop(*forInst) &&
       !matcher::isReductionLoop(*forInst)) {
     return false;
@@ -339,9 +339,9 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
       [fastestVaryingDim](AffineForOp loop, Instruction &op) {
         auto load = op.dyn_cast<LoadOp>();
         auto store = op.dyn_cast<StoreOp>();
-        return load ? isContiguousAccess(*loop->getInductionVar(), load,
+        return load ? isContiguousAccess(*loop.getInductionVar(), load,
                                          fastestVaryingDim)
-                    : isContiguousAccess(*loop->getInductionVar(), store,
+                    : isContiguousAccess(*loop.getInductionVar(), store,
                                          fastestVaryingDim);
       });
   return isVectorizableLoopWithCond(loop, fun);
@@ -360,7 +360,7 @@ bool mlir::isVectorizableLoop(AffineForOp loop) {
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
 bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
-  auto *forBody = forOp->getBody();
+  auto *forBody = forOp.getBody();
   assert(shifts.size() == forBody->getInstructions().size());
 
   // Work backwards over the body of the block so that the shift of a use's

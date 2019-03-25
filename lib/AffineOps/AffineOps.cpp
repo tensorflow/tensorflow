@@ -62,7 +62,7 @@ bool mlir::isValidDim(Value *value) {
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto op = inst->dyn_cast<AffineApplyOp>())
-      return op->isValidDim();
+      return op.isValidDim();
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
     if (auto dimOp = inst->dyn_cast<DimOp>())
@@ -488,12 +488,11 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
                              : AffineApplyOp();
       if (affineApply) {
         // a. Compose affine.apply instructions.
-        LLVM_DEBUG(affineApply->getInstruction()->print(
+        LLVM_DEBUG(affineApply.getInstruction()->print(
             dbgs() << "\nCompose AffineApplyOp recursively: "));
-        AffineMap affineApplyMap = affineApply->getAffineMap();
+        AffineMap affineApplyMap = affineApply.getAffineMap();
         SmallVector<Value *, 8> affineApplyOperands(
-            affineApply->getOperands().begin(),
-            affineApply->getOperands().end());
+            affineApply.getOperands().begin(), affineApply.getOperands().end());
         AffineApplyNormalizer normalizer(affineApplyMap, affineApplyOperands);
 
         LLVM_DEBUG(normalizer.affineMap.print(
@@ -684,10 +683,10 @@ void mlir::canonicalizeMapAndOperands(
 
 PatternMatchResult SimplifyAffineApply::match(Instruction *op) const {
   auto apply = op->cast<AffineApplyOp>();
-  auto map = apply->getAffineMap();
+  auto map = apply.getAffineMap();
 
   AffineMap oldMap = map;
-  SmallVector<Value *, 8> resultOperands(apply->getOperands());
+  SmallVector<Value *, 8> resultOperands(apply.getOperands());
   composeAffineMapAndOperands(&map, &resultOperands);
   if (map != oldMap)
     return matchSuccess(
@@ -997,7 +996,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
     auto forOp = op->cast<AffineForOp>();
 
     // If the loop has non-constant bounds, it may be foldable.
-    if (!forOp->hasConstantBounds())
+    if (!forOp.hasConstantBounds())
       return matchSuccess();
 
     return matchFailure();
@@ -1009,8 +1008,8 @@ struct AffineForLoopBoundFolder : public RewritePattern {
       // Check to see if each of the operands is the result of a constant.  If
       // so, get the value.  If not, ignore it.
       SmallVector<Attribute, 8> operandConstants;
-      auto boundOperands = lower ? forOp->getLowerBoundOperands()
-                                 : forOp->getUpperBoundOperands();
+      auto boundOperands =
+          lower ? forOp.getLowerBoundOperands() : forOp.getUpperBoundOperands();
       for (auto *operand : boundOperands) {
         Attribute operandCst;
         matchPattern(operand, m_Constant(&operandCst));
@@ -1018,7 +1017,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
       }
 
       AffineMap boundMap =
-          lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
+          lower ? forOp.getLowerBoundMap() : forOp.getUpperBoundMap();
       assert(boundMap.getNumResults() >= 1 &&
              "bound maps should have at least one result");
       SmallVector<Attribute, 4> foldedResults;
@@ -1034,16 +1033,16 @@ struct AffineForLoopBoundFolder : public RewritePattern {
         maxOrMin = lower ? llvm::APIntOps::smax(maxOrMin, foldedResult)
                          : llvm::APIntOps::smin(maxOrMin, foldedResult);
       }
-      lower ? forOp->setConstantLowerBound(maxOrMin.getSExtValue())
-            : forOp->setConstantUpperBound(maxOrMin.getSExtValue());
+      lower ? forOp.setConstantLowerBound(maxOrMin.getSExtValue())
+            : forOp.setConstantUpperBound(maxOrMin.getSExtValue());
     };
 
     // Try to fold the lower bound.
-    if (!forOp->hasConstantLowerBound())
+    if (!forOp.hasConstantLowerBound())
       foldLowerOrUpperBound(/*lower=*/true);
 
     // Try to fold the upper bound.
-    if (!forOp->hasConstantUpperBound())
+    if (!forOp.hasConstantUpperBound())
       foldLowerOrUpperBound(/*lower=*/false);
 
     rewriter.updatedRootInPlace(op);
@@ -1196,7 +1195,7 @@ void mlir::extractForInductionVars(ArrayRef<AffineForOp> forInsts,
                                    SmallVectorImpl<Value *> *ivs) {
   ivs->reserve(forInsts.size());
   for (auto forInst : forInsts)
-    ivs->push_back(forInst->getInductionVar());
+    ivs->push_back(forInst.getInductionVar());
 }
 
 //===----------------------------------------------------------------------===//
