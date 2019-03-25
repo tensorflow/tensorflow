@@ -41,6 +41,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.keras.optimizers import TFOptimizer
 
 try:
   import requests
@@ -1488,7 +1489,10 @@ class ReduceLROnPlateau(Callback):
 
   def on_epoch_end(self, epoch, logs=None):
     logs = logs or {}
-    logs['lr'] = K.get_value(self.model.optimizer.lr)
+    if isinstance(self.model.optimizer, TFOptimizer):
+      logs['lr'] = self.model.optimizer.optimizer._lr
+    else:
+      logs['lr'] = K.get_value(self.model.optimizer.lr)
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Reduce LR on plateau conditioned on metric `%s` '
