@@ -726,10 +726,6 @@ public:
   /// Return the operation that this refers to.
   Instruction *getInstruction() { return OpState::getInstruction(); }
 
-  // FIXME: Remove this, this is just a transition to allow using -> and staging
-  // patches.
-  ConcreteType *operator->() { return static_cast<ConcreteType *>(this); }
-
   /// Return true if this "op class" can match against the specified operation.
   /// This hook can be overridden with a more specific implementation in
   /// the subclass of Base.

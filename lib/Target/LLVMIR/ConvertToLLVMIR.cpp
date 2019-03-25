@@ -238,13 +238,13 @@ bool ModuleTranslation::convertInstruction(Instruction &inst,
   // Emit branches.  We need to look up the remapped blocks and ignore the block
   // arguments that were transformed into PHI nodes.
   if (auto op = inst.dyn_cast<LLVM::BrOp>()) {
-    builder.CreateBr(blockMapping[op->getSuccessor(0)]);
+    builder.CreateBr(blockMapping[op.getSuccessor(0)]);
     return false;
   }
   if (auto op = inst.dyn_cast<LLVM::CondBrOp>()) {
-    builder.CreateCondBr(valueMapping.lookup(op->getOperand(0)),
-                         blockMapping[op->getSuccessor(0)],
-                         blockMapping[op->getSuccessor(1)]);
+    builder.CreateCondBr(valueMapping.lookup(op.getOperand(0)),
+                         blockMapping[op.getSuccessor(0)],
+                         blockMapping[op.getSuccessor(1)]);
     return false;
   }
 
@@ -306,11 +306,11 @@ static Value *getPHISourceValue(Block *current, Block *pred,
   assert(condBranchOp &&
          "only branch instructions can be terminators of a block that "
          "has successors");
-  assert((condBranchOp->getSuccessor(0) != condBranchOp->getSuccessor(1)) &&
+  assert((condBranchOp.getSuccessor(0) != condBranchOp.getSuccessor(1)) &&
          "successors with arguments in LLVM conditional branches must be "
          "different blocks");
 
-  return condBranchOp->getSuccessor(0) == current
+  return condBranchOp.getSuccessor(0) == current
              ? terminator.getSuccessorOperand(0, index)
              : terminator.getSuccessorOperand(1, index);
 }
