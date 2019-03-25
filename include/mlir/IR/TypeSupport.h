@@ -50,7 +50,7 @@ namespace detail {
 class TypeUniquer;
 
 /// Base storage class appearing in a Type.
-struct alignas(8) TypeStorage {
+struct TypeStorage {
   friend TypeUniquer;
 
 protected:
