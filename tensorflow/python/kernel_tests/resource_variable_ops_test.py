@@ -21,6 +21,7 @@ import copy
 import gc
 import os
 import pickle
+import re
 
 from absl.testing import parameterized
 import numpy as np
@@ -1025,7 +1026,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   def testAssignIncompatibleShape(self):
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
     self.evaluate(v.initializer)
-    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+    pattern = re.compile("shapes must be equal", re.IGNORECASE)
+    with self.assertRaisesRegexp(Exception, pattern):
       self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
 
   @test_util.run_in_graph_and_eager_modes
