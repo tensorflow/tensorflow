@@ -212,6 +212,15 @@ void registerDialectAllocator(const DialectAllocatorFunction &function);
 /// Registers all dialects with the specified MLIRContext.
 void registerAllDialects(MLIRContext *context);
 
+/// Utility to register a dialect. Client can register their dialect with the
+/// global registry by calling registerDialect<MyDialect>();
+template <typename ConcreteDialect> void registerDialect() {
+  registerDialectAllocator([](MLIRContext *ctx) {
+    // Just allocate the dialect, the context takes ownership of it.
+    new ConcreteDialect(ctx);
+  });
+}
+
 /// DialectRegistration provides a global initialiser that registers a Dialect
 /// allocation routine.
 ///
@@ -220,12 +229,7 @@ void registerAllDialects(MLIRContext *context);
 ///   // At namespace scope.
 ///   static DialectRegistration<MyDialect> Unused;
 template <typename ConcreteDialect> struct DialectRegistration {
-  DialectRegistration() {
-    registerDialectAllocator([&](MLIRContext *ctx) {
-      // Just allocate the dialect, the context takes ownership of it.
-      new ConcreteDialect(ctx);
-    });
-  }
+  DialectRegistration() { registerDialect<ConcreteDialect>(); }
 };
 
 } // namespace mlir
