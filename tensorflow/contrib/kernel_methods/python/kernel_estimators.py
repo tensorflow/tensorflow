@@ -77,7 +77,7 @@ def _update_features_and_columns(features, feature_columns,
     return features, feature_columns
 
   # First construct new columns and features affected by kernel_mappers_dict.
-  mapped_features = dict()
+  mapped_features = {}
   mapped_columns = set()
   for feature_column in kernel_mappers_dict:
     column_name = feature_column.name

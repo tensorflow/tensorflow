@@ -142,7 +142,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
-    for (int i = 0; i < input.shape.size(); ++i) {
+    for (size_t i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
     }
     input_size_ = total_input_size / batches_;
@@ -278,7 +278,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                               const TensorData& output = {TensorType_FLOAT32})
       : batches_(batches), units_(units) {
     int total_input_size = 1;
-    for (int i = 0; i < input.shape.size(); ++i) {
+    for (size_t i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
     }
     input_size_ = total_input_size / batches_;

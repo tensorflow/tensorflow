@@ -23,11 +23,13 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
+#ifndef __ANDROID__
+#include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
+#endif
 
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/stream.h"
@@ -154,8 +156,11 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
                                       OpKernelContext* ctx,
                                       std::vector<Tensor>* inputs,
                                       FunctionLibraryRuntime::Handle* handle) {
-  grappler::GrapplerItem::OptimizationOptions optimization_options;
+  FunctionLibraryRuntime::InstantiateOptions opts;
 
+#ifndef __ANDROID__
+  // Android tf library does not include grappler.
+  grappler::GrapplerItem::OptimizationOptions optimization_options;
   // Tensorflow 2.0 in eager mode with automatic control dependencies will
   // prune all nodes that are not in the transitive fanin of the fetch nodes.
   // However because the function will be executed via FunctionLibraryRuntime,
@@ -167,16 +172,17 @@ Status PartitionedCallOp::Instantiate(FunctionLibraryRuntime* lib,
   // PartitionedCallOp, there is no need to optimize functions now.
   optimization_options.optimize_function_library = false;
 
-  FunctionLibraryRuntime::InstantiateOptions opts;
-  // In some contexts like running the graph to evaluate constants,
-  // the FLR won't have any device.
-  opts.target = lib->device() == nullptr ? "" : lib->device()->name();
-  opts.is_multi_device_function = true;
   opts.optimize_graph_fn =
       std::bind(grappler::OptimizeGraph, std::placeholders::_1,
                 std::placeholders::_2, std::placeholders::_3,
                 std::placeholders::_4, std::placeholders::_5, *config_proto_,
                 func_->name(), optimization_options, std::placeholders::_6);
+#endif
+
+  // In some contexts like running the graph to evaluate constants,
+  // the FLR won't have any device.
+  opts.target = lib->device() == nullptr ? "" : lib->device()->name();
+  opts.is_multi_device_function = true;
   opts.graph_collector = ctx->graph_collector();
   opts.executor_type = executor_type_;
 

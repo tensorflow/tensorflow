@@ -621,6 +621,8 @@ class OperationTest(test_util.TensorFlowTestCase):
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 
+      # Clear output shapes to bypass shape checking.
+      while_op._set_shape_list_attr("output_shapes", [])
       while_op._set_type_list_attr("T",
                                    [t.dtype for t in while_op.inputs] +
                                    [new_input1.dtype, new_input2.dtype])
@@ -1294,6 +1296,22 @@ class DeviceTest(test_util.TensorFlowTestCase):
       node { name: "FloatOutput_3" op: "FloatOutput"
              device: "/device:CPU:5" }
     """, gd)
+
+  def testNestingErrorGraph(self):
+    g = ops.Graph()
+    scope = g.device("/device:GPU:8")
+    scope.__enter__()
+    with g.device("/device:GPU:9"):
+      with self.assertRaises(RuntimeError):
+        scope.__exit__(None, None, None)
+
+  def testNestingErrorEager(self):
+    with context.eager_mode():
+      scope = ops.device("/device:CPU:0")
+      scope.__enter__()
+      with ops.device(None):
+        with self.assertRaises(RuntimeError):
+          scope.__exit__(None, None, None)
 
   def testNoneClearsDefault(self):
     g = ops.Graph()

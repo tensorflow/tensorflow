@@ -60,7 +60,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   In local training mode, variables are assigned to local CPU or the only GPU.
   When each worker has more than one GPU, operations will be replicated on these
   GPUs. In both cases, operations are replicated but variables are not and these
-  workers share a common view for which paramater server a variable is assigned
+  workers share a common view for which parameter server a variable is assigned
   to.
 
   This class assumes between-graph replication will be used and works on a graph
@@ -502,11 +502,13 @@ class ParameterServerStrategyExtended(
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
-    if self._task_type not in ["chief", "worker"]:
-      return updated_config
     del updated_config.device_filters[:]
-    updated_config.device_filters.extend(
-        ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    if self._task_type in ["chief", "worker"]:
+      updated_config.device_filters.extend(
+          ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
+    elif self._task_type == "evaluator":
+      updated_config.device_filters.append(
+          "/job:%s/task:%d" % (self._task_type, self._task_id))
     return updated_config
 
   @property

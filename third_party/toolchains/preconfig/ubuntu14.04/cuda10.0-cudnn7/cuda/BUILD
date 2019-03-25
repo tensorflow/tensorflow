@@ -198,6 +198,19 @@ cc_library(
 )
 
 cc_library(
+    name = "cusparse",
+    srcs = ["cuda/lib/libcusparse.so.10.0"],
+    data = ["cuda/lib/libcusparse.so.10.0"],
+    includes = [
+        ".",
+        "cuda/include",
+    ],
+    linkopts = ["-lgomp"],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "libdevice_root",
     data = [":cuda-nvvm"],
     visibility = ["//visibility:public"],
@@ -1252,8 +1265,9 @@ genrule(
         "cuda/lib/libcufft.so.10.0",
         "cuda/lib/libcudnn.so.7",
         "cuda/lib/libcupti.so.10.0",
+        "cuda/lib/libcusparse.so.10.0",
     ],
-    cmd = """cp -f "/usr/local/cuda-10.0/lib64/stubs/libcuda.so" $(location cuda/lib/libcuda.so) && cp -f "/usr/local/cuda-10.0/lib64/libcudart.so.10.0" $(location cuda/lib/libcudart.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcudart_static.a" $(location cuda/lib/libcudart_static.a) && cp -f "/usr/local/cuda-10.0/lib64/libcublas.so.10.0" $(location cuda/lib/libcublas.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusolver.so.10.0" $(location cuda/lib/libcusolver.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcurand.so.10.0" $(location cuda/lib/libcurand.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcufft.so.10.0" $(location cuda/lib/libcufft.so.10.0) && cp -f "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" $(location cuda/lib/libcudnn.so.7) && cp -f "/usr/local/cuda-10.0/extras/CUPTI/lib64/libcupti.so.10.0" $(location cuda/lib/libcupti.so.10.0) """,
+    cmd = """cp -f "/usr/local/cuda-10.0/lib64/stubs/libcuda.so" $(location cuda/lib/libcuda.so) && cp -f "/usr/local/cuda-10.0/lib64/libcudart.so.10.0" $(location cuda/lib/libcudart.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcudart_static.a" $(location cuda/lib/libcudart_static.a) && cp -f "/usr/local/cuda-10.0/lib64/libcublas.so.10.0" $(location cuda/lib/libcublas.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusolver.so.10.0" $(location cuda/lib/libcusolver.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcusparse.so.10.0" $(location cuda/lib/libcusparse.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcurand.so.10.0" $(location cuda/lib/libcurand.so.10.0) && cp -f "/usr/local/cuda-10.0/lib64/libcufft.so.10.0" $(location cuda/lib/libcufft.so.10.0) && cp -f "/usr/lib/x86_64-linux-gnu/libcudnn.so.7" $(location cuda/lib/libcudnn.so.7) && cp -f "/usr/local/cuda-10.0/extras/CUPTI/lib64/libcupti.so.10.0" $(location cuda/lib/libcupti.so.10.0) """,
 )
 
 genrule(

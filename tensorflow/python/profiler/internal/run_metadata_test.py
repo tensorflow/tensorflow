@@ -201,7 +201,7 @@ class RunMetadataTest(test.TestCase):
     graph = ops.get_default_graph()
     forward_op = set()
     backward_op = set()
-    back_to_forward = dict()
+    back_to_forward = {}
     for op in graph.get_operations():
       if op.name.find('gradients/') > 0 and op.name.find('_grad/') > 0:
         backward_op.add(op.name)

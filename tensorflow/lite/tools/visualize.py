@@ -339,7 +339,8 @@ def CreateHtmlFile(tflite_input, html_output):
 
   # Spec on what keys to display
   buffer_keys_to_display = [("data", DataSizeMapper())]
-  operator_keys_to_display = [("builtin_code", None), ("custom_code", None)]
+  operator_keys_to_display = [("builtin_code", None), ("custom_code", None),
+                              ("version", None)]
 
   for subgraph_idx, g in enumerate(data["subgraphs"]):
     # Subgraph local specs on what to display

@@ -41,15 +41,17 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
                                      &use_inter_op_parallelism_));
     OP_REQUIRES_OK(
         ctx, ctx->GetAttr("preserve_cardinality", &preserve_cardinality_));
-    OP_REQUIRES_OK(ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
+    OP_REQUIRES_OK(
+        ctx, ComputeShortCircuitIndices(ctx, func_, &short_circuit_indices_));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
+    CapturedFunction::Params params;
+    params.use_inter_op_parallelism = use_inter_op_parallelism_;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 use_inter_op_parallelism_,
-                                                 &captured_func));
+                                                 params, &captured_func));
 
     MapIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();

@@ -55,37 +55,36 @@ constexpr int kWorkspaceExtension = 16;
 #define vld1q_dup_s8x4(src) vld1q_dup_s32(reinterpret_cast<const int32*>(src))
 
 #ifndef __aarch64__
-inline int8x16_t vqtbl4q_s8(int8x16x4_t a, uint8x16_t b) {
-  const uint8x16_t mask = vtstq_u8(b, vdupq_n_u8(8));
+inline int8x16_t vqtbl4q_s8(int8x16x4_t a, int8x16_t b) {
+  const uint8x16_t mask = vtstq_s8(b, vdupq_n_s8(8));
 
   // Delete bit 3 from the indices.
-  const uint8x16_t high_bits = vshrq_n_u8(b, 4);
-  uint8x16_t deleted_bit_3 = b;
-  deleted_bit_3 = vsliq_n_u8(deleted_bit_3, high_bits, 3);
+  const int8x16_t high_bits = vshrq_n_s8(b, 4);
+  int8x16_t deleted_bit_3 = b;
+  deleted_bit_3 = vsliq_n_s8(deleted_bit_3, high_bits, 3);
 
   int8x8x4_t repacked_data;
 
   // Calculate for lower indices.
-  repacked_data.val[0] = vget_low_u8(a.val[0]);
-  repacked_data.val[1] = vget_low_u8(a.val[1]);
-  repacked_data.val[2] = vget_low_u8(a.val[2]);
-  repacked_data.val[3] = vget_low_u8(a.val[3]);
+  repacked_data.val[0] = vget_low_s8(a.val[0]);
+  repacked_data.val[1] = vget_low_s8(a.val[1]);
+  repacked_data.val[2] = vget_low_s8(a.val[2]);
+  repacked_data.val[3] = vget_low_s8(a.val[3]);
   const int8x16_t output_for_lower =
-      vcombine_u8(vtbl4_s8(repacked_data, vget_low_u8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_u8(deleted_bit_3)));
+      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
+                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
 
   // Calculate for high indices.
-  repacked_data.val[0] = vget_high_u8(a.val[0]);
-  repacked_data.val[1] = vget_high_u8(a.val[1]);
-  repacked_data.val[2] = vget_high_u8(a.val[2]);
-  repacked_data.val[3] = vget_high_u8(a.val[3]);
+  repacked_data.val[0] = vget_high_s8(a.val[0]);
+  repacked_data.val[1] = vget_high_s8(a.val[1]);
+  repacked_data.val[2] = vget_high_s8(a.val[2]);
+  repacked_data.val[3] = vget_high_s8(a.val[3]);
   const int8x16_t output_for_higher =
-      vcombine_u8(vtbl4_s8(repacked_data, vget_low_u8(deleted_bit_3)),
-                  vtbl4_s8(repacked_data, vget_high_u8(deleted_bit_3)));
+      vcombine_s8(vtbl4_s8(repacked_data, vget_low_s8(deleted_bit_3)),
+                  vtbl4_s8(repacked_data, vget_high_s8(deleted_bit_3)));
 
   // Merge.
-  int8x16_t output = mask;
-  output = vbslq_u8(output, output_for_higher, output_for_lower);
+  int8x16_t output = vbslq_s8(mask, output_for_higher, output_for_lower);
   return output;
 }
 #endif  // !__aarch64__
@@ -128,7 +127,7 @@ inline void biregister_rotate_8(int8x16_t* left, int8x16_t* right) {
 }
 
 #ifndef __aarch64__
-inline int32x4_t vpaddq_s32(int32x4_t a, int8x16_t b) {
+inline int32x4_t vpaddq_s32(int32x4_t a, int32x4_t b) {
   int32x4x2_t deinterleaved = vuzpq_s32(a, b);
   return vqaddq_s32(deinterleaved.val[0], deinterleaved.val[1]);
 }

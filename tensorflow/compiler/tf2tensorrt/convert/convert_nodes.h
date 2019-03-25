@@ -43,11 +43,13 @@ extern const char* const kOutputPHName;
 
 namespace convert {
 
-#define IS_TRT_VERSION_GE(major, minor, patch)                  \
+#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
   ((NV_TENSORRT_MAJOR > major) ||                               \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
    (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
-    NV_TENSORRT_PATCH >= patch))
+    NV_TENSORRT_PATCH > patch) ||                               \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
+    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
 
 struct EngineConnection {
   // Constructs a non-control edge.
@@ -168,7 +170,8 @@ string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
-int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
 // Class to convert TF compile-time constants (e.g. Const nodes) to TRT weight.
 class TRT_ShapedWeights {
@@ -492,7 +495,8 @@ class Converter {
                          const std::vector<int>& order_with_batch_dim,
                          const nvinfer1::ITensor** output_tensor);
 
-  // Converts 'input' into 'tensor' with shape specified by 'dims'.
+  // Converts 'input' into 'tensor' with shape specified by 'dims' (which
+  // doesn't contain the batch dimension).
   //
   // If validation_only is true, it doesn't do the conversion but only do some
   // minimum validation for the eligibility of the conversion, and *tensor will
