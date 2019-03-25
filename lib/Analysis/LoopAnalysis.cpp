@@ -178,7 +178,7 @@ bool mlir::isAccessInvariant(Value &iv, Value &index) {
   assert(isForInductionVar(&iv) && "iv must be a AffineForOp");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
   SmallVector<Instruction *, 4> affineApplyOps;
-  getReachableAffineApplyOps({const_cast<Value *>(&index)}, affineApplyOps);
+  getReachableAffineApplyOps({&index}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
     // Pointer equality test because of Value pointer semantics.
@@ -195,7 +195,7 @@ bool mlir::isAccessInvariant(Value &iv, Value &index) {
   auto composeOp = affineApplyOps[0]->cast<AffineApplyOp>();
   // We need yet another level of indirection because the `dim` index of the
   // access may not correspond to the `dim` index of composeOp.
-  return !(AffineValueMap(composeOp).isFunctionOf(0, const_cast<Value *>(&iv)));
+  return !(AffineValueMap(composeOp).isFunctionOf(0, &iv));
 }
 
 llvm::DenseSet<Value *>
@@ -280,7 +280,7 @@ using VectorizableInstFun = std::function<bool(AffineForOp, Instruction &)>;
 
 static bool isVectorizableLoopWithCond(AffineForOp loop,
                                        VectorizableInstFun isVectorizableInst) {
-  auto *forInst = const_cast<Instruction *>(loop->getInstruction());
+  auto *forInst = loop->getInstruction();
   if (!matcher::isParallelLoop(*forInst) &&
       !matcher::isReductionLoop(*forInst)) {
     return false;

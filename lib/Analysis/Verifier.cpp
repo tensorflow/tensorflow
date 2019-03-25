@@ -210,7 +210,7 @@ bool FuncVerifier::verify() {
   // check.  We do this as a second pass since malformed CFG's can cause
   // dominator analysis constructure to crash and we want the verifier to be
   // resilient to malformed code.
-  DominanceInfo theDomInfo(const_cast<Function *>(&fn));
+  DominanceInfo theDomInfo(&fn);
   domInfo = &theDomInfo;
   for (auto &block : fn)
     if (verifyDominance(block))
@@ -288,7 +288,7 @@ bool FuncVerifier::verifyOperation(Instruction &op) {
     if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      op);
-    if (verifyAttribute(attr.second, const_cast<Instruction &>(op)))
+    if (verifyAttribute(attr.second, op))
       return true;
 
     // Check for any optional dialect specific attributes.
@@ -301,7 +301,7 @@ bool FuncVerifier::verifyOperation(Instruction &op) {
 
   // If we can get operation info for this, check the custom hook.
   if (auto *opInfo = op.getAbstractOperation()) {
-    if (opInfo->verifyInvariants(const_cast<Instruction *>(&op)))
+    if (opInfo->verifyInvariants(&op))
       return true;
   }
 

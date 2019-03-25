@@ -571,9 +571,9 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
     *dmaPlacementWriteStart = std::next(*dmaPlacementReadStart);
     *dmaPlacementBlock = lastInvariantIV->getInstruction()->getBlock();
   } else {
-    *dmaPlacementReadStart = *const_cast<Block::iterator *>(&begin);
-    *dmaPlacementWriteStart = *const_cast<Block::iterator *>(&end);
-    *dmaPlacementBlock = const_cast<Block *>(&block);
+    *dmaPlacementReadStart = begin;
+    *dmaPlacementWriteStart = end;
+    *dmaPlacementBlock = &block;
   }
 }
 

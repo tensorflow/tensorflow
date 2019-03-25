@@ -253,8 +253,8 @@ LogicalResult MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
   // Add lower/upper bounds on loop IVs using bounds from 'sliceState'.
   if (sliceState != nullptr) {
     // Add dim and symbol slice operands.
-    for (const auto &operand : sliceState->lbOperands[0]) {
-      cst.addInductionVarOrTerminalSymbol(const_cast<Value *>(operand));
+    for (auto operand : sliceState->lbOperands[0]) {
+      cst.addInductionVarOrTerminalSymbol(operand);
     }
     // Add upper/lower bounds from 'sliceState' to 'cst'.
     LogicalResult ret =
@@ -435,8 +435,7 @@ static void findInstPosition(Instruction *inst, Block *limitBlock,
   while (block != limitBlock) {
     // FIXME: This algorithm is unnecessarily O(n) and should be improved to not
     // rely on linear scans.
-    int instPosInBlock = std::distance(
-        block->begin(), const_cast<Instruction *>(inst)->getIterator());
+    int instPosInBlock = std::distance(block->begin(), inst->getIterator());
     positions->push_back(instPosInBlock);
     inst = block->getContainingInst();
     block = inst->getBlock();
@@ -686,7 +685,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
 
   // Walk this 'for' instruction to gather all memory regions.
   bool error = false;
-  const_cast<Block *>(&block)->walk(start, end, [&](Instruction *opInst) {
+  block.walk(start, end, [&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
       // Neither load nor a store op.
       return;

@@ -81,7 +81,7 @@ void Block::eraseFromFunction() {
 Instruction *Block::findAncestorInstInBlock(Instruction &inst) {
   // Traverse up the instruction hierarchy starting from the owner of operand to
   // find the ancestor instruction that resides in the block of 'forInst'.
-  auto *currInst = const_cast<Instruction *>(&inst);
+  auto *currInst = &inst;
   while (currInst->getBlock() != this) {
     currInst = currInst->getParentInst();
     if (!currInst)

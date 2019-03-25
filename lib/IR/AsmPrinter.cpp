@@ -270,8 +270,7 @@ void ModuleState::initialize(Module *module) {
   for (auto &fn : *module) {
     visitType(fn.getType());
 
-    const_cast<Function &>(fn).walk(
-        [&](Instruction *op) { ModuleState::visitInstruction(op); });
+    fn.walk([&](Instruction *op) { ModuleState::visitInstruction(op); });
   }
 
   // Initialize the symbol aliases.
@@ -1199,7 +1198,7 @@ void FunctionPrinter::numberValueID(Value *value) {
   // Give constant integers special names.
   if (auto *op = value->getDefiningInst()) {
     Attribute cst;
-    if (m_Constant(&cst).match(const_cast<Instruction *>(op))) {
+    if (m_Constant(&cst).match(op)) {
       Type type = op->getResult(0)->getType();
       if (auto intCst = cst.dyn_cast<IntegerAttr>()) {
         if (type.isIndex()) {
@@ -1444,7 +1443,7 @@ void FunctionPrinter::printOperation(Instruction *op) {
   // Check to see if this is a known operation.  If so, use the registered
   // custom printer hook.
   if (auto *opInfo = op->getAbstractOperation()) {
-    opInfo->printAssembly(const_cast<Instruction *>(op), this);
+    opInfo->printAssembly(op, this);
     return;
   }
 
