@@ -73,6 +73,10 @@ class EmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
       }
     }
   }
+
+  void SetWeight(std::initializer_list<float> data) {
+    PopulateTensor(weight_, data);
+  }
 };
 
 class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
@@ -91,8 +95,6 @@ class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
   }
 };
 
-// TODO(ahentz): write more tests that exercise the details of the op, such as
-// lookup errors and variable input shapes.
 TEST(EmbeddingLookupOpTest, SimpleTest) {
   EmbeddingLookupOpModel m({3}, {3, 2, 4});
   m.SetInput({1, 0, 2});
@@ -106,6 +108,44 @@ TEST(EmbeddingLookupOpTest, SimpleTest) {
                   1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                   0.00, 0.01, 0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                   2.00, 2.01, 2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+              })));
+}
+
+TEST(EmbeddingLookupOpTest, Simple2DTestFloat32) {
+  EmbeddingLookupOpModel m({3}, {3, 8}, TensorType_FLOAT32);
+  m.SetInput({1, 2, 0});
+  m.SetWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({
+                  1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                  2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+              })));
+}
+
+TEST(EmbeddingLookupOpTest, Simple4DTestFloat32) {
+  EmbeddingLookupOpModel m({3}, {3, 2, 2, 2}, TensorType_FLOAT32);
+  m.SetInput({2, 1, 0});
+  m.SetWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({
+                  2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                  0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
               })));
 }
 
