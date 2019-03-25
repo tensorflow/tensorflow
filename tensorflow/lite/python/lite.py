@@ -41,6 +41,7 @@ from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: 
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
+from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
@@ -217,9 +218,15 @@ class TFLiteConverterV2(object):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(frozen_func.graph.as_graph_def(),
-                                         input_tensors, output_tensors,
-                                         frozen_func.graph)
+    is_only_flex_enabled = set(
+        [OpsSet.SELECT_TF_OPS]) == self.target_spec.supported_ops
+    config = _get_grappler_config(enable_layout_optimizer=is_only_flex_enabled)
+    graph_def = _run_graph_optimizations(
+        frozen_func.graph.as_graph_def(),
+        input_tensors,
+        output_tensors,
+        config,
+        graph=frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
@@ -715,8 +722,11 @@ class TFLiteConverter(object):
       optimized_graph = self._graph_def
     else:
       try:
+        is_only_flex_enabled = set([OpsSet.SELECT_TF_OPS]) == self.target_ops
+        config = _get_grappler_config(
+            enable_layout_optimizer=is_only_flex_enabled)
         optimized_graph = _run_graph_optimizations(
-            self._graph_def, self._input_tensors, self._output_tensors)
+            self._graph_def, self._input_tensors, self._output_tensors, config)
       except Exception:
         optimized_graph = self._graph_def
 
