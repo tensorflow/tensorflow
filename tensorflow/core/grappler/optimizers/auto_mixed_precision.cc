@@ -1392,6 +1392,9 @@ void AutoMixedPrecisionImpl::AddClearAndGrayToWhiteIfBetweenWhite(
                  (!downstream_of_white_set.count(idx) &&
                   !fp16_whitelist_.count(item.node->op()) &&
                   !black_set.count(idx) && ShouldProcess(*item.node) &&
+                  // TODO(benbarsdell): Consider allowing propagation through
+                  // ops that are already float16 in order to reduce the number
+                  // of casts.
                   IsFloat32(item) && SupportsFloat16(item) &&
                   (fp16_clearlist_.count(item.node->op()) ||
                    fp16_graylist_.count(item.node->op())));
