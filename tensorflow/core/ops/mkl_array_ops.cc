@@ -115,6 +115,26 @@ REGISTER_OP("_MklQuantizeV2")
       c->set_output(2, c->Scalar());
       return Status::OK();
     });
+
+REGISTER_OP("_MklDequantize")
+    .Input("input: T")
+    .Input("min_range: float")
+    .Input("max_range: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_min_range: uint8")
+    .Input("mkl_max_range: uint8")
+    .Output("output: float")
+    .Output("mkl_output: uint8")
+    .Attr("T: quantizedtype")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return Status::OK();
+    });
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

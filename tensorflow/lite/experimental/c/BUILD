@@ -56,7 +56,7 @@ cc_library(
     srcs = ["c_api.cc"],
     hdrs = ["c_api.h"],
     copts = tflite_copts(),
-    tags = ["swift_module=TensorFlowLiteCAPI"],
+    tags = ["swift_module=TensorFlowLiteC"],
     visibility = [
         ":experimental",
     ],

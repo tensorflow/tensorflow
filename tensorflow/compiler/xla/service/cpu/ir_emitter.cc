@@ -2545,8 +2545,10 @@ StatusOr<bool> IrEmitter::EmitFastConcatenate(
   for (HloInstruction* operand : operands) {
     const Shape& input_shape = operand->shape();
     llvm_ir::IrArray source_array = GetIrArrayFor(operand);
+    llvm_ir::IrArray::Index source_index(target_multi_index, operand->shape(),
+                                         b_.getInt64Ty());
     llvm::Value* copy_source_address = BitCast(
-        source_array.EmitArrayElementAddress(target_index, &b_, "src_addr"),
+        source_array.EmitArrayElementAddress(source_index, &b_, "src_addr"),
         i8_ptr_type);
 
     llvm::Value* copy_target_address =

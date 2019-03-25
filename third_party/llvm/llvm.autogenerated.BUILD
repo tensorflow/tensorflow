@@ -719,6 +719,7 @@ cc_library(
     deps = [
         ":amdgpu_r600_target_gen",
         ":amdgpu_target_gen",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -1040,6 +1041,7 @@ cc_library(
         ":config",
         ":core",
         ":debug_info_code_view",
+        ":debug_info_dwarf",
         ":debug_info_msf",
         ":mc",
         ":mc_parser",
@@ -1201,6 +1203,29 @@ cc_library(
         ":binary_format",
         ":config",
         ":debug_info_msf",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "debug_info_dwarf",
+    srcs = glob([
+        "lib/DebugInfo/DWARF/*.c",
+        "lib/DebugInfo/DWARF/*.cpp",
+        "lib/DebugInfo/DWARF/*.inc",
+        "lib/DebugInfo/DWARF/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/DebugInfo/DWARF/*.h",
+        "include/llvm/DebugInfo/DWARF/*.def",
+        "include/llvm/DebugInfo/DWARF/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":binary_format",
+        ":config",
+        ":mc",
+        ":object",
         ":support",
     ],
 )

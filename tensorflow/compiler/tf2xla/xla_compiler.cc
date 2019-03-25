@@ -436,11 +436,10 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
                                                       FunctionDefLibrary{}));
   local_pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version,
-      local_flib_def_.get(), OptimizerOptions(),
-      nullptr /* custom_kernel_creator */));
+      local_flib_def_.get(), OptimizerOptions()));
   pflr_.reset(new ProcessFunctionLibraryRuntime(
       &device_mgr_, Env::Default(), options.graph_def_version, options.flib_def,
-      OptimizerOptions(), nullptr /* custom_kernel_creator */));
+      OptimizerOptions()));
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());

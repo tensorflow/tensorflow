@@ -215,20 +215,22 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
   Output d = ops::Const(s.WithOpName("d"), {3.0f, 4.0f}, {1, 2});
   Output mul = ops::Mul(s.WithControlDependencies(d).WithOpName("mul"), c, c);
+  Output mul_no_nan = ops::MulNoNan(s.WithOpName("mul_no_nan"), d, d);
   Output id = ops::Identity(s.WithOpName("id"), mul);
+  Output id2 = ops::Identity(s.WithOpName("id2"), mul_no_nan);
 
   GrapplerItem item;
-  item.fetch = {"id"};
+  item.fetch = {"id", "id2"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
-  EXPECT_EQ(1, tensors_expected.size());
+  ASSERT_EQ(2, tensors_expected.size());
 
   GraphDef output;
   ArithmeticOptimizer optimizer;
   EnableOnlyReplaceMulWithSquare(&optimizer);
   OptimizeAndPrune(&optimizer, &item, &output);
 
-  EXPECT_EQ(4, output.node_size());
+  EXPECT_EQ(6, output.node_size());
 
   NodeMap node_map(&output);
   const string p = "ArithmeticOptimizer/ReplaceMulWithSquare";
@@ -239,8 +241,14 @@ TEST_F(ArithmeticOptimizerTest, ReplaceMulWithSquare) {
   EXPECT_EQ("c", square_node->input(0));
   EXPECT_EQ("^d", square_node->input(1));
 
+  const NodeDef* square_node2 =
+      node_map.GetNode(strings::StrCat(p, "_", "mul_no_nan"));
+  ASSERT_NE(square_node2, nullptr);
+  EXPECT_EQ("Square", square_node2->op());
+  EXPECT_EQ("d", square_node2->input(0));
+
   auto tensors = EvaluateNodes(output, item.fetch);
-  EXPECT_EQ(1, tensors.size());
+  ASSERT_EQ(2, tensors.size());
   test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
 }
 
@@ -1516,17 +1524,16 @@ TEST_F(ArithmeticOptimizerTest, RemoveIdentityTransposesThroughChain) {
   for (const NodeDef& node : output.node()) {
     nodes_after_optimization.insert(node.name());
     if (node.name() == "id") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("inputs", node.input(0));
-      EXPECT_EQ("^perm2", node.input(1));
     }
     if (node.name() == "id1") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("id", node.input(0));
     }
   }
   EXPECT_EQ(nodes_after_optimization,
-            std::set<string>({"id", "id1", "inputs_shape", "inputs", "perm2"}));
+            std::set<string>({"id", "id1", "inputs_shape", "inputs"}));
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
@@ -2661,23 +2668,16 @@ TEST_F(ArithmeticOptimizerTest, ConvertPow) {
 
   GraphDef want;
   AddNode("x", "Const", {}, {}, &want);
-  AddNode("y2", "Const", {}, {}, &want);
-  AddNode("y1", "Const", {}, {}, &want);
-  AddNode("y.5", "Const", {}, {}, &want);
-  AddNode("y0", "Const", {}, {}, &want);
-  AddNode("y_.5", "Const", {}, {}, &want);
-  AddNode("y_1", "Const", {}, {}, &want);
   AddNode("y", "Const", {}, {}, &want);
   AddNode("z", "Const", {}, {}, &want);
   AddNode("ones", "Const", {}, {}, &want);
   AddNode("zeros", "Const", {}, {}, &want);
-  AddNode("out2", "Square", {"x", AsControlDependency("y2")}, {}, &want);
-  AddNode("out1", "Identity", {"x", AsControlDependency("y1")}, {}, &want);
-  AddNode("out.5", "Sqrt", {"x", AsControlDependency("y.5")}, {}, &want);
-  AddNode("out0", "Const",
-          {AsControlDependency("x"), AsControlDependency("y0")}, {}, &want);
-  AddNode("out_.5", "Rsqrt", {"x", AsControlDependency("y_.5")}, {}, &want);
-  AddNode("out_1", "Reciprocal", {"x", AsControlDependency("y_1")}, {}, &want);
+  AddNode("out2", "Square", {"x"}, {}, &want);
+  AddNode("out1", "Identity", {"x"}, {}, &want);
+  AddNode("out.5", "Sqrt", {"x"}, {}, &want);
+  AddNode("out0", "Const", {AsControlDependency("x")}, {}, &want);
+  AddNode("out_.5", "Rsqrt", {"x"}, {}, &want);
+  AddNode("out_1", "Reciprocal", {"x"}, {}, &want);
   AddNode("out", "Pow", {"x", "y"}, {}, &want);
   AddNode("out_bcast1", "Pow", {"z", "ones"}, {}, &want);
   AddNode("out_bcast2", "Pow", {"z", "zeros"}, {}, &want);
@@ -2715,13 +2715,10 @@ TEST_F(ArithmeticOptimizerTest, Log1p) {
   }
 
   GraphDef want;
-  AddNode("x1", "Const", {}, {}, &want);
   AddNode("x2", "Const", {}, {}, &want);
   AddNode("x3", "Const", {}, {}, &want);
   AddNode("a23", "Add", {"x2", "x3"}, {}, &want);
-  AddNode("out1", "Log1p",
-          {"x2", AsControlDependency("x1"), AsControlDependency("x3")}, {},
-          &want);
+  AddNode("out1", "Log1p", {"x2", AsControlDependency("x3")}, {}, &want);
   AddNode("out2", "Log", {"a23"}, {}, &want);
 
   CompareGraphs(want, got);
@@ -2757,12 +2754,9 @@ TEST_F(ArithmeticOptimizerTest, Expm1) {
 
   GraphDef want;
   AddNode("x1", "Const", {}, {}, &want);
-  AddNode("x2", "Const", {}, {}, &want);
   AddNode("x3", "Const", {}, {}, &want);
   AddNode("exp1", "Exp", {"x1", AsControlDependency("x3")}, {}, &want);
-  AddNode("out1", "Expm1",
-          {"x1", AsControlDependency("x2"), AsControlDependency("x3")}, {},
-          &want);
+  AddNode("out1", "Expm1", {"x1", AsControlDependency("x3")}, {}, &want);
   AddNode("out2", "Sub", {"exp1", "x3"}, {}, &want);
 
   CompareGraphs(want, got);
@@ -3019,52 +3013,44 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryFromConcat) {
   int found = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "concat") {
-      EXPECT_EQ(6, node.input_size());
+      ASSERT_EQ(4, node.input_size());
       EXPECT_EQ("sin_a", node.input(0));
       EXPECT_EQ("b", node.input(1));
       EXPECT_EQ("c", node.input(2));
       EXPECT_EQ("axis", node.input(3));
-      EXPECT_EQ("^ctrl1", node.input(4));
-      EXPECT_EQ("^ctrl2", node.input(5));
       found++;
     }
     if (node.name() == "exp_a") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("concat", node.input(0));
-      EXPECT_EQ("^ctrl1", node.input(1));
       found++;
     }
     if (node.name() == "id") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("exp_a", node.input(0));
       found++;
     }
 
     if (node.name() == "concat2") {
-      EXPECT_EQ(7, node.input_size());
+      ASSERT_EQ(4, node.input_size());
       EXPECT_EQ("sin_a", node.input(0));
       EXPECT_EQ("b", node.input(1));
       EXPECT_EQ("c", node.input(2));
       EXPECT_EQ("axis", node.input(3));
-      EXPECT_EQ("^ctrl1", node.input(4));
-      EXPECT_EQ("^ctrl2", node.input(5));
-      EXPECT_EQ("^ctrl3", node.input(6));
       found++;
     }
     if (node.name() == "exp_a2") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("concat2", node.input(0));
-      EXPECT_EQ("^ctrl1", node.input(1));
       found++;
     }
     if (node.name() == "cos_exp_a2") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("exp_a2", node.input(0));
-      EXPECT_EQ("^ctrl1", node.input(1));
       found++;
     }
     if (node.name() == "id2") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("cos_exp_a2", node.input(0));
       found++;
     }
@@ -3138,62 +3124,58 @@ TEST_F(ArithmeticOptimizerTest, HoistCWiseUnaryIntoSplit) {
     EXPECT_NE(node.name(), "cos_exp_b2");
 
     if (node.name() == "split1") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("axis", node.input(0));
       EXPECT_EQ("ArithmeticOptimizer/_sin_a_split1", node.input(1));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_sin_a_split1") {
       EXPECT_EQ("Sin", node.op());
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("x", node.input(0));
-      EXPECT_EQ("^ctrl1", node.input(1));
       found++;
     }
     if (node.name() == "id_a") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("split1", node.input(0));
       found++;
     }
     if (node.name() == "exp_b") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("split1:1", node.input(0));
       found++;
     }
     if (node.name() == "id_b") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("exp_b", node.input(0));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_exp_a2_split2") {
       EXPECT_EQ("Exp", node.op());
-      EXPECT_EQ(4, node.input_size());
-      EXPECT_EQ("x", node.input(0));
-      EXPECT_EQ("^ctrl1", node.input(1));
-      EXPECT_EQ("^ctrl2", node.input(2));
-      EXPECT_EQ("^ctrl3", node.input(3));
+      ASSERT_EQ(1, node.input_size());
+      ASSERT_EQ("x", node.input(0));
       found++;
     }
     if (node.name() == "ArithmeticOptimizer/_cos_exp_a2_split2") {
       EXPECT_EQ("Cos", node.op());
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("ArithmeticOptimizer/_exp_a2_split2", node.input(0));
       found++;
     }
     if (node.name() == "split2") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("ArithmeticOptimizer/_cos_exp_a2_split2", node.input(0));
       EXPECT_EQ("size_splits2", node.input(1));
       EXPECT_EQ("axis", node.input(2));
       found++;
     }
     if (node.name() == "id_a2") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("split2", node.input(0));
       found++;
     }
     if (node.name() == "id_b2") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("split2:1", node.input(0));
       found++;
     }

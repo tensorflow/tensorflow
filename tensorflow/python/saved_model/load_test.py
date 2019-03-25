@@ -1238,6 +1238,13 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual([None, 2], input_y.shape.as_list())
     output, = imported_graph.outputs
     self.assertEqual([None, 5], output.shape.as_list())
+    signature = root.signatures["serving_default"]
+    self.assertEqual(
+        [None, 3], signature.inputs[0].shape.as_list())
+    self.assertEqual(
+        [None, 2], signature.inputs[1].shape.as_list())
+    self.assertEqual(
+        [None, 5], signature.outputs[0].shape.as_list())
 
   def test_dense_features_layer(self, cycles):
     columns = [feature_column_v2.numeric_column("x"),

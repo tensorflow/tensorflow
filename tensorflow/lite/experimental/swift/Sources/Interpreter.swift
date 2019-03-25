@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import Foundation
-import TensorFlowLiteCAPI
+import TensorFlowLiteC
 
 /// A TensorFlow Lite interpreter that performs inference from a given model.
 public final class Interpreter {

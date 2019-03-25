@@ -214,7 +214,7 @@ def _build_model(strategy, model, mode, inputs, targets=None):
         model, strategy, mode, inputs, targets)
 
 
-def _make_step_fn(model, mode, strategy, output_labels):
+def _make_train_step_fn(model, mode, strategy, output_labels):
   """Create step fn.
 
   Arguments:
@@ -324,7 +324,8 @@ def experimental_tpu_fit_loop(model,
 
   out_labels = model.metrics_names or []
 
-  step_fn = _make_step_fn(model, ModeKeys.TRAIN, current_strategy, out_labels)
+  step_fn = _make_train_step_fn(model, ModeKeys.TRAIN, current_strategy,
+                                out_labels)
 
   # Add initial dummy values for loss and other metric tensors.
   initial_loop_values = {}
@@ -486,23 +487,33 @@ def experimental_tpu_test_loop(model,
   scope.__enter__()
 
   out_labels = model.metrics_names
-  step_fn = _make_step_fn(model, ModeKeys.TEST, current_strategy, out_labels)
 
-  # Add initial dummy values for loss and other metric tensors.
-  initial_loop_values = {}
-  initial_loop_values['loss'] = constant_op.constant(1e7)
-  for name in model.metrics_names[1:]:
-    tensor = model._all_metrics_tensors[name]
-    initial_loop_values[name] = array_ops.zeros(tensor.shape, tensor.dtype)
+  def _test_step_fn(inputs):
+    """A fn that returns output of single test step."""
+    inputs, targets = inputs
+    (distribution_strategy_context.get_replica_context().merge_call(
+        _build_model, args=(model, mode, inputs, targets)))
 
-  # TODO(priyag): Use steps_per_run when we use new metrics as they will
-  # allow handling metric computation at each step using variables.
-  ctx = current_strategy.extended.experimental_run_steps_on_iterator(
-      step_fn, iterator, iterations=1,
-      initial_loop_values=initial_loop_values)
+    (_, outputs, updates, _) = (
+        _per_device_execution_function(
+            distributed_training_utils.get_distributed_model(model, mode),
+            mode))
+    with ops.control_dependencies([updates]):
+      return outputs
 
-  test_op = ctx.run_op
-  output_tensors = ctx.last_step_outputs
+  test_input_data = iterator.get_next()
+  per_replica_outputs = current_strategy.experimental_run_v2(
+      _test_step_fn, args=(test_input_data,))
+  output_tensors = {}
+  for label, output in zip(out_labels, per_replica_outputs):
+    if label == 'loss':
+      reduce_op = ds_reduce_util.ReduceOp.SUM
+    else:
+      # We reduce all other metrics using mean for now. This is temporary
+      # workaround until new metrics are in place.
+      reduce_op = ds_reduce_util.ReduceOp.MEAN
+    output_tensors[label] = current_strategy.reduce(reduce_op, output)
+  test_op = control_flow_ops.group(output_tensors.values())
 
   if verbose == 1:
     progbar = Progbar(target=steps)

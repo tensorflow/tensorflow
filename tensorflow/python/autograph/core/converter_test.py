@@ -43,7 +43,7 @@ class ConversionOptionsTest(converter_testing.TestCase):
     '''
     opts_packed = templates.replace(template, opts_ast=opts_ast)
 
-    reparsed, _ = compiler.ast_to_object(opts_packed)
+    reparsed, _, _ = compiler.ast_to_object(opts_packed)
     reparsed.__dict__['ag__'] = self.make_fake_mod(
         'fake_ag', converter.ConversionOptions, converter.Feature)
 
