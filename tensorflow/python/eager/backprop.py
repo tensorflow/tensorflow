@@ -916,14 +916,14 @@ class GradientTape(object):
       ValueError: if the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
-    if is_floating(self._tape) is False:
-      raise ValueError("GradientTape.gradient can only be called when "
-                       "datatype is float.")
-    
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
                          "non-persistent tapes.")
     
+    if is_floating(self._tape) is False:
+      raise ValueError("GradientTape.gradient can only be called when "
+                       "datatype is float.")
+
     if self._recording:
       if not self._persistent:
         self._pop_tape()
