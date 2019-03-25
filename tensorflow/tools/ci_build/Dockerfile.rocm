@@ -100,8 +100,9 @@ RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 #  - rocblas-2.0.1.0-Linux.deb
 #  - rocfft-0.8.9.0-Linux.deb
 #  - rocrand-1.8.2-Linux.deb
-RUN cd $HOME && wget https://www.dropbox.com/s/e6yh6glemrkoo91/tf-pr318-deb-pkgs.tar.gz && \
-    tar xzf tf-pr318-deb-pkgs.tar.gz && dpkg -i ./tf-pr318-deb-pkgs/*.deb
+# Grab deb packages with pr318 and shfl implementation used by xla
+RUN cd $HOME && wget https://www.dropbox.com/s/z8b4ek3z0k7ir8v/tf-pr318-shfl-deb-pkgs.tar.gz && \
+    tar xzf tf-pr318-shfl-deb-pkgs.tar.gz && dpkg -i ./tf-pr318-shfl-deb-pkgs/*.deb
 
 # Build rocBLAS from source
 #RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
