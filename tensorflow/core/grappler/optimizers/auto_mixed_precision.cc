@@ -934,7 +934,6 @@ class AutoMixedPrecisionImpl {
       DataStructureOpsMap* object_clients_map) const;
   void AddWhitelistOps(absl::flat_hash_set<int>* white_set) const;
   void PropagateBlackFwdThroughClearAndGray(
-      const absl::flat_hash_set<int>& white_set,
       absl::flat_hash_set<int>* black_set) const;
   void ForceColorMatchBetweenDataStructureOps(
       const DataStructureOpsMap& object_clients_map,
@@ -1216,14 +1215,13 @@ Status AutoMixedPrecisionImpl::Optimize() {
   //    This is done under the assumption that whitelist ops are always
   //    numerically-safe in fp16 and that they are the most important ops for
   //    improving performance.
-  // 2) Starting from numerically-dangerous ops (aka "blacklist" ops), add them
-  //    and all downstream ops to the black_set, stopping if a white node is
-  //    reached or if there can be no further impact on numerics (because the
-  //    ops downstream do not have numerically-significant effects, aka
-  //    "clearlist" ops).
+  // 2) Add nodes to the black_set iff they are numerically-dangerous (aka
+  //    "blacklist" ops) or they are on a forward path from a blacklist node to
+  //    a black/gray node (including the node at the end of the path) through
+  //    zero or more numerically-safe ops (aka "clearlist" ops).
   //    This is done to prevent numerically-dangerous ops and their downstream
   //    effects from being changed to fp16, which would risk breaking the
-  //    convergence of the model.
+  //    numerical accuracy of the model.
   // 3) For all remaining nodes that are not considered dangerous (aka
   //    "greylist" and clearlist ops), find those that are between (i.e., both
   //    upstream and downstream of) white nodes, and add them to the white_set.
@@ -1241,7 +1239,7 @@ Status AutoMixedPrecisionImpl::Optimize() {
   absl::flat_hash_set<int> black_set;
   VLOG(2) << "Beginning pass 2 to propagate black forwards from blacklist ops "
              "through clear/graylist ops";
-  PropagateBlackFwdThroughClearAndGray(white_set, &black_set);
+  PropagateBlackFwdThroughClearAndGray(&black_set);
   VLOG(2) << "Finished pass 2";
 
   VLOG(2) << "Forcing color match between data structure ops";
@@ -1326,8 +1324,12 @@ void AutoMixedPrecisionImpl::AddWhitelistOps(
   }
 }
 
+// Adds nodes to black_set iff they are on the blacklist or they are on a
+// forward path from a blacklist node to a black/gray node (including the node
+// at the end of the path) through zero or more clear nodes.
+// E.g., black -> gray -> clear -> gray -> clear -> white -> gray
+// becomes: black -> black -> black -> black -> clear -> white -> gray.
 void AutoMixedPrecisionImpl::PropagateBlackFwdThroughClearAndGray(
-    const absl::flat_hash_set<int>& white_set,
     absl::flat_hash_set<int>* black_set) const {
   if (force_all_fp16_) return;
 
