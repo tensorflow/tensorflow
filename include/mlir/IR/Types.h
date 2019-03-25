@@ -165,6 +165,9 @@ public:
                                              Args... args) {
       return false;
     }
+
+    /// Utility for easy access to the storage instance.
+    ImplType *getImpl() { return static_cast<ImplType *>(type); }
   };
 
   using ImplType = TypeStorage;
