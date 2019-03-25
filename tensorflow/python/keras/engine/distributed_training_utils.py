@@ -310,9 +310,9 @@ def validate_all_tensor_types(x, x_values):
 
 def validate_all_tensor_shapes(x, x_values):
   # Validate that the shape of all the elements in x have the same shape
-  x_shape = x_values[0].get_shape().as_list()
+  x_shape = x_values[0].shape.as_list()
   for i in range(1, len(x_values)):
-    if x_shape != x_values[i].get_shape().as_list():
+    if x_shape != x_values[i].shape.as_list():
       raise ValueError('Input tensor shapes do not match for distributed tensor'
                        ' inputs {}'.format(x))
 
@@ -632,11 +632,11 @@ def _build_network_on_replica(model, mode, inputs=None, targets=None):
   # We rely on the internal methods to avoid having share_weights weights in the
   # public API.
   if isinstance(model, sequential.Sequential):
-    updated_model = models._clone_sequential_model(model, input_tensors=inputs,
-                                                   share_weights=True)
+    updated_model = models._clone_sequential_model(
+        model, input_tensors=inputs, layer_fn=models.share_weights)
   else:
-    updated_model = models._clone_functional_model(model, input_tensors=inputs,
-                                                   share_weights=True)
+    updated_model = models._clone_functional_model(
+        model, input_tensors=inputs, layer_fn=models.share_weights)
 
   # Recast all low precision outputs back to float32 since we only casted
   # the inputs to bfloat16 and not targets. This is done so that we can preserve

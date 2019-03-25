@@ -184,14 +184,9 @@ Status PropagateConstIntoFuncAttr(
     return errors::Internal("Cannot find function ", func_attr.name(),
                             " for node ", n->name());
   }
-  FunctionBody* fbody;
+  std::unique_ptr<FunctionBody> fbody;
   TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-      *fdef, AttrSlice(&func_attr.attr()), lookup_fld,
-      [lookup_fld](const string& op, const OpDef** sig) {
-        return lookup_fld->LookUpOpDef(op, sig);
-      },
-      &fbody));
-  std::unique_ptr<FunctionBody> fbody_deleter(fbody);
+      *fdef, AttrSlice(&func_attr.attr()), lookup_fld, &fbody));
 
   // Rewrite _Arg usages with Const node.
   Graph* func_graph = fbody->graph;

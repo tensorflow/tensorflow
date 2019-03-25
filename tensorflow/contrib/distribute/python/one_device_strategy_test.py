@@ -17,19 +17,21 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.one_device_strategy,
-        combinations.one_device_strategy_gpu],
-    mode=["eager", "graph"]))
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.one_device_strategy,
+            strategy_combinations.one_device_strategy_gpu
+        ],
+        mode=["eager", "graph"]))
 class OneDeviceStrategyTest(
     strategy_test_lib.DistributionTestBase,
     strategy_test_lib.OneDeviceDistributionTestBase):

@@ -163,8 +163,8 @@ XLA_TEST_P(BinaryOpTest, Ops) {
 }
 
 half atan2_imp(half x, half y) {
-  return half(atan2(static_cast<float>(std::move(x)),
-                    static_cast<float>(std::move(y))));
+  return half(std::atan2(static_cast<float>(std::move(x)),
+                         static_cast<float>(std::move(y))));
 }
 
 INSTANTIATE_TEST_CASE_P(

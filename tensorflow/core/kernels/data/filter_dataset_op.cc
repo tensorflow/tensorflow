@@ -50,8 +50,9 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     FilterIteratorPredicate filter_pred;
     if (short_circuit_indices_.empty()) {
@@ -213,10 +214,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
               stats_aggregator->AddScalar(
                   stats_utils::DroppedElementsScalarName(
                       dataset()->node_name()),
-                  static_cast<float>((dropped_elements_)));
-              // TODO(shivaniagrawal): multiple pipelines would collect
-              // aggregated number of dropped elements for all the pipelines,
-              // exploit tagged_context here.
+                  static_cast<float>(dropped_elements_), num_elements());
+
               stats_aggregator->IncrementCounter(dataset()->node_name(),
                                                  stats_utils::kDroppedElements,
                                                  static_cast<float>(1));
@@ -230,10 +229,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           filtered_elements_++;
           stats_aggregator->AddScalar(
               stats_utils::FilterdElementsScalarName(dataset()->node_name()),
-              static_cast<float>((filtered_elements_)));
-          // TODO(shivaniagrawal): multiple pipelines would collect aggregated
-          // number of filtered elements for all the pipelines, exploit
-          // tagged_context here.
+              static_cast<float>(filtered_elements_), num_elements());
+
           stats_aggregator->IncrementCounter(dataset()->node_name(),
                                              stats_utils::kFilteredElements,
                                              static_cast<float>(1));

@@ -1181,7 +1181,7 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
       self.assertAllClose(mask_outputs_val[1], np.any(model_input, axis=-1))
 
   @test_util.run_in_graph_and_eager_modes()
-  def test_external_keras_serialization_compat(self):
+  def test_external_keras_serialization_compat_input_layers(self):
     inputs = keras.Input(shape=(10,))
     outputs = keras.layers.Dense(1)(inputs)
     model = keras.Model(inputs, outputs)
@@ -1191,6 +1191,24 @@ class DefaultShapeInferenceBehaviorTest(keras_parameterized.TestCase):
     # 1-element list format is supported in TF.js and keras-team/Keras.
     self.assertLen(config['input_layers'], 1)
     self.assertLen(config['output_layers'], 1)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_external_keras_serialization_compat_inbound_nodes(self):
+    # Check single Tensor input.
+    inputs = keras.Input(shape=(10,), name='in')
+    outputs = keras.layers.Dense(1)(inputs)
+    model = keras.Model(inputs, outputs)
+    config = model.get_config()
+    self.assertEqual(config['layers'][1]['inbound_nodes'], [[['in', 0, 0, {}]]])
+
+    # Check multiple Tensor input.
+    inputs1 = keras.Input(shape=(10,), name='in1')
+    inputs2 = keras.Input(shape=(10,), name='in2')
+    outputs = keras.layers.Add()([inputs1, inputs2])
+    model = keras.Model([inputs1, inputs2], outputs)
+    config = model.get_config()
+    self.assertEqual(config['layers'][2]['inbound_nodes'],
+                     [[['in1', 0, 0, {}], ['in2', 0, 0, {}]]])
 
 
 class GraphUtilsTest(test.TestCase):

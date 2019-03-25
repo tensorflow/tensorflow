@@ -1073,6 +1073,7 @@ cc_library(
     hdrs = ["buffer_comparator.h"],
     deps = [
         ":gpu_executable",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla/service:compiler",
         "//tensorflow/compiler/xla/service:device_memory_allocator",
@@ -1095,6 +1096,7 @@ xla_test(
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

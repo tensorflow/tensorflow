@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/colocation.h"
 #include "tensorflow/core/grappler/utils/functions.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/tpu.h"
 #include "tensorflow/core/grappler/verifiers/structure_verifier.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -79,16 +80,6 @@ int NumIterations(const RewriterConfig& cfg) {
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
          name == "loop_optimizer";
-}
-
-// Check if the graphdef contains nodes that indicate TPU execution.
-bool IsTPUGraphDef(const GraphDef& def) {
-  for (auto node : def.node()) {
-    if (node.op() == "TPUCompile" || node.op() == "TPUPartitionedCall") {
-      return true;
-    }
-  }
-  return false;
 }
 
 uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
@@ -372,6 +363,7 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
+  GraphOptimizer* model_pruner = nullptr;
   GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
 
@@ -403,6 +395,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
       if (optimizer->name() == "xla-fusion") {
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
+      }
+      if (optimizer->name() == "model_pruner") {
+        if (model_pruner == nullptr) model_pruner = optimizer.get();
       }
       RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
 
@@ -452,6 +447,10 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   optimization_results_.push_back(optimization_result);
 
   if (is_optimized) {
+    // Run the model pruner again to clean things up.
+    if (!cfg_.disable_model_pruning() && model_pruner != nullptr) {
+      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(model_pruner);
+    }
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version.

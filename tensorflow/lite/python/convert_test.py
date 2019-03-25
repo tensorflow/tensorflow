@@ -23,7 +23,6 @@ from tensorflow.lite.python import convert
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import op_hint
 from tensorflow.lite.python.interpreter import Interpreter
-from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
@@ -54,17 +53,6 @@ class ConvertTest(test_util.TensorFlowTestCase):
     # Try running on identity graph (known fail)
     # with self.assertRaisesRegexp(RuntimeError, "!model->operators.empty()"):
     #   result = convert.toco_convert(sess.graph_def, [in_tensor], [in_tensor])
-
-  def testTensorName(self):
-    in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
-    # out_tensors should have names: "split:0", "split:1", "split:2", "split:3".
-    out_tensors = array_ops.split(
-        value=in_tensor, num_or_size_splits=[1, 1, 1, 1], axis=0)
-    expect_names = ["split", "split:1", "split:2", "split:3"]
-
-    for i in range(len(expect_names)):
-      got_name = convert.tensor_name(out_tensors[i])
-      self.assertEqual(got_name, expect_names[i])
 
   def testQuantization(self):
     in_tensor = array_ops.placeholder(shape=[1, 16, 16, 3],
@@ -380,27 +368,6 @@ class ConvertTestOpHint(test_util.TensorFlowTestCase):
               stubbed_graphdef,
               output_nodes=[op_hint._tensor_name_base(output.name)]),
           set(["agg", "Const", "Identity"]))
-
-  def testConvertDtype(self):
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(lite_constants.FLOAT),
-        _types_pb2.FLOAT)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.uint8),
-        _types_pb2.QUANTIZED_UINT8)
-    self.assertEqual(
-        convert.convert_dtype_to_tflite_type(dtypes.complex64),
-        _types_pb2.COMPLEX64)
-    with self.assertRaises(ValueError):
-      convert.convert_dtype_to_tflite_type(dtypes.bool)
 
   def testFindHintedOutputNodes(self):
     """Test if all hinted output nodes are correctly found."""

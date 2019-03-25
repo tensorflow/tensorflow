@@ -126,6 +126,15 @@ func FakeQuantWithMinMaxVarsPerChannelNarrowRange(value bool) FakeQuantWithMinMa
 // then de-quantized and output as floats in `[min; max]` interval.
 // `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
 //
+// Before quantization, `min` and `max` values are adjusted with the following
+// logic.
+// It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+// the behavior can be unexpected:
+// If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+// If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+// If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+// `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
+//
 // This operation has a gradient and thus allows for training `min` and `max`
 // values.
 func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
@@ -306,6 +315,15 @@ func FakeQuantWithMinMaxArgsNarrowRange(value bool) FakeQuantWithMinMaxArgsAttr 
 // when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
 // then de-quantized and output as floats in `[min; max]` interval.
 // `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+//
+// Before quantization, `min` and `max` values are adjusted with the following
+// logic.
+// It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+// the behavior can be unexpected:
+// If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+// If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+// If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+// `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 //
 // Quantization is called fake since the output is still in floating point.
 func FakeQuantWithMinMaxArgs(scope *Scope, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsAttr) (outputs tf.Output) {
@@ -7634,6 +7652,17 @@ func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output
 	return op.Output(0)
 }
 
+// OptimizeDatasetAttr is an optional argument to OptimizeDataset.
+type OptimizeDatasetAttr func(optionalAttr)
+
+// OptimizeDatasetOptimizationConfigs sets the optional optimization_configs attribute to value.
+// If not specified, defaults to <>
+func OptimizeDatasetOptimizationConfigs(value []string) OptimizeDatasetAttr {
+	return func(m optionalAttr) {
+		m["optimization_configs"] = value
+	}
+}
+
 // Creates a dataset by applying optimizations to `input_dataset`.
 //
 // Creates a dataset by applying optimizations to `input_dataset`.
@@ -7643,11 +7672,14 @@ func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output
 //	optimizations: A `tf.string` vector `tf.Tensor` identifying optimizations to use.
 //
 //
-func OptimizeDataset(scope *Scope, input_dataset tf.Output, optimizations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func OptimizeDataset(scope *Scope, input_dataset tf.Output, optimizations tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...OptimizeDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "OptimizeDataset",
 		Input: []tf.Input{
@@ -7746,6 +7778,80 @@ func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.O
 	}
 	opspec := tf.OpSpec{
 		Type: "SerializeIterator",
+		Input: []tf.Input{
+			resource_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// IteratorFromStringHandleAttr is an optional argument to IteratorFromStringHandle.
+type IteratorFromStringHandleAttr func(optionalAttr)
+
+// IteratorFromStringHandleOutputTypes sets the optional output_types attribute to value.
+//
+// value: If specified, defines the type of each tuple component in an
+// element produced by the resulting iterator.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func IteratorFromStringHandleOutputTypes(value []tf.DataType) IteratorFromStringHandleAttr {
+	return func(m optionalAttr) {
+		m["output_types"] = value
+	}
+}
+
+// IteratorFromStringHandleOutputShapes sets the optional output_shapes attribute to value.
+//
+// value: If specified, defines the shape of each tuple component in an
+// element produced by the resulting iterator.
+// If not specified, defaults to <>
+//
+// REQUIRES: len(value) >= 0
+func IteratorFromStringHandleOutputShapes(value []tf.Shape) IteratorFromStringHandleAttr {
+	return func(m optionalAttr) {
+		m["output_shapes"] = value
+	}
+}
+
+// Converts the given string representing a handle to an iterator to a resource.
+//
+// Arguments:
+//	string_handle: A string representation of the given handle.
+//
+// Returns A handle to an iterator resource.
+func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ...IteratorFromStringHandleAttr) (resource_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "IteratorFromStringHandle",
+		Input: []tf.Input{
+			string_handle,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Converts the given `resource_handle` representing an iterator to a string.
+//
+// Arguments:
+//	resource_handle: A handle to an iterator resource.
+//
+// Returns A string representation of the given handle.
+func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IteratorToStringHandle",
 		Input: []tf.Input{
 			resource_handle,
 		},
@@ -10452,7 +10558,24 @@ func PreventGradient(scope *Scope, input tf.Output, optional ...PreventGradientA
 	return op.Output(0)
 }
 
-// Computes asin of x element-wise.
+// Computes the trignometric inverse sine of x element-wise.
+//
+// The `tf.math.asin` operation returns the inverse of `tf.math.sin`, such that
+// if `y = tf.math.sin(x)` then, `x = tf.math.asin(y)`.
+//
+// **Note**: The output of `tf.math.asin` will lie within the invertible range
+// of sine, i.e [-pi/2, pi/2].
+//
+// For example:
+//
+// ```python
+// # Note: [1.047, 0.785] ~= [(pi/3), (pi/4)]
+// x = tf.constant([1.047, 0.785])
+// y = tf.math.sin(x) # [0.8659266, 0.7068252]
+//
+// tf.math.asin(y) # [1.047, 0.785] = x
+// ```
+//
 func Asin(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -11649,6 +11772,31 @@ func ResourceScatterMul(scope *Scope, resource tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
+// JPEG encode input image with provided compression quality.
+//
+// `image` is a 3-D uint8 Tensor of shape `[height, width, channels]`.
+// `quality` is an int32 jpeg compression quality value between 0 and 100.
+//
+//
+// Arguments:
+//	images: Images to adjust.  At least 3-D.
+//	quality: An int quality to encode to.
+//
+// Returns 0-D. JPEG-encoded image.
+func EncodeJpegVariableQuality(scope *Scope, images tf.Output, quality tf.Output) (contents tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "EncodeJpegVariableQuality",
+		Input: []tf.Input{
+			images, quality,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Subtracts sparse updates from the variable referenced by `resource`.
 //
 // This operation computes
@@ -11729,6 +11877,39 @@ func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, upd
 		},
 	}
 	return scope.AddOperation(opspec)
+}
+
+// Outputs the single element from the given dataset.
+//
+// Arguments:
+//	dataset: A handle to a dataset that contains a single element.
+//
+//
+//
+// Returns The components of the single element of `input`.
+func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DatasetToSingleElement",
+		Input: []tf.Input{
+			dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("DatasetToSingleElement", err)
+		return
+	}
+	return components
 }
 
 // Reads the value of a variable.
@@ -12965,6 +13146,22 @@ func SparseReduceSum(scope *Scope, input_indices tf.Output, input_values tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Set a summary_writer_interface to record statistics using given stats_aggregator.
+//
+// Returns the created operation.
+func StatsAggregatorSetSummaryWriter(scope *Scope, stats_aggregator tf.Output, summary tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatsAggregatorSetSummaryWriter",
+		Input: []tf.Input{
+			stats_aggregator, summary,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Records the latency of producing `input_dataset` elements in a StatsAggregator.
@@ -16683,6 +16880,16 @@ func ArgMaxOutputType(value tf.DataType) ArgMaxAttr {
 // Returns the index with the largest value across dimensions of a tensor.
 //
 // Note that in case of ties the identity of the return value is not guaranteed.
+//
+// Usage:
+//   ```python
+//   import tensorflow as tf
+//   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+//   b = tf.math.argmax(input = a)
+//   c = tf.keras.backend.eval(b)
+//   # c = 4
+//   # here a[4] = 166.32 which is the largest element of a across axis 0
+//   ```
 //
 // Arguments:
 //
@@ -20641,6 +20848,15 @@ func FakeQuantWithMinMaxVarsNarrowRange(value bool) FakeQuantWithMinMaxVarsAttr 
 // when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
 // then de-quantized and output as floats in `[min; max]` interval.
 // `num_bits` is the bitwidth of the quantization; between 2 and 16, inclusive.
+//
+// Before quantization, `min` and `max` values are adjusted with the following
+// logic.
+// It is suggested to have `min <= 0 <= max`. If `0` is not in the range of values,
+// the behavior can be unexpected:
+// If `0 < min < max`: `min_adj = 0` and `max_adj = max - min`.
+// If `min < max < 0`: `min_adj = min - max` and `max_adj = 0`.
+// If `min <= 0 <= max`: `scale = (max - min) / (2^num_bits - 1) `,
+// `min_adj = scale * round(min / scale)` and `max_adj = max + min_adj - min`.
 //
 // This operation has a gradient and thus allows for training `min` and `max`
 // values.
@@ -26594,7 +26810,24 @@ func ResourceApplyAdaMax(scope *Scope, var_ tf.Output, m tf.Output, v tf.Output,
 	return scope.AddOperation(opspec)
 }
 
-// Computes atan of x element-wise.
+// Computes the trignometric inverse tangent of x element-wise.
+//
+// The `tf.math.atan` operation returns the inverse of `tf.math.tan`, such that
+// if `y = tf.math.tan(x)` then, `x = tf.math.atan(y)`.
+//
+// **Note**: The output of `tf.math.atan` will lie within the invertible range
+// of tan, i.e (-pi/2, pi/2).
+//
+// For example:
+//
+// ```python
+// # Note: [1.047, 0.785] ~= [(pi/3), (pi/4)]
+// x = tf.constant([1.047, 0.785])
+// y = tf.math.tan(x) # [1.731261, 0.99920404]
+//
+// tf.math.atan(y) # [1.047, 0.785] = x
+// ```
+//
 func Atan(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -27693,6 +27926,61 @@ func StatelessTruncatedNormal(scope *Scope, shape tf.Output, seed tf.Output, opt
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// QuantizedConv2DPerChannelAttr is an optional argument to QuantizedConv2DPerChannel.
+type QuantizedConv2DPerChannelAttr func(optionalAttr)
+
+// QuantizedConv2DPerChannelOutType sets the optional out_type attribute to value.
+//
+// value: The quantized type of output tensor that needs to be converted.
+// If not specified, defaults to DT_QINT32
+func QuantizedConv2DPerChannelOutType(value tf.DataType) QuantizedConv2DPerChannelAttr {
+	return func(m optionalAttr) {
+		m["out_type"] = value
+	}
+}
+
+// QuantizedConv2DPerChannelDilations sets the optional dilations attribute to value.
+//
+// value: list of dilation values.
+// If not specified, defaults to <i:1 i:1 i:1 i:1 >
+func QuantizedConv2DPerChannelDilations(value []int64) QuantizedConv2DPerChannelAttr {
+	return func(m optionalAttr) {
+		m["dilations"] = value
+	}
+}
+
+// Computes QuantizedConv2D per channel.
+//
+// Arguments:
+//	input: The original input tensor.
+//	filter: The original filter tensor.
+//	min_input: The minimum value of the input tensor
+//	max_input: The maximum value of the input tensor.
+//	min_filter: The minimum value of the filter tensor.
+//	max_filter: The maximum value of the filter tensor.
+//	strides: list of stride values.
+//
+//
+// Returns The output tensor.The minimum value of the final output tensor.The maximum value of the final output tensor.
+func QuantizedConv2DPerChannel(scope *Scope, input tf.Output, filter tf.Output, min_input tf.Output, max_input tf.Output, min_filter tf.Output, max_filter tf.Output, strides []int64, padding string, optional ...QuantizedConv2DPerChannelAttr) (output tf.Output, min_output tf.Output, max_output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QuantizedConv2DPerChannel",
+		Input: []tf.Input{
+			input, filter, min_input, max_input, min_filter, max_filter,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // RestoreSliceAttr is an optional argument to RestoreSlice.
@@ -32355,6 +32643,16 @@ func ArgMinOutputType(value tf.DataType) ArgMinAttr {
 //
 // Note that in case of ties the identity of the return value is not guaranteed.
 //
+// Usage:
+//   ```python
+//   import tensorflow as tf
+//   a = [1, 10, 26.9, 2.8, 166.32, 62.3]
+//   b = tf.math.argmin(input = a)
+//   c = tf.keras.backend.eval(b)
+//   # c = 0
+//   # here a[0] = 1 which is the smallest element of a across axis 0
+//   ```
+//
 // Arguments:
 //
 //	dimension: int32 or int64, must be in the range `[-rank(input), rank(input))`.
@@ -36903,10 +37201,11 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 	return op.Output(0)
 }
 
-// Decode the first frame of a GIF-encoded image to a uint8 tensor.
+// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
 //
-// GIF with frame or transparency compression are not supported
-// convert animated GIF from compressed to uncompressed by:
+// GIF images with frame or transparency compression are not supported.
+// On Linux and MacOS systems, convert animated GIFs from compressed to
+// uncompressed by running:
 //
 //     convert $src.gif -coalesce $dst.gif
 //
@@ -36916,7 +37215,7 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
 //
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB order
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
 func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -39085,111 +39384,4 @@ func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataTyp
 		return
 	}
 	return components
-}
-
-// Outputs the single element from the given dataset.
-//
-// Arguments:
-//	dataset: A handle to a dataset that contains a single element.
-//
-//
-//
-// Returns The components of the single element of `input`.
-func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "DatasetToSingleElement",
-		Input: []tf.Input{
-			dataset,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
-		scope.UpdateErr("DatasetToSingleElement", err)
-		return
-	}
-	return components
-}
-
-// Converts the given `resource_handle` representing an iterator to a string.
-//
-// Arguments:
-//	resource_handle: A handle to an iterator resource.
-//
-// Returns A string representation of the given handle.
-func IteratorToStringHandle(scope *Scope, resource_handle tf.Output) (string_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IteratorToStringHandle",
-		Input: []tf.Input{
-			resource_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// IteratorFromStringHandleAttr is an optional argument to IteratorFromStringHandle.
-type IteratorFromStringHandleAttr func(optionalAttr)
-
-// IteratorFromStringHandleOutputTypes sets the optional output_types attribute to value.
-//
-// value: If specified, defines the type of each tuple component in an
-// element produced by the resulting iterator.
-// If not specified, defaults to <>
-//
-// REQUIRES: len(value) >= 0
-func IteratorFromStringHandleOutputTypes(value []tf.DataType) IteratorFromStringHandleAttr {
-	return func(m optionalAttr) {
-		m["output_types"] = value
-	}
-}
-
-// IteratorFromStringHandleOutputShapes sets the optional output_shapes attribute to value.
-//
-// value: If specified, defines the shape of each tuple component in an
-// element produced by the resulting iterator.
-// If not specified, defaults to <>
-//
-// REQUIRES: len(value) >= 0
-func IteratorFromStringHandleOutputShapes(value []tf.Shape) IteratorFromStringHandleAttr {
-	return func(m optionalAttr) {
-		m["output_shapes"] = value
-	}
-}
-
-// Converts the given string representing a handle to an iterator to a resource.
-//
-// Arguments:
-//	string_handle: A string representation of the given handle.
-//
-// Returns A handle to an iterator resource.
-func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ...IteratorFromStringHandleAttr) (resource_handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "IteratorFromStringHandle",
-		Input: []tf.Input{
-			string_handle,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
 }

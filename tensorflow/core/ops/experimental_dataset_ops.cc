@@ -17,6 +17,11 @@ limitations under the License.
 
 namespace tensorflow {
 
+REGISTER_OP("StatsAggregatorSetSummaryWriter")
+    .Input("stats_aggregator: resource")
+    .Input("summary: resource")
+    .SetShapeFn(shape_inference::NoOutputs);
+
 REGISTER_OP("ExperimentalAutoShardDataset")
     .Input("input_dataset: variant")
     .Input("num_workers: int64")
@@ -378,6 +383,12 @@ REGISTER_OP("ExperimentalSqlDataset")
     });
 
 REGISTER_OP("ExperimentalStatsAggregatorHandle")
+    .Output("handle: resource")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Attr("container: string = ''")
+    .Attr("shared_name: string = ''");
+
+REGISTER_OP("StatsAggregatorHandleV2")
     .Output("handle: resource")
     .SetShapeFn(shape_inference::ScalarShape)
     .Attr("container: string = ''")

@@ -396,7 +396,7 @@ class BaseDebugWrapperSession(session.SessionInterface):
     self._default_session_context_manager = None
 
     # A cache for callables created from CallableOptions.
-    self._cached_callables_from_options = dict()
+    self._cached_callables_from_options = {}
 
   @property
   def graph(self):

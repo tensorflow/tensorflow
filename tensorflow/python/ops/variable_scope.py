@@ -1835,6 +1835,7 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
     self._constraint = constraint
     self._var_store = _get_default_variable_store()
     self._var_scope_store = get_variable_scope_store()
+    self._last_variable_scope_object = None
     if isinstance(self._name_or_scope, VariableScope):
       self._new_name = self._name_or_scope.name
       name_scope = self._name_or_scope._name_scope  # pylint: disable=protected-access
@@ -1931,9 +1932,13 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
         variable_scope_object.set_use_resource(self._use_resource)
       self._var_scope_store.open_variable_scope(self._new_name)
     self._var_scope_store.current_scope = variable_scope_object
+    self._last_variable_scope_object = variable_scope_object
     return variable_scope_object
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
+    if (self._var_scope_store.current_scope is not
+        self._last_variable_scope_object):
+      raise RuntimeError("Improper nesting of variable_scope.")
     # If jumping out from a non-prolonged scope, restore counts.
     if isinstance(self._name_or_scope, VariableScope):
       self._var_scope_store.variable_scopes_count = self._old_subscopes
@@ -2225,11 +2230,10 @@ class variable_scope(object):
 
     try:
       return self._enter_scope_uncached()
-    except Exception:
-      if self._in_graph_mode and not self._building_function:
-        if self._graph_context_manager is not None:
-          self._graph_context_manager.__exit__(*sys.exc_info())
-      raise
+    finally:
+      if (self._in_graph_mode and not self._building_function and
+          self._graph_context_manager is not None):
+        self._graph_context_manager.__exit__(*sys.exc_info())
 
   def _enter_scope_uncached(self):
     """Enters the context manager when there is no cached scope yet.

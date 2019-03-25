@@ -582,8 +582,8 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
-    deduplicated_concrete_functions = list()
-    seen_signatures = list()
+    deduplicated_concrete_functions = []
+    seen_signatures = []
     # We are using a list so that:
     #  - the returned collection is deterministic, and
     #  - we can use a custom equality operator (is_same_structure).

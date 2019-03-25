@@ -35,6 +35,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as framework_device_lib
 from tensorflow.python.framework import dtypes
@@ -140,27 +141,27 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(inp.eval(), 10.0)
 
   def testSessionInterOpThreadPool(self):
-    config = config_pb2.ConfigProto()
-    pool = config.session_inter_op_thread_pool.add()
-    with session.Session(config=config) as s:
+    config_pb = config_pb2.ConfigProto()
+    pool = config_pb.session_inter_op_thread_pool.add()
+    with session.Session(config=config_pb) as s:
       inp = constant_op.constant(10.0, name='W1')
       results = s.run([inp])
       self.assertAllEqual([10.0], results)
 
-    pool = config.session_inter_op_thread_pool.add()
+    pool = config_pb.session_inter_op_thread_pool.add()
     pool.num_threads = 1
-    with session.Session(config=config) as s:
+    with session.Session(config=config_pb) as s:
       inp = constant_op.constant(20.0, name='W2')
       results = s.run([inp])
       self.assertAllEqual([20.0], results)
 
-    pool = config.session_inter_op_thread_pool.add()
+    pool = config_pb.session_inter_op_thread_pool.add()
     pool.num_threads = 1
     pool.global_name = 't1'
     run_options = config_pb2.RunOptions()
     run_options.inter_op_thread_pool = (
-        len(config.session_inter_op_thread_pool) - 1)
-    with session.Session(config=config) as s:
+        len(config_pb.session_inter_op_thread_pool) - 1)
+    with session.Session(config=config_pb) as s:
       inp = constant_op.constant(30.0, name='W2')
       results = s.run([inp], options=run_options)
       self.assertAllEqual([30.0], results)
@@ -1739,21 +1740,21 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue(a == a)
 
   def testInferShapesTrue(self):
-    config = config_pb2.ConfigProto(
+    config_pb = config_pb2.ConfigProto(
         graph_options=config_pb2.GraphOptions(infer_shapes=True))
     with ops.Graph().as_default(), ops.device('/cpu:0'):
       a = constant_op.constant([[1, 2]])
-      sess = session.Session(config=config)
+      sess = session.Session(config=config_pb)
       self.assertTrue('_output_shapes' in sess.graph_def.node[0].attr)
       # Avoid lint error regarding 'unused' var a.
       self.assertTrue(a == a)
 
   def testBuildCostModel(self):
     run_options = config_pb2.RunOptions()
-    config = config_pb2.ConfigProto(
+    config_pb = config_pb2.ConfigProto(
         allow_soft_placement=True,
         graph_options=config_pb2.GraphOptions(build_cost_model=100))
-    with session.Session(config=config) as sess:
+    with session.Session(config=config_pb) as sess:
       with ops.device('/device:GPU:0'):
         a = array_ops.placeholder(dtypes.float32, shape=[])
         b = math_ops.add(a, a)
@@ -1843,8 +1844,8 @@ class SessionTest(test_util.TensorFlowTestCase):
 
     # Use a 10-second timeout, which should be longer than any
     # non-blocking enqueue_many op.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
-    with session.Session(config=config) as sess:
+    config_pb = config_pb2.ConfigProto(operation_timeout_in_ms=10000)
+    with session.Session(config=config_pb) as sess:
       for _ in range(num_epochs):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
@@ -1925,8 +1926,8 @@ class SessionTest(test_util.TensorFlowTestCase):
     else:
       # Passing the config to the server, but not the session should still
       # result in logging device placement.
-      config = config_pb2.ConfigProto(log_device_placement=True)
-      server = server_lib.Server.create_local_server(config=config)
+      config_pb = config_pb2.ConfigProto(log_device_placement=True)
+      server = server_lib.Server.create_local_server(config=config_pb)
       a = constant_op.constant(1)
       b = constant_op.constant(2)
       c = a + b
@@ -1940,12 +1941,12 @@ class SessionTest(test_util.TensorFlowTestCase):
   @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    config_pb = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
     server = server_lib.Server.create_local_server()
     q = data_flow_ops.FIFOQueue(1, dtypes.float32)
     dequeued_t = q.dequeue()
 
-    with session.Session(server.target, config=config) as sess:
+    with session.Session(server.target, config=config_pb) as sess:
       # Intentionally do not run any enqueue_ops so that dequeue will block
       # until operation_timeout_in_ms.
       with self.assertRaises(errors.DeadlineExceededError):
@@ -1955,8 +1956,8 @@ class SessionTest(test_util.TensorFlowTestCase):
   def testDefaultServerTimeout(self):
     # Test that the default server config timeout gets used when no Session
     # config is provided.
-    config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
-    server = server_lib.Server.create_local_server(config=config)
+    config_pb = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
+    server = server_lib.Server.create_local_server(config=config_pb)
     q = data_flow_ops.FIFOQueue(1, dtypes.float32)
     dequeued_t = q.dequeue()
 
@@ -2045,6 +2046,15 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           TypeError, r'Type of feed value 1 with type <(\w+) \'int\'> is not'):
         sess.run(a, feed_dict={a: 1})
+
+  @test_util.run_v1_only('b/120545219')
+  def testOptimizerOptions(self):
+    config.set_optimizer_experimental_options({'min_graph_nodes': -1})
+
+    with ops.Graph().as_default():
+      sess = session.Session()
+      self.assertEqual(
+          sess._config.graph_options.rewrite_options.min_graph_nodes, -1)
 
 
 if __name__ == '__main__':

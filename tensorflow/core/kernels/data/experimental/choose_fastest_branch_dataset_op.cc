@@ -172,10 +172,9 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       for (; index < end_index; ++index) {
         captured_args.push_back(inputs[index]);
       }
-      OP_REQUIRES_OK(
-          ctx, CapturedFunction::Create(
-                   funcs_[i], ctx, std::move(captured_args),
-                   /*use_inter_op_parallelism=*/true, &captured_funcs[i]));
+      OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                              funcs_[i], ctx, std::move(captured_args),
+                              /*params=*/{}, &captured_funcs[i]));
     }
     *output =
         new Dataset(ctx, input, funcs_, std::move(captured_funcs),
@@ -446,18 +445,26 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         return s;
       }
 
+      // Select the fastest input to use based on the histograms of timings
+      // of the completed iterations. The input with the best 90th percentile
+      // iteration time is selected.
       void SelectFastestInputIndex() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
         fastest_index_ = 0;
 
+        VLOG(2) << "90.0 percentile iteration time:";
         double best_percentile = histograms_[0].Percentile(kPercentile);
+        VLOG(2) << "Branch 0: " << best_percentile;
         for (size_t i = 1, num_inputs = histograms_.size(); i < num_inputs;
              ++i) {
           double percentile = histograms_[i].Percentile(kPercentile);
+          VLOG(2) << "Branch " << i << ": " << percentile;
           if (percentile <= best_percentile) {
             best_percentile = percentile;
             fastest_index_ = i;
           }
         }
+        VLOG(1) << "Selecting index " << fastest_index_
+                << " as the fastest index.";
       }
 
       Status MakeCurrentIterator(IteratorContext* ctx, int64 branch_index,

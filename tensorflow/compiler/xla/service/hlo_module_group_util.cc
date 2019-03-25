@@ -232,12 +232,7 @@ string HloModuleGroupUtil::CycleToString(HloInstruction* init_instruction) {
       };
 
   helper(init_instruction);
-  std::vector<string> pieces;
-  pieces.reserve(names.size());
-  for (auto name : names) {
-    pieces.push_back(name);
-  }
-  return absl::StrJoin(pieces, " --> ");
+  return absl::StrJoin(names, " --> ");
 }
 
 Status HloModuleGroupUtil::VisitTopologicalOrder(

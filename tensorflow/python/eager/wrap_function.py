@@ -188,8 +188,8 @@ class WrappedFunction(function.ConcreteFunction):
       lift_map[original_fetch] = lift_map[identity_fetch]
     pruned_graph.outputs.extend(
         lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
-    if not tensor_fetches:
-      pruned_graph.outputs.append(lift_map[sink_tensor])
+    pruned_graph.control_outputs.extend(
+        [lift_map[operation] for operation in operation_fetches])
     for external_capture, internal_capture in self.graph.captures.items():
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
@@ -210,6 +210,33 @@ class WrappedFunction(function.ConcreteFunction):
     pruned_fn._num_positional_args = len(flat_feeds)  # pylint: disable=protected-access
     pruned_fn._arg_keywords = []  # pylint: disable=protected-access
     return pruned_fn
+
+
+def _filter_returned_ops(fn):
+  """Filtering out any ops returned by function.
+
+  Args:
+    fn: a function
+
+  Returns:
+    A tuple of (
+      Wrapped function that returns `None` in place of any ops,
+      dict that maps the index in the flat output structure to the returned op
+    )
+  """
+  returned_ops = {}
+
+  def wrap_and_filter_returned_ops(*args, **kwargs):
+    outputs = fn(*args, **kwargs)
+    flat_outputs = nest.flatten(outputs)
+    for n in range(len(flat_outputs)):
+      output = flat_outputs[n]
+      if isinstance(output, ops.Operation):
+        returned_ops[n] = output
+        flat_outputs[n] = None
+    return nest.pack_sequence_as(outputs, flat_outputs)
+
+  return wrap_and_filter_returned_ops, returned_ops
 
 
 class WrappedGraph(object):
@@ -274,10 +301,58 @@ class WrappedGraph(object):
     return self._variable_holder.variables
 
   def wrap_function(self, fn, signature, name=None):
-    """Wrap a TF 1.X function and save to functions dictionary."""
+    """Wraps a TF 1.X function and returns an eager-compatible function.
+
+    All functions wrapped in the same `WrappedGraph` will have access to the
+    same graph (`tf.get_default_graph` to get the graph object within a
+    function, or `WrappedGraph.graph` to get the graph outside a function).
+    Variables created within the function will be added to the `variables` list.
+
+    Function inputs: All inputs to the function must be tensors (nested ok),
+    with their shapes and dtypes defined in the `signature` argument.
+
+    Function outputs:
+
+      * The 1.X function may return tensors, variables, and ops. The wrapped
+        eager-compatible function will always return tensors in the same nested
+        structure.
+      * Variables are replaced with a tensor containing the latest read values.
+      * Returned ops are executed, and replaced with None.
+      * The order of op execution and variable reads in the return is
+        nondeterministic. For example:
+
+        ```
+        def update_var(x):
+          v = tf.Variable(0)
+          op = tf.compat.v1.assign(v, x).op
+          return v, op
+
+        g = WrappedGraph()
+        fn = g.wrap_function(update_var)
+        read_value, _ = fn(tf.constant(3))
+        print(read_value.numpy())  # could be 0 or 3
+        print(g.variables[0].numpy()) # always 3
+        ```
+
+    To ensure that ops in the function are executed (e.g. ops added to the
+    `tf.GraphKeys.UPDATE_OPS` collection), include them in the function returns.
+
+    Args:
+      fn: a 1.X tensorflow function.
+      signature: a possibly nested sequence of `TensorSpecs` specifying the
+        shapes and dtypes of the arguments.
+      name: an optional string name for the function. The function will be saved
+        with key `name` in the `functions` dictionary.
+
+    Returns:
+      An eager-compatible function.
+    """
+    fn_with_filter_and_scope, returned_ops = _filter_returned_ops(
+        self._variable_holder.call_with_variable_creator_scope(fn))
+
     func_graph.func_graph_from_py_func(
         None,  # Name is unused.
-        self._variable_holder.call_with_variable_creator_scope(fn),
+        fn_with_filter_and_scope,
         args=None, kwargs=None, signature=signature,
         add_control_dependencies=False,
         func_graph=self.graph)
@@ -287,10 +362,16 @@ class WrappedGraph(object):
     # and structured outputs are overwritten. Pretty sure this is a bug,
     # because structured outputs doesn't match up with the outputs...
     fn_inputs = self.graph.inputs[:-len(self.graph.captures)]
-    fn_outputs = self.graph.structured_outputs
 
-    wrapped_function = self._wrapped_function.prune(fn_inputs, fn_outputs)
+    # Return filtered ops to the flattened outputs.
+    flat_fn_outputs = nest.flatten(self.graph.structured_outputs)
+    for index, op in returned_ops.items():
+      flat_fn_outputs[index] = op
+    fn_outputs = nest.pack_sequence_as(self.graph.structured_outputs,
+                                       flat_fn_outputs)
+
     name = name or fn.__name__
+    wrapped_function = self._wrapped_function.prune(fn_inputs, fn_outputs, name)
     self._functions[name] = wrapped_function
     return wrapped_function
 

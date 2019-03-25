@@ -144,7 +144,7 @@ def _get_python_bin(repository_ctx):
     )
 
 def _get_nvcc_tmp_dir_for_windows(repository_ctx):
-    """Return the tmp directory for nvcc to generate intermediate source files."""
+    """Return the Windows tmp directory for nvcc to generate intermediate source files."""
     escaped_tmp_dir = escape_string(
         get_env_var(repository_ctx, "TMP", "C:\\Windows\\Temp").replace(
             "\\",
@@ -152,6 +152,13 @@ def _get_nvcc_tmp_dir_for_windows(repository_ctx):
         ),
     )
     return escaped_tmp_dir + "\\\\nvcc_inter_files_tmp_dir"
+
+def _get_nvcc_tmp_dir_for_unix(repository_ctx):
+    """Return the UNIX tmp directory for nvcc to generate intermediate source files."""
+    escaped_tmp_dir = escape_string(
+        get_env_var(repository_ctx, "TMPDIR", "/tmp"),
+    )
+    return escaped_tmp_dir + "/nvcc_inter_files_tmp_dir"
 
 def _get_msvc_compiler(repository_ctx):
     vc_path = find_vc_path(repository_ctx)
@@ -892,6 +899,13 @@ def _find_libs(repository_ctx, cuda_config):
             cuda_config.cudnn_version,
         ),
         "cupti": _find_cupti_lib(repository_ctx, cuda_config),
+        "cusparse": _find_cuda_lib(
+            "cusparse",
+            repository_ctx,
+            cpu_value,
+            cuda_config.cuda_toolkit_path,
+            cuda_config.cuda_version,
+        ),
     }
 
 def _find_cuda_include_path(repository_ctx, cuda_config):
@@ -1063,6 +1077,7 @@ def _create_dummy_repository(repository_ctx):
             "%{cufft_lib}": lib_name("cufft", cpu_value),
             "%{curand_lib}": lib_name("curand", cpu_value),
             "%{cupti_lib}": lib_name("cupti", cpu_value),
+            "%{cusparse_lib}": lib_name("cusparse", cpu_value),
             "%{copy_rules}": "",
             "%{cuda_headers}": "",
         },
@@ -1085,6 +1100,7 @@ def _create_dummy_repository(repository_ctx):
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("curand", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cufft", cpu_value))
     repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cupti", cpu_value))
+    repository_ctx.file("cuda/cuda/lib/%s" % lib_name("cusparse", cpu_value))
 
     # Set up cuda_config.h, which is used by
     # tensorflow/stream_executor/dso_loader.cc.
@@ -1321,6 +1337,7 @@ def _create_local_cuda_repository(repository_ctx):
             "%{cufft_lib}": cuda_libs["cufft"].basename,
             "%{curand_lib}": cuda_libs["curand"].basename,
             "%{cupti_lib}": cuda_libs["cupti"].basename,
+            "%{cusparse_lib}": cuda_libs["cusparse"].basename,
             "%{copy_rules}": "\n".join(copy_rules),
             "%{cuda_headers}": (
                 '":cuda-include",\n' + '        ":cudnn-include",'
@@ -1494,6 +1511,10 @@ def _cuda_autoconf_impl(repository_ctx):
     if not enable_cuda(repository_ctx):
         _create_dummy_repository(repository_ctx)
     elif _TF_CUDA_CONFIG_REPO in repository_ctx.os.environ:
+        if (_TF_CUDA_VERSION not in repository_ctx.os.environ or
+            _TF_CUDNN_VERSION not in repository_ctx.os.environ):
+            auto_configure_fail("%s and %s must also be set if %s is specified" %
+                                (_TF_CUDA_VERSION, _TF_CUDNN_VERSION, _TF_CUDA_CONFIG_REPO))
         _create_remote_cuda_repository(
             repository_ctx,
             repository_ctx.os.environ[_TF_CUDA_CONFIG_REPO],
@@ -1517,6 +1538,8 @@ cuda_configure = repository_rule(
         _TF_CUDA_CONFIG_REPO,
         "NVVMIR_LIBRARY_DIR",
         _PYTHON_BIN_PATH,
+        "TMP",
+        "TMPDIR",
     ],
 )
 

@@ -420,6 +420,9 @@ class TPUClusterResolverTest(test.TestCase):
   def testShouldResolveLocal(self):
     self.verifyShouldResolve('local', False)
 
+  def testShouldResolveLocalhost(self):
+    self.verifyShouldResolve('localhost:12345', False)
+
   def testShouldResolveGrpc(self):
     self.verifyShouldResolve('grpc://10.1.2.3:8470', False)
 
@@ -440,6 +443,10 @@ class TPUClusterResolverTest(test.TestCase):
         tpu='/bns/foo/bar')
     self.assertEqual('/bns/foo/bar', resolver.master())
     self.assertEqual(None, resolver.cluster_spec())
+
+  def testLocalhostMaster(self):
+    resolver = TPUClusterResolver(tpu='localhost:12345')
+    self.assertEqual('localhost:12345', resolver.master())
 
   def testGkeEnvironmentForDonut(self):
     os.environ['KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'] = 'grpc://10.120.27.5:8470'

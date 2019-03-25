@@ -66,6 +66,7 @@ class GrpcRemoteWorker : public WorkerInterface {
         completegroup_(Method(GrpcWorkerMethod::kCompleteGroup)),
         instancesource_(Method(GrpcWorkerMethod::kCompleteInstance)),
         getstepsequence_(Method(GrpcWorkerMethod::kGetStepSequence)),
+        markrecvfinished_(Method(GrpcWorkerMethod::kMarkRecvFinished)),
         logger_(logger) {}
 
   ~GrpcRemoteWorker() override {}
@@ -130,12 +131,10 @@ class GrpcRemoteWorker : public WorkerInterface {
     int64 start_usec = Env::Default()->NowMicros();
     // Type-specialized logging for this method.
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
-    StatusCallback wrapper_done;
-    const StatusCallback* cb_to_use;
-    if (!logging_active) {
-      cb_to_use = &done;  // No additional work to do, so just use done directly
-    } else {
-      wrapper_done = [this, request, response, done, start_usec](Status s) {
+
+    auto callback = [this, request, response, done, start_usec,
+                     logging_active](Status s) {
+      if (logging_active) {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
@@ -159,12 +158,17 @@ class GrpcRemoteWorker : public WorkerInterface {
         }
         VLOG(2) << "done callback, req: " << request->DebugString()
                 << " response " << response->DebugString();
-        done(s);
-      };
-      cb_to_use = &wrapper_done;
-    }
+      }
 
-    IssueRequest(request, response, recvbuf_, *cb_to_use, call_opts);
+      // Note done() can delete this worker object, so we need to call done()
+      // last.
+      if (response->require_ack()) {
+        IssueMarkRecvFinishedRequest(request->request_id());
+      }
+      done(s);
+    };
+
+    IssueRequest(request, response, recvbuf_, callback, call_opts);
   }
 
   void CompleteGroupAsync(CallOptions* call_opts,
@@ -194,12 +198,10 @@ class GrpcRemoteWorker : public WorkerInterface {
     int64 start_usec = Env::Default()->NowMicros();
     // Type-specialized logging for this method.
     bool logging_active = logger_->LoggingActive() || VLOG_IS_ON(2);
-    StatusCallback wrapper_done;
-    const StatusCallback* cb_to_use;
-    if (!logging_active) {
-      cb_to_use = &done;  // No additional work to do, so just use done directly
-    } else {
-      wrapper_done = [this, request, response, done, start_usec](Status s) {
+
+    auto callback = [this, request, response, done, start_usec,
+                     logging_active](Status s) {
+      if (logging_active) {
         if (logger_->LoggingActive()) {
           int64 end_usec = Env::Default()->NowMicros();
           int64 step_id = request->step_id();
@@ -238,12 +240,17 @@ class GrpcRemoteWorker : public WorkerInterface {
         }
         VLOG(2) << "done callback, req: " << request->DebugString()
                 << " response " << response->metadata().DebugString();
-        done(s);
-      };
-      cb_to_use = &wrapper_done;
-    }
+      }
 
-    IssueRequest(request, response, recvtensor_, *cb_to_use, call_opts);
+      // Note done() can delete this worker object, so we need to call done()
+      // last.
+      if (response->metadata().require_ack()) {
+        IssueMarkRecvFinishedRequest(request->request_id());
+      }
+      done(s);
+    };
+
+    IssueRequest(request, response, recvtensor_, callback, call_opts);
   }
 
   void LoggingAsync(const LoggingRequest* request, LoggingResponse* response,
@@ -276,6 +283,16 @@ class GrpcRemoteWorker : public WorkerInterface {
                                  callback_threadpool_, max_retries);
   }
 
+  void IssueMarkRecvFinishedRequest(int64 request_id) {
+    VLOG(2) << "Send MarkRecvFinishedRequest for request " << request_id;
+    MarkRecvFinishedRequest request;
+    request.set_request_id(request_id);
+
+    MarkRecvFinishedResponse* response = new MarkRecvFinishedResponse();
+    auto done = [response](Status status) { delete response; };
+    IssueRequest(&request, response, markrecvfinished_, done);
+  }
+
   // Helper function for initializing the RpcMethod objects below.
   const char* Method(GrpcWorkerMethod id) { return GrpcWorkerMethodName(id); }
 
@@ -299,6 +316,7 @@ class GrpcRemoteWorker : public WorkerInterface {
   const ::grpc::string completegroup_;
   const ::grpc::string instancesource_;
   const ::grpc::string getstepsequence_;
+  const ::grpc::string markrecvfinished_;
 
   // Support for logging.
   WorkerCacheLogger* logger_;

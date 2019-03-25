@@ -324,7 +324,7 @@ def standardize_input_data(data,
     for i in range(len(names)):
       if shapes[i] is not None:
         if tensor_util.is_tensor(data[i]):
-          tensorshape = data[i].get_shape()
+          tensorshape = data[i].shape
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
@@ -563,7 +563,8 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, dict):
+  elif isinstance(metrics, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
       output_metrics = generic_utils.to_list(metrics.get(name, []))
@@ -1008,13 +1009,9 @@ def prepare_sample_weights(output_names, sample_weight_mode,
   """
   sample_weights = []
   sample_weight_modes = []
-  if isinstance(sample_weight_mode, dict):
-    unknown_output = set(sample_weight_mode.keys()) - set(output_names)
-    if unknown_output:
-      raise ValueError('Unknown entry in '
-                       'sample_weight_mode dictionary: "' + unknown_output +
-                       '". Only expected the following keys: ' +
-                       str(output_names))
+  if isinstance(sample_weight_mode, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('sample_weight_mode',
+                                            sample_weight_mode, output_names)
     for i, name in enumerate(output_names):
       if (i not in skip_target_weighing_indices and
           name not in sample_weight_mode):
@@ -1063,10 +1060,7 @@ def prepare_loss_functions(loss, output_names):
           or if loss is a list with len not equal to model outputs.
   """
   if isinstance(loss, collections.Mapping):
-    for name in loss:
-      if name not in output_names:
-        raise ValueError('Unknown entry in loss dictionary: {}. Only expected '
-                         'following keys: {}'.format(name, output_names))
+    generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
       if name not in loss:
@@ -1111,12 +1105,9 @@ def prepare_loss_weights(output_names, loss_weights=None):
   """
   if loss_weights is None:
     weights_list = [1.] * len(output_names)
-  elif isinstance(loss_weights, dict):
-    for name in loss_weights:
-      if name not in output_names:
-        raise ValueError('Unknown entry in loss_weights dictionary: {}. '
-                         'Only expected the following keys: {}'.format(
-                             name, output_names))
+  elif isinstance(loss_weights, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('loss_weights', loss_weights,
+                                            output_names)
     weights_list = [loss_weights.get(name, 1.) for name in output_names]
   elif isinstance(loss_weights, list):
     if len(loss_weights) != len(output_names):

@@ -15,9 +15,9 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/fake_quant_ops_functor.h"
 
@@ -28,9 +28,9 @@ limitations under the License.
 
 using tensorflow::BinaryElementWiseOp;
 using tensorflow::DEVICE_CPU;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using tensorflow::DEVICE_GPU;
-#endif
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 using tensorflow::OpKernel;
 using tensorflow::OpKernelConstruction;
 using tensorflow::OpKernelContext;
@@ -143,7 +143,7 @@ REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxArgsGradient").Device(DEVICE_CPU),
     FakeQuantWithMinMaxArgsGradientOp<CPUDevice>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
 
 // Forward declarations for functor specializations for GPU.
@@ -165,7 +165,7 @@ void FakeQuantWithMinMaxArgsGradientFunctor<GPUDevice>::operator()(
 REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxArgsGradient").Device(DEVICE_GPU),
     FakeQuantWithMinMaxArgsGradientOp<GPUDevice>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // -----------------------------------------------------------------------------
 // Implementation of FakeQuantWithMinMaxVarsOp, see its documentation in
@@ -265,7 +265,7 @@ REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxVarsGradient").Device(DEVICE_CPU),
     FakeQuantWithMinMaxVarsGradientOp<CPUDevice>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 void FakeQuantWithMinMaxVarsFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstFlat inputs,
@@ -294,7 +294,7 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsGradient")
                             .HostMemory("min")
                             .HostMemory("max"),
                         FakeQuantWithMinMaxVarsGradientOp<GPUDevice>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // -----------------------------------------------------------------------------
 // Implementation of FakeQuantWithMinMaxVarsPerChannelOp, see its documentation
@@ -411,7 +411,7 @@ REGISTER_KERNEL_BUILDER(
     Name("FakeQuantWithMinMaxVarsPerChannelGradient").Device(DEVICE_CPU),
     FakeQuantWithMinMaxVarsPerChannelGradientOp<CPUDevice>);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 template <>
 void FakeQuantWithMinMaxVarsPerChannelFunctor<GPUDevice>::operator()(
     const GPUDevice& d, typename TTypes<float>::ConstMatrix inputs,
@@ -443,6 +443,6 @@ REGISTER_KERNEL_BUILDER(Name("FakeQuantWithMinMaxVarsPerChannelGradient")
                             .HostMemory("min")
                             .HostMemory("max"),
                         FakeQuantWithMinMaxVarsPerChannelGradientOp<GPUDevice>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

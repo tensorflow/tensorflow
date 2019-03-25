@@ -555,15 +555,14 @@ Status ValidateNodeDef(const NodeDef& node_def, const OpDef& op_def) {
 
 namespace {  // Helpers for NameRangesForNode()
 
-Status ComputeArgRange(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
+Status ComputeArgRange(const AttrSlice& attrs, const OpDef::ArgDef& arg_def,
                        const OpDef& op_def, int* num) {
   if (!arg_def.number_attr().empty()) {
     // Same type repeated "num" times.
-    return GetNodeAttr(node_def, arg_def.number_attr(), num);
+    return GetNodeAttr(attrs, arg_def.number_attr(), num);
   } else if (!arg_def.type_list_attr().empty()) {
     const AttrValue* attr_value;
-    TF_RETURN_IF_ERROR(
-        AttrSlice(node_def).Find(arg_def.type_list_attr(), &attr_value));
+    TF_RETURN_IF_ERROR(attrs.Find(arg_def.type_list_attr(), &attr_value));
     *num = attr_value->list().type_size();
   } else if (!arg_def.type_attr().empty() || arg_def.type() != DT_INVALID) {
     *num = 1;
@@ -575,13 +574,13 @@ Status ComputeArgRange(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
   return Status::OK();
 }
 
-Status NameRangesHelper(const NodeDef& node_def,
+Status NameRangesHelper(const AttrSlice& attrs,
                         const protobuf::RepeatedPtrField<OpDef::ArgDef>& args,
                         const OpDef& op_def, NameRangeMap* result) {
   int start = 0;
   int num;
   for (const auto& arg : args) {
-    TF_RETURN_IF_ERROR(ComputeArgRange(node_def, arg, op_def, &num));
+    TF_RETURN_IF_ERROR(ComputeArgRange(attrs, arg, op_def, &num));
     (*result)[arg.name()] = std::make_pair(start, start + num);
     start += num;
   }
@@ -590,14 +589,14 @@ Status NameRangesHelper(const NodeDef& node_def,
 
 }  // namespace
 
-Status NameRangesForNode(const NodeDef& node_def, const OpDef& op_def,
+Status NameRangesForNode(const AttrSlice& attrs, const OpDef& op_def,
                          NameRangeMap* inputs, NameRangeMap* outputs) {
   if (inputs != nullptr) {
     TF_RETURN_IF_ERROR(
-        NameRangesHelper(node_def, op_def.input_arg(), op_def, inputs));
+        NameRangesHelper(attrs, op_def.input_arg(), op_def, inputs));
   }
   if (outputs != nullptr) {
-    return NameRangesHelper(node_def, op_def.output_arg(), op_def, outputs);
+    return NameRangesHelper(attrs, op_def.output_arg(), op_def, outputs);
   }
   return Status::OK();
 }
