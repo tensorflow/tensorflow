@@ -146,7 +146,6 @@ __global__ void ResizeBilinearGradKernel(
   }
 }
 
-#if GOOGLE_CUDA
 template <typename T>
 __global__ void LegacyResizeBilinearKernel(const int32 nthreads,
                                            const T* images, float height_scale,
@@ -257,7 +256,6 @@ __global__ void LegacyResizeBilinearGradKernel(
                   static_cast<T>(x_lerp * dbottom));
   }
 }
-#endif
 
 }  // namespace
 
@@ -281,13 +279,6 @@ struct ResizeBilinear<GPUDevice, T> {
     const int total_count = batch * out_height * out_width * channels;
     if (total_count == 0) return;
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-#if TENSORFLOW_USE_ROCM
-    GPU_LAUNCH_KERNEL(ResizeBilinearKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, images.data(), height_scale,
-        width_scale, batch, in_height, in_width, channels, out_height,
-        out_width, output.data());
-#else 
     if (half_pixel_centers) {
       GPU_LAUNCH_KERNEL(ResizeBilinearKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
@@ -301,7 +292,6 @@ struct ResizeBilinear<GPUDevice, T> {
         width_scale, batch, in_height, in_width, channels, out_height,
         out_width, output.data());
     }
-#endif 
   }
 };
 
@@ -335,13 +325,6 @@ struct ResizeBilinearGrad<GPUDevice, T> {
     // Accumulate.
     total_count = batch * resized_height * resized_width * channels;
     config = GetGpuLaunchConfig(total_count, d);
-#if TENSORFLOW_USE_ROCM
-    GPU_LAUNCH_KERNEL(ResizeBilinearGradKernel<T>,
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        config.virtual_thread_count, input_grad.data(), height_scale,
-        width_scale, batch, original_height, original_width, channels,
-        resized_height, resized_width, output_grad.data());
-#else 
     if (half_pixel_centers) {
       GPU_LAUNCH_KERNEL(
           ResizeBilinearGradKernel<T>, config.block_count,
@@ -357,7 +340,6 @@ struct ResizeBilinearGrad<GPUDevice, T> {
           original_width, channels, resized_height, resized_width,
           output_grad.data());
     }
-#endif 
   }
 };
 
