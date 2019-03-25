@@ -39,13 +39,7 @@
 
 using namespace llvm;
 using namespace mlir;
-
-using mlir::tblgen::DagLeaf;
-using mlir::tblgen::DagNode;
-using mlir::tblgen::NamedAttribute;
-using mlir::tblgen::NamedTypeConstraint;
-using mlir::tblgen::Operator;
-using mlir::tblgen::RecordOperatorMap;
+using namespace mlir::tblgen;
 
 namespace {
 class PatternEmitter {
@@ -105,7 +99,7 @@ private:
   std::string emitOpCreate(DagNode tree, int resultIndex, int depth);
 
   // Returns the string value of constant attribute as an argument.
-  std::string handleConstantAttr(tblgen::ConstantAttr constAttr);
+  std::string handleConstantAttr(ConstantAttr constAttr);
 
   // Returns the C++ expression to build an argument from the given DAG `leaf`.
   // `patArgName` is used to bound the argument to the source pattern.
@@ -122,7 +116,7 @@ private:
   // Op's TableGen Record to wrapper object
   RecordOperatorMap *opMap;
   // Handy wrapper for pattern being emitted
-  tblgen::Pattern pattern;
+  Pattern pattern;
   // The next unused ID for newly created values
   unsigned nextValueId;
   raw_ostream &os;
@@ -134,7 +128,7 @@ PatternEmitter::PatternEmitter(Record *pat, RecordOperatorMap *mapper,
     : loc(pat->getLoc()), opMap(mapper), pattern(pat, mapper), nextValueId(0),
       os(os) {}
 
-std::string PatternEmitter::handleConstantAttr(tblgen::ConstantAttr constAttr) {
+std::string PatternEmitter::handleConstantAttr(ConstantAttr constAttr) {
   auto attr = constAttr.getAttribute();
 
   if (!attr.isConstBuildable())
@@ -226,7 +220,7 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
 
     // Only need to verify if the matcher's type is different from the one
     // of op definition.
-    if (operand->constraint != matcher.getAsTypeConstraint()) {
+    if (operand->constraint != matcher.getAsConstraint()) {
       os.indent(indent) << "if (!("
                         << formatv(matcher.getConditionTemplate().c_str(),
                                    formatv("op{0}->getOperand({1})->getType()",
@@ -307,27 +301,35 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
     PrintFatalError(loc, formatv("referencing unbound variable '{0}'", name));
   };
 
-  for (auto constraint : pattern.getConstraints()) {
-    if (constraint.isTypeConstraint()) {
-      auto cmd = "if (!{0}) return matchFailure();\n";
-      // TODO(jpienaar): Use the op definition here to simplify this.
-      auto condition = constraint.getAsTypeConstraint().getConditionTemplate();
+  for (auto &appliedConstraint : pattern.getConstraints()) {
+    auto &constraint = appliedConstraint.constraint;
+    auto &entities = appliedConstraint.entities;
+
+    auto condition = constraint.getConditionTemplate();
+    auto cmd = "if (!{0}) return matchFailure();\n";
+
+    if (isa<TypeConstraint>(constraint)) {
       // TODO(jpienaar): Verify op only has one result.
       os.indent(4) << formatv(
-          cmd, formatv(condition.c_str(),
-                       "(*" + deduceName(*constraint.name_begin()) +
-                           "->result_type_begin())"));
-    } else if (constraint.isNativeConstraint()) {
-      os.indent(4) << "if (!" << constraint.getNativeConstraintFunction()
-                   << "(";
-      interleave(
-          constraint.name_begin(), constraint.name_end(),
-          [&](const std::string &name) { os << deduceName(name); },
-          [&]() { os << ", "; });
-      os << ")) return matchFailure();\n";
+          cmd, formatv(condition.c_str(), "(*" + deduceName(entities.front()) +
+                                              "->result_type_begin())"));
+    } else if (isa<AttrConstraint>(constraint)) {
+      PrintFatalError(
+          loc, "cannot use AttrConstraint in Pattern multi-entity constraints");
     } else {
-      llvm_unreachable(
-          "Pattern constraints have to be either a type or native constraint");
+      // TODO(fengliuai): replace formatv arguments with the exact specified
+      // args.
+      if (entities.size() > 4) {
+        PrintFatalError(loc, "only support up to 4-entity constraints now");
+      }
+      SmallVector<std::string, 4> names;
+      unsigned i = 0;
+      for (unsigned e = entities.size(); i < e; ++i)
+        names.push_back(deduceName(entities[i]));
+      for (; i < 4; ++i)
+        names.push_back("<unused>");
+      os.indent(4) << formatv(cmd, formatv(condition.c_str(), names[0],
+                                           names[1], names[2], names[3]));
     }
   }
 

@@ -29,13 +29,11 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
-#include "llvm/TableGen/Error.h"
 
 namespace llvm {
 class DagInit;
 class Init;
 class Record;
-class StringRef;
 } // end namespace llvm
 
 namespace mlir {
@@ -79,11 +77,8 @@ public:
   // Returns true if this DAG leaf is specifying a constant attribute.
   bool isConstantAttr() const;
 
-  // Returns this DAG leaf as a type constraint. Asserts if fails.
-  TypeConstraint getAsTypeConstraint() const;
-
-  // Returns this DAG leaf as an attribute constraint. Asserts if fails.
-  AttrConstraint getAsAttrConstraint() const;
+  // Returns this DAG leaf as a constraint. Asserts if fails.
+  Constraint getAsConstraint() const;
 
   // Returns this DAG leaf as an constant attribute. Asserts if fails.
   ConstantAttr getAsConstantAttr() const;
@@ -180,33 +175,6 @@ private:
   const llvm::DagInit *node; // nullptr means null DagNode
 };
 
-class PatternConstraint {
-public:
-  explicit PatternConstraint(const llvm::DagInit *node) : node(node) {}
-
-  // Returns whether this is a type constraint.
-  bool isTypeConstraint() const;
-
-  // Returns this DAG leaf as a type constraint. Asserts if fails.
-  TypeConstraint getAsTypeConstraint() const;
-
-  // Returns whether this is a native pattern constraint.
-  bool isNativeConstraint() const;
-
-  // Returns the C++ function invoked as part of native constraint.
-  StringRef getNativeConstraintFunction() const;
-
-  // Argument names.
-  using const_name_iterator =
-      llvm::mapped_iterator<SmallVectorImpl<llvm::StringInit *>::const_iterator,
-                            std::string (*)(const llvm::StringInit *)>;
-  const_name_iterator name_begin() const;
-  const_name_iterator name_end() const;
-
-private:
-  const llvm::DagInit *node;
-};
-
 // Wrapper class providing helper methods for accessing MLIR Pattern defined
 // in TableGen. This class should closely reflect what is defined as class
 // `Pattern` in TableGen. This class contains maps so it is not intended to be
@@ -250,7 +218,7 @@ public:
   Operator &getDialectOp(DagNode node);
 
   // Returns the constraints.
-  std::vector<PatternConstraint> getConstraints() const;
+  std::vector<AppliedConstraint> getConstraints() const;
 
 private:
   // The TableGen definition of this pattern.

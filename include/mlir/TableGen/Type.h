@@ -23,8 +23,7 @@
 #define MLIR_TABLEGEN_TYPE_H_
 
 #include "mlir/Support/LLVM.h"
-#include "mlir/TableGen/Predicate.h"
-#include "llvm/ADT/StringRef.h"
+#include "mlir/TableGen/Constraint.h"
 
 namespace llvm {
 class DefInit;
@@ -36,33 +35,15 @@ namespace tblgen {
 
 // Wrapper class with helper methods for accessing Type constraints defined in
 // TableGen.
-class TypeConstraint {
+class TypeConstraint : public Constraint {
 public:
-  explicit TypeConstraint(const llvm::Record &record);
-  explicit TypeConstraint(const llvm::DefInit &init);
+  explicit TypeConstraint(const llvm::Record *record);
+  explicit TypeConstraint(const llvm::DefInit *init);
 
-  bool operator==(const TypeConstraint &that) { return def == that.def; }
-  bool operator!=(const TypeConstraint &that) { return def != that.def; }
-
-  // Returns the predicate that can be used to check if a type satisfies this
-  // type constraint.
-  Pred getPredicate() const;
-
-  // Returns the condition template that can be used to check if a type
-  // satisfies this type constraint.  The template may contain "{0}" that must
-  // be substituted with an expression returning an mlir::Type.
-  std::string getConditionTemplate() const;
-
-  // Returns the user-readable description of the constraint. If the description
-  // is not provided, returns the TableGen def name.
-  StringRef getDescription() const;
+  static bool classof(const Constraint *c) { return c->getKind() == CK_Type; }
 
   // Returns true if this is a variadic type constraint.
   bool isVariadic() const;
-
-protected:
-  // The TableGen definition of this type.
-  const llvm::Record *def;
 };
 
 // Wrapper class providing helper methods for accessing MLIR Type defined
@@ -70,17 +51,15 @@ protected:
 // class Type in TableGen.
 class Type : public TypeConstraint {
 public:
-  explicit Type(const llvm::Record &record);
-  explicit Type(const llvm::Record *record) : Type(*record) {}
+  explicit Type(const llvm::Record *record);
   explicit Type(const llvm::DefInit *init);
 
   // Returns the TableGen def name for this type.
   StringRef getTableGenDefName() const;
 
   // Gets the base type of this variadic type constraint.
-  // Precondition: This type constraint is a variadic type constraint.
+  // Precondition: isVariadic() is true.
   Type getVariadicBaseType() const;
-
 };
 
 } // end namespace tblgen

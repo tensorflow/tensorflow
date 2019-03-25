@@ -1,4 +1,4 @@
-//===- Type.cpp - Type class ------------------------------------*- C++ -*-===//
+//===- Type.cpp - Type class ----------------------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -24,49 +24,29 @@
 
 using namespace mlir;
 
-tblgen::TypeConstraint::TypeConstraint(const llvm::Record &record)
-    : def(&record) {
+tblgen::TypeConstraint::TypeConstraint(const llvm::Record *record)
+    : Constraint(Constraint::CK_Type, record) {
   assert(def->isSubClassOf("TypeConstraint") &&
          "must be subclass of TableGen 'TypeConstraint' class");
 }
 
-tblgen::Pred tblgen::TypeConstraint::getPredicate() const {
-  auto *val = def->getValue("predicate");
-  assert(val &&
-         "TableGen 'TypeConstraint' class should have 'predicate' field");
-
-  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
-  return Pred(pred);
-}
-
-std::string tblgen::TypeConstraint::getConditionTemplate() const {
-  return getPredicate().getCondition();
-}
-
-llvm::StringRef tblgen::TypeConstraint::getDescription() const {
-  auto doc = def->getValueAsString("description");
-  if (doc.empty())
-    return def->getName();
-  return doc;
-}
-
-tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit &init)
-    : TypeConstraint(*init.getDef()) {}
+tblgen::TypeConstraint::TypeConstraint(const llvm::DefInit *init)
+    : TypeConstraint(init->getDef()) {}
 
 bool tblgen::TypeConstraint::isVariadic() const {
   return def->isSubClassOf("Variadic");
 }
 
-tblgen::Type::Type(const llvm::Record &record) : TypeConstraint(record) {
+tblgen::Type::Type(const llvm::Record *record) : TypeConstraint(record) {
   assert(def->isSubClassOf("Type") &&
          "must be subclass of TableGen 'Type' class");
 }
 
-tblgen::Type::Type(const llvm::DefInit *init) : Type(*init->getDef()) {}
+tblgen::Type::Type(const llvm::DefInit *init) : Type(init->getDef()) {}
 
 StringRef tblgen::Type::getTableGenDefName() const { return def->getName(); }
 
 tblgen::Type tblgen::Type::getVariadicBaseType() const {
   assert(isVariadic() && "must be variadic type constraint");
-  return Type(*def->getValueAsDef("baseType"));
+  return Type(def->getValueAsDef("baseType"));
 }

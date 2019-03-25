@@ -69,7 +69,7 @@ tblgen::CPred::CPred(const llvm::Init *init) : Pred(init) {
 // Get condition of the C Predicate.
 std::string tblgen::CPred::getConditionImpl() const {
   assert(!isNull() && "null predicate does not have a condition");
-  return def->getValueAsString("predCall");
+  return def->getValueAsString("predExpr");
 }
 
 tblgen::CombinedPred::CombinedPred(const llvm::Record *record) : Pred(record) {

@@ -22,6 +22,7 @@
 
 #include "mlir/TableGen/Pattern.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
@@ -58,14 +59,10 @@ bool tblgen::DagLeaf::isConstantAttr() const {
   return cast<llvm::DefInit>(def)->getDef()->isSubClassOf("ConstantAttr");
 }
 
-tblgen::TypeConstraint tblgen::DagLeaf::getAsTypeConstraint() const {
-  assert(isOperandMatcher() && "the DAG leaf must be operand");
-  return TypeConstraint(*cast<llvm::DefInit>(def)->getDef());
-}
-
-tblgen::AttrConstraint tblgen::DagLeaf::getAsAttrConstraint() const {
-  assert(isAttrMatcher() && "the DAG leaf must be attribute");
-  return AttrConstraint(cast<llvm::DefInit>(def)->getDef());
+tblgen::Constraint tblgen::DagLeaf::getAsConstraint() const {
+  assert((isOperandMatcher() || isAttrMatcher()) &&
+         "the DAG leaf must be operand or attribute");
+  return Constraint(cast<llvm::DefInit>(def)->getDef());
 }
 
 tblgen::ConstantAttr tblgen::DagLeaf::getAsConstantAttr() const {
@@ -74,12 +71,7 @@ tblgen::ConstantAttr tblgen::DagLeaf::getAsConstantAttr() const {
 }
 
 std::string tblgen::DagLeaf::getConditionTemplate() const {
-  assert((isOperandMatcher() || isAttrMatcher()) &&
-         "the DAG leaf must be operand/attribute matcher");
-  if (isOperandMatcher()) {
-    return getAsTypeConstraint().getConditionTemplate();
-  }
-  return getAsAttrConstraint().getConditionTemplate();
+  return getAsConstraint().getConditionTemplate();
 }
 
 std::string tblgen::DagLeaf::getTransformationTemplate() const {
@@ -193,72 +185,22 @@ llvm::StringRef tblgen::DagNode::getNativeCodeBuilder() const {
   return dagOpDef->getValueAsString("function");
 }
 
-// Returns whether this is a type constraint.
-bool tblgen::PatternConstraint::isTypeConstraint() const {
-  if (!node)
-    return false;
-  auto op = node->getOperator();
-  if (!op || !isa<llvm::DefInit>(op))
-    return false;
-  // Operand matchers specify a type constraint.
-  return cast<llvm::DefInit>(op)->getDef()->isSubClassOf("TypeConstraint");
-}
-
-// Returns this constraint as a TypeConstraint. Asserts if fails.
-tblgen::TypeConstraint tblgen::PatternConstraint::getAsTypeConstraint() const {
-  assert(isTypeConstraint());
-  // Constraint specify a type constraint.
-  return TypeConstraint(*cast<llvm::DefInit>(node->getOperator())->getDef());
-}
-
-static std::string toStringRef(const llvm::StringInit *si) {
-  return si->getAsUnquotedString();
-}
-
-tblgen::PatternConstraint::const_name_iterator
-tblgen::PatternConstraint::name_begin() const {
-  return const_name_iterator(node->getArgNames().begin(), &toStringRef);
-}
-tblgen::PatternConstraint::const_name_iterator
-tblgen::PatternConstraint::name_end() const {
-  return const_name_iterator(node->getArgNames().end(), &toStringRef);
-}
-
-// Returns whether this is a native pattern constraint.
-bool tblgen::PatternConstraint::isNativeConstraint() const {
-  if (!node)
-    return false;
-  auto op = node->getOperator();
-  if (!op || !isa<llvm::DefInit>(op))
-    return false;
-  // Operand matchers specify a type constraint.
-  return cast<llvm::DefInit>(op)->getDef()->isSubClassOf("mPat");
-}
-
-// Returns the C++ function invoked as part of native constraint.
-llvm::StringRef tblgen::PatternConstraint::getNativeConstraintFunction() const {
-  assert(isNativeConstraint());
-  return cast<llvm::DefInit>(node->getOperator())
-      ->getDef()
-      ->getValueAsString("function");
-}
-
 tblgen::Pattern::Pattern(const llvm::Record *def, RecordOperatorMap *mapper)
     : def(*def), recordOpMap(mapper) {
   getSourcePattern().collectBoundArguments(this);
 }
 
 tblgen::DagNode tblgen::Pattern::getSourcePattern() const {
-  return tblgen::DagNode(def.getValueAsDag("patternToMatch"));
+  return tblgen::DagNode(def.getValueAsDag("sourcePattern"));
 }
 
 unsigned tblgen::Pattern::getNumResults() const {
-  auto *results = def.getValueAsListInit("resultOps");
+  auto *results = def.getValueAsListInit("resultPatterns");
   return results->size();
 }
 
 tblgen::DagNode tblgen::Pattern::getResultPattern(unsigned index) const {
-  auto *results = def.getValueAsListInit("resultOps");
+  auto *results = def.getValueAsListInit("resultPatterns");
   return tblgen::DagNode(cast<llvm::DagInit>(results->getElement(index)));
 }
 
@@ -294,13 +236,24 @@ tblgen::Operator &tblgen::Pattern::getDialectOp(DagNode node) {
   return node.getDialectOp(recordOpMap);
 }
 
-std::vector<tblgen::PatternConstraint> tblgen::Pattern::getConstraints() const {
+std::vector<tblgen::AppliedConstraint> tblgen::Pattern::getConstraints() const {
   auto *listInit = def.getValueAsListInit("constraints");
-  std::vector<tblgen::PatternConstraint> ret;
+  std::vector<tblgen::AppliedConstraint> ret;
   ret.reserve(listInit->size());
+
   for (auto it : *listInit) {
-    auto *dagInit = cast<llvm::DagInit>(it);
-    ret.emplace_back(dagInit);
+    auto *dagInit = dyn_cast<llvm::DagInit>(it);
+    if (!dagInit)
+      PrintFatalError(def.getLoc(), "all elemements in Pattern multi-entity "
+                                    "constraints should be DAG nodes");
+
+    std::vector<std::string> entities;
+    entities.reserve(dagInit->arg_size());
+    for (auto *argName : dagInit->getArgNames())
+      entities.push_back(argName->getValue());
+
+    ret.emplace_back(cast<llvm::DefInit>(dagInit->getOperator())->getDef(),
+                     std::move(entities));
   }
   return ret;
 }

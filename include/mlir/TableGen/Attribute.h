@@ -24,7 +24,7 @@
 #define MLIR_TABLEGEN_ATTRIBUTE_H_
 
 #include "mlir/Support/LLVM.h"
-#include "mlir/TableGen/Predicate.h"
+#include "mlir/TableGen/Constraint.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {
@@ -35,29 +35,13 @@ class Record;
 namespace mlir {
 namespace tblgen {
 
-// Wrapper class with helper methods for accessing Attribute constraints defined
+// Wrapper class with helper methods for accessing attribute constraints defined
 // in TableGen.
-class AttrConstraint {
+class AttrConstraint : public Constraint {
 public:
   explicit AttrConstraint(const llvm::Record *record);
-  explicit AttrConstraint(const llvm::DefInit *init);
 
-  // Returns the predicate that can be used to check if a attribute satisfies
-  // this attribute constraint.
-  Pred getPredicate() const;
-
-  // Returns the condition template that can be used to check if a attribute
-  // satisfies this attribute constraint.  The template may contain "{0}" that
-  // must be substituted with an expression returning an mlir::Attribute.
-  std::string getConditionTemplate() const;
-
-  // Returns the user-readable description of the constraint. If the description
-  // is not provided, returns the TableGen def name.
-  StringRef getDescription() const;
-
-protected:
-  // The TableGen definition of this attribute.
-  const llvm::Record *def;
+  static bool classof(const Constraint *c) { return c->getKind() == CK_Attr; }
 };
 
 // Wrapper class providing helper methods for accessing MLIR Attribute defined

@@ -66,7 +66,7 @@ int tblgen::Operator::getNumResults() const {
 tblgen::TypeConstraint
 tblgen::Operator::getResultTypeConstraint(int index) const {
   DagInit *results = def.getValueAsDag("results");
-  return TypeConstraint(*cast<DefInit>(results->getArg(index)));
+  return TypeConstraint(cast<DefInit>(results->getArg(index)));
 }
 
 StringRef tblgen::Operator::getResultName(int index) const {
@@ -167,7 +167,7 @@ void tblgen::Operator::populateOpStructure() {
 
     if (argDef->isSubClassOf(typeConstraintClass)) {
       operands.push_back(
-          NamedTypeConstraint{givenName, TypeConstraint(*argDefInit)});
+          NamedTypeConstraint{givenName, TypeConstraint(argDefInit)});
       arguments.emplace_back(&operands.back());
     } else if (argDef->isSubClassOf(attrClass)) {
       if (givenName.empty())
@@ -225,7 +225,7 @@ void tblgen::Operator::populateOpStructure() {
       PrintFatalError(def.getLoc(),
                       Twine("undefined type for result #") + Twine(i));
     }
-    results.push_back({name, TypeConstraint(*resultDef)});
+    results.push_back({name, TypeConstraint(resultDef)});
   }
 
   // Verify that only the last result can be variadic.

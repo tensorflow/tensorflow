@@ -37,34 +37,9 @@ static StringRef getValueAsString(const llvm::Init *init) {
 }
 
 tblgen::AttrConstraint::AttrConstraint(const llvm::Record *record)
-    : def(record) {
+    : Constraint(Constraint::CK_Attr, record) {
   assert(def->isSubClassOf("AttrConstraint") &&
          "must be subclass of TableGen 'AttrConstraint' class");
-}
-
-tblgen::AttrConstraint::AttrConstraint(const llvm::DefInit *init)
-    : AttrConstraint(init->getDef()) {}
-
-tblgen::Pred tblgen::AttrConstraint::getPredicate() const {
-  auto *val = def->getValue("predicate");
-  // If no predicate is specified, then return the null predicate (which
-  // corresponds to true).
-  if (!val)
-    return Pred();
-
-  const auto *pred = dyn_cast<llvm::DefInit>(val->getValue());
-  return Pred(pred);
-}
-
-std::string tblgen::AttrConstraint::getConditionTemplate() const {
-  return getPredicate().getCondition();
-}
-
-StringRef tblgen::AttrConstraint::getDescription() const {
-  auto doc = def->getValueAsString("description");
-  if (doc.empty())
-    return def->getName();
-  return doc;
 }
 
 tblgen::Attribute::Attribute(const llvm::Record *record)
@@ -74,7 +49,7 @@ tblgen::Attribute::Attribute(const llvm::Record *record)
 }
 
 tblgen::Attribute::Attribute(const llvm::DefInit *init)
-    : AttrConstraint(init->getDef()) {}
+    : Attribute(init->getDef()) {}
 
 bool tblgen::Attribute::isDerivedAttr() const {
   return def->isSubClassOf("DerivedAttr");

@@ -24,19 +24,32 @@
 #define OP_BASE
 
 //===----------------------------------------------------------------------===//
-// Predicates.
+// Predicate definitions
 //===----------------------------------------------------------------------===//
 
-// A logical predicate.
+// Base class for logical predicates.
+//
+// Predicates are used to compose constraints (see next section for details).
+// There are two categories of predicates:
+//
+// 1. CPred: the primitive leaf predicate.
+// 2. Compound predicate: a predicate composed from child predicates using
+//    predicate combiners ("conjunction", "disjunction", "negation" or
+//    "substitution").
 class Pred;
 
-// Logical predicate wrapping a C expression.
+// A logical predicate wrapping any C expression.
+//
+// This is the basis for composing more complex predicates. It is the "atom"
+// predicate from the perspective of TableGen and the "interface" between
+// TableGen and C++. What is inside is already C++ code, which will be treated
+// as opaque strings with special placeholders to be substituted.
 class CPred<code pred> : Pred {
-  code predCall = "(" # pred # ")";
+  code predExpr = "(" # pred # ")";
 }
 
-// Kinds of combined logical predicates.  These must closesly match the
-// predicates implemented by the C++ backend (tblgen::PredCombinerKind).
+// Kinds of predicate combiners.  These must closesly match the predicates
+// implemented by the C++ backend (tblgen::PredCombinerKind).
 class PredCombinerKind;
 def PredCombinerAnd : PredCombinerKind;
 def PredCombinerOr : PredCombinerKind;
@@ -50,6 +63,8 @@ class CombinedPred<PredCombinerKind k, list<Pred> c> : Pred {
   list<Pred> children = c;
 }
 
+// Predicate combiners
+
 // A predicate that holds if all of its children hold.  Always holds for zero
 // children.
 class AllOf<list<Pred> children> : CombinedPred<PredCombinerAnd, children>;
@@ -62,9 +77,11 @@ class AnyOf<list<Pred> children> : CombinedPred<PredCombinerOr, children>;
 class Neg<Pred child> : CombinedPred<PredCombinerNot, [child]>;
 
 // A predicate that substitutes "pat" with "repl" in predicate calls of the
-// leaves of the predicate tree (i.e., not CombinedPredicates).  This is plain
-// string substitution without regular expressions or captures, new predicates
-// with more complex logical can be introduced should the need arise.
+// leaves of the predicate tree (i.e., not CombinedPred).
+//
+// This is plain string substitution without regular expressions or captures.
+// New predicates with more complex logical can be introduced should the need
+// arise.
 class SubstLeaves<string pat, string repl, Pred child>
     : CombinedPred<PredCombinerSubstLeaves, [child]> {
   string pattern = pat;
@@ -72,7 +89,61 @@ class SubstLeaves<string pat, string repl, Pred child>
 }
 
 //===----------------------------------------------------------------------===//
-// Type predicates.  ({0} is replaced by an instance of mlir::Type)
+// Constraint definitions
+//===----------------------------------------------------------------------===//
+
+// Base class for named constraints.
+//
+// An op's operands/attributes/results can have various requirements, e.g.,
+// having certain types, having values inside a certain range, and so on.
+// Besides, for a graph rewrite rule, the source pattern used to match against
+// the existing graph has conditions, like the op's operand must be of a more
+// constrained subtype, the attribute must have a certain value, and so on.
+//
+// These requirements and conditions are modeled using this class. Records of
+// this class are used to generate verification code in op verifier, and
+// matching code in pattern matcher.
+//
+// Constraints are predicates with descriptive names, to facilitate inspection,
+// provide nice error messages, etc.
+class Constraint<Pred pred, string desc = ""> {
+  // The predicates that this constraint requires.
+  // Format: {0} will be expanded to the op operand/result's type or attribute.
+  Pred predicate = pred;
+  // User-readable description used in error reporting messages. If empty, a
+  // generic message will be used.
+  string description = desc;
+}
+
+// Subclasses used to differentiate different constraint kinds. These are used
+// as markers for the TableGen backend to handle different constraint kinds
+// differently if needed. Constraints not deriving from the following subclasses
+// are considered as uncategorized constraints.
+
+// Subclass for constraints on a type.
+class TypeConstraint<Pred predicate, string description = ""> :
+    Constraint<predicate, description>;
+
+// Subclass for constraints on an attribute.
+class AttrConstraint<Pred predicate, string description = ""> :
+    Constraint<predicate, description>;
+
+// How to use these constraint categories:
+//
+// * Use TypeConstraint to specify
+//   * Constraints on an op's operand/result definition
+//   * Further constraints to match an op's operand/result in source pattern
+//
+// * Use Attr (a subclass for AttrConstraint) for
+//   * Constraints on an op's attribute definition
+// * Use AttrConstraint to specify
+//   * Further constraints to match an op's attribute in source pattern
+//
+// * Use uncategorized constraint to specify
+//   * Multi-entity constraints in rewrite rules
+
+//===----------------------------------------------------------------------===//
+// Common predicates
 //===----------------------------------------------------------------------===//
 
 // Whether a type is a VectorType.
@@ -89,23 +160,12 @@ def IsStaticShapeTensorTypePred :
   CPred<"{0}.cast<TensorType>().hasStaticShape()">;
 
 //===----------------------------------------------------------------------===//
-// Type constraints and types.
+// Type definitions
 //===----------------------------------------------------------------------===//
 
-// A constraint on types.  This can be used to check the validity of
-// instruction arguments.
-class TypeConstraint<Pred condition, string descr> {
-  // The predicates that this type satisfies.
-  // Format: {0} will be expanded to the type.
-  Pred predicate = condition;
-  // User-readable description used, e.g., for error reporting.  If empty,
-  // a generic message will be used instead.
-  string description = descr;
-}
-
 // A type, carries type constraints.
-class Type<Pred condition, string descr = "">
-    : TypeConstraint<condition, descr>;
+class Type<Pred condition, string descr = ""> :
+    TypeConstraint<condition, descr>;
 
 // A variadic type constraint. It expands to zero or more of the base type. This
 // class is used for supporting variadic operands/results. An op can declare no
@@ -261,16 +321,6 @@ def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
 //===----------------------------------------------------------------------===//
 // Attribute definitions
 //===----------------------------------------------------------------------===//
-
-// Attribute constraint. It can be used to check the validity of attributes.
-class AttrConstraint<Pred condition, string descr> {
-  // The predicates that this attribute satisfies.
-  // Format: {0} will be expanded to the attribute.
-  Pred predicate = condition;
-  // User-readable description used, e.g., for error reporting.
-  // If empty, a generic message will be used instead.
-  string description = descr;
-}
 
 // Base class for all attributes.
 class Attr<Pred condition, string descr = ""> :
@@ -448,7 +498,7 @@ class ConstantAttr<Attr attribute, string val> : AttrConstraint<
 class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 
 //===----------------------------------------------------------------------===//
-// Op Traits
+// OpTrait definitions
 //===----------------------------------------------------------------------===//
 
 // OpTrait represents a trait regarding an op.
@@ -484,7 +534,7 @@ def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
 def Terminator       : NativeOpTrait<"IsTerminator">;
 
 //===----------------------------------------------------------------------===//
-// Ops
+// Op definitions
 //===----------------------------------------------------------------------===//
 
 // Marker used to identify the argument list for an op.
@@ -626,14 +676,14 @@ class TCopVTEtIsSameAs<int i, int j> : AllOf<[
     CPred<"{0}.getOperand(" # i # ")->getType().cast<VectorOrTensorType>().getElementType() == {0}.getOperand(" # j # ")->getType().cast<VectorOrTensorType>().getElementType()">]>;
 
 //===----------------------------------------------------------------------===//
-// Patterns
+// Pattern definitions
 //===----------------------------------------------------------------------===//
 
-// Base class for op+ -> op+ rewrite patterns. These allow declaratively
-// specifying rewrite patterns.
+// Base class for op+ -> op+ rewrite rules. These allow declaratively
+// specifying rewrite rules.
 //
-// A rewrite pattern contains two components: a source pattern and one or more
-// result patterns. Each pattern is specified as a (recursive) DAG node (tree)
+// A rewrite rule contains two components: a source pattern and one or more
+// result rules. Each pattern is specified as a (recursive) DAG node (tree)
 // in the form of `(node arg0, arg1, ...)`.
 // The `node` are normally MLIR ops, but it can also be one of the directives
 // listed later in this section.
@@ -643,24 +693,17 @@ class TCopVTEtIsSameAs<int i, int j> : AllOf<[
 // with potential transformations (e.g., using tAttr, etc.). `arg*` can itself
 // be nested DAG node.
 class Pattern<dag source, list<dag> results, list<dag> preds = []> {
-  dag patternToMatch = source;
-  list<dag> resultOps = results;
+  dag sourcePattern = source;
+  list<dag> resultPatterns = results;
+  // Multi-entity constraints. Each constraint here involves multiple entities
+  // matched in source pattern and places further constraints on them as a
+  // whole.
   list<dag> constraints = preds;
 }
 
 // Form of a pattern which produces a single result.
 class Pat<dag pattern, dag result, list<dag> preds = []> :
   Pattern<pattern, [result], preds>;
-
-// Attribute matcher. This is the base class to specify a predicate
-// that has to match. Used on the input attributes of a rewrite rule.
-class mAttr<Pred pred> : AttrConstraint<pred, "">;
-
-// Combine a list of attribute matchers into an attribute matcher that holds if
-// any of the original matchers does.
-class mAttrAnyOf<list<AttrConstraint> attrs> :
-  mAttr<AnyOf<!foldl([]<Pred>, attrs, prev, attr,
-                       !listconcat(prev, [attr.predicate]))>>;
 
 // Attribute transformation. This is the base class to specify a transformation
 // of matched attributes. Used on the output attribute of a rewrite rule.
@@ -698,15 +741,9 @@ class cOp<string f> {
   string function = f;
 }
 
-// Pattern matching predicate specification to constrain when a pattern may be
-// used. For example,
-//   def : Pat<(... $l, (... $r)), (...), [(mPat<"foo"> $l, $r)];
-// will result in this pattern being considered only if `foo(l, r)` holds where
-// `foo` is a C++ function and `l` and `r` are the C++ bound variables of
-// $l and $r.
-class mPat<string f> {
-  string function = f;
-}
+//===----------------------------------------------------------------------===//
+// Common directives
+//===----------------------------------------------------------------------===//
 
 // Directive used in result pattern to indicate that no new result op are
 // generated, so to replace the matched DAG with an existing SSA value.
