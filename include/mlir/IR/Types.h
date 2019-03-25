@@ -29,7 +29,7 @@ class FloatType;
 class IndexType;
 class IntegerType;
 class MLIRContext;
-struct TypeStorage;
+class TypeStorage;
 
 namespace detail {
 struct FunctionTypeStorage;

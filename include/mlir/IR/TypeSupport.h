@@ -51,7 +51,7 @@ class TypeUniquer;
 } // end namespace detail
 
 /// Base storage class appearing in a Type.
-struct TypeStorage {
+class TypeStorage {
   friend detail::TypeUniquer;
 
 protected:
