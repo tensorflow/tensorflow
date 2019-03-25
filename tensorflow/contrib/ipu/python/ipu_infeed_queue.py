@@ -159,7 +159,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     return self._initializer
 
   def get_next(self):
-    """Deprecated function."""
-    raise ValueError("""Deprecated behaviour - the IPUInfeedQueue is now \
-automatically dequeued by the loop.""")
+    """Obsolete function."""
+    raise ValueError("""`get_next()` is now obsolete as the IPUInfeedQueue is \
+now automatically dequeued by the loop.""")
 
