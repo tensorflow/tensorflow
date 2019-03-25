@@ -509,28 +509,78 @@ TEST_F(ModelPrunerTest, PruningPerservesCrossDeviceIdentity) {
 
 TEST_F(ModelPrunerTest, PruneNoOpsWithoutInputs) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output c = ops::Const(s.WithOpName("c"), 0.0f, {10, 10});
-  Output c2 = ops::Const(s.WithOpName("c2"), 0.0f, {20, 10});
-
+  Output c1 = ops::Const(s.WithOpName("c1"), 0.0f, {1, 1});
+  Output id1 = ops::Identity(s.WithOpName("id1"), c1);
   GrapplerItem item;
-  item.fetch = {"c"};
+  item.fetch = {"id1"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  // Add an explicit no-op node without inputs. It should be pruned even thought
+  // Add an explicit no-op node without inputs. It should be pruned even though
   // it has a path to the fetch node.
   NodeDef* no_op = item.graph.add_node();
-  no_op->set_name("no_op");
+  no_op->set_name("no_op1");
   no_op->set_op("NoOp");
-  item.graph.mutable_node(0)->add_input("^no_op");
-  item.graph.mutable_node(0)->add_input("^c2");
+  // Add an explicit no-op node with a control input. It should not be pruned.
+  no_op = item.graph.add_node();
+  no_op->set_name("no_op2");
+  no_op->set_op("NoOp");
+  no_op->add_input("^c1");
+
+  // Add NoOps as control inputs to fetch node.
+  item.graph.mutable_node(1)->add_input("^no_op1");
+  item.graph.mutable_node(1)->add_input("^no_op2");
 
   ModelPruner pruner;
   GraphDef output;
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(output.node_size(), 1);
-  EXPECT_EQ(output.node(0).name(), "c");
-  EXPECT_EQ(output.node(0).input_size(), 0);
+  ASSERT_EQ(output.node_size(), 3);
+  EXPECT_EQ(output.node(0).name(), "c1");
+
+  EXPECT_EQ(output.node(1).name(), "no_op2");
+  ASSERT_EQ(output.node(1).input_size(), 1);
+  EXPECT_EQ(output.node(1).input(0), "^c1");
+
+  EXPECT_EQ(output.node(2).name(), "id1");
+  ASSERT_EQ(output.node(2).input_size(), 2);
+  EXPECT_EQ(output.node(2).input(0), "c1");
+  EXPECT_EQ(output.node(2).input(1), "^no_op2");
+}
+
+TEST_F(ModelPrunerTest, PruneConstantsWithoutInputsAndOutputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  // c0 has an non-control output => will NOT be pruned.
+  Output c0 = ops::Const(s.WithOpName("c0"), 0.0f, {1, 1});
+  // c1 has neither inputs nor outputs => will be pruned.
+  Output c1 = ops::Const(s.WithOpName("c1"), 1.0f, {1, 1});
+  // c2 has a control input and a control output  => will NOT be pruned.
+  Output c2 = ops::Const(s.WithOpName("c2").WithControlDependencies({c0}), 2.0f,
+                         {1, 1});
+  // c3 has no inputs and one control output  => will be pruned.
+  Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {1, 1});
+  Output id1 = ops::Identity(
+      s.WithOpName("id1").WithControlDependencies({c2}).WithControlDependencies(
+          {c3}),
+      c0);
+  GrapplerItem item;
+  item.fetch = {"id1"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  ModelPruner pruner;
+  GraphDef output;
+  Status status = pruner.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  ASSERT_EQ(output.node_size(), 3);
+  EXPECT_EQ(output.node(0).name(), "c0");
+
+  EXPECT_EQ(output.node(1).name(), "c2");
+  ASSERT_EQ(output.node(1).input_size(), 1);
+  EXPECT_EQ(output.node(1).input(0), "^c0");
+
+  EXPECT_EQ(output.node(2).name(), "id1");
+  ASSERT_EQ(output.node(2).input_size(), 2);
+  EXPECT_EQ(output.node(2).input(0), "c0");
+  EXPECT_EQ(output.node(2).input(1), "^c2");
 }
 
 }  // namespace
