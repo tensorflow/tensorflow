@@ -720,7 +720,7 @@ void CmpIOp::print(OpAsmPrinter *p) {
   assert(predicateValue >= static_cast<int>(CmpIPredicate::FirstValidValue) &&
          predicateValue < static_cast<int>(CmpIPredicate::NumPredicates) &&
          "unknown predicate index");
-  Builder b(getInstruction()->getContext());
+  Builder b(getContext());
   auto predicateStringAttr =
       b.getStringAttr(getPredicateNames()[predicateValue]);
   p->printAttribute(predicateStringAttr);

@@ -454,7 +454,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
          "Shape and ratio not of the same size");
   unsigned dim = 0;
   SmallVector<AffineExpr, 4> keep;
-  MLIRContext *context = transfer->getInstruction()->getContext();
+  MLIRContext *context = transfer.getContext();
   functional::zipApply(
       [&dim, &keep, context](int64_t shape, int64_t ratio) {
         assert(shape >= ratio && "shape dim must be greater than ratio dim");

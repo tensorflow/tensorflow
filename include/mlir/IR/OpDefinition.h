@@ -94,7 +94,7 @@ public:
     state->setAttr(name, value);
   }
   void setAttr(StringRef name, Attribute value) {
-    setAttr(Identifier::get(name, getInstruction()->getContext()), value);
+    setAttr(Identifier::get(name, getContext()), value);
   }
 
   /// Return true if there are no users of any results of this operation.

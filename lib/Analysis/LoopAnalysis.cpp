@@ -244,7 +244,7 @@ static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
   auto layoutMap = memRefType.getAffineMaps();
   // TODO(ntv): remove dependence on Builder once we support non-identity
   // layout map.
-  Builder b(memoryOp->getInstruction()->getContext());
+  Builder b(memoryOp.getContext());
   if (layoutMap.size() >= 2 ||
       (layoutMap.size() == 1 &&
        !(layoutMap[0] ==

@@ -456,14 +456,12 @@ void OpEmitter::genAttrGetters() {
       // Returns the default value if not set.
       // TODO: this is inefficient, we are recreating the attribute for every
       // call. This should be set instead.
-      method.body()
-          << "    if (!attr)\n"
-             "      return "
-          << formatv(
-                 attr.getConvertFromStorageCall(),
-                 formatv(attr.getDefaultValueTemplate(),
-                         "mlir::Builder(this->getInstruction()->getContext())"))
-          << ";\n";
+      method.body() << "    if (!attr)\n"
+                       "      return "
+                    << formatv(attr.getConvertFromStorageCall(),
+                               formatv(attr.getDefaultValueTemplate(),
+                                       "mlir::Builder(this->getContext())"))
+                    << ";\n";
     }
     method.body() << "  return "
                   << formatv(attr.getConvertFromStorageCall(), "attr") << ";\n";

@@ -1063,7 +1063,7 @@ Block *AffineForOp::createBody() {
   // Create a new block for the body, and add an argument for the induction
   // variable.
   Block *body = new Block();
-  body->addArgument(IndexType::get(getInstruction()->getContext()));
+  body->addArgument(IndexType::get(getContext()));
   bodyRegion.push_back(body);
   return body;
 }
@@ -1139,13 +1139,11 @@ int64_t AffineForOp::getConstantUpperBound() {
 }
 
 void AffineForOp::setConstantLowerBound(int64_t value) {
-  setLowerBound(
-      {}, AffineMap::getConstantMap(value, getInstruction()->getContext()));
+  setLowerBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
 void AffineForOp::setConstantUpperBound(int64_t value) {
-  setUpperBound(
-      {}, AffineMap::getConstantMap(value, getInstruction()->getContext()));
+  setUpperBound({}, AffineMap::getConstantMap(value, getContext()));
 }
 
 AffineForOp::operand_range AffineForOp::getLowerBoundOperands() {
