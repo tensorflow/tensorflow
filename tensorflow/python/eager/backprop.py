@@ -916,12 +916,14 @@ class GradientTape(object):
       ValueError: if the target is a variable or if unconnected gradients is
        called with an unknown value.
     """
+    if is_floating(self._tape) is False:
+      raise ValueError("GradientTape.gradient can only be called when "
+                       "datatype is float.")
+    
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
                          "non-persistent tapes.")
-    if is_floating(self._tape) is False:
-      raise ValueError("GradientTape.gradient can only be called when "
-                       "datatype is float".)
+    
     if self._recording:
       if not self._persistent:
         self._pop_tape()
@@ -929,11 +931,10 @@ class GradientTape(object):
         logging.log_first_n(logging.WARN,
                             "Calling GradientTape.gradient on a persistent "
                             "tape inside it's context is significantly less "
-                            "efficient than calling it outside the context (it "
-                            "causes the gradient ops to be recorded on the "
-                            "tape, leading to increased CPU and memory usage). "
+                            "efficient than calling it outside the context (it"                            "causes the gradient ops to be recorded on the "
+                            "tape, leading to increased CPU and memory usage)."
                             "Only call GradientTape.gradient inside the "
-                            "context if you actually want to trace the "
+                            "context if you actually want to trace the
                             "gradient in order to compute higher order "
                             "derrivatives.", 1)
 
