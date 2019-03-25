@@ -851,9 +851,9 @@ void OpEmitter::genVerifier() {
 
   for (auto &trait : op.getTraits()) {
     if (auto t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
-      body << "  if (!"
+      body << "  if (!("
            << formatv(t->getPredTemplate().c_str(), "(*this->getInstruction())")
-           << ")\n";
+           << "))\n";
       body << "    return emitOpError(\"failed to verify that "
            << t->getDescription() << "\");\n";
     }
