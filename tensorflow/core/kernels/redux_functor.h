@@ -36,18 +36,21 @@ struct ReduceOuterDimensions {
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
-                  const Tensor& input, Tensor* output,
-                  const int num_reduce_dims = 1) const {
+                  const Tensor& input, Tensor* output) const {
     // Compute inner and outer dim after reshaping into 2d tensor.
+    const int num_output_dims = output->dims();
+    auto output_dims = output->template flat<T>().dimensions();
+
     int64 inner_dim = 1, outer_dim = 1;
-    for (int i = 0; i < num_dims - num_reduce_dims; ++i)
+    for (int i = 0; i < num_dims - num_output_dims; ++i)
       outer_dim *= input_dims[i];
-    for (int i = num_dims - num_reduce_dims; i < num_dims; ++i)
+    for (int i = num_dims - num_output_dims; i < num_dims; ++i)
       inner_dim *= input_dims[i];
 
     if (1 == outer_dim) {
       // Nothing to do but passing input to output.
-      *output = input;
+      output->template flat<T>() =
+          input.template flat<T>().reshape(output_dims);
       return;
     }
 
@@ -108,7 +111,8 @@ struct ReduceOuterDimensions {
       device.parallelFor(num_blocks, cost, compute);
 
       // Write final result to the output.
-      output->template flat<T>() = buffer.template cast<T>();
+      output->template flat<T>() =
+          buffer.template cast<T>().reshape(output_dims);
     } else {
       // Compute block size along the outer dimension for efficiency.
       const int64 parallel_cell_size = inner_dim;
@@ -178,7 +182,7 @@ struct ReduceOuterDimensions {
                                           const decltype(buf)>(buf0, buf);
       }
       // Write final result to the output.
-      output->template flat<T>() = buf0.template cast<T>();
+      output->template flat<T>() = buf0.template cast<T>().reshape(output_dims);
     }
   }
 };
@@ -193,19 +197,23 @@ struct ReduceMiddleDimensions {
   template <int num_dims>
   void operator()(const CPUDevice& device,
                   const Eigen::DSizes<Eigen::Index, num_dims>& input_dims,
-                  const Tensor& input, Tensor* output, const int axis_begin_dim,
-                  const int axis_num_dim = 1) const {
+                  const Tensor& input, Tensor* output,
+                  const int axis_begin_dim) const {
     // Compute dims after reshaping into 3d tensor.
+    const int num_output_dims = output->dims();
+    auto output_dims = output->template flat<T>().dimensions();
+
     int64 inner_dim = 1, middle_dim = 1, outer_dim = 1;
     for (int i = 0; i < axis_begin_dim; ++i) outer_dim *= input_dims[i];
-    for (int i = axis_begin_dim; i < axis_begin_dim + axis_num_dim; ++i)
+    for (int i = axis_begin_dim; i < axis_begin_dim + num_output_dims; ++i)
       middle_dim *= input_dims[i];
-    for (int i = axis_begin_dim + axis_num_dim; i < num_dims; ++i)
+    for (int i = axis_begin_dim + num_output_dims; i < num_dims; ++i)
       inner_dim *= input_dims[i];
 
     if ((1 == inner_dim * outer_dim)) {
       // Nothing to do.
-      *output = input;
+      output->template flat<T>() =
+          input.template flat<T>().reshape(output_dims);
       return;
     } else if (1 == inner_dim) {
       // Equivalent to ReduceOuterDimensions.
@@ -307,7 +315,7 @@ struct ReduceMiddleDimensions {
     }
 
     // Write final result to the output.
-    output->template flat<T>() = buf0.template cast<T>();
+    output->template flat<T>() = buf0.template cast<T>().reshape(output_dims);
   }
 };
 
