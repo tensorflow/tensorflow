@@ -145,19 +145,49 @@ def set_tensor_shapes(tensors, shapes):
           raise ValueError(message)
 
 
+def get_grappler_config(enable_layout_optimizer=False, function_only=False):
+  """Creates a tf.ConfigProto for configuring Grappler.
+
+  Args:
+    enable_layout_optimizer: Bool indicating whether to run the layout
+      optimizer. This turns NHCW to NCHW. This provides performance
+      optimizations when Flex mode is enabled. (default False)
+    function_only: Bool indiciating whether to only run the function optimizer.
+      This inlines functions and is required for freezing models with functions.
+      (default False)
+
+  Returns:
+    tf.ConfigProto.
+  """
+  config = _config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  if function_only:
+    rewrite_options.optimizers.append("function")
+  else:
+    if enable_layout_optimizer:
+      rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
+    else:
+      rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.OFF
+
+    # Avoid remapping as it creates ops like _FusedConv2D, which are not
+    # supported by TFLite.
+    rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
+  return config
+
+
 def run_graph_optimizations(graph_def,
                             input_arrays,
                             output_arrays,
-                            graph=None,
-                            config=None):
+                            config,
+                            graph=None):
   """Apply standard TensorFlow optimizations to the graph_def.
 
   Args:
     graph_def: Frozen GraphDef to be optimized.
     input_arrays: List of arrays that are considered inputs of the graph.
     output_arrays: List of arrays that are considered outputs of the graph.
+    config: tf.ConfigProto.
     graph: TensorFlow Graph. Required when Eager mode is enabled. (default None)
-    config: tf.ConfigProto. (default None)
 
   Returns:
     A new, optimized GraphDef.
@@ -171,13 +201,6 @@ def run_graph_optimizations(graph_def,
     fetch_collection.node_list.value.append(array.name)
   meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
 
-  if config is None:
-    config = _config_pb2.ConfigProto()
-    rewrite_options = config.graph_options.rewrite_options
-    rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
-    # Avoid remapping as it creates ops like _FusedConv2D, which are not
-    # supported by TF Lite.
-    rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
@@ -197,15 +220,9 @@ def freeze_graph(sess, input_tensors, output_tensors):
     Frozen GraphDef.
   """
   # Runs a Grappler pass in order to inline any functions in the graph.
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.optimizers.append("function")
+  config = get_grappler_config(function_only=True)
   graph_def = run_graph_optimizations(
-      sess.graph_def,
-      input_tensors,
-      output_tensors,
-      graph=sess.graph,
-      config=config)
+      sess.graph_def, input_tensors, output_tensors, config, graph=sess.graph)
 
   if not is_frozen_graph(sess):
     output_arrays = [get_tensor_name(tensor) for tensor in output_tensors]
