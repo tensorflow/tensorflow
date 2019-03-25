@@ -105,9 +105,9 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
     with ops.Graph().as_default() as g, ops.device('/job:worker/task:0'):
       const = constant_op.constant(17)
-    sess = session.Session(server1.target, config=config, graph=g)
-    output = self.evaluate(const)
-    self.assertEqual(17, output)
+    with session.Session(server1.target, config=config, graph=g):
+      output = self.evaluate(const)
+      self.assertEqual(17, output)
 
   def testCanonicalDeviceNames(self):
     server1 = server_lib.Server.create_local_server()
@@ -207,9 +207,9 @@ class SessionClusterSpecPropagationTest(test_util.TensorFlowTestCase):
 
       with ops.device('/job:worker/task:0/cpu:0'):
         sum3 = sum1 + sum2
-    sess = session.Session(server1.target, config=config, graph=g)
-    output = self.evaluate(sum3)
-    self.assertEqual(40, output)
+    with session.Session(server1.target, config=config, graph=g):
+      output = self.evaluate(sum3)
+      self.assertEqual(40, output)
 
   def testLegacyDeviceNames(self):
     server1 = server_lib.Server.create_local_server()
