@@ -215,6 +215,15 @@ limitations under the License.
   TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m) TF_CALL_complex64(m) \
       TF_CALL_complex128(m) TF_CALL_bool(m) TF_CALL_string(m)             \
           TF_CALL_QUANTIZED_TYPES(m)
+#if TF_WITH_GPU_ENABLED_INT_OPS
+#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(k) \
+  k
+#else
+#define TF_INCLUDE_IF_WITH_EXTRA_TYPES(k) // Disable if compile flag was not set
+#endif
+#define TF_IF_WITH_EXTRA_TYPES(x, y) \
+  TF_INCLUDE_IF_WITH_EXTRA_TYPES(y) \
+  x
 
 #ifdef TENSORFLOW_SYCL_NO_DOUBLE
 #define TF_CALL_SYCL_double(m)

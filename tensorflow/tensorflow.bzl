@@ -278,6 +278,11 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
     ]
     if android_optimization_level_override:
         android_copts.append(android_optimization_level_override)
+    int_gpu_flags=select({"//conditions:default": [],
+        "@local_config_cuda//cuda:gpu_int_ops": ([
+            "-DTF_WITH_GPU_ENABLED_INT_OPS=1",
+        ]),
+    })
     return (
         if_not_windows([
             "-DEIGEN_AVOID_STL_ARRAY",
@@ -287,6 +292,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
             "-ftemplate-depth=900",
         ]) +
         if_cuda(["-DGOOGLE_CUDA=1"]) +
+        if_cuda_is_configured(int_gpu_flags) +
         if_tensorrt(["-DGOOGLE_TENSORRT=1"]) +
         if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML"]) +
         if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) +

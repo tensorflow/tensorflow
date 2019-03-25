@@ -273,6 +273,9 @@ void BiasGradGPU<T>::DoColReduction(OpKernelContext* context, T* output,
   template struct BiasGradGPU<T>;
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS);
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(TF_CALL_uint32(DEFINE_GPU_SPECS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(TF_CALL_uint64(DEFINE_GPU_SPECS));
+TF_INCLUDE_IF_WITH_EXTRA_TYPES(TF_CALL_int32(DEFINE_GPU_SPECS));
 
 }  // end namespace tensorflow
 

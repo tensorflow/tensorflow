@@ -16,6 +16,13 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "gpu_int_ops",
+    values = {
+        "define": "using_gpu_int_ops=true",
+    },
+)
+
 # Equivalent to using_clang && -c opt.
 config_setting(
     name = "using_clang_opt",

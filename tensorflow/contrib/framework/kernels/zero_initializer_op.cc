@@ -74,13 +74,16 @@ namespace functor {
   void TensorSetZero<GPUDevice, T>::operator()(const GPUDevice& d,          \
                                                typename TTypes<T>::Flat t); \
   extern template struct TensorSetZero<GPUDevice, T>;
-
+#if TF_WITH_GPU_ENABLED_INT_OPS
+TF_CALL_REAL_NUMBER_TYPES(DECLARE_GPU_SPEC);
+#else
 TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
+#endif
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T);
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_IF_WITH_EXTRA_TYPES(TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS), TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS) );
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -152,7 +155,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_KERNELS);
                               .HostMemory("var"),            \
                           ZeroVarInitializer<GPUDevice, type>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
+TF_IF_WITH_EXTRA_TYPES(TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS),TF_CALL_INTEGRAL_TYPES(REGISTER_GPU_KERNELS));
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 

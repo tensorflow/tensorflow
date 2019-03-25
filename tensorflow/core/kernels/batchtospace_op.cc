@@ -280,7 +280,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
                               .HostMemory("crops"),        \
                           BatchToSpaceOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER);
+TF_IF_WITH_EXTRA_TYPES(TF_CALL_GPU_NUMBER_TYPES(REGISTER),TF_CALL_INTEGRAL_TYPES(REGISTER));
 #undef REGISTER
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
