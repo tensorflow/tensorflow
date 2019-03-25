@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import functools
+import inspect
 import os
 import pdb
 import sys
@@ -189,7 +190,8 @@ def _is_known_loaded_type(f, module_name, entity_name):
     # o = ClassType()
     # function(o.method)()
     return True
-  if tf_inspect.ismethod(f):
+  # Note: inspect is required here, to avoid unpacking tf.function decorators.
+  if inspect.ismethod(f):
     f = six.get_unbound_function(f)
     # The the unbound method if of this type. Example:
     #

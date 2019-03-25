@@ -10,6 +10,10 @@ import re
 
 import test_utils as tu
 
+from tensorflow.compiler.plugin.poplar.driver.config_pb2 import IpuOptions
+from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import errors
@@ -17,9 +21,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
 
 class IpuIpuModelTest(test_util.TensorFlowTestCase):
@@ -30,11 +31,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       pb = array_ops.placeholder(np.float32, [2, 2], name="b")
       output = pa + pb
 
-    opts = config_pb2.IPUOptions()
-    opts.ipu_model_config.enable_ipu_model = True
+    tu.configure_ipu_system()
 
-    with session_lib.Session(
-            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+    with session_lib.Session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       result = sess.run(output, fd)
       self.assertAllClose(result, [[1., 2.], [6., 8.]])
@@ -49,11 +48,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([output]):
         report = gen_ipu_ops.ipu_event_trace()
 
-    opts = config_pb2.IPUOptions()
-    opts.ipu_model_config.enable_ipu_model = True
+    tu.configure_ipu_system(False, False, False)
 
-    with session_lib.Session(
-            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+    with session_lib.Session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -71,21 +68,15 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([output]):
         report = gen_ipu_ops.ipu_event_trace()
 
-    opts = config_pb2.IPUOptions()
-    opts.ipu_model_config.enable_ipu_model = True
-    opts.profiling.enable_ipu_trace_events = True
-    opts.profiling.enable_compilation_trace = True
-    opts.profiling.enable_io_trace = False
-    opts.profiling.enable_execution_trace = True
+    tu.configure_ipu_system()
 
-    with session_lib.Session(
-            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+    with session_lib.Session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
       result, rep = sess.run([output, report], fd)
       self.assertAllClose(result, [[1., 2.], [6., 8.]])
-      self.assertTrue(len(rep) == 3)
+      self.assertEqual(len(rep), 3)
       evts = tu.extract_all_events(rep)
       self.assertEqual(evts[0].type, IpuTraceEvent.COMPILE_BEGIN)
       self.assertEqual(evts[1].type, IpuTraceEvent.COMPILE_END)
@@ -102,15 +93,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([out1, out2]):
         report = gen_ipu_ops.ipu_event_trace()
 
-    opts = config_pb2.IPUOptions()
-    opts.ipu_model_config.enable_ipu_model = True
-    opts.profiling.enable_ipu_trace_events = True
-    opts.profiling.enable_compilation_trace = True
-    opts.profiling.enable_io_trace = False
-    opts.profiling.enable_execution_trace = True
+    tu.configure_ipu_system()
 
-    with session_lib.Session(
-            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+    with session_lib.Session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -121,7 +106,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result, [[1., 0.], [-2., -2.]])
 
       # 2x compile_begin, 2x compile_end, 2x load engine
-      self.assertTrue(len(rep) == 6)
+      self.assertEqual(len(rep), 6)
 
   def testEngineCompilationOptions(self):
     with ops.device("/device:IPU:0"):
@@ -129,20 +114,12 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       pb = array_ops.placeholder(np.float32, [480], name="b")
       output = pa + pb
 
-    opts = config_pb2.IPUOptions()
-    opts.ipu_model_config.enable_ipu_model = True
-    opts.profiling.enable_ipu_trace_events = True
-    opts.profiling.enable_compilation_trace = True
-    opts.profiling.enable_io_trace = False
-    opts.profiling.enable_execution_trace = True
+    tu.configure_ipu_system(True, True, True,
+                            engine_opts={"some_option": "some_value"})
 
-    opt = opts.compilation_options.add()
-    opt.option = "some_option"
-    opt.value = "some_value"
 
     try:
-      with session_lib.Session(
-              config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+      with session_lib.Session() as sess:
         fd = {pa: np.zeros([480]), pb: np.zeros([480])}
         sess.run(output, fd)
 
@@ -159,6 +136,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
@@ -184,7 +163,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(compilation_trace=False) as sess:
+    tu.configure_ipu_system(compilation_trace=False)
+
+    with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -204,8 +185,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       sess.close()
 
-    with tu.ipu_session(
-            compilation_trace=False, report_every_nth_execution=2) as sess:
+    tu.configure_ipu_system(compilation_trace=False, report_every_nth_execution=2)
+
+    with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -225,8 +207,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       sess.close()
 
-    with tu.ipu_session(
-            compilation_trace=False, report_every_nth_execution=1) as sess:
+    tu.configure_ipu_system(compilation_trace=False, report_every_nth_execution=1)
+
+    with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -254,7 +237,9 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(text_report=False) as sess:
+    tu.configure_ipu_system(text_report=False)
+
+    with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 
@@ -267,32 +252,6 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       self.assertEqual(evts[1].compile_end.compilation_report.decode('utf-8')[0], '{')
       self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0], '{')
 
-  def testAttemptToProfileWithoutOptions(self):
-    with ops.device("/device:IPU:0"):
-      pa = array_ops.placeholder(np.float32, [480], name="a")
-      pb = array_ops.placeholder(np.float32, [480], name="b")
-      output = pa + pb
-
-    with ops.device('cpu'):
-      report = gen_ipu_ops.ipu_event_trace()
-
-    opts = config_pb2.IPUOptions()
-    opts.profiling.enable_ipu_trace_events = True
-    opts.profiling.enable_compilation_trace = True
-    opts.profiling.enable_io_trace = False
-    opts.profiling.enable_execution_trace = True
-
-    try:
-      with session_lib.Session(
-            config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
-        fd = {pa: np.zeros([480]), pb: np.zeros([480])}
-        sess.run(output, fd)
-
-        self.assertTrue(False)
-    except errors.InvalidArgumentError:
-      pass
-
-
   def testIpuEventsWithoutPoplarReporting(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [2, 2], name="a")
@@ -302,8 +261,10 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(enable_ipu_events=True, compilation_trace=False,
-                        io_trace=False, execution_trace=False) as sess:
+    tu.configure_ipu_system(enable_ipu_events=True, compilation_trace=False,
+                     io_trace=False, execution_trace=False)
+
+    with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
       sess.run(report, fd)
 

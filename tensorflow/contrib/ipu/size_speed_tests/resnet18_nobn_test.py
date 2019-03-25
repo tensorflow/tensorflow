@@ -122,7 +122,8 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
-    sess = sl.Session(config=config_pb2.ConfigProto(ipu_options=opts))
+    utils.configure_ipu_system(opts)
+    sess = sl.Session()
 
     sess.run(variables.global_variables_initializer())
     sess.run(report)
@@ -155,7 +156,9 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
-    sess = sl.Session(config=config_pb2.ConfigProto(ipu_options=opts))
+    utils.configure_ipu_system(opts)
+
+    sess = sl.Session()
 
     sess.run(variables.global_variables_initializer())
     sess.run(report)

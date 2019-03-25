@@ -2394,7 +2394,7 @@ class MeanTensor(Metric):
     elif values.shape != self._shape:
       raise ValueError('MeanTensor input values must always have the same '
                        'shape. Expected shape (set during the first call): {}. '
-                       'Got: {}'.format(self._shape, values.get_shape()))
+                       'Got: {}'.format(self._shape, values.shape))
 
     num_values = array_ops.ones_like(values)
     if sample_weight is not None:
@@ -2690,7 +2690,7 @@ class SumOverBatchSizeMetricWrapper(SumOverBatchSize):
 
 
 def accuracy(y_true, y_pred):
-  y_pred.get_shape().assert_is_compatible_with(y_true.get_shape())
+  y_pred.shape.assert_is_compatible_with(y_true.get_shape())
   if y_true.dtype != y_pred.dtype:
     y_pred = math_ops.cast(y_pred, y_true.dtype)
   return math_ops.cast(math_ops.equal(y_true, y_pred), K.floatx())
@@ -2713,8 +2713,8 @@ def categorical_accuracy(y_true, y_pred):
 
 @keras_export('keras.metrics.sparse_categorical_accuracy')
 def sparse_categorical_accuracy(y_true, y_pred):
-  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
-  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
+  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):
@@ -2737,8 +2737,8 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 @keras_export('keras.metrics.sparse_top_k_categorical_accuracy')
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  y_pred_rank = ops.convert_to_tensor(y_pred).get_shape().ndims
-  y_true_rank = ops.convert_to_tensor(y_true).get_shape().ndims
+  y_pred_rank = ops.convert_to_tensor(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor(y_true).shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None) and (len(
       K.int_shape(y_true)) == len(K.int_shape(y_pred))):

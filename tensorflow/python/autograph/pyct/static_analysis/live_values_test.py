@@ -41,7 +41,7 @@ class LiveValuesResolverTest(test.TestCase):
                          literals=None,
                          arg_types=None):
     literals = literals or {}
-    node, source, _ = parser.parse_entity(test_fn)
+    node, _, source = parser.parse_entity(test_fn, future_imports=())
     entity_info = transformer.EntityInfo(
         source_code=source,
         source_file=None,

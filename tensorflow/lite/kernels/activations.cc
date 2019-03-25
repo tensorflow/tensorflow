@@ -21,11 +21,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -688,7 +688,7 @@ void Softmax1DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
-  reference_integer_ops::Softmax(
+  optimized_integer_ops::Softmax(
       op_params, GetTensorShape({1, 1, 1, input_size}),
       GetTensorData<int8_t>(input), GetTensorShape({1, 1, 1, input_size}),
       GetTensorData<int8_t>(output));
@@ -702,7 +702,7 @@ void Softmax2DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
-  reference_integer_ops::Softmax(op_params,
+  optimized_integer_ops::Softmax(op_params,
                                  GetTensorShape({batch_size, 1, 1, input_size}),
                                  GetTensorData<int8_t>(input),
                                  GetTensorShape({batch_size, 1, 1, input_size}),
@@ -718,7 +718,7 @@ void Softmax3DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
-  reference_integer_ops::Softmax(
+  optimized_integer_ops::Softmax(
       op_params, GetTensorShape({batch_size, intermediate_size, 1, input_size}),
       GetTensorData<int8_t>(input),
       GetTensorShape({batch_size, intermediate_size, 1, input_size}),
@@ -731,7 +731,7 @@ void Softmax4DQuantizedInt8(const TfLiteTensor* input, TfLiteTensor* output,
   op_params.input_multiplier = data->input_multiplier;
   op_params.input_left_shift = data->input_left_shift;
   op_params.diff_min = data->diff_min;
-  reference_integer_ops::Softmax(
+  optimized_integer_ops::Softmax(
       op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
       GetTensorShape(output), GetTensorData<int8_t>(output));
 }

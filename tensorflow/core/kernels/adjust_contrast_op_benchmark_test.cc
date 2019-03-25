@@ -56,9 +56,9 @@ static Graph* BM_AdjustContrast(int batches, int width, int height) {
 // BM_AdjustContrast_cpu_1_299_299     179084     340186  2181  751.9M items/s
 // BM_AdjustContrast_gpu_32_299_299     85276     123665  4189  2.9G items/s
 BM_AdjustContrastDev(cpu, 1, 299, 299);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_AdjustContrastDev(gpu, 32, 299, 299);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 BM_AdjustContrastDev(sycl, 32, 299, 299);
 #endif  // TENSORFLOW_USE_SYCL

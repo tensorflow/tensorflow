@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
@@ -64,5 +65,33 @@ class IpuSummaryOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("IpuEventTrace").Device(DEVICE_CPU), IpuSummaryOp);
+
+class IpuConfigureHardwareOp : public OpKernel {
+ public:
+  explicit IpuConfigureHardwareOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("config", &config_));
+  }
+  ~IpuConfigureHardwareOp() override{};
+
+  void Compute(OpKernelContext* ctx) override {
+    auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+    OP_REQUIRES(ctx, platform.ok(), platform.status());
+
+    auto* p = static_cast<xp::PoplarPlatform*>(platform.ValueOrDie());
+
+    xla::IpuOptions options;
+    options.ParseFromString(config_);
+
+    OP_REQUIRES_OK(ctx, p->ConfigurePoplarDevices(options));
+  }
+
+ private:
+  std::string config_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(IpuConfigureHardwareOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("IpuConfigureHardware").Device(DEVICE_CPU),
+                        IpuConfigureHardwareOp);
 
 }  // namespace tensorflow

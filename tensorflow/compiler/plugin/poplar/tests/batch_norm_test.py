@@ -45,6 +45,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -78,6 +80,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -115,6 +119,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -150,6 +156,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
       result, _, _ = sess.run(normed, { x: np.zeros([4, 64, 64, 4]) })
@@ -172,6 +180,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -198,6 +208,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -222,6 +234,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(report)
@@ -248,6 +262,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(report)
 
@@ -273,6 +289,8 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
       loss = math_ops.reduce_sum(normed)
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(loss)
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())

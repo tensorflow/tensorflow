@@ -23,6 +23,8 @@ limitations under the License.
 #include <memory>
 #include <string>
 
+#include "tensorflow/compiler/plugin/poplar/driver/config.pb.h"
+
 #include "tensorflow/stream_executor/executor_cache.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/platform.h"
@@ -35,7 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace se = stream_executor;
 
@@ -81,7 +82,7 @@ class PoplarPlatform : public se::Platform {
 
   // Poplar specific interface
 
-  Status ConfigurePoplarDevice(int, const tensorflow::IPUOptions& opts);
+  Status ConfigurePoplarDevices(const IpuOptions& opts);
 
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 

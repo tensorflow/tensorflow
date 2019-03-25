@@ -48,7 +48,10 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
         y = convolutional.conv2d(x, 2, 1, use_bias=True,
                                  kernel_initializer=init_ops.ones_initializer())
       res = gen_array_ops.reshape(y, [32]) + z
-    with tu.ipu_session(True, True, True) as sess:
+
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       result = sess.run(res, {x: np.reshape(np.arange(32), [1,4,4,2]),
@@ -68,7 +71,10 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
         y = convolutional.conv2d(x, 2, 1, use_bias=True,
                                  kernel_initializer=init_ops.ones_initializer())
       res = array_ops.transpose(y, [1, 2, 3, 0]) + z
-    with tu.ipu_session(True, True, True) as sess:
+
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       result = sess.run(res, {x: np.reshape(np.arange(32), [1,4,4,2]),
@@ -88,7 +94,10 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
         y = convolutional.conv2d(x, 2, 1, use_bias=True,
                                  kernel_initializer=init_ops.ones_initializer())
       res = y + z * s
-    with tu.ipu_session(True, True, True) as sess:
+
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       result = sess.run(res, {x: np.reshape(np.arange(32), [1,4,4,2]),

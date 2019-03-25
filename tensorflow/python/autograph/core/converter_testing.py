@@ -122,7 +122,7 @@ class TestCase(test.TestCase):
   def prepare(self, test_fn, namespace, arg_types=None, recursive=True):
     namespace['ConversionOptions'] = converter.ConversionOptions
 
-    node, source, _ = parser.parse_entity(test_fn)
+    node, _, source = parser.parse_entity(test_fn, future_imports=())
     namer = naming.Namer(namespace)
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(recursive=recursive),

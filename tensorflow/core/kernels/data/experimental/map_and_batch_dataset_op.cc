@@ -86,8 +86,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     MapAndBatchIteratorFunction map_func;
     CapturedFunction* raw_captured_func = captured_func.get();
@@ -136,8 +137,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
 
     *output = new Dataset(ctx, input, func_, batch_size, num_parallel_calls,
                           drop_remainder, output_types_, output_shapes_,
-                          std::move(captured_func), &ctx->eigen_cpu_device(),
-                          std::move(map_func), preserve_cardinality_);
+                          std::move(captured_func), std::move(map_func),
+                          preserve_cardinality_);
   }
 
  private:
@@ -149,7 +150,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func,
-            const Eigen::ThreadPoolDevice* device,
             MapAndBatchIteratorFunction map_func, bool preserve_cardinality)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
@@ -160,7 +160,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           output_types_(output_types),
           output_shapes_(output_shapes),
           captured_func_(std::move(captured_func)),
-          device_(device),
           map_func_(std::move(map_func)),
           preserve_cardinality_(preserve_cardinality) {
       input_->Ref();
@@ -263,8 +262,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
             max_batch_results_(std::min(kMaxBatchResults,
                                         (params.dataset->num_parallel_calls_ +
                                          params.dataset->batch_size_ - 1) /
-                                            params.dataset->batch_size_)) {
-      }
+                                            params.dataset->batch_size_)) {}
 
       ~Iterator() override {
         mutex_lock l(*mu_);
@@ -815,7 +813,6 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const std::unique_ptr<CapturedFunction> captured_func_;
-    const Eigen::ThreadPoolDevice* device_;  // not owned
     const MapAndBatchIteratorFunction map_func_;
     const bool preserve_cardinality_;
   };

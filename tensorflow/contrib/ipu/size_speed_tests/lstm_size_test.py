@@ -56,7 +56,9 @@ def RunLayer(layer_func, x):
     r = ipu_compiler.compile(layer_func, inputs=[px, ph, pc])
 
   opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
-  with sl.Session(config=config_pb2.ConfigProto(ipu_options=opts)) as sess:
+  ipu.utils.configure_ipu_system(opts)
+
+  with sl.Session() as sess:
     sess.run(variables.global_variables_initializer())
     out = sess.run(report)
     result = sess.run(r, {px: x,

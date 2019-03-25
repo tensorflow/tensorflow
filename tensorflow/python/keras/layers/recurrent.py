@@ -1511,7 +1511,7 @@ class SimpleRNN(RNN):
     return cls(**config)
 
 
-@keras_export('keras.layers.GRUCell')
+@keras_export(v1=['keras.layers.GRUCell'])
 class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
@@ -2049,7 +2049,7 @@ class GRU(RNN):
     return cls(**config)
 
 
-@keras_export('keras.layers.LSTMCell')
+@keras_export(v1=['keras.layers.LSTMCell'])
 class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 

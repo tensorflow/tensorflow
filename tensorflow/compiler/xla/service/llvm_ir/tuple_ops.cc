@@ -91,6 +91,32 @@ void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
   llvm_ir::EmitTuple(tuple, buffer_ptrs, b);
 }
 
+std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
+    const Shape& tuple_shape, llvm::IRBuilder<>* b) {
+  llvm::Module* module = b->GetInsertBlock()->getModule();
+
+  llvm::IRBuilder<>::InsertPointGuard guard(*b);
+  llvm::Function* function = b->GetInsertBlock()->getParent();
+  b->SetInsertPoint(&function->getEntryBlock(),
+                    function->getEntryBlock().getFirstInsertionPt());
+  CHECK(tuple_shape.IsTuple());
+  int tuple_size = tuple_shape.tuple_shapes_size();
+
+  std::vector<llvm::Value*> generated_allocas;
+  for (int i = 0; i < tuple_size; i++) {
+    const Shape& element_shape = tuple_shape.tuple_shapes(i);
+    CHECK(ShapeUtil::IsScalar(element_shape));
+    llvm::Type* type =
+        llvm_ir::PrimitiveTypeToIrType(element_shape.element_type(), module);
+    llvm::AllocaInst* alloca = b->CreateAlloca(
+        type,
+        /*ArraySize=*/nullptr, AsStringRef(absl::StrCat("tuple_element_", i)));
+    generated_allocas.push_back(alloca);
+  }
+
+  return generated_allocas;
+}
+
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
                                  llvm::IRBuilder<>* b) {

@@ -85,10 +85,10 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument(ctx, "drop_remainder", &drop_remainder));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(
-        ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                      /* use_inter_op_parallelism = */ false,
-                                      &captured_func));
+    CapturedFunction::Params params;
+    params.use_inter_op_parallelism = false;
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
+                                                 params, &captured_func));
 
     *output = new Dataset(ctx, input, batch_size, num_parallel_calls,
                           drop_remainder, output_types_, output_shapes_, func_,

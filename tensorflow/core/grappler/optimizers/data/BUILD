@@ -548,6 +548,7 @@ cc_library(
     hdrs = ["meta_optimizer.h"],
     deps = [
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core/grappler/clusters:cluster",
         "//tensorflow/core/grappler/optimizers:arithmetic_optimizer",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",

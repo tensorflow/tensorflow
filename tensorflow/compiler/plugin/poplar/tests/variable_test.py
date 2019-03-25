@@ -192,6 +192,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         i = init_ops.random_normal_initializer(mean=2.0, stddev=0.01)
         z = variable_scope.get_variable(
             "z1", shape=[], dtype=np.float32, initializer=i)
+
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       # Clean existing reports
       sess.run(report)
@@ -214,6 +217,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         i = init_ops.random_normal_initializer(mean=2.0, stddev=0.01)
         z = variable_scope.get_variable(
             "z1", shape=[2], dtype=np.float32, initializer=i)
+
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       # Clean existing reports
       sess.run(report)
@@ -251,6 +257,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         z = variable_scope.get_variable(
           "z1", shape=[], dtype=np.float32, initializer=i)
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       # Clean existing reports
       sess.run(report)
@@ -281,6 +289,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         i = init_ops.truncated_normal_initializer(mean=1.0, stddev=0.01)
         z = variable_scope.get_variable(
           "z1", shape=[2, 4], dtype=np.float32, initializer=i)
+
+    tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
       # Clean existing reports
@@ -314,6 +324,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
           z = variable_scope.get_variable(
               "z1", shape=[], dtype=np.float32, initializer=i)
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
       o = sess.run(z)
@@ -341,6 +353,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
           z = variable_scope.get_variable(
               "z1", shape=[2, 4], dtype=np.float32, initializer=i)
 
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
       o = sess.run(z)
@@ -364,6 +378,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         i = init_ops.random_uniform_initializer(minval=-2.0, maxval=2.0)
         z = variable_scope.get_variable(
             "z1", shape=[], dtype=np.float32, initializer=i)
+
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       # Clean existing reports
       sess.run(report)
@@ -386,6 +403,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         i = init_ops.random_uniform_initializer(minval=-2.0, maxval=2.0)
         z = variable_scope.get_variable(
             "z1", shape=[2], dtype=np.float32, initializer=i)
+
+    tu.configure_ipu_system()
+
     with tu.ipu_session() as sess:
       # Clean existing reports
       sess.run(report)
@@ -435,7 +455,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -537,7 +559,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -628,7 +652,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(report)
       in0 = np.full((2,2), 7)
       in1 = np.full((2,2), 6)
@@ -665,7 +691,9 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)
@@ -730,7 +758,9 @@ class IpuXlaVariableTestSyntheticData(test_util.TensorFlowTestCase):
       with ops.device('cpu'):
         report = gen_ipu_ops.ipu_event_trace()
 
-    with tu.ipu_session(True, True, True) as sess:
+    tu.configure_ipu_system(True, True, True)
+
+    with tu.ipu_session() as sess:
       sess.run(variables.global_variables_initializer())
 
       sess.run(report)

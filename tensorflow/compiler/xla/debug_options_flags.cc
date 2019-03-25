@@ -129,6 +129,20 @@ static void AllocateFlags() {
           "Enable unsafe fast-math optimizations in the CPU compiler; "
           "this may produce faster code at the expense of some accuracy."),
       tensorflow::Flag(
+          "xla_cpu_fast_math_honor_nans",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_nans),
+          flag_values->xla_cpu_fast_math_honor_nans(),
+          "When xla_cpu_enable_fast_math is true then this controls whether we "
+          "allow operations to produce NaNs.  Ignored when "
+          "xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
+          "xla_cpu_fast_math_honor_infs",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_infs),
+          flag_values->xla_cpu_fast_math_honor_infs(),
+          "When xla_cpu_enable_fast_math is true then this controls whether we "
+          "allow operations to produce infinites.  Ignored when "
+          "xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
           "xla_gpu_enable_fast_min_max",
           bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
           flag_values->xla_gpu_enable_fast_min_max(),

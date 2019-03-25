@@ -949,7 +949,7 @@ class DebugDumpDir(object):
     Returns:
       A dict mapping device names (`str`s) to reconstructed `tf.GraphDef`s.
     """
-    non_debug_graphs = dict()
+    non_debug_graphs = {}
     for key in self._debug_graphs:
       non_debug_graphs[key] = self._debug_graphs[key].non_debug_graph_def
     return non_debug_graphs

@@ -744,6 +744,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -2645,7 +2646,7 @@ bool HloParser::ParseAttributeHelper(
   if (!ParseAttributeName(&name)) {
     return Error(loc, "error parsing attributes");
   }
-  VLOG(1) << "Parsing attribute " << name;
+  VLOG(3) << "Parsing attribute " << name;
   if (!seen_attrs->insert(name).second) {
     return Error(loc, StrFormat("attribute %s already exists", name));
   }
@@ -2926,7 +2927,7 @@ bool HloParser::ParseAttributeAsProtoMessageHelper(
   if (!ParseAttributeName(&name)) {
     return Error(loc, "error parsing attributes");
   }
-  VLOG(1) << "Parsing attribute " << name;
+  VLOG(3) << "Parsing attribute " << name;
   if (!seen_attrs->insert(name).second) {
     return Error(loc, StrFormat("attribute %s already exists", name));
   }
@@ -3611,7 +3612,7 @@ bool HloParser::CanBeShape() {
 }
 
 bool HloParser::ParseName(string* result) {
-  VLOG(1) << "ParseName";
+  VLOG(3) << "ParseName";
   if (lexer_.GetKind() != TokKind::kIdent &&
       lexer_.GetKind() != TokKind::kName) {
     return TokenError("expects name");
@@ -3631,7 +3632,7 @@ bool HloParser::ParseAttributeName(string* result) {
 }
 
 bool HloParser::ParseString(string* result) {
-  VLOG(1) << "ParseString";
+  VLOG(3) << "ParseString";
   if (lexer_.GetKind() != TokKind::kString) {
     return TokenError("expects string");
   }
@@ -3745,7 +3746,7 @@ bool HloParser::ParseMetadata(OpMetadata* metadata) {
 }
 
 bool HloParser::ParseOpcode(HloOpcode* result) {
-  VLOG(1) << "ParseOpcode";
+  VLOG(3) << "ParseOpcode";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects opcode");
   }
@@ -3761,7 +3762,7 @@ bool HloParser::ParseOpcode(HloOpcode* result) {
 }
 
 bool HloParser::ParseFftType(FftType* result) {
-  VLOG(1) << "ParseFftType";
+  VLOG(3) << "ParseFftType";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fft type");
   }
@@ -3790,7 +3791,7 @@ bool HloParser::ParseComparisonDirection(ComparisonDirection* result) {
 }
 
 bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
-  VLOG(1) << "ParseFusionKind";
+  VLOG(3) << "ParseFusionKind";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects fusion kind");
   }
@@ -3807,7 +3808,7 @@ bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
 }
 
 bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
-  VLOG(1) << "ParseRandomDistribution";
+  VLOG(3) << "ParseRandomDistribution";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
@@ -3824,7 +3825,7 @@ bool HloParser::ParseRandomDistribution(RandomDistribution* result) {
 }
 
 bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
-  VLOG(1) << "ParsePrecision";
+  VLOG(3) << "ParsePrecision";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects random distribution");
   }
@@ -3841,7 +3842,7 @@ bool HloParser::ParsePrecision(PrecisionConfig::Precision* result) {
 }
 
 bool HloParser::ParseInt64(int64* result) {
-  VLOG(1) << "ParseInt64";
+  VLOG(3) << "ParseInt64";
   if (lexer_.GetKind() != TokKind::kInt) {
     return TokenError("expects integer");
   }
@@ -3930,7 +3931,7 @@ bool HloParser::ParseBool(bool* result) {
 }
 
 bool HloParser::ParseToken(TokKind kind, const string& msg) {
-  VLOG(1) << "ParseToken " << TokKindToString(kind) << " " << msg;
+  VLOG(3) << "ParseToken " << TokKindToString(kind) << " " << msg;
   if (lexer_.GetKind() != kind) {
     return TokenError(msg);
   }

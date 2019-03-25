@@ -36,17 +36,6 @@ poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
   return res.main_graph;
 }
 
-uint64 GetShardingDeviceId(const HloInstruction* inst) {
-  // This function works on the assumptions:
-  // * that all the instructions either have sharding or none of them do (see
-  //   ShardingPass).
-  // * If an instruction has sharding, then that sharding contains a unique
-  //   device.
-  return inst->has_sharding() && inst->sharding().HasUniqueDevice()
-             ? inst->sharding().GetUniqueDevice()
-             : 0;
-}
-
 template <typename TYPE>
 static void SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                            const Literal& literal) {

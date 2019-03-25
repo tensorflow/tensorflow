@@ -9,9 +9,7 @@ import numpy as np
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
-from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
-from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -50,7 +48,8 @@ class WhileLoopPerfTest(test_util.TensorFlowTestCase):
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-    with sl.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
+    ipu.utils.configure_ipu_system(cfg)
+    with sl.Session() as sess:
 
         result = sess.run(r, {v:np.zeros([500], np.int32)})
         self.assertAllClose(result[0], np.broadcast_to(45, [500]))

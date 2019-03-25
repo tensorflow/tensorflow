@@ -15,6 +15,7 @@
 #include "tensorflow/contrib/tensor_forest/kernels/v4/grow_stats.h"
 
 #include <cfloat>
+#include <cmath>
 #include <queue>
 #include "tensorflow/contrib/tensor_forest/kernels/tree_utils.h"
 #include "tensorflow/contrib/tensor_forest/kernels/v4/stat_utils.h"
@@ -272,7 +273,8 @@ void ClassificationStats::CheckPruneHoeffding() {
   // Raw Gini ranges from 0 to 1 - (1/n), but our gini score is weighted.
   const float num_classes = params_.num_outputs();
   const float gini_diff_range = weight_sum_ * (1.0 - 1.0 / num_classes);
-  float epsilon = gini_diff_range * sqrt(half_ln_dominate_frac_ / weight_sum_);
+  float epsilon =
+      gini_diff_range * std::sqrt(half_ln_dominate_frac_ / weight_sum_);
   for (int i = num_splits() - 1; i >= 0; i--) {
     if (split_scores[i] - best_split_score > epsilon) {
       RemoveSplit(i);

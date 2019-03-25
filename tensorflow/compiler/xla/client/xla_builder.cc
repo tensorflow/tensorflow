@@ -3167,6 +3167,10 @@ XlaOp Not(const XlaOp& operand) {
   return operand.builder()->UnaryOp(HloOpcode::kNot, operand);
 }
 
+XlaOp PopulationCount(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kPopulationCount, operand);
+}
+
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                 absl::Span<const int64> broadcast_dimensions) {
   return lhs.builder()->BinaryOp(HloOpcode::kShiftLeft, lhs, rhs,

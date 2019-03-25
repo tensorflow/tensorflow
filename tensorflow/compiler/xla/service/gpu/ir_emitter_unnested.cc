@@ -2608,6 +2608,9 @@ class ReductionCodegenInfo : public IrEmitterUnnested::KernelCodegenInfo {
   AddressVector reduction_input_addresses_;
   InlinedVector<HloComputation*, 1> reducers_;
   InlinedVector<ShapeIndex, 1> reduction_output_shape_indices_;
+  // The address of the memory that stores the linear index of the current
+  // output, assuming that the output doesn't change the layout of the kept
+  // elements in the reduction input.
   llvm::AllocaInst* current_output_linear_index_address_;
   llvm::AllocaInst* current_output_inbound_address_;
   bool is_row_reduction_;
@@ -2806,21 +2809,49 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
     llvm_ir::SetToFirstInsertPoint(if_output_inbound_data.true_block, &b_);
   }
 
+  HloInstruction* reduce_or_tuple = unnested_hlo->opcode() == HloOpcode::kFusion
+                                        ? unnested_hlo->fused_expression_root()
+                                        : unnested_hlo;
+  std::vector<const HloInstruction*> reduce_instructions;
+  absl::c_for_each(GetOutputInstructions(&reduce_or_tuple),
+                   [&](const HloInstruction* instr) {
+                     if (instr->opcode() == HloOpcode::kReduce) {
+                       reduce_instructions.push_back(instr);
+                     }
+                   });
   int num_partial_results = reduction_info->GetNumberOfPartialResults();
 
   // Emit an atomic operation that accumulates the partial reduction to the
   // output element. For row reduction, this is only for lane 0 due to the
   // if-statement emitted above.
   for (int i = 0; i != num_reduces; ++i) {
+    const HloInstruction* reduce_hlo = reduce_instructions[i];
+    Shape reduction_kept_element_shape = ShapeUtil::FilterDimensions(
+        [&](int64 dim) {
+          return !absl::c_linear_search(reduce_hlo->dimensions(), dim);
+        },
+        reduce_hlo->operand(0)->shape());
     for (int j = 0; j < num_partial_results; ++j) {
+      // A reduction is allowed to transpose its output.  For example, suppose
+      // we are reducing the second dimension of f32[10,20,30]{3,2,1}.  We are
+      // allowed to produce as output either f32[10,30]{1,0} (no transpose) or
+      // f32[10,30]{0,1} (transposing the two output dims).
+      //
+      // At this point in the function we have a "partial sum" of input elements
+      // (stored in partial_result_addresses), and we need to accumulate it into
+      // the correct output element.
+      //
+      // *reduction_info->GetCurrentOutputLinearIndexAddress() stores the linear
+      // index in the output into which we would need to accumulate *if the
+      // output layout matched the input layout*. This is why we use
+      // `reduction_kept_element_shape` rather than `unnested_hlo->shape()` when
+      // computing `element_index` below.
       IrArray::Index element_index(
           /*linear=*/Load(
               InBoundsGEP(reduction_info->GetCurrentOutputLinearIndexAddress(),
                           {b_.getInt32(j)}),
-              "output_linear_addr"),
-          ShapeUtil::GetSubshape(unnested_hlo->shape(),
-                                 reduction_output_shape_indices[i]),
-          &b_);
+              "untransposed_output_linear_addr"),
+          reduction_kept_element_shape, &b_);
       llvm::Value* output_address =
           GetIrArray(*unnested_hlo, *unnested_hlo,
                      reduction_output_shape_indices[i])
@@ -2916,13 +2947,6 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       reduction_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
           index,
           GetFirstReduceInstruction(output_instructions)->operand(0)->shape());
-  int num_partial_results = reduction_info->GetNumberOfPartialResults();
-  if (num_partial_results > 1) {
-    // Clear the linear index field of the IrArray::Index to enable the use of
-    // GetElementPointer with array types. This enables the vectorization of
-    // the computation for different partial results.
-    input_index.ClearLinearIndex();
-  }
   absl::Span<llvm::AllocaInst* const> partial_reduction_result_addresses =
       reduction_info->GetPartialResultAddresses();
   absl::Span<llvm::AllocaInst* const> reduction_input_addresses =

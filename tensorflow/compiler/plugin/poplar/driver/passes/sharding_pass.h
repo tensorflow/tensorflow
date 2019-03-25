@@ -27,9 +27,6 @@ namespace poplarplugin {
 /**
  * This adds sharding information to operations which do not have any, but are
  * parents of operations which do.
- *
- * It also inserts inter-IPU copy operations between instructions which are on
- * different IPUs.
  */
 class ShardingPass : public HloModulePass {
  public:

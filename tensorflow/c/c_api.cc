@@ -1527,7 +1527,7 @@ int TF_OperationOutputListLength(TF_Operation* oper, const char* arg_name,
   if (TF_GetCode(status) != TF_OK) return -1;
   auto iter = name_ranges.find(arg_name);
   if (iter == name_ranges.end()) {
-    status->status = InvalidArgument("Input arg '", arg_name, "' not found");
+    status->status = InvalidArgument("Output arg '", arg_name, "' not found");
     return -1;
   }
   return iter->second.second - iter->second.first;
@@ -1941,7 +1941,10 @@ TF_Graph::TF_Graph()
       refiner(graph.versions().producer(), graph.op_registry()),
       delete_requested(false),
       parent(nullptr),
-      parent_inputs(nullptr) {}
+      parent_inputs(nullptr) {
+  // Tell the shape refiner to also run shape inference on functions.
+  refiner.set_function_library_for_shape_inference(&graph.flib_def());
+}
 
 TF_Graph* TF_NewGraph() { return new TF_Graph; }
 

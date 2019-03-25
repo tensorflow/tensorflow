@@ -174,7 +174,8 @@ PoplarExecutor::PoplarExecutor()
       current_engine_(nullptr),
       device_open_(false),
       poplar_device_(poplar::Device::createCPUDevice()),
-      poplar_device_hash_(0) {}
+      poplar_device_hash_(0),
+      hardware_configured_(false) {}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -449,8 +450,8 @@ std::string PoplarExecutor::GetDeviceTargetName() const {
   return poplar::toString(poplar_device_.getTarget().getTargetType());
 }
 
-static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
-                                      const tensorflow::IPUOptions& b) {
+static bool DeviceConfigurationsEqual(const IpuOptions& a,
+                                      const IpuOptions& b) {
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
 }
 
@@ -462,44 +463,84 @@ static absl::optional<int64> GetMaxCompilationThreads() {
   return absl::nullopt;
 }
 
-Status PoplarExecutor::ConfigurePoplarDevice(
-    const tensorflow::IPUOptions& cfg) {
-  if (!DeviceConfigurationsEqual(cfg, current_config_) || !device_open_) {
-    current_config_ = cfg;
-    try {
-      if (device_open_) {
-        VLOG(1) << "Detaching ordinal " << ordinal_
-                << " from poplar device: type " << GetDeviceTargetName();
-        poplar_device_.detach();
-        device_open_ = false;
-      }
+Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
+  if (!DeviceConfigurationsEqual(cfg, current_config_) &&
+      hardware_configured_) {
+    return InternalError("IPU system configuration can only be set once.");
+  }
 
-      option_flags_ = poplar::OptionFlags();
-      option_flags_.set("target.workerStackSizeInBytes", "0x200");
+  current_config_ = cfg;
+  try {
+    if (device_open_) {
+      VLOG(1) << "Detaching ordinal " << ordinal_
+              << " from poplar device: type " << GetDeviceTargetName();
+      poplar_device_.detach();
+      device_open_ = false;
+    }
 
-      bool opened = false;
+    option_flags_ = poplar::OptionFlags();
+    option_flags_.set("target.workerStackSizeInBytes", "0x200");
 
-      bool have_ipu_hardware = false;
+    bool opened = false;
 
-      if (getenv(s_force_ipu_model) == nullptr) {
-        auto device_list = GetDeviceManager().getDevices();
-        for (const auto& d : device_list) {
-          if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
-            have_ipu_hardware = true;
-            break;
-          }
+    bool have_ipu_hardware = false;
+
+    if (current_config_.device_config_size() > 0) {
+      hardware_configured_ = true;
+    }
+
+    if (getenv(s_force_ipu_model) == nullptr) {
+      auto device_list = GetDeviceManager().getDevices();
+      for (const auto& d : device_list) {
+        if (d.getTarget().getTargetType() == poplar::TargetType::IPU) {
+          have_ipu_hardware = true;
+          break;
         }
       }
+    }
 
-      if (have_ipu_hardware) {
-        // Hardware devices
-        auto device_list = GetDeviceManager().getDevices();
+    if (have_ipu_hardware) {
+      // Hardware devices
+      auto device_list = GetDeviceManager().getDevices();
 
-        if (current_config_.device_config_size() == 0) {
-          // Default case - 1 single TF device with one single IPU
+      if (current_config_.device_config_size() == 0) {
+        // Default case - 1 single TF device with one single IPU
+        for (auto& d : device_list) {
+          if (d.getTarget().getTargetType() == poplar::TargetType::IPU &&
+              d.getTarget().getNumIPUs() == 1) {
+            if (d.attach()) {
+              poplar_device_ = std::move(d);
+              opened = true;
+              break;
+            }
+          }
+        }
+      } else {
+        // User has specified a configuration
+        if (ordinal_ >= current_config_.device_config_size()) {
+          return InternalError(
+              "Device ordinal %d not in device configuration list.",
+              ordinal_);
+        }
+
+        auto device = current_config_.device_config(ordinal_);
+
+        if (device.selection_case() ==
+            IpuOptions::DeviceConfig::SelectionCase::kCfgIndex) {
+          const int32 cfg_index = device.cfg_index();
+
+          poplar_device_ = std::move(device_list.at(cfg_index));
+          if (poplar_device_.attach()) {
+            opened = true;
+          } else {
+            return InternalError(
+                "Could not attach to requested device configuration index %d",
+                cfg_index);
+          }
+        } else {
           for (auto& d : device_list) {
             if (d.getTarget().getTargetType() == poplar::TargetType::IPU &&
-                d.getTarget().getNumIPUs() == 1) {
+                d.getTarget().getNumIPUs() == device.auto_count()) {
               if (d.attach()) {
                 poplar_device_ = std::move(d);
                 opened = true;
@@ -507,159 +548,124 @@ Status PoplarExecutor::ConfigurePoplarDevice(
               }
             }
           }
-        } else {
-          // User has specified a configuration
-          if (ordinal_ >= current_config_.device_config_size()) {
-            return InternalError(
-                "Device ordinal %d not in device configuration list.",
-                ordinal_);
-          }
+        }
+      }
 
+      if (opened) {
+        unsigned mj, mn, pt;
+        poplar_device_.getDriverVersion(mj, mn, pt);
+        VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
+
+        const auto& ids = poplar_device_.getDriverIDs();
+        LOG(INFO) << "Device /device:IPU:" << ordinal_ << " attached to IPU"
+                  << (ids.size() > 1 ? "s" : "") << ": "
+                  << absl::StrJoin(ids, ",");
+
+        if (current_config_.profiling().enable_execution_trace()) {
+          // Enable getting the cycle counts for each compute set on hardware
+          // when asking for an execution trace
+          option_flags_.set("debug.executionProfile", "compute_sets");
+        }
+      }
+    } else {
+      if (current_config_.ipu_model_config().enable_ipu_model()) {
+        // Poplar IPU Model device
+
+        int num_ipus = 1;
+        if (current_config_.device_config_size() > 0) {
           auto device = current_config_.device_config(ordinal_);
 
           if (device.selection_case() ==
-              tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
-            const int32 cfg_index = device.cfg_index();
-
-            poplar_device_ = std::move(device_list.at(cfg_index));
-            if (poplar_device_.attach()) {
-              opened = true;
-            } else {
-              return InternalError(
-                  "Could not attach to requested device configuration index %d",
-                  cfg_index);
-            }
-          } else {
-            for (auto& d : device_list) {
-              if (d.getTarget().getTargetType() == poplar::TargetType::IPU &&
-                  d.getTarget().getNumIPUs() == device.auto_count()) {
-                if (d.attach()) {
-                  poplar_device_ = std::move(d);
-                  opened = true;
-                  break;
-                }
-              }
-            }
+              IpuOptions::DeviceConfig::SelectionCase::kCfgIndex) {
+            return InvalidArgument(
+                "Must specify the number of IPUs using auto_count");
           }
+
+          num_ipus = device.auto_count();
         }
 
-        if (opened) {
-          unsigned mj, mn, pt;
-          poplar_device_.getDriverVersion(mj, mn, pt);
-          VLOG(1) << "Poplar driver: " << mj << "." << mn << "." << pt;
+        poplar::IPUModel model;
+        model.numIPUs = num_ipus;
 
-          const auto& ids = poplar_device_.getDriverIDs();
-          LOG(INFO) << "Device /device:IPU:" << ordinal_ << " attached to IPU"
-                    << (ids.size() > 1 ? "s" : "") << ": "
-                    << absl::StrJoin(ids, ",");
-
-          if (current_config_.profiling().enable_execution_trace()) {
-            // Enable getting the cycle counts for each compute set on hardware
-            // when asking for an execution trace
-            option_flags_.set("debug.executionProfile", "compute_sets");
-          }
+        model.compileIPUCode =
+            current_config_.ipu_model_config().compile_ipu_code();
+        poplar_device_ = model.createDevice();
+        if (poplar_device_.attach()) {
+          opened = true;
         }
       } else {
-        if (current_config_.ipu_model_config().enable_ipu_model()) {
-          // Poplar IPU Model device
-
-          int num_ipus = 1;
-          if (current_config_.device_config_size() > 0) {
-            auto device = current_config_.device_config(ordinal_);
-
-            if (device.selection_case() ==
-                tensorflow::IPUOptions::DeviceConfig::SelectionCase::
-                    kCfgIndex) {
-              return InvalidArgument(
-                  "Must specify the number of IPUs using auto_count");
-            }
-
-            num_ipus = device.auto_count();
-          }
-
-          poplar::IPUModel model;
-          model.numIPUs = num_ipus;
-
-          model.compileIPUCode =
-              current_config_.ipu_model_config().compile_ipu_code();
-          poplar_device_ = model.createDevice();
-          if (poplar_device_.attach()) {
-            opened = true;
-          }
-        } else {
-          // Poplar CPU device
-          poplar_device_ = poplar::Device::createCPUDevice();
-          if (poplar_device_.attach()) {
-            opened = true;
-          }
+        // Poplar CPU device
+        poplar_device_ = poplar::Device::createCPUDevice();
+        if (poplar_device_.attach()) {
+          opened = true;
         }
       }
-
-      if (!opened) {
-        return xla::ResourceExhausted(
-            "Unable to acquire poplar device type for ordinal %d", ordinal_);
-      }
-    } catch (poplar::poplar_error e) {
-      return xla::InternalError(
-          "Unable to open poplar device for ordinal %d: %s", ordinal_,
-          e.what());
     }
 
-    VLOG(1) << "Opened Poplar device type " << GetDeviceTargetName();
-    device_open_ = true;
-
-    for (const auto& opt : current_config_.compilation_options()) {
-      option_flags_.set(opt.option(), opt.value());
+    if (!opened) {
+      return xla::ResourceExhausted(
+          "Unable to acquire poplar device type for ordinal %d", ordinal_);
     }
+  } catch (poplar::poplar_error e) {
+    return xla::InternalError(
+        "Unable to open poplar device for ordinal %d: %s", ordinal_,
+        e.what());
+  }
 
-    for (const auto& opt : current_config_.convolution_options()) {
-      conv_options_.set(opt.option(), opt.value());
-    }
+  VLOG(1) << "Opened Poplar device type " << GetDeviceTargetName();
+  device_open_ = true;
 
-    for (const auto& opt : current_config_.pooling_options()) {
-      pooling_options_.set(opt.option(), opt.value());
-    }
+  for (const auto& opt : current_config_.compilation_options()) {
+    option_flags_.set(opt.option(), opt.value());
+  }
 
-    for (const auto& opt : current_config_.profiling().options()) {
-      report_options_.set(opt.option(), opt.value());
-    }
+  for (const auto& opt : current_config_.convolution_options()) {
+    conv_options_.set(opt.option(), opt.value());
+  }
 
-    auto max_compilation_threads = GetMaxCompilationThreads();
-    if (max_compilation_threads) {
-      option_flags_.set("opt.maxCompilationThreads",
-                        std::to_string(*max_compilation_threads));
-    }
+  for (const auto& opt : current_config_.pooling_options()) {
+    pooling_options_.set(opt.option(), opt.value());
+  }
 
-    for (auto opt : option_flags_) {
-      VLOG(1) << "Engine option: " << opt.first << " = " << opt.second;
-    }
+  for (const auto& opt : current_config_.profiling().options()) {
+    report_options_.set(opt.option(), opt.value());
+  }
 
-    for (auto opt : conv_options_) {
-      VLOG(1) << "Convolution option: " << opt.first << " = " << opt.second;
-    }
+  auto max_compilation_threads = GetMaxCompilationThreads();
+  if (max_compilation_threads) {
+    option_flags_.set("opt.maxCompilationThreads",
+                      std::to_string(*max_compilation_threads));
+  }
 
-    for (auto opt : pooling_options_) {
-      VLOG(1) << "Pooling option: " << opt.first << " = " << opt.second;
-    }
+  for (auto opt : option_flags_) {
+    VLOG(1) << "Engine option: " << opt.first << " = " << opt.second;
+  }
 
-    for (auto opt : report_options_) {
-      VLOG(1) << "Report option: " << opt.first << " = " << opt.second;
-    }
+  for (auto opt : conv_options_) {
+    VLOG(1) << "Convolution option: " << opt.first << " = " << opt.second;
+  }
 
-    // Cache Target hash
-    std::vector<int64> poplar_target;
-    const auto& target = poplar_device_.getTarget();
-    poplar_target.push_back(target.getNumTiles());
-    poplar_target.push_back(target.getDataPathWidth());
-    poplar_target.push_back(target.getBytesPerTile());
-    poplar_target.push_back(target.getNumWorkerContexts());
-    poplar_target.push_back(target.getTilesPerIPU());
-    poplar_target.push_back(target.getNumIPUs());
-    poplar_target.push_back((unsigned)target.getTargetType());
+  for (auto opt : pooling_options_) {
+    VLOG(1) << "Pooling option: " << opt.first << " = " << opt.second;
+  }
 
-    for (int64 h : poplar_target) {
-      poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
-    }
+  for (auto opt : report_options_) {
+    VLOG(1) << "Report option: " << opt.first << " = " << opt.second;
+  }
+
+  // Cache Target hash
+  std::vector<int64> poplar_target;
+  const auto& target = poplar_device_.getTarget();
+  poplar_target.push_back(target.getNumTiles());
+  poplar_target.push_back(target.getDataPathWidth());
+  poplar_target.push_back(target.getBytesPerTile());
+  poplar_target.push_back(target.getNumWorkerContexts());
+  poplar_target.push_back(target.getTilesPerIPU());
+  poplar_target.push_back(target.getNumIPUs());
+  poplar_target.push_back((unsigned)target.getTargetType());
+
+  for (int64 h : poplar_target) {
+    poplar_device_hash_ = tensorflow::Hash64Combine(poplar_device_hash_, h);
   }
 
   return Status::OK();
@@ -754,11 +760,11 @@ void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
 
 const poprand::RandomGenMode PoplarExecutor::GetRandomGenMode() const {
   switch (current_config_.random_type()) {
-    case tensorflow::IPUOptions::NOT_REPEATABLE:
+    case IpuOptions::NOT_REPEATABLE:
       return poprand::NOT_REPEATABLE;
-    case tensorflow::IPUOptions::SYSTEM_REPEATABLE:
+    case IpuOptions::SYSTEM_REPEATABLE:
       return poprand::SYSTEM_REPEATABLE;
-    case tensorflow::IPUOptions::ALWAYS_REPEATABLE:
+    case IpuOptions::ALWAYS_REPEATABLE:
       return poprand::ALWAYS_REPEATABLE;
     default:
       return poprand::NOT_REPEATABLE;

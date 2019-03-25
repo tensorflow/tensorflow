@@ -160,7 +160,19 @@ def _shape_tensor(shape):
 class Generator(tracking.AutoTrackable):
   """Random-number generator.
 
-  It uses Variable to manage its internal state.
+  It uses Variable to manage its internal state, and allows choosing an
+  Random-Number-Generation (RNG) algorithm.
+
+  CPU and GPU with the same algorithm and seed will generate the same integer
+  random numbers. Float-point results (such as the output of `normal`) may have
+  small numerical discrepancies between CPU and GPU.
+
+  Because of different counter-reservation schemes, TPU's integer random numbers
+  will be different from CPU/GPU even with the same algorithm and seed.
+  Also, TPU uses different sampling algorithms for some distributions
+  (e.g. using reverse CDF for sampling normal distribution instead of
+  Box-Muller used by CPU/GPU). Harmonizing TPU's RNG behavior with CPU/GPU is
+  work in progress.
   """
 
   def __init__(self, copy_from=None, seed=None, algorithm=None):

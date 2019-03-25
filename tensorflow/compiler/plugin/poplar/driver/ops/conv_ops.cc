@@ -330,7 +330,7 @@ StatusOr<poplar::program::Program> CreateConv2D(CompilerResources& res,
 
   auto out = conv_graph_caching::DoCachedConvolution(
       graph, res, in, kernel, params, conv_type, false,
-      GetShardingDeviceId(inst), prog, GetDebugName(inst));
+      GetSingleShardingDeviceId(inst), prog, GetDebugName(inst));
 
   out = ShuffleConvolutionOutputToTensorflow(inst, out);
 
@@ -368,7 +368,7 @@ StatusOr<poplar::program::Program> Create2DConvWithReverse(
 
   auto out = conv_graph_caching::DoCachedConvolution(
       graph, res, in, kernel, params, conv_type, true,
-      GetShardingDeviceId(inst), prog, GetDebugName(inst));
+      GetSingleShardingDeviceId(inst), prog, GetDebugName(inst));
 
   out = ShuffleConvolutionOutputToTensorflow(inst, out);
 
@@ -412,7 +412,7 @@ StatusOr<poplar::program::Program> CreateDepthwiseBackpropFilter(
 
   poplar::Tensor out = conv_graph_caching::DoCachedConvolution(
       graph, res, in, kernel, params, conv_type, false,
-      GetShardingDeviceId(inst), prog, GetDebugName(inst));
+      GetSingleShardingDeviceId(inst), prog, GetDebugName(inst));
 
   // Move 'G' parts of the B back to I
   out = out.reshapePartial(1, 2, {n_g, out.dim(1) / n_g});
@@ -453,8 +453,8 @@ StatusOr<poplar::program::Program> CreateConvScaledInplace(
   TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, 1, 2));
 
   TF_CHECK_OK(conv_graph_caching::DoCachedConvolutionScaledInplace(
-      graph, res, w, in, deltas, params, GetShardingDeviceId(inst), prog, inst,
-      tensor_map));
+      graph, res, w, in, deltas, params, GetSingleShardingDeviceId(inst), prog,
+      inst, tensor_map));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, w));
 
@@ -517,8 +517,8 @@ StatusOr<poplar::program::Program> ConvBiasApply(CompilerResources& res,
   }
 
   TF_CHECK_OK(conv_graph_caching::DoCachedBiasApply(
-      graph, res, biases, deltas, reduction_dims, GetShardingDeviceId(inst),
-      prog, inst, tensor_map));
+      graph, res, biases, deltas, reduction_dims,
+      GetSingleShardingDeviceId(inst), prog, inst, tensor_map));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, biases));
 
