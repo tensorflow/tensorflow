@@ -29,6 +29,11 @@ TfLiteRegistration* Micro_Register_FULLY_CONNECTED() {
 TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Micro_Register_SOFTMAX() { return Register_SOFTMAX(); }
 
+TfLiteRegistration* Register_CONV_2D();
+TfLiteRegistration* Micro_Register_CONV_2D() {
+  return Register_CONV_2D();
+}
+
 AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D,
              Micro_Register_DEPTHWISE_CONV_2D());
@@ -36,6 +41,7 @@ AllOpsResolver::AllOpsResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SOFTMAX, Micro_Register_SOFTMAX());
+  AddBuiltin(BuiltinOperator_CONV_2D, Micro_Register_CONV_2D());
 }
 
 }  // namespace micro
