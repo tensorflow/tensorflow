@@ -32,7 +32,7 @@ PoplarExecutable::PoplarExecutable(
     const InputOutputAliasingMap& input_output_aliasing_map,
     const bool is_constant_graph,
     std::vector<std::vector<Literal>> literal_output, const bool is_remap_graph,
-    std::vector<uint64> remaped_output, int replication_count,
+    std::vector<uint64> remaped_output, int replication_factor,
     const InfeedInfos& infeed_infos, const OutfeedInfos& outfeed_infos)
     : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),
@@ -43,7 +43,7 @@ PoplarExecutable::PoplarExecutable(
       remaped_output_(std::move(remaped_output)),
       is_remap_graph_(is_remap_graph),
       execution_count_(0),
-      replication_count_(replication_count),
+      replication_factor_(replication_factor),
       infeed_infos_(std::move(infeed_infos)),
       outfeed_infos_(std::move(outfeed_infos)) {
   auto platform =

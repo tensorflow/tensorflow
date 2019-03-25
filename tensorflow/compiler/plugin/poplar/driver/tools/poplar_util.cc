@@ -18,6 +18,16 @@ using ::absl::StrCat;
 namespace xla {
 namespace poplarplugin {
 
+poplar::Graph& GetMasterGraph(CompilerResources& res) { return res.main_graph; }
+
+poplar::Graph& GetReplicatedGraph(CompilerResources& res) {
+  if (res.replicated_graph) {
+    return *res.replicated_graph;
+  }
+
+  return GetMasterGraph(res);
+}
+
 poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
   if (inst->has_sharding()) {
     const auto& sharding = inst->sharding();
@@ -29,11 +39,11 @@ poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
     }
   }
 
-  if (res.replicated_graph.has_value()) {
-    return res.replicated_graph.value();
-  }
+  return GetReplicatedGraph(res);
+}
 
-  return res.main_graph;
+bool HasReplicatedGraph(CompilerResources& res) {
+  return res.replicated_graph.has_value();
 }
 
 template <typename TYPE>

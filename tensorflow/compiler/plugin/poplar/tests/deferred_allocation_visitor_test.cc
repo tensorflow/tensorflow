@@ -57,7 +57,7 @@ class DeferredAllocationsVisitorTest : public HloTestBase {};
 std::unique_ptr<CompilerResources> GetMockResources(HloModule* module) {
   auto resources = absl::make_unique<CompilerResources>(
       poplar::Device::createCPUDevice(), 0, poprand::NOT_REPEATABLE,
-      poplar::OptionFlags(), poplar::OptionFlags(), false, module);
+      poplar::OptionFlags(), poplar::OptionFlags(), false, 1, module);
   poplin::addCodelets(resources->main_graph);
   popnn::addCodelets(resources->main_graph);
   popops::addCodelets(resources->main_graph);

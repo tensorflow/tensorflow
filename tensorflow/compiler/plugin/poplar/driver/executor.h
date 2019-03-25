@@ -300,7 +300,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.retain_control_dependencies();
   }
 
-  int GetNumberOfReplicas() const {
+  int64 GetNumberOfReplicas() const {
     if (current_config_.device_config_size() > ordinal_) {
       return current_config_.device_config(ordinal_).num_replicas();
     } else {

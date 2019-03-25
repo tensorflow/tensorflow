@@ -42,8 +42,6 @@ Status EntryVisitor::HandleParameter(HloInstruction* inst) {
 
 StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
     const HloInstruction* inst, int64 flat_tuple_index, poplar::Tensor tensor) {
-  poplar::Graph& graph = GetGraph(resources_, inst);
-
   const auto& in_info = resources_.annotations.input_output_aliasing_map
                             .GetEntryInputInfos()[inst->parameter_number()];
 
@@ -60,12 +58,37 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
       in_info.IsStreaming() ? sequence : host_to_device;
 
   if (!UseSyntheticData()) {
-    auto fifo = graph.addHostToDeviceFIFO(
+    poplar::Graph& master_graph = GetMasterGraph(resources_);
+    poplar::Tensor master_tensor = tensor;
+    poplar::Tensor input_tensor = tensor;
+
+    const auto replication_factor = resources_.replication_factor;
+    if (HasReplicatedGraph(resources_)) {
+      master_tensor = master_graph.getNonReplicatedTensor(master_tensor);
+      if (replication_factor != master_tensor.dim(0)) {
+        return xla::FailedPrecondition(
+            "Unable to stream replicated tensor - replication count does not "
+            "match (%llu vs %llu).",
+            replication_factor, master_tensor.dim(0));
+      }
+      // For replicated graphs we copy from the host to IPU 0, then copy to the
+      // other IPUs
+      input_tensor = master_tensor.slice(0, 1);
+    }
+
+    auto fifo = master_graph.addHostToDeviceFIFO(
         GetInputCopyHandle(inst->parameter_number(), flat_tuple_index),
-        tensor.elementType(), tensor.numElements());
+        input_tensor.elementType(), input_tensor.numElements());
+
     seq.add(poplar::program::Copy(
-        fifo, tensor,
+        fifo, input_tensor,
         !in_info.IsStreaming() || always_rearrange_copies_on_the_host));
+
+    if (HasReplicatedGraph(resources_)) {
+      seq.add(poplar::program::Copy(
+          input_tensor.broadcast(replication_factor - 1, 0),
+          master_tensor.slice(1, replication_factor)));
+    }
   }
 
   if (!LayoutUtil::IsMonotonicWithDim0Major(
@@ -80,6 +103,7 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
   // between runs
   if (in_info.IsResourceNotModified()) {
     poplar::Tensor non_modified_tensor = tensor;
+    poplar::Graph& graph = GetGraph(resources_, inst);
     tensor = graph.clone(non_modified_tensor,
                          GetDebugName(inst) + ".resource_not_modified_clone");
     sequence.add(poplar::program::Copy(non_modified_tensor, tensor));
@@ -149,11 +173,21 @@ Status EntryVisitor::FinishVisit(HloInstruction* root) {
         }
       }
 
-      poplar::Tensor out =
-          ConvertFromDeviceLayout(shapes[all_outputs_flat_tensor_index],
-                                  out_tensors[all_outputs_flat_tensor_index]);
       if (!UseSyntheticData()) {
-        auto fifo = resources_.main_graph.addDeviceToHostFIFO(
+        poplar::Tensor out =
+            ConvertFromDeviceLayout(shapes[all_outputs_flat_tensor_index],
+                                    out_tensors[all_outputs_flat_tensor_index]);
+
+        poplar::Graph& master_graph = GetMasterGraph(resources_);
+
+        if (HasReplicatedGraph(resources_)) {
+          // For replicated outputs, we send only the first IPU's slice to the
+          // host
+          out = master_graph.getNonReplicatedTensor(out);
+          out = out.slice(0, 1);
+        }
+
+        auto fifo = master_graph.addDeviceToHostFIFO(
             GetOutputCopyHandle(idx, current_output_flat_tensor_index),
             out.elementType(), out.numElements());
 

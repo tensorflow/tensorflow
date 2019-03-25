@@ -4,10 +4,7 @@ from __future__ import print_function
 
 import fnmatch
 import json
-import networkx as nx
 import numpy as np
-import re
-import tempfile
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
@@ -313,42 +310,6 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       # There is 1 piece of global exchange (aprt from progId)
       wl = ['progIdCopy/GlobalPreAll', '*_to_/custom-call/GlobalPreAll']
       self.assertTrue(tu.check_all_compute_sets_and_list(ge_list, wl))
-
-  # TODO - fix this test up when tensor stream connections are working
-  # def testCreateSimpleReplicatedGraph(self):
-  #   def my_graph(inp):
-  #     with ops.device("/device:IPU:0"):
-  #       x = convolutional.conv2d(inp, 8, 3, padding='same', name="convA")
-  #
-  #       with x.graph.control_dependencies([x]):
-  #         no_op = control_flow_ops.no_op()
-  #
-  #       return [no_op]
-  #
-  #   with ops.device('cpu'):
-  #     inp = array_ops.placeholder(np.float32, [1, 32, 32, 4], name="data")
-  #     report = gen_ipu_ops.ipu_event_trace()
-  #
-  #   out = ipu_compiler.compile(my_graph, [inp])
-  #
-  #   cfg = ipu.utils.create_ipu_config(profiling=True)
-  #   cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-  #   cfg = ipu.utils.auto_select_ipus(cfg, 2, number_of_replicas=2)
-  #   ipu.utils.configure_ipu_system(cfg)
-  #
-  #   with sl.Session() as sess:
-  #
-  #     sess.run(report)
-  #     sess.run(variables.global_variables_initializer())
-  #     sess.run(report)
-  #
-  #     fd = {inp: np.ones([1, 32, 32, 4])}
-  #     sess.run(out, fd)
-  #
-  #     rep = sess.run(report)
-  #
-  #     # Test that the report shows that the conv2D input tensor is twice as big
-  #     # as it should be and is on both IPUs.
 
 if __name__ == "__main__":
     googletest.main()
