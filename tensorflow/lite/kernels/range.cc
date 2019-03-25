@@ -63,6 +63,19 @@ TfLiteStatus ResizeOutput(TfLiteContext* context, const TfLiteTensor* start,
                                          *GetTensorData<float>(delta), &size));
       break;
     }
+    case kTfLiteUInt8: {
+      TF_LITE_ENSURE_OK(context,
+                        GetSize(context, *GetTensorData<uint8_t>(start),
+                                *GetTensorData<uint8_t>(limit),
+                                *GetTensorData<uint8_t>(delta), &size));
+      break;
+    }
+    case kTfLiteInt8: {
+      TF_LITE_ENSURE_OK(context, GetSize(context, *GetTensorData<int8_t>(start),
+                                         *GetTensorData<int8_t>(limit),
+                                         *GetTensorData<int8_t>(delta), &size));
+      break;
+    }
     default: {
       context->ReportError(context, "Unknown data type: %d", start->type);
       return kTfLiteError;
@@ -86,9 +99,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(delta), 0);
 
   // Currently only supports int32 and float.
-  // TODO(b/117912892): Support quantization as well.
   const auto dtype = start->type;
-  TF_LITE_ENSURE(context, dtype == kTfLiteInt32 || dtype == kTfLiteFloat32);
+  TF_LITE_ENSURE(context, dtype == kTfLiteInt32 || dtype == kTfLiteFloat32 ||
+                              dtype == kTfLiteUInt8 || dtype == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, limit->type, dtype);
   TF_LITE_ENSURE_EQ(context, delta->type, dtype);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -99,6 +112,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       break;
     case kTfLiteFloat32:
       output->type = kTfLiteFloat32;
+      break;
+    case kTfLiteUInt8:
+      output->type = kTfLiteUInt8;
+      break;
+    case kTfLiteInt8:
+      output->type = kTfLiteInt8;
       break;
     default:
       context->ReportError(context, "Unknown index output data type: %d",
@@ -115,6 +134,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
+namespace {
 template <typename T>
 void EvalImpl(const TfLiteTensor* start, const TfLiteTensor* delta,
               TfLiteTensor* output) {
@@ -128,6 +148,26 @@ void EvalImpl(const TfLiteTensor* start, const TfLiteTensor* delta,
     value += delta_value;
   }
 }
+}  // namespace
+
+namespace {
+template <typename T>
+void QuantizedRange(const TfLiteTensor* start, const TfLiteTensor* delta,
+                    TfLiteTensor* output) {
+  T start_value = *GetTensorData<T>(start);
+  T delta_value = *GetTensorData<T>(delta);
+  // For Quantization support offset Zero_point
+  start_value = start_value - start->params.zero_point;
+  delta_value = delta_value - delta->params.zero_point;
+  T* output_data = GetTensorData<T>(output);
+  const int num_elements = NumElements(output);
+  T value = start_value;
+  for (int i = 0; i < num_elements; ++i) {
+    output_data[i] = value;
+    value += delta_value;
+  }
+}
+}  // namespace
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* start = GetInput(context, node, kStartTensor);
@@ -148,6 +188,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
     case kTfLiteFloat32: {
       EvalImpl<float>(start, delta, output);
+      break;
+    }
+    case kTfLiteUInt8: {
+      QuantizedRange<uint8_t>(start, delta, output);
+      break;
+    }
+    case kTfLiteInt8: {
+      EvalImpl<int8_t>(start, delta, output);
       break;
     }
     default: {

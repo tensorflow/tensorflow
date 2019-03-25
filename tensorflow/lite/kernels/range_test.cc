@@ -110,6 +110,162 @@ TEST(RangeOpModel, FloatNegativeDelta) {
   EXPECT_THAT(model.GetOutput(), ElementsAre(10, 7, 4));
 }
 
+const float kQuantizedTolerance = 2 * (1. / 256);
+class QuantizedRangeOpModel : public SingleOpModel {
+ public:
+  explicit QuantizedRangeOpModel(TensorData start, TensorData limit,
+                                 TensorData delta) {
+    start_ = AddInput(start);
+    limit_ = AddInput(limit);
+    delta_ = AddInput(delta);
+    output_ = AddOutput({start.type, {}, start.min, start.max});
+    SetBuiltinOp(BuiltinOperator_RANGE, BuiltinOptions_RangeOptions,
+                 CreateRangeOptions(builder_).Union());
+    BuildInterpreter({GetShape(start_), GetShape(limit_), GetShape(delta_)});
+  }
+
+  template <typename T>
+  void SetStart(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(start_, data);
+  }
+
+  template <typename T>
+  void SetDelta(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(delta_, data);
+  }
+
+  template <typename T>
+  void SetLimit(std::initializer_list<float> data) {
+    QuantizeAndPopulate<T>(limit_, data);
+  }
+
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
+
+  template <typename T>
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<T>(ExtractVector<T>(output_), GetScale(output_),
+                         GetZeroPoint(output_));
+  }
+
+ private:
+  int start_;
+  int limit_;
+  int delta_;
+  int output_;
+};
+
+TEST(QuantizedRangeOpModel, RangeUInt8) {
+  float kMin = std::numeric_limits<uint8_t>::min();
+  float kMax = std::numeric_limits<uint8_t>::max();
+
+  QuantizedRangeOpModel m({TensorType_UINT8, {}, kMin, kMax},
+                          {TensorType_UINT8, {}, kMin, kMax},
+                          {TensorType_UINT8, {}, kMin, kMax});
+
+  m.SetStart<uint8_t>({0});
+  m.SetDelta<uint8_t>({1});
+  m.SetLimit<uint8_t>({4});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0,
+                      1,
+                      2,
+                      3,
+                  },
+                  kQuantizedTolerance)));
+}
+
+TEST(QuantizedRangeOpModel, QUIntDeltaGreaterThanOne) {
+  float kMin = std::numeric_limits<uint8_t>::min();
+  float kMax = std::numeric_limits<uint8_t>::max();
+
+  QuantizedRangeOpModel m({TensorType_UINT8, {}, kMin, kMax},
+                          {TensorType_UINT8, {}, kMin, kMax},
+                          {TensorType_UINT8, {}, kMin, kMax});
+
+  m.SetStart<uint8_t>({2});
+  m.SetDelta<uint8_t>({2});
+  m.SetLimit<uint8_t>({9});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<uint8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      2,
+                      4,
+                      6,
+                      8,
+                  },
+                  kQuantizedTolerance)));
+}
+
+TEST(QuantizedRangeOpModel, RangeInt8) {
+  float kMin = std::numeric_limits<int8_t>::min();
+  float kMax = std::numeric_limits<int8_t>::max();
+
+  QuantizedRangeOpModel m({TensorType_INT8, {}, kMin, kMax},
+                          {TensorType_INT8, {}, kMin, kMax},
+                          {TensorType_INT8, {}, kMin, kMax});
+
+  m.SetStart<int8_t>({0});
+  m.SetDelta<int8_t>({1});
+  m.SetLimit<int8_t>({4});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        0,
+                                                        1,
+                                                        2,
+                                                        3,
+                                                    },
+                                                    kQuantizedTolerance)));
+}
+
+TEST(QuantizedRangeOpModel, QIntDeltaGreaterThanOne) {
+  float kMin = std::numeric_limits<int8_t>::min();
+  float kMax = std::numeric_limits<int8_t>::max();
+  QuantizedRangeOpModel m({TensorType_INT8, {}, kMin, kMax},
+                          {TensorType_INT8, {}, kMin, kMax},
+                          {TensorType_INT8, {}, kMin, kMax});
+
+  m.SetStart<int8_t>({2});
+  m.SetDelta<int8_t>({2});
+  m.SetLimit<int8_t>({9});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        2,
+                                                        4,
+                                                        6,
+                                                        8,
+                                                    },
+                                                    kQuantizedTolerance)));
+}
+
+TEST(QuantizedRangeOpModel, QIntNegativeDelta) {
+  float kMin = std::numeric_limits<int8_t>::min();
+  float kMax = std::numeric_limits<int8_t>::max();
+  QuantizedRangeOpModel m({TensorType_INT8, {}, kMin, kMax},
+                          {TensorType_INT8, {}, kMin, kMax},
+                          {TensorType_INT8, {}, kMin, kMax});
+
+  m.SetStart<int8_t>({10});
+  m.SetDelta<int8_t>({-3});
+  m.SetLimit<int8_t>({3});
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(), ElementsAreArray(ArrayFloatNear(
+                                                    {
+                                                        10,
+                                                        7,
+                                                        4,
+                                                    },
+                                                    kQuantizedTolerance)));
+}
+
 }  // namespace
 }  // namespace tflite
 
