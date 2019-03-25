@@ -3598,7 +3598,7 @@ def specificity_at_sensitivity(labels,
 
   Returns:
     specificity: A scalar `Tensor` representing the specificity at the given
-      `specificity` value.
+      `sensitivity` value.
     update_op: An operation that increments the `true_positives`,
       `true_negatives`, `false_positives` and `false_negatives` variables
       appropriately and whose value matches `specificity`.

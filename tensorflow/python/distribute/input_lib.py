@@ -125,7 +125,7 @@ class InputIteratorImpl(InputIterator):
   def __init__(self, input_workers, iterators, **kwargs):
     # TODO(b/128995245): Remove this temporary flag once the zero batch case can
     # be correctly handled.
-    self._enable_get_next_as_optional = True
+    self._enable_get_next_as_optional = False
     if len(kwargs) > 1:
       raise ValueError("InputIteratorImpl constructor only takes one "
                        "experimental flag now")

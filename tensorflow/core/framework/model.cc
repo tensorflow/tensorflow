@@ -471,6 +471,15 @@ void Model::RecordElement(const string& name) {
   }
 }
 
+int64 Model::NumElements(const string& name) {
+  tf_shared_lock l(mu_);
+  auto node = gtl::FindOrNull(lookup_table_, name);
+  if (node) {
+    return (*node)->num_elements();
+  }
+  return 0;
+}
+
 void Model::RecordStart(const string& name, bool stop_output) {
   tf_shared_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);

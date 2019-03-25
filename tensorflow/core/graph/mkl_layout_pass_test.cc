@@ -149,6 +149,7 @@ REGISTER_OP("InputList").Output("o: N * float").Attr("N: int").SetIsStateful();
 REGISTER_OP("HalfInput").Output("o: half").SetIsStateful();
 REGISTER_OP("Int32Input").Output("o: int32").SetIsStateful();
 REGISTER_OP("DoubleInput").Output("o: double").SetIsStateful();
+REGISTER_OP("QuantizedInput").Output("o: quint8").SetIsStateful();
 REGISTER_OP("_MklInput").Output("o: uint8").SetIsStateful();
 REGISTER_OP("_MklInput2")
     .Output("o: uint8")
@@ -1235,6 +1236,61 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Positive) {
             "A->D;A:control->DMT/_0:control;A:control->DMT/"
             "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
             "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'QuantizedInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Dequantize'"
+      " attr { key: 'T'             value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'          value { s: 'SCALED' } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(QuantizedInput);B(Input);C(Input);D(_MklDequantize);"
+            "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(Zeta)|"
+            "A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->D:1;C->D:2;D->E;"
+            "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Const_Input) {
+  InitGraph(
+      "node { name: 'A' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_QUINT8 } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_QUINT8 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Dequantize'"
+      " attr { key: 'T'             value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'          value { s: 'SCALED' } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Const);B(Input);C(Input);D(Dequantize);"
+            "E(Zeta)|A->D;B->D:1;C->D:2;D->E");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_Dequantize_Negative_Non_SCALED_Mode) {
+  InitGraph(
+      "node { name: 'A' op: 'QuantizedInput'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: 'Dequantize'"
+      " attr { key: 'T'             value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'          value { s: 'MIN_FIRST' } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(QuantizedInput);B(Input);C(Input);D(Dequantize);"
+            "E(Zeta)|A->D;B->D:1;C->D:2;D->E");
 }
 
 // Rewrite test for _FusedConv2D Op with BiasAdd fusion

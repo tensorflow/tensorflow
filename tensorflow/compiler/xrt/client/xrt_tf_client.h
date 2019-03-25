@@ -4,7 +4,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+   http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -21,10 +21,6 @@ limitations under the License.
 // which is all the functionality we need for running XLA programs using XRT.
 // The API is intended to be minimal and does not take dependencies on classes
 // such as Tensor or Device.
-//
-// The XrtTfClient/XrtTfContext classes are intended to wrap the TensorFlow API
-// more directly, without any XRT-specific knowledge. The higher level XrtClient
-// adds XRT-specific functionality on top.
 //
 // The main feature this client adds over the remote eager TF client is
 // batching. Rather than synchronously executing each operator, the client
@@ -59,6 +55,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xrt/client/xrt_grpc_eager_client.h"
 #include "tensorflow/compiler/xrt/client/xrt_tf_client.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -88,6 +85,7 @@ class XrtTensorHandle;
 class XrtRecvTensorFuture;
 
 // Class that manages a TensorFlow Eager context.
+// TODO(phawkins): Intended to be thread-safe
 class XrtTfContext : public std::enable_shared_from_this<XrtTfContext> {
  public:
   struct Options {
@@ -123,16 +121,17 @@ class XrtTfContext : public std::enable_shared_from_this<XrtTfContext> {
   XrtTensorHandle SendTensor(std::unique_ptr<TensorProto> tensor_proto,
                              int device_id, bool host_memory = false);
 
-  // Receives `tensor` from the remote host. Also has the side effect of
-  // sending any enqueued operations to the remote worker.
+  // Receives `tensor` from the remote host. Does not flush the queue.
   std::shared_ptr<XrtRecvTensorFuture> RecvTensor(const XrtTensorHandle& tensor,
                                                   DataType dtype,
                                                   bool host_memory);
 
   // Enqueues an operator onto the remote host.
+  // 'future' is an optional future that depends on the op.
   std::vector<XrtTensorHandle> EnqueueOp(
       absl::string_view name, absl::Span<const XrtTensorHandle* const> inputs,
-      int output_arity, protobuf::Map<string, AttrValue> attrs, int device_id);
+      int output_arity, protobuf::Map<string, AttrValue> attrs, int device_id,
+      std::shared_ptr<XrtRecvTensorFuture> future = {});
 
   // Registers a function `def` on the remote host.
   Status RegisterFunction(const FunctionDef& def);
@@ -295,6 +294,8 @@ class XrtRecvTensorFuture {
   absl::Notification done_;
   Status status_ GUARDED_BY(mu_);
   RecvTensorResponse value_ GUARDED_BY(mu_);
+
+  CallOptions call_options_;
 };
 
 // This gets a unique wire ID. We add a random identifier so that if the
@@ -307,9 +308,12 @@ std::string XrtGetUniqueWireID();
 // remote worker. If recv_device_id < 0 the target of the send is the client,
 // and a fake device name is used (since the client has no real name in the
 // TF cluster).
+// 'future' may be null. If non-null it gives a future that depends on the
+// output of the send and that must be aborted if the send fails.
 void EnqueueSend(XrtTfContext* context, const XrtTensorHandle& tensor,
                  DataType dtype, int recv_device_id, std::string wire_id,
-                 bool host_memory);
+                 bool host_memory,
+                 std::shared_ptr<XrtRecvTensorFuture> future = {});
 
 // Enqueues a _Recv operator that receives a tensor onto a remote device.
 XrtTensorHandle EnqueueRecv(XrtTfContext* context, DataType dtype,

@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import enum
+import enum  # pylint: disable=g-bad-import-order
 import threading
 import weakref
 import six
@@ -178,17 +178,27 @@ class _CurrentDistributionContext(object):
       self._device_scope = ops.device(default_device)
     else:
       self._device_scope = None
+    self._same_scope_again_count = 0
 
   def __enter__(self):
-    _push_per_thread_mode(self._context)
-    if self._var_scope:
-      self._var_scope.__enter__()
-    self._var_creator_scope.__enter__()
-    if self._device_scope:
-      self._device_scope.__enter__()
+    # Allow this scope to be entered if this strategy is already in scope.
+    if distribution_strategy_context.has_strategy():
+      _require_cross_replica_or_default_context_extended(
+          self._context.strategy.extended)
+      self._same_scope_again_count += 1
+    else:
+      _push_per_thread_mode(self._context)
+      if self._var_scope:
+        self._var_scope.__enter__()
+      self._var_creator_scope.__enter__()
+      if self._device_scope:
+        self._device_scope.__enter__()
     return self._context.strategy
 
   def __exit__(self, exception_type, exception_value, traceback):
+    if self._same_scope_again_count > 0:
+      self._same_scope_again_count -= 1
+      return
     if self._device_scope:
       try:
         self._device_scope.__exit__(exception_type, exception_value, traceback)
@@ -216,19 +226,6 @@ class _CurrentDistributionContext(object):
                          "tf.distribute.set_strategy() out of `with` scope."),
             e)
     _pop_per_thread_mode()
-
-
-class _SameScopeAgainContext(object):
-  """Trivial context manager when you are already in `scope()`."""
-
-  def __init__(self, strategy):
-    self._strategy = strategy
-
-  def __enter__(self):
-    return self._strategy
-
-  def __exit__(self, exception_type, exception_value, traceback):
-    del exception_type, exception_value, traceback
 
 
 # TODO(yuefengz): add more replication modes.
@@ -535,6 +532,8 @@ class DistributionStrategy(object):
       A `Tensor`.
     """
     _require_cross_replica_or_default_context_extended(self._extended)
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     return self._extended._reduce(reduce_op, value)  # pylint: disable=protected-access
 
   @doc_controls.do_not_generate_docs  # DEPRECATED
@@ -886,10 +885,6 @@ class DistributionStrategyExtended(object):
 
   def _scope(self, strategy):
     """Implementation of DistributionStrategy.scope()."""
-    if distribution_strategy_context.has_strategy():
-      _require_cross_replica_or_default_context_extended(self)
-      return _SameScopeAgainContext(strategy)
-
     def creator_with_resource_vars(*args, **kwargs):
       _require_strategy_scope_extended(self)
       kwargs["use_resource"] = True
@@ -1179,6 +1174,8 @@ class DistributionStrategyExtended(object):
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     assert (reduce_op == reduce_util.ReduceOp.SUM or
             reduce_op == reduce_util.ReduceOp.MEAN)
     return self._reduce_to(reduce_op, value, destinations)
@@ -1200,6 +1197,8 @@ class DistributionStrategyExtended(object):
     # TODO(josh11b): More docstring
     _require_cross_replica_or_default_context_extended(self)
     assert not isinstance(reduce_op, variable_scope.VariableAggregation)
+    if isinstance(reduce_op, six.string_types):
+      reduce_op = reduce_util.ReduceOp(reduce_op.upper())
     return self._batch_reduce_to(reduce_op, value_destination_pairs)
 
   def _batch_reduce_to(self, reduce_op, value_destination_pairs):

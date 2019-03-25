@@ -74,7 +74,7 @@ public final class OperatorProcessor extends AbstractProcessor {
 
   @Override
   public SourceVersion getSupportedSourceVersion() {
-    return SourceVersion.latestSupported();
+    return SourceVersion.latest();
   }
 
   @Override

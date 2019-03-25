@@ -459,48 +459,30 @@ class NearComparator {
 
   // For complex types, we compare real and imaginary parts individually.
   void CompareValues(complex64 expected, complex64 actual, int64 linear_index) {
-    bool mismatch = false;
+    const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<float>(expected.real(), actual.real(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for real part, instead increase
-      // mismatch by 1 for the entire complex number.
-      num_mismatches_--;
-    }
     CompareValues<float>(expected.imag(), actual.imag(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for imag part, instead increase
-      // mismatch by 1 for the entire complex number.
+    if (num_mismatches_ == both_parts_mismatch) {
+      // The mismatch counter had been incremented by each CompareValues() call,
+      // which means that both real and imaginary parts of the passed-in complex
+      // values are different. However, the counter should reflect a single
+      // mismatch between these complex values.
       num_mismatches_--;
     }
-    if (mismatch == true) {
-      num_mismatches_++;
-    }
-    mismatches_.data<bool>()[linear_index] = mismatch;
   }
 
   void CompareValues(complex128 expected, complex128 actual,
                      int64 linear_index) {
-    bool mismatch = false;
+    const auto both_parts_mismatch = num_mismatches_ + 2;
     CompareValues<double>(expected.real(), actual.real(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for real part, instead increase
-      // mismatch by 1 for the entire complex number.
-      num_mismatches_--;
-    }
     CompareValues<double>(expected.imag(), actual.imag(), linear_index);
-    if (mismatches_.data<bool>()[linear_index] == true) {
-      mismatch = true;
-      // Delay the mismatch count increase for imag part, instead increase
-      // mismatch by 1 for the entire complex number.
+    if (num_mismatches_ == both_parts_mismatch) {
+      // The mismatch counter had been incremented by each CompareValues() call,
+      // which means that both real and imaginary parts of the passed-in complex
+      // values are different. However, the counter should reflect a single
+      // mismatch between these complex values.
       num_mismatches_--;
     }
-    if (mismatch == true) {
-      num_mismatches_++;
-    }
-    mismatches_.data<bool>()[linear_index] = mismatch;
   }
 
   // Compares the two literals elementwise.

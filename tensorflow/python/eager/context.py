@@ -552,58 +552,24 @@ class Context(object):
     """Returns the device spec for the current thread."""
     return self._thread_local_data.device_spec
 
-  @tf_contextlib.contextmanager
+  def _set_device(self, device_name, device_spec):
+    self._thread_local_data.device_name = device_name
+    self._thread_local_data.device_spec = device_spec
+
   def device(self, name):
     """Context-manager to force placement of operations and Tensors on a device.
 
     Args:
       name: Name of the device or None to get default placement.
 
-    Yields:
-      Nothing.
+    Returns:
+      Context manager that forces device placement.
 
     Raises:
       ValueError: If name is not a string or is an invalid device name.
       RuntimeError: If device scopes are not properly nested.
     """
-    eager_context = self._thread_local_data
-    old_device_name = eager_context.device_name
-    old_device_spec = eager_context.device_spec
-    cache_key = (old_device_name, name)
-    try:
-      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
-    except TypeError:
-      # Error while trying to compute the cache key.
-      raise ValueError("Expecting a string device name. Got %s(%s)" %
-                       (type(name), name))
-    except KeyError:
-      # Handle a cache miss.
-      if name is not None:
-        if not isinstance(name, str):
-          raise ValueError("Expecting a string device name. Got %s(%s)" %
-                           (type(name), name))
-        device_spec = pydev.DeviceSpec.from_string(name)
-        if old_device_name:
-          new_device_spec = copy.copy(old_device_spec)
-        else:
-          self._initialize_handle_and_devices()
-          new_device_spec = pydev.DeviceSpec.from_string(
-              self._context_devices[0])
-        new_device_spec.merge_from(device_spec)
-      else:
-        new_device_spec = pydev.DeviceSpec.from_string("")
-      new_device_name = new_device_spec.to_string()
-      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
-
-    try:
-      eager_context.device_name = new_device_name
-      eager_context.device_spec = new_device_spec
-      yield
-    finally:
-      if eager_context.device_spec is not new_device_spec:
-        raise RuntimeError("Exiting device scope without proper scope nesting")
-      eager_context.device_name = old_device_name
-      eager_context.device_spec = old_device_spec
+    return _EagerDeviceContext(self, name)
 
   def devices(self):
     """List of the names of devices available to execute operations."""
@@ -1020,6 +986,58 @@ class Context(object):
 
 _context = None
 _context_lock = threading.Lock()
+
+
+class _EagerDeviceContext(object):
+  """Context-manager forcing placement of ops and Tensors on a device."""
+
+  def __init__(self, ctx, device_name):
+    self._device_name = device_name
+    self._ctx = ctx
+    self._stack = []
+
+  def __enter__(self):
+    ctx = self._ctx
+    old_device_name = ctx.device_name
+    old_device_spec = ctx.device_spec
+    new_device_name = self._device_name
+    cache_key = (old_device_name, new_device_name)
+    try:
+      new_device_name, new_device_spec = _device_parsing_cache[cache_key]
+    except TypeError:
+      # Error while trying to compute the cache key.
+      raise ValueError("Expecting a string device name. Got %s(%s)" %
+                       (type(new_device_name), new_device_name))
+    except KeyError:
+      # Handle a cache miss.
+      if new_device_name is not None:
+        if not isinstance(new_device_name, str):
+          raise ValueError("Expecting a string device name. Got %s(%s)" %
+                           (type(new_device_name), new_device_name))
+        device_spec = pydev.DeviceSpec.from_string(new_device_name)
+        if old_device_name:
+          new_device_spec = copy.copy(old_device_spec)
+        else:
+          ctx._initialize_handle_and_devices()  # pylint: disable=protected-access
+          new_device_spec = pydev.DeviceSpec.from_string(
+              ctx._context_devices[0])  # pylint: disable=protected-access
+        new_device_spec.merge_from(device_spec)
+      else:
+        new_device_spec = pydev.DeviceSpec.from_string("")
+      new_device_name = new_device_spec.to_string()
+      _device_parsing_cache[cache_key] = (new_device_name, new_device_spec)
+
+    ctx._set_device(new_device_name, new_device_spec)  # pylint: disable=protected-access
+    self._stack.append((old_device_name, old_device_spec, new_device_spec))
+
+  def __exit__(self, *ex_info):
+    ctx = self._ctx
+    old_device_name, old_device_spec, new_device_spec = self._stack[-1]
+    if ctx.device_spec is not new_device_spec:
+      raise RuntimeError(
+          "Exiting device scope without proper scope nesting")
+    del self._stack[-1]
+    ctx._set_device(old_device_name, old_device_spec)  # pylint: disable=protected-access
 
 
 def _initialize_context():

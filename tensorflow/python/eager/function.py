@@ -357,7 +357,7 @@ class _EagerDefinedFunction(object):
     self.python_grad_func = None
     self._c_func = c_api_util.ScopedTFFunction(fn)
     self._grad_func = None
-    self._graph = graph
+    self.graph = graph
     self._stateful_ops = tuple(op for op in operations if op.op_def.is_stateful)
 
   def add_to_graph(self, g=None):
@@ -367,7 +367,7 @@ class _EagerDefinedFunction(object):
     else:
       if self.name not in g._functions:
         g._add_function(self)
-      for f in self._graph._functions.values():
+      for f in self.graph._functions.values():
         if f.name not in g._functions:
           g._add_function(f)
     # pylint: enable=protected-access
