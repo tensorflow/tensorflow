@@ -32,9 +32,9 @@ void FertileStatsResource::AddExampleToStatsAndInitialize(
     for (int i = 0; i < examples.size(); i++) {
       const auto& example = examples[i];
       if (feature_per_split != nullptr) {
-        const auto& rand_feature = feature_per_split[i];
+        const auto* random_features = &feature_per_split->at(i);
         collection_op_->CreateAndInitializeCandidateWithExample(
-            input_data, target, example, node_id, rand_feature);
+            input_data, target, example, node_id, random_features);
       } else {
         collection_op_->CreateAndInitializeCandidateWithExample(
             input_data, target, example, node_id, nullptr);

@@ -65,7 +65,7 @@ class FertileStatsResource : public ResourceBase {
   // where applicable.  Returns if the node is finished or if it's ready to
   // allocate to a fertile slot.
   // When pre-generated feature_per_split is provided, this method is thread
-  // safe?
+  // safe.
   void AddExampleToStatsAndInitialize(
       const std::unique_ptr<TensorDataSet>& input_data,
       const InputTarget* target, const std::vector<int>& examples,

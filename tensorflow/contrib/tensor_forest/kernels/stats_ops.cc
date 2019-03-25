@@ -186,7 +186,7 @@ void UpdateStats(FertileStatsResource* fertile_stats_resource,
 
     bool is_finished;
     fertile_stats_resource->AddExampleToStatsAndInitialize(
-        data, &target, {example_id}, leaf_id, &is_finished);
+        data, &target, {example_id}, leaf_id, &is_finished, nullptr);
     leaf_lock->unlock();
     if (is_finished) {
       set_lock->lock();
@@ -212,7 +212,7 @@ void UpdateStatsCollated(
   std::advance(end_it, end);
   while (it != end_it) {
     int32 leaf_id = it->first;
-    const auto& random_features = features_per_split.at(leaf_id);
+    const auto* random_features = &features_per_split.at(leaf_id);
     bool is_finished;
     fertile_stats_resource->AddExampleToStatsAndInitialize(
         data, &target, it->second, leaf_id, &is_finished, random_features);
@@ -291,7 +291,7 @@ class ProcessInputOp : public OpKernel {
     // with mutexes.
     std::unordered_map<int, std::unique_ptr<mutex>> locks;
     std::unordered_map<int32, std::vector<int>> leaf_examples;
-    // keep a id of subsampled feature which this leaf will use.
+    // keep an id of subsampled features which this leaf will use.
     std::unordered_map<int32, std::vector<int>> features_per_split;
     const int32 num_total_features = input_spec_.dense_features_size();
     const int32 num_splits_to_consider =
