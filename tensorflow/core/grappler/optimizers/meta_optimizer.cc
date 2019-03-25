@@ -447,10 +447,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   optimization_results_.push_back(optimization_result);
 
   if (is_optimized) {
-    // Run the model pruner again to clean things up.
-    if (!cfg_.disable_model_pruning() && model_pruner != nullptr) {
-      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(model_pruner);
-    }
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version.
