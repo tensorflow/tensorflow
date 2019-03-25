@@ -227,7 +227,7 @@ void OpMethodSignature::writeDefTo(raw_ostream &os,
   // initializers. This is incorrect for initializer list with more than one
   // element. Change to a more robust approach.
   auto removeParamDefaultValue = [](StringRef params) {
-    string result;
+    std::string result;
     std::pair<StringRef, StringRef> parts;
     while (!params.empty()) {
       parts = params.split("=");
