@@ -66,7 +66,7 @@ bool mlir::isValidDim(Value *value) {
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
     if (auto dimOp = inst->dyn_cast<DimOp>())
-      return isTopLevelSymbol(dimOp->getOperand());
+      return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }
   // This value is a block argument (which also includes 'affine.for' loop IVs).
@@ -87,11 +87,11 @@ bool mlir::isValidSymbol(Value *value) {
       return true;
     // Affine apply operation is ok if all of its operands are ok.
     if (auto op = inst->dyn_cast<AffineApplyOp>())
-      return op->isValidSymbol();
+      return op.isValidSymbol();
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
     if (auto dimOp = inst->dyn_cast<DimOp>())
-      return isTopLevelSymbol(dimOp->getOperand());
+      return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }
   // Otherwise, the only valid symbol is a top level block argument.

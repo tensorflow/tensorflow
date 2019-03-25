@@ -95,18 +95,18 @@ FunctionPassBase *mlir::createMemRefDataFlowOptPass() {
 // this in the future if needed.
 void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   Instruction *lastWriteStoreOp = nullptr;
-  Instruction *loadOpInst = loadOp->getInstruction();
+  Instruction *loadOpInst = loadOp.getInstruction();
 
   // First pass over the use list to get minimum number of surrounding
   // loops common between the load op and the store op, with min taken across
   // all store ops.
   SmallVector<Instruction *, 8> storeOps;
   unsigned minSurroundingLoops = getNestingDepth(*loadOpInst);
-  for (InstOperand &use : loadOp->getMemRef()->getUses()) {
+  for (InstOperand &use : loadOp.getMemRef()->getUses()) {
     auto storeOp = use.getOwner()->dyn_cast<StoreOp>();
     if (!storeOp)
       continue;
-    auto *storeOpInst = storeOp->getInstruction();
+    auto *storeOpInst = storeOp.getInstruction();
     unsigned nsLoops = getNumCommonSurroundingLoops(*loadOpInst, *storeOpInst);
     minSurroundingLoops = std::min(nsLoops, minSurroundingLoops);
     storeOps.push_back(storeOpInst);
@@ -169,7 +169,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
         MemRefRegion region(loadOpInst->getLoc());
         region.compute(loadOpInst, nsLoops);
         if (!region.getConstraints()->isRangeOneToOne(
-                /*start=*/0, /*limit=*/loadOp->getMemRefType().getRank()))
+                /*start=*/0, /*limit=*/loadOp.getMemRefType().getRank()))
           break;
       }
 
@@ -201,10 +201,10 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
     return;
 
   // Perform the actual store to load forwarding.
-  Value *storeVal = lastWriteStoreOp->cast<StoreOp>()->getValueToStore();
-  loadOp->getResult()->replaceAllUsesWith(storeVal);
+  Value *storeVal = lastWriteStoreOp->cast<StoreOp>().getValueToStore();
+  loadOp.getResult()->replaceAllUsesWith(storeVal);
   // Record the memref for a later sweep to optimize away.
-  memrefsToErase.insert(loadOp->getMemRef());
+  memrefsToErase.insert(loadOp.getMemRef());
   // Record this to erase later.
   loadOpsToErase.push_back(loadOpInst);
 }

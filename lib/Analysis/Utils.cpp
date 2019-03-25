@@ -384,7 +384,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
   LLVM_DEBUG(region.getConstraints()->dump());
 
   bool outOfBounds = false;
-  unsigned rank = loadOrStoreOp->getMemRefType().getRank();
+  unsigned rank = loadOrStoreOp.getMemRefType().getRank();
 
   // For each dimension, check for out of bounds.
   for (unsigned r = 0; r < rank; r++) {
@@ -394,7 +394,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     // of upper and out of lower), and check if the constraint system is
     // feasible. If it is, there is at least one point out of bounds.
     SmallVector<int64_t, 4> ineq(rank + 1, 0);
-    int64_t dimSize = loadOrStoreOp->getMemRefType().getDimSize(r);
+    int64_t dimSize = loadOrStoreOp.getMemRefType().getDimSize(r);
     // TODO(bondhugula): handle dynamic dim sizes.
     if (dimSize == -1)
       continue;
@@ -403,7 +403,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     ucst.addConstantLowerBound(r, dimSize);
     outOfBounds = !ucst.isEmpty();
     if (outOfBounds && emitError) {
-      loadOrStoreOp->emitOpError(
+      loadOrStoreOp.emitOpError(
           "memref out of upper bound access along dimension #" + Twine(r + 1));
     }
 
@@ -414,7 +414,7 @@ LogicalResult mlir::boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
     lcst.addConstantUpperBound(r, -1);
     outOfBounds = !lcst.isEmpty();
     if (outOfBounds && emitError) {
-      loadOrStoreOp->emitOpError(
+      loadOrStoreOp.emitOpError(
           "memref out of lower bound access along dimension #" + Twine(r + 1));
     }
   }
@@ -622,21 +622,21 @@ AffineForOp mlir::insertBackwardComputationSlice(
 // opinst from 'loadOrStoreOpInst'.
 MemRefAccess::MemRefAccess(Instruction *loadOrStoreOpInst) {
   if (auto loadOp = loadOrStoreOpInst->dyn_cast<LoadOp>()) {
-    memref = loadOp->getMemRef();
+    memref = loadOp.getMemRef();
     opInst = loadOrStoreOpInst;
-    auto loadMemrefType = loadOp->getMemRefType();
+    auto loadMemrefType = loadOp.getMemRefType();
     indices.reserve(loadMemrefType.getRank());
-    for (auto *index : loadOp->getIndices()) {
+    for (auto *index : loadOp.getIndices()) {
       indices.push_back(index);
     }
   } else {
     assert(loadOrStoreOpInst->isa<StoreOp>() && "load/store op expected");
     auto storeOp = loadOrStoreOpInst->dyn_cast<StoreOp>();
     opInst = loadOrStoreOpInst;
-    memref = storeOp->getMemRef();
-    auto storeMemrefType = storeOp->getMemRefType();
+    memref = storeOp.getMemRef();
+    auto storeMemrefType = storeOp.getMemRefType();
     indices.reserve(storeMemrefType.getRank());
-    for (auto *index : storeOp->getIndices()) {
+    for (auto *index : storeOp.getIndices()) {
       indices.push_back(index);
     }
   }

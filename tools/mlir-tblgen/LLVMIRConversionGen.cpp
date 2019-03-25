@@ -130,15 +130,15 @@ static bool emitOneBuilder(const Record &record, raw_ostream &os) {
     bool isVariadicArg = isVariadicArgumentName(op, name);
     if (isOperandName(op, name)) {
       auto result = isVariadicArg
-                        ? formatv("lookupValues(op->{0}())", name)
-                        : formatv("valueMapping.lookup(op->{0}())", name);
+                        ? formatv("lookupValues(op.{0}())", name)
+                        : formatv("valueMapping.lookup(op.{0}())", name);
       bs << result;
     } else if (isAttributeName(op, name)) {
-      bs << formatv("op->{0}()", name);
+      bs << formatv("op.{0}()", name);
     } else if (isResultName(op, name)) {
-      bs << formatv("valueMapping[op->{0}()]", name);
+      bs << formatv("valueMapping[op.{0}()]", name);
     } else if (name == "_resultType") {
-      bs << "op->getResult()->getType().cast<LLVM::LLVMType>()."
+      bs << "op.getResult()->getType().cast<LLVM::LLVMType>()."
             "getUnderlyingType()";
     } else if (name == "_hasResult") {
       bs << "inst.getNumResults() == 1";

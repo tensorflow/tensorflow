@@ -135,7 +135,7 @@ struct MemRefCastFolder : public RewritePattern {
     for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
       if (auto *memref = op->getOperand(i)->getDefiningInst())
         if (auto cast = memref->dyn_cast<MemRefCastOp>())
-          op->setOperand(i, cast->getOperand());
+          op->setOperand(i, cast.getOperand());
     rewriter.updatedRootInPlace(op);
   }
 };
@@ -293,7 +293,7 @@ struct SimplifyAllocConst : public RewritePattern {
 
     // Check to see if any dimensions operands are constants.  If so, we can
     // substitute and drop them.
-    for (auto *operand : alloc->getOperands())
+    for (auto *operand : alloc.getOperands())
       if (matchPattern(operand, m_ConstantIndex()))
         return matchSuccess();
     return matchFailure();
@@ -301,7 +301,7 @@ struct SimplifyAllocConst : public RewritePattern {
 
   void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
     auto allocOp = op->cast<AllocOp>();
-    auto memrefType = allocOp->getType();
+    auto memrefType = allocOp.getType();
 
     // Ok, we have one or more constant operands.  Collect the non-constant ones
     // and keep track of the resultant memref type to build.
@@ -318,7 +318,7 @@ struct SimplifyAllocConst : public RewritePattern {
         newShapeConstants.push_back(dimSize);
         continue;
       }
-      auto *defOp = allocOp->getOperand(dynamicDimPos)->getDefiningInst();
+      auto *defOp = allocOp.getOperand(dynamicDimPos)->getDefiningInst();
       ConstantIndexOp constantIndexOp;
       if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
         // Dynamic shape dimension will be folded.
@@ -328,7 +328,7 @@ struct SimplifyAllocConst : public RewritePattern {
       } else {
         // Dynamic shape dimension not folded; copy operand from old memref.
         newShapeConstants.push_back(-1);
-        newOperands.push_back(allocOp->getOperand(dynamicDimPos));
+        newOperands.push_back(allocOp.getOperand(dynamicDimPos));
       }
       dynamicDimPos++;
     }
@@ -341,10 +341,10 @@ struct SimplifyAllocConst : public RewritePattern {
 
     // Create and insert the alloc op for the new memref.
     auto newAlloc =
-        rewriter.create<AllocOp>(allocOp->getLoc(), newMemRefType, newOperands);
+        rewriter.create<AllocOp>(allocOp.getLoc(), newMemRefType, newOperands);
     // Insert a cast so we have the same type as the old alloc.
-    auto resultCast = rewriter.create<MemRefCastOp>(allocOp->getLoc(), newAlloc,
-                                                    allocOp->getType());
+    auto resultCast = rewriter.create<MemRefCastOp>(allocOp.getLoc(), newAlloc,
+                                                    allocOp.getType());
 
     rewriter.replaceOp(op, {resultCast}, droppedOperands);
   }
@@ -360,7 +360,7 @@ struct SimplifyDeadAlloc : public RewritePattern {
                                      PatternRewriter &rewriter) const override {
     // Check if the alloc'ed value has any uses.
     auto alloc = op->cast<AllocOp>();
-    if (!alloc->use_empty())
+    if (!alloc.use_empty())
       return matchFailure();
 
     // If it doesn't, we can eliminate it.
@@ -493,7 +493,7 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
 
     // Check that the callee is a constant operation.
     Attribute callee;
-    if (!matchPattern(indirectCall->getCallee(), m_Constant(&callee)))
+    if (!matchPattern(indirectCall.getCallee(), m_Constant(&callee)))
       return matchFailure();
 
     // Check that the constant callee is a function.
@@ -502,7 +502,7 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
       return matchFailure();
 
     // Replace with a direct call.
-    SmallVector<Value *, 8> callOperands(indirectCall->getArgOperands());
+    SmallVector<Value *, 8> callOperands(indirectCall.getArgOperands());
     rewriter.replaceOpWithNewOp<CallOp>(op, calledFn.getValue(), callOperands);
     return matchSuccess();
   }
@@ -803,7 +803,7 @@ struct SimplifyConstCondBranchPred : public RewritePattern {
     auto condbr = op->cast<CondBranchOp>();
 
     // Check that the condition is a constant.
-    if (!matchPattern(condbr->getCondition(), m_Op<ConstantOp>()))
+    if (!matchPattern(condbr.getCondition(), m_Op<ConstantOp>()))
       return matchFailure();
 
     Block *foldedDest;
@@ -812,14 +812,13 @@ struct SimplifyConstCondBranchPred : public RewritePattern {
     // If the condition is known to evaluate to false we fold to a branch to the
     // false destination. Otherwise, we fold to a branch to the true
     // destination.
-    if (matchPattern(condbr->getCondition(), m_Zero())) {
-      foldedDest = condbr->getFalseDest();
-      branchArgs.assign(condbr->false_operand_begin(),
-                        condbr->false_operand_end());
+    if (matchPattern(condbr.getCondition(), m_Zero())) {
+      foldedDest = condbr.getFalseDest();
+      branchArgs.assign(condbr.false_operand_begin(),
+                        condbr.false_operand_end());
     } else {
-      foldedDest = condbr->getTrueDest();
-      branchArgs.assign(condbr->true_operand_begin(),
-                        condbr->true_operand_end());
+      foldedDest = condbr.getTrueDest();
+      branchArgs.assign(condbr.true_operand_begin(), condbr.true_operand_end());
     }
 
     rewriter.replaceOpWithNewOp<BranchOp>(op, foldedDest, branchArgs);
@@ -1095,7 +1094,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
     auto dealloc = op->cast<DeallocOp>();
 
     // Check that the memref operand's defining instruction is an AllocOp.
-    Value *memref = dealloc->getMemRef();
+    Value *memref = dealloc.getMemRef();
     Instruction *defOp = memref->getDefiningInst();
     if (!defOp || !defOp->isa<AllocOp>())
       return matchFailure();
@@ -1986,15 +1985,15 @@ namespace {
 ///
 struct SimplifyXMinusX : public RewritePattern {
   SimplifyXMinusX(MLIRContext *context)
-      : RewritePattern(SubIOp::getOperationName(), 10, context) {}
+      : RewritePattern(SubIOp::getOperationName(), 1, context) {}
 
   PatternMatchResult matchAndRewrite(Instruction *op,
                                      PatternRewriter &rewriter) const override {
     auto subi = op->cast<SubIOp>();
-    if (subi->getOperand(0) != subi->getOperand(1))
+    if (subi.getOperand(0) != subi.getOperand(1))
       return matchFailure();
 
-    rewriter.replaceOpWithNewOp<ConstantIntOp>(op, 0, subi->getType());
+    rewriter.replaceOpWithNewOp<ConstantIntOp>(op, 0, subi.getType());
     return matchSuccess();
   }
 };

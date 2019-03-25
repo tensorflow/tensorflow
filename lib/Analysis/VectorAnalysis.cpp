@@ -171,12 +171,12 @@ AffineMap mlir::makePermutationMap(
   }
 
   if (auto load = opInst->dyn_cast<LoadOp>()) {
-    return ::makePermutationMap(opInst->getContext(), load->getIndices(),
+    return ::makePermutationMap(opInst->getContext(), load.getIndices(),
                                 enclosingLoopToVectorDim);
   }
 
   auto store = opInst->cast<StoreOp>();
-  return ::makePermutationMap(opInst->getContext(), store->getIndices(),
+  return ::makePermutationMap(opInst->getContext(), store.getIndices(),
                               enclosingLoopToVectorDim);
 }
 
@@ -194,10 +194,10 @@ bool mlir::matcher::operatesOnSuperVectors(Instruction &opInst,
   bool mustDivide = false;
   VectorType superVectorType;
   if (auto read = opInst.dyn_cast<VectorTransferReadOp>()) {
-    superVectorType = read->getResultType();
+    superVectorType = read.getResultType();
     mustDivide = true;
   } else if (auto write = opInst.dyn_cast<VectorTransferWriteOp>()) {
-    superVectorType = write->getVectorType();
+    superVectorType = write.getVectorType();
     mustDivide = true;
   } else if (opInst.getNumResults() == 0) {
     if (!opInst.isa<ReturnOp>()) {

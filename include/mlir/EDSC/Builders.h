@@ -421,14 +421,14 @@ InstructionHandle InstructionHandle::create(Args... args) {
   return InstructionHandle(
       ScopedContext::getBuilder()
           ->create<Op>(ScopedContext::getLocation(), args...)
-          ->getInstruction());
+          .getInstruction());
 }
 
 template <typename Op, typename... Args>
 ValueHandle ValueHandle::create(Args... args) {
   Instruction *inst = ScopedContext::getBuilder()
                           ->create<Op>(ScopedContext::getLocation(), args...)
-                          ->getInstruction();
+                          .getInstruction();
   if (inst->getNumResults() == 1) {
     return ValueHandle(inst->getResult(0));
   } else if (inst->getNumResults() == 0) {

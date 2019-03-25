@@ -108,14 +108,14 @@ public:
 
   /// Used for staging the transfer in a local scalar buffer.
   MemRefType tmpMemRefType() {
-    auto vectorType = transfer->getVectorType();
+    auto vectorType = transfer.getVectorType();
     return MemRefType::get(vectorType.getShape(), vectorType.getElementType(),
                            {}, 0);
   }
   /// View of tmpMemRefType as one vector, used in vector load/store to tmp
   /// buffer.
   MemRefType vectorMemRefType() {
-    return MemRefType::get({1}, transfer->getVectorType(), {}, 0);
+    return MemRefType::get({1}, transfer.getVectorType(), {}, 0);
   }
   /// Performs the rewrite.
   void rewrite();
@@ -137,12 +137,12 @@ void coalesceCopy(VectorTransferOpTy transfer,
                   edsc::VectorView *vectorView) {
   // rank of the remote memory access, coalescing behavior occurs on the
   // innermost memory dimension.
-  auto remoteRank = transfer->getMemRefType().getRank();
+  auto remoteRank = transfer.getMemRefType().getRank();
   // Iterate over the results expressions of the permutation map to determine
   // the loop order for creating pointwise copies between remote and local
   // memories.
   int coalescedIdx = -1;
-  auto exprs = transfer->getPermutationMap().getResults();
+  auto exprs = transfer.getPermutationMap().getResults();
   for (auto en : llvm::enumerate(exprs)) {
     auto dim = en.value().template dyn_cast<AffineDimExpr>();
     if (!dim) {
@@ -173,7 +173,7 @@ clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
   using edsc::intrinsics::select;
 
   IndexHandle zero(index_t(0)), one(index_t(1));
-  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer->getIndices());
+  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.getIndices());
   llvm::SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
       memRefAccess.size(), edsc::IndexHandle());
 
@@ -183,7 +183,7 @@ clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
        ++memRefDim) {
     // Linear search on a small number of entries.
     int loopIndex = -1;
-    auto exprs = transfer->getPermutationMap().getResults();
+    auto exprs = transfer.getPermutationMap().getResults();
     for (auto en : llvm::enumerate(exprs)) {
       auto expr = en.value();
       auto dim = expr.template dyn_cast<AffineDimExpr>();
@@ -267,11 +267,11 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   using namespace mlir::edsc::intrinsics;
 
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(transfer->getInstruction()),
-                      transfer->getLoc());
-  IndexedValue remote(transfer->getMemRef());
-  MemRefView view(transfer->getMemRef());
-  VectorView vectorView(transfer->getVector());
+  ScopedContext scope(FuncBuilder(transfer.getInstruction()),
+                      transfer.getLoc());
+  IndexedValue remote(transfer.getMemRef());
+  MemRefView view(transfer.getMemRef());
+  VectorView vectorView(transfer.getVector());
   SmallVector<IndexHandle, 8> ivs =
       IndexHandle::makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs =
@@ -294,8 +294,8 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   (dealloc(tmp)); // vexing parse
 
   // 3. Propagate.
-  transfer->replaceAllUsesWith(vectorValue.getValue());
-  transfer->erase();
+  transfer.replaceAllUsesWith(vectorValue.getValue());
+  transfer.erase();
 }
 
 /// Lowers VectorTransferWriteOp into a combination of:
@@ -322,12 +322,12 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   using namespace mlir::edsc::intrinsics;
 
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(transfer->getInstruction()),
-                      transfer->getLoc());
-  IndexedValue remote(transfer->getMemRef());
-  MemRefView view(transfer->getMemRef());
-  ValueHandle vectorValue(transfer->getVector());
-  VectorView vectorView(transfer->getVector());
+  ScopedContext scope(FuncBuilder(transfer.getInstruction()),
+                      transfer.getLoc());
+  IndexedValue remote(transfer.getMemRef());
+  MemRefView view(transfer.getMemRef());
+  ValueHandle vectorValue(transfer.getVector());
+  VectorView vectorView(transfer.getVector());
   SmallVector<IndexHandle, 8> ivs =
       IndexHandle::makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs =
@@ -349,7 +349,7 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   });
   (dealloc(tmp)); // vexing parse...
 
-  transfer->erase();
+  transfer.erase();
 }
 
 namespace {

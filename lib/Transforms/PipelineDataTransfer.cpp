@@ -125,7 +125,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
                                 /*domInstFilter=*/&*forOp.getBody()->begin())) {
     LLVM_DEBUG(
         forOp.emitError("memref replacement for double buffering failed"));
-    ivModTwoOp->getInstruction()->erase();
+    ivModTwoOp.erase();
     return false;
   }
   // Insert the dealloc op right after the for loop.
@@ -152,10 +152,10 @@ void PipelineDataTransfer::runOnFunction() {
 
 // Check if tags of the dma start op and dma wait op match.
 static bool checkTagMatch(DmaStartOp startOp, DmaWaitOp waitOp) {
-  if (startOp->getTagMemRef() != waitOp->getTagMemRef())
+  if (startOp.getTagMemRef() != waitOp.getTagMemRef())
     return false;
-  auto startIndices = startOp->getTagIndices();
-  auto waitIndices = waitOp->getTagIndices();
+  auto startIndices = startOp.getTagIndices();
+  auto waitIndices = waitOp.getTagIndices();
   // Both of these have the same number of indices since they correspond to the
   // same tag memref.
   for (auto it = startIndices.begin(), wIt = waitIndices.begin(),
@@ -182,7 +182,7 @@ static void findMatchingStartFinishInsts(
   SmallVector<DmaStartOp, 4> outgoingDmaOps;
   for (auto &inst : *forOp.getBody()) {
     auto dmaStartOp = inst.dyn_cast<DmaStartOp>();
-    if (dmaStartOp && dmaStartOp->isSrcMemorySpaceFaster())
+    if (dmaStartOp && dmaStartOp.isSrcMemorySpaceFaster())
       outgoingDmaOps.push_back(dmaStartOp);
   }
 
@@ -199,7 +199,7 @@ static void findMatchingStartFinishInsts(
 
     // Only DMAs incoming into higher memory spaces are pipelined for now.
     // TODO(bondhugula): handle outgoing DMA pipelining.
-    if (!dmaStartOp->isDestMemorySpaceFaster())
+    if (!dmaStartOp.isDestMemorySpaceFaster())
       continue;
 
     // Check for dependence with outgoing DMAs. Doing this conservatively.
@@ -207,14 +207,14 @@ static void findMatchingStartFinishInsts(
     // dependences between an incoming and outgoing DMA in the same iteration.
     auto it = outgoingDmaOps.begin();
     for (; it != outgoingDmaOps.end(); ++it) {
-      if ((*it)->getDstMemRef() == dmaStartOp->getSrcMemRef())
+      if (it->getDstMemRef() == dmaStartOp.getSrcMemRef())
         break;
     }
     if (it != outgoingDmaOps.end())
       continue;
 
     // We only double buffer if the buffer is not live out of loop.
-    auto *memref = dmaStartOp->getOperand(dmaStartOp->getFasterMemPos());
+    auto *memref = dmaStartOp.getOperand(dmaStartOp.getFasterMemPos());
     bool escapingUses = false;
     for (const auto &use : memref->getUses()) {
       // We can double buffer regardless of dealloc's outside the loop.
@@ -272,7 +272,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
     Value *oldMemRef = dmaStartInst->getOperand(
-        dmaStartInst->cast<DmaStartOp>()->getFasterMemPos());
+        dmaStartInst->cast<DmaStartOp>().getFasterMemPos());
     if (!doubleBuffer(oldMemRef, forOp)) {
       // Normally, double buffering should not fail because we already checked
       // that there are no uses outside.

@@ -450,7 +450,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
     if (numResults == 0)
       return {};
     if (numResults == 1)
-      return {newOp->getInstruction()->getResult(0)};
+      return {newOp.getInstruction()->getResult(0)};
 
     // Otherwise, it had been converted to an operation producing a structure.
     // Extract individual results from the structure and return them as list.
@@ -460,7 +460,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
       auto type = TypeConverter::convert(op->getResult(i)->getType(),
                                          this->dialect.getLLVMModule());
       results.push_back(rewriter.create<LLVM::ExtractValueOp>(
-          op->getLoc(), type, newOp->getInstruction()->getResult(0),
+          op->getLoc(), type, newOp.getInstruction()->getResult(0),
           this->getIntegerArrayAttr(rewriter, i)));
     }
     return results;
@@ -546,19 +546,19 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     if (!LLVMLegalizationPattern<AllocOp>::match(op))
       return matchFailure();
     auto allocOp = op->cast<AllocOp>();
-    MemRefType type = allocOp->getType();
+    MemRefType type = allocOp.getType();
     return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
   }
 
   SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto allocOp = op->cast<AllocOp>();
-    MemRefType type = allocOp->getType();
+    MemRefType type = allocOp.getType();
 
     // Get actual sizes of the memref as values: static sizes are constant
     // values and dynamic sizes are passed to 'alloc' as operands.
     SmallVector<Value *, 4> sizes;
-    auto numOperands = allocOp->getNumOperands();
+    auto numOperands = allocOp.getNumOperands();
     sizes.reserve(numOperands);
     unsigned i = 0;
     for (int64_t s : type.getShape())
@@ -607,7 +607,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
             .create<LLVM::CallOp>(op->getLoc(), getVoidPtrType(),
                                   rewriter.getFunctionAttr(mallocFunc),
                                   cumulativeSize)
-            ->getResult(0);
+            .getResult(0);
     auto structElementType = TypeConverter::convert(elementType, getModule());
     auto elementPtrType = LLVM::LLVMType::get(
         op->getContext(), structElementType.cast<LLVM::LLVMType>()
@@ -688,8 +688,8 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
       return matchFailure();
     auto memRefCastOp = op->cast<MemRefCastOp>();
     MemRefType sourceType =
-        memRefCastOp->getOperand()->getType().cast<MemRefType>();
-    MemRefType targetType = memRefCastOp->getType();
+        memRefCastOp.getOperand()->getType().cast<MemRefType>();
+    MemRefType targetType = memRefCastOp.getType();
     return (isSupportedMemRefType(targetType) &&
             isSupportedMemRefType(sourceType))
                ? matchSuccess()
@@ -699,8 +699,8 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
   SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto memRefCastOp = op->cast<MemRefCastOp>();
-    auto targetType = memRefCastOp->getType();
-    auto sourceType = memRefCastOp->getOperand()->getType().cast<MemRefType>();
+    auto targetType = memRefCastOp.getType();
+    auto sourceType = memRefCastOp.getOperand()->getType().cast<MemRefType>();
 
     // Copy the data buffer pointer.
     auto elementTypePtr =
@@ -767,7 +767,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
     if (!LLVMLegalizationPattern<DimOp>::match(op))
       return this->matchFailure();
     auto dimOp = op->cast<DimOp>();
-    MemRefType type = dimOp->getOperand()->getType().cast<MemRefType>();
+    MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
     return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
   }
 
@@ -775,11 +775,11 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
                                   FuncBuilder &rewriter) const override {
     assert(operands.size() == 1 && "expected exactly one operand");
     auto dimOp = op->cast<DimOp>();
-    MemRefType type = dimOp->getOperand()->getType().cast<MemRefType>();
+    MemRefType type = dimOp.getOperand()->getType().cast<MemRefType>();
 
     SmallVector<Value *, 4> results;
     auto shape = type.getShape();
-    uint64_t index = dimOp->getIndex();
+    uint64_t index = dimOp.getIndex();
     // Extract dynamic size from the memref descriptor and define static size
     // as a constant.
     if (shape[index] == -1) {
@@ -814,7 +814,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
     if (!LLVMLegalizationPattern<Derived>::match(op))
       return this->matchFailure();
     auto loadOp = op->cast<Derived>();
-    MemRefType type = loadOp->getMemRefType();
+    MemRefType type = loadOp.getMemRefType();
     return isSupportedMemRefType(type) ? this->matchSuccess()
                                        : this->matchFailure();
   }
@@ -918,7 +918,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto loadOp = op->cast<LoadOp>();
-    auto type = loadOp->getMemRefType();
+    auto type = loadOp.getMemRefType();
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, operands.front(),
                                 operands.drop_front(), rewriter, getModule());
@@ -940,7 +940,7 @@ struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto storeOp = op->cast<StoreOp>();
-    auto type = storeOp->getMemRefType();
+    auto type = storeOp.getMemRefType();
 
     Value *dataPtr = getDataPtr(op->getLoc(), type, operands[1],
                                 operands.drop_front(2), rewriter, getModule());

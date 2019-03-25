@@ -171,8 +171,8 @@ public:
   static LogicalResult constantFoldHook(Instruction *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results) {
-    return op->cast<ConcreteType>()->constantFold(operands, results,
-                                                  op->getContext());
+    return op->cast<ConcreteType>().constantFold(operands, results,
+                                                 op->getContext());
   }
 
   /// Op implementations can implement this hook.  It should attempt to constant
@@ -193,7 +193,7 @@ public:
   /// This is an implementation detail of the folder hook for AbstractOperation.
   static LogicalResult foldHook(Instruction *op,
                                 SmallVectorImpl<Value *> &results) {
-    return op->cast<ConcreteType>()->fold(results);
+    return op->cast<ConcreteType>().fold(results);
   }
 
   /// This hook implements a generalized folder for this operation.  Operations
@@ -241,7 +241,7 @@ public:
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results) {
     auto result =
-        op->cast<ConcreteType>()->constantFold(operands, op->getContext());
+        op->cast<ConcreteType>().constantFold(operands, op->getContext());
     if (!result)
       return failure();
 
@@ -265,7 +265,7 @@ public:
   /// This is an implementation detail of the folder hook for AbstractOperation.
   static LogicalResult foldHook(Instruction *op,
                                 SmallVectorImpl<Value *> &results) {
-    auto *result = op->cast<ConcreteType>()->fold();
+    auto *result = op->cast<ConcreteType>().fold();
     if (!result)
       return failure();
     if (result != op->getResult(0))
@@ -752,7 +752,7 @@ public:
     auto opPointer = op->dyn_cast<ConcreteType>();
     assert(opPointer &&
            "op's name does not match name of concrete type instantiated with");
-    opPointer->print(p);
+    opPointer.print(p);
   }
 
   /// This is the hook that checks whether or not this instruction is well
@@ -764,7 +764,7 @@ public:
   /// diagnostic subsystem and returns true.
   static bool verifyInvariants(Instruction *op) {
     return BaseVerifier<Traits<ConcreteType>...>::verifyTrait(op) ||
-           op->cast<ConcreteType>()->verify();
+           op->cast<ConcreteType>().verify();
   }
 
   // Returns the properties of an operation by combining the properties of the

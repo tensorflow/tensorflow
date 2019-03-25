@@ -174,7 +174,7 @@ public:
     unsigned getLoadOpCount(Value *memref) {
       unsigned loadOpCount = 0;
       for (auto *loadOpInst : loads) {
-        if (memref == loadOpInst->cast<LoadOp>()->getMemRef())
+        if (memref == loadOpInst->cast<LoadOp>().getMemRef())
           ++loadOpCount;
       }
       return loadOpCount;
@@ -184,7 +184,7 @@ public:
     unsigned getStoreOpCount(Value *memref) {
       unsigned storeOpCount = 0;
       for (auto *storeOpInst : stores) {
-        if (memref == storeOpInst->cast<StoreOp>()->getMemRef())
+        if (memref == storeOpInst->cast<StoreOp>().getMemRef())
           ++storeOpCount;
       }
       return storeOpCount;
@@ -194,7 +194,7 @@ public:
     void getStoreOpsForMemref(Value *memref,
                               SmallVectorImpl<Instruction *> *storeOps) {
       for (auto *storeOpInst : stores) {
-        if (memref == storeOpInst->cast<StoreOp>()->getMemRef())
+        if (memref == storeOpInst->cast<StoreOp>().getMemRef())
           storeOps->push_back(storeOpInst);
       }
     }
@@ -203,7 +203,7 @@ public:
     void getLoadOpsForMemref(Value *memref,
                              SmallVectorImpl<Instruction *> *loadOps) {
       for (auto *loadOpInst : loads) {
-        if (memref == loadOpInst->cast<LoadOp>()->getMemRef())
+        if (memref == loadOpInst->cast<LoadOp>().getMemRef())
           loadOps->push_back(loadOpInst);
       }
     }
@@ -213,10 +213,10 @@ public:
     void getLoadAndStoreMemrefSet(DenseSet<Value *> *loadAndStoreMemrefSet) {
       llvm::SmallDenseSet<Value *, 2> loadMemrefs;
       for (auto *loadOpInst : loads) {
-        loadMemrefs.insert(loadOpInst->cast<LoadOp>()->getMemRef());
+        loadMemrefs.insert(loadOpInst->cast<LoadOp>().getMemRef());
       }
       for (auto *storeOpInst : stores) {
-        auto *memref = storeOpInst->cast<StoreOp>()->getMemRef();
+        auto *memref = storeOpInst->cast<StoreOp>().getMemRef();
         if (loadMemrefs.count(memref) > 0)
           loadAndStoreMemrefSet->insert(memref);
       }
@@ -300,7 +300,7 @@ public:
   bool writesToLiveInOrEscapingMemrefs(unsigned id) {
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
-      auto *memref = storeOpInst->cast<StoreOp>()->getMemRef();
+      auto *memref = storeOpInst->cast<StoreOp>().getMemRef();
       auto *inst = memref->getDefiningInst();
       // Return true if 'memref' is a block argument.
       if (!inst)
@@ -325,7 +325,7 @@ public:
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
       // Return false if there exist out edges from 'id' on 'memref'.
-      if (getOutEdgeCount(id, storeOpInst->cast<StoreOp>()->getMemRef()) > 0)
+      if (getOutEdgeCount(id, storeOpInst->cast<StoreOp>().getMemRef()) > 0)
         return false;
     }
     return true;
@@ -648,12 +648,12 @@ bool MemRefDependenceGraph::init(Function *f) {
       Node node(nextNodeId++, &inst);
       for (auto *opInst : collector.loadOpInsts) {
         node.loads.push_back(opInst);
-        auto *memref = opInst->cast<LoadOp>()->getMemRef();
+        auto *memref = opInst->cast<LoadOp>().getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
       for (auto *opInst : collector.storeOpInsts) {
         node.stores.push_back(opInst);
-        auto *memref = opInst->cast<StoreOp>()->getMemRef();
+        auto *memref = opInst->cast<StoreOp>().getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
       forToNodeMap[&inst] = node.id;
@@ -662,14 +662,14 @@ bool MemRefDependenceGraph::init(Function *f) {
       // Create graph node for top-level load op.
       Node node(nextNodeId++, &inst);
       node.loads.push_back(&inst);
-      auto *memref = inst.cast<LoadOp>()->getMemRef();
+      auto *memref = inst.cast<LoadOp>().getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
     } else if (auto storeOp = inst.dyn_cast<StoreOp>()) {
       // Create graph node for top-level store op.
       Node node(nextNodeId++, &inst);
       node.stores.push_back(&inst);
-      auto *memref = inst.cast<StoreOp>()->getMemRef();
+      auto *memref = inst.cast<StoreOp>().getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
     } else if (inst.getNumRegions() != 0) {
@@ -880,7 +880,7 @@ moveLoadsAccessingMemrefTo(Value *memref,
   dstLoads->clear();
   SmallVector<Instruction *, 4> srcLoadsToKeep;
   for (auto *load : *srcLoads) {
-    if (load->cast<LoadOp>()->getMemRef() == memref)
+    if (load->cast<LoadOp>().getMemRef() == memref)
       dstLoads->push_back(load);
     else
       srcLoadsToKeep.push_back(load);
@@ -1126,7 +1126,7 @@ static Value *createPrivateMemRef(AffineForOp forOp,
   // Builder to create constants at the top level.
   FuncBuilder top(forInst->getFunction());
   // Create new memref type based on slice bounds.
-  auto *oldMemRef = srcStoreOpInst->cast<StoreOp>()->getMemRef();
+  auto *oldMemRef = srcStoreOpInst->cast<StoreOp>().getMemRef();
   auto oldMemRefType = oldMemRef->getType().cast<MemRefType>();
   unsigned rank = oldMemRefType.getRank();
 
@@ -1857,7 +1857,7 @@ public:
       DenseSet<Value *> visitedMemrefs;
       while (!loads.empty()) {
         // Get memref of load on top of the stack.
-        auto *memref = loads.back()->cast<LoadOp>()->getMemRef();
+        auto *memref = loads.back()->cast<LoadOp>().getMemRef();
         if (visitedMemrefs.count(memref) > 0)
           continue;
         visitedMemrefs.insert(memref);
@@ -1920,7 +1920,7 @@ public:
           // Gather 'dstNode' store ops to 'memref'.
           SmallVector<Instruction *, 2> dstStoreOpInsts;
           for (auto *storeOpInst : dstNode->stores)
-            if (storeOpInst->cast<StoreOp>()->getMemRef() == memref)
+            if (storeOpInst->cast<StoreOp>().getMemRef() == memref)
               dstStoreOpInsts.push_back(storeOpInst);
 
           unsigned bestDstLoopDepth;
@@ -1956,7 +1956,7 @@ public:
               // Create private memref for 'memref' in 'dstAffineForOp'.
               SmallVector<Instruction *, 4> storesForMemref;
               for (auto *storeOpInst : sliceCollector.storeOpInsts) {
-                if (storeOpInst->cast<StoreOp>()->getMemRef() == memref)
+                if (storeOpInst->cast<StoreOp>().getMemRef() == memref)
                   storesForMemref.push_back(storeOpInst);
               }
               assert(storesForMemref.size() == 1);
@@ -1978,7 +1978,7 @@ public:
             // Add new load ops to current Node load op list 'loads' to
             // continue fusing based on new operands.
             for (auto *loadOpInst : dstLoopCollector.loadOpInsts) {
-              auto *loadMemRef = loadOpInst->cast<LoadOp>()->getMemRef();
+              auto *loadMemRef = loadOpInst->cast<LoadOp>().getMemRef();
               if (visitedMemrefs.count(loadMemRef) == 0)
                 loads.push_back(loadOpInst);
             }
@@ -2163,7 +2163,7 @@ public:
             // Check that all stores are to the same memref.
             DenseSet<Value *> storeMemrefs;
             for (auto *storeOpInst : sibNode->stores) {
-              storeMemrefs.insert(storeOpInst->cast<StoreOp>()->getMemRef());
+              storeMemrefs.insert(storeOpInst->cast<StoreOp>().getMemRef());
             }
             if (storeMemrefs.size() != 1)
               return;

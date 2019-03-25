@@ -819,8 +819,7 @@ template <typename LoadOrStoreOpPointer>
 static LogicalResult vectorizeRootOrTerminal(Value *iv,
                                              LoadOrStoreOpPointer memoryOp,
                                              VectorizationState *state) {
-  auto memRefType =
-      memoryOp->getMemRef()->getType().template cast<MemRefType>();
+  auto memRefType = memoryOp.getMemRef()->getType().template cast<MemRefType>();
 
   auto elementType = memRefType.getElementType();
   // TODO(ntv): ponder whether we want to further vectorize a vector value.
@@ -829,7 +828,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   auto vectorType = VectorType::get(state->strategy->vectorSizes, elementType);
 
   // Materialize a MemRef with 1 vector.
-  auto *opInst = memoryOp->getInstruction();
+  auto *opInst = memoryOp.getInstruction();
   // For now, vector_transfers must be aligned, operate only on indices with an
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector_transfer operations
@@ -841,9 +840,9 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     FuncBuilder b(opInst);
     auto transfer = b.create<VectorTransferReadOp>(
-        opInst->getLoc(), vectorType, memoryOp->getMemRef(),
-        map(makePtrDynCaster<Value>(), memoryOp->getIndices()), permutationMap);
-    state->registerReplacement(opInst, transfer->getInstruction());
+        opInst->getLoc(), vectorType, memoryOp.getMemRef(),
+        map(makePtrDynCaster<Value>(), memoryOp.getIndices()), permutationMap);
+    state->registerReplacement(opInst, transfer.getInstruction());
   } else {
     state->registerTerminal(opInst);
   }
@@ -1041,10 +1040,10 @@ static Instruction *vectorizeOneInstruction(Instruction *opInst,
          "vector_transfer_write cannot be further vectorized");
 
   if (auto store = opInst->dyn_cast<StoreOp>()) {
-    auto *memRef = store->getMemRef();
-    auto *value = store->getValueToStore();
+    auto *memRef = store.getMemRef();
+    auto *value = store.getValueToStore();
     auto *vectorValue = vectorizeOperand(value, opInst, state);
-    auto indices = map(makePtrDynCaster<Value>(), store->getIndices());
+    auto indices = map(makePtrDynCaster<Value>(), store.getIndices());
     FuncBuilder b(opInst);
     auto permutationMap =
         makePermutationMap(opInst, state->strategy->loopToVectorDim);
@@ -1052,7 +1051,7 @@ static Instruction *vectorizeOneInstruction(Instruction *opInst,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<VectorTransferWriteOp>(
         opInst->getLoc(), vectorValue, memRef, indices, permutationMap);
-    auto *res = transfer->getInstruction();
+    auto *res = transfer.getInstruction();
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
     // "Terminals" (i.e. StoreOps) are erased on the spot.
     opInst->erase();

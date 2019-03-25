@@ -69,7 +69,7 @@ MLIRContext *mlir::edsc::ScopedContext::getContext() {
 mlir::edsc::ValueHandle::ValueHandle(index_t cst) {
   auto *b = ScopedContext::getBuilder();
   auto loc = ScopedContext::getLocation();
-  v = b->create<ConstantIndexOp>(loc, cst.v)->getResult();
+  v = b->create<ConstantIndexOp>(loc, cst.v).getResult();
   t = v->getType();
 }
 
@@ -393,7 +393,7 @@ static ValueHandle createComparisonExpr(CmpIPredicate predicate,
 
   auto op = ScopedContext::getBuilder()->create<CmpIOp>(
       ScopedContext::getLocation(), predicate, lhs.getValue(), rhs.getValue());
-  return ValueHandle(op->getResult());
+  return ValueHandle(op.getResult());
 }
 
 ValueHandle mlir::edsc::op::operator==(ValueHandle lhs, ValueHandle rhs) {

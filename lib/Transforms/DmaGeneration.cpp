@@ -168,12 +168,12 @@ static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
                                   MemRefRegion *region) {
   unsigned rank;
   if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
-    rank = loadOp->getMemRefType().getRank();
-    region->memref = loadOp->getMemRef();
+    rank = loadOp.getMemRefType().getRank();
+    region->memref = loadOp.getMemRef();
     region->setWrite(false);
   } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
-    rank = storeOp->getMemRefType().getRank();
-    region->memref = storeOp->getMemRef();
+    rank = storeOp.getMemRefType().getRank();
+    region->memref = storeOp.getMemRef();
     region->setWrite(true);
   } else {
     assert(false && "expected load or store op");
@@ -317,7 +317,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
         memIndices.push_back(zeroIndex);
       } else {
         memIndices.push_back(
-            top.create<ConstantIndexOp>(loc, indexVal)->getResult());
+            top.create<ConstantIndexOp>(loc, indexVal).getResult());
       }
     } else {
       // The coordinate for the start location is just the lower bound along the
@@ -345,7 +345,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
 
     // Create the fast memory space buffer just before the 'affine.for'
     // instruction.
-    fastMemRef = prologue.create<AllocOp>(loc, fastMemRefType)->getResult();
+    fastMemRef = prologue.create<AllocOp>(loc, fastMemRefType).getResult();
     // Record it.
     fastBufferMap[memref] = fastMemRef;
     // fastMemRefType is a constant shaped memref.
@@ -608,10 +608,10 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   block->walk(begin, end, [&](Instruction *opInst) {
     // Gather regions to allocate to buffers in faster memory space.
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
-      if (loadOp->getMemRefType().getMemorySpace() != slowMemorySpace)
+      if (loadOp.getMemRefType().getMemorySpace() != slowMemorySpace)
         return;
     } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
-      if (storeOp->getMemRefType().getMemorySpace() != slowMemorySpace)
+      if (storeOp.getMemRefType().getMemorySpace() != slowMemorySpace)
         return;
     } else {
       // Neither load nor a store op.

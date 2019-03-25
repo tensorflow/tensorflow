@@ -56,7 +56,7 @@ void ConstantFold::foldInstruction(Instruction *op) {
     Attribute operandCst = nullptr;
     if (auto *operandOp = operand->getDefiningInst()) {
       if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
-        operandCst = operandConstantOp->getValue();
+        operandCst = operandConstantOp.getValue();
     }
     operandConstants.push_back(operandCst);
   }

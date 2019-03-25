@@ -447,7 +447,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
       std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value ||
           std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value,
       "Must be called on a VectorTransferOp");
-  auto superVectorType = transfer->getVectorType();
+  auto superVectorType = transfer.getVectorType();
   auto optionalRatio = shapeRatio(superVectorType, hwVectorType);
   assert(optionalRatio &&
          (optionalRatio->size() == superVectorType.getShape().size()) &&
@@ -465,7 +465,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
         ++dim;
       },
       superVectorType.getShape(), *optionalRatio);
-  auto permutationMap = transfer->getPermutationMap();
+  auto permutationMap = transfer.getPermutationMap();
   LLVM_DEBUG(permutationMap.print(dbgs() << "\npermutationMap: "));
   if (keep.empty()) {
     return permutationMap;
@@ -486,17 +486,17 @@ static Instruction *instantiate(FuncBuilder *b, VectorTransferReadOp read,
                                 ArrayRef<unsigned> hwVectorInstance,
                                 DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), read->getIndices());
+      map(makePtrDynCaster<Value>(), read.getIndices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto map = projectedPermutationMap(read, hwVectorType);
   if (!map) {
     return nullptr;
   }
-  auto cloned = b->create<VectorTransferReadOp>(
-      read->getLoc(), hwVectorType, read->getMemRef(), affineIndices, map,
-      read->getPaddingValue());
-  return cloned->getInstruction();
+  auto cloned = b->create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
+                                                read.getMemRef(), affineIndices,
+                                                map, read.getPaddingValue());
+  return cloned.getInstruction();
 }
 
 /// Creates an instantiated version of `write` for the instance of
@@ -510,15 +510,15 @@ static Instruction *instantiate(FuncBuilder *b, VectorTransferWriteOp write,
                                 ArrayRef<unsigned> hwVectorInstance,
                                 DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), write->getIndices());
+      map(makePtrDynCaster<Value>(), write.getIndices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b->create<VectorTransferWriteOp>(
-      write->getLoc(),
-      substitute(write->getVector(), hwVectorType, substitutionsMap),
-      write->getMemRef(), affineIndices,
+      write.getLoc(),
+      substitute(write.getVector(), hwVectorType, substitutionsMap),
+      write.getMemRef(), affineIndices,
       projectedPermutationMap(write, hwVectorType));
-  return cloned->getInstruction();
+  return cloned.getInstruction();
 }
 
 /// Returns `true` if inst instance is properly cloned and inserted, false
@@ -568,7 +568,7 @@ static bool instantiateMaterialization(Instruction *inst,
       return true;
     }
     state->substitutionsMap->insert(
-        std::make_pair(read->getResult(), clone->getResult(0)));
+        std::make_pair(read.getResult(), clone->getResult(0)));
     return false;
   }
   // The only op with 0 results reaching this point must, by construction, be
@@ -712,7 +712,7 @@ static bool materialize(Function *f,
 
     // Emit the current slice.
     // Set scoped super-vector and corresponding hw vector types.
-    state->superVectorType = terminator->getVectorType();
+    state->superVectorType = terminator.getVectorType();
     assert((state->superVectorType.getElementType() ==
             FloatType::getF32(term->getContext())) &&
            "Only f32 supported for now");

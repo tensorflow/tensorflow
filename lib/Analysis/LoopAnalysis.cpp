@@ -235,9 +235,9 @@ static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
   static_assert(std::is_same<LoadOrStoreOp, LoadOp>::value ||
                     std::is_same<LoadOrStoreOp, StoreOp>::value,
                 "Must be called on either const LoadOp & or const StoreOp &");
-  auto memRefType = memoryOp->getMemRefType();
+  auto memRefType = memoryOp.getMemRefType();
   if (fastestVaryingDim >= memRefType.getRank()) {
-    memoryOp->emitError("fastest varying dim out of bounds");
+    memoryOp.emitError("fastest varying dim out of bounds");
     return false;
   }
 
@@ -249,10 +249,10 @@ static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
       (layoutMap.size() == 1 &&
        !(layoutMap[0] ==
          b.getMultiDimIdentityMap(layoutMap[0].getNumDims())))) {
-    return memoryOp->emitError("NYI: non-trivial layoutMap"), false;
+    return memoryOp.emitError("NYI: non-trivial layoutMap"), false;
   }
 
-  auto indices = memoryOp->getIndices();
+  auto indices = memoryOp.getIndices();
   auto numIndices = llvm::size(indices);
   unsigned d = 0;
   for (auto index : indices) {
@@ -268,7 +268,7 @@ static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
 
 template <typename LoadOrStoreOpPointer>
 static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
-  auto memRefType = memoryOp->getMemRefType();
+  auto memRefType = memoryOp.getMemRefType();
   return memRefType.getElementType().template isa<VectorType>();
 }
 

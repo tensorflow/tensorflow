@@ -158,18 +158,18 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     if (auto constant = op->dyn_cast<ConstantOp>()) {
       // If this constant is dead, remove it, being careful to keep
       // uniquedConstants up to date.
-      if (constant->use_empty()) {
+      if (constant.use_empty()) {
         auto it =
-            uniquedConstants.find({constant->getValue(), constant->getType()});
+            uniquedConstants.find({constant.getValue(), constant.getType()});
         if (it != uniquedConstants.end() && it->second == op)
           uniquedConstants.erase(it);
-        constant->erase();
+        constant.erase();
         continue;
       }
 
       // Check to see if we already have a constant with this type and value:
-      auto &entry = uniquedConstants[std::make_pair(constant->getValue(),
-                                                    constant->getType())];
+      auto &entry = uniquedConstants[std::make_pair(constant.getValue(),
+                                                    constant.getType())];
       if (entry) {
         // If this constant is already our uniqued one, then leave it alone.
         if (entry == op)
@@ -178,8 +178,8 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
         // Otherwise replace this redundant constant with the uniqued one.  We
         // know this is safe because we move constants to the top of the
         // function when they are uniqued, so we know they dominate all uses.
-        constant->replaceAllUsesWith(entry->getResult(0));
-        constant->erase();
+        constant.replaceAllUsesWith(entry->getResult(0));
+        constant.erase();
         continue;
       }
 
