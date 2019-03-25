@@ -187,7 +187,7 @@ static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
 
   // Just get the first numSymbols IVs, which the memref region is parametric
   // on.
-  SmallVector<OpPointer<AffineForOp>, 4> ivs;
+  SmallVector<AffineForOp, 4> ivs;
   getLoopIVs(*opInst, &ivs);
   ivs.resize(numParamLoopIVs);
   SmallVector<Value *, 4> symbols;
@@ -485,7 +485,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
   for (auto it = curBegin; it != block->end(); ++it) {
     if (auto forOp = it->dyn_cast<AffineForOp>()) {
       // Returns true if the footprint is known to exceed capacity.
-      auto exceedsCapacity = [&](OpPointer<AffineForOp> forOp) {
+      auto exceedsCapacity = [&](AffineForOp forOp) {
         Optional<int64_t> footprint =
             getMemoryFootprintBytes(forOp,
                                     /*memorySpace=*/0);
@@ -553,7 +553,7 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
   SmallVector<Value *, 4> symbols;
   cst->getIdValues(cst->getNumDimIds(), cst->getNumDimAndSymbolIds(), &symbols);
 
-  SmallVector<OpPointer<AffineForOp>, 4> enclosingFors;
+  SmallVector<AffineForOp, 4> enclosingFors;
   getLoopIVs(*block.begin(), &enclosingFors);
   // Walk up loop parents till we find an IV on which this region is
   // symbolic/variant.
@@ -733,7 +733,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 
   // For a range of operation instructions, a note will be emitted at the
   // caller.
-  OpPointer<AffineForOp> forOp;
+  AffineForOp forOp;
   uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
     forOp->emitNote(

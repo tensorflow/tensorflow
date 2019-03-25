@@ -853,7 +853,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
 
 /// Coarsens the loops bounds and transforms all remaining load and store
 /// operations into the appropriate vector_transfer.
-static LogicalResult vectorizeAffineForOp(AffineForOp *loop, int64_t step,
+static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
                                           VectorizationState *state) {
   using namespace functional;
   loop->setStep(step);
@@ -936,7 +936,7 @@ vectorizeLoopsAndLoadsRecursively(NestedMatch oneMatch,
   LLVM_DEBUG(dbgs() << "\n[early-vect] vectorizeForOp by " << vectorSize
                     << " : ");
   LLVM_DEBUG(loopInst->print(dbgs()));
-  return vectorizeAffineForOp(loop, loop->getStep() * vectorSize, state);
+  return vectorizeAffineForOp(loop, loop.getStep() * vectorSize, state);
 }
 
 /// Tries to transform a scalar constant into a vector splat of that constant.
@@ -1012,7 +1012,7 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
   // 3. vectorize constant.
   if (auto constant = operand->getDefiningInst()->dyn_cast<ConstantOp>()) {
     return vectorizeConstant(
-        inst, *constant,
+        inst, constant,
         VectorType::get(state->strategy->vectorSizes, operand->getType()));
   }
   // 4. currently non-vectorizable.
@@ -1178,8 +1178,8 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
       clonedLoop->erase();
       return mlir::success();
     }
-    OpPointer<AffineForOp> loop;
-    OpPointer<AffineForOp> clonedLoop;
+    AffineForOp loop;
+    AffineForOp clonedLoop;
   } guard{loop, clonedLoop};
 
   //////////////////////////////////////////////////////////////////////////////

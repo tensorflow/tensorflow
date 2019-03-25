@@ -67,7 +67,7 @@ struct LoopTiling : public FunctionPass<LoopTiling> {
       : cacheSizeBytes(cacheSizeBytes), avoidMaxMinBounds(avoidMaxMinBounds) {}
 
   void runOnFunction() override;
-  void getTileSizes(ArrayRef<OpPointer<AffineForOp>> band,
+  void getTileSizes(ArrayRef<AffineForOp> band,
                     SmallVectorImpl<unsigned> *tileSizes);
 
   // Default tile size if nothing is provided.
@@ -90,7 +90,7 @@ FunctionPassBase *mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified
 // location in destination's body.
-static inline void moveLoopBody(AffineForOp *src, AffineForOp *dest,
+static inline void moveLoopBody(AffineForOp src, AffineForOp dest,
                                 Block::iterator loc) {
   dest->getBody()->getInstructions().splice(loc,
                                             src->getBody()->getInstructions());
@@ -98,7 +98,7 @@ static inline void moveLoopBody(AffineForOp *src, AffineForOp *dest,
 
 // Move the loop body of AffineForOp 'src' from 'src' to the start of dest's
 // body.
-static inline void moveLoopBody(AffineForOp *src, AffineForOp *dest) {
+static inline void moveLoopBody(AffineForOp src, AffineForOp dest) {
   moveLoopBody(src, dest, dest->getBody()->begin());
 }
 
@@ -107,10 +107,10 @@ static inline void moveLoopBody(AffineForOp *src, AffineForOp *dest) {
 /// depend on other dimensions. Bounds of each dimension can thus be treated
 /// independently, and deriving the new bounds is much simpler and faster
 /// than for the case of tiling arbitrary polyhedral shapes.
-static void constructTiledIndexSetHyperRect(
-    MutableArrayRef<OpPointer<AffineForOp>> origLoops,
-    MutableArrayRef<OpPointer<AffineForOp>> newLoops,
-    ArrayRef<unsigned> tileSizes) {
+static void
+constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
+                                MutableArrayRef<AffineForOp> newLoops,
+                                ArrayRef<unsigned> tileSizes) {
   assert(!origLoops.empty());
   assert(origLoops.size() == tileSizes.size());
 
@@ -174,7 +174,7 @@ static void constructTiledIndexSetHyperRect(
 /// Tiles the specified band of perfectly nested loops creating tile-space loops
 /// and intra-tile loops. A band is a contiguous set of loops.
 //  TODO(bondhugula): handle non hyper-rectangular spaces.
-LogicalResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
+LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
                                 ArrayRef<unsigned> tileSizes) {
   assert(!band.empty());
   assert(band.size() == tileSizes.size() && "Incorrect number of tile sizes");
@@ -187,13 +187,13 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
 
   auto origLoops = band;
 
-  OpPointer<AffineForOp> rootAffineForOp = origLoops[0];
+  AffineForOp rootAffineForOp = origLoops[0];
   auto loc = rootAffineForOp->getLoc();
   // Note that width is at least one since band isn't empty.
   unsigned width = band.size();
 
-  SmallVector<OpPointer<AffineForOp>, 12> newLoops(2 * width);
-  OpPointer<AffineForOp> innermostPointLoop;
+  SmallVector<AffineForOp, 12> newLoops(2 * width);
+  AffineForOp innermostPointLoop;
 
   // The outermost among the loops as we add more..
   auto *topLoop = rootAffineForOp->getInstruction();
@@ -256,13 +256,12 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
 // Identify valid and profitable bands of loops to tile. This is currently just
 // a temporary placeholder to test the mechanics of tiled code generation.
 // Returns all maximal outermost perfect loop nests to tile.
-static void
-getTileableBands(Function *f,
-                 std::vector<SmallVector<OpPointer<AffineForOp>, 6>> *bands) {
+static void getTileableBands(Function *f,
+                             std::vector<SmallVector<AffineForOp, 6>> *bands) {
   // Get maximal perfect nest of 'for' insts starting from root (inclusive).
-  auto getMaximalPerfectLoopNest = [&](OpPointer<AffineForOp> root) {
-    SmallVector<OpPointer<AffineForOp>, 6> band;
-    OpPointer<AffineForOp> currInst = root;
+  auto getMaximalPerfectLoopNest = [&](AffineForOp root) {
+    SmallVector<AffineForOp, 6> band;
+    AffineForOp currInst = root;
     do {
       band.push_back(currInst);
     } while (currInst->getBody()->getInstructions().size() == 1 &&
@@ -278,7 +277,7 @@ getTileableBands(Function *f,
 
 // Reduce each tile size to the largest divisor of the corresponding trip count
 // (if the trip count is known).
-static void adjustToDivisorsOfTripCounts(ArrayRef<OpPointer<AffineForOp>> band,
+static void adjustToDivisorsOfTripCounts(ArrayRef<AffineForOp> band,
                                          SmallVectorImpl<unsigned> *tileSizes) {
   assert(band.size() == tileSizes->size() && "invalid tile size count");
   for (unsigned i = 0, e = band.size(); i < e; i++) {
@@ -302,7 +301,7 @@ static void adjustToDivisorsOfTripCounts(ArrayRef<OpPointer<AffineForOp>> band,
 // along each of the dimensions being tiled.
 // TODO(mlir-team): evolve this model. Tile size determination is a large area
 // to play with in general.
-void LoopTiling::getTileSizes(ArrayRef<OpPointer<AffineForOp>> band,
+void LoopTiling::getTileSizes(ArrayRef<AffineForOp> band,
                               SmallVectorImpl<unsigned> *tileSizes) {
   if (band.empty())
     return;
@@ -383,7 +382,7 @@ void LoopTiling::runOnFunction() {
     cacheSizeBytes = clCacheSizeKiB * 1024;
 
   // Bands of loops to tile.
-  std::vector<SmallVector<OpPointer<AffineForOp>, 6>> bands;
+  std::vector<SmallVector<AffineForOp, 6>> bands;
   getTileableBands(getFunction(), &bands);
 
   for (auto &band : bands) {

@@ -102,7 +102,7 @@ namespace {
 /// a VectorTransferWriteOp is rewritten.
 template <typename VectorTransferOpTy> class VectorTransferRewriter {
 public:
-  VectorTransferRewriter(VectorTransferOpTy *transfer,
+  VectorTransferRewriter(VectorTransferOpTy transfer,
                          MLFuncLoweringRewriter *rewriter,
                          MLFuncGlobalLoweringState *state);
 
@@ -121,7 +121,7 @@ public:
   void rewrite();
 
 private:
-  VectorTransferOpTy *transfer;
+  VectorTransferOpTy transfer;
   MLFuncLoweringRewriter *rewriter;
   MLFuncGlobalLoweringState *state;
 };
@@ -132,7 +132,7 @@ private:
 /// `pivs` and `vectorView` are swapped so that the invocation of
 /// LoopNestBuilder captures it in the innermost loop.
 template <typename VectorTransferOpTy>
-void coalesceCopy(VectorTransferOpTy *transfer,
+void coalesceCopy(VectorTransferOpTy transfer,
                   SmallVectorImpl<edsc::ValueHandle *> *pivs,
                   edsc::VectorView *vectorView) {
   // rank of the remote memory access, coalescing behavior occurs on the
@@ -166,7 +166,7 @@ void coalesceCopy(VectorTransferOpTy *transfer,
 /// MemRef.
 template <typename VectorTransferOpTy>
 static llvm::SmallVector<edsc::ValueHandle, 8>
-clip(VectorTransferOpTy *transfer, edsc::MemRefView &view,
+clip(VectorTransferOpTy transfer, edsc::MemRefView &view,
      ArrayRef<edsc::IndexHandle> ivs) {
   using namespace mlir::edsc;
   using namespace edsc::op;
@@ -216,7 +216,7 @@ clip(VectorTransferOpTy *transfer, edsc::MemRefView &view,
 
 template <typename VectorTransferOpTy>
 VectorTransferRewriter<VectorTransferOpTy>::VectorTransferRewriter(
-    VectorTransferOpTy *transfer, MLFuncLoweringRewriter *rewriter,
+    VectorTransferOpTy transfer, MLFuncLoweringRewriter *rewriter,
     MLFuncGlobalLoweringState *state)
     : transfer(transfer), rewriter(rewriter), state(state){};
 
@@ -368,7 +368,7 @@ public:
                      std::unique_ptr<PatternState> opState,
                      MLFuncLoweringRewriter *rewriter) const override {
     VectorTransferRewriter<VectorTransferOpTy>(
-        &*op->dyn_cast<VectorTransferOpTy>(), rewriter, funcWiseState)
+        op->dyn_cast<VectorTransferOpTy>(), rewriter, funcWiseState)
         .rewrite();
   }
 };

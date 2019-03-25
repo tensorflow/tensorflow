@@ -94,25 +94,24 @@ static void checkAffineProvenance(ArrayRef<Value *> values) {
   }
 }
 
-static OpPointer<AffineForOp> emitStaticFor(FuncBuilder &builder, Location loc,
-                                            ArrayRef<Value *> lbs,
-                                            ArrayRef<Value *> ubs,
-                                            uint64_t step) {
+static AffineForOp emitStaticFor(FuncBuilder &builder, Location loc,
+                                 ArrayRef<Value *> lbs, ArrayRef<Value *> ubs,
+                                 uint64_t step) {
   if (lbs.size() != 1 || ubs.size() != 1)
-    return OpPointer<AffineForOp>();
+    return AffineForOp();
 
   auto *lbDef = lbs.front()->getDefiningInst();
   auto *ubDef = ubs.front()->getDefiningInst();
   if (!lbDef || !ubDef)
-    return OpPointer<AffineForOp>();
+    return AffineForOp();
 
   auto lbConst = lbDef->dyn_cast<ConstantIndexOp>();
   auto ubConst = ubDef->dyn_cast<ConstantIndexOp>();
   if (!lbConst || !ubConst)
-    return OpPointer<AffineForOp>();
+    return AffineForOp();
 
-  return builder.create<AffineForOp>(loc, lbConst->getValue(),
-                                     ubConst->getValue(), step);
+  return builder.create<AffineForOp>(loc, lbConst.getValue(),
+                                     ubConst.getValue(), step);
 }
 
 Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
@@ -166,11 +165,10 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
 
       // Step must be a static constant.
       auto step =
-          stepExpr->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
+          stepExpr->getDefiningInst()->cast<ConstantIndexOp>().getValue();
 
       // Special case with more concise emitted code for static bounds.
-      OpPointer<AffineForOp> forOp =
-          emitStaticFor(*builder, location, lbs, ubs, step);
+      AffineForOp forOp = emitStaticFor(*builder, location, lbs, ubs, step);
 
       // General case.
       if (!forOp)
@@ -387,7 +385,7 @@ mlir::edsc::MLIREmitter::makeBoundMemRefView(Expr boundMemRef) {
   return makeBoundMemRefView(v);
 }
 
-OpPointer<AffineForOp> mlir::edsc::MLIREmitter::getAffineForOp(Expr e) {
+AffineForOp mlir::edsc::MLIREmitter::getAffineForOp(Expr e) {
   auto *value = ssaBindings.lookup(e);
   assert(value && "Expr not bound");
   return getForInductionVarOwner(value);

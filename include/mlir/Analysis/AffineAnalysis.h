@@ -36,7 +36,6 @@ class AffineForOp;
 class AffineValueMap;
 class FlatAffineConstraints;
 class Instruction;
-template <typename OpType> class OpPointer;
 class Value;
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
@@ -52,7 +51,7 @@ void getReachableAffineApplyOps(
 /// operands are added as symbols in the system. Returns failure for the yet
 /// unimplemented cases.
 //  TODO(bondhugula): handle non-unit strides.
-LogicalResult getIndexSet(llvm::MutableArrayRef<OpPointer<AffineForOp>> forOps,
+LogicalResult getIndexSet(llvm::MutableArrayRef<AffineForOp> forOps,
                           FlatAffineConstraints *domain);
 
 /// Encapsulates a memref load or store access information.

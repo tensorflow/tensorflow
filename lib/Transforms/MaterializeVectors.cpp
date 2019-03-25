@@ -441,7 +441,7 @@ static Instruction *instantiate(FuncBuilder *b, Instruction *opInst,
 /// In particular, if a dimension is fully instantiated (i.e. unrolled) then it
 /// is projected out in the final result.
 template <typename VectorTransferOpTy>
-static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
+static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
                                          VectorType hwVectorType) {
   static_assert(
       std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value ||
@@ -481,7 +481,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy *transfer,
 /// `hwVectorType` int the covering of the super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Instruction *instantiate(FuncBuilder *b, VectorTransferReadOp *read,
+static Instruction *instantiate(FuncBuilder *b, VectorTransferReadOp read,
                                 VectorType hwVectorType,
                                 ArrayRef<unsigned> hwVectorInstance,
                                 DenseMap<Value *, Value *> *substitutionsMap) {
@@ -505,7 +505,7 @@ static Instruction *instantiate(FuncBuilder *b, VectorTransferReadOp *read,
 /// `hwVectorType` int the covering of th3e super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Instruction *instantiate(FuncBuilder *b, VectorTransferWriteOp *write,
+static Instruction *instantiate(FuncBuilder *b, VectorTransferWriteOp write,
                                 VectorType hwVectorType,
                                 ArrayRef<unsigned> hwVectorInstance,
                                 DenseMap<Value *, Value *> *substitutionsMap) {

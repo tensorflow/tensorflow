@@ -68,6 +68,8 @@ public:
 class AllocOp
     : public Op<AllocOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
+  using Op::Op;
+
   /// The result of an alloc is always a MemRefType.
   MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
@@ -81,10 +83,6 @@ public:
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit AllocOp(Instruction *state) : Op(state) {}
 };
 
 /// The "br" operation represents a branch instruction in a function.
@@ -100,6 +98,8 @@ private:
 class BranchOp : public Op<BranchOp, OpTrait::VariadicOperands,
                            OpTrait::ZeroResult, OpTrait::IsTerminator> {
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "std.br"; }
 
   static void build(Builder *builder, OperationState *result, Block *dest,
@@ -115,10 +115,6 @@ public:
 
   /// Erase the operand at 'index' from the operand list.
   void eraseOperand(unsigned index);
-
-private:
-  friend class Instruction;
-  explicit BranchOp(Instruction *state) : Op(state) {}
 };
 
 /// The "call" operation represents a direct call to a function.  The operands
@@ -130,6 +126,8 @@ private:
 class CallOp
     : public Op<CallOp, OpTrait::VariadicOperands, OpTrait::VariadicResults> {
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "std.call"; }
 
   static void build(Builder *builder, OperationState *result, Function *callee,
@@ -151,10 +149,6 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   bool verify();
-
-protected:
-  friend class Instruction;
-  explicit CallOp(Instruction *state) : Op(state) {}
 };
 
 /// The "call_indirect" operation represents an indirect call to a value of
@@ -168,6 +162,7 @@ protected:
 class CallIndirectOp : public Op<CallIndirectOp, OpTrait::VariadicOperands,
                                  OpTrait::VariadicResults> {
 public:
+  using Op::Op;
   static StringRef getOperationName() { return "std.call_indirect"; }
 
   static void build(Builder *builder, OperationState *result, Value *callee,
@@ -189,10 +184,6 @@ public:
   bool verify();
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-protected:
-  friend class Instruction;
-  explicit CallIndirectOp(Instruction *state) : Op(state) {}
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -240,6 +231,8 @@ class CmpIOp
                 OpTrait::OneResult, OpTrait::ResultsAreBoolLike,
                 OpTrait::SameOperandsAndResultShape, OpTrait::HasNoSideEffect> {
 public:
+  using Op::Op;
+
   CmpIPredicate getPredicate() {
     return (CmpIPredicate)getAttrOfType<IntegerAttr>(getPredicateAttrName())
         .getInt();
@@ -255,10 +248,6 @@ public:
   void print(OpAsmPrinter *p);
   bool verify();
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit CmpIOp(Instruction *state) : Op(state) {}
 };
 
 /// The "cond_br" operation represents a conditional branch instruction in a
@@ -283,6 +272,8 @@ class CondBranchOp : public Op<CondBranchOp, OpTrait::AtLeastNOperands<1>::Impl,
   /// follows:
   /// { condition, [true_operands], [false_operands] }
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "std.cond_br"; }
 
   static void build(Builder *builder, OperationState *result, Value *condition,
@@ -363,9 +354,6 @@ private:
   unsigned getFalseDestOperandIndex() {
     return getTrueDestOperandIndex() + getNumTrueOperands();
   }
-
-  friend class Instruction;
-  explicit CondBranchOp(Instruction *state) : Op(state) {}
 };
 
 /// The "constant" operation requires a single attribute named "value".
@@ -377,6 +365,8 @@ private:
 class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
                              OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
+  using Op::Op;
+
   /// Builds a constant op with the specified attribute value and result type.
   static void build(Builder *builder, OperationState *result, Type type,
                     Attribute value);
@@ -394,10 +384,6 @@ public:
   void print(OpAsmPrinter *p);
   bool verify();
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
-
-protected:
-  friend class Instruction;
-  explicit ConstantOp(Instruction *state) : Op(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -407,6 +393,8 @@ protected:
 ///
 class ConstantFloatOp : public ConstantOp {
 public:
+  using ConstantOp::ConstantOp;
+
   /// Builds a constant float op producing a float of the specified type.
   static void build(Builder *builder, OperationState *result,
                     const APFloat &value, FloatType type);
@@ -414,10 +402,6 @@ public:
   APFloat getValue() { return getAttrOfType<FloatAttr>("value").getValue(); }
 
   static bool isClassFor(Instruction *op);
-
-private:
-  friend class Instruction;
-  explicit ConstantFloatOp(Instruction *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -427,6 +411,7 @@ private:
 ///
 class ConstantIntOp : public ConstantOp {
 public:
+  using ConstantOp::ConstantOp;
   /// Build a constant int op producing an integer of the specified width.
   static void build(Builder *builder, OperationState *result, int64_t value,
                     unsigned width);
@@ -439,10 +424,6 @@ public:
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
   static bool isClassFor(Instruction *op);
-
-private:
-  friend class Instruction;
-  explicit ConstantIntOp(Instruction *state) : ConstantOp(state) {}
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -452,16 +433,14 @@ private:
 ///
 class ConstantIndexOp : public ConstantOp {
 public:
+  using ConstantOp::ConstantOp;
+
   /// Build a constant int op producing an index.
   static void build(Builder *builder, OperationState *result, int64_t value);
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
   static bool isClassFor(Instruction *op);
-
-private:
-  friend class Instruction;
-  explicit ConstantIndexOp(Instruction *state) : ConstantOp(state) {}
 };
 
 /// The "dealloc" operation frees the region of memory referenced by a memref
@@ -477,6 +456,8 @@ private:
 class DeallocOp
     : public Op<DeallocOp, OpTrait::OneOperand, OpTrait::ZeroResult> {
 public:
+  using Op::Op;
+
   Value *getMemRef() { return getOperand(); }
   void setMemRef(Value *value) { setOperand(value); }
 
@@ -489,10 +470,6 @@ public:
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit DeallocOp(Instruction *state) : Op(state) {}
 };
 
 /// The "dim" operation takes a memref or tensor operand and returns an
@@ -504,6 +481,8 @@ private:
 class DimOp : public Op<DimOp, OpTrait::OneOperand, OpTrait::OneResult,
                         OpTrait::HasNoSideEffect> {
 public:
+  using Op::Op;
+
   static void build(Builder *builder, OperationState *result,
                     Value *memrefOrTensor, unsigned index);
 
@@ -520,10 +499,6 @@ public:
   bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-
-private:
-  friend class Instruction;
-  explicit DimOp(Instruction *state) : Op(state) {}
 };
 
 // DmaStartOp starts a non-blocking DMA operation that transfers data from a
@@ -566,6 +541,8 @@ private:
 class DmaStartOp
     : public Op<DmaStartOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  using Op::Op;
+
   static void build(Builder *builder, OperationState *result, Value *srcMemRef,
                     ArrayRef<Value *> srcIndices, Value *destMemRef,
                     ArrayRef<Value *> destIndices, Value *numElements,
@@ -671,10 +648,6 @@ public:
       return nullptr;
     return getOperand(getNumOperands() - 1);
   }
-
-protected:
-  friend class Instruction;
-  explicit DmaStartOp(Instruction *state) : Op(state) {}
 };
 
 // DmaWaitOp blocks until the completion of a DMA operation associated with the
@@ -693,6 +666,8 @@ protected:
 class DmaWaitOp
     : public Op<DmaWaitOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  using Op::Op;
+
   static void build(Builder *builder, OperationState *result, Value *tagMemRef,
                     ArrayRef<Value *> tagIndices, Value *numElements);
 
@@ -719,10 +694,6 @@ public:
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-protected:
-  friend class Instruction;
-  explicit DmaWaitOp(Instruction *state) : Op(state) {}
 };
 
 /// The "extract_element" op reads a tensor or vector and returns one element
@@ -740,6 +711,8 @@ class ExtractElementOp
     : public Op<ExtractElementOp, OpTrait::VariadicOperands, OpTrait::OneResult,
                 OpTrait::HasNoSideEffect> {
 public:
+  using Op::Op;
+
   static void build(Builder *builder, OperationState *result, Value *aggregate,
                     ArrayRef<Value *> indices = {});
 
@@ -757,10 +730,6 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit ExtractElementOp(Instruction *state) : Op(state) {}
 };
 
 /// The "load" op reads an element from a memref specified by an index list. The
@@ -774,6 +743,8 @@ private:
 class LoadOp
     : public Op<LoadOp, OpTrait::VariadicOperands, OpTrait::OneResult> {
 public:
+  using Op::Op;
+
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result, Value *memref,
                     ArrayRef<Value *> indices = {});
@@ -796,10 +767,6 @@ public:
   void print(OpAsmPrinter *p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit LoadOp(Instruction *state) : Op(state) {}
 };
 
 /// The "memref_cast" operation converts a memref from one type to an equivalent
@@ -819,6 +786,7 @@ private:
 ///
 class MemRefCastOp : public CastOp<MemRefCastOp> {
 public:
+  using CastOp::CastOp;
   static StringRef getOperationName() { return "std.memref_cast"; }
 
   /// The result of a memref_cast is always a memref.
@@ -827,10 +795,6 @@ public:
   void print(OpAsmPrinter *p);
 
   bool verify();
-
-private:
-  friend class Instruction;
-  explicit MemRefCastOp(Instruction *state) : CastOp(state) {}
 };
 
 /// The "return" operation represents a return instruction within a function.
@@ -845,6 +809,8 @@ private:
 class ReturnOp : public Op<ReturnOp, OpTrait::VariadicOperands,
                            OpTrait::ZeroResult, OpTrait::IsTerminator> {
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "std.return"; }
 
   static void build(Builder *builder, OperationState *result,
@@ -854,10 +820,6 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   bool verify();
-
-private:
-  friend class Instruction;
-  explicit ReturnOp(Instruction *state) : Op(state) {}
 };
 
 /// The "select" operation chooses one value based on a binary condition
@@ -874,6 +836,8 @@ private:
 class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
                            OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "std.select"; }
   static void build(Builder *builder, OperationState *result, Value *condition,
                     Value *trueValue, Value *falseValue);
@@ -886,10 +850,6 @@ public:
   Value *getFalseValue() { return getOperand(2); }
 
   Value *fold();
-
-private:
-  friend class Instruction;
-  explicit SelectOp(Instruction *state) : Op(state) {}
 };
 
 /// The "store" op writes an element to a memref specified by an index list.
@@ -905,6 +865,8 @@ private:
 class StoreOp
     : public Op<StoreOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  using Op::Op;
+
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
                     Value *valueToStore, Value *memref,
@@ -931,10 +893,6 @@ public:
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit StoreOp(Instruction *state) : Op(state) {}
 };
 
 /// The "tensor_cast" operation converts a tensor from one type to an equivalent
@@ -949,6 +907,8 @@ private:
 ///
 class TensorCastOp : public CastOp<TensorCastOp> {
 public:
+  using CastOp::CastOp;
+
   static StringRef getOperationName() { return "std.tensor_cast"; }
 
   /// The result of a tensor_cast is always a tensor.
@@ -957,10 +917,6 @@ public:
   void print(OpAsmPrinter *p);
 
   bool verify();
-
-private:
-  friend class Instruction;
-  explicit TensorCastOp(Instruction *state) : CastOp(state) {}
 };
 
 /// Prints dimension and symbol list.

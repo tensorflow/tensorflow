@@ -96,6 +96,8 @@ class VectorTransferReadOp
   enum Offsets : unsigned { MemRefOffset = 0, FirstIndexOffset = 1 };
 
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "vector_transfer_read"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
   static void build(Builder *builder, OperationState *result,
@@ -118,10 +120,6 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   bool verify();
-
-private:
-  friend class Instruction;
-  explicit VectorTransferReadOp(Instruction *state) : Op(state) {}
 };
 
 /// VectorTransferWriteOp performs a blocking write from a super-vector to
@@ -162,6 +160,8 @@ class VectorTransferWriteOp
   };
 
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "vector_transfer_write"; }
   static StringRef getPermutationMapAttrName() { return "permutation_map"; }
   static void build(Builder *builder, OperationState *result, Value *srcVector,
@@ -181,10 +181,6 @@ public:
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   bool verify();
-
-private:
-  friend class Instruction;
-  explicit VectorTransferWriteOp(Instruction *state) : Op(state) {}
 };
 
 /// VectorTypeCastOp performs a conversion from a memref with scalar element to
@@ -199,16 +195,14 @@ private:
 class VectorTypeCastOp
     : public Op<VectorTypeCastOp, OpTrait::OneOperand, OpTrait::OneResult> {
 public:
+  using Op::Op;
+
   static StringRef getOperationName() { return "vector_type_cast"; }
   static void build(Builder *builder, OperationState *result, Value *srcVector,
                     Type dstType);
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
   bool verify();
-
-private:
-  friend class Instruction;
-  explicit VectorTypeCastOp(Instruction *state) : Op(state) {}
 };
 
 } // end namespace mlir

@@ -221,7 +221,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 /// uses besides this opInst; otherwise returns the list of affine.apply
 /// operations created in output argument `sliceOps`.
 void mlir::createAffineComputationSlice(
-    Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps) {
+    Instruction *opInst, SmallVectorImpl<AffineApplyOp> *sliceOps) {
   // Collect all operands that are results of affine apply ops.
   SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());

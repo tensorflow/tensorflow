@@ -59,6 +59,8 @@ public:
 class AffineApplyOp : public Op<AffineApplyOp, OpTrait::VariadicOperands,
                                 OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
+  using Op::Op;
+
   /// Builds an affine apply op with the specified map and operands.
   static void build(Builder *builder, OperationState *result, AffineMap map,
                     ArrayRef<Value *> operands);
@@ -84,10 +86,6 @@ public:
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
-
-private:
-  friend class Instruction;
-  explicit AffineApplyOp(Instruction *state) : Op(state) {}
 };
 
 /// The "for" instruction represents an affine loop nest, defining an SSA value
@@ -117,6 +115,8 @@ private:
 class AffineForOp
     : public Op<AffineForOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  using Op::Op;
+
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
                     ArrayRef<Value *> lbOperands, AffineMap lbMap,
@@ -225,10 +225,6 @@ public:
   /// Returns true if both the lower and upper bound have the same operand lists
   /// (same operands in the same order).
   bool matchingBoundOperandList();
-
-private:
-  friend class Instruction;
-  explicit AffineForOp(Instruction *state) : Op(state) {}
 };
 
 /// Returns if the provided value is the induction variable of a AffineForOp.
@@ -236,13 +232,12 @@ bool isForInductionVar(Value *val);
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-OpPointer<AffineForOp> getForInductionVarOwner(Value *val);
+AffineForOp getForInductionVarOwner(Value *val);
 
 /// Extracts the induction variables from a list of AffineForOps and places them
 /// in the output argument `ivs`.
-void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
+void extractForInductionVars(ArrayRef<AffineForOp> forInsts,
                              SmallVectorImpl<Value *> *ivs);
-
 
 /// AffineBound represents a lower or upper bound in the for instruction.
 /// This class does not own the underlying operands. Instead, it refers
@@ -250,7 +245,7 @@ void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
 /// that of the for instruction it refers to.
 class AffineBound {
 public:
-  OpPointer<AffineForOp> getAffineForOp() { return inst; }
+  AffineForOp getAffineForOp() { return inst; }
   AffineMap getMap() { return map; }
 
   /// Returns an AffineValueMap representing this bound.
@@ -274,15 +269,14 @@ public:
 
 private:
   // 'for' instruction that contains this bound.
-  OpPointer<AffineForOp> inst;
+  AffineForOp inst;
   // Start and end positions of this affine bound operands in the list of
   // the containing 'for' instruction operands.
   unsigned opStart, opEnd;
   // Affine map for this bound.
   AffineMap map;
 
-  AffineBound(OpPointer<AffineForOp> inst, unsigned opStart, unsigned opEnd,
-              AffineMap map)
+  AffineBound(AffineForOp inst, unsigned opStart, unsigned opEnd, AffineMap map)
       : inst(inst), opStart(opStart), opEnd(opEnd), map(map) {}
 
   friend class AffineForOp;
@@ -309,6 +303,8 @@ private:
 class AffineIfOp
     : public Op<AffineIfOp, OpTrait::VariadicOperands, OpTrait::ZeroResult> {
 public:
+  using Op::Op;
+
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
                     IntegerSet condition, ArrayRef<Value *> conditionOperands);
@@ -328,10 +324,6 @@ public:
   bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
-
-private:
-  friend class Instruction;
-  explicit AffineIfOp(Instruction *state) : Op(state) {}
 };
 
 /// Returns true if the given Value can be used as a dimension id.
@@ -349,9 +341,9 @@ void canonicalizeMapAndOperands(AffineMap *map,
 /// Returns a composed AffineApplyOp by composing `map` and `operands` with
 /// other AffineApplyOps supplying those operands. The operands of the resulting
 /// AffineApplyOp do not change the length of  AffineApplyOp chains.
-OpPointer<AffineApplyOp>
-makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
-                        llvm::ArrayRef<Value *> operands);
+AffineApplyOp makeComposedAffineApply(FuncBuilder *b, Location loc,
+                                      AffineMap map,
+                                      llvm::ArrayRef<Value *> operands);
 
 /// Given an affine map `map` and its input `operands`, this method composes
 /// into `map`, maps of AffineApplyOps whose results are the values in

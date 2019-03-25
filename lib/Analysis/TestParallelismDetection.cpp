@@ -44,7 +44,7 @@ FunctionPassBase *mlir::createParallelismDetectionTestPass() {
 void TestParallelismDetection::runOnFunction() {
   Function *f = getFunction();
   FuncBuilder b(f);
-  f->walk<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
+  f->walk<AffineForOp>([&](AffineForOp forOp) {
     if (isLoopParallel(forOp))
       forOp->emitNote("parallel loop");
   });

@@ -32,35 +32,32 @@ class AffineMap;
 class AffineForOp;
 class Function;
 class FuncBuilder;
-template <typename T> class OpPointer;
 class Value;
 
 /// Unrolls this for instruction completely if the trip count is known to be
 /// constant. Returns failure otherwise.
-LogicalResult loopUnrollFull(OpPointer<AffineForOp> forOp);
+LogicalResult loopUnrollFull(AffineForOp forOp);
 /// Unrolls this for instruction by the specified unroll factor. Returns failure
 /// if the loop cannot be unrolled either due to restrictions or due to invalid
 /// unroll factors.
-LogicalResult loopUnrollByFactor(OpPointer<AffineForOp> forOp,
-                                 uint64_t unrollFactor);
+LogicalResult loopUnrollByFactor(AffineForOp forOp, uint64_t unrollFactor);
 /// Unrolls this loop by the specified unroll factor or its trip count,
 /// whichever is lower.
-LogicalResult loopUnrollUpToFactor(OpPointer<AffineForOp> forOp,
-                                   uint64_t unrollFactor);
+LogicalResult loopUnrollUpToFactor(AffineForOp forOp, uint64_t unrollFactor);
 
 /// Unrolls and jams this loop by the specified factor. Returns success if the
 /// loop is successfully unroll-jammed.
-LogicalResult loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
+LogicalResult loopUnrollJamByFactor(AffineForOp forOp,
                                     uint64_t unrollJamFactor);
 
 /// Unrolls and jams this loop by the specified factor or by the trip count (if
 /// constant), whichever is lower.
-LogicalResult loopUnrollJamUpToFactor(OpPointer<AffineForOp> forOp,
+LogicalResult loopUnrollJamUpToFactor(AffineForOp forOp,
                                       uint64_t unrollJamFactor);
 
 /// Promotes the loop body of a AffineForOp to its containing block if the
 /// AffineForOp was known to have a single iteration.
-LogicalResult promoteIfSingleIteration(OpPointer<AffineForOp> forOp);
+LogicalResult promoteIfSingleIteration(AffineForOp forOp);
 
 /// Promotes all single iteration AffineForOp's in the Function, i.e., moves
 /// their body into the containing Block.
@@ -71,8 +68,8 @@ void promoteSingleIterationLoops(Function *f);
 /// part of the unrolled loop. Computes the bound as an AffineMap with its
 /// operands or a null map when the trip count can't be expressed as an affine
 /// expression.
-void getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
-                              unsigned unrollFactor, AffineMap *map,
+void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
+                              AffineMap *map,
                               SmallVectorImpl<Value *> *operands,
                               FuncBuilder *builder);
 
@@ -80,42 +77,39 @@ void getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
 /// instruction-wise shifts. The shifts are with respect to the original
 /// execution order, and are multiplied by the loop 'step' before being applied.
 LLVM_NODISCARD
-LogicalResult instBodySkew(OpPointer<AffineForOp> forOp,
-                           ArrayRef<uint64_t> shifts,
+LogicalResult instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
                            bool unrollPrologueEpilogue = false);
 
 /// Tiles the specified band of perfectly nested loops creating tile-space loops
 /// and intra-tile loops. A band is a contiguous set of loops.
 LLVM_NODISCARD
-LogicalResult tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
+LogicalResult tileCodeGen(MutableArrayRef<AffineForOp> band,
                           ArrayRef<unsigned> tileSizes);
 
 /// Performs loop interchange on 'forOpA' and 'forOpB'. Requires that 'forOpA'
 /// and 'forOpB' are part of a perfectly nested sequence of loops.
-void interchangeLoops(OpPointer<AffineForOp> forOpA,
-                      OpPointer<AffineForOp> forOpB);
+void interchangeLoops(AffineForOp forOpA, AffineForOp forOpB);
 
 /// Sinks 'forOp' by 'loopDepth' levels by performing a series of loop
 /// interchanges. Requires that 'forOp' is part of a perfect nest with
 /// 'loopDepth' AffineForOps consecutively nested under it.
-void sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth);
+void sinkLoop(AffineForOp forOp, unsigned loopDepth);
 
 /// Performs tiling fo imperfectly nested loops (with interchange) by
 /// strip-mining the `forOps` by `sizes` and sinking them, in their order of
 /// occurrence in `forOps`, under each of the `targets`.
 /// Returns the new AffineForOps, one per each of (`forOps`, `targets`) pair,
 /// nested immediately under each of `targets`.
-SmallVector<SmallVector<OpPointer<AffineForOp>, 8>, 8>
-tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
-     ArrayRef<OpPointer<AffineForOp>> targets);
+SmallVector<SmallVector<AffineForOp, 8>, 8> tile(ArrayRef<AffineForOp> forOps,
+                                                 ArrayRef<uint64_t> sizes,
+                                                 ArrayRef<AffineForOp> targets);
 
 /// Performs tiling (with interchange) by strip-mining the `forOps` by `sizes`
 /// and sinking them, in their order of occurrence in `forOps`, under `target`.
 /// Returns the new AffineForOps, one per `forOps`, nested immediately under
 /// `target`.
-SmallVector<OpPointer<AffineForOp>, 8>
-tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
-     OpPointer<AffineForOp> target);
+SmallVector<AffineForOp, 8> tile(ArrayRef<AffineForOp> forOps,
+                                 ArrayRef<uint64_t> sizes, AffineForOp target);
 
 } // end namespace mlir
 

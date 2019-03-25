@@ -40,9 +40,9 @@ namespace {
 
 struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
   void runOnFunction() override;
-  void runOnAffineForOp(OpPointer<AffineForOp> forOp);
+  void runOnAffineForOp(AffineForOp forOp);
 
-  std::vector<OpPointer<AffineForOp>> forOps;
+  std::vector<AffineForOp> forOps;
 };
 
 } // end anonymous namespace
@@ -71,7 +71,7 @@ static unsigned getTagMemRefPos(Instruction &dmaInst) {
 /// of the old memref by the new one while indexing the newly added dimension by
 /// the loop IV of the specified 'for' instruction modulo 2. Returns false if
 /// such a replacement cannot be performed.
-static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
+static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp->getBody();
   FuncBuilder bInner(forBody, forBody->begin());
   bInner.setInsertionPoint(forBody, forBody->begin());
@@ -145,14 +145,13 @@ void PipelineDataTransfer::runOnFunction() {
   // epilogue).
   forOps.clear();
   getFunction()->walkPostOrder<AffineForOp>(
-      [&](OpPointer<AffineForOp> forOp) { forOps.push_back(forOp); });
+      [&](AffineForOp forOp) { forOps.push_back(forOp); });
   for (auto forOp : forOps)
     runOnAffineForOp(forOp);
 }
 
 // Check if tags of the dma start op and dma wait op match.
-static bool checkTagMatch(OpPointer<DmaStartOp> startOp,
-                          OpPointer<DmaWaitOp> waitOp) {
+static bool checkTagMatch(DmaStartOp startOp, DmaWaitOp waitOp) {
   if (startOp->getTagMemRef() != waitOp->getTagMemRef())
     return false;
   auto startIndices = startOp->getTagIndices();
@@ -176,15 +175,14 @@ static bool checkTagMatch(OpPointer<DmaStartOp> startOp,
 
 // Identify matching DMA start/finish instructions to overlap computation with.
 static void findMatchingStartFinishInsts(
-    OpPointer<AffineForOp> forOp,
+    AffineForOp forOp,
     SmallVectorImpl<std::pair<Instruction *, Instruction *>> &startWaitPairs) {
 
   // Collect outgoing DMA instructions - needed to check for dependences below.
-  SmallVector<OpPointer<DmaStartOp>, 4> outgoingDmaOps;
+  SmallVector<DmaStartOp, 4> outgoingDmaOps;
   for (auto &inst : *forOp->getBody()) {
-    OpPointer<DmaStartOp> dmaStartOp;
-    if ((dmaStartOp = inst.dyn_cast<DmaStartOp>()) &&
-        dmaStartOp->isSrcMemorySpaceFaster())
+    auto dmaStartOp = inst.dyn_cast<DmaStartOp>();
+    if (dmaStartOp && dmaStartOp->isSrcMemorySpaceFaster())
       outgoingDmaOps.push_back(dmaStartOp);
   }
 
@@ -195,9 +193,10 @@ static void findMatchingStartFinishInsts(
       dmaFinishInsts.push_back(&inst);
       continue;
     }
-    OpPointer<DmaStartOp> dmaStartOp;
-    if (!(dmaStartOp = inst.dyn_cast<DmaStartOp>()))
+    auto dmaStartOp = inst.dyn_cast<DmaStartOp>();
+    if (!dmaStartOp)
       continue;
+
     // Only DMAs incoming into higher memory spaces are pipelined for now.
     // TODO(bondhugula): handle outgoing DMA pipelining.
     if (!dmaStartOp->isDestMemorySpaceFaster())
@@ -247,7 +246,7 @@ static void findMatchingStartFinishInsts(
 /// Overlap DMA transfers with computation in this loop. If successful,
 /// 'forOp' is deleted, and a prologue, a new pipelined loop, and epilogue are
 /// inserted right before where it was.
-void PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
+void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
     LLVM_DEBUG(
@@ -329,7 +328,7 @@ void PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
     assert(dmaStartInst->isa<DmaStartOp>());
     instShiftMap[dmaStartInst] = 0;
     // Set shifts for DMA start inst's affine operand computation slices to 0.
-    SmallVector<OpPointer<AffineApplyOp>, 4> sliceOps;
+    SmallVector<AffineApplyOp, 4> sliceOps;
     mlir::createAffineComputationSlice(dmaStartInst, &sliceOps);
     if (!sliceOps.empty()) {
       for (auto sliceOp : sliceOps) {

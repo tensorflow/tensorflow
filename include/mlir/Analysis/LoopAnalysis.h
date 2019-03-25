@@ -31,7 +31,6 @@ namespace mlir {
 class AffineExpr;
 class AffineForOp;
 class AffineMap;
-template <typename T> class OpPointer;
 class Instruction;
 class MemRefType;
 class Value;
@@ -44,18 +43,18 @@ class Value;
 /// bounds before computing the trip count expressions
 // TODO(mlir-team): this should be moved into 'Transforms/' and be replaced by a
 // pure analysis method relying on FlatAffineConstraints
-void buildTripCountMapAndOperands(OpPointer<AffineForOp> forOp, AffineMap *map,
+void buildTripCountMapAndOperands(AffineForOp forOp, AffineMap *map,
                                   SmallVectorImpl<Value *> *operands);
 
 /// Returns the trip count of the loop if it's a constant, None otherwise. This
 /// uses affine expression analysis and is able to determine constant trip count
 /// in non-trivial cases.
-llvm::Optional<uint64_t> getConstantTripCount(OpPointer<AffineForOp> forOp);
+llvm::Optional<uint64_t> getConstantTripCount(AffineForOp forOp);
 
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
-uint64_t getLargestDivisorOfTripCount(OpPointer<AffineForOp> forOp);
+uint64_t getLargestDivisorOfTripCount(AffineForOp forOp);
 
 /// Given an induction variable `iv` of type AffineForOp and an `index` of type
 /// IndexType, returns `true` if `index` is independent of `iv` and false
@@ -92,13 +91,13 @@ getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices);
 /// 3. all nested load/stores are to scalar MemRefs.
 /// TODO(ntv): implement dependence semantics
 /// TODO(ntv): relax the no-conditionals restriction
-bool isVectorizableLoop(OpPointer<AffineForOp> loop);
+bool isVectorizableLoop(AffineForOp loop);
 
 /// Checks whether the loop is structurally vectorizable and that all the LoadOp
 /// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
 ///   2. varying along the 'fastestVaryingDim' memory dimension.
-bool isVectorizableLoopAlongFastestVaryingMemRefDim(OpPointer<AffineForOp> loop,
+bool isVectorizableLoopAlongFastestVaryingMemRefDim(AffineForOp loop,
                                                     unsigned fastestVaryingDim);
 
 /// Checks where SSA dominance would be violated if a for inst's body
@@ -106,8 +105,7 @@ bool isVectorizableLoopAlongFastestVaryingMemRefDim(OpPointer<AffineForOp> loop,
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
-bool isInstwiseShiftValid(OpPointer<AffineForOp> forOp,
-                          llvm::ArrayRef<uint64_t> shifts);
+bool isInstwiseShiftValid(AffineForOp forOp, llvm::ArrayRef<uint64_t> shifts);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_LOOP_ANALYSIS_H

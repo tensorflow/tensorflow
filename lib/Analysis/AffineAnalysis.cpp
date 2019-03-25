@@ -98,7 +98,7 @@ void mlir::getReachableAffineApplyOps(
 // stride information in FlatAffineConstraints. (For eg., by using iv - lb %
 // step = 0 and/or by introducing a method in FlatAffineConstraints
 // setExprStride(ArrayRef<int64_t> expr, int64_t stride)
-LogicalResult mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
+LogicalResult mlir::getIndexSet(MutableArrayRef<AffineForOp> forOps,
                                 FlatAffineConstraints *domain) {
   SmallVector<Value *, 4> indices;
   extractForInductionVars(forOps, &indices);
@@ -122,7 +122,7 @@ static LogicalResult getInstIndexSet(Instruction *inst,
                                      FlatAffineConstraints *indexSet) {
   // TODO(andydavis) Extend this to gather enclosing IfInsts and consider
   // factoring it out into a utility function.
-  SmallVector<OpPointer<AffineForOp>, 4> loops;
+  SmallVector<AffineForOp, 4> loops;
   getLoopIVs(*inst, &loops);
   return getIndexSet(loops, indexSet);
 }
@@ -461,7 +461,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       if (auto *opInst = symbol->getDefiningInst()) {
         if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
           dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
-                                            constOp->getValue());
+                                            constOp.getValue());
         }
       }
     }

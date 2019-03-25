@@ -244,9 +244,9 @@ namespace {
 struct LowerAffinePass : public FunctionPass<LowerAffinePass> {
   void runOnFunction() override;
 
-  bool lowerAffineFor(OpPointer<AffineForOp> forOp);
-  bool lowerAffineIf(AffineIfOp *ifOp);
-  bool lowerAffineApply(AffineApplyOp *op);
+  bool lowerAffineFor(AffineForOp forOp);
+  bool lowerAffineIf(AffineIfOp ifOp);
+  bool lowerAffineApply(AffineApplyOp op);
 };
 } // end anonymous namespace
 
@@ -319,7 +319,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //      |   <code after the AffineForOp> |
 //      +--------------------------------+
 //
-bool LowerAffinePass::lowerAffineFor(OpPointer<AffineForOp> forOp) {
+bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   auto loc = forOp->getLoc();
   auto *forInst = forOp->getInstruction();
 
@@ -452,7 +452,7 @@ bool LowerAffinePass::lowerAffineFor(OpPointer<AffineForOp> forOp) {
 //      |   <code after the AffineIfOp>      |
 //      +--------------------------------+
 //
-bool LowerAffinePass::lowerAffineIf(AffineIfOp *ifOp) {
+bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   auto *ifInst = ifOp->getInstruction();
   auto loc = ifInst->getLoc();
 
@@ -568,7 +568,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp *ifOp) {
 
 // Convert an "affine.apply" operation into a sequence of arithmetic
 // instructions using the StandardOps dialect.  Return true on error.
-bool LowerAffinePass::lowerAffineApply(AffineApplyOp *op) {
+bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
   FuncBuilder builder(op->getInstruction());
   auto maybeExpandedMap =
       expandAffineMap(&builder, op->getLoc(), op->getAffineMap(),

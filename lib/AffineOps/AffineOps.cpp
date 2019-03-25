@@ -485,7 +485,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
       auto *t = operands[i];
       auto affineApply = t->getDefiningInst()
                              ? t->getDefiningInst()->dyn_cast<AffineApplyOp>()
-                             : OpPointer<AffineApplyOp>();
+                             : AffineApplyOp();
       if (affineApply) {
         // a. Compose affine.apply instructions.
         LLVM_DEBUG(affineApply->getInstruction()->print(
@@ -567,9 +567,9 @@ void mlir::fullyComposeAffineMapAndOperands(
   }
 }
 
-OpPointer<AffineApplyOp>
-mlir::makeComposedAffineApply(FuncBuilder *b, Location loc, AffineMap map,
-                              ArrayRef<Value *> operands) {
+AffineApplyOp mlir::makeComposedAffineApply(FuncBuilder *b, Location loc,
+                                            AffineMap map,
+                                            ArrayRef<Value *> operands) {
   AffineMap normalizedMap = map;
   SmallVector<Value *, 8> normalizedOperands(operands.begin(), operands.end());
   composeAffineMapAndOperands(&normalizedMap, &normalizedOperands);
@@ -1070,15 +1070,14 @@ Block *AffineForOp::createBody() {
 
 AffineBound AffineForOp::getLowerBound() {
   auto lbMap = getLowerBoundMap();
-  return AffineBound(OpPointer<AffineForOp>(*this), 0, lbMap.getNumInputs(),
-                     lbMap);
+  return AffineBound(AffineForOp(*this), 0, lbMap.getNumInputs(), lbMap);
 }
 
 AffineBound AffineForOp::getUpperBound() {
   auto lbMap = getLowerBoundMap();
   auto ubMap = getUpperBoundMap();
-  return AffineBound(OpPointer<AffineForOp>(*this), lbMap.getNumInputs(),
-                     getNumOperands(), ubMap);
+  return AffineBound(AffineForOp(*this), lbMap.getNumInputs(), getNumOperands(),
+                     ubMap);
 }
 
 void AffineForOp::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
@@ -1178,24 +1177,24 @@ Value *AffineForOp::getInductionVar() { return getBody()->getArgument(0); }
 
 /// Returns if the provided value is the induction variable of a AffineForOp.
 bool mlir::isForInductionVar(Value *val) {
-  return getForInductionVarOwner(val) != nullptr;
+  return getForInductionVarOwner(val) != AffineForOp();
 }
 
 /// Returns the loop parent of an induction variable. If the provided value is
 /// not an induction variable, then return nullptr.
-OpPointer<AffineForOp> mlir::getForInductionVarOwner(Value *val) {
+AffineForOp mlir::getForInductionVarOwner(Value *val) {
   auto *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
-    return OpPointer<AffineForOp>();
+    return AffineForOp();
   auto *containingInst = ivArg->getOwner()->getParent()->getContainingInst();
   if (!containingInst)
-    return OpPointer<AffineForOp>();
+    return AffineForOp();
   return containingInst->dyn_cast<AffineForOp>();
 }
 
 /// Extracts the induction variables from a list of AffineForOps and returns
 /// them.
-void mlir::extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
+void mlir::extractForInductionVars(ArrayRef<AffineForOp> forInsts,
                                    SmallVectorImpl<Value *> *ivs) {
   ivs->reserve(forInsts.size());
   for (auto forInst : forInsts)

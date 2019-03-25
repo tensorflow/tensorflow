@@ -72,7 +72,7 @@ namespace {
 struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
   void runOnFunction() override;
 
-  void forwardStoreToLoad(OpPointer<LoadOp> loadOp);
+  void forwardStoreToLoad(LoadOp loadOp);
 
   // A list of memref's that are potentially dead / could be eliminated.
   SmallPtrSet<Value *, 4> memrefsToErase;
@@ -93,7 +93,7 @@ FunctionPassBase *mlir::createMemRefDataFlowOptPass() {
 
 // This is a straightforward implementation not optimized for speed. Optimize
 // this in the future if needed.
-void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
+void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   Instruction *lastWriteStoreOp = nullptr;
   Instruction *loadOpInst = loadOp->getInstruction();
 
@@ -224,8 +224,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
-  f->walk<LoadOp>(
-      [&](OpPointer<LoadOp> loadOp) { forwardStoreToLoad(loadOp); });
+  f->walk<LoadOp>([&](LoadOp loadOp) { forwardStoreToLoad(loadOp); });
 
   // Erase all load op's whose results were replaced with store fwd'ed ones.
   for (auto *loadOp : loadOpsToErase) {

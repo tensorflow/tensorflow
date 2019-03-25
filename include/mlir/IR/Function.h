@@ -37,7 +37,6 @@ class FunctionType;
 class MLIRContext;
 class Module;
 class ArgumentIterator;
-template <typename T> class OpPointer;
 
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {
@@ -110,8 +109,7 @@ public:
   void walk(const std::function<void(Instruction *)> &callback);
 
   /// Specialization of walk to only visit operations of 'OpTy'.
-  template <typename OpTy>
-  void walk(std::function<void(OpPointer<OpTy>)> callback) {
+  template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
     walk([&](Instruction *inst) {
       if (auto op = inst->dyn_cast<OpTy>())
         callback(op);
@@ -124,7 +122,7 @@ public:
 
   /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
   template <typename OpTy>
-  void walkPostOrder(std::function<void(OpPointer<OpTy>)> callback) {
+  void walkPostOrder(std::function<void(OpTy)> callback) {
     walkPostOrder([&](Instruction *inst) {
       if (auto op = inst->dyn_cast<OpTy>())
         callback(op);

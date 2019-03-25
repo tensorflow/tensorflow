@@ -254,7 +254,7 @@ public:
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location location, Args... args) {
+  OpTy create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *inst = createOperation(state);

@@ -30,6 +30,7 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 
 // CHECK: class AOp : public Op<AOp, OpTrait::AtLeastNResults<1>::Impl, OpTrait::HasNoSideEffect, OpTrait::AtLeastNOperands<1>::Impl> {
 // CHECK: public:
+// CHECK:   using Op::Op;
 // CHECK:   static StringRef getOperationName();
 // CHECK:   Value *a();
 // CHECK:   Instruction::operand_range b();
@@ -45,7 +46,4 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   static void getCanonicalizationPatterns(OwningRewritePatternList &results, MLIRContext *context);
 // CHECK:   LogicalResult constantFold(ArrayRef<Attribute> operands, SmallVectorImpl<Attribute> &results, MLIRContext *context);
 // CHECK:   bool fold(SmallVectorImpl<Value *> &results);
-// CHECK: private:
-// CHECK:   friend class ::mlir::Instruction;
-// CHECK:   explicit AOp(Instruction *state) : Op(state) {}
 // CHECK: };

@@ -185,7 +185,7 @@ public:
   /// Create operation of specific op type at the current insertion point
   /// without verifying to see if it is valid.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> create(Location location, Args... args) {
+  OpTy create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
@@ -198,7 +198,7 @@ public:
   /// If the result is an invalid op (the verifier hook fails), emit an error
   /// and return null.
   template <typename OpTy, typename... Args>
-  OpPointer<OpTy> createChecked(Location location, Args... args) {
+  OpTy createChecked(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
     auto *op = createOperation(state);
@@ -213,7 +213,7 @@ public:
     // Otherwise, the error message got emitted.  Just remove the instruction
     // we made.
     op->erase();
-    return OpPointer<OpTy>();
+    return OpTy();
   }
 
   /// This method performs the final replacement for a pattern, where the

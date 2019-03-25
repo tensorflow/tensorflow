@@ -54,48 +54,6 @@ template <typename OpType> struct IsSingleResult {
       OpType *, OpTrait::OneResult<typename OpType::ConcreteOpType> *>::value;
 };
 
-/// This pointer represents a notional "Instruction*" but where the actual
-/// storage of the pointer is maintained in the templated "OpType" class.
-template <typename OpType>
-class OpPointer {
-public:
-  explicit OpPointer() : value(Instruction::getNull<OpType>().value) {}
-  explicit OpPointer(OpType value) : value(value) {}
-
-  OpType &operator*() { return value; }
-
-  OpType *operator->() { return &value; }
-
-  explicit operator bool() { return value.getInstruction(); }
-
-  bool operator==(OpPointer rhs) {
-    return value.getInstruction() == rhs.value.getInstruction();
-  }
-  bool operator!=(OpPointer rhs) { return !(*this == rhs); }
-
-  /// OpPointer can be implicitly converted to OpType*.
-  /// Return `nullptr` if there is no associated Instruction*.
-  operator OpType *() {
-    if (!value.getInstruction())
-      return nullptr;
-    return &value;
-  }
-
-  operator OpType() { return value; }
-
-  /// If the OpType operation includes the OneResult trait, then OpPointer can
-  /// be implicitly converted to an Value*.  This yields the value of the
-  /// only result.
-  template <typename SFINAE = OpType>
-  operator typename std::enable_if<IsSingleResult<SFINAE>::value,
-                                   Value *>::type() {
-    return value.getResult();
-  }
-
-private:
-  OpType value;
-};
-
 /// This is the concrete base class that holds the operation pointer and has
 /// non-generic methods that only depend on State (to avoid having them
 /// instantiated on template types that don't affect them.
@@ -104,6 +62,12 @@ private:
 /// they aren't customized.
 class OpState {
 public:
+  /// Ops are pointer-like, so we allow implicit conversion to bool.
+  operator bool() { return getInstruction() != nullptr; }
+
+  /// This implicitly converts to Instruction*.
+  operator Instruction *() const { return state; }
+
   /// Return the operation that this refers to.
   Instruction *getInstruction() { return state; }
 
@@ -186,6 +150,14 @@ private:
   Instruction *state;
 };
 
+// Allow comparing operators.
+inline bool operator==(OpState lhs, OpState rhs) {
+  return lhs.getInstruction() == rhs.getInstruction();
+}
+inline bool operator!=(OpState lhs, OpState rhs) {
+  return lhs.getInstruction() != rhs.getInstruction();
+}
+
 /// This template defines the constantFoldHook and foldHook as used by
 /// AbstractOperation.
 ///
@@ -257,6 +229,12 @@ template <typename ConcreteType, bool isSingleResult>
 class FoldingHook<ConcreteType, isSingleResult,
                   typename std::enable_if<isSingleResult>::type> {
 public:
+  /// If the operation returns a single value, then the Op can  be implicitly
+  /// converted to an Value*.  This yields the value of the only result.
+  operator Value *() {
+    return static_cast<ConcreteType *>(this)->getInstruction()->getResult(0);
+  }
+
   /// This is an implementation detail of the constant folder hook for
   /// AbstractOperation.
   static LogicalResult constantFoldHook(Instruction *op,
@@ -801,8 +779,14 @@ public:
   /// to introspect traits on this operation.
   using ConcreteOpType = ConcreteType;
 
+  /// This is a public constructor.  Any op can be initialized to null.
+  explicit Op() : OpState(nullptr) {}
+
 protected:
+  /// This is a private constructor only accessible through the
+  /// Instruction::cast family of methods.
   explicit Op(Instruction *state) : OpState(state) {}
+  friend class Instruction;
 
 private:
   template <typename... Types> struct BaseVerifier;
@@ -866,6 +850,9 @@ template <typename ConcreteType, template <typename T> class... Traits>
 class CastOp : public Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
                          OpTrait::HasNoSideEffect, Traits...> {
 public:
+  using Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
+           OpTrait::HasNoSideEffect, Traits...>::Op;
+
   static void build(Builder *builder, OperationState *result, Value *source,
                     Type destType) {
     impl::buildCastOp(builder, result, source, destType);
@@ -876,11 +863,6 @@ public:
   void print(OpAsmPrinter *p) {
     return impl::printCastOp(this->getInstruction(), p);
   }
-
-protected:
-  explicit CastOp(Instruction *state)
-      : Op<ConcreteType, OpTrait::OneOperand, OpTrait::OneResult,
-           OpTrait::HasNoSideEffect, Traits...>(state) {}
 };
 
 } // end namespace mlir

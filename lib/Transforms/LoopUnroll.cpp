@@ -69,19 +69,18 @@ struct LoopUnroll : public FunctionPass<LoopUnroll> {
   const Optional<bool> unrollFull;
   // Callback to obtain unroll factors; if this has a callable target, takes
   // precedence over command-line argument or passed argument.
-  const std::function<unsigned(OpPointer<AffineForOp>)> getUnrollFactor;
+  const std::function<unsigned(AffineForOp)> getUnrollFactor;
 
-  explicit LoopUnroll(Optional<unsigned> unrollFactor = None,
-                      Optional<bool> unrollFull = None,
-                      const std::function<unsigned(OpPointer<AffineForOp>)>
-                          &getUnrollFactor = nullptr)
+  explicit LoopUnroll(
+      Optional<unsigned> unrollFactor = None, Optional<bool> unrollFull = None,
+      const std::function<unsigned(AffineForOp)> &getUnrollFactor = nullptr)
       : unrollFactor(unrollFactor), unrollFull(unrollFull),
         getUnrollFactor(getUnrollFactor) {}
 
   void runOnFunction() override;
 
   /// Unroll this for inst. Returns failure if nothing was done.
-  LogicalResult runOnAffineForOp(OpPointer<AffineForOp> forOp);
+  LogicalResult runOnAffineForOp(AffineForOp forOp);
 
   static const unsigned kDefaultUnrollFactor = 4;
 };
@@ -91,7 +90,7 @@ void LoopUnroll::runOnFunction() {
   // Gathers all innermost loops through a post order pruned walk.
   struct InnermostLoopGatherer {
     // Store innermost loops as we walk.
-    std::vector<OpPointer<AffineForOp>> loops;
+    std::vector<AffineForOp> loops;
 
     void walkPostOrder(Function *f) {
       for (auto &b : *f)
@@ -124,18 +123,16 @@ void LoopUnroll::runOnFunction() {
   if (clUnrollFull.getNumOccurrences() > 0 &&
       clUnrollFullThreshold.getNumOccurrences() > 0) {
     // Store short loops as we walk.
-    std::vector<OpPointer<AffineForOp>> loops;
+    std::vector<AffineForOp> loops;
 
     // Gathers all loops with trip count <= minTripCount. Do a post order walk
     // so that loops are gathered from innermost to outermost (or else unrolling
     // an outer one may delete gathered inner ones).
-    getFunction()->walkPostOrder<AffineForOp>(
-        [&](OpPointer<AffineForOp> forOp) {
-          Optional<uint64_t> tripCount = getConstantTripCount(forOp);
-          if (tripCount.hasValue() &&
-              tripCount.getValue() <= clUnrollFullThreshold)
-            loops.push_back(forOp);
-        });
+    getFunction()->walkPostOrder<AffineForOp>([&](AffineForOp forOp) {
+      Optional<uint64_t> tripCount = getConstantTripCount(forOp);
+      if (tripCount.hasValue() && tripCount.getValue() <= clUnrollFullThreshold)
+        loops.push_back(forOp);
+    });
     for (auto forOp : loops)
       loopUnrollFull(forOp);
     return;
@@ -163,7 +160,7 @@ void LoopUnroll::runOnFunction() {
 
 /// Unrolls a 'for' inst. Returns success if the loop was unrolled, failure
 /// otherwise. The default unroll factor is 4.
-LogicalResult LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
+LogicalResult LoopUnroll::runOnAffineForOp(AffineForOp forOp) {
   // Use the function callback if one was provided.
   if (getUnrollFactor) {
     return loopUnrollByFactor(forOp, getUnrollFactor(forOp));
@@ -185,7 +182,7 @@ LogicalResult LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
 
 FunctionPassBase *mlir::createLoopUnrollPass(
     int unrollFactor, int unrollFull,
-    const std::function<unsigned(OpPointer<AffineForOp>)> &getUnrollFactor) {
+    const std::function<unsigned(AffineForOp)> &getUnrollFactor) {
   return new LoopUnroll(
       unrollFactor == -1 ? None : Optional<unsigned>(unrollFactor),
       unrollFull == -1 ? None : Optional<bool>(unrollFull), getUnrollFactor);

@@ -217,7 +217,7 @@ AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
     : map(map), operands(operands.begin(), operands.end()),
       results(results.begin(), results.end()) {}
 
-AffineValueMap::AffineValueMap(OpPointer<AffineApplyOp> applyOp)
+AffineValueMap::AffineValueMap(AffineApplyOp applyOp)
     : map(applyOp->getAffineMap()),
       operands(applyOp->operand_begin(), applyOp->operand_end()) {
   results.push_back(applyOp->getResult());
@@ -729,13 +729,12 @@ void FlatAffineConstraints::addInductionVarOrTerminalSymbol(Value *id) {
   // Check if the symbol is a constant.
   if (auto *opInst = id->getDefiningInst()) {
     if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-      setIdToConstant(*id, constOp->getValue());
+      setIdToConstant(*id, constOp.getValue());
     }
   }
 }
 
-LogicalResult
-FlatAffineConstraints::addAffineForOpDomain(OpPointer<AffineForOp> forOp) {
+LogicalResult FlatAffineConstraints::addAffineForOpDomain(AffineForOp forOp) {
   unsigned pos;
   // Pre-condition for this method.
   if (!findId(*forOp->getInductionVar(), &pos)) {
@@ -772,10 +771,8 @@ FlatAffineConstraints::addAffineForOpDomain(OpPointer<AffineForOp> forOp) {
     addConstantLowerBound(pos, forOp->getConstantLowerBound());
   } else {
     // Non-constant lower bound case.
-    OpPointer<AffineForOp> ncForOp =
-        *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
-    SmallVector<Value *, 4> lbOperands(ncForOp->getLowerBoundOperands().begin(),
-                                       ncForOp->getLowerBoundOperands().end());
+    SmallVector<Value *, 4> lbOperands(forOp->getLowerBoundOperands().begin(),
+                                       forOp->getLowerBoundOperands().end());
     if (failed(addLowerOrUpperBound(pos, forOp->getLowerBoundMap(), lbOperands,
                                     /*eq=*/false, /*lower=*/true)))
       return failure();
@@ -786,10 +783,8 @@ FlatAffineConstraints::addAffineForOpDomain(OpPointer<AffineForOp> forOp) {
     return success();
   }
   // Non-constant upper bound case.
-  OpPointer<AffineForOp> ncForOp =
-      *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
-  SmallVector<Value *, 4> ubOperands(ncForOp->getUpperBoundOperands().begin(),
-                                     ncForOp->getUpperBoundOperands().end());
+  SmallVector<Value *, 4> ubOperands(forOp->getUpperBoundOperands().begin(),
+                                     forOp->getUpperBoundOperands().end());
   return addLowerOrUpperBound(pos, forOp->getUpperBoundMap(), ubOperands,
                               /*eq=*/false, /*lower=*/false);
 }

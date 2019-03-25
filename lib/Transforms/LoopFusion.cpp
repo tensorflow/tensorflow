@@ -122,7 +122,7 @@ namespace {
 // LoopNestStateCollector walks loop nests and collects load and store
 // operations, and whether or not an IfInst was encountered in the loop nest.
 struct LoopNestStateCollector {
-  SmallVector<OpPointer<AffineForOp>, 4> forOps;
+  SmallVector<AffineForOp, 4> forOps;
   SmallVector<Instruction *, 4> loadOpInsts;
   SmallVector<Instruction *, 4> storeOpInsts;
   bool hasNonForRegion = false;
@@ -691,7 +691,7 @@ bool MemRefDependenceGraph::init(Function *f) {
     auto *opInst = node.inst;
     for (auto *value : opInst->getResults()) {
       for (auto &use : value->getUses()) {
-        SmallVector<OpPointer<AffineForOp>, 4> loops;
+        SmallVector<AffineForOp, 4> loops;
         getLoopIVs(*use.getOwner(), &loops);
         if (loops.empty())
           continue;
@@ -727,7 +727,7 @@ namespace {
 // and operation count) for a loop nest up until the innermost loop body.
 struct LoopNestStats {
   // Map from AffineForOp to immediate child AffineForOps in its loop body.
-  DenseMap<Instruction *, SmallVector<OpPointer<AffineForOp>, 2>> loopMap;
+  DenseMap<Instruction *, SmallVector<AffineForOp, 2>> loopMap;
   // Map from AffineForOp to count of operations in its loop body.
   DenseMap<Instruction *, uint64_t> opCountMap;
   // Map from AffineForOp to its constant trip count.
@@ -743,7 +743,7 @@ struct LoopNestStatsCollector {
   LoopNestStatsCollector(LoopNestStats *stats) : stats(stats) {}
 
   void collect(Instruction *inst) {
-    inst->walk<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
+    inst->walk<AffineForOp>([&](AffineForOp forOp) {
       auto *forInst = forOp->getInstruction();
       auto *parentInst = forOp->getInstruction()->getParentInst();
       if (parentInst != nullptr) {
@@ -844,7 +844,7 @@ static Optional<uint64_t> getConstDifference(AffineMap lbMap, AffineMap ubMap) {
 static bool buildSliceTripCountMap(
     Instruction *srcOpInst, ComputationSliceState *sliceState,
     llvm::SmallDenseMap<Instruction *, uint64_t, 8> *tripCountMap) {
-  SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
+  SmallVector<AffineForOp, 4> srcLoopIVs;
   getLoopIVs(*srcOpInst, &srcLoopIVs);
   unsigned numSrcLoopIVs = srcLoopIVs.size();
   // Populate map from AffineForOp -> trip count
@@ -892,7 +892,7 @@ static unsigned getInnermostCommonLoopDepth(ArrayRef<Instruction *> ops) {
   unsigned numOps = ops.size();
   assert(numOps > 0);
 
-  std::vector<SmallVector<OpPointer<AffineForOp>, 4>> loops(numOps);
+  std::vector<SmallVector<AffineForOp, 4>> loops(numOps);
   unsigned loopDepthLimit = std::numeric_limits<unsigned>::max();
   for (unsigned i = 0; i < numOps; ++i) {
     getLoopIVs(*ops[i], &loops[i]);
@@ -1056,8 +1056,8 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
   assert(node->inst->isa<AffineForOp>());
   // Get perfectly nested sequence of loops starting at root of loop nest.
   // TODO(andydavis,bondhugula) Share this with similar code in loop tiling.
-  SmallVector<OpPointer<AffineForOp>, 4> loops;
-  OpPointer<AffineForOp> curr = node->inst->cast<AffineForOp>();
+  SmallVector<AffineForOp, 4> loops;
+  AffineForOp curr = node->inst->cast<AffineForOp>();
   loops.push_back(curr);
   auto *currBody = curr->getBody();
   while (!currBody->empty() &&
@@ -1113,7 +1113,7 @@ unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
 // MemRefRegion written to by 'srcStoreOpInst' at depth 'dstLoopDepth'.
 // TODO(bondhugula): consider refactoring the common code from generateDma and
 // this one.
-static Value *createPrivateMemRef(OpPointer<AffineForOp> forOp,
+static Value *createPrivateMemRef(AffineForOp forOp,
                                   Instruction *srcStoreOpInst,
                                   unsigned dstLoopDepth,
                                   Optional<unsigned> fastMemorySpace,
@@ -1429,7 +1429,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   });
 
   // Compute cost of sliced and unsliced src loop nest.
-  SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
+  SmallVector<AffineForOp, 4> srcLoopIVs;
   getLoopIVs(*srcOpInst, &srcLoopIVs);
   unsigned numSrcLoopIVs = srcLoopIVs.size();
 
@@ -1443,7 +1443,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
     return false;
   }
   // Compute cost of dst loop nest.
-  SmallVector<OpPointer<AffineForOp>, 4> dstLoopIVs;
+  SmallVector<AffineForOp, 4> dstLoopIVs;
   getLoopIVs(*dstLoadOpInsts[0], &dstLoopIVs);
 
   LoopNestStats dstLoopNestStats;
@@ -1933,7 +1933,7 @@ public:
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
           auto sliceLoopNest = mlir::insertBackwardComputationSlice(
               srcStoreOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
-          if (sliceLoopNest != nullptr) {
+          if (sliceLoopNest) {
             LLVM_DEBUG(llvm::dbgs()
                        << "\tslice loop nest:\n"
                        << *sliceLoopNest->getInstruction() << "\n");
@@ -2182,8 +2182,8 @@ public:
     return false;
   }
 
-  void updateStateAfterSiblingFusion(OpPointer<AffineForOp> sliceLoopNest,
-                                     Node *sibNode, Node *dstNode) {
+  void updateStateAfterSiblingFusion(AffineForOp sliceLoopNest, Node *sibNode,
+                                     Node *dstNode) {
     // Update 'sibNode' and 'dstNode' input/output edges to reflect fusion.
     mdg->updateEdges(sibNode->id, dstNode->id);
 

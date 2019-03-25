@@ -155,8 +155,8 @@ static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
   if (!lbConst || !ubConst)
     return llvm::Optional<ValueHandle>();
 
-  return ValueHandle::create<AffineForOp>(lbConst->getValue(),
-                                          ubConst->getValue(), step);
+  return ValueHandle::create<AffineForOp>(lbConst.getValue(),
+                                          ubConst.getValue(), step);
 }
 
 mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
@@ -268,10 +268,9 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
   AffineExpr d;
   Value *resultVal = nullptr;
   auto *inst = val->getDefiningInst();
-  auto constant =
-      inst ? inst->dyn_cast<ConstantIndexOp>() : OpPointer<ConstantIndexOp>();
+  auto constant = inst ? inst->dyn_cast<ConstantIndexOp>() : ConstantIndexOp();
   if (constant) {
-    d = getAffineConstantExpr(constant->getValue(), context);
+    d = getAffineConstantExpr(constant.getValue(), context);
   } else if (isValidSymbol(val) && !isValidDim(val)) {
     d = getAffineSymbolExpr(numSymbols++, context);
     resultVal = val;

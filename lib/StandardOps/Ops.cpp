@@ -319,10 +319,10 @@ struct SimplifyAllocConst : public RewritePattern {
         continue;
       }
       auto *defOp = allocOp->getOperand(dynamicDimPos)->getDefiningInst();
-      OpPointer<ConstantIndexOp> constantIndexOp;
+      ConstantIndexOp constantIndexOp;
       if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
         // Dynamic shape dimension will be folded.
-        newShapeConstants.push_back(constantIndexOp->getValue());
+        newShapeConstants.push_back(constantIndexOp.getValue());
         // Record to check for zero uses later below.
         droppedOperands.push_back(constantIndexOp);
       } else {

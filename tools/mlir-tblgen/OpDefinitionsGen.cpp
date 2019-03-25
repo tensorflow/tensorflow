@@ -315,14 +315,12 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
   for (const auto &trait : traits)
     os << ", " << trait;
   os << "> {\npublic:\n";
+  os << "  using Op::Op;\n";
   for (const auto &method : methods) {
     method.writeDeclTo(os);
     os << "\n";
   }
-  os << "\nprivate:\n"
-     << "  friend class ::mlir::Instruction;\n";
-  os << "  explicit " << className << "(Instruction *state) : Op(state) {}\n"
-     << "};";
+  os << "};";
 }
 
 void OpClass::writeDefTo(raw_ostream &os) const {

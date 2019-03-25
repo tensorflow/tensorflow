@@ -41,15 +41,13 @@ class FlatAffineConstraints;
 class Instruction;
 class Location;
 class MemRefAccess;
-template <typename T> class OpPointer;
 class Instruction;
 class Value;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
 //  TODO(bondhugula): handle 'if' inst's.
-void getLoopIVs(Instruction &inst,
-                SmallVectorImpl<OpPointer<AffineForOp>> *loops);
+void getLoopIVs(Instruction &inst, SmallVectorImpl<AffineForOp> *loops);
 
 /// Returns the nesting depth of this instruction, i.e., the number of loops
 /// surrounding this instruction.
@@ -57,7 +55,7 @@ unsigned getNestingDepth(Instruction &inst);
 
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
 /// at 'forOp'.
-void getSequentialLoops(OpPointer<AffineForOp> forOp,
+void getSequentialLoops(AffineForOp forOp,
                         llvm::SmallDenseSet<Value *, 8> *sequentialLoops);
 
 /// ComputationSliceState aggregates loop IVs, loop bound AffineMaps and their
@@ -105,10 +103,10 @@ LogicalResult getBackwardComputationSliceState(
 // materialize the results of the backward slice - presenting a trade-off b/w
 // storage and redundant computation in several cases.
 // TODO(andydavis) Support computation slices with common surrounding loops.
-OpPointer<AffineForOp>
-insertBackwardComputationSlice(Instruction *srcOpInst, Instruction *dstOpInst,
-                               unsigned dstLoopDepth,
-                               ComputationSliceState *sliceState);
+AffineForOp insertBackwardComputationSlice(Instruction *srcOpInst,
+                                           Instruction *dstOpInst,
+                                           unsigned dstLoopDepth,
+                                           ComputationSliceState *sliceState);
 
 /// A region of a memref's data space; this is typically constructed by
 /// analyzing load/store op's on this memref and the index space of loops
@@ -235,11 +233,11 @@ unsigned getNumCommonSurroundingLoops(Instruction &A, Instruction &B);
 
 /// Gets the memory footprint of all data touched in the specified memory space
 /// in bytes; if the memory space is unspecified, considers all memory spaces.
-Optional<int64_t> getMemoryFootprintBytes(OpPointer<AffineForOp> forOp,
+Optional<int64_t> getMemoryFootprintBytes(AffineForOp forOp,
                                           int memorySpace = -1);
 
 /// Returns true if `forOp' is a parallel loop.
-bool isLoopParallel(OpPointer<AffineForOp> forOp);
+bool isLoopParallel(AffineForOp forOp);
 
 } // end namespace mlir
 

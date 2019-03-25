@@ -43,8 +43,8 @@ using namespace mlir;
 /// part of the unrolled loop. Computes the bound as an AffineMap with its
 /// operands or a null map when the trip count can't be expressed as an affine
 /// expression.
-void mlir::getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
-                                    unsigned unrollFactor, AffineMap *map,
+void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
+                                    AffineMap *map,
                                     SmallVectorImpl<Value *> *operands,
                                     FuncBuilder *b) {
   auto lbMap = forOp->getLowerBoundMap();
@@ -67,11 +67,8 @@ void mlir::getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
 
   unsigned step = forOp->getStep();
 
-  // We need to get non-const operands; we aren't changing them here.
-  auto ncForOp = *reinterpret_cast<OpPointer<AffineForOp> *>(&forOp);
-
-  SmallVector<Value *, 4> lbOperands(ncForOp->getLowerBoundOperands());
-  auto lb = b->create<AffineApplyOp>(ncForOp->getLoc(), lbMap, lbOperands);
+  SmallVector<Value *, 4> lbOperands(forOp->getLowerBoundOperands());
+  auto lb = b->create<AffineApplyOp>(forOp->getLoc(), lbMap, lbOperands);
 
   // For each upper bound expr, get the range.
   // Eg: for %i = lb to min (ub1, ub2),
@@ -115,7 +112,7 @@ void mlir::getCleanupLoopLowerBound(OpPointer<AffineForOp> forOp,
 /// Promotes the loop body of a forOp to its containing block if the forOp
 /// was known to have a single iteration.
 // TODO(bondhugula): extend this for arbitrary affine bounds.
-LogicalResult mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
+LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
   Optional<uint64_t> tripCount = getConstantTripCount(forOp);
   if (!tripCount.hasValue() || tripCount.getValue() != 1)
     return failure();
@@ -161,7 +158,7 @@ LogicalResult mlir::promoteIfSingleIteration(OpPointer<AffineForOp> forOp) {
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
   f->walkPostOrder<AffineForOp>(
-      [](OpPointer<AffineForOp> forOp) { promoteIfSingleIteration(forOp); });
+      [](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
 }
 
 /// Generates a 'for' inst with the specified lower and upper bounds while
@@ -171,12 +168,11 @@ void mlir::promoteSingleIterationLoops(Function *f) {
 /// the pair specifies the shift applied to that group of instructions; note
 /// that the shift is multiplied by the loop step before being applied. Returns
 /// nullptr if the generated loop simplifies to a single iteration one.
-static OpPointer<AffineForOp>
+static AffineForOp
 generateLoop(AffineMap lbMap, AffineMap ubMap,
              const std::vector<std::pair<uint64_t, ArrayRef<Instruction *>>>
                  &instGroupQueue,
-             unsigned offset, OpPointer<AffineForOp> srcForInst,
-             FuncBuilder *b) {
+             unsigned offset, AffineForOp srcForInst, FuncBuilder *b) {
   SmallVector<Value *, 4> lbOperands(srcForInst->getLowerBoundOperands());
   SmallVector<Value *, 4> ubOperands(srcForInst->getUpperBoundOperands());
 
@@ -216,7 +212,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     }
   }
   if (succeeded(promoteIfSingleIteration(loopChunk)))
-    return OpPointer<AffineForOp>();
+    return AffineForOp();
   return loopChunk;
 }
 
@@ -235,8 +231,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
 // asserts preservation of SSA dominance. A check for that as well as that for
 // memory-based depedence preservation check rests with the users of this
 // method.
-LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
-                                 ArrayRef<uint64_t> shifts,
+LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
                                  bool unrollPrologueEpilogue) {
   if (forOp->getBody()->empty())
     return success();
@@ -285,8 +280,8 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
   // Nevertheless, if 'unrollPrologueEpilogue' is set, we will treat the first
   // loop generated as the prologue and the last as epilogue and unroll these
   // fully.
-  OpPointer<AffineForOp> prologue;
-  OpPointer<AffineForOp> epilogue;
+  AffineForOp prologue;
+  AffineForOp epilogue;
 
   // Do a sweep over the sorted shifts while storing open groups in a
   // vector, and generating loop portions as necessary during the sweep. A block
@@ -306,7 +301,7 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
       // The interval for which the loop needs to be generated here is:
       // [lbShift, min(lbShift + tripCount, d)) and the body of the
       // loop needs to have all instructions in instQueue in that order.
-      OpPointer<AffineForOp> res;
+      AffineForOp res;
       if (lbShift + tripCount * step < d * step) {
         res = generateLoop(
             b.getShiftedAffineMap(origLbMap, lbShift),
@@ -357,7 +352,7 @@ LogicalResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
 }
 
 /// Unrolls this loop completely.
-LogicalResult mlir::loopUnrollFull(OpPointer<AffineForOp> forOp) {
+LogicalResult mlir::loopUnrollFull(AffineForOp forOp) {
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
   if (mayBeConstantTripCount.hasValue()) {
     uint64_t tripCount = mayBeConstantTripCount.getValue();
@@ -371,7 +366,7 @@ LogicalResult mlir::loopUnrollFull(OpPointer<AffineForOp> forOp) {
 
 /// Unrolls and jams this loop by the specified factor or by the trip count (if
 /// constant) whichever is lower.
-LogicalResult mlir::loopUnrollUpToFactor(OpPointer<AffineForOp> forOp,
+LogicalResult mlir::loopUnrollUpToFactor(AffineForOp forOp,
                                          uint64_t unrollFactor) {
   Optional<uint64_t> mayBeConstantTripCount = getConstantTripCount(forOp);
 
@@ -383,7 +378,7 @@ LogicalResult mlir::loopUnrollUpToFactor(OpPointer<AffineForOp> forOp,
 
 /// Unrolls this loop by the specified factor. Returns success if the loop
 /// is successfully unrolled.
-LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
+LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
                                        uint64_t unrollFactor) {
   assert(unrollFactor >= 1 && "unroll factor should be >= 1");
 
@@ -471,8 +466,7 @@ LogicalResult mlir::loopUnrollByFactor(OpPointer<AffineForOp> forOp,
 
 /// Performs loop interchange on 'forOpA' and 'forOpB', where 'forOpB' is
 /// nested within 'forOpA' as the only instruction in its block.
-void mlir::interchangeLoops(OpPointer<AffineForOp> forOpA,
-                            OpPointer<AffineForOp> forOpB) {
+void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
   auto *forOpAInst = forOpA->getInstruction();
   // 1) Slice forOpA's instruction list (which is just forOpB) just before
   // forOpA (in forOpA's parent's block) this should leave 'forOpA's
@@ -492,11 +486,10 @@ void mlir::interchangeLoops(OpPointer<AffineForOp> forOpA,
 
 /// Performs a series of loop interchanges to sink 'forOp' 'loopDepth' levels
 /// deeper in the loop nest.
-void mlir::sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth) {
+void mlir::sinkLoop(AffineForOp forOp, unsigned loopDepth) {
   for (unsigned i = 0; i < loopDepth; ++i) {
     assert(forOp->getBody()->front().isa<AffineForOp>());
-    OpPointer<AffineForOp> nextForOp =
-        forOp->getBody()->front().cast<AffineForOp>();
+    AffineForOp nextForOp = forOp->getBody()->front().cast<AffineForOp>();
     interchangeLoops(forOp, nextForOp);
   }
 }
@@ -525,8 +518,8 @@ static void augmentMapAndBounds(FuncBuilder *b, Value *iv, AffineMap *map,
 // substituting `oldIv` in place of
 // `forOp.getInductionVariable()`.
 // Note: `newForOp` may be nested under `forOp`.
-static void cloneLoopBodyInto(OpPointer<AffineForOp> forOp, Value *oldIv,
-                              OpPointer<AffineForOp> newForOp) {
+static void cloneLoopBodyInto(AffineForOp forOp, Value *oldIv,
+                              AffineForOp newForOp) {
   BlockAndValueMapping map;
   map.map(oldIv, newForOp->getInductionVar());
   FuncBuilder b(newForOp->getBody(), newForOp->getBody()->end());
@@ -554,9 +547,9 @@ static void cloneLoopBodyInto(OpPointer<AffineForOp> forOp, Value *oldIv,
 // responsibility to specify `targets` that are dominated by `forOp`.
 // Returns the new AffineForOps, one per `targets`, nested immediately under
 // each of the `targets`.
-static SmallVector<OpPointer<AffineForOp>, 8>
-stripmineSink(OpPointer<AffineForOp> forOp, uint64_t factor,
-              ArrayRef<OpPointer<AffineForOp>> targets) {
+static SmallVector<AffineForOp, 8>
+stripmineSink(AffineForOp forOp, uint64_t factor,
+              ArrayRef<AffineForOp> targets) {
   // TODO(ntv): Use cheap structural assertions that targets are nested under
   // forOp and that targets are not nested under each other when DominanceInfo
   // exposes the capability. It seems overkill to construct a whole function
@@ -579,7 +572,7 @@ stripmineSink(OpPointer<AffineForOp> forOp, uint64_t factor,
   augmentMapAndBounds(&b, forOp->getInductionVar(), &ubMap, &ubOperands,
                       /*offset=*/scaledStep);
 
-  SmallVector<OpPointer<AffineForOp>, 8> innerLoops;
+  SmallVector<AffineForOp, 8> innerLoops;
   for (auto t : targets) {
     // Insert newForOp at the end of `t`.
     FuncBuilder b(t->getBody(), t->getBody()->end());
@@ -601,21 +594,18 @@ stripmineSink(OpPointer<AffineForOp> forOp, uint64_t factor,
 
 // Stripmines a `forOp` by `factor` and sinks it under a single `target`.
 // Returns the new AffineForOps, nested immediately under `target`.
-OpPointer<AffineForOp> stripmineSink(OpPointer<AffineForOp> forOp,
-                                     uint64_t factor,
-                                     OpPointer<AffineForOp> target) {
-  auto res =
-      stripmineSink(forOp, factor, ArrayRef<OpPointer<AffineForOp>>{target});
+AffineForOp stripmineSink(AffineForOp forOp, uint64_t factor,
+                          AffineForOp target) {
+  auto res = stripmineSink(forOp, factor, ArrayRef<AffineForOp>{target});
   assert(res.size() == 1 && "Expected 1 inner forOp");
   return res[0];
 }
 
-SmallVector<SmallVector<OpPointer<AffineForOp>, 8>, 8>
-mlir::tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
-           ArrayRef<OpPointer<AffineForOp>> targets) {
-  SmallVector<SmallVector<OpPointer<AffineForOp>, 8>, 8> res;
-  SmallVector<OpPointer<AffineForOp>, 8> currentTargets(targets.begin(),
-                                                        targets.end());
+SmallVector<SmallVector<AffineForOp, 8>, 8>
+mlir::tile(ArrayRef<AffineForOp> forOps, ArrayRef<uint64_t> sizes,
+           ArrayRef<AffineForOp> targets) {
+  SmallVector<SmallVector<AffineForOp, 8>, 8> res;
+  SmallVector<AffineForOp, 8> currentTargets(targets.begin(), targets.end());
   for (auto it : llvm::zip(forOps, sizes)) {
     auto step = stripmineSink(std::get<0>(it), std::get<1>(it), currentTargets);
     res.push_back(step);
@@ -624,8 +614,8 @@ mlir::tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
   return res;
 }
 
-SmallVector<OpPointer<AffineForOp>, 8>
-mlir::tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
-           OpPointer<AffineForOp> target) {
-  return tile(forOps, sizes, ArrayRef<OpPointer<AffineForOp>>{target})[0];
+SmallVector<AffineForOp, 8> mlir::tile(ArrayRef<AffineForOp> forOps,
+                                       ArrayRef<uint64_t> sizes,
+                                       AffineForOp target) {
+  return tile(forOps, sizes, ArrayRef<AffineForOp>{target})[0];
 }

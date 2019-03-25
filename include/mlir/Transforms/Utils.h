@@ -116,8 +116,8 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 /// all the affine.apply op's supplying operands to this opInst did not have any
 /// uses other than those in this opInst. The method otherwise returns the list
 /// of affine.apply operations created in output argument `sliceOps`.
-void createAffineComputationSlice(
-    Instruction *opInst, SmallVectorImpl<OpPointer<AffineApplyOp>> *sliceOps);
+void createAffineComputationSlice(Instruction *opInst,
+                                  SmallVectorImpl<AffineApplyOp> *sliceOps);
 
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".
