@@ -38,7 +38,7 @@ try:
   del LazyLoader
 except ImportError:
   # When full Tensorflow Python PIP is not available do not use lazy load
-  # and instead uf the tflite_runtime path.
+  # and instead of the tflite_runtime path.
   from tflite_runtime.lite.python import interpreter_wrapper as _interpreter_wrapper
 
   def tf_export_dummy(*x, **kwargs):
@@ -49,7 +49,7 @@ except ImportError:
 
 @_tf_export('lite.Interpreter')
 class Interpreter(object):
-  """Interpreter inferace for TF-Lite Models."""
+  """Interpreter interface for TF-Lite Models."""
 
   def __init__(self, model_path=None, model_content=None):
     """Constructor.
