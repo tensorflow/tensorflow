@@ -168,6 +168,10 @@ struct InlineFunctionBodyOptions {
   //   b) data returns               (`ret` field in FunctionDef)
   enum class OutputControlSource { kDataOutputs, kControlOutputs };
 
+  // If 'true' function inlining is completely disabled. This allows to control
+  // function inlining for different types of function calls (see
+  // 'ExpandInlineFunctionsOptions' below).
+  bool disable_inlining = false;
   // Ignore '_noinline' function attribute.
   bool ignore_noinline = false;
   // If 'true' function inlining will override explicitly specified devices

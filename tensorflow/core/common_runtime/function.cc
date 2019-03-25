@@ -1471,8 +1471,10 @@ using OutputControlSrc = InlineFunctionBodyOptions::OutputControlSource;
 }  // namespace
 
 string InlineFunctionBodyOptions::DebugString() const {
-  return absl::StrCat("ignore_noinline=", ignore_noinline ? "true" : "false",
-                      ", override_device=", override_device ? "true" : "false",
+  const auto true_false = [](bool b) { return b ? "true" : "false"; };
+  return absl::StrCat("disable_inlining=", true_false(disable_inlining),
+                      ", ignore_noinline=", true_false(ignore_noinline),
+                      ", override_device=", true_false(ignore_noinline),
                       ", output_control_src=",
                       output_control_src == OutputControlSrc::kDataOutputs
                           ? "DataOutputs"
@@ -1518,6 +1520,11 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody,
           "Node output type doesn't match function return type: ",
           node->output_type(i), " != ", fbody->ret_types[i], " @ index=", i);
     }
+  }
+
+  if (options.disable_inlining) {
+    return errors::InvalidArgument(
+        "Function inlining explicitly disabled by 'options.disable_inlining'");
   }
 
   if (!options.ignore_noinline) {
