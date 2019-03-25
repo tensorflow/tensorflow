@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -157,22 +158,23 @@ class Feature {
         return false;
       }
 
+      constexpr int32 kNumFloatBytes = 4;
       if (peek_tag == kDelimitedTag(1)) {                       // packed
         if (!stream.ExpectTag(kDelimitedTag(1))) return false;  // packed tag
         uint32 packed_length;
         if (!stream.ReadVarint32(&packed_length)) return false;
         auto packed_limit = stream.PushLimit(packed_length);
 
+        // Store the initial size to know the offset we have to start writing
+        // data from before resizing the output "vector".
+        const size_t initial_size = float_list->size();
+        float_list->resize(initial_size + packed_length / kNumFloatBytes);
+
         // If the result data type is float and we are on a little endian
         // machine then we can simply memcpy the data from the proto into the
         // result vector.
-        constexpr int32 kNumFloatBytes = 4;
         if (port::kLittleEndian &&
             sizeof(typename Result::value_type) == kNumFloatBytes) {
-          // Store the initial size to know the offset we have to start writing
-          // data from before resizing the output "vector".
-          const size_t initial_size = float_list->size();
-          float_list->resize(initial_size + packed_length / kNumFloatBytes);
           // Calculate the length of the buffer available what can be less than
           // what we requested in resize in case of a LimitedArraySlice.
           const uint32 bytes_to_copy =
@@ -182,20 +184,32 @@ class Feature {
           if (!stream.ReadRaw(float_list->data() + initial_size, bytes_to_copy))
             return false;
         } else {
+          int64 index = initial_size;
           while (!stream.ExpectAtEnd()) {
             uint32 buffer32;
             if (!stream.ReadLittleEndian32(&buffer32)) return false;
-            float_list->push_back(absl::bit_cast<float>(buffer32));
+            if (index < float_list->size()) {
+              float_list->data()[index] = absl::bit_cast<float>(buffer32);
+              ++index;
+            }
           }
         }
 
         stream.PopLimit(packed_limit);
       } else {  // non-packed
+        const size_t initial_size = float_list->size();
+        // 1 byte for the tag (`1` encoded as Variant32) and kNumFloatBytes for
+        // the value.
+        const int64 num_elements =
+            stream.BytesUntilLimit() / (1 + kNumFloatBytes);
+        float_list->resize(initial_size + num_elements);
+        int64 index = initial_size;
         while (!stream.ExpectAtEnd()) {
           if (!stream.ExpectTag(kFixed32Tag(1))) return false;
           uint32 buffer32;
           if (!stream.ReadLittleEndian32(&buffer32)) return false;
-          float_list->push_back(absl::bit_cast<float>(buffer32));
+          float_list->data()[index] = absl::bit_cast<float>(buffer32);
+          ++index;
         }
       }
     }
@@ -949,6 +963,41 @@ void FillAndCopyVarLen(
   }
 }
 
+// Thin vector like interface wrapper around a Tensor. This enable us to
+// directly populate a tensor during parsing instead of having to first create a
+// vactor and then copy the data over.
+template <typename T>
+class TensorVector {
+ public:
+  using value_type = T;
+
+  const Tensor& tensor() {
+    if (!tensor_.has_value()) {
+      resize(0);
+    }
+    return *tensor_;
+  }
+
+  int64 size() const {
+    return tensor_.has_value() ? tensor_->NumElements() : 0;
+  }
+  void resize(int64 new_size) {
+    DCHECK(!tensor_.has_value());
+    tensor_ = Tensor(DataTypeToEnum<T>::v(), TensorShape({new_size}));
+    data_ = tensor_->flat<T>().data();
+  }
+  T* data() { return data_; }
+  const T* data() const { return data_; }
+
+ private:
+  // Use absl::optional to avoid calling the default constructor of Tensor
+  // unnecessarily.
+  absl::optional<Tensor> tensor_;
+
+  // Cached pointer to the raw data inside the tensor.
+  T* data_ = nullptr;
+};
+
 }  // namespace
 
 Status FastParseExample(const Config& config,
@@ -1401,7 +1450,10 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
       }
 
     } else {  // if variable length
-      SparseBuffer out_temp;
+      SmallVector<string> bytes_list;
+      TensorVector<float> float_list;
+      SmallVector<int64> int64_list;
+
       const size_t num_elements_divisor =
           is_dense ? config.dense[d].elements_per_stride : 1;
       size_t num_elements;
@@ -1443,17 +1495,13 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
         case DT_INT64: {
           // TODO(mrry): Use the fact that the `int64_list` is packed to read
           // out the length and pre-allocate the output tensor.
-          if (!feature.ParseInt64List(&out_temp.int64_list))
-            return parse_error();
-          num_elements = out_temp.int64_list.size();
+          if (!feature.ParseInt64List(&int64_list)) return parse_error();
+          num_elements = int64_list.size();
           break;
         }
         case DT_FLOAT: {
-          // TODO(mrry): Use the fact that the `float_list` is packed to read
-          // out the length and pre-allocate the output tensor.
-          if (!feature.ParseFloatList(&out_temp.float_list))
-            return parse_error();
-          num_elements = out_temp.float_list.size();
+          if (!feature.ParseFloatList(&float_list)) return parse_error();
+          num_elements = float_list.size();
           break;
         }
         case DT_STRING: {
@@ -1461,10 +1509,9 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
           if (!feature.GetNumElementsInBytesList(&actual_num_elements)) {
             return parse_error();
           }
-          out_temp.bytes_list.reserve(actual_num_elements);
-          if (!feature.ParseBytesList(&out_temp.bytes_list))
-            return parse_error();
-          num_elements = out_temp.bytes_list.size();
+          bytes_list.reserve(actual_num_elements);
+          if (!feature.ParseBytesList(&bytes_list)) return parse_error();
+          num_elements = bytes_list.size();
           break;
         }
         default:
@@ -1480,20 +1527,19 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
       }
 
       Tensor* out;
+      DataType out_dtype;
+      TensorShape out_shape;
       if (is_dense) {
-        TensorShape values_shape;
-        values_shape.AddDim(num_elements / num_elements_divisor);
+        out_shape.AddDim(num_elements / num_elements_divisor);
         for (int i = 1; i < config.dense[d].shape.dims(); ++i) {
-          values_shape.AddDim(config.dense[d].shape.dim_size(i));
+          out_shape.AddDim(config.dense[d].shape.dim_size(i));
         }
 
         out = &result->dense_values[d];
-        *out = Tensor(config.dense[d].dtype, values_shape);
-
+        out_dtype = config.dense[d].dtype;
       } else {
         Tensor* out_indices = &result->sparse_indices[d];
         Tensor* out_dense_shape = &result->sparse_shapes[d];
-        out = &result->sparse_values[d];
 
         // TODO(mrry): Investigate the possibility of not materializing
         // the indices (and perhaps dense_shape) until they are needed.
@@ -1508,24 +1554,27 @@ Status FastParseSingleExample(const Config& config, const string& serialized,
         auto shapes_shape_t = out_dense_shape->vec<int64>();
         shapes_shape_t(0) = num_elements;
 
-        *out = Tensor(config.sparse[d].dtype,
-                      TensorShape({static_cast<int64>(num_elements)}));
+        out = &result->sparse_values[d];
+        out_dtype = config.sparse[d].dtype;
+        out_shape.AddDim(num_elements);
       }
 
       switch (example_dtype) {
         case DT_INT64: {
-          CopyOrMoveBlock(out_temp.int64_list.begin(),
-                          out_temp.int64_list.end(), out->flat<int64>().data());
+          *out = Tensor(out_dtype, out_shape);
+          CopyOrMoveBlock(int64_list.begin(), int64_list.end(),
+                          out->flat<int64>().data());
           break;
         }
         case DT_FLOAT: {
-          CopyOrMoveBlock(out_temp.float_list.begin(),
-                          out_temp.float_list.end(), out->flat<float>().data());
+          if (!out->CopyFrom(float_list.tensor(), out_shape)) {
+            return parse_error();
+          }
           break;
         }
         case DT_STRING: {
-          CopyOrMoveBlock(out_temp.bytes_list.begin(),
-                          out_temp.bytes_list.end(),
+          *out = Tensor(out_dtype, out_shape);
+          CopyOrMoveBlock(bytes_list.begin(), bytes_list.end(),
                           out->flat<string>().data());
           break;
         }
