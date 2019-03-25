@@ -34,7 +34,7 @@ class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
   explicit GreedyPatternRewriteDriver(Function *fn,
                                       OwningRewritePatternList &&patterns)
-      : PatternRewriter(fn->getContext()), matcher(std::move(patterns)),
+      : PatternRewriter(fn->getContext()), matcher(std::move(patterns), *this),
         builder(fn) {
     worklist.reserve(64);
 
@@ -122,7 +122,7 @@ private:
   }
 
   /// The low-level pattern matcher.
-  PatternMatcher matcher;
+  RewritePatternMatcher matcher;
 
   /// This builder is used to create new operations.
   FuncBuilder builder;
@@ -284,17 +284,13 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
       continue;
     }
 
-    // Check to see if we have any patterns that match this node.
-    auto match = matcher.findMatch(op);
-    if (!match.first)
-      continue;
-
     // Make sure that any new operations are inserted at this point.
     builder.setInsertionPoint(op);
-    // We know that any pattern that matched is RewritePattern because we
-    // initialized the matcher with RewritePatterns.
-    auto *rewritePattern = static_cast<RewritePattern *>(match.first);
-    rewritePattern->rewrite(op, std::move(match.second), *this);
+
+    // Try to match one of the canonicalization patterns. The rewriter is
+    // automatically notified of any necessary changes, so there is nothing else
+    // to do here.
+    matcher.matchAndRewrite(op);
   }
 
   uniquedConstants.clear();

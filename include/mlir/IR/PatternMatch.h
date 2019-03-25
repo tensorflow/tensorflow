@@ -44,17 +44,19 @@ public:
   PatternBenefit &operator=(const PatternBenefit &) = default;
 
   static PatternBenefit impossibleToMatch() { return PatternBenefit(); }
-
-  bool isImpossibleToMatch() const {
-    return representation == ImpossibleToMatchSentinel;
-  }
+  bool isImpossibleToMatch() const { return *this == impossibleToMatch(); }
 
   /// If the corresponding pattern can match, return its benefit.  If the
   // corresponding pattern isImpossibleToMatch() then this aborts.
   unsigned short getBenefit() const;
 
-  inline bool operator==(const PatternBenefit& other);
-  inline bool operator!=(const PatternBenefit& other);
+  bool operator==(const PatternBenefit &rhs) const {
+    return representation == rhs.representation;
+  }
+  bool operator!=(const PatternBenefit &rhs) const { return !(*this == rhs); }
+  bool operator<(const PatternBenefit &rhs) const {
+    return representation < rhs.representation;
+  }
 
 private:
   PatternBenefit() : representation(ImpossibleToMatchSentinel) {}
@@ -105,9 +107,8 @@ public:
 
   /// Attempt to match against code rooted at the specified operation,
   /// which is the same operation code as getRootKind().  On failure, this
-  /// returns a None value.  On success it a (possibly null) pattern-specific
-  /// state wrapped in a Some.  This state is passed back into its rewrite
-  /// function if this match is selected.
+  /// returns a None value.  On success it returns a (possibly null)
+  /// pattern-specific state wrapped in an Optional.
   virtual PatternMatchResult match(Instruction *op) const = 0;
 
   virtual ~Pattern() {}
@@ -138,8 +139,14 @@ private:
 };
 
 /// RewritePattern is the common base class for all DAG to DAG replacements.
-/// After a RewritePattern is matched, its replacement is performed by invoking
-/// the "rewrite" method that the instance implements.
+/// There are two possible usages of this class:
+///   * Multi-step RewritePattern with "match" and "rewrite"
+///     - By overloading the "match" and "rewrite" functions, the user can
+///       separate the concerns of matching and rewriting.
+///   * Single-step RewritePattern with "matchAndRewrite"
+///     - By overloading the "matchAndRewrite" function, the user can perform
+///       the rewrite in the same call as the match. This removes the need for
+///       any PatternState.
 ///
 class RewritePattern : public Pattern {
 public:
@@ -157,6 +164,25 @@ public:
   /// compiler error), it is emitted through the normal MLIR diagnostic
   /// hooks and the IR is left in a valid state.
   virtual void rewrite(Instruction *op, PatternRewriter &rewriter) const;
+
+  /// Attempt to match against code rooted at the specified operation,
+  /// which is the same operation code as getRootKind().  On failure, this
+  /// returns a None value.  On success, it returns a (possibly null)
+  /// pattern-specific state wrapped in an Optional.  This state is passed back
+  /// into the rewrite function if this match is selected.
+  PatternMatchResult match(Instruction *op) const override;
+
+  /// Attempt to match against code rooted at the specified operation,
+  /// which is the same operation code as getRootKind(). If successful, this
+  /// function will automatically perform the rewrite.
+  virtual PatternMatchResult matchAndRewrite(Instruction *op,
+                                             PatternRewriter &rewriter) const {
+    if (auto matchResult = match(op)) {
+      rewrite(op, std::move(*matchResult), rewriter);
+      return matchSuccess();
+    }
+    return matchFailure();
+  }
 
 protected:
   /// Patterns must specify the root operation name they match against, and can
@@ -289,51 +315,37 @@ private:
 };
 
 //===----------------------------------------------------------------------===//
-// PatternMatcher class
-//===----------------------------------------------------------------------===//
-
-/// This is a vector that owns the patterns inside of it.
-using OwningPatternList = std::vector<std::unique_ptr<Pattern>>;
-
-/// This class manages optimization and execution of a group of patterns,
-/// providing an API for finding the best match against a given node.
-///
-class PatternMatcher {
-public:
-  /// Create a PatternMatch with the specified set of patterns.
-  explicit PatternMatcher(OwningPatternList &&patterns)
-      : patterns(std::move(patterns)) {}
-
-  // Support matching from subclasses of Pattern.
-  template <typename T>
-  explicit PatternMatcher(std::vector<std::unique_ptr<T>> &&patternSubclasses) {
-    patterns.reserve(patternSubclasses.size());
-    for (auto &&elt : patternSubclasses)
-      patterns.emplace_back(std::move(elt));
-  }
-
-  using MatchResult = std::pair<Pattern *, std::unique_ptr<PatternState>>;
-
-  /// Find the highest benefit pattern available in the pattern set for the DAG
-  /// rooted at the specified node.  This returns the pattern (and any state it
-  /// needs) if found, or null if there are no matches.
-  MatchResult findMatch(Instruction *op);
-
-private:
-  PatternMatcher(const PatternMatcher &) = delete;
-  void operator=(const PatternMatcher &) = delete;
-
-  /// The group of patterns that are matched for optimization through this
-  /// matcher.
-  OwningPatternList patterns;
-};
-
-//===----------------------------------------------------------------------===//
 // Pattern-driven rewriters
 //===----------------------------------------------------------------------===//
 
 /// This is a vector that owns the patterns inside of it.
 using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+
+/// This class manages optimization and execution of a group of rewrite
+/// patterns, providing an API for finding and applying, the best match against
+/// a given node.
+///
+class RewritePatternMatcher {
+public:
+  /// Create a RewritePatternMatcher with the specified set of patterns and
+  /// rewriter.
+  explicit RewritePatternMatcher(OwningRewritePatternList &&patterns,
+                                 PatternRewriter &rewriter);
+
+  /// Try to match the given operation to a pattern and rewrite it.
+  void matchAndRewrite(Instruction *op);
+
+private:
+  RewritePatternMatcher(const RewritePatternMatcher &) = delete;
+  void operator=(const RewritePatternMatcher &) = delete;
+
+  /// The group of patterns that are matched for optimization through this
+  /// matcher.
+  OwningRewritePatternList patterns;
+
+  /// The rewriter used when applying matched patterns.
+  PatternRewriter &rewriter;
+};
 
 /// Rewrite the specified function by repeatedly applying the highest benefit
 /// patterns in a greedy work-list driven manner.
