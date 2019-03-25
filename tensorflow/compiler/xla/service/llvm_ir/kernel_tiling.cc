@@ -53,28 +53,6 @@ Shape MergeDimensions(absl::Span<const size_t> segs, const Shape& shape) {
                                                   dimensions);
 }
 
-// Given an index for a shape, return the equivalent new index if the shape is
-// reshaped to another shape.
-IrArray::Index GetReshapedIndex(const IrArray::Index& index, const Shape& shape,
-                                const Shape& reshaped_shape,
-                                llvm::IRBuilder<>* b) {
-  auto bounds = shape.dimensions();
-  auto minor_to_major = shape.layout().minor_to_major();
-  llvm::Value* linear_index = index.GetConstantWithIndexType(0);
-  int64 multiplier = 1;
-  for (int i = 0; i < index.size(); ++i) {
-    int64 dim = minor_to_major[i];
-    llvm::Value* addend = b->CreateMul(
-        index[dim], index.GetConstantWithIndexType(multiplier), "linearizing",
-        /*HasNUW=*/true, /*HasNSW=*/true);
-    linear_index = b->CreateAdd(linear_index, addend, "",
-                                /*HasNUW=*/true, /*HasNSW=*/true);
-    multiplier *= bounds[dim];
-  }
-
-  return IrArray::Index(linear_index, reshaped_shape, b);
-}
-
 }  // namespace
 
 absl::optional<std::vector<int64> > FindTranspose021(const Shape& a,
@@ -150,10 +128,9 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
     const IrArray::Index& normalized_shape_index,
     const Shape& unnormalized_shape) {
   DCHECK_EQ(normalized_shape_index.size(), dims_in_elems_.size());
-  Shape output_shape = ShapeUtil::MakeShapeWithDescendingLayout(
-      unnormalized_shape.element_type(), GetDimensionsInElements());
-  return GetReshapedIndex(normalized_shape_index, output_shape,
-                          unnormalized_shape, b_);
+  llvm::Value* linear =
+      normalized_shape_index.Linearize(GetDimensionsInElements(), b_);
+  return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
 IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
@@ -180,7 +157,7 @@ IrArray::Index KernelMappingScheme::GetTileIndexForBlockOrigin(
         llvm::ConstantInt::get(block_index[i]->getType(), block_sizes_[i]),
         "block_origin." + std::to_string(i)));
   }
-  return IrArray::Index(multidim, block_index[0]->getType());
+  return IrArray::Index(multidim, dims_in_tiles_, block_index.GetType());
 }
 
 IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
@@ -193,7 +170,7 @@ IrArray::Index KernelMappingScheme::GetElementIndexForTileOrigin(
                                              GetTileSizeForDimension(i)),
                       "tile_origin." + std::to_string(i));
   }
-  return IrArray::Index(elem_multi_index, tile_index.GetType());
+  return IrArray::Index(elem_multi_index, dims_in_elems_, tile_index.GetType());
 }
 
 llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
