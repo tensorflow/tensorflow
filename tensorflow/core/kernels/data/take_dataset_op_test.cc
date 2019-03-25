@@ -38,10 +38,10 @@ class TakeDatasetOpTest : public DatasetOpsTestBase {
       const DataTypeVector &output_types,
       const std::vector<PartialTensorShape> &output_shapes,
       std::unique_ptr<OpKernel> *op_kernel) {
-    node_def_ = test::function::NDef(
+    NodeDef node_def = test::function::NDef(
         kNodeName, kOpName, {"input_dataset", "count"},
         {{"output_types", output_types}, {"output_shapes", output_shapes}});
-    TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, op_kernel));
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();
   }
 
@@ -53,9 +53,6 @@ class TakeDatasetOpTest : public DatasetOpsTestBase {
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
     return Status::OK();
   }
-
- private:
-  NodeDef node_def_;
 };
 
 struct TestCase {

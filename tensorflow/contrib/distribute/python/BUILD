@@ -21,10 +21,10 @@ py_library(
     deps = [
         ":keras_correctness_test_lib",
         ":keras_test_lib",
-        ":multi_worker_test_base",
         ":single_loss_example",
         ":strategy_test_lib",
         "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/python/distribute:strategy_combinations",
     ],
 )
@@ -61,7 +61,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         ":mirrored_strategy",
-        ":multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:errors",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -101,7 +101,7 @@ cuda_py_test(
     additional_deps = [
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
-        ":multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         ":parameter_server_strategy",
         ":strategy_test_lib",
         "@absl_py//absl/testing:parameterized",
@@ -196,7 +196,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         ":mirrored_strategy",
-        ":multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         ":strategy_test_lib",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -217,18 +217,20 @@ cuda_py_test(
     ],
 )
 
-py_library(
-    name = "multi_worker_test_base",
-    srcs = ["multi_worker_test_base.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:distributed_framework_test_lib",
-        "//tensorflow/python:session",
-        "//tensorflow/python:util",
-        "//tensorflow/python/estimator:estimator_py",
-        "//third_party/py/numpy",
+cuda_py_test(
+    name = "contrib_mirrored_strategy_test",
+    srcs = ["contrib_mirrored_strategy_test.py"],
+    additional_deps = [
+        ":mirrored_strategy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:values",
+    ],
+    shard_count = 1,
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
     ],
 )
 
@@ -240,7 +242,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
-        "//tensorflow/contrib/distribute/python:multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         "//tensorflow/contrib/distribute/python:parameter_server_strategy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
@@ -287,7 +289,7 @@ cuda_py_test(
         ":collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
-        ":multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         ":strategy_test_lib",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
@@ -421,7 +423,7 @@ cuda_py_test(
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
         ":mirrored_strategy",
-        ":multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         ":parameter_server_strategy",
         "//third_party/py/numpy",
         "//tensorflow/contrib/optimizer_v2:training",
@@ -534,7 +536,7 @@ cuda_py_test(
         ":collective_all_reduce_strategy",
         "//tensorflow/python/distribute:combinations",
         "//tensorflow/python/distribute:strategy_combinations",
-        ":multi_worker_test_base",
+        "//tensorflow/python/distribute:multi_worker_test_base",
         ":mirrored_strategy",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",

@@ -1152,7 +1152,7 @@ def run_v1_only(reason, func=None):
       if tf2.enabled():
         self.skipTest(reason)
 
-      return f(self, *args, **kwargs)
+      f(self, *args, **kwargs)
 
     return decorated
 

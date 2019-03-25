@@ -512,8 +512,11 @@ class ScopedActivateContext {
   explicit ScopedActivateContext(GpuContext* context);
 
   // Checks that the context has remained activated for the duration of the
-  // scope. Does not restore the previously active context!
+  // scope.
   ~ScopedActivateContext();
+
+ private:
+  GpuContext* to_restore_ = nullptr;
 };
 
 }  // namespace gpu

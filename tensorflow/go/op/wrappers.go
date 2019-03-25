@@ -11879,6 +11879,39 @@ func ResourceScatterAdd(scope *Scope, resource tf.Output, indices tf.Output, upd
 	return scope.AddOperation(opspec)
 }
 
+// Outputs the single element from the given dataset.
+//
+// Arguments:
+//	dataset: A handle to a dataset that contains a single element.
+//
+//
+//
+// Returns The components of the single element of `input`.
+func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "DatasetToSingleElement",
+		Input: []tf.Input{
+			dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
+		scope.UpdateErr("DatasetToSingleElement", err)
+		return
+	}
+	return components
+}
+
 // Reads the value of a variable.
 //
 // The tensor returned by this operation is immutable.
@@ -13113,6 +13146,22 @@ func SparseReduceSum(scope *Scope, input_indices tf.Output, input_values tf.Outp
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Set a summary_writer_interface to record statistics using given stats_aggregator.
+//
+// Returns the created operation.
+func StatsAggregatorSetSummaryWriter(scope *Scope, stats_aggregator tf.Output, summary tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatsAggregatorSetSummaryWriter",
+		Input: []tf.Input{
+			stats_aggregator, summary,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Records the latency of producing `input_dataset` elements in a StatsAggregator.
@@ -37152,10 +37201,11 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 	return op.Output(0)
 }
 
-// Decode the first frame of a GIF-encoded image to a uint8 tensor.
+// Decode the frame(s) of a GIF-encoded image to a uint8 tensor.
 //
-// GIF with frame or transparency compression are not supported
-// convert animated GIF from compressed to uncompressed by:
+// GIF images with frame or transparency compression are not supported.
+// On Linux and MacOS systems, convert animated GIFs from compressed to
+// uncompressed by running:
 //
 //     convert $src.gif -coalesce $dst.gif
 //
@@ -37165,7 +37215,7 @@ func DecodePng(scope *Scope, contents tf.Output, optional ...DecodePngAttr) (ima
 // Arguments:
 //	contents: 0-D.  The GIF-encoded image.
 //
-// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB order
+// Returns 4-D with shape `[num_frames, height, width, 3]`. RGB channel order.
 func DecodeGif(scope *Scope, contents tf.Output) (image tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -39331,39 +39381,6 @@ func IteratorGetNext(scope *Scope, iterator tf.Output, output_types []tf.DataTyp
 	var err error
 	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
 		scope.UpdateErr("IteratorGetNext", err)
-		return
-	}
-	return components
-}
-
-// Outputs the single element from the given dataset.
-//
-// Arguments:
-//	dataset: A handle to a dataset that contains a single element.
-//
-//
-//
-// Returns The components of the single element of `input`.
-func DatasetToSingleElement(scope *Scope, dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (components []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "DatasetToSingleElement",
-		Input: []tf.Input{
-			dataset,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if components, idx, err = makeOutputList(op, idx, "components"); err != nil {
-		scope.UpdateErr("DatasetToSingleElement", err)
 		return
 	}
 	return components

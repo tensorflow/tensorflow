@@ -340,8 +340,9 @@ tf_cc_binary(
     ],
 )
 
-tf_cc_binary(
-    name = "grpc_testlib_server",
+# Library version of grpc_testlib_server, to allow for custom testlib servers.
+cc_library(
+    name = "grpc_testlib_server_main",
     testonly = 1,
     srcs = [
         "grpc_testlib_server.cc",
@@ -367,6 +368,13 @@ tf_cc_binary(
         "//tensorflow/core/kernels:reduction_ops",
         "//tensorflow/core/kernels:variable_ops",
     ],
+    alwayslink = 1,
+)
+
+tf_cc_binary(
+    name = "grpc_testlib_server",
+    testonly = 1,
+    deps = [":grpc_testlib_server_main"],
 )
 
 tf_cuda_library(
@@ -377,7 +385,7 @@ tf_cuda_library(
     data = [
         ":grpc_testlib_server",
     ],
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":grpc_session",
         "//tensorflow/core:core_cpu",

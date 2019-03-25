@@ -24,7 +24,6 @@ import sys
 from absl.testing import parameterized
 import numpy as np
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
@@ -32,6 +31,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values

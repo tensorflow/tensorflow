@@ -36,8 +36,7 @@ namespace m = match;
 
 // Checks if the argument instruction is an AllReduce, followed by a certain
 // sequence of instructions and then a CRS. It must be possible to move
-// the AR past each instruction in the sequence. Returns the CRS, which is the
-// last instruction in the sequence.
+// the AR past each instruction in the sequence.
 absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
     HloInstruction* instruction) {
   auto can_ar_move_past_instruction = [](HloInstruction* instruction) -> bool {
@@ -86,7 +85,9 @@ absl::optional<ArCrsCombiner::ArCrsPair> ArCrsCombiner::MatchesArCrsPattern(
   }
   if (!Cast<HloAllReduceInstruction>(next)->IsNoop() &&
       computation_is_addition(next->called_computations()[0])) {
-    return absl::optional<ArCrsPair>(ArCrsPair(instruction, next, distance));
+    ArCrsPair pair(instruction, next, distance);
+    VLOG(2) << "ArCrsPair matching pattern: " << pair.ToString();
+    return pair;
   } else {
     return absl::nullopt;
   }
@@ -263,6 +264,8 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
           if (prev_distance < pair.distance) {
             // The current AR's distance to CRS is longer than the previously
             // tracked AR, so we discard the previous AR.
+            VLOG(2) << "Replacing ArCrsPair: " << prev_pair.ToString()
+                    << " with ArCrsPair: " << pair.ToString();
             all_reduce_map_.erase(prev_ar_id);
             discarded_ar_ids.insert(prev_ar_id);
             all_reduce_map_[ar_id].push_back(pair);
@@ -291,6 +294,8 @@ void ArCrsCombiner::GroupAllReducesById(HloModule* module) {
 void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
   for (auto it : all_reduce_map_) {
     auto all_reduce_id = it.first;
+    VLOG(2) << "KeepProvablyEqualInstructionGroups. Checking ar_id: "
+            << all_reduce_id << "\n";
     auto pairs_vec = it.second;
     CHECK_EQ(pairs_vec.size(), num_spatial_partitions_);
     auto instr_0 = pairs_vec[0].ar;
@@ -302,6 +307,8 @@ void ArCrsCombiner::KeepProvablyEqualInstructionGroups() {
       while (true) {
         if (!InstructionsComputeSameValue(next_0, next_i, &visited_pairs)) {
           all_reduce_map_.erase(all_reduce_id);
+          VLOG(2) << "KeepProvablyEqualInstructionGroups. Erased ar_id: "
+                  << all_reduce_id << "\n";
           break;
         }
         if (next_0->IsCrossReplicaAllReduce()) {

@@ -38,6 +38,68 @@ TEST(LiteralTestUtilTest, ComparesEqualTuplesEqual) {
   EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal));
 }
 
+TEST(LiteralTestUtilTest, ComparesEqualComplex64TuplesEqual) {
+  Literal literal = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex64>({42.0, 64.0}),
+      LiteralUtil::CreateR0<complex64>({64.0, 42.0}),
+  });
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal));
+}
+
+TEST(LiteralTestUtilTest, ComparesEqualComplex128TuplesEqual) {
+  Literal literal = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex128>({42.0, 64.0}),
+      LiteralUtil::CreateR0<complex128>({64.0, 42.0}),
+  });
+  EXPECT_TRUE(LiteralTestUtil::Equal(literal, literal));
+}
+
+TEST(LiteralTestUtilTest, ComparesUnequalComplex64TuplesUnequal) {
+  Literal literal0 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex64>({42.0, 64.0}),
+      LiteralUtil::CreateR0<complex64>({64.0, 42.0}),
+  });
+  Literal literal1 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex64>({64.0, 42.0}),
+      LiteralUtil::CreateR0<complex64>({42.0, 64.0}),
+  });
+  Literal literal2 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex64>({42.42, 64.0}),
+      LiteralUtil::CreateR0<complex64>({64.0, 42.0}),
+  });
+  Literal literal3 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex64>({42.0, 64.0}),
+      LiteralUtil::CreateR0<complex64>({64.0, 42.42}),
+  });
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal0, literal1));
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal0, literal2));
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal0, literal3));
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal2, literal3));
+}
+
+TEST(LiteralTestUtilTest, ComparesUnequalComplex128TuplesUnequal) {
+  Literal literal0 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex128>({42.0, 64.0}),
+      LiteralUtil::CreateR0<complex128>({64.0, 42.0}),
+  });
+  Literal literal1 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex128>({64.0, 42.0}),
+      LiteralUtil::CreateR0<complex128>({42.0, 64.0}),
+  });
+  Literal literal2 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex128>({42.42, 64.0}),
+      LiteralUtil::CreateR0<complex128>({64.0, 42.0}),
+  });
+  Literal literal3 = LiteralUtil::MakeTupleFromSlices({
+      LiteralUtil::CreateR0<complex128>({42.0, 64.0}),
+      LiteralUtil::CreateR0<complex128>({64.0, 42.42}),
+  });
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal0, literal1));
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal0, literal2));
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal0, literal3));
+  EXPECT_FALSE(LiteralTestUtil::Equal(literal2, literal3));
+}
+
 TEST(LiteralTestUtilTest, ComparesUnequalTuplesUnequal) {
   // Implementation note: we have to use a death test here, because you can't
   // un-fail an assertion failure. The CHECK-failure is death, so we can make a
@@ -116,6 +178,92 @@ TEST(LiteralTestUtilTest, NearComparatorR1) {
   auto b = LiteralUtil::CreateR1<float>(
       {0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
   EXPECT_TRUE(LiteralTestUtil::Near(a, b, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, NearComparatorR1Complex64) {
+  auto a = LiteralUtil::CreateR1<complex64>({{0.0, 1.0},
+                                             {0.1, 1.1},
+                                             {0.2, 1.2},
+                                             {0.3, 1.3},
+                                             {0.4, 1.4},
+                                             {0.5, 1.5},
+                                             {0.6, 1.6},
+                                             {0.7, 1.7},
+                                             {0.8, 1.8}});
+  auto b = LiteralUtil::CreateR1<complex64>({{0.0, 1.0},
+                                             {0.1, 1.1},
+                                             {0.2, 1.2},
+                                             {0.3, 1.3},
+                                             {0.4, 1.4},
+                                             {0.5, 1.5},
+                                             {0.6, 1.6},
+                                             {0.7, 1.7},
+                                             {0.8, 1.8}});
+  auto c = LiteralUtil::CreateR1<complex64>({{0.0, 1.0},
+                                             {0.1, 1.1},
+                                             {0.2, 1.2},
+                                             {0.3, 1.3},
+                                             {0.4, 1.4},
+                                             {0.5, 1.5},
+                                             {0.6, 1.6},
+                                             {0.7, 1.7},
+                                             {0.9, 1.8}});
+  auto d = LiteralUtil::CreateR1<complex64>({{0.0, 1.0},
+                                             {0.1, 1.1},
+                                             {0.2, 1.2},
+                                             {0.3, 1.3},
+                                             {0.4, 1.4},
+                                             {0.5, 1.5},
+                                             {0.6, 1.6},
+                                             {0.7, 1.7},
+                                             {0.8, 1.9}});
+  EXPECT_TRUE(LiteralTestUtil::Near(a, b, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(a, c, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(a, d, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(c, d, ErrorSpec{0.0001}));
+}
+
+TEST(LiteralTestUtilTest, NearComparatorR1Complex128) {
+  auto a = LiteralUtil::CreateR1<complex128>({{0.0, 1.0},
+                                              {0.1, 1.1},
+                                              {0.2, 1.2},
+                                              {0.3, 1.3},
+                                              {0.4, 1.4},
+                                              {0.5, 1.5},
+                                              {0.6, 1.6},
+                                              {0.7, 1.7},
+                                              {0.8, 1.8}});
+  auto b = LiteralUtil::CreateR1<complex128>({{0.0, 1.0},
+                                              {0.1, 1.1},
+                                              {0.2, 1.2},
+                                              {0.3, 1.3},
+                                              {0.4, 1.4},
+                                              {0.5, 1.5},
+                                              {0.6, 1.6},
+                                              {0.7, 1.7},
+                                              {0.8, 1.8}});
+  auto c = LiteralUtil::CreateR1<complex128>({{0.0, 1.0},
+                                              {0.1, 1.1},
+                                              {0.2, 1.2},
+                                              {0.3, 1.3},
+                                              {0.4, 1.4},
+                                              {0.5, 1.5},
+                                              {0.6, 1.6},
+                                              {0.7, 1.7},
+                                              {0.9, 1.8}});
+  auto d = LiteralUtil::CreateR1<complex128>({{0.0, 1.0},
+                                              {0.1, 1.1},
+                                              {0.2, 1.2},
+                                              {0.3, 1.3},
+                                              {0.4, 1.4},
+                                              {0.5, 1.5},
+                                              {0.6, 1.6},
+                                              {0.7, 1.7},
+                                              {0.8, 1.9}});
+  EXPECT_TRUE(LiteralTestUtil::Near(a, b, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(a, c, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(a, d, ErrorSpec{0.0001}));
+  EXPECT_FALSE(LiteralTestUtil::Near(c, d, ErrorSpec{0.0001}));
 }
 
 TEST(LiteralTestUtilTest, NearComparatorR1Nan) {
