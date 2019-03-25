@@ -102,10 +102,10 @@ class IPUInfeedQueue:
         raise ValueError("""Output shape {} is not fully defined. If using \
 tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
-    with ops.device("/cpu:0"):
+    with ops.device('/device:CPU:0'):
       # Apply the dataset and take ownership.
       self._dataset = dataset._apply_options()
-      self.structure = dataset._element_structure
+      self._structure = dataset._element_structure
       try:
         ds_variant = self._dataset._variant_tensor
       except TypeError:
@@ -124,46 +124,8 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     """Returns a nested structure of `tf.Tensor`s representing the next element
     in the infeed queue.
 
-    You should typically call this method *once* and use its result as the input
-    to another computation. A typical training/inference loop will then handle
-    the dequeuing of the data to the device automatically.
-    The following skeleton shows how to use this method when building a training
-    loop:
-
-    ```python
-    dataset = ...  # A `tf.data.Dataset` object.
-
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-
-    # dataset can no longer be used beyond this point.
-
-    def my_net():
-      def body(loss):
-        data, labels = infeed_queue.get_next()
-        with variable_scope.variable_scope("vs", use_resource=True):
-          y = tf.conv2d(data, .....)
-          ...
-          ...
-          logits = tf.nn.xw_plus_b(....)
-        loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(logits=logits, labels=labels))
-        optimizer = gradient_descent.GradientDescentOptimizer(0.000001)
-        train = optimizer.minimize(loss)
-        with ops.control_dependencies([train]):
-          return array_ops.identity(loss)
-
-      loss = 0.0
-      return = tf.conrib.ipu.loops.repeat(10000, body, [loss], infeed_queue)
-
-    with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = ipu_compiler.compile(my_net, inputs=[])
-
-    with tf.Session() as sess:
-      sess.run(infeed_queue.initializer)
-      result = sess.run(res)
-    ```
-
-    NOTE: It is not legitimate to call `IPUInfeedQueue.get_next()` multiple
-      times inside the same code block.
+    This function should not be called directly, instead the infeed should be
+    passed to a loop from `contrib.ipu.loops`.
 
     Returns:
       A nested structure of `tf.Tensor` objects.
@@ -171,7 +133,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     flat_ret = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
       infeed_id=self._id, **dataset_ops.flat_structure(self._dataset))
     self._dequeued = True
-    return self.structure._from_tensor_list(flat_ret)
+    return self._structure._from_tensor_list(flat_ret)
 
   @property
   def dequeued(self):
@@ -201,7 +163,3 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     raise ValueError("""Deprecated behaviour - the IPUInfeedQueue is now \
 automatically dequeued by the loop.""")
 
-    Returns:
-      A `tf.Operation` that should be run to initialize this IPUInfeedQueue
-    """
-    return self._initializer

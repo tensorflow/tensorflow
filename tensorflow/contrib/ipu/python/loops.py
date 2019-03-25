@@ -15,7 +15,7 @@
 
 """Library for constructing a loop, suitable for IPUs."""
 # This implementation is based on:
-# tensorflow/contrib/tpu/python/tpu/training_loop.py
+# tensorflow/python/tpu/training_loop.py
 # which creates the loops for the TPUs.
 
 from __future__ import absolute_import
@@ -52,7 +52,6 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
 
   Raises:
     TypeError: if body or condition has the wrong signature.
-    ValueError: if infeed_queue is not None and it has not been dequeued.
   """
 
   # Converts inputs to Tensors.
@@ -193,7 +192,7 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
     The final values of the loop-carried tensors.
   Raises:
     ValueError: if there is a type error.
-    ValueError: if infeed_queue is not None and it has not been dequeued.
+    TypeError: if body has the wrong signature.
   """
   inputs = _convert_to_list(inputs)
   input_arity = len(inputs)
@@ -217,8 +216,8 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
     del args
     return i < n
 
-  def body_wrapper(i, *args):
-    return [i + 1] + _convert_to_list(body(*args))
+  def body_wrapper(i, *args, **kwargs):
+    return [i + 1] + _convert_to_list(body(*args, **kwargs))
 
   inputs = [0] if inputs is None else [0] + _convert_to_list(inputs)
   outputs = while_loop(
@@ -228,8 +227,13 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
   if len(outputs) == 1:
     # Returns the Op rather than an empty list.
     return outputs[0].op
+  elif len(outputs) == 2:
+    return outputs[1]
   else:
-    if len(outputs) == 2:
-      return outputs[1]
-    else:
-      return outputs[1:]
+    return outputs[1:]
+
+def _convert_to_list(xs):
+  if not isinstance(xs, (list, tuple)):
+    return [xs]
+  else:
+    return list(xs)
