@@ -1668,7 +1668,7 @@ class MklQuantizedConv2DOp
         bias_attr.set_output_scales(1, scales);
       }
       auto bias_pd = memory::primitive_desc(
-          {{bias_tensor.NumElements()}, MklDnnType<Tbias>(), memory::format::x},
+          ((bias_tensor.NumElements()), MklDnnType<Tbias>(), memory::format::x),
           this->cpu_engine_);
 
       void* bias_buf = static_cast<void*>(
