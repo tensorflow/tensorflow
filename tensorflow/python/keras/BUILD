@@ -1241,7 +1241,7 @@ tf_py_test(
     tags = [
             "notsan",
             "no_rocm",
-            "no_gpu",
+            "no_cuda",
            ],
 )
 
@@ -1300,7 +1300,7 @@ tf_py_test(
     shard_count = 8,
     tags = [
             "no_rocm",
-            "no_gpu",
+            "no_cuda",
     ],
 )
 

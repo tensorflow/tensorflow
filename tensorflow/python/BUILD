@@ -3766,7 +3766,6 @@ cuda_py_test(
     ],
     tags = [
         "no_windows",
-	"no_rocm",
     ],
     xla_enable_strict_auto_jit = True,
     flaky = True,
