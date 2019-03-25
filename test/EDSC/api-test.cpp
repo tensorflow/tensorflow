@@ -143,7 +143,7 @@ TEST_FUNC(cond_branch) {
   f->print(llvm::outs());
 }
 
-// Inject a EDSC-constructed `for` loop with bounds coming from function
+// Inject a EDSC-constructed `affine.for` loop with bounds coming from function
 // arguments.
 TEST_FUNC(dynamic_for_func_args) {
   auto indexType = IndexType::get(&globalContext());
@@ -164,7 +164,7 @@ TEST_FUNC(dynamic_for_func_args) {
 
   // clang-format off
   // CHECK-LABEL: func @dynamic_for_func_args(%arg0: index, %arg1: index) {
-  // CHECK:  for %i0 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 3 {
+  // CHECK:  affine.for %i0 = (d0) -> (d0)(%arg0) to (d0) -> (d0)(%arg1) step 3 {
   // CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 * 3)()[%arg0]
   // CHECK:  {{.*}} = affine.apply ()[s0, s1] -> (s1 + s0 * 3)()[%arg0, %arg1]
   // CHECK:  {{.*}} = affine.apply ()[s0] -> (s0 + 3)()[%arg0]
@@ -172,7 +172,7 @@ TEST_FUNC(dynamic_for_func_args) {
   f->print(llvm::outs());
 }
 
-// Inject a EDSC-constructed `for` loop with non-constant bounds that are
+// Inject a EDSC-constructed `affine.for` loop with non-constant bounds that are
 // obtained from AffineApplyOp (also constructed using EDSC operator
 // overloads).
 TEST_FUNC(dynamic_for) {
@@ -200,12 +200,12 @@ TEST_FUNC(dynamic_for) {
   // CHECK-LABEL: func @dynamic_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
   // CHECK:        %0 = affine.apply ()[s0, s1] -> (s0 - s1)()[%arg0, %arg1]
   // CHECK-NEXT:   %1 = affine.apply ()[s0, s1] -> (s0 + s1)()[%arg2, %arg3]
-  // CHECK-NEXT:   for %i0 = (d0) -> (d0)(%0) to (d0) -> (d0)(%1) step 2 {
+  // CHECK-NEXT:   affine.for %i0 = (d0) -> (d0)(%0) to (d0) -> (d0)(%1) step 2 {
   // clang-format on
   f->print(llvm::outs());
 }
 
-// Inject a EDSC-constructed empty `for` loop with max/min bounds that
+// Inject a EDSC-constructed empty `affine.for` loop with max/min bounds that
 // corresponds to
 //
 //     for max(%arg0, %arg1) to (%arg2, %arg3) step 1
@@ -234,7 +234,7 @@ TEST_FUNC(max_min_for) {
 
   // clang-format off
   // CHECK-LABEL: func @max_min_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
-  // CHECK:  for %i0 = max (d0, d1) -> (d0, d1)(%arg0, %arg1) to min (d0, d1) -> (d0, d1)(%arg2, %arg3) {
+  // CHECK:  affine.for %i0 = max (d0, d1) -> (d0, d1)(%arg0, %arg1) to min (d0, d1) -> (d0, d1)(%arg2, %arg3) {
   // clang-format on
   f->print(llvm::outs());
 }
@@ -334,7 +334,7 @@ TEST_FUNC(assignments_1) {
 
   // clang-format off
   // CHECK-LABEL: func @assignments(%arg0: memref<4xf32>, %arg1: memref<4xf32>, %arg2: memref<4xf32>) {
-  // CHECK: for %[[iv:.*]] = 0 to 4 {
+  // CHECK: affine.for %[[iv:.*]] = 0 to 4 {
   // CHECK:   %[[a:.*]] = load %arg0[%[[iv]]] : memref<4xf32>
   // CHECK:   %[[b:.*]] = load %arg1[%[[iv]]] : memref<4xf32>
   // CHECK:   %[[tmp:.*]] = mulf %[[a]], %[[b]] : f32
@@ -348,7 +348,7 @@ TEST_FUNC(assignments_2) {
 
   // clang-format off
   // CHECK-LABEL: func @assignments(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<?xf32>) {
-  // CHECK: for %[[iv:.*]] = {{.*}} to {{.*}} {
+  // CHECK: affine.for %[[iv:.*]] = {{.*}} to {{.*}} {
   // CHECK:   %[[a:.*]] = load %arg0[%[[iv]]] : memref<?xf32>
   // CHECK:   %[[b:.*]] = load %arg1[%[[iv]]] : memref<?xf32>
   // CHECK:   %[[tmp:.*]] = mulf %[[a]], %[[b]] : f32
@@ -405,13 +405,13 @@ TEST_FUNC(tile_2d) {
   //       CHECK: %[[M:[0-9]+]] = dim %arg0, 0 : memref<?x?x?xf32>
   //  CHECK-NEXT: %[[N:[0-9]+]] = dim %arg0, 1 : memref<?x?x?xf32>
   //  CHECK-NEXT: %[[P:[0-9]+]] = dim %arg0, 2 : memref<?x?x?xf32>
-  //       CHECK:   for %i0 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[M]]) step 512 {
-  //  CHECK-NEXT:     for %i1 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[N]]) step 1024 {
-  //  CHECK-NEXT:       for %i2 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
-  //  CHECK-NEXT:         for %i3 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] step 16 {
-  //  CHECK-NEXT:           for %i4 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] step 32 {
-  //  CHECK-NEXT:             for %i5 = max (d0, d1)[s0] -> (s0, d0, d1)(%i1, %i4)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%i1, %i4)[%[[N]]] {
-  //  CHECK-NEXT:               for %i6 = max (d0, d1)[s0] -> (s0, d0, d1)(%i0, %i3)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%i0, %i3)[%[[M]]] {
+  //       CHECK:   affine.for %i0 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[M]]) step 512 {
+  //  CHECK-NEXT:     affine.for %i1 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[N]]) step 1024 {
+  //  CHECK-NEXT:       affine.for %i2 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
+  //  CHECK-NEXT:         affine.for %i3 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] step 16 {
+  //  CHECK-NEXT:           affine.for %i4 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] step 32 {
+  //  CHECK-NEXT:             affine.for %i5 = max (d0, d1)[s0] -> (s0, d0, d1)(%i1, %i4)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%i1, %i4)[%[[N]]] {
+  //  CHECK-NEXT:               affine.for %i6 = max (d0, d1)[s0] -> (s0, d0, d1)(%i0, %i3)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%i0, %i3)[%[[M]]] {
   //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
   //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
   //  CHECK-NEXT:                 {{.*}} = addf {{.*}}, {{.*}} : f32
@@ -421,9 +421,9 @@ TEST_FUNC(tile_2d) {
   //  CHECK-NEXT:           }
   //  CHECK-NEXT:         }
   //  CHECK-NEXT:       }
-  //  CHECK-NEXT:       for %i7 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
-  //  CHECK-NEXT:         for %i8 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] {
-  //  CHECK-NEXT:           for %i9 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] {
+  //  CHECK-NEXT:       affine.for %i7 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
+  //  CHECK-NEXT:         affine.for %i8 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] {
+  //  CHECK-NEXT:           affine.for %i9 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] {
   //  CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
   //  CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
   //  CHECK-NEXT:             {{.*}}= addf {{.*}}, {{.*}} : f32

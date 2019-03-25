@@ -199,14 +199,14 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 ///
 /// Before
 ///
-/// for %i = 0 to #map(%N)
+/// affine.for %i = 0 to #map(%N)
 ///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   "send"(%idx, %A, ...)
 ///   "compute"(%idx)
 ///
 /// After
 ///
-/// for %i = 0 to #map(%N)
+/// affine.for %i = 0 to #map(%N)
 ///   %idx = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   "send"(%idx, %A, ...)
 ///   %idx_ = affine.apply (d0) -> (d0 mod 2) (%i)

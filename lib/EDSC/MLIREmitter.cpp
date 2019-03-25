@@ -146,7 +146,8 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
   if (auto expr = e.dyn_cast<StmtBlockLikeExpr>()) {
     if (expr.getKind() == ExprKind::For) {
       auto exprGroups = expr.getAllArgumentGroups();
-      assert(exprGroups.size() == 3 && "expected 3 expr groups in `for`");
+      assert(exprGroups.size() == 3 &&
+             "expected 3 expr groups in `affine.for`");
       assert(!exprGroups[0].empty() && "expected at least one lower bound");
       assert(!exprGroups[1].empty() && "expected at least one upper bound");
       assert(exprGroups[2].size() == 1 &&

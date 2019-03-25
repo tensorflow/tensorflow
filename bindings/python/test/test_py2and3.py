@@ -56,11 +56,11 @@ class EdscTest(unittest.TestCase):
     code = str(fun)
     # TODO(zinenko,ntv): use FileCheck for these tests
     self.assertIn(
-        '  "for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)} : () -> () {\n',
+        '  "affine.for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)} : () -> () {\n',
         code)
     self.assertIn("  ^bb1(%i0: index):", code)
     self.assertIn(
-        '    "for"(%c42, %2) {lower_bound: (d0) -> (d0), step: 2 : index, upper_bound: (d0) -> (d0)} : (index, index) -> () {\n',
+        '    "affine.for"(%c42, %2) {lower_bound: (d0) -> (d0), step: 2 : index, upper_bound: (d0) -> (d0)} : (index, index) -> () {\n',
         code)
     self.assertIn("    ^bb2(%i1: index):", code)
     self.assertIn(
@@ -76,19 +76,19 @@ class EdscTest(unittest.TestCase):
 
     code = str(fun)
     self.assertIn(
-        ' "for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (5)} : () -> () {\n',
+        ' "affine.for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (5)} : () -> () {\n',
         code)
     self.assertIn("  ^bb1(%i0: index):", code)
     self.assertIn(
-        '    "for"() {lower_bound: () -> (1), step: 3 : index, upper_bound: () -> (15)} : () -> () {\n',
+        '    "affine.for"() {lower_bound: () -> (1), step: 3 : index, upper_bound: () -> (15)} : () -> () {\n',
         code)
     self.assertIn("    ^bb2(%i1: index):", code)
     self.assertIn(
-        '      "for"() {lower_bound: () -> (2), step: 5 : index, upper_bound: () -> (25)} : () -> () {\n',
+        '      "affine.for"() {lower_bound: () -> (2), step: 5 : index, upper_bound: () -> (25)} : () -> () {\n',
         code)
     self.assertIn("      ^bb3(%i2: index):", code)
     self.assertIn(
-        '        "for"() {lower_bound: () -> (3), step: 7 : index, upper_bound: () -> (35)} : () -> () {\n',
+        '        "affine.for"() {lower_bound: () -> (3), step: 7 : index, upper_bound: () -> (35)} : () -> () {\n',
         code)
     self.assertIn("        ^bb4(%i3: index):", code)
     self.assertIn(
@@ -342,10 +342,10 @@ class EdscTest(unittest.TestCase):
 
     code = str(fun)
     self.assertIn(
-        '"for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (10)}',
+        '"affine.for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (10)}',
         code)
     self.assertIn(
-        '"for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)}',
+        '"affine.for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (42)}',
         code)
     self.assertIn("%0 = load %arg0[%i0, %i1] : memref<10x42xf32>", code)
     self.assertIn("%1 = addf %0, %cst : f32", code)
@@ -367,7 +367,7 @@ class EdscTest(unittest.TestCase):
 
     code = str(fun)
     self.assertIn(
-        '"for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (32)} : () -> ()',
+        '"affine.for"() {lower_bound: () -> (0), step: 1 : index, upper_bound: () -> (32)} : () -> ()',
         code)
     self.assertIn("%0 = load %arg0[%i0, %i2] : memref<32x32xf32>", code)
     self.assertIn("%1 = load %arg1[%i2, %i1] : memref<32x32xf32>", code)

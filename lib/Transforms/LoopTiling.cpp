@@ -258,7 +258,8 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 // Returns all maximal outermost perfect loop nests to tile.
 static void getTileableBands(Function *f,
                              std::vector<SmallVector<AffineForOp, 6>> *bands) {
-  // Get maximal perfect nest of 'for' insts starting from root (inclusive).
+  // Get maximal perfect nest of 'affine.for' insts starting from root
+  // (inclusive).
   auto getMaximalPerfectLoopNest = [&](AffineForOp root) {
     SmallVector<AffineForOp, 6> band;
     AffineForOp currInst = root;

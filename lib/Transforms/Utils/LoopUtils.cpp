@@ -71,7 +71,7 @@ void mlir::getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
   auto lb = b->create<AffineApplyOp>(forOp->getLoc(), lbMap, lbOperands);
 
   // For each upper bound expr, get the range.
-  // Eg: for %i = lb to min (ub1, ub2),
+  // Eg: affine.for %i = lb to min (ub1, ub2),
   // where tripCountExprs yield (tr1, tr2), we create affine.apply's:
   // lb + tr1 - tr1 % ufactor, lb + tr2 - tr2 % ufactor; the results of all
   // these affine.apply's make up the cleanup loop lower bound.
@@ -161,8 +161,8 @@ void mlir::promoteSingleIterationLoops(Function *f) {
       [](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
 }
 
-/// Generates a 'for' inst with the specified lower and upper bounds while
-/// generating the right IV remappings for the shifted instructions. The
+/// Generates a 'affine.for' inst with the specified lower and upper bounds
+/// while generating the right IV remappings for the shifted instructions. The
 /// instruction blocks that go into the loop are specified in instGroupQueue
 /// starting from the specified offset, and in that order; the first element of
 /// the pair specifies the shift applied to that group of instructions; note
@@ -216,10 +216,10 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
   return loopChunk;
 }
 
-/// Skew the instructions in the body of a 'for' instruction with the specified
-/// instruction-wise shifts. The shifts are with respect to the original
-/// execution order, and are multiplied by the loop 'step' before being applied.
-/// A shift of zero for each instruction will lead to no change.
+/// Skew the instructions in the body of a 'affine.for' instruction with the
+/// specified instruction-wise shifts. The shifts are with respect to the
+/// original execution order, and are multiplied by the loop 'step' before being
+/// applied. A shift of zero for each instruction will lead to no change.
 // The skewing of instructions with respect to one another can be used for
 // example to allow overlap of asynchronous operations (such as DMA
 // communication) with computation, or just relative shifting of instructions
@@ -267,7 +267,7 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
 
   // An array of instruction groups sorted by shift amount; each group has all
   // instructions with the same shift in the order in which they appear in the
-  // body of the 'for' inst.
+  // body of the 'affine.for' inst.
   std::vector<std::vector<Instruction *>> sortedInstGroups(maxShift + 1);
   unsigned pos = 0;
   for (auto &inst : *forOp->getBody()) {
@@ -499,7 +499,7 @@ void mlir::sinkLoop(AffineForOp forOp, unsigned loopDepth) {
 // bounds, the resulting IR resembles:
 //
 // ```mlir
-//    for %i = max (`iv, ...) to min (`iv` + `offset`) {
+//    affine.for %i = max (`iv, ...) to min (`iv` + `offset`) {
 //      ...
 //    }
 // ```

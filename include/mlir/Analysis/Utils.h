@@ -45,7 +45,7 @@ class Instruction;
 class Value;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
-/// the outermost 'for' instruction to the innermost one.
+/// the outermost 'affine.for' instruction to the innermost one.
 //  TODO(bondhugula): handle 'affine.if' inst's.
 void getLoopIVs(Instruction &inst, SmallVectorImpl<AffineForOp> *loops);
 
@@ -113,8 +113,8 @@ AffineForOp insertBackwardComputationSlice(Instruction *srcOpInst,
 /// surrounding such op's.
 // For example, the memref region for a load operation at loop depth = 1:
 //
-//    for %i = 0 to 32 {
-//      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+//    affine.for %i = 0 to 32 {
+//      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
 //        load %A[%ii]
 //      }
 //    }
@@ -146,8 +146,8 @@ struct MemRefRegion {
   ///  For example, the memref region for this operation at loopDepth = 1 will
   ///  be:
   ///
-  ///    for %i = 0 to 32 {
-  ///      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+  ///    affine.for %i = 0 to 32 {
+  ///      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
   ///        load %A[%ii]
   ///      }
   ///    }

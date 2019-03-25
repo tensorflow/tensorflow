@@ -66,11 +66,11 @@ static unsigned getTagMemRefPos(Instruction &dmaInst) {
   return 0;
 }
 
-/// Doubles the buffer of the supplied memref on the specified 'for' instruction
-/// by adding a leading dimension of size two to the memref. Replaces all uses
-/// of the old memref by the new one while indexing the newly added dimension by
-/// the loop IV of the specified 'for' instruction modulo 2. Returns false if
-/// such a replacement cannot be performed.
+/// Doubles the buffer of the supplied memref on the specified 'affine.for'
+/// instruction by adding a leading dimension of size two to the memref.
+/// Replaces all uses of the old memref by the new one while indexing the newly
+/// added dimension by the loop IV of the specified 'affine.for' instruction
+/// modulo 2. Returns false if such a replacement cannot be performed.
 static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp->getBody();
   FuncBuilder bInner(forBody, forBody->begin());
@@ -104,7 +104,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
                                                    dynamicDimCount++));
   }
 
-  // Create and place the alloc right before the 'for' instruction.
+  // Create and place the alloc right before the 'affine.for' instruction.
   Value *newMemRef =
       bOuter.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
 
@@ -139,9 +139,9 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
 /// Returns success if the IR is in a valid state.
 void PipelineDataTransfer::runOnFunction() {
   // Do a post order walk so that inner loop DMAs are processed first. This is
-  // necessary since 'for' instructions nested within would otherwise become
-  // invalid (erased) when the outer loop is pipelined (the pipelined one gets
-  // deleted and replaced by a prologue, a new steady-state loop and an
+  // necessary since 'affine.for' instructions nested within would otherwise
+  // become invalid (erased) when the outer loop is pipelined (the pipelined one
+  // gets deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
   getFunction()->walkPostOrder<AffineForOp>(

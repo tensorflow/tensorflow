@@ -73,9 +73,10 @@ void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
                               SmallVectorImpl<Value *> *operands,
                               FuncBuilder *builder);
 
-/// Skew the instructions in the body of a 'for' instruction with the specified
-/// instruction-wise shifts. The shifts are with respect to the original
-/// execution order, and are multiplied by the loop 'step' before being applied.
+/// Skew the instructions in the body of a 'affine.for' instruction with the
+/// specified instruction-wise shifts. The shifts are with respect to the
+/// original execution order, and are multiplied by the loop 'step' before being
+/// applied.
 LLVM_NODISCARD
 LogicalResult instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
                            bool unrollPrologueEpilogue = false);

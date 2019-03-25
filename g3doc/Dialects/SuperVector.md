@@ -23,8 +23,8 @@ Examples:
 // pad with %f0 to handle the boundary case:
 %f0 = constant 0.0f : f32
 for %i0 = 0 to %0 {
-  for %i1 = 0 to %1 step 256 {
-    for %i2 = 0 to %2 step 32 {
+  affine.for %i1 = 0 to %1 step 256 {
+    affine.for %i2 = 0 to %2 step 32 {
       %v = vector_transfer_read %A, %i0, %i1, %i2, %f0
            {permutation_map: (d0, d1, d2) -> (d2, d1)} :
            (memref<?x?x?xf32>, index, index, f32) -> vector<32x256xf32>
@@ -34,7 +34,7 @@ for %i0 = 0 to %0 {
 // vector<128xf32>. The underlying implementation will require a 1-D vector
 // broadcast:
 for %i0 = 0 to %0 {
-  for %i1 = 0 to %1 {
+  affine.for %i1 = 0 to %1 {
     %3 = vector_transfer_read %A, %i0, %i1
          {permutation_map: (d0, d1) -> (0)} :
          (memref<?x?xf32>, index, index) -> vector<128xf32>
@@ -81,8 +81,8 @@ A notional lowering of vector_transfer_read could generate code resembling:
 %tmp = alloc() : vector<3x4x5xf32>
 %view_in_tmp = "element_type_cast"(%tmp) : memref<1xvector<3x4x5xf32>>
 for %i = 0 to 3 {
-  for %j = 0 to 4 {
-    for %k = 0 to 5 {
+  affine.for %j = 0 to 4 {
+    affine.for %k = 0 to 5 {
       %a = load %A[%expr1 + %k, %expr2, %expr3 + %i, %expr4] : memref<?x?x?x?xf32>
       store %tmp[%i, %j, %k] : vector<3x4x5xf32>
 }}}
@@ -102,7 +102,7 @@ lowered code would resemble:
 %tmp = alloc() : vector<3x4x5xf32>
 %view_in_tmp = "element_type_cast"(%tmp) : memref<1xvector<3x4x5xf32>>
 for %i = 0 to 3 {
-  for %k = 0 to 5 {
+  affine.for %k = 0 to 5 {
     %a = load %A[%expr1 + %k, %expr2, %expr3 + %i, %expr4] : memref<?x?x?x?xf32>
     store %tmp[%i, 0, %k] : vector<3x4x5xf32>
 }}
@@ -130,9 +130,9 @@ Examples:
 ```mlir {.mlir}
 // write vector<16x32x64xf32> into the slice `%A[%i0, %i1:%i1+32, %i2:%i2+64, %i3:%i3+16]`:
 for %i0 = 0 to %0 {
-  for %i1 = 0 to %1 step 32 {
-    for %i2 = 0 to %2 step 64 {
-      for %i3 = 0 to %3 step 16 {
+  affine.for %i1 = 0 to %1 step 32 {
+    affine.for %i2 = 0 to %2 step 64 {
+      affine.for %i3 = 0 to %3 step 16 {
         %val = `ssa-value` : vector<16x32x64xf32>
         vector_transfer_write %val, %A, %i0, %i1, %i2, %i3
           {permutation_map: (d0, d1, d2, d3) -> (d3, d1, d2)} :

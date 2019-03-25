@@ -17,13 +17,13 @@ func @should_fuse_raw_dep_for_locality() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %m[%i1] : memref<10xf32>
   }
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   %1 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   store %cst, %0[%1] : memref<1xf32>
   // CHECK-NEXT:   %2 = affine.apply [[MAP0]](%i0, %i0)
@@ -45,23 +45,23 @@ func @should_fuse_reduction_to_pointwise() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       %v0 = load %b[%i0] : memref<10xf32>
       %v1 = load %a[%i0, %i1] : memref<10x10xf32>
       %v3 = addf %v0, %v1 : f32
       store %v3, %b[%i0] : memref<10xf32>
     }
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v4 = load %b[%i2] : memref<10xf32>
     store %v4, %c[%i2] : memref<10xf32>
   }
 
   // Should fuse in entire inner loop on %i1 from source loop nest, as %i1
   // is not used in the access function of the store/load on %b.
-  // CHECK:       for %i0 = 0 to 10 {
-  // CHECK-NEXT:    for %i1 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:      %3 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:      %4 = load %0[%3] : memref<1xf32>
   // CHECK-NEXT:      %5 = load %1[%i0, %i1] : memref<10x10xf32>
@@ -89,15 +89,15 @@ func @should_fuse_loop_nests_with_shifts() {
   %a = alloc() : memref<10x10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 9 {
-    for %i1 = 0 to 9 {
+  affine.for %i0 = 0 to 9 {
+    affine.for %i1 = 0 to 9 {
       %idx = affine.apply (d0) -> (d0 + 1) (%i0)
       %idy = affine.apply (d0) -> (d0 + 1) (%i1)
       store %cf7, %a[%idx, %idy] : memref<10x10xf32>
     }
   }
-  for %i2 = 1 to 10 {
-    for %i3 = 1 to 10 {
+  affine.for %i2 = 1 to 10 {
+    affine.for %i3 = 1 to 10 {
       %v0 = load %a[%i2, %i3] : memref<10x10xf32>
     }
   }
@@ -110,8 +110,8 @@ func @should_fuse_loop_nests_with_shifts() {
   // *) Fifth affine apply shifts the loads access function by '-1', because
   //    of the offset induced by reducing the memref shape from 10x10 to 9x9.
   // NOTE: Should create a private memref with reduced shape 9x9xf32.
-  // CHECK:      for %i0 = 1 to 10 {
-  // CHECK-NEXT:   for %i1 = 1 to 10 {
+  // CHECK:      affine.for %i0 = 1 to 10 {
+  // CHECK-NEXT:   affine.for %i1 = 1 to 10 {
   // CHECK-NEXT:     %1 = affine.apply [[MAP_SHIFT_MINUS_ONE_R1]](%i0)
   // CHECK-NEXT:     %2 = affine.apply [[MAP_SHIFT_MINUS_ONE_R1]](%i1)
   // CHECK-NEXT:     %3 = affine.apply [[MAP_SHIFT_BY_ONE]](%1)
@@ -139,27 +139,27 @@ func @should_fuse_loop_nest() {
   %b = alloc() : memref<10x10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       store %cf7, %a[%i0, %i1] : memref<10x10xf32>
     }
   }
-  for %i2 = 0 to 10 {
-    for %i3 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
+    affine.for %i3 = 0 to 10 {
       %v0 = load %a[%i3, %i2] : memref<10x10xf32>
       store %v0, %b[%i2, %i3] : memref<10x10xf32>
     }
   }
-  for %i4 = 0 to 10 {
-    for %i5 = 0 to 10 {
+  affine.for %i4 = 0 to 10 {
+    affine.for %i5 = 0 to 10 {
       %v1 = load %b[%i4, %i5] : memref<10x10xf32>
     }
   }
   // Expecting private memref for '%a' first, then private memref for '%b'.
   // CHECK-DAG:  [[NEWA:%[0-9]+]] = alloc() : memref<1x1xf32>
   // CHECK-DAG:  [[NEWB:%[0-9]+]] = alloc() : memref<1x1xf32>
-  // CHECK:      for %i0 = 0 to 10 {
-  // CHECK-NEXT:   for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:   affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:     %2 = affine.apply [[MAP_D2_D0_DIFF]](%i1, %i0, %i1, %i0)
   // CHECK-NEXT:     %3 = affine.apply [[MAP_D3_D1_DIFF]](%i1, %i0, %i1, %i0)
   // CHECK-NEXT:     store %cst, [[NEWA]][%2, %3] : memref<1x1xf32>
@@ -190,23 +190,23 @@ func @should_fuse_across_intermediate_loop_with_no_deps() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %a[%i0] : memref<10xf32>
     store %v0, %b[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %c[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v1 = load %b[%i2] : memref<10xf32>
   }
 
   // Should fuse first loop (past second loop with no dependences) into third.
   // Note that fusion creates a private memref '%2' for the fused loop nest.
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %2[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   %3 = load %1[%i1] : memref<10xf32>
   // CHECK-NEXT:   %4 = affine.apply [[MAP0]](%i1, %i1)
   // CHECK-NEXT:   store %3, %0[%4] : memref<1xf32>
@@ -228,13 +228,13 @@ func @should_fuse_all_loops() {
   %cf7 = constant 7.0 : f32
 
   // Set up flow dependences from first and second loops to third.
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %a[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %b[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v0 = load %a[%i2] : memref<10xf32>
     %v1 = load %b[%i2] : memref<10xf32>
   }
@@ -243,7 +243,7 @@ func @should_fuse_all_loops() {
   // Expecting private memref for '%a' first, then private memref for '%b'.
   // CHECK-DAG: [[NEWA:%[0-9]+]] = alloc() : memref<1xf32>
   // CHECK-DAG: [[NEWB:%[0-9]+]] = alloc() : memref<1xf32>
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   %2 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   store %cst, [[NEWA]][%2] : memref<1xf32>
   // CHECK-NEXT:   %3 = affine.apply [[MAP0]](%i0, %i0)
@@ -269,27 +269,27 @@ func @should_fuse_first_and_second_loops() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %a[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %a[%i1] : memref<10xf32>
     store %cf7, %b[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v1 = load %c[%i2] : memref<10xf32>
   }
 
   // Should fuse first loop into the second (last loop should not be fused).
   // Should create private memref '%2' for fused loop.
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   %3 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   store %cst, %0[%3] : memref<1xf32>
   // CHECK-NEXT:   %4 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   %5 = load %0[%4] : memref<1xf32>
   // CHECK-NEXT:   store %cst, %1[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   %6 = load %2[%i1] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK-NEXT: return
@@ -311,28 +311,28 @@ func @should_not_fuse_would_create_cycle() {
   // 1) loop0 -> loop1 on memref '%a'
   // 2) loop0 -> loop2 on memref '%b'
   // 3) loop1 -> loop2 on memref '%c'
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %a[%i0] : memref<10xf32>
     store %cf7, %b[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %a[%i1] : memref<10xf32>
     %v1 = load %c[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v2 = load %b[%i2] : memref<10xf32>
     store %cf7, %c[%i2] : memref<10xf32>
   }
   // Should not fuse: fusing loop first loop into last would create a cycle.
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   %3 = load %0[%i0] : memref<10xf32>
   // CHECK-NEXT:   store %cst, %1[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i1] : memref<10xf32>
   // CHECK-NEXT:   %4 = load %2[%i1] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i2 = 0 to 10 {
+  // CHECK:      affine.for %i2 = 0 to 10 {
   // CHECK-NEXT:   %5 = load %1[%i2] : memref<10xf32>
   // CHECK-NEXT:   store %cst, %2[%i2] : memref<10xf32>
   // CHECK-NEXT: }
@@ -347,23 +347,23 @@ func @should_not_fuse_across_waw_dep() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %m[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v1 = load %m[%i2] : memref<10xf32>
   }
   // Fusing loop %i0 to %i2 would violate the WAW dependence between %i0 and %i1
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i1] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i2 = 0 to 10 {
+  // CHECK:      affine.for %i2 = 0 to 10 {
   // CHECK-NEXT:   %1 = load %0[%i2] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK-NEXT: return
@@ -380,27 +380,27 @@ func @should_fuse_and_move_to_preserve_war_dep() {
   %b = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %a[%i0] : memref<10xf32>
     store %v0, %b[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %a[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v1 = load %b[%i2] : memref<10xf32>
   }
   // Loops '%i1' and '%i2' have no dependences. We can fuse a slice of '%i0'
   // into '%i2' if we move the fused loop nest before '%i1', which preserves
   // the WAR dependence from load '%a' in '%i0' to the store '%a' in loop '%i1'.
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    %2 = load %1[%i0] : memref<10xf32>
   // CHECK-NEXT:    %3 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:    store %2, %0[%3] : memref<1xf32>
   // CHECK-NEXT:    %4 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:    %5 = load %0[%4] : memref<1xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %1[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
@@ -416,20 +416,20 @@ func @should_fuse_with_private_memref_if_top_level_access() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %m[%i1] : memref<10xf32>
   }
 
   %c0 = constant 4 : index
   %v1 = load %m[%c0] : memref<10xf32>
   // Top-level load to '%m' should prevent fusion.
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %1[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK-NEXT: for %i1 = 0 to 10 {
+  // CHECK-NEXT: affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   %2 = affine.apply [[MAP0]](%i1, %i1)
   // CHECK-NEXT:   store %cst, %0[%2] : memref<1xf32>
   // CHECK-NEXT:   %3 = affine.apply [[MAP0]](%i1, %i1)
@@ -447,13 +447,13 @@ func @should_fuse_no_top_level_access() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %m[%i1] : memref<10xf32>
   }
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   %1 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   store %cst, %0[%1] : memref<1xf32>
   // CHECK-NEXT:   %2 = affine.apply [[MAP0]](%i0, %i0)
@@ -472,20 +472,20 @@ func @should_not_fuse_if_inst_at_top_level() {
   %m = alloc() : memref<10xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %m[%i1] : memref<10xf32>
   }
   %c0 = constant 4 : index
   affine.if #set0(%c0) {
   }
   // Top-level IfOp should prevent fusion.
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
   // CHECK-NEXT: }
   return
@@ -501,20 +501,20 @@ func @should_not_fuse_if_inst_in_loop_nest() {
   %cf7 = constant 7.0 : f32
   %c4 = constant 4 : index
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     affine.if #set0(%c4) {
     }
     %v0 = load %m[%i1] : memref<10xf32>
   }
 
   // IfOp in ForInst should prevent fusion.
-  // CHECK:      for %i0 = 0 to 10 {
+  // CHECK:      affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
-  // CHECK:      for %i1 = 0 to 10 {
+  // CHECK:      affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:   affine.if #set0(%c4) {
   // CHECK-NEXT:   }  
   // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
@@ -533,24 +533,24 @@ func @permute_and_fuse() {
   %m = alloc() : memref<10x20x30xf32>
 
   %cf7 = constant 7.0 : f32
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 20 {
-      for %i2 = 0 to 30 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 20 {
+      affine.for %i2 = 0 to 30 {
         store %cf7, %m[%i0, %i1, %i2] : memref<10x20x30xf32>
       }
     }
   }
-  for %i3 = 0 to 30 {
-    for %i4 = 0 to 10 {
-      for %i5 = 0 to 20 {
+  affine.for %i3 = 0 to 30 {
+    affine.for %i4 = 0 to 10 {
+      affine.for %i5 = 0 to 20 {
         %v0 = load %m[%i4, %i5, %i3] : memref<10x20x30xf32>
         "foo"(%v0) : (f32) -> ()
       }
     }
   }
-// CHECK:       for %i0 = 0 to 30 {
-// CHECK-NEXT:    for %i1 = 0 to 10 {
-// CHECK-NEXT:      for %i2 = 0 to 20 {
+// CHECK:       affine.for %i0 = 0 to 30 {
+// CHECK-NEXT:    affine.for %i1 = 0 to 10 {
+// CHECK-NEXT:      affine.for %i2 = 0 to 20 {
 // CHECK-NEXT:        %1 = affine.apply [[MAP0]](%i1, %i2, %i0, %i1, %i2, %i0)
 // CHECK-NEXT:        %2 = affine.apply [[MAP1]](%i1, %i2, %i0, %i1, %i2, %i0)
 // CHECK-NEXT:        %3 = affine.apply [[MAP2]](%i1, %i2, %i0, %i1, %i2, %i0)
@@ -579,22 +579,22 @@ func @permute_and_fuse() {
 func @fuse_reshape_64_16_4(%in : memref<64xf32>) {
   %out = alloc() : memref<16x4xf32>
 
-  for %i0 = 0 to 64 {
+  affine.for %i0 = 0 to 64 {
     %v = load %in[%i0] : memref<64xf32>
     %idx = affine.apply (d0) -> (d0 floordiv 4) (%i0)
     %idy = affine.apply (d0) -> (d0 mod 4) (%i0)
     store %v, %out[%idx, %idy] : memref<16x4xf32>
   }
 
-  for %i1 = 0 to 16 {
-    for %i2 = 0 to 4 {
+  affine.for %i1 = 0 to 16 {
+    affine.for %i2 = 0 to 4 {
       %w = load %out[%i1, %i2] : memref<16x4xf32>
       "foo"(%w) : (f32) -> ()
     }
   }
   return
-  // CHECK:      for %i0 =
-  // CHECK-NEXT:   for %i1 =
+  // CHECK:      affine.for %i0 =
+  // CHECK-NEXT:   affine.for %i1 =
   // CHECK-NOT:    for
   // CHECK:        }
   // CHECK-NEXT: }
@@ -613,19 +613,19 @@ func @fuse_reshape_16_4_64() {
   %in = alloc() : memref<16x4xf32>
   %out = alloc() : memref<64xf32>
 
-  for %i0 = 0 to 16 {
-    for %i1 = 0 to 4 {
+  affine.for %i0 = 0 to 16 {
+    affine.for %i1 = 0 to 4 {
       %v = load %in[%i0, %i1] : memref<16x4xf32>
       %idx = affine.apply (d0, d1) -> (4*d0 + d1) (%i0, %i1)
       store %v, %out[%idx] : memref<64xf32>
     }
   }
 
-  for %i2 = 0 to 64 {
+  affine.for %i2 = 0 to 64 {
     %w = load %out[%i2] : memref<64xf32>
     "foo"(%w) : (f32) -> ()
   }
-// CHECK:       for %i0 = 0 to 64 {
+// CHECK:       affine.for %i0 = 0 to 64 {
 // CHECK-NEXT:    %2 = affine.apply [[MAP0]](%i0)
 // CHECK-NEXT:    %3 = affine.apply [[MAP1]](%i0)
 // CHECK-NEXT:    %4 = load %1[%2, %3] : memref<16x4xf32>
@@ -651,12 +651,12 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
   %live_out = alloc() : memref<64x9xi32>
 
   // Initialize input.
-  for %i0 = 0 to 2 {
-    for %i1 = 0 to 2 {
-      for %i2 = 0 to 3 {
-        for %i3 = 0 to 3 {
-          for %i4 = 0 to 16 {
-            for %i5 = 0 to 1 {
+  affine.for %i0 = 0 to 2 {
+    affine.for %i1 = 0 to 2 {
+      affine.for %i2 = 0 to 3 {
+        affine.for %i3 = 0 to 3 {
+          affine.for %i4 = 0 to 16 {
+            affine.for %i5 = 0 to 1 {
               %val = "foo"(%i0, %i1, %i2, %i3, %i4, %i5) : (index, index, index, index, index, index) -> i32
               store %val, %in[%i0, %i1, %i2, %i3, %i4, %i5] : memref<2x2x3x3x16x1xi32>
             }
@@ -666,8 +666,8 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
     }
   }
 
-  for %ii = 0 to 64 {
-    for %jj = 0 to 9 {
+  affine.for %ii = 0 to 64 {
+    affine.for %jj = 0 to 9 {
       // Convert output coordinates to linear index.
       %a0 = affine.apply (d0, d1) -> (d0 * 9 + d1) (%ii, %jj)
       %0 = affine.apply (d0) -> (d0 floordiv (2 * 3 * 3 * 16 * 1))(%a0)
@@ -681,8 +681,8 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
     }
   }
 
-  for %i = 0 to 64 {
-    for %j = 0 to 9 {
+  affine.for %i = 0 to 64 {
+    affine.for %j = 0 to 9 {
       %a = load %out[%i, %j] : memref<64x9xi32>
       %b = muli %a, %a : i32
       store %b, %live_out[%i, %j] : memref<64x9xi32>
@@ -718,8 +718,8 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
 // CHECK:       %0 = alloc() : memref<1x2x3x3x16x1xi32>
 // CHECK:       %1 = alloc() : memref<1x1xi32>
 // CHECK:       %2 = alloc() : memref<64x9xi32>
-// CHECK-NEXT:  for %i0 = 0 to 64 {
-// CHECK-NEXT:    for %i1 = 0 to 9 {
+// CHECK-NEXT:  affine.for %i0 = 0 to 64 {
+// CHECK-NEXT:    affine.for %i1 = 0 to 9 {
 // CHECK-NEXT:      %3 = affine.apply [[MAP0]](%i0, %i1)
 // CHECK-NEXT:      %4 = affine.apply [[MAP1]](%i0, %i1)
 // CHECK-NEXT:      %5 = affine.apply [[MAP2]](%i0, %i1)
@@ -769,14 +769,14 @@ func @fuse_symbolic_bounds(%M : index, %N : index) {
   %c0 = constant 0.0 : f32
   %s = constant 5 : index
 
-  for %i0 = 0 to %M {
-    for %i1 = 0 to (d0) -> (d0 + 5) (%N) {
+  affine.for %i0 = 0 to %M {
+    affine.for %i1 = 0 to (d0) -> (d0 + 5) (%N) {
       store %c0, %m[%i0, %i1] : memref<? x ? x f32>
     }
   }
 
-  for %i2 = 0 to %M {
-    for %i3 = 0 to %N {
+  affine.for %i2 = 0 to %M {
+    affine.for %i3 = 0 to %N {
       %idy = affine.apply (d0)[s0] -> (d0 + s0) (%i3)[%s]
       %v = load %m[%i2, %idy] : memref<? x ? x f32>
     }
@@ -793,16 +793,16 @@ func @should_fuse_reduction_at_depth1() {
   %a = alloc() : memref<10x100xf32>
   %b = alloc() : memref<10xf32>
 
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 100 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 100 {
       %v0 = load %b[%i0] : memref<10xf32>
       %v1 = load %a[%i0, %i1] : memref<10x100xf32>
       %v2 = "maxf"(%v0, %v1) : (f32, f32) -> f32
       store %v2, %b[%i0] : memref<10xf32>
     }
   }
-  for %i2 = 0 to 10 {
-    for %i3 = 0 to 100 {
+  affine.for %i2 = 0 to 10 {
+    affine.for %i3 = 0 to 100 {
       %v3 = load %b[%i2] : memref<10xf32>
       %v4 = load %a[%i2, %i3] : memref<10x100xf32>
       %v5 = subf %v4, %v3 : f32
@@ -813,8 +813,8 @@ func @should_fuse_reduction_at_depth1() {
   // loop nest, which improves locality and enables subsequence passes to
   // decrease the reduction memref size and possibly place it in a faster
   // memory space.
-  // CHECK:       for %i0 = 0 to 10 {
-  // CHECK-NEXT:    for %i1 = 0 to 100 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 100 {
   // CHECK-NEXT:      %2 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:      %3 = load %0[%2] : memref<1xf32>
   // CHECK-NEXT:      %4 = load %1[%i0, %i1] : memref<10x100xf32>
@@ -822,7 +822,7 @@ func @should_fuse_reduction_at_depth1() {
   // CHECK-NEXT:      %6 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:      store %5, %0[%6] : memref<1xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i2 = 0 to 100 {
+  // CHECK-NEXT:    affine.for %i2 = 0 to 100 {
   // CHECK-NEXT:      %7 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:      %8 = load %0[%7] : memref<1xf32>
   // CHECK-NEXT:      %9 = load %1[%i0, %i2] : memref<10x100xf32>
@@ -844,19 +844,19 @@ func @should_fuse_at_src_depth1_and_dst_depth1() {
   %a = alloc() : memref<100x16xf32>
   %b = alloc() : memref<100x16xf32>
 
-  for %i0 = 0 to 100 {
-    for %i1 = 0 to 16 {
+  affine.for %i0 = 0 to 100 {
+    affine.for %i1 = 0 to 16 {
       %v0 = load %a[%i0, %i1] : memref<100x16xf32>
       "op0"(%v0) : (f32) -> ()
     }
-    for %i2 = 0 to 16 {
+    affine.for %i2 = 0 to 16 {
       %v1 = "op1"() : () -> (f32)
       store %v1, %b[%i0, %i2] : memref<100x16xf32>
     }
   }
 
-  for %i3 = 0 to 100 {
-    for %i4 = 0 to 16 {
+  affine.for %i3 = 0 to 100 {
+    affine.for %i4 = 0 to 16 {
       %v2 = load %b[%i3, %i4] : memref<100x16xf32>
       "op2"(%v2) : (f32) -> ()
     }
@@ -866,18 +866,18 @@ func @should_fuse_at_src_depth1_and_dst_depth1() {
   // destination loop nest at depth2 causes extra computation. Instead,
   // the fusion algorithm should detect that the source loop should be sliced
   // at depth 1 and the slice should be inserted at depth 1.
-  // CHECK:       for %i0 = 0 to 100 {
-  // CHECK-NEXT:    for %i1 = 0 to 16 {
+  // CHECK:       affine.for %i0 = 0 to 100 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 16 {
   // CHECK-NEXT:      %2 = load %1[%i0, %i1] : memref<100x16xf32>
   // CHECK-NEXT:      "op0"(%2) : (f32) -> ()
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i2 = 0 to 16 {
+  // CHECK-NEXT:    affine.for %i2 = 0 to 16 {
   // CHECK-NEXT:      %3 = "op1"() : () -> f32
   // CHECK-NEXT:      %4 = affine.apply [[MAP0]](%i0, %i0, %i2)
   // CHECK-NEXT:      %5 = affine.apply [[MAP1]](%i0, %i0, %i2)
   // CHECK-NEXT:      store %3, %0[%4, %5] : memref<1x16xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i3 = 0 to 16 {
+  // CHECK-NEXT:    affine.for %i3 = 0 to 16 {
   // CHECK-NEXT:      %6 = affine.apply [[MAP0]](%i0, %i0, %i3)
   // CHECK-NEXT:      %7 = affine.apply [[MAP1]](%i0, %i0, %i3)
   // CHECK-NEXT:      %8 = load %0[%6, %7] : memref<1x16xf32>
@@ -897,20 +897,20 @@ func @should_fuse_src_depth1_at_dst_depth2() {
   %a = alloc() : memref<100xf32>
   %c0 = constant 0.0 : f32
 
-  for %i0 = 0 to 100 {
+  affine.for %i0 = 0 to 100 {
     store %c0, %a[%i0] : memref<100xf32>
   }
 
-  for %i1 = 0 to 10 {
-    for %i2 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
+    affine.for %i2 = 0 to 10 {
       %a0 = affine.apply (d0, d1) -> (d0 * 10 + d1) (%i1, %i2)
       %v0 = load %a[%a0] : memref<100xf32>
     }
   }
   // The source loop nest slice loop bound is a function of both destination
   // loop IVs, so we should slice at depth 1 and insert the slice at depth 2.
-  // CHECK:       for %i0 = 0 to 10 {
-  // CHECK-NEXT:    for %i1 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1)
   // CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1, %1)
   // CHECK-NEXT:      store %cst, %0[%2] : memref<1xf32>
@@ -930,16 +930,16 @@ func @fusion_at_depth0_not_currently_supported() {
   %0 = alloc() : memref<10xf32>
   %c0 = constant 0 : index
   %cst = constant 0.000000e+00 : f32
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cst, %0[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %1 = load %0[%c0] : memref<10xf32>
   }
   // NOTE: Should shrink memref size to 1 element access by load in dst loop
   // nest, and make the store in the slice store to the same element.
   // CHECK-DAG:   %0 = alloc() : memref<1xf32>
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %0[%c0] : memref<1xf32>
   // CHECK-NEXT:    %1 = load %0[%c0_0] : memref<1xf32>
   // CHECK-NEXT:  }
@@ -965,18 +965,18 @@ func @should_fuse_deep_loop_nests() {
   %c1 = constant 1 : index
   %c1_0 = constant 1 : index
   %cst = constant 0.000000e+00 : f32
-  for %i0 = 0 to 2 {
-    for %i1 = 0 to 2 {
-      for %i2 = 0 to 3 {
-        for %i3 = 0 to 3 {
-          for %i4 = 0 to 16 {
-            for %i5 = 0 to 10 {
+  affine.for %i0 = 0 to 2 {
+    affine.for %i1 = 0 to 2 {
+      affine.for %i2 = 0 to 3 {
+        affine.for %i3 = 0 to 3 {
+          affine.for %i4 = 0 to 16 {
+            affine.for %i5 = 0 to 10 {
               %3 = load %0[%i0, %i1, %i2, %i3, %i4, %i5]
                 : memref<2x2x3x3x16x10xf32, 2>
             }
           }
-          for %i6 = 0 to 16 {
-            for %i7 = 0 to 10 {
+          affine.for %i6 = 0 to 16 {
+            affine.for %i7 = 0 to 10 {
               store %cst, %1[%i0, %i1, %i2, %i3, %i6, %i7]
                 : memref<2x2x3x3x16x10xf32, 2>
             }
@@ -985,22 +985,22 @@ func @should_fuse_deep_loop_nests() {
       }
     }
   }
-  for %i8 = 0 to 3 {
-    for %i9 = 0 to 3 {
-      for %i10 = 0 to 2 {
-        for %i11 = 0 to 2 {
-          for %i12 = 0 to 3 {
-            for %i13 = 0 to 3 {
-              for %i14 = 0 to 2 {
-                for %i15 = 0 to 2 {
-                  for %i16 = 0 to 16 {
-                    for %i17 = 0 to 10 {
+  affine.for %i8 = 0 to 3 {
+    affine.for %i9 = 0 to 3 {
+      affine.for %i10 = 0 to 2 {
+        affine.for %i11 = 0 to 2 {
+          affine.for %i12 = 0 to 3 {
+            affine.for %i13 = 0 to 3 {
+              affine.for %i14 = 0 to 2 {
+                affine.for %i15 = 0 to 2 {
+                  affine.for %i16 = 0 to 16 {
+                    affine.for %i17 = 0 to 10 {
                       %5 = load %0[%i14, %i15, %i12, %i13, %i16, %i17]
                         : memref<2x2x3x3x16x10xf32, 2>
                     }
                   }
-                  for %i18 = 0 to 16 {
-                    for %i19 = 0 to 10 {
+                  affine.for %i18 = 0 to 16 {
+                    affine.for %i19 = 0 to 10 {
                       %6 = load %1[%i10, %i11, %i8, %i9, %i18, %i19]
                         : memref<2x2x3x3x16x10xf32, 2>
                     }
@@ -1018,19 +1018,19 @@ func @should_fuse_deep_loop_nests() {
 // where the destination loops nests have been interchanged.
 
 // CHECK-DAG:   %0 = alloc() : memref<1x1x1x1x16x10xf32, 2>
-// CHECK:       for %i0 = 0 to 3 {
-// CHECK-NEXT:    for %i1 = 0 to 3 {
-// CHECK-NEXT:      for %i2 = 0 to 2 {
-// CHECK-NEXT:        for %i3 = 0 to 2 {
-// CHECK-NEXT:          for %i4 = 0 to 3 {
-// CHECK-NEXT:            for %i5 = 0 to 3 {
-// CHECK-NEXT:              for %i6 = 0 to 16 {
-// CHECK-NEXT:                for %i7 = 0 to 10 {
+// CHECK:       affine.for %i0 = 0 to 3 {
+// CHECK-NEXT:    affine.for %i1 = 0 to 3 {
+// CHECK-NEXT:      affine.for %i2 = 0 to 2 {
+// CHECK-NEXT:        affine.for %i3 = 0 to 2 {
+// CHECK-NEXT:          affine.for %i4 = 0 to 3 {
+// CHECK-NEXT:            affine.for %i5 = 0 to 3 {
+// CHECK-NEXT:              affine.for %i6 = 0 to 16 {
+// CHECK-NEXT:                affine.for %i7 = 0 to 10 {
 // CHECK-NEXT:                  %3 = load %1[%i2, %i3, %i0, %i1, %i6, %i7] : memref<2x2x3x3x16x10xf32, 2>
 // CHECK-NEXT:                }
 // CHECK-NEXT:              }
-// CHECK-NEXT:              for %i8 = 0 to 16 {
-// CHECK-NEXT:                for %i9 = 0 to 10 {
+// CHECK-NEXT:              affine.for %i8 = 0 to 16 {
+// CHECK-NEXT:                affine.for %i9 = 0 to 10 {
 // CHECK-NEXT:                  %4 = affine.apply [[MAP0]](%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i8, %i9)
 // CHECK-NEXT:                  %5 = affine.apply [[MAP1]](%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i8, %i9)
 // CHECK-NEXT:                  %6 = affine.apply [[MAP2]](%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i8, %i9)
@@ -1040,15 +1040,15 @@ func @should_fuse_deep_loop_nests() {
 // CHECK-NEXT:                  store %cst, %0[%4, %5, %6, %7, %8, %9] : memref<1x1x1x1x16x10xf32, 2>
 // CHECK-NEXT:                }
 // CHECK-NEXT:              }
-// CHECK-NEXT:              for %i10 = 0 to 2 {
-// CHECK-NEXT:                for %i11 = 0 to 2 {
-// CHECK-NEXT:                  for %i12 = 0 to 16 {
-// CHECK-NEXT:                    for %i13 = 0 to 10 {
+// CHECK-NEXT:              affine.for %i10 = 0 to 2 {
+// CHECK-NEXT:                affine.for %i11 = 0 to 2 {
+// CHECK-NEXT:                  affine.for %i12 = 0 to 16 {
+// CHECK-NEXT:                    affine.for %i13 = 0 to 10 {
 // CHECK-NEXT:                      %10 = load %1[%i10, %i11, %i4, %i5, %i12, %i13] : memref<2x2x3x3x16x10xf32, 2>
 // CHECK-NEXT:                    }
 // CHECK-NEXT:                  }
-// CHECK-NEXT:                  for %i14 = 0 to 16 {
-// CHECK-NEXT:                    for %i15 = 0 to 10 {
+// CHECK-NEXT:                  affine.for %i14 = 0 to 16 {
+// CHECK-NEXT:                    affine.for %i15 = 0 to 10 {
 // CHECK-NEXT:                      %11 = affine.apply [[MAP0]](%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i14, %i15)
 // CHECK-NEXT:                      %12 = affine.apply [[MAP1]](%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i14, %i15)
 // CHECK-NEXT:                      %13 = affine.apply [[MAP2]](%i2, %i3, %i0, %i1, %i2, %i3, %i0, %i1, %i14, %i15)
@@ -1082,17 +1082,17 @@ func @should_fuse_at_depth1_and_reduce_slice_trip_count() {
   %c0 = constant 0 : index
   %cf0 = constant 0.0 : f32
 
-  for %i0 = 0 to 4 {
-    for %i1 = 0 to 256 {
+  affine.for %i0 = 0 to 4 {
+    affine.for %i1 = 0 to 256 {
       %v0 = load %b[%i0, %i1] : memref<4x256xf32>
     }
-    for %i2 = 0 to 256 {
+    affine.for %i2 = 0 to 256 {
       store %cf0, %a[%i0, %i2] : memref<4x256xf32>
     }
   }
 
-  for %d0 = 0 to 4 {
-    for %d1 = 0 to 16 {
+  affine.for %d0 = 0 to 4 {
+    affine.for %d1 = 0 to 16 {
       %v1 = load %a[%d0, %d1] : memref<4x256xf32>
     }
   }
@@ -1106,16 +1106,16 @@ func @should_fuse_at_depth1_and_reduce_slice_trip_count() {
   // is reduced from the original shape from 4x256 to 4x16 because of the
   // data accessed by the load.
   // CHECK-DAG:   %0 = alloc() : memref<1x16xf32>
-  // CHECK:       for %i0 = 0 to 4 {
-  // CHECK-NEXT:    for %i1 = 0 to 256 {
+  // CHECK:       affine.for %i0 = 0 to 4 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 256 {
   // CHECK-NEXT:      %2 = load %1[%i0, %i1] : memref<4x256xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i2 = 0 to 16 {
+  // CHECK-NEXT:    affine.for %i2 = 0 to 16 {
   // CHECK-NEXT:      %3 = affine.apply [[MAP0]](%i0, %i0, %i2)
   // CHECK-NEXT:      %4 = affine.apply [[MAP1]](%i0, %i0, %i2)
   // CHECK-NEXT:      store %cst, %0[%3, %4] : memref<1x16xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i3 = 0 to 16 {
+  // CHECK-NEXT:    affine.for %i3 = 0 to 16 {
   // CHECK-NEXT:      %5 = affine.apply [[MAP0]](%i0, %i0, %i3)
   // CHECK-NEXT:      %6 = affine.apply [[MAP1]](%i0, %i0, %i3)
   // CHECK-NEXT:      %7 = load %0[%5, %6] : memref<1x16xf32>
@@ -1133,31 +1133,31 @@ func @should_fuse_at_depth1_with_trip_count_20() {
   %c0 = constant 0 : index
   %cf0 = constant 0.0 : f32
 
-  for %i0 = 0 to 100 {
+  affine.for %i0 = 0 to 100 {
     store %cf0, %a[%i0]: memref<100xf32>
   }
 
-  for %i1 = 0 to 5 {
-    for %i2 = 0 to 10 {
+  affine.for %i1 = 0 to 5 {
+    affine.for %i2 = 0 to 10 {
       %v0 = load %a[%i2]: memref<100xf32>
     }
-    for %i3 = 0 to 10 {
-      for %i4 = 0 to 20 {
+    affine.for %i3 = 0 to 10 {
+      affine.for %i4 = 0 to 20 {
         %v1 = load %a[%i4]: memref<100xf32>
       }
     }
   }
   // NOTE: The size of the private memref created for fusion is shrunk to 20xf32
   // CHECK-DAG:   %0 = alloc() : memref<20xf32>
-  // CHECK:       for %i0 = 0 to 5 {
-  // CHECK-NEXT:    for %i1 = 0 to 20 {
+  // CHECK:       affine.for %i0 = 0 to 5 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 20 {
   // CHECK-NEXT:      store %cst, %0[%i1] : memref<20xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i2 = 0 to 10 {
+  // CHECK-NEXT:    affine.for %i2 = 0 to 10 {
   // CHECK-NEXT:      %1 = load %0[%i2] : memref<20xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i3 = 0 to 10 {
-  // CHECK-NEXT:      for %i4 = 0 to 20 {
+  // CHECK-NEXT:    affine.for %i3 = 0 to 10 {
+  // CHECK-NEXT:      affine.for %i4 = 0 to 20 {
   // CHECK-NEXT:        %2 = load %0[%i4] : memref<20xf32>
   // CHECK-NEXT:      }
   // CHECK-NEXT:    }
@@ -1174,31 +1174,31 @@ func @should_fuse_at_depth1_with_trip_count_19() {
   %c0 = constant 0 : index
   %cf0 = constant 0.0 : f32
 
-  for %i0 = 0 to 100 {
+  affine.for %i0 = 0 to 100 {
     store %cf0, %a[%i0]: memref<100xf32>
   }
 
-  for %i1 = 0 to 5 {
-    for %i2 = 0 to 19 {
+  affine.for %i1 = 0 to 5 {
+    affine.for %i2 = 0 to 19 {
       %v0 = load %a[%i2]: memref<100xf32>
     }
-    for %i3 = 0 to 10 {
-      for %i4 = 0 to 10 {
+    affine.for %i3 = 0 to 10 {
+      affine.for %i4 = 0 to 10 {
         %v1 = load %a[%i4]: memref<100xf32>
       }
     }
   }
   // NOTE: The size of the private memref created for fusion is shrunk to 19xf32
   // CHECK-DAG:   %0 = alloc() : memref<19xf32>
-  // CHECK:       for %i0 = 0 to 5 {
-  // CHECK-NEXT:    for %i1 = 0 to 19 {
+  // CHECK:       affine.for %i0 = 0 to 5 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 19 {
   // CHECK-NEXT:      store %cst, %0[%i1] : memref<19xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i2 = 0 to 19 {
+  // CHECK-NEXT:    affine.for %i2 = 0 to 19 {
   // CHECK-NEXT:      %1 = load %0[%i2] : memref<19xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i3 = 0 to 10 {
-  // CHECK-NEXT:      for %i4 = 0 to 10 {
+  // CHECK-NEXT:    affine.for %i3 = 0 to 10 {
+  // CHECK-NEXT:      affine.for %i4 = 0 to 10 {
   // CHECK-NEXT:        %2 = load %0[%i4] : memref<19xf32>
   // CHECK-NEXT:      }
   // CHECK-NEXT:    }
@@ -1216,26 +1216,26 @@ func @should_fuse_with_private_memrefs_with_diff_shapes() {
   %m = alloc() : memref<100xf32>
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 100 {
+  affine.for %i0 = 0 to 100 {
     store %cf7, %m[%i0] : memref<100xf32>
   }
-  for %i1 = 0 to 17 {
+  affine.for %i1 = 0 to 17 {
     %v0 = load %m[%i1] : memref<100xf32>
   }
-  for %i2 = 0 to 82 {
+  affine.for %i2 = 0 to 82 {
     %v1 = load %m[%i2] : memref<100xf32>
   }
   // Should create two new private memrefs customized to the shapes accessed
   // by loops %i1 and %i2.
   // CHECK-DAG:  %0 = alloc() : memref<1xf32>
   // CHECK-DAG:  %1 = alloc() : memref<1xf32>
-  // CHECK:      for %i0 = 0 to 17 {
+  // CHECK:      affine.for %i0 = 0 to 17 {
   // CHECK-NEXT:   %2 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   store %cst, %1[%2] : memref<1xf32>
   // CHECK-NEXT:   %3 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   %4 = load %1[%3] : memref<1xf32>
   // CHECK-NEXT: }
-  // CHECK-NEXT: for %i1 = 0 to 82 {
+  // CHECK-NEXT: affine.for %i1 = 0 to 82 {
   // CHECK-NEXT:   %5 = affine.apply [[MAP0]](%i1, %i1)
   // CHECK-NEXT:   store %cst, %0[%5] : memref<1xf32>
   // CHECK-NEXT:   %6 = affine.apply [[MAP0]](%i1, %i1)
@@ -1251,18 +1251,18 @@ func @should_fuse_with_private_memrefs_with_diff_shapes() {
 func @should_not_fuse_live_out_arg(%arg0: memref<10xf32>) {
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %arg0[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %arg0[%i1] : memref<10xf32>
   }
   // This tests that the loop nest '%i0' should not be removed after fusion
   // because it writes to memref argument '%arg0'.
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    %0 = load %arg0[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
@@ -1275,19 +1275,19 @@ func @should_not_fuse_live_out_arg(%arg0: memref<10xf32>) {
 func @should_not_fuse_escaping_memref() -> memref<10xf32> {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %m[%i1] : memref<10xf32>
   }
   // This tests that the loop nest '%i0' should not be removed after fusion
   // because it writes to memref '%m' which is returned by the function. 
   // CHECK-DAG:   %0 = alloc() : memref<10xf32>
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    %1 = load %0[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return %0 : memref<10xf32>
@@ -1302,17 +1302,17 @@ func @R3_to_R2_reshape() {
 
   %c0 = constant 0 : index
 
-  for %i0 = 0 to 2 {
-    for %i1 = 0 to 3 {
-      for %i2 = 0 to 16 {
+  affine.for %i0 = 0 to 2 {
+    affine.for %i1 = 0 to 3 {
+      affine.for %i2 = 0 to 16 {
         %val = "foo"(%i0, %i1, %i2) : (index, index, index) -> i32
         store %val, %in[%i0, %i1, %i2] : memref<2x3x16xi32>
       }
     }
   }
 
-  for %ii = 0 to 32 {
-    for %jj = 0 to 3 {
+  affine.for %ii = 0 to 32 {
+    affine.for %jj = 0 to 3 {
       %a0 = affine.apply (d0, d1) -> (d0 * 3 + d1) (%ii, %jj)
       %idx = affine.apply (d0) -> (d0 floordiv (3 * 16)) (%a0)
       %v = load %in[%idx, %jj, %c0]
@@ -1330,8 +1330,8 @@ func @R3_to_R2_reshape() {
 
 // CHECK-LABEL: func @R3_to_R2_reshape()
 // CHECK-DAG:    %0 = alloc() : memref<1x1x1xi32>
-// CHECK:        for %i0 = 0 to 32 {
-// CHECK-NEXT:     for %i1 = 0 to 3 {
+// CHECK:        affine.for %i0 = 0 to 32 {
+// CHECK-NEXT:     affine.for %i1 = 0 to 3 {
 // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1)
 // CHECK-NEXT:      %2 = "foo"(%1, %i1, %c0) : (index, index, index) -> i32
 // CHECK-NEXT:      %3 = affine.apply [[MAP2]](%i0, %i1, %1, %i1, %c0)
@@ -1357,19 +1357,19 @@ func @should_not_fuse_multi_output_producer() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %a[%i0] : memref<10xf32>
     store %cf7, %b[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %a[%i1] : memref<10xf32>
   }
 
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT:    store %cst, %1[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    %2 = load %0[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
@@ -1386,30 +1386,30 @@ func @fusion_preventing_deps_on_middle_loop() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %a[%i0] : memref<10xf32>
     store %v0, %b[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %a[%i1] : memref<10xf32>
     %v1 = load %c[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v2 = load %b[%i2] : memref<10xf32>
     store %v2, %c[%i2] : memref<10xf32>
   }
   // Loops '%i0' and '%i2' cannot fuse along producer/consumer edge on memref
   // '%b', because of the WAR dep from '%i0' to '%i1' on memref '%a' and
   // because of the WAR dep from '%i1' to '%i2' on memref '%c'.
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    %3 = load %0[%i0] : memref<10xf32>
   // CHECK-NEXT:    store %3, %1[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %0[%i1] : memref<10xf32>
   // CHECK-NEXT:    %4 = load %2[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i2 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i2 = 0 to 10 {
   // CHECK-NEXT:    %5 = load %1[%i2] : memref<10xf32>
   // CHECK-NEXT:    store %5, %2[%i2] : memref<10xf32>
   // CHECK-NEXT:  }
@@ -1429,17 +1429,17 @@ func @should_fuse_and_move_to_preserve_war_dep() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %b[%i0] : memref<10xf32>
     store %v0, %a[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 3 {
+  affine.for %i1 = 0 to 3 {
     %v2 = load %c[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 5 {
+  affine.for %i2 = 0 to 5 {
     store %cf7, %b[%i2] : memref<10xf32>
   }
-  for %i3 = 0 to 10 {
+  affine.for %i3 = 0 to 10 {
     %v1 = load %a[%i3] : memref<10xf32>
     store %cf7, %c[%i3] : memref<10xf32>
   }
@@ -1458,10 +1458,10 @@ func @should_fuse_and_move_to_preserve_war_dep() {
   // if the fused loop nest is inserted between loops '%i1' and '%i2'.
 
   // CHECK-DAG:   %0 = alloc() : memref<1xf32>
-  // CHECK:       for %i0 = 0 to 3 {
+  // CHECK:       affine.for %i0 = 0 to 3 {
   // CHECK-NEXT:    %3 = load %2[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    %4 = load %1[%i1] : memref<10xf32>
   // CHECK-NEXT:    %5 = affine.apply [[MAP0]](%i1, %i1)
   // CHECK-NEXT:    store %4, %0[%5] : memref<1xf32>
@@ -1469,7 +1469,7 @@ func @should_fuse_and_move_to_preserve_war_dep() {
   // CHECK-NEXT:    %7 = load %0[%6] : memref<1xf32>
   // CHECK-NEXT:    store %cst, %2[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i2 = 0 to 5 {
+  // CHECK-NEXT:  affine.for %i2 = 0 to 5 {
   // CHECK-NEXT:    store %cst, %1[%i2] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
@@ -1486,30 +1486,30 @@ func @fusion_preventing_dep_on_constant() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %b[%i0] : memref<10xf32>
     store %cf7, %a[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %b[%i1] : memref<10xf32>
   }
   %cf11 = constant 11.0 : f32
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v2 = load %a[%i2] : memref<10xf32>
     store %cf11, %c[%i2] : memref<10xf32>
   }
   // Loops '%i0' and '%i2' cannot fuse along producer/consumer edge on memref
   // '%a', because of the WAR dep from '%i0' to '%i1' on memref '%b' and
   // because of the SSA value dep from '%cf11' def to use in '%i2'.
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    %3 = load %1[%i0] : memref<10xf32>
   // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %1[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  %cst_0 = constant 1.100000e+01 : f32
-  // CHECK-NEXT:  for %i2 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i2 = 0 to 10 {
   // CHECK-NEXT:    %4 = load %0[%i2] : memref<10xf32>
   // CHECK-NEXT:    store %cst_0, %2[%i2] : memref<10xf32>
   // CHECK-NEXT:  }
@@ -1529,14 +1529,14 @@ func @should_fuse_and_preserve_dep_on_constant() {
 
   %cf7 = constant 7.0 : f32
   %cf11 = constant 11.0 : f32
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     %v0 = load %b[%i0] : memref<10xf32>
     store %cf7, %a[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     store %cf7, %b[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v2 = load %a[%i2] : memref<10xf32>
     store %cf11, %c[%i2] : memref<10xf32>
   }
@@ -1546,7 +1546,7 @@ func @should_fuse_and_preserve_dep_on_constant() {
   // the SSA value dep from '%cf11' def to use in '%i2'.
 
   // CHECK:       %cst_0 = constant 1.100000e+01 : f32
-  // CHECK-NEXT:  for %i0 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    %3 = load %1[%i0] : memref<10xf32>
   // CHECK-NEXT:    %4 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:    store %cst, %0[%4] : memref<1xf32>
@@ -1554,7 +1554,7 @@ func @should_fuse_and_preserve_dep_on_constant() {
   // CHECK-NEXT:    %6 = load %0[%5] : memref<1xf32>
   // CHECK-NEXT:    store %cst_0, %2[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %1[%i1] : memref<10xf32>
   // CHECK-NEXT:  }
   // CHECK-NEXT:  return
@@ -1572,25 +1572,25 @@ func @should_fuse_and_preserve_dep_on_constant() {
 func @should_fuse_at_depth_above_loop_carried_dependence(%arg0: memref<64x4xf32>, %arg1: memref<64x4xf32>) {
   %out = alloc() : memref<64x4xf32>
   %0 = constant 0.0 : f32
-  for %i0 = 0 to 64 {
-    for %i1 = 0 to 4 {
+  affine.for %i0 = 0 to 64 {
+    affine.for %i1 = 0 to 4 {
       store %0, %out[%i0, %i1] : memref<64x4xf32>
     }
   }
-  for %i2 = 0 to 4 {
-    for %i3 = 0 to 4 {
-      for %i4 = 0 to 16 {
+  affine.for %i2 = 0 to 4 {
+    affine.for %i3 = 0 to 4 {
+      affine.for %i4 = 0 to 16 {
         %1 = affine.apply (d0, d1) -> (d0 * 16 - d1 + 15)(%i3, %i4)
         %2 = load %arg1[%1, %i2] : memref<64x4xf32>
         "op0"(%2) : (f32) -> ()
       }
-      for %i5 = 0 to 4 {
-        for %i6 = 0 to 16 {
+      affine.for %i5 = 0 to 4 {
+        affine.for %i6 = 0 to 16 {
           %3 = affine.apply (d0, d1) -> (d0 * 16 - d1 + 15)(%i5, %i6)
           %4 = load %arg0[%3, %i3] : memref<64x4xf32>
           "op1"(%4) : (f32) -> ()
         }
-        for %i7 = 0 to 16 {
+        affine.for %i7 = 0 to 16 {
           %5 = "op2"() : () -> (f32)
           %6 = affine.apply (d0, d1) -> (d0 * 16 + d1)(%i5, %i7)
           %7 = load %out[%6, %i2] : memref<64x4xf32>
@@ -1610,25 +1610,25 @@ func @should_fuse_at_depth_above_loop_carried_dependence(%arg0: memref<64x4xf32>
   // memref size can be reduced to 128x1xf32.
 
   // CHECK:       %0 = alloc() : memref<64x1xf32>
-  // CHECK:       for %i0 = 0 to 4 {
-  // CHECK-NEXT:    for %i1 = 0 to 64 {
+  // CHECK:       affine.for %i0 = 0 to 4 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 64 {
   // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1, %i0)
   // CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1, %i0)
   // CHECK-NEXT:      store %cst, %0[%1, %2] : memref<64x1xf32>
   // CHECK-NEXT:    }
-  // CHECK-NEXT:    for %i2 = 0 to 4 {
-  // CHECK-NEXT:      for %i3 = 0 to 16 {
+  // CHECK-NEXT:    affine.for %i2 = 0 to 4 {
+  // CHECK-NEXT:      affine.for %i3 = 0 to 16 {
   // CHECK-NEXT:        %3 = affine.apply [[MAP2]](%i2, %i3)
   // CHECK-NEXT:        %4 = load %arg1[%3, %i0] : memref<64x4xf32>
   // CHECK-NEXT:        "op0"(%4) : (f32) -> ()
   // CHECK-NEXT:      }
-  // CHECK-NEXT:      for %i4 = 0 to 4 {
-  // CHECK-NEXT:        for %i5 = 0 to 16 {
+  // CHECK-NEXT:      affine.for %i4 = 0 to 4 {
+  // CHECK-NEXT:        affine.for %i5 = 0 to 16 {
   // CHECK-NEXT:          %5 = affine.apply [[MAP2]](%i4, %i5)
   // CHECK-NEXT:          %6 = load %arg0[%5, %i2] : memref<64x4xf32>
   // CHECK-NEXT:          "op1"(%6) : (f32) -> ()
   // CHECK-NEXT:        }
-  // CHECK-NEXT:        for %i6 = 0 to 16 {
+  // CHECK-NEXT:        affine.for %i6 = 0 to 16 {
   // CHECK-NEXT:          %7 = "op2"() : () -> f32
   // CHECK-NEXT:          %8 = affine.apply [[MAP3]](%i4, %i6)
   // CHECK-NEXT:          %9 = affine.apply [[MAP0]](%i0, %8, %i0)
@@ -1657,14 +1657,14 @@ func @should_fuse_after_private_memref_creation() {
 
   %cf7 = constant 7.0 : f32
 
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %a[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %v0 = load %a[%i1] : memref<10xf32>
     store %v0, %b[%i1] : memref<10xf32>
   }
-  for %i2 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
     %v1 = load %a[%i2] : memref<10xf32>
     store %v1, %b[%i2] : memref<10xf32>
   }
@@ -1675,14 +1675,14 @@ func @should_fuse_after_private_memref_creation() {
   // private memref, the dependence between '%i0' and '%i1' on memref '%a' no
   // longer exists, so '%i0' can now be fused into '%i2'.
 
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    %3 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:    store %cst, %1[%3] : memref<1xf32>
   // CHECK-NEXT:    %4 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:    %5 = load %1[%4] : memref<1xf32>
   // CHECK-NEXT:    store %5, %2[%i0] : memref<10xf32>
   // CHECK-NEXT:  }
-  // CHECK-NEXT:  for %i1 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i1 = 0 to 10 {
   // CHECK-NEXT:    %6 = affine.apply [[MAP0]](%i1, %i1)
   // CHECK-NEXT:    store %cst, %0[%6] : memref<1xf32>
   // CHECK-NEXT:    %7 = affine.apply [[MAP0]](%i1, %i1)
@@ -1702,12 +1702,12 @@ func @should_fuse_after_one_loop_interchange() {
   %a = alloc() : memref<10xf32>
 
   %cf0 = constant 0.0 : f32
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf0, %a[%i0] : memref<10xf32>
   }
 
-  for %i1 = 0 to 5 {
-    for %i2 = 0 to 10 {
+  affine.for %i1 = 0 to 5 {
+    affine.for %i2 = 0 to 10 {
       %v0 = load %a[%i2] : memref<10xf32>
       store %v0, %a[%i2] : memref<10xf32>
     }
@@ -1719,10 +1719,10 @@ func @should_fuse_after_one_loop_interchange() {
   // at loop depth 1, because the loop carrying the dependence has been
   // interchanged and is now at depth 2.
 
-  // CHECK:       for %i0 = 0 to 10 {
+  // CHECK:       affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    %1 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:    store %cst, %0[%1] : memref<1xf32>
-  // CHECK-NEXT:    for %i1 = 0 to 5 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 5 {
   // CHECK-NEXT:      %2 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:      %3 = load %0[%2] : memref<1xf32>
   // CHECK-NEXT:      %4 = affine.apply [[MAP0]](%i0, %i0)
@@ -1743,16 +1743,16 @@ func @should_fuse_after_two_loop_interchanges() {
   %a = alloc() : memref<6x8xf32>
 
   %cf0 = constant 0.0 : f32
-  for %i0 = 0 to 6 {
-    for %i1 = 0 to 8 {
+  affine.for %i0 = 0 to 6 {
+    affine.for %i1 = 0 to 8 {
       store %cf0, %a[%i0, %i1] : memref<6x8xf32>
     }
   }
 
-  for %i2 = 0 to 4 {
-    for %i3 = 0 to 6 {
-      for %i4 = 0 to 2 {
-        for %i5 = 0 to 8 {
+  affine.for %i2 = 0 to 4 {
+    affine.for %i3 = 0 to 6 {
+      affine.for %i4 = 0 to 2 {
+        affine.for %i5 = 0 to 8 {
           %v0 = load %a[%i3, %i5] : memref<6x8xf32>
           %v1 = addf %v0, %v0 : f32
           store %v1, %a[%i3, %i5] : memref<6x8xf32>
@@ -1768,13 +1768,13 @@ func @should_fuse_after_two_loop_interchanges() {
   // '%i5', then loop '%i0' can be fused at loop depth 2, because the loop
   // carring the dependences have been interchanged with loops at depth > 2.
 
-  // CHECK:       for %i0 = 0 to 6 {
-  // CHECK-NEXT:    for %i1 = 0 to 8 {
+  // CHECK:       affine.for %i0 = 0 to 6 {
+  // CHECK-NEXT:    affine.for %i1 = 0 to 8 {
   // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
   // CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
   // CHECK-NEXT:      store %cst, %0[%1, %2] : memref<1x1xf32>
-  // CHECK-NEXT:      for %i2 = 0 to 4 {
-  // CHECK-NEXT:        for %i3 = 0 to 2 {
+  // CHECK-NEXT:      affine.for %i2 = 0 to 4 {
+  // CHECK-NEXT:        affine.for %i3 = 0 to 2 {
   // CHECK-NEXT:          %3 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
   // CHECK-NEXT:          %4 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
   // CHECK-NEXT:          %5 = load %0[%3, %4] : memref<1x1xf32>
@@ -1794,17 +1794,17 @@ func @should_fuse_after_two_loop_interchanges() {
 
 func @should_fuse_live_out_writer(%arg0 : memref<10xf32>) -> memref<10xf32> {
   %cst = constant 0.000000e+00 : f32
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cst, %arg0[%i0] : memref<10xf32>
   }
-  for %i1 = 0 to 10 {
+  affine.for %i1 = 0 to 10 {
     %1 = load %arg0[%i1] : memref<10xf32>
     store %1, %arg0[%i1] : memref<10xf32>
   }
   return %arg0 : memref<10xf32>
 
   // CHECK:       %cst = constant 0.000000e+00 : f32
-  // CHECK-NEXT:  for %i0 = 0 to 10 {
+  // CHECK-NEXT:  affine.for %i0 = 0 to 10 {
   // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
   // CHECK-NEXT:    %0 = load %arg0[%i0] : memref<10xf32>
   // CHECK-NEXT:    store %0, %arg0[%i0] : memref<10xf32>
@@ -1823,20 +1823,20 @@ func @should_fuse_live_out_writer(%arg0 : memref<10xf32>) -> memref<10xf32> {
 
 // CHECK-LABEL: slice_tile
 func @slice_tile(%arg0: memref<128x8xf32>, %arg1: memref<32x8xf32>, %0 : f32) -> memref<32x8xf32> {
-  for %i0 = 0 to 32 {
-    for %i1 = 0 to 8 {
+  affine.for %i0 = 0 to 32 {
+    affine.for %i1 = 0 to 8 {
       store %0, %arg1[%i0, %i1] : memref<32x8xf32>
     }
   }
-  for %i = 0 to 2 {
-    for %j = 0 to 8 {
-      for %k = 0 to 8 {
-        for %kk = 0 to 16 {
+  affine.for %i = 0 to 2 {
+    affine.for %j = 0 to 8 {
+      affine.for %k = 0 to 8 {
+        affine.for %kk = 0 to 16 {
           %1 = affine.apply #map(%k, %kk)
           %2 = load %arg0[%1, %j] : memref<128x8xf32>
           %3 = "foo"(%2) : (f32) -> f32
         }
-        for %ii = 0 to 16 {
+        affine.for %ii = 0 to 16 {
           %6 = affine.apply #map(%i, %ii)
           %7 = load %arg1[%6, %j] : memref<32x8xf32>
           %8 = addf %7, %7 : f32
@@ -1847,18 +1847,18 @@ func @slice_tile(%arg0: memref<128x8xf32>, %arg1: memref<32x8xf32>, %0 : f32) ->
   }
   return %arg1 : memref<32x8xf32>
 }
-// CHECK:       for %i0 = 0 to 2 {
-// CHECK-NEXT:    for %i1 = 0 to 8 {
-// CHECK-NEXT:      for %i2 = [[MAP_LB]](%i0) to [[MAP_UB]](%i0) {
+// CHECK:       affine.for %i0 = 0 to 2 {
+// CHECK-NEXT:    affine.for %i1 = 0 to 8 {
+// CHECK-NEXT:      affine.for %i2 = [[MAP_LB]](%i0) to [[MAP_UB]](%i0) {
 // CHECK-NEXT:        store %arg2, %arg1[%i2, %i1] : memref<32x8xf32>
 // CHECK-NEXT:      }
-// CHECK-NEXT:      for %i3 = 0 to 8 {
-// CHECK-NEXT:        for %i4 = 0 to 16 {
+// CHECK-NEXT:      affine.for %i3 = 0 to 8 {
+// CHECK-NEXT:        affine.for %i4 = 0 to 16 {
 // CHECK-NEXT:          %0 = affine.apply #map{{[0-9]+}}(%i3, %i4)
 // CHECK-NEXT:          %1 = load %arg0[%0, %i1] : memref<128x8xf32>
 // CHECK-NEXT:          %2 = "foo"(%1) : (f32) -> f32
 // CHECK-NEXT:        }
-// CHECK-NEXT:        for %i5 = 0 to 16 {
+// CHECK-NEXT:        affine.for %i5 = 0 to 16 {
 // CHECK-NEXT:          %3 = affine.apply #map{{[0-9]+}}(%i0, %i5)
 // CHECK-NEXT:          %4 = load %arg1[%3, %i1] : memref<32x8xf32>
 // CHECK-NEXT:          %5 = addf %4, %4 : f32
@@ -1879,9 +1879,9 @@ func @test_add_slice_bounds() {
   %cf7 = constant 7.0 : f32
   %c0 = constant 0 : index
 
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
-      for %i2 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.for %i2 = 0 to 10 {
         %a0 = affine.apply (d0) -> (d0) (%i0)
         %a1 = affine.apply (d0) -> (d0) (%i0)
         %a2 = affine.apply (d0, d1) -> (d0 - d1) (%a0, %a1)
@@ -1889,17 +1889,17 @@ func @test_add_slice_bounds() {
       }
     }
   }
-  for %i3 = 0 to 10 {
-    for %i4 = 0 to 10 {
-      for %i5 = 0 to 10 {
+  affine.for %i3 = 0 to 10 {
+    affine.for %i4 = 0 to 10 {
+      affine.for %i5 = 0 to 10 {
         %v0 = load %a[%c0] : memref<10xf32>
       }
     }
   }
 
-// CHECK:        for %i0 = 0 to 10 {
-// CHECK-NEXT:     for %i1 = 0 to 10 {
-// CHECK-NEXT:       for %i2 = 0 to 10 {
+// CHECK:        affine.for %i0 = 0 to 10 {
+// CHECK-NEXT:     affine.for %i1 = 0 to 10 {
+// CHECK-NEXT:       affine.for %i2 = 0 to 10 {
 // CHECK-NEXT:         %2 = affine.apply #map2(%i0)
 // CHECK-NEXT:         %3 = affine.apply #map2(%i0)
 // CHECK-NEXT:         %4 = affine.apply #map3(%2, %3)
@@ -1907,9 +1907,9 @@ func @test_add_slice_bounds() {
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
-// CHECK-NEXT:   for %i3 = 0 to 10 {
-// CHECK-NEXT:     for %i4 = 0 to 10 {
-// CHECK-NEXT:       for %i5 = 0 to 10 {
+// CHECK-NEXT:   affine.for %i3 = 0 to 10 {
+// CHECK-NEXT:     affine.for %i4 = 0 to 10 {
+// CHECK-NEXT:       affine.for %i5 = 0 to 10 {
 // CHECK-NEXT:         %5 = load %0[%c0] : memref<10xf32>
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }
@@ -1926,31 +1926,31 @@ func @should_fuse_init_loops_siblings_then_shared_producer(%arg0: memref<10x10xf
   %cst = constant 0.000000e+00 : f32
   %cst_0 = constant 1.000000e+00 : f32
   %cst_1 = constant 7.000000e+00 : f32
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       store %cst_1, %0[%i0, %i1] : memref<10x10xf32>
     }
   }
-  for %i2 = 0 to 3 {
-    for %i3 = 0 to 3 {
+  affine.for %i2 = 0 to 3 {
+    affine.for %i3 = 0 to 3 {
       store %cst, %arg0[%i2, %i3] : memref<10x10xf32>
     }
   }
-  for %i4 = 0 to 3 {
-    for %i5 = 0 to 3 {
+  affine.for %i4 = 0 to 3 {
+    affine.for %i5 = 0 to 3 {
       %1 = load %0[%i4, %i5] : memref<10x10xf32>
       %2 = load %arg0[%i4, %i5] : memref<10x10xf32>
       %3 = mulf %1, %2 : f32
       store %3, %arg0[%i4, %i5] : memref<10x10xf32>
     }
   }
-  for %i6 = 0 to 3 {
-    for %i7 = 0 to 3 {
+  affine.for %i6 = 0 to 3 {
+    affine.for %i7 = 0 to 3 {
       store %cst_0, %arg1[%i6, %i7] : memref<10x10xf32>
     }
   }
-  for %i8 = 0 to 3 {
-    for %i9 = 0 to 3 {
+  affine.for %i8 = 0 to 3 {
+    affine.for %i9 = 0 to 3 {
       %4 = load %0[%i8, %i9] : memref<10x10xf32>
       %5 = load %arg1[%i8, %i9] : memref<10x10xf32>
       %6 = addf %4, %5 : f32
@@ -1966,8 +1966,8 @@ func @should_fuse_init_loops_siblings_then_shared_producer(%arg0: memref<10x10xf
   //         that loop nest '%i0' now has a single user after Pass 2 fused its
   //         two users together).
 
-// CHECK:        for %i0 = 0 to 3 {
-// CHECK-NEXT:     for %i1 = 0 to 3 {
+// CHECK:        affine.for %i0 = 0 to 3 {
+// CHECK-NEXT:     affine.for %i1 = 0 to 3 {
 // CHECK-NEXT:       %1 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
 // CHECK-NEXT:       %2 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
 // CHECK-NEXT:       store %cst_1, %0[%1, %2] : memref<1x1xf32>
@@ -2005,14 +2005,14 @@ func @two_matrix_vector_products() {
   %cf7 = constant 7.0 : f32
 
   // Populate input matrix.
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       store %cf7, %in_matrix[%i0, %i1] : memref<10x10xf32>
     }
   }
   // out_vec0 = in_matrix x in_vec0
-  for %i2 = 0 to 10 {
-    for %i3 = 0 to 10 {
+  affine.for %i2 = 0 to 10 {
+    affine.for %i3 = 0 to 10 {
       %v0 = load %in_matrix[%i2, %i3] : memref<10x10xf32>
       %v1 = load %in_vec0[%i3] : memref<10xf32>
       %v2 = mulf %v0, %v1 : f32
@@ -2022,8 +2022,8 @@ func @two_matrix_vector_products() {
     }
   }
   // out_vec1 = in_matrix x in_vec1
-  for %i4 = 0 to 10 {
-    for %i5 = 0 to 10 {
+  affine.for %i4 = 0 to 10 {
+    affine.for %i5 = 0 to 10 {
       %v5 = load %in_matrix[%i4, %i5] : memref<10x10xf32>
       %v6 = load %in_vec1[%i5] : memref<10xf32>
       %v7 = mulf %v5, %v6 : f32
@@ -2033,13 +2033,13 @@ func @two_matrix_vector_products() {
     }
   }
 
-// CHECK:        for %i0 = 0 to 10 {
-// CHECK-NEXT:     for %i1 = 0 to 10 {
+// CHECK:        affine.for %i0 = 0 to 10 {
+// CHECK-NEXT:     affine.for %i1 = 0 to 10 {
 // CHECK-NEXT:       %5 = affine.apply [[MAP2]](%i0, %i1, %i0)
 // CHECK-NEXT:       %6 = affine.apply [[MAP3]](%i0, %i1, %i0)
 // CHECK-NEXT:       store %cst, %0[%5, %6] : memref<10x1xf32>
 // CHECK-NEXT:     }
-// CHECK-NEXT:     for %i2 = 0 to 10 {
+// CHECK-NEXT:     affine.for %i2 = 0 to 10 {
 // CHECK-NEXT:       %7 = affine.apply [[MAP2]](%i0, %i2, %i0)
 // CHECK-NEXT:       %8 = affine.apply [[MAP3]](%i0, %i2, %i0)
 // CHECK-NEXT:       %9 = load %0[%7, %8] : memref<10x1xf32>
@@ -2049,7 +2049,7 @@ func @two_matrix_vector_products() {
 // CHECK-NEXT:       %13 = addf %11, %12 : f32
 // CHECK-NEXT:       store %13, %3[%i0] : memref<10xf32>
 // CHECK-NEXT:     }
-// CHECK-NEXT:     for %i3 = 0 to 10 {
+// CHECK-NEXT:     affine.for %i3 = 0 to 10 {
 // CHECK-NEXT:       %14 = affine.apply [[MAP2]](%i0, %i3, %i0)
 // CHECK-NEXT:       %15 = affine.apply [[MAP3]](%i0, %i3, %i0)
 // CHECK-NEXT:       %16 = load %0[%14, %15] : memref<10x1xf32>
@@ -2070,28 +2070,28 @@ func @two_matrix_vector_products() {
 
 func @should_not_slice_past_slice_barrier() {
   %0 = alloc() : memref<100x16xf32>
-  for %i0 = 0 to 100 {
-    for %i1 = 0 to 16 {
+  affine.for %i0 = 0 to 100 {
+    affine.for %i1 = 0 to 16 {
       %1 = "op1"() : () -> f32
       store %1, %0[%i0, %i1] : memref<100x16xf32>
     } {slice_fusion_barrier: true}
   }
-  for %i2 = 0 to 100 {
-    for %i3 = 0 to 16 {
+  affine.for %i2 = 0 to 100 {
+    affine.for %i3 = 0 to 16 {
       %2 = load %0[%i2, %i3] : memref<100x16xf32>
       "op2"(%2) : (f32) -> ()
     }
   }
   // The 'slice_fusion_barrier' attribute on '%i1' prevents slicing the
   // iteration space of '%i1' and any enclosing loop nests.
-// CHECK:        for %i0 = 0 to 100 {
-// CHECK-NEXT:     for %i1 = 0 to 16 {
+// CHECK:        affine.for %i0 = 0 to 100 {
+// CHECK-NEXT:     affine.for %i1 = 0 to 16 {
 // CHECK-NEXT:       %1 = "op1"() : () -> f32
 // CHECK-NEXT:       %2 = affine.apply [[MAP3]](%i0, %i0, %i1)
 // CHECK-NEXT:       %3 = affine.apply [[MAP4]](%i0, %i0, %i1)
 // CHECK-NEXT:       store %1, %0[%2, %3] : memref<1x16xf32>
 // CHECK-NEXT:     } {slice_fusion_barrier: true}
-// CHECK-NEXT:     for %i2 = 0 to 16 {
+// CHECK-NEXT:     affine.for %i2 = 0 to 16 {
 // CHECK-NEXT:       %4 = affine.apply [[MAP3]](%i0, %i0, %i2)
 // CHECK-NEXT:       %5 = affine.apply [[MAP4]](%i0, %i0, %i2)
 // CHECK-NEXT:       %6 = load %0[%4, %5] : memref<1x16xf32>
@@ -2107,18 +2107,18 @@ func @should_not_slice_past_slice_barrier() {
 func @fuse_across_dim_mismatch(%arg0: memref<4x4x16x1xf32>, %arg1: memref<144x9xf32>, %arg2: memref<9xf32>) {
   %1 = alloc() : memref<144x4xf32>
   %2 = constant 0.0 : f32
-  for %i2 = 0 to 9 {
-    for %i3 = 0 to 4 {
-      for %i5 = 0 to 16 {
+  affine.for %i2 = 0 to 9 {
+    affine.for %i3 = 0 to 4 {
+      affine.for %i5 = 0 to 16 {
         %7 = affine.apply #map0(%i2, %i5)
         store %2, %1[%7, %i3] : memref<144x4xf32>
       }
     }
   }
-  for %i6 = 0 to 9 {
-    for %i7 = 0 to 9 {
-      for %i8 = 0 to 4 {
-        for %i10 = 0 to 16 {
+  affine.for %i6 = 0 to 9 {
+    affine.for %i7 = 0 to 9 {
+      affine.for %i8 = 0 to 4 {
+        affine.for %i10 = 0 to 16 {
           %10 = affine.apply #map0(%i6, %i10)
           %11 = load %1[%10, %i8] : memref<144x4xf32>
         }
@@ -2132,10 +2132,10 @@ func @fuse_across_dim_mismatch(%arg0: memref<4x4x16x1xf32>, %arg1: memref<144x9x
 // MAXIMAL-NEXT: #map6 = (d0, d1, d2, d3, d4) -> (-d2 + d4)
 // MAXIMAL-LABEL: func @fuse_across_dim_mismatch
 // MAXIMAL:        %0 = alloc() : memref<1x1xf32>
-// MAXIMAL:        for %i0 = 0 to 9 {
-// MAXIMAL-NEXT:    for %i1 = 0 to 9 {
-// MAXIMAL-NEXT:      for %i2 = 0 to 4 {
-// MAXIMAL-NEXT:        for %i3 = 0 to 16 {
+// MAXIMAL:        affine.for %i0 = 0 to 9 {
+// MAXIMAL-NEXT:    affine.for %i1 = 0 to 9 {
+// MAXIMAL-NEXT:      affine.for %i2 = 0 to 4 {
+// MAXIMAL-NEXT:        affine.for %i3 = 0 to 16 {
 // MAXIMAL-NEXT:          %1 = affine.apply #map4(%i0, %i3)
 // MAXIMAL-NEXT:          %2 = affine.apply #map5(%i0, %i3, %i2, %1, %i2)
 // MAXIMAL-NEXT:          %3 = affine.apply #map6(%i0, %i3, %i2, %1, %i2)
@@ -2164,8 +2164,8 @@ func @fuse_across_varying_dims_complex() {
   %0 = alloc() : memref<2x2x3x3x16x1xf32>
   %1 = alloc() : memref<64x9xf32>
   %2 = alloc() : memref<144x4xf32>
-  for %i0 = 0 to 64 {
-    for %i1 = 0 to 9 {
+  affine.for %i0 = 0 to 64 {
+    affine.for %i1 = 0 to 9 {
       %4 = affine.apply #map3(%i0, %i1)
       %5 = affine.apply #map4(%i0, %i1)
       %6 = affine.apply #map5(%i0, %i1)
@@ -2175,23 +2175,23 @@ func @fuse_across_varying_dims_complex() {
       store %9, %1[%i0, %i1] : memref<64x9xf32>
     }
   }
-  for %i2 = 0 to 9 {
-    for %i3 = 0 to 4 {
-      for %i4 = 0 to 16 {
+  affine.for %i2 = 0 to 9 {
+    affine.for %i3 = 0 to 4 {
+      affine.for %i4 = 0 to 16 {
         %10 = affine.apply #map10(%i3, %i4)
         %11 = load %1[%10, %i2] : memref<64x9xf32>
       }
-      for %i5 = 0 to 16 {
+      affine.for %i5 = 0 to 16 {
         %13 = "bar"() : () -> f32
         %14 = affine.apply #map11(%i2, %i5)
         store %13, %2[%14, %i3] : memref<144x4xf32>
       }
     }
   }
-  for %i6 = 0 to 9 {
-    for %i7 = 0 to 9 {
-      for %i8 = 0 to 4 {
-        for %i9 = 0 to 16 {
+  affine.for %i6 = 0 to 9 {
+    affine.for %i7 = 0 to 9 {
+      affine.for %i8 = 0 to 4 {
+        affine.for %i9 = 0 to 16 {
           %15 = affine.apply #map12(%i8, %i9)
           %16 = load %1[%15, %i7] : memref<64x9xf32>
         }
@@ -2214,11 +2214,11 @@ func @fuse_across_varying_dims_complex() {
 // MAXIMAL-NEXT:  %c0 = constant 0 : index
 // MAXIMAL-NEXT:  %1 = alloc() : memref<2x2x3x3x16x1xf32>
 // MAXIMAL-NEXT:  %2 = alloc() : memref<144x4xf32>
-// MAXIMAL-NEXT:  for %i0 = 0 to 9 {
-// MAXIMAL-NEXT:    for %i1 = 0 to 9 {
-// MAXIMAL-NEXT:      for %i2 = 0 to 4 {
-// MAXIMAL-NEXT:        for %i3 = 0 to 16 {
-// MAXIMAL-NEXT:          for %i4 = 0 to 64 {
+// MAXIMAL-NEXT:  affine.for %i0 = 0 to 9 {
+// MAXIMAL-NEXT:    affine.for %i1 = 0 to 9 {
+// MAXIMAL-NEXT:      affine.for %i2 = 0 to 4 {
+// MAXIMAL-NEXT:        affine.for %i3 = 0 to 16 {
+// MAXIMAL-NEXT:          affine.for %i4 = 0 to 64 {
 // MAXIMAL-NEXT:            %3 = affine.apply #map5(%i4, %i0)
 // MAXIMAL-NEXT:            %4 = affine.apply #map6(%i4, %i0)
 // MAXIMAL-NEXT:            %5 = affine.apply #map7(%i4, %i0)
@@ -2229,14 +2229,14 @@ func @fuse_across_varying_dims_complex() {
 // MAXIMAL-NEXT:            %10 = affine.apply #map11(%i0, %i4, %i0)
 // MAXIMAL-NEXT:            store %8, %0[%9, %10] : memref<64x1xf32>
 // MAXIMAL-NEXT:          }
-// MAXIMAL-NEXT:          for %i5 = 0 to 4 {
-// MAXIMAL-NEXT:            for %i6 = 0 to 16 {
+// MAXIMAL-NEXT:          affine.for %i5 = 0 to 4 {
+// MAXIMAL-NEXT:            affine.for %i6 = 0 to 16 {
 // MAXIMAL-NEXT:              %11 = affine.apply #map12(%i5, %i6)
 // MAXIMAL-NEXT:              %12 = affine.apply #map10(%i0, %11, %i0)
 // MAXIMAL-NEXT:              %13 = affine.apply #map11(%i0, %11, %i0)
 // MAXIMAL-NEXT:              %14 = load %0[%12, %13] : memref<64x1xf32>
 // MAXIMAL-NEXT:            }
-// MAXIMAL-NEXT:            for %i7 = 0 to 16 {
+// MAXIMAL-NEXT:            affine.for %i7 = 0 to 16 {
 // MAXIMAL-NEXT:              %15 = "bar"() : () -> f32
 // MAXIMAL-NEXT:              %16 = affine.apply #map12(%i0, %i7)
 // MAXIMAL-NEXT:              store %15, %2[%16, %i5] : memref<144x4xf32>
@@ -2259,13 +2259,13 @@ func @should_fuse_with_slice_union() {
   %c0 = constant 0 : index
   %cf0 = constant 0.0 : f32
 
-  for %i0 = 0 to 100 {
+  affine.for %i0 = 0 to 100 {
     store %cf0, %a[%i0]: memref<100xf32>
   }
 
-  for %i1 = 10 to 20 {
+  affine.for %i1 = 10 to 20 {
     %v0 = load %a[%i1]: memref<100xf32>
-    for %i2 = 15 to 25 {
+    affine.for %i2 = 15 to 25 {
       %v1 = load %a[%i2]: memref<100xf32>
     }
   }
@@ -2274,14 +2274,14 @@ func @should_fuse_with_slice_union() {
   // remapping, and private memref size. The result is that the temporary
   // memref is reduced from 100xf32 to 15xf32 and properly indexed by
   // the fused loops based on the union calculation.
-// CHECK:      for %i0 = 10 to 20 {
-// CHECK-NEXT:   for %i1 = 10 to 25 {
+// CHECK:      affine.for %i0 = 10 to 20 {
+// CHECK-NEXT:   affine.for %i1 = 10 to 25 {
 // CHECK-NEXT:     %1 = affine.apply [[MAP3]](%i1)
 // CHECK-NEXT:     store %cst, %0[%1] : memref<15xf32>
 // CHECK-NEXT:   }
 // CHECK-NEXT:   %2 = affine.apply [[MAP3]](%i0)
 // CHECK-NEXT:   %3 = load %0[%2] : memref<15xf32>
-// CHECK-NEXT:   for %i2 = 15 to 25 {
+// CHECK-NEXT:   affine.for %i2 = 15 to 25 {
 // CHECK-NEXT:     %4 = affine.apply [[MAP3]](%i2)
 // CHECK-NEXT:     %5 = load %0[%4] : memref<15xf32>
 // CHECK-NEXT:   }

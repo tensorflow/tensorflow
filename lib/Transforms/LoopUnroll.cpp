@@ -158,8 +158,8 @@ void LoopUnroll::runOnFunction() {
   }
 }
 
-/// Unrolls a 'for' inst. Returns success if the loop was unrolled, failure
-/// otherwise. The default unroll factor is 4.
+/// Unrolls a 'affine.for' inst. Returns success if the loop was unrolled,
+/// failure otherwise. The default unroll factor is 4.
 LogicalResult LoopUnroll::runOnAffineForOp(AffineForOp forOp) {
   // Use the function callback if one was provided.
   if (getUnrollFactor) {

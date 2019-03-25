@@ -341,7 +341,8 @@ protected:
 ///    (e.g. vectorValue = load(vectorView, zero)).
 ///
 /// Only ExprKind::StmtBlockLikeExpr have `enclosedStmts`, these comprise:
-/// 1. `For`-loops for which the `lhs` binds to the induction variable, `rhs`
+/// 1. `affine.for`-loops for which the `lhs` binds to the induction variable,
+/// `rhs`
 ///   binds to an Expr of kind `ExprKind::For` with lower-bound, upper-bound and
 ///   step respectively.
 // TODO(zinenko): this StmtBlockLikeExpr should be retired in favor of Expr
@@ -647,7 +648,7 @@ Stmt For(llvm::ArrayRef<Expr> indices, llvm::ArrayRef<Expr> lbs,
          llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
          llvm::ArrayRef<Stmt> enclosedStmts);
 
-/// Define a 'for' loop from with multi-valued bounds.
+/// Define a 'affine.for' loop from with multi-valued bounds.
 ///
 ///    for max(lbs...) to min(ubs...) {}
 ///

@@ -343,7 +343,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     auto fastMemRefType = top.getMemRefType(
         fastBufferShape, memRefType.getElementType(), {}, fastMemorySpace);
 
-    // Create the fast memory space buffer just before the 'for'
+    // Create the fast memory space buffer just before the 'affine.for'
     // instruction.
     fastMemRef = prologue.create<AllocOp>(loc, fastMemRefType)->getResult();
     // Record it.
@@ -472,7 +472,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
   // approach is conservative in some cases at the moment, we do a check later
   // and report an error with location info.
   // TODO(bondhugula): An 'affine.if' instruction is being treated similar to an
-  // operation instruction. 'affine.if''s could have 'for's in them;
+  // operation instruction. 'affine.if''s could have 'affine.for's in them;
   // treat them separately.
 
   // Get to the first load, store, or for op.
@@ -494,7 +494,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
                     fastMemCapacityBytes);
       };
 
-      // If the memory footprint of the 'for' loop is higher than fast
+      // If the memory footprint of the 'affine.for' loop is higher than fast
       // memory capacity (when provided), we recurse to DMA at an inner level
       // until we find a depth at which footprint fits in fast mem capacity. If
       // the footprint can't be calculated, we assume for now it fits. Recurse
@@ -507,7 +507,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
         runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
         runOnBlock(forOp->getBody());
-        // The next region starts right after the 'for' instruction.
+        // The next region starts right after the 'affine.for' instruction.
         curBegin = std::next(it);
       } else {
         // We have enough capacity, i.e., DMAs will be computed for the portion
@@ -698,7 +698,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
       [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
               &regions) {
         for (const auto &regionEntry : regions) {
-          // For each region, hoist DMA transfer past all invariant 'for's.
+          // For each region, hoist DMA transfer past all invariant
+          // 'affine.for's.
           Block::iterator dmaPlacementReadStart, dmaPlacementWriteStart;
           Block *dmaPlacementBlock;
           findHighestBlockForPlacement(

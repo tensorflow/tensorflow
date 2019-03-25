@@ -113,7 +113,7 @@ using namespace mlir;
 ///
 /// At a high level, a vectorized load in a loop will resemble:
 /// ```mlir
-///   for %i = ? to ? step ? {
+///   affine.for %i = ? to ? step ? {
 ///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
 ///                                              vector<128xf32>
 ///   }
@@ -309,7 +309,7 @@ using namespace mlir;
 /// ```mlir
 /// mlfunc @fill(%A : memref<128xf32>) -> () {
 ///   %f1 = constant 1.0 : f32
-///   for %i0 = 0 to 32 {
+///   affine.for %i0 = 0 to 32 {
 ///     store %f1, %A[%i0] : memref<128xf32, 0>
 ///   }
 ///   return
@@ -322,7 +322,7 @@ using namespace mlir;
 /// is still subject to exploratory tradeoffs. In particular, say we want to
 /// vectorize by a factor 128, we want to transform the following input:
 /// ```mlir
-///   for %i = %M to %N {
+///   affine.for %i = %M to %N {
 ///     %a = load A[%i] : memref<?xf32>
 ///   }
 /// ```
@@ -331,8 +331,8 @@ using namespace mlir;
 /// memory promotion etc) say after stripmining (and potentially unrolling in
 /// the case of LLVM's SLP vectorizer):
 /// ```mlir
-///   for %i = floor(%M, 128) to ceil(%N, 128) {
-///     for %ii = max(%M, 128 * %i) to min(%N, 128*%i + 127) {
+///   affine.for %i = floor(%M, 128) to ceil(%N, 128) {
+///     affine.for %ii = max(%M, 128 * %i) to min(%N, 128*%i + 127) {
 ///       %a = load A[%ii] : memref<?xf32>
 ///     }
 ///   }
@@ -341,7 +341,7 @@ using namespace mlir;
 /// Instead, we seek to vectorize early and freeze vector types before
 /// scheduling, so we want to generate a pattern that resembles:
 /// ```mlir
-///   for %i = ? to ? step ? {
+///   affine.for %i = ? to ? step ? {
 ///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
 ///                                              vector<128xf32>
 ///   }
@@ -362,7 +362,7 @@ using namespace mlir;
 /// For the simple strawman example above, vectorizing for a 1-D vector
 /// abstraction of size 128 returns code similar to:
 /// ```mlir
-///   for %i = %M to %N step 128 {
+///   affine.for %i = %M to %N step 128 {
 ///     %v_a = "vector_transfer_read" (A, %i) : (memref<?xf32>, index) ->
 ///                                              vector<128xf32>
 ///   }
@@ -391,20 +391,20 @@ using namespace mlir;
 ///   %C = alloc (%M, %N) : memref<?x?xf32, 0>
 ///   %f1 = constant 1.0 : f32
 ///   %f2 = constant 2.0 : f32
-///   for %i0 = 0 to %M {
-///     for %i1 = 0 to %N {
+///   affine.for %i0 = 0 to %M {
+///     affine.for %i1 = 0 to %N {
 ///       // non-scoped %f1
 ///       store %f1, %A[%i0, %i1] : memref<?x?xf32, 0>
 ///     }
 ///   }
-///   for %i2 = 0 to %M {
-///     for %i3 = 0 to %N {
+///   affine.for %i2 = 0 to %M {
+///     affine.for %i3 = 0 to %N {
 ///       // non-scoped %f2
 ///       store %f2, %B[%i2, %i3] : memref<?x?xf32, 0>
 ///     }
 ///   }
-///   for %i4 = 0 to %M {
-///     for %i5 = 0 to %N {
+///   affine.for %i4 = 0 to %M {
+///     affine.for %i5 = 0 to %N {
 ///       %a5 = load %A[%i4, %i5] : memref<?x?xf32, 0>
 ///       %b5 = load %B[%i4, %i5] : memref<?x?xf32, 0>
 ///       %s5 = addf %a5, %b5 : f32
@@ -438,24 +438,24 @@ using namespace mlir;
 ///   %2 = alloc(%arg0, %arg1) : memref<?x?xf32>
 ///   %cst = constant 1.0 : f32
 ///   %cst_0 = constant 2.0 : f32
-///   for %i0 = 0 to %arg0 {
-///     for %i1 = 0 to %arg1 step 256 {
+///   affine.for %i0 = 0 to %arg0 {
+///     affine.for %i1 = 0 to %arg1 step 256 {
 ///       %cst_1 = constant splat<vector<256xf32>, 1.0> :
 ///                vector<256xf32>
 ///       "vector_transfer_write"(%cst_1, %0, %i0, %i1) :
 ///                (vector<256xf32>, memref<?x?xf32>, index, index) -> ()
 ///     }
 ///   }
-///   for %i2 = 0 to %arg0 {
-///     for %i3 = 0 to %arg1 step 256 {
+///   affine.for %i2 = 0 to %arg0 {
+///     affine.for %i3 = 0 to %arg1 step 256 {
 ///       %cst_2 = constant splat<vector<256xf32>, 2.0> :
 ///                vector<256xf32>
 ///       "vector_transfer_write"(%cst_2, %1, %i2, %i3) :
 ///                (vector<256xf32>, memref<?x?xf32>, index, index) -> ()
 ///     }
 ///   }
-///   for %i4 = 0 to %arg0 {
-///     for %i5 = 0 to %arg1 step 256 {
+///   affine.for %i4 = 0 to %arg0 {
+///     affine.for %i5 = 0 to %arg1 step 256 {
 ///       %3 = "vector_transfer_read"(%0, %i4, %i5) :
 ///                      (memref<?x?xf32>, index, index) -> vector<256xf32>
 ///       %4 = "vector_transfer_read"(%1, %i4, %i5) :
@@ -494,24 +494,24 @@ using namespace mlir;
 ///   %2 = alloc(%arg0, %arg1) : memref<?x?xf32>
 ///   %cst = constant 1.0 : f32
 ///   %cst_0 = constant 2.0 : f32
-///   for %i0 = 0 to %arg0 step 32 {
-///     for %i1 = 0 to %arg1 step 256 {
+///   affine.for %i0 = 0 to %arg0 step 32 {
+///     affine.for %i1 = 0 to %arg1 step 256 {
 ///       %cst_1 = constant splat<vector<32x256xf32>, 1.0> :
 ///                vector<32x256xf32>
 ///       "vector_transfer_write"(%cst_1, %0, %i0, %i1) :
 ///                (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
 ///     }
 ///   }
-///   for %i2 = 0 to %arg0 step 32 {
-///     for %i3 = 0 to %arg1 step 256 {
+///   affine.for %i2 = 0 to %arg0 step 32 {
+///     affine.for %i3 = 0 to %arg1 step 256 {
 ///       %cst_2 = constant splat<vector<32x256xf32>, 2.0> :
 ///                vector<32x256xf32>
 ///       "vector_transfer_write"(%cst_2, %1, %i2, %i3) :
 ///                (vector<32x256xf32>, memref<?x?xf32>, index, index) -> ()
 ///     }
 ///   }
-///   for %i4 = 0 to %arg0 step 32 {
-///     for %i5 = 0 to %arg1 step 256 {
+///   affine.for %i4 = 0 to %arg0 step 32 {
+///     affine.for %i5 = 0 to %arg1 step 256 {
 ///       %3 = "vector_transfer_read"(%0, %i4, %i5) :
 ///                (memref<?x?xf32>, index, index) -> vector<32x256xf32>
 ///       %4 = "vector_transfer_read"(%1, %i4, %i5) :

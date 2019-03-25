@@ -36,7 +36,7 @@ using llvm::dbgs;
 //===----------------------------------------------------------------------===//
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
-    : Dialect(/*namePrefix=*/"", context) {
+    : Dialect(/*namePrefix=*/"affine", context) {
   addOperations<AffineApplyOp, AffineForOp, AffineIfOp>();
 }
 
@@ -69,7 +69,7 @@ bool mlir::isValidDim(Value *value) {
       return isTopLevelSymbol(dimOp->getOperand());
     return false;
   }
-  // This value is a block argument (which also includes 'for' loop IVs).
+  // This value is a block argument (which also includes 'affine.for' loop IVs).
   return true;
 }
 
@@ -969,7 +969,7 @@ static void printBound(AffineBound bound, const char *prefix, OpAsmPrinter *p) {
 }
 
 void AffineForOp::print(OpAsmPrinter *p) {
-  *p << "for ";
+  *p << "affine.for ";
   p->printOperand(getBody()->getArgument(0));
   *p << " = ";
   printBound(getLowerBound(), "max", p);

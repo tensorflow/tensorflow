@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to detect parallel affine 'for' ops.
+// This file implements a pass to detect parallel affine 'affine.for' ops.
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,7 +40,8 @@ FunctionPassBase *mlir::createParallelismDetectionTestPass() {
   return new TestParallelismDetection();
 }
 
-// Walks the function and emits a note for all 'for' ops detected as parallel.
+// Walks the function and emits a note for all 'affine.for' ops detected as
+// parallel.
 void TestParallelismDetection::runOnFunction() {
   Function *f = getFunction();
   FuncBuilder b(f);

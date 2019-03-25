@@ -2,9 +2,9 @@
 
 // Check that the attributes for the affine operations are round-tripped.
 func @attributes() {
-  // CHECK: for %i
+  // CHECK: affine.for %i
   // CHECK-NEXT: } {some_attr: true}
-  for %i = 0 to 10 {
+  affine.for %i = 0 to 10 {
   } {some_attr: true}
 
   // CHECK: if

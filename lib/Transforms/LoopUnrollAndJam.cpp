@@ -96,7 +96,7 @@ void LoopUnrollAndJam::runOnFunction() {
     runOnAffineForOp(forOp);
 }
 
-/// Unroll and jam a 'for' inst. Default unroll jam factor is
+/// Unroll and jam a 'affine.for' inst. Default unroll jam factor is
 /// kDefaultUnrollJamFactor. Return failure if nothing was done.
 LogicalResult LoopUnrollAndJam::runOnAffineForOp(AffineForOp forOp) {
   // Unroll and jam by the factor that was passed if any.

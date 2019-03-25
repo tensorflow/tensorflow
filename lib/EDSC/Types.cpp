@@ -526,8 +526,8 @@ Stmt mlir::edsc::For(llvm::ArrayRef<Expr> idxs, llvm::ArrayRef<MaxExpr> lbs,
 Stmt mlir::edsc::MaxMinFor(const Bindable &idx, ArrayRef<Expr> lbs,
                            ArrayRef<Expr> ubs, Expr step,
                            ArrayRef<Stmt> enclosedStmts) {
-  assert(!lbs.empty() && "'for' loop must have lower bounds");
-  assert(!ubs.empty() && "'for' loop must have upper bounds");
+  assert(!lbs.empty() && "'affine.for' loop must have lower bounds");
+  assert(!ubs.empty() && "'affine.for' loop must have upper bounds");
 
   // Use a null expression as a sentinel between lower and upper bound
   // expressions in the list of children.
@@ -964,7 +964,7 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
   } else if (auto stmtLikeExpr = this->dyn_cast<StmtBlockLikeExpr>()) {
     switch (stmtLikeExpr.getKind()) {
     // We only print the lb, ub and step here, which are the StmtBlockLike
-    // part of the `for` StmtBlockLikeExpr.
+    // part of the `affine.for` StmtBlockLikeExpr.
     case ExprKind::For: {
       auto exprGroups = stmtLikeExpr.getAllArgumentGroups();
       assert(exprGroups.size() == 3 &&

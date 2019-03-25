@@ -38,11 +38,11 @@ using namespace mlir;
 using llvm::SmallDenseMap;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
-/// the outermost 'for' instruction to the innermost one.
+/// the outermost 'affine.for' instruction to the innermost one.
 void mlir::getLoopIVs(Instruction &inst, SmallVectorImpl<AffineForOp> *loops) {
   auto *currInst = inst.getParentInst();
   AffineForOp currAffineForOp;
-  // Traverse up the hierarchy collecing all 'for' instruction while
+  // Traverse up the hierarchy collecing all 'affine.for' instruction while
   // skipping over 'affine.if' instructions.
   while (currInst && ((currAffineForOp = currInst->dyn_cast<AffineForOp>()) ||
                       currInst->isa<AffineIfOp>())) {
@@ -162,8 +162,8 @@ LogicalResult MemRefRegion::unionBoundingBox(const MemRefRegion &other) {
 //  For example, the memref region for this load operation at loopDepth = 1 will
 //  be as below:
 //
-//    for %i = 0 to 32 {
-//      for %ii = %i to (d0) -> (d0 + 8) (%i) {
+//    affine.for %i = 0 to 32 {
+//      affine.for %ii = %i to (d0) -> (d0 + 8) (%i) {
 //        load %A[%ii]
 //      }
 //    }
@@ -683,7 +683,7 @@ static Optional<int64_t> getMemoryFootprintBytes(Block &block,
                                                  int memorySpace) {
   SmallDenseMap<Value *, std::unique_ptr<MemRefRegion>, 4> regions;
 
-  // Walk this 'for' instruction to gather all memory regions.
+  // Walk this 'affine.for' instruction to gather all memory regions.
   bool error = false;
   block.walk(start, end, [&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {

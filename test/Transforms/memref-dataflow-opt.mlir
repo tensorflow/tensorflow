@@ -10,14 +10,14 @@
 func @simple_store_load() {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
     %v0 = load %m[%i0] : memref<10xf32>
     %v1 = addf %v0, %v0 : f32
   }
   return
 // CHECK:       %cst = constant 7.000000e+00 : f32
-// CHECK-NEXT:  for %i0 = 0 to 10 {
+// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
 // CHECK-NEXT:    %0 = addf %cst, %cst : f32
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return
@@ -30,7 +30,7 @@ func @multi_store_load() {
   %cf8 = constant 8.0 : f32
   %cf9 = constant 9.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
     %v0 = load %m[%i0] : memref<10xf32>
     %v1 = addf %v0, %v0 : f32
@@ -45,7 +45,7 @@ func @multi_store_load() {
 // CHECK-NEXT:  %cst = constant 7.000000e+00 : f32
 // CHECK-NEXT:  %cst_0 = constant 8.000000e+00 : f32
 // CHECK-NEXT:  %cst_1 = constant 9.000000e+00 : f32
-// CHECK-NEXT:  for %i0 = 0 to 10 {
+// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
 // CHECK-NEXT:    %0 = addf %cst, %cst : f32
 // CHECK-NEXT:    %1 = mulf %cst_1, %cst_1 : f32
 // CHECK-NEXT:  }
@@ -59,8 +59,8 @@ func @multi_store_load() {
 func @store_load_affine_apply() -> memref<10x10xf32> {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10x10xf32>
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       %t0 = affine.apply (d0, d1) -> (d1 + 1)(%i0, %i1)
       %t1 = affine.apply (d0, d1) -> (d0)(%i0, %i1)
       %idx0 = affine.apply (d0, d1) -> (d1) (%t0, %t1)
@@ -75,8 +75,8 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
   return %m : memref<10x10xf32>
 // CHECK:       %cst = constant 7.000000e+00 : f32
 // CHECK-NEXT:  %0 = alloc() : memref<10x10xf32>
-// CHECK-NEXT:  for %i0 = 0 to 10 {
-// CHECK-NEXT:    for %i1 = 0 to 10 {
+// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
+// CHECK-NEXT:    affine.for %i1 = 0 to 10 {
 // CHECK-NEXT:      %1 = affine.apply [[MAP0]](%i0, %i1)
 // CHECK-NEXT:      %2 = affine.apply [[MAP1]](%i0, %i1)
 // CHECK-NEXT:      %3 = affine.apply [[MAP2]](%1, %2)
@@ -92,17 +92,17 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 func @store_load_nested(%N : index) {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
-    for %i1 = 0 to %N {
+    affine.for %i1 = 0 to %N {
       %v0 = load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
     }
   }
   return
 // CHECK:       %cst = constant 7.000000e+00 : f32
-// CHECK-NEXT:  for %i0 = 0 to 10 {
-// CHECK-NEXT:    for %i1 = 0 to %arg0 {
+// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
+// CHECK-NEXT:    affine.for %i1 = 0 to %arg0 {
 // CHECK-NEXT:      %0 = addf %cst, %cst : f32
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
@@ -117,12 +117,12 @@ func @multi_store_load_nested_no_fwd(%N : index) {
   %cf7 = constant 7.0 : f32
   %cf8 = constant 8.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
-    for %i1 = 0 to %N {
+    affine.for %i1 = 0 to %N {
       store %cf8, %m[%i1] : memref<10xf32>
     }
-    for %i2 = 0 to %N {
+    affine.for %i2 = 0 to %N {
       // CHECK: %{{[0-9]+}} = load %0[%i0] : memref<10xf32>
       %v0 = load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
@@ -138,9 +138,9 @@ func @store_load_store_nested_no_fwd(%N : index) {
   %cf7 = constant 7.0 : f32
   %cf9 = constant 9.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
-    for %i1 = 0 to %N {
+    affine.for %i1 = 0 to %N {
       // CHECK: %{{[0-9]+}} = load %0[%i0] : memref<10xf32>
       %v0 = load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
@@ -159,16 +159,16 @@ func @multi_store_load_nested_fwd(%N : index) {
   %cf9 = constant 9.0 : f32
   %cf10 = constant 10.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
-    for %i1 = 0 to %N {
+    affine.for %i1 = 0 to %N {
       store %cf8, %m[%i1] : memref<10xf32>
     }
-    for %i2 = 0 to %N {
+    affine.for %i2 = 0 to %N {
       store %cf9, %m[%i2] : memref<10xf32>
     }
     store %cf10, %m[%i0] : memref<10xf32>
-    for %i3 = 0 to %N {
+    affine.for %i3 = 0 to %N {
       // CHECK-NOT: %{{[0-9]+}} = load
       %v0 = load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
@@ -182,10 +182,10 @@ func @multi_store_load_nested_fwd(%N : index) {
 func @store_load_no_fwd() {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
-    for %i1 = 0 to 10 {
-      for %i2 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.for %i2 = 0 to 10 {
         // CHECK: load %{{[0-9]+}}
         %v0 = load %m[%i2] : memref<10xf32>
         %v1 = addf %v0, %v0 : f32
@@ -202,9 +202,9 @@ func @store_load_fwd() {
   %c0 = constant 0 : index
   %m = alloc() : memref<10xf32>
   store %cf7, %m[%c0] : memref<10xf32>
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
-      for %i2 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
+      affine.for %i2 = 0 to 10 {
         // CHECK-NOT: load %{{[0-9]}}+
         %v0 = load %m[%c0] : memref<10xf32>
         %v1 = addf %v0, %v0 : f32
@@ -223,9 +223,9 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %m = alloc() : memref<10xf32>
-  for %i0 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
     store %cf7, %m[%i0] : memref<10xf32>
-    for %i1 = 0 to %N {
+    affine.for %i1 = 0 to %N {
       %v0 = load %m[%i0] : memref<10xf32>
       %v1 = addf %v0, %v0 : f32
       %idx = affine.apply (d0) -> (d0 + 1) (%i0)
@@ -236,9 +236,9 @@ func @store_load_store_nested_fwd(%N : index) -> f32 {
   %v3 = load %m[%c1] : memref<10xf32>
   return %v3 : f32
 // CHECK:       %0 = alloc() : memref<10xf32>
-// CHECK-NEXT:  for %i0 = 0 to 10 {
+// CHECK-NEXT:  affine.for %i0 = 0 to 10 {
 // CHECK-NEXT:    store %cst, %0[%i0] : memref<10xf32>
-// CHECK-NEXT:    for %i1 = 0 to %arg0 {
+// CHECK-NEXT:    affine.for %i1 = 0 to %arg0 {
 // CHECK-NEXT:      %1 = addf %cst, %cst : f32
 // CHECK-NEXT:      %2 = affine.apply [[MAP4]](%i0)
 // CHECK-NEXT:      store %cst_0, %0[%2] : memref<10xf32>

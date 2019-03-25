@@ -39,9 +39,9 @@ These restrictions may be lifted in the future.
 
 ### Output IR
 
-Functions with `for` and `affine.if` instructions eliminated. These functions
-may contain operations from the Standard dialect in addition to those already
-present before the pass.
+Functions with `affine.for` and `affine.if` instructions eliminated. These
+functions may contain operations from the Standard dialect in addition to those
+already present before the pass.
 
 ### Invariants
 
@@ -95,10 +95,10 @@ Input
 ```mlir
 func @loop_nest_tiled() -> memref<256x1024xf32> {
   %0 = alloc() : memref<256x1024xf32>
-  for %i0 = 0 to 256 step 32 {
-    for %i1 = 0 to 1024 step 32 {
-      for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 32)(%i0) {
-        for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 32)(%i1) {
+  affine.for %i0 = 0 to 256 step 32 {
+    affine.for %i1 = 0 to 1024 step 32 {
+      affine.for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 32)(%i0) {
+        affine.for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 32)(%i1) {
           %1 = load %0[%i2, %i3] : memref<256x1024xf32>
         }
       }
@@ -119,16 +119,16 @@ func @loop_nest_tiled() -> memref<256x1024xf32> {
   %c32 = constant 32 : index
   %c0 = constant 0 : index
   %0 = alloc() : memref<256x1024xf32>
-  for %i0 = 0 to 256 step 32 {
-    for %i1 = 0 to 1024 step 32 {
+  affine.for %i0 = 0 to 256 step 32 {
+    affine.for %i1 = 0 to 1024 step 32 {
       %1 = affine.apply #map1(%i0)
       %2 = affine.apply #map1(%i1)
       %3 = alloc() : memref<32x32xf32, 1>
       %4 = alloc() : memref<1xi32>
       dma_start %0[%1, %2], %3[%c0, %c0], %c1024, %4[%c0], %c1024, %c32 : memref<256x1024xf32>, memref<32x32xf32, 1>, memref<1xi32>
       dma_wait %4[%c0], %c1024 : memref<1xi32>
-      for %i2 = #map1(%i0) to #map2(%i0) {
-        for %i3 = #map1(%i1) to #map2(%i1) {
+      affine.for %i2 = #map1(%i0) to #map2(%i0) {
+        affine.for %i3 = #map1(%i1) to #map2(%i1) {
           %5 = affine.apply #map3(%i0, %i2)
           %6 = affine.apply #map3(%i1, %i3)
           %7 = load %3[%5, %6] : memref<32x32xf32, 1>
@@ -194,8 +194,8 @@ Input
 func @store_load_affine_apply() -> memref<10x10xf32> {
   %cf7 = constant 7.0 : f32
   %m = alloc() : memref<10x10xf32>
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       %t0 = affine.apply (d0, d1) -> (d1 + 1)(%i0, %i1)
       %t1 = affine.apply (d0, d1) -> (d0)(%i0, %i1)
       %idx0 = affine.apply (d0, d1) -> (d1) (%t0, %t1)
@@ -217,8 +217,8 @@ Output
 func @store_load_affine_apply() -> memref<10x10xf32> {
   %cst = constant 7.000000e+00 : f32
   %0 = alloc() : memref<10x10xf32>
-  for %i0 = 0 to 10 {
-    for %i1 = 0 to 10 {
+  affine.for %i0 = 0 to 10 {
+    affine.for %i1 = 0 to 10 {
       %3 = affine.apply #map1(%1, %2)
       %4 = affine.apply #map2(%1, %2)
       store %cst, %0[%3, %4] : memref<10x10xf32>
@@ -258,7 +258,7 @@ Input
   %2 = alloc() : memref<1xf32>
   %c0 = constant 0 : index
   %c128 = constant 128 : index
-  for %i0 = 0 to 8 {
+  affine.for %i0 = 0 to 8 {
     dma_start %0[%i0], %1[%i0], %c128, %2[%c0] : memref<256xf32>, memref<32xf32, 1>, memref<1xf32>
     dma_wait %2[%c0], %c128 : memref<1xf32>
     %3 = load %1[%i0] : memref<32xf32, 1>
@@ -282,7 +282,7 @@ Output
   %1 = alloc() : memref<2x32xf32, 1>
   %2 = alloc() : memref<2x1xf32>
   dma_start %0[%c0], %1[%c0, %c0], %c128, %2[%c0, %c0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
-  for %i0 = 1 to 8 {
+  affine.for %i0 = 1 to 8 {
     %3 = affine.apply #map2(%i0)
     %4 = affine.apply #map2(%i0)
     dma_start %0[%i0], %1[%3, %i0], %c128, %2[%4, %c0] : memref<256xf32>, memref<2x32xf32, 1>, memref<2x1xf32>
