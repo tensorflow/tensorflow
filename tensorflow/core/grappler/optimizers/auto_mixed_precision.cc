@@ -273,6 +273,8 @@ class NodeTypeAttrMap {
  private:
   Status AddNode(const NodeDef& node) {
     const OpDef* op_def_ptr = nullptr;
+    // TODO(benbarsdell): This may fail if node.op() is a function. It will
+    // need to be addressed when we add support for functions.
     TF_RETURN_IF_ERROR(
         OpRegistry::Global()->LookUpOpDef(node.op(), &op_def_ptr));
     const OpDef& op_def = *op_def_ptr;
@@ -1089,7 +1091,9 @@ bool IsFloat32(const NodeTypeId& node_type) {
 bool AutoMixedPrecisionImpl::SupportsFloat16(
     const NodeTypeId& node_type) const {
   const OpDef* op_def;
-  OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
+  Status status =
+      OpRegistry::Global()->LookUpOpDef(node_type.node->op(), &op_def);
+  if (!status.ok()) return false;
   return AllowedDataTypes(*op_def, node_type.type_attr)
              .Contains(DataType::DT_HALF) &&
          NodeHasFP16KernelForTypeAttr(*node_type.node, node_type.type_attr);
