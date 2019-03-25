@@ -48,10 +48,11 @@ struct TypeID {
 
 namespace detail {
 class TypeUniquer;
+} // end namespace detail
 
 /// Base storage class appearing in a Type.
 struct TypeStorage {
-  friend TypeUniquer;
+  friend detail::TypeUniquer;
 
 protected:
   /// This constructor is used by derived classes as part of the TypeUniquer.
@@ -103,8 +104,6 @@ private:
 /// Default storage type for types that require no additional initialization or
 /// storage.
 using DefaultTypeStorage = TypeStorage;
-
-} // end namespace detail
 
 //===----------------------------------------------------------------------===//
 // TypeStorageAllocator

@@ -29,10 +29,10 @@ class FloatType;
 class IndexType;
 class IntegerType;
 class MLIRContext;
+struct TypeStorage;
 
 namespace detail {
 struct FunctionTypeStorage;
-struct TypeStorage;
 struct UnknownTypeStorage;
 } // namespace detail
 
@@ -122,7 +122,7 @@ public:
   ///     * The type storage object containing the necessary instance
   ///       information for the ConcreteType.
   template <typename ConcreteType, typename BaseType,
-            typename StorageType = detail::DefaultTypeStorage>
+            typename StorageType = DefaultTypeStorage>
   class TypeBase : public BaseType {
   public:
     using BaseType::BaseType;
@@ -167,7 +167,7 @@ public:
     }
   };
 
-  using ImplType = detail::TypeStorage;
+  using ImplType = TypeStorage;
 
   Type() : type(nullptr) {}
   /* implicit */ Type(const ImplType *type)

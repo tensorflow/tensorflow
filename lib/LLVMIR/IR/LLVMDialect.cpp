@@ -34,7 +34,7 @@ using namespace mlir::LLVM;
 namespace mlir {
 namespace LLVM {
 namespace detail {
-struct LLVMTypeStorage : public ::mlir::detail::TypeStorage {
+struct LLVMTypeStorage : public ::mlir::TypeStorage {
   LLVMTypeStorage(llvm::Type *ty) : underlyingType(ty) {}
 
   // LLVM types are pointer-unique.
