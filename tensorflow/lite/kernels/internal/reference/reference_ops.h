@@ -2175,39 +2175,37 @@ inline void Slice(const tflite::SliceParams& op_params,
                   const RuntimeShape& input_shape,
                   const RuntimeShape& output_shape,
                   SequentialTensorWriter<T>* writer) {
-  const RuntimeShape ext_shape = RuntimeShape::ExtendedShape(4, input_shape);
-  // TODO(dkalenichenko): This op only supports 4D tensors or smaller.
-  TFLITE_DCHECK_LE(op_params.begin_count, 4);
-  TFLITE_DCHECK_LE(op_params.size_count, 4);
-  const int begin_count = op_params.begin_count;
-  const int size_count = op_params.size_count;
-  // We front-pad the begin and size vectors.
-  const int start_b = 4 - begin_count > 0 ? 0 : op_params.begin[0];
-  const int stop_b = (4 - size_count > 0 || op_params.size[0] == -1)
-                         ? ext_shape.Dims(0)
-                         : start_b + op_params.size[0];
-  const int start_h = begin_count < 3 ? 0 : op_params.begin[begin_count - 3];
-  const int stop_h = (size_count < 3 || op_params.size[size_count - 3] == -1)
-                         ? ext_shape.Dims(1)
-                         : start_h + op_params.size[size_count - 3];
-  const int start_w = begin_count < 2 ? 0 : op_params.begin[begin_count - 2];
-  const int stop_w = (size_count < 2 || op_params.size[size_count - 2] == -1)
-                         ? ext_shape.Dims(2)
-                         : start_w + op_params.size[size_count - 2];
-  const int start_d = begin_count < 1 ? 0 : op_params.begin[begin_count - 1];
-  const int stop_d = (size_count < 1 || op_params.size[size_count - 1] == -1)
-                         ? ext_shape.Dims(3)
-                         : start_d + op_params.size[size_count - 1];
+  const int slice_dimensions = input_shape.DimensionsCount();
+  std::vector<int> start;
+  std::vector<int> stop;
+  int start_i;
+  int stop_i;
 
-  for (int in_b = start_b; in_b < stop_b; ++in_b) {
-    for (int in_h = start_h; in_h < stop_h; ++in_h) {
-      for (int in_w = start_w; in_w < stop_w; ++in_w) {
-        for (int in_d = start_d; in_d < stop_d; ++in_d) {
-          writer->Write(Offset(ext_shape, in_b, in_h, in_w, in_d));
-        }
-      }
-    }
+  for (int i = 0; i < op_params.begin_count; i++) {
+    start_i = op_params.begin[i];
+    stop_i = op_params.size[i] == -1 ? input_shape.Dims(i) - start_i
+                                     : start_i + op_params.size[i];
+    start.emplace_back(start_i);
+    stop.emplace_back(stop_i);
   }
+
+  std::function<void(int, int)> compute_slice =
+      [&compute_slice, slice_dimensions, writer, input_shape, start, stop,
+       op_params](int axis, int curr_indices) {
+        if (axis == (slice_dimensions - 1)) {
+          for (int in_x = start[axis]; in_x < stop[axis]; in_x++) {
+            int index = in_x + curr_indices;
+            writer->Write(index);
+          }
+        } else {
+          for (int in_x = start[axis]; in_x < stop[axis]; in_x++) {
+            int indices = (in_x + curr_indices) * input_shape.Dims(axis + 1);
+            compute_slice(axis + 1, indices);
+          }
+        }
+      };
+
+  compute_slice(0, 0);
 }
 
 template <typename T>

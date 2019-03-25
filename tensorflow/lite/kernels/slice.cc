@@ -40,8 +40,7 @@ constexpr int kBeginTensor = 1;
 constexpr int kSizeTensor = 2;
 constexpr int kOutputTensor = 0;
 
-// This Op only supports 1-4D cases and since we use the optimized ops 4D
-// implementation, the 1-3D tensors are mapped to 4D.
+// This Op only supports 1-4D cases.
 const int kMaxDim = 4;
 
 template <typename T>
@@ -124,6 +123,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
   TF_LITE_ENSURE_MSG(context, NumDimensions(input) <= kMaxDim,
                      "Slice op only supports 1D-4D input arrays.");
+  // Current implementation limits by expecting begin fills all dims of input
+  TF_LITE_ENSURE_EQ(context, NumDimensions(input), NumElements(begin));
 
   // Postpone allocation of output if any of the indexing tensors is not
   // constant
@@ -148,9 +149,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   std::vector<int> begins;
-  begins.reserve(kMaxDim);
+  begins.reserve(NumDimensions(input));
   std::vector<int> sizes;
-  sizes.reserve(kMaxDim);
+  sizes.reserve(NumDimensions(input));
 
   if (begin->type == kTfLiteInt32) {
     GetBeginAndSizeVectors<int32_t>(NumDimensions(input), begin, size, &begins,
@@ -164,11 +165,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  for (int i = NumDimensions(input); i < kMaxDim; ++i) {
-    begins.push_back(0);
-    sizes.push_back(1);
-  }
-
   // The original Slice op implementation only accepted 4-D sizes. That
   // constraint is, for the present, maintained here.
   //
@@ -177,14 +173,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // the needed reversing.
 #define TF_LITE_SLICE(data_type, kernel_type)                                  \
   {                                                                            \
-    TF_LITE_ENSURE_EQ(context, begins.size(), 4);                              \
-    TF_LITE_ENSURE_EQ(context, sizes.size(), 4);                               \
     tflite::SliceParams op_params;                                             \
-    op_params.begin_count = 4;                                                 \
-    op_params.size_count = 4;                                                  \
-    for (int i = 0; i < 4; ++i) {                                              \
-      op_params.begin[i] = begins[3 - i];                                      \
-      op_params.size[i] = sizes[3 - i];                                        \
+    int begin_size = begins.size();                                            \
+    op_params.begin_count = begin_size;                                        \
+    op_params.size_count = begin_size;                                         \
+    for (int i = 0; i < begin_size; ++i) {                                     \
+      op_params.begin[i] = begins[begin_size - 1 - i];                         \
+      op_params.size[i] = sizes[begin_size - 1 - i];                           \
     }                                                                          \
                                                                                \
     if (kernel_type == kGenericOptimized) {                                    \
