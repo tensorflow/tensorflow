@@ -49,11 +49,13 @@ def normalize_cluster_spec(cluster_spec):
 def _validate_cluster_spec(cluster_spec, task_type, task_id):
   """Validates `cluster_spec`.
 
-  It checks
-  1) whether there is such a task type as `task_type` in the
-  `cluster_spec`.
-  2) whether there is at most one "chief" job.
-  3) whether the `task_id` is smaller than the number of `task_type`.
+  It checks:
+  1) task type is one of "chief", "worker" or "evaluator".
+  2) whether there is such a task type as `task_type` in the `cluster_spec`.
+  3) whether there is at most one "chief" job.
+  4) whether there is at most one "evaluator" job.
+  5) whether the `task_id` is smaller than the number of tasks for that
+     particular `task_type`.
 
   Args:
     cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object to be validated.
@@ -63,10 +65,20 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
     ValueError: if `cluster_spec` fails any check.
   """
   cluster_spec = normalize_cluster_spec(cluster_spec).as_dict()
+  if task_type not in ("chief", "worker", "evaluator", "ps"):
+    raise ValueError(
+        "Unrecognized task_type: %r, valid task types are: \"chief\", "
+        "\"worker\", \"evaluator\" and \"ps\"." % task_type)
+
   if task_type and task_type not in cluster_spec:
     raise ValueError("`task_type` %r not found in cluster_spec." % task_type)
+
   if len(cluster_spec.get("chief", [])) > 1:
     raise ValueError("There must be at most one 'chief' job.")
+
+  if len(cluster_spec.get("evaluator", [])) > 1:
+    raise ValueError("There must be at most one 'evaluator' job.")
+
   if task_id >= len(cluster_spec[task_type]):
     raise ValueError(
         "The `task_id` %d exceeds the maximum id of %s." % (task_id, task_type))
@@ -74,6 +86,10 @@ def _validate_cluster_spec(cluster_spec, task_type, task_id):
 
 def is_chief(cluster_spec, task_type, task_id):
   """Returns whether the given task is chief in the cluster.
+
+  Since there is at most one evaluator and the evaluator itself should be
+  independent of the training cluster, the evaluator job is also a chief job on
+  its own.
 
   Args:
     cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object specifying the
@@ -91,7 +107,7 @@ def is_chief(cluster_spec, task_type, task_id):
   _validate_cluster_spec(cluster_spec, task_type, task_id)
   cluster_spec = normalize_cluster_spec(cluster_spec).as_dict()
 
-  if task_type == "chief":
+  if task_type == "chief" or task_type == "evaluator":
     return True
 
   # If chief not in the cluster_spec, use the first worker as chief. This is
@@ -99,6 +115,40 @@ def is_chief(cluster_spec, task_type, task_id):
   if ("chief" not in cluster_spec and task_type == "worker" and task_id == 0):
     return True
   return False
+
+
+def collective_leader(cluster_spec, task_type, task_id):
+  """Return the job name for the leader of for collective ops.
+
+  Args:
+    cluster_spec: a dict, `ClusterDef` or `ClusterSpec` object specifying the
+      cluster configurations.
+    task_type: the task type in the cluster.
+    task_id: the task id in the cluster.
+
+  Returns:
+    a string indicating the leader job name or empty string if no need to set
+    leader job.
+  """
+  cluster_spec = normalize_cluster_spec(cluster_spec)
+
+  # No need to set collective leader for local.
+  if not cluster_spec.as_dict():
+    return ""
+
+  _validate_cluster_spec(cluster_spec, task_type, task_id)
+
+  # Only one evaluator, so no need to set collective leader.
+  if task_type == "evaluator":
+    return ""
+
+  # Use chief if chief is in the cluster.
+  if "chief" in cluster_spec.jobs:
+    return "/job:chief/replica:0/task:0"
+
+  # Use worker 0 if no chief job.
+  assert "worker" in cluster_spec.jobs
+  return "/job:worker/replica:0/task:0"
 
 
 def worker_count(cluster_spec, task_type):

@@ -349,6 +349,51 @@ Status AddInputDevicesToCacheKey(const EagerContext* ctx,
   return Status::OK();
 }
 
+Status ShouldCompileWithXLA(const EagerOperation* op, const Device* device,
+                            const EagerContext* ctx, bool* compile_with_xla) {
+  if (!op->is_function() || device == nullptr) {
+    *compile_with_xla = false;
+    return Status::OK();
+  }
+
+  // Does node have an explicit request to compile or not?
+  Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
+  if (status.ok()) {
+    VLOG(2) << "Caller explicitly requested "
+            << (*compile_with_xla ? "" : "not ")
+            << "to compile with XLA: " << op->DebugString();
+    return Status::OK();
+  }
+
+  // Does FunctionDef have an explicit request to compile or not?
+  const FunctionDef* function_def =
+      ctx->func_lib(device)->GetFunctionLibraryDefinition()->Find(op->Name());
+  if (function_def == nullptr) {
+    return errors::NotFound("Failed to find function '", op->Name(), "'");
+  }
+
+  status = GetNodeAttr(AttrSlice(&function_def->attr()), kXlaCompileAttr,
+                       compile_with_xla);
+  if (status.ok()) {
+    VLOG(2) << "Function definition explicitly specifies "
+            << (*compile_with_xla ? "" : "not ") << "to compile with XLA";
+    return Status::OK();
+  }
+
+  // No explicit requests. Compile for XLA devices by default.
+  if (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
+      device->device_type() == "XLA_CPU") {
+    VLOG(2) << "Compiling " << op->Name()
+            << " with XLA because it is running on an XLA device "
+            << device->device_type();
+    *compile_with_xla = true;
+  } else {
+    *compile_with_xla = false;
+  }
+
+  return Status::OK();
+}
+
 // There are a lot of references to devices in this function and around.
 // Here is what they mean:
 //  EagerOperation::Device(): The device on which the user requested the op
@@ -390,16 +435,17 @@ Status EagerLocalExecute(EagerOperation* op,
   if (kernel == nullptr) {
     VLOG(2) << "Creating new kernel for " << op->Name() << " on device "
             << maybe_unspecified_device_name;
-    // If we are running a function on explicitly requested TPU,
-    // compile it with XLA.
-    // Note that it is not ideal, but currently ok, to set this
-    // attribute after computing the kernel cache key above.
-    bool compile_with_xla = false;
-    if (op->is_function() && device != nullptr &&
-        (device->device_type() == "TPU" || device->device_type() == "XLA_GPU" ||
-         device->device_type() == "XLA_CPU")) {
+    bool compile_with_xla;
+    TF_RETURN_IF_ERROR(
+        ShouldCompileWithXLA(op, device, ctx, &compile_with_xla));
+    if (compile_with_xla) {
+      // Note that it is not ideal, but currently correct, to set this
+      // attribute after computing the kernel cache key above.
+      // TODO(iga): Creating XlaLaunchOp kernel directly here would be much
+      // better than setting this attribute and relying on
+      // custom_kernel_creator.
+      // Note: If the attribute is already set to true, this is a noop.
       op->MutableAttrs()->Set(kXlaCompileAttr, true);
-      compile_with_xla = true;
     }
     bool run_function_with_flr = is_multi_device_function && !compile_with_xla;
 

@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <algorithm>
+#include <cmath>
 #include <iterator>
 #include <memory>
 #include <numeric>
@@ -1683,8 +1684,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
         strided_slice_params, ToRuntimeShape(input_array.shape()), axis,
         start_index);
 
-    int dim_size =
-        ceil(static_cast<float>(stop_index - start_index) / op->strides[axis]);
+    int dim_size = std::ceil(static_cast<float>(stop_index - start_index) /
+                             op->strides[axis]);
 
     CHECK_GT(dim_size, 0)
         << "Output size for an axis must be greater than 0. Axis " << axis
@@ -2060,6 +2061,43 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
   idx_output_array.copy_shape(input_array.shape());
 }
 
+void ProcessMatrixDiagOperator(Model* model, MatrixDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 1);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& input_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // The input array must have a shape in order to proceed. Also,
+  // bail out if the output shape has already been calculated.
+  if (!input_array.has_shape() || output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+  // Get the input_shape
+  Shape* mutable_shape = input_array.mutable_shape();
+  std::vector<int>* dims = mutable_shape->mutable_dims();
+  int dims_size = dims->size();
+  // Scalars are not allowed.
+  CHECK_GT(dims_size, 0);
+  int last_dim = (*dims)[dims_size - 1];
+  dims->push_back(last_dim);
+  output_array.copy_shape(*mutable_shape);
+}
+
+void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
+  CHECK_EQ(op->inputs.size(), 2);
+  CHECK_EQ(op->outputs.size(), 1);
+  auto& input_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  // The shape of the input array must be known because that will
+  // be the shape of the output array.
+  if (!input_array.has_shape() || !output_array.has_shape()) {
+    // We have already run
+    return;
+  }
+
+  output_array.copy_shape(input_array.shape());
+}
+
 }  // namespace
 
 ::tensorflow::Status PropagateFixedSizes::Run(Model* model,
@@ -2362,6 +2400,13 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
       // The size of the output can only be known after evaluating the cond
       // tensor. Ignore shape propagation here and defer that to the
       // interpreter.
+      break;
+    case OperatorType::kMatrixDiag:
+      ProcessMatrixDiagOperator(model, static_cast<MatrixDiagOperator*>(op));
+      break;
+    case OperatorType::kMatrixSetDiag:
+      ProcessMatrixSetDiagOperator(model,
+                                   static_cast<MatrixSetDiagOperator*>(op));
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

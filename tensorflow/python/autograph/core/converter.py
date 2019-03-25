@@ -63,6 +63,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import enum
 
 from tensorflow.python.autograph.core import config
@@ -86,20 +87,6 @@ from tensorflow.python.util.tf_export import tf_export
 # to the actual entity and have conversion methods.
 
 # TODO(mdan): Add a test specific to this converter.
-
-
-# TODO(mdan): Remove when updating the API.
-@tf_export('autograph.experimental.Verbosity')
-class Verbosity(enum.IntEnum):
-  """Represents conversion verbosity levels.
-
-  Attributes:
-    BRIEF: No logging, minimal error messages.
-    VERBOSE: Detailed logging of generated code, detailed error messages.
-  """
-
-  BRIEF = 0
-  VERBOSE = 1
 
 
 @tf_export('autograph.experimental.Feature')
@@ -175,6 +162,20 @@ class ConversionOptions(object):
     optional_features = frozenset(optional_features)
     self.optional_features = optional_features
 
+  def as_tuple(self):
+    return (self.recursive, self.force_conversion,
+            self.internal_convert_user_code, self.optional_features)
+
+  def __hash__(self):
+    return hash(self.as_tuple())
+
+  def __eq__(self, other):
+    assert isinstance(other, ConversionOptions)
+    return self.as_tuple() == other.as_tuple()
+
+  def __str__(self):
+    return 'ConversionOptions[{}]'
+
   def uses(self, feature):
     return (Feature.ALL in self.optional_features or
             feature in self.optional_features)
@@ -218,7 +219,8 @@ class ConversionOptions(object):
     return expr_ast[0].value
 
 
-class ProgramContext(object):
+class ProgramContext(
+    collections.namedtuple('ProgramContext', ('options', 'autograph_module'))):
   """ProgramContext keeps track of converting function hierarchies.
 
   This object is mutable, and is updated during conversion. Not thread safe.
@@ -227,24 +229,8 @@ class ProgramContext(object):
     options: ConversionOptions
     autograph_module: Module, a reference to the autograph module. This needs to
       be specified by the caller to avoid circular dependencies.
-    required_imports: str, containing an import statement on each line. These
-      are all the imports necessary for the compiled code to run, in addition to
-      the closures of each entity, which are attached dynamically.
   """
-
-  def __init__(
-      self,
-      options,
-      autograph_module,
-  ):
-    self.options = options
-    self.autograph_module = autograph_module
-
-  @property
-  def required_imports(self):
-    """Returns a block containing all imports required by the converted code."""
-    # TODO(mdan): Check that these don't clobber one another.
-    return '\n'.join(config.COMPILED_IMPORT_STATEMENTS)
+  pass
 
 
 class EntityContext(transformer.Context):

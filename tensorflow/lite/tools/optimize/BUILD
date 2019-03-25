@@ -26,6 +26,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "model_utils",
+    srcs = ["model_utils.cc"],
+    hdrs = ["model_utils.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+        "//tensorflow/lite/kernels/internal:types",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
 tf_cc_test(
     name = "quantization_utils_test",
     srcs = ["quantization_utils_test.cc"],
@@ -57,6 +70,7 @@ cc_library(
     hdrs = ["quantize_weights.h"],
     deps = [
         ":quantization_utils",
+        ":model_utils",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
         "//tensorflow/lite:framework",
@@ -74,6 +88,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
+        "//tensorflow/lite/tools/optimize:testdata/quantized_with_gather.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
         "//tensorflow/lite/tools/optimize:testdata/weight_shared_between_convs.bin",
     ],
@@ -129,6 +144,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin)",
     ],
     data = [
+        "//tensorflow/lite/tools/optimize:testdata/add_with_const_input.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_conv_weights_min_0_max_plus_10.bin",
@@ -156,6 +172,7 @@ cc_library(
     srcs = ["quantize_model.cc"],
     hdrs = ["quantize_model.h"],
     deps = [
+        ":model_utils",
         ":subgraph_quantizer",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/core/api",

@@ -6,6 +6,10 @@ Therefore, a TensorFlow model
 ([protocol buffer](https://developers.google.com/protocol-buffers/)) needs to be
 converted into a `FlatBuffer` file before deploying to clients.
 
+Note: This page contains documentation on the converter API for TensorFlow 1.x.
+The API for TensorFlow 2.0 is available
+[here](https://www.tensorflow.org/lite/r2/convert/).
+
 ## From model training to device deployment
 
 The TensorFlow Lite converter generates a TensorFlow Lite

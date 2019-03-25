@@ -28,15 +28,15 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.optimizer_v2 import adagrad
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import estimator_training as dc_training
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import exporter as exporter_lib
@@ -251,7 +251,7 @@ class DistributeCoordinatorIntegrationTest(
 
   def _get_strategy_object(self, strategy_cls):
     if strategy_cls == mirrored_strategy.CoreMirroredStrategy:
-      return strategy_cls(mirrored_strategy.all_local_devices())
+      return strategy_cls()
     else:
       return strategy_cls(num_gpus_per_worker=context.num_gpus())
 
@@ -269,6 +269,7 @@ class DistributeCoordinatorIntegrationTest(
               mirrored_strategy.MirroredStrategy,
               mirrored_strategy.CoreMirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
+              collective_all_reduce_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
   def test_complete_flow_standalone_client(self, train_distribute_cls,
@@ -371,9 +372,11 @@ class DistributeCoordinatorIntegrationTest(
               parameter_server_strategy.ParameterServerStrategy,
           ],
           eval_distribute_cls=[
-              None, mirrored_strategy.MirroredStrategy,
+              None,
+              mirrored_strategy.MirroredStrategy,
               mirrored_strategy.CoreMirroredStrategy,
               parameter_server_strategy.ParameterServerStrategy,
+              collective_all_reduce_strategy.CollectiveAllReduceStrategy,
           ],
           required_gpus=[0, 1]))
   def test_complete_flow_independent_worker_between_graph(

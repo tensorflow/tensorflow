@@ -39,7 +39,7 @@ class Registry(object):
   def __init__(self, name):
     """Creates a new registry."""
     self._name = name
-    self._registry = dict()
+    self._registry = {}
 
   def register(self, candidate, name=None):
     """Registers a Python object "candidate" for the given "name".

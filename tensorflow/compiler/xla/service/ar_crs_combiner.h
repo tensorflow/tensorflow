@@ -93,8 +93,21 @@ class ArCrsCombiner : public HloModulePass {
         : ar(all_reduce), crs(cross_replica_sum), distance(dist) {}
 
     string ToString() {
-      return absl::StrCat("(AR: ", ar->name(), ", CRS: ", crs->name(),
-                          ", distance: ", distance, ")");
+      std::vector<string> pieces;
+      pieces.push_back("(");
+      HloInstruction* instruction = ar;
+      while (instruction != crs) {
+        pieces.push_back(instruction->name());
+        pieces.push_back(",");
+        instruction = instruction->users()[0];
+      }
+      pieces.push_back(instruction->name());
+      pieces.push_back(")[id:");
+      pieces.push_back(std::to_string(*(ar->all_reduce_id())));
+      pieces.push_back(",dist:");
+      pieces.push_back(std::to_string(distance));
+      pieces.push_back("]");
+      return absl::StrJoin(pieces, "");
     }
   };
 

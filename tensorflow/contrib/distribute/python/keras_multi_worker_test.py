@@ -32,14 +32,14 @@ from absl.testing import parameterized
 
 # pylint: disable=g-direct-tensorflow-import
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy as collective_strategy
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base as test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops

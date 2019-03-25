@@ -15,13 +15,13 @@ load(
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
-    "tf_custom_op_library",
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
@@ -161,6 +161,7 @@ tf_custom_op_py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":trt_ops",
+        ":wrap_py_utils",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
@@ -286,10 +287,13 @@ tf_cuda_cc_test(
         "nomac",
     ],
     deps = [
+        ":trt_op_kernels",
+        ":trt_op_libs",
         ":trt_conversion",
         "@com_google_googletest//:gtest",
         "@com_google_absl//absl/strings",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:cluster",
@@ -444,4 +448,14 @@ cc_library(
     deps = if_tensorrt([
         "@local_config_tensorrt//:tensorrt",
     ]),
+)
+
+tf_py_wrap_cc(
+    name = "wrap_py_utils",
+    srcs = ["utils/py_utils.i"],
+    copts = tf_copts(),
+    deps = [
+        "//tensorflow/compiler/tf2tensorrt:py_utils",
+        "//third_party/python_runtime:headers",
+    ],
 )

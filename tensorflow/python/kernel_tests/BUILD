@@ -1198,7 +1198,7 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
-tf_py_test(
+cuda_py_test(
     name = "tridiagonal_solve_op_test",
     size = "medium",
     srcs = ["tridiagonal_solve_op_test.py"],
@@ -1208,7 +1208,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
     ],
-    shard_count = 5,
+    shard_count = 10,
 )
 
 tf_py_test(
@@ -1695,9 +1695,6 @@ cuda_py_test(
         "//tensorflow/python:while_v2",
     ],
     shard_count = 16,
-    tags = [
-        "no_gpu",  # TODO(b/117928656)
-    ],
     xla_enable_strict_auto_jit = True,
 )
 

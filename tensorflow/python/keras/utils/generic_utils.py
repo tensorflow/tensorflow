@@ -579,3 +579,11 @@ def is_all_none(structure):
     if element is not None:
       return False
   return True
+
+
+def check_for_unexpected_keys(name, input_dict, expected_values):
+  unknown = set(input_dict.keys()).difference(expected_values)
+  if unknown:
+    raise ValueError('Unknown entries in {} dictionary: {}. Only expected '
+                     'following keys: {}'.format(name, list(unknown),
+                                                 expected_values))

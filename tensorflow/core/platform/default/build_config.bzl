@@ -578,7 +578,7 @@ def tf_protos_grappler():
 
 def tf_additional_cupti_wrapper_deps():
     return [
-        "//tensorflow/core/platform/default/gpu:cupti_wrapper",
+        "//tensorflow/stream_executor/cuda:cupti_stub",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

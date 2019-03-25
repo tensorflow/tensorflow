@@ -36,6 +36,7 @@ class Module(tracking.AutoTrackable):
   functions which apply to user input. For example a dense layer in a neural
   network might be implemented as a `tf.Module`:
 
+  ```python
   >>> class Dense(tf.Module):
   ...   def __init__(self, in_features, output_features, name=None):
   ...     super(Dense, self).__init__(name=name)
@@ -46,19 +47,24 @@ class Module(tracking.AutoTrackable):
   ...   def __call__(self, x):
   ...     y = tf.matmul(x, self.w) + self.b
   ...     return tf.nn.relu(y)
+  ```
 
   You can use the Dense layer as you would expect:
 
+  ```python
   >>> d = Dense(input_features=64, output_features=10)
   >>> d(tf.ones([100, 64]))
   <tf.Tensor: ...>
+  ```
 
   By subclassing `tf.Module` instead of `object` any `tf.Variable` or
   `tf.Module` instances assigned to object properties can be collected using
   the `variables`, `trainable_variables` or `submodules` property:
 
+  ```python
   >>> d.variables
   (<tf.Variable 'b:0' ...>, <tf.Variable 'w:0' ...>)
+  ```
 
   Subclasses of `tf.Module` can also take advantage of the `_flatten` method
   which can be used to implement tracking of any other types.
@@ -71,6 +77,7 @@ class Module(tracking.AutoTrackable):
   `with self.name_scope:` or you can annotate methods (apart from `__init__`)
   with `@tf.Module.with_name_scope`.
 
+  ```python
   >>> class MLP(tf.Module):
   ...   def __init__(self, input_size, sizes, name=None):
   ...     super(MLP, self).__init__(name=name)
@@ -85,6 +92,7 @@ class Module(tracking.AutoTrackable):
   ...     for layer in self.layers:
   ...       x = layer(x)
   ...     return x
+  ```
   """
 
   def __init__(self, name=None):

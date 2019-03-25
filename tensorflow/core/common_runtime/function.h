@@ -157,7 +157,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // where L is a scalar-value function of (...x_i...).
 //
 // TODO(zhifengc): Asks math expert to say the comment again.
-FunctionBody* SymbolicGradient(const FunctionBody& f);
+std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f);
 
 struct InlineFunctionBodyOptions {
   // All nodes that have incoming control edge *from* the function call node,
@@ -168,11 +168,25 @@ struct InlineFunctionBodyOptions {
   //   b) data returns               (`ret` field in FunctionDef)
   enum class OutputControlSource { kDataOutputs, kControlOutputs };
 
+  // If 'true' function inlining is completely disabled. This allows to control
+  // function inlining for different types of function calls (see
+  // 'ExpandInlineFunctionsOptions' below).
+  bool disable_inlining = false;
   // Ignore '_noinline' function attribute.
   bool ignore_noinline = false;
   // If 'true' function inlining will override explicitly specified devices
   // inside function body with the caller node device.
   bool override_device = false;
+  // If 'true' function inlining will add an IdentityN node to the graph with
+  // the same name as the caller node. It will have a control edge from inlined
+  // 'output_control_node' and data edges from function output nodes. IdentityN
+  // node will be placed on the same device as the caller node.
+  // This is mostly for compatibility with Tensorflow v1 and sessions. When we
+  // prepare a graph for execution in GraphExecutionState::MakeForBaseGraph we
+  // don't know what nodes will be fetched, so we can't safely remove any of
+  // them. When graph executed as a function it has 'Retval' nodes for all
+  // fetched tensors, and we can safely inline function calls.
+  bool keep_caller_fetchable = false;
   // For compatibility with Tensorflow v1 by default we will use data outputs.
   // Control returns were added to Tensorflow v2 with automatic control
   // dependencies tracking in Eager mode.
@@ -267,6 +281,12 @@ inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return ExpandInlineFunctions(lib, graph, ExpandInlineFunctionsOptions());
 }
 
+// Extracts function name and attributes from `call_def`
+// `call_def` can be a native function call (where the op type is the function
+// name) or a call through PartitionedCall/StatefulPartitionedCall.
+Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                    NameAttrList* function);
+
 // Extracts function name and attributes from `call_def` and invokes
 // flr->Instantiate(name, attrs, handle).
 // `call_def` can be a native function call (where the op type is the function
@@ -283,11 +303,18 @@ bool IsFunctionCall(const FunctionLibraryDefinition& lib_def, const Node& n);
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
+Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
+                               const FunctionLibraryDefinition* lib_def,
+                               std::unique_ptr<FunctionBody>* fbody);
+
+// Instantiates FunctionDef into a graph. Set *fbody to point to the
+// FunctionBody that holds the instantiated FunctionDef. Use custom function
+// signature lookup, in case instantiated function is not in the 'lib_def'.
 Status FunctionDefToBodyHelper(
     const FunctionDef& fdef, const AttrSlice& attrs,
-    const FunctionLibraryDefinition* const lib_def,
+    const FunctionLibraryDefinition* lib_def,
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,
-    FunctionBody** fbody);
+    std::unique_ptr<FunctionBody>* fbody);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_

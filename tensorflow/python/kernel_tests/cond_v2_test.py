@@ -744,7 +744,7 @@ class CondV2Test(test.TestCase):
 
     nested_if_ops = []
     for func in ops.get_default_graph()._functions.values():
-      nested_if_ops.extend(op for op in func._graph.get_operations()
+      nested_if_ops.extend(op for op in func.graph.get_operations()
                            if op.type == "If")
     self.assertEqual(len(nested_if_ops), 1)
     with self.assertRaises(ValueError):
@@ -829,8 +829,6 @@ class CondV2Test(test.TestCase):
         self.evaluate(output_t), [-5, -4, -3, -2, -1, 0, 1, 4, 9, 16])
 
   @test_util.enable_control_flow_v2
-  @test_util.disable_xla(
-      "b/127846988: No tf2xla kernel for IfOp taking DT_VARIANT")
   def testCondAndTensorArrayInDefun(self):
 
     @function.defun

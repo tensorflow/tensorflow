@@ -169,6 +169,7 @@ cc_library(
         "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/hadoop:dataset_kernels",
+        "//tensorflow/contrib/image:image_ops_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_kernels",

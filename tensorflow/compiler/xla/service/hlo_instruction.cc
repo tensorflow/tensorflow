@@ -703,6 +703,7 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -1408,6 +1409,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -1754,6 +1756,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kPower:
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
@@ -2135,6 +2138,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRsqrt:
@@ -2600,6 +2604,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleIsFinite(this);
     case HloOpcode::kNot:
       return visitor->HandleNot(this);
+    case HloOpcode::kPopulationCount:
+      return visitor->HandlePopulationCount(this);
     case HloOpcode::kBitcast:
       return visitor->HandleBitcast(this);
     case HloOpcode::kBroadcast:
@@ -3383,6 +3389,11 @@ HloInstruction::parameter_replicated_at_leaf_buffers() const {
 
 int64 HloInstruction::tuple_index() const {
   return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
+}
+
+void HloInstruction::set_tuple_index(int64 new_tuple_index) {
+  return Cast<HloGetTupleElementInstruction>(this)->set_tuple_index(
+      new_tuple_index);
 }
 
 int32 HloInstruction::exponent_bits() const {

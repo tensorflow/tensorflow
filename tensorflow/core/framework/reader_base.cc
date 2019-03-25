@@ -202,7 +202,7 @@ string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
   string work;
   Notification n;
   queue->TryDequeue(
-      context, [this, context, &n, &work](const QueueInterface::Tuple& tuple) {
+      context, [context, &n, &work](const QueueInterface::Tuple& tuple) {
         if (context->status().ok()) {
           if (tuple.size() != 1) {
             context->SetStatus(

@@ -19,12 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -36,7 +35,8 @@ from tensorflow.python.util import nest
 class InputIteratorTestBase(test.TestCase):
 
   def _create_iterator(self, input_type, dataset_fn, worker_device_pairs,
-                       devices, split_batch_by):
+                       devices, split_batch_by,
+                       enable_get_next_as_optional):
     device_map = values.ReplicaDeviceMap(devices)
     input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
 
@@ -49,12 +49,14 @@ class InputIteratorTestBase(test.TestCase):
                 input_pipeline_id=i,
                 num_replicas_in_sync=len(devices)))
 
-      iterator = input_lib.InputFunctionIterator(dataset_fn, input_workers,
-                                                 input_contexts)
+      iterator = input_lib.InputFunctionIterator(
+          dataset_fn, input_workers, input_contexts,
+          _enable_get_next_as_optional=enable_get_next_as_optional)
     else:
       iterator = input_lib.DatasetIterator(
           dataset_fn(distribute_lib.InputContext()), input_workers,
-          split_batch_by)
+          split_batch_by,
+          _enable_get_next_as_optional=enable_get_next_as_optional)
     return iterator
 
   def _test_iterator(self,
@@ -63,10 +65,12 @@ class InputIteratorTestBase(test.TestCase):
                      worker_device_pairs,
                      expected_values,
                      sess=None,
-                     split_batch_by=None):
+                     split_batch_by=None,
+                     enable_get_next_as_optional=False):
     devices = nest.flatten([ds for _, ds in worker_device_pairs])
     iterator = self._create_iterator(
-        input_type, dataset_fn, worker_device_pairs, devices, split_batch_by)
+        input_type, dataset_fn, worker_device_pairs, devices, split_batch_by,
+        enable_get_next_as_optional)
 
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
     evaluate(control_flow_ops.group(iterator.initialize()))
@@ -154,7 +158,7 @@ class InputIteratorSingleWorkerTest(InputIteratorTestBase,
     # The last global batch only contains data for one replica.
     expected_values = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8], []]]
     self._test_iterator(input_type, dataset_fn, worker_device_pairs,
-                        expected_values)
+                        expected_values, enable_get_next_as_optional=True)
 
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
@@ -248,7 +252,8 @@ class InputIteratorMultiWorkerTest(
       expected_values = [[[0, 1], [2, 3], [0, 1], [2, 3]],
                          [[4, 5], [6, 7], [4, 5], [6, 7]], [[8], [], [8], []]]
       self._test_iterator(input_type, dataset_fn, worker_devices,
-                          expected_values, sess)
+                          expected_values, sess,
+                          enable_get_next_as_optional=True)
 
   @combinations.generate(
       combinations.combine(
@@ -266,7 +271,8 @@ class InputIteratorMultiWorkerTest(
       expected_values = [[[0, 1], [2, 3], [0, 1], [2, 3]],
                          [[4, 5], [6, 7], [4, 5], [6, 7]], [[], [], [8], []]]
       self._test_iterator(input_type, dataset_fn, worker_devices,
-                          expected_values, sess)
+                          expected_values, sess,
+                          enable_get_next_as_optional=True)
 
 
 if __name__ == "__main__":

@@ -23,9 +23,11 @@ import numpy as np
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.kernel_tests.random import util as \
+random_test_util
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import logging_ops
@@ -189,33 +191,60 @@ class StatefulRandomOpsTest(test.TestCase):
     compare(True, True)
     compare(True, False)
 
+  def _sameAsOldRandomOps(self, device):
+    def compare(dtype, old, new):
+      seed1, seed2 = 79, 25
+      # note how the two seeds for the old op correspond to the seed for the new
+      # op
+      with ops.device(device):
+        gen = random.Generator(seed=[0, seed2, seed1])
+
+      # create a graph for the old op in order to call it many times
+      @def_function.function
+      def run_old():
+        with ops.device(device):
+          return old(dtype, seed1, seed2)
+
+      def run_new():
+        with ops.device(device):
+          return new(dtype, gen)
+
+      for _ in range(100):
+        self.assertAllEqual(run_old(), run_new())
+
+    shape = constant_op.constant([4, 7])
+    minval = 128
+    maxval = 256
+
+    # passing `dtype` around to compress go/gpylint-faq#cell-var-from-loop and
+    # go/gpylint-faq#undefined-loop-variable
+    def old_normal(dtype, seed1, seed2):
+      return gen_random_ops.random_standard_normal(
+          shape, dtype=dtype, seed=seed1, seed2=seed2)
+    def new_normal(dtype, gen):
+      return gen._standard_normal(shape, dtype=dtype)
+    def old_uniform(dtype, seed1, seed2):
+      minval2 = constant_op.constant(minval, dtype=dtype)
+      maxval2 = constant_op.constant(maxval, dtype=dtype)
+      return gen_random_ops.random_uniform_int(
+          shape, minval=minval2, maxval=maxval2, seed=seed1, seed2=seed2)
+    def new_uniform(dtype, gen):
+      return gen.uniform(
+          shape, minval=minval, maxval=maxval, dtype=dtype)
+
+    for dtype in (dtypes.float16, dtypes.bfloat16, dtypes.float32,
+                  dtypes.float64):
+      compare(dtype, old_normal, new_normal)
+    for dtype in [dtypes.int32, dtypes.int64]:
+      compare(dtype, old_uniform, new_uniform)
+
   @test_util.run_v2_only
   def testCPUSameAsOldRandomOps(self):
     """Tests that the generated numbers are the same as the old random_ops.py.
 
     The CPU version.
     """
-    seed1, seed2 = 79, 25
-    # note how the two seeds for the old op correspond to the seed for the new
-    # op
-    with ops.device("/device:CPU:0"):
-      random.reset_global_generator([0, seed2, seed1])
-    shape = constant_op.constant([4, 7])
-    dtype = dtypes.float64
-
-    # create a graph for the old op in order to call it many times
-    @def_function.function
-    def old():
-      with ops.device("/device:CPU:0"):
-        return gen_random_ops.random_standard_normal(
-            shape, dtype=dtype, seed=seed1, seed2=seed2)
-
-    def new():
-      with ops.device("/device:CPU:0"):
-        return random.get_global_generator().normal(shape, dtype=dtype)
-
-    for _ in range(100):
-      self.assertAllEqual(old(), new())
+    self._sameAsOldRandomOps("/device:CPU:0")
 
   @test_util.run_v2_only
   @test_util.run_cuda_only
@@ -224,28 +253,103 @@ class StatefulRandomOpsTest(test.TestCase):
 
     The GPU version.
     """
-    seed1, seed2 = 79, 25
-    with ops.device(test_util.gpu_device_name()):
-      random.reset_global_generator([0, seed2, seed1])
-    shape = constant_op.constant([4, 7])
-    dtype = dtypes.float64
+    self._sameAsOldRandomOps(test_util.gpu_device_name())
 
-    @def_function.function
-    def old():
-      with ops.device(test_util.gpu_device_name()):
-        return gen_random_ops.random_standard_normal(
-            shape, dtype=dtype, seed=seed1, seed2=seed2)
+  @test_util.run_v2_only
+  def testUniformIntIsInRange(self):
+    minval = 2
+    maxval = 33
+    size = 1000
+    gen = random.Generator(seed=1234)
+    for dtype in [dtypes.int32, dtypes.int64]:
+      x = gen.uniform(
+          shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
+      self.assertTrue(np.all(x >= minval))
+      self.assertTrue(np.all(x < maxval))
 
-    def new():
-      with ops.device(test_util.gpu_device_name()):
-        return random.get_global_generator().normal(shape, dtype=dtype)
+  @test_util.run_v2_only
+  def testNormalIsFinite(self):
+    gen = random.Generator(seed=1234)
+    for dtype in [dtypes.float32]:
+      x = gen.normal(shape=[10000], dtype=dtype).numpy()
+      self.assertTrue(np.all(np.isfinite(x)))
 
-    for _ in range(100):
-      self.assertAllEqual(old(), new())
+  @test_util.run_v2_only
+  def testDistributionOfUniform(self):
+    """Use Pearson's Chi-squared test to test for uniformity."""
+    n = 1000
+    seed = 12
+    for dtype in [dtypes.int32, dtypes.int64]:
+      gen = random.Generator(seed=seed)
+      maxval = 1
+      if dtype.is_integer:
+        maxval = 100
+      x = gen.uniform(shape=[n], maxval=maxval, dtype=dtype).numpy()
+      if maxval > 1:
+        # Normalize y to range [0, 1).
+        x = x.astype(float) / maxval
+      # Tests that the values are distributed amongst 10 bins with equal
+      # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
+      # p=0.05. This test is probabilistic and would be flaky if the random
+      # seed were not fixed.
+      val = random_test_util.chi_squared(x, 10)
+      self.assertLess(val, 16.92)
+
+  @test_util.run_v2_only
+  def testDistributionOfNormal(self):
+    """Use Anderson-Darling test to test distribution appears normal."""
+    n = 1000
+    for dtype in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      gen = random.Generator(seed=1234)
+      x = gen.normal(shape=[n], dtype=dtype).numpy()
+      # The constant 2.492 is the 5% critical value for the Anderson-Darling
+      # test where the mean and variance are known. This test is probabilistic
+      # so to avoid flakiness the seed is fixed.
+      self.assertLess(
+          random_test_util.anderson_darling(x.astype(float)), 2.492)
+
+  @test_util.run_v2_only
+  def testErrors(self):
+    """Tests that proper errors are raised.
+    """
+    shape = [2, 3]
+    gen = random.Generator(seed=1234)
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        r"algorithm must be of shape \[\], not"):
+      gen_stateful_random_ops.stateful_standard_normal_v2(
+          gen.state.handle, [0, 0], shape)
+    with self.assertRaisesWithPredicateMatch(
+        TypeError, "Requested dtype: int64"):
+      gen_stateful_random_ops.stateful_standard_normal_v2(
+          gen.state.handle, 1.1, shape)
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        "Unsupported algorithm id"):
+      gen_stateful_random_ops.stateful_standard_normal_v2(
+          gen.state.handle, 123, shape)
+    var = variables.Variable([0, 0], dtype=dtypes.int32)
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        "dtype of RNG state variable must be int64, not"):
+      gen_stateful_random_ops.stateful_standard_normal_v2(
+          var.handle, random.RNG_ALG_PHILOX, shape)
+    var = variables.Variable([[0]], dtype=dtypes.int64)
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        "RNG state must have one and only one dimension, not"):
+      gen_stateful_random_ops.stateful_standard_normal_v2(
+          var.handle, random.RNG_ALG_PHILOX, shape)
+    var = variables.Variable([0], dtype=dtypes.int64)
+    with self.assertRaisesWithPredicateMatch(
+        errors.InvalidArgumentError,
+        "For the Philox algorithm, the size of state must be at least"):
+      gen_stateful_random_ops.stateful_standard_normal_v2(
+          var.handle, random.RNG_ALG_PHILOX, shape)
 
   @test_util.run_v2_only
   def testStatefulStandardNormal(self):
-    """Tests that op 'StatefulStandardNormal' still works.
+    """Tests that the deprecated op 'StatefulStandardNormal' still works.
     """
     shape = constant_op.constant([4, 7])
     dtype = dtypes.float64
@@ -277,7 +381,7 @@ class StatefulRandomOpsTest(test.TestCase):
 
     random.reset_global_generator(50)
     with self.assertRaisesWithPredicateMatch(
-        errors_impl.NotFoundError, "Resource .+ does not exist"):
+        errors.NotFoundError, "Resource .+ does not exist"):
       a = f()
       random.reset_global_generator(50)
       b = f()
