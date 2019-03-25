@@ -287,7 +287,7 @@ private:
 /// IntegerSet condition and a set of symbol/dimension operands to the
 /// condition set. The operation produces no results. For example:
 ///
-///    if #set(%i)  {
+///    affine.if #set(%i)  {
 ///      ...
 ///    } else {
 ///      ...
@@ -296,7 +296,7 @@ private:
 /// The 'else' blocks to the if operation are optional, and may be omitted. For
 /// example:
 ///
-///    if #set(%i)  {
+///    affine.if #set(%i)  {
 ///      ...
 ///    }
 ///
@@ -309,7 +309,7 @@ public:
   static void build(Builder *builder, OperationState *result,
                     IntegerSet condition, ArrayRef<Value *> conditionOperands);
 
-  static StringRef getOperationName() { return "if"; }
+  static StringRef getOperationName() { return "affine.if"; }
   static StringRef getConditionAttrName() { return "condition"; }
 
   IntegerSet getIntegerSet();

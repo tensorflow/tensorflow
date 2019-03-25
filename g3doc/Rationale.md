@@ -582,9 +582,9 @@ func @search_body(%A: memref<?x?xi32>, %S: memref<?xi32>, %key: i32) {
 
 As per the [MLIR spec](LangRef.md), the restrictions on dimensions and symbol
 identifiers to be used with the affine.apply instruction only apply to accesses
-inside `for` and `if` instructions. However, an analysis of
-accesses inside the called function (`@search_body`) is necessary to determine
-if the `%i` loop could be parallelized: such function access analysis is calling
+inside `for` and `affine.if` instructions. However, an analysis of accesses
+inside the called function (`@search_body`) is necessary to determine if the
+`%i` loop could be parallelized: such function access analysis is calling
 context sensitive.
 
 ### Non-affine loop bounds {#non-affine-loop-bounds}
@@ -679,7 +679,7 @@ func @conv2d(memref<16x1024x1024x3xf32, #lm0, vmem> %input,
                    %h_pad_low, %w_pad_low]
 
                 // Check if access is not in padding.
-                if #domain(%1_0, %1_1)
+                affine.if #domain(%1_0, %1_1)
                                        [%h_base_dilation, %w_kernel_dilation, %h_bound, %w_bound] {
                   %2_0 = affine.apply #map2 (%1_0, %1_1)
                   %2_1 = affine.apply #map2 (%1_0, %1_1)
@@ -913,7 +913,7 @@ func @dma_hbm_to_vmem(memref<1024 x f32, #layout_map0, hbm> %a,
     representation. 2(b) requires no change, but impacts how cost models look at
     index and layout maps.
 
-### `if` and `for` Extensions for "Escaping Scalars" {#extensions-for-"escaping-scalars"}
+### `affine.if` and `for` Extensions for "Escaping Scalars" {#extensions-for-"escaping-scalars"}
 
 We considered providing a representation for SSA values that are live out of
 `if/else` conditional bodies and loop carried in `for` loops. We
@@ -962,7 +962,7 @@ func int32 @sum(%A : memref<?xi32>, %N : i32) -> (i32) {
 Syntax:
 
 ``` {.ebnf}
-<out-var-list> = if (<cond-list>) {...} [else {...}]
+<out-var-list> = affine.if (<cond-list>) {...} [else {...}]
 ```
 
 Out-var-list is a list of SSA values defined by the if-instruction. The values

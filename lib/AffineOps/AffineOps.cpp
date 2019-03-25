@@ -1293,7 +1293,7 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void AffineIfOp::print(OpAsmPrinter *p) {
   auto conditionAttr = getAttrOfType<IntegerSetAttr>(getConditionAttrName());
-  *p << "if " << conditionAttr;
+  *p << "affine.if " << conditionAttr;
   printDimAndSymbolList(operand_begin(), operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
   p->printRegion(getInstruction()->getRegion(0));

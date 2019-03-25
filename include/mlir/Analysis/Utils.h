@@ -46,7 +46,7 @@ class Value;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
-//  TODO(bondhugula): handle 'if' inst's.
+//  TODO(bondhugula): handle 'affine.if' inst's.
 void getLoopIVs(Instruction &inst, SmallVectorImpl<AffineForOp> *loops);
 
 /// Returns the nesting depth of this instruction, i.e., the number of loops

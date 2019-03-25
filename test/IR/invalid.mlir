@@ -255,7 +255,7 @@ func @non_instruction() {
 
 func @invalid_if_conditional2() {
   for %i = 1 to 10 {
-    if (i)[N] : (i >= )  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    affine.if (i)[N] : (i >= )  // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -263,7 +263,7 @@ func @invalid_if_conditional2() {
 
 func @invalid_if_conditional3() {
   for %i = 1 to 10 {
-    if (i)[N] : (i == 1) // expected-error {{expected '0' after '=='}}
+    affine.if (i)[N] : (i == 1) // expected-error {{expected '0' after '=='}}
   }
 }
 
@@ -271,7 +271,7 @@ func @invalid_if_conditional3() {
 
 func @invalid_if_conditional4() {
   for %i = 1 to 10 {
-    if (i)[N] : (i >= 2) // expected-error {{expected '0' after '>='}}
+    affine.if (i)[N] : (i >= 2) // expected-error {{expected '0' after '>='}}
   }
 }
 
@@ -279,7 +279,7 @@ func @invalid_if_conditional4() {
 
 func @invalid_if_conditional5() {
   for %i = 1 to 10 {
-    if (i)[N] : (i <= 0 ) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    affine.if (i)[N] : (i <= 0 ) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -287,15 +287,15 @@ func @invalid_if_conditional5() {
 
 func @invalid_if_conditional6() {
   for %i = 1 to 10 {
-    if (i) : (i) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    affine.if (i) : (i) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
 // -----
-// TODO (support if (1)?
+// TODO (support affine.if (1)?
 func @invalid_if_conditional7() {
   for %i = 1 to 10 {
-    if (i) : (1) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
+    affine.if (i) : (1) // expected-error {{expected '== 0' or '>= 0' at end of affine constraint}}
   }
 }
 
@@ -581,7 +581,7 @@ func @invalid_bound_map(%N : i32) {
 
 func @invalid_if_operands1(%N : index) {
   for %i = 1 to 10 {
-    if #set0(%i) {
+    affine.if #set0(%i) {
     // expected-error@-1 {{symbol operand count and integer set symbol count must match}}
 
 // -----
@@ -589,7 +589,7 @@ func @invalid_if_operands1(%N : index) {
 
 func @invalid_if_operands2(%N : index) {
   for %i = 1 to 10 {
-    if #set0()[%N] {
+    affine.if #set0()[%N] {
     // expected-error@-1 {{dim operand count and integer set dim count must match}}
 
 // -----
@@ -597,7 +597,7 @@ func @invalid_if_operands2(%N : index) {
 
 func @invalid_if_operands3(%N : index) {
   for %i = 1 to 10 {
-    if #set0(%i)[%i] {
+    affine.if #set0(%i)[%i] {
     // expected-error@-1 {{operand cannot be used as a symbol}}
     }
   }

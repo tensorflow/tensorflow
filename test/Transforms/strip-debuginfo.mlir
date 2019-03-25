@@ -15,7 +15,7 @@ func @inline_notation() -> i32 loc("mysource.cc":10:8) {
 
   // CHECK: } loc(unknown)
   %2 = constant 4 : index
-  if #set0(%2) {
+  affine.if #set0(%2) {
   } loc(fused<"myPass">["foo", "foo2"])
 
   // CHECK: return %0 : i32 loc(unknown)

@@ -479,7 +479,7 @@ func @should_not_fuse_if_inst_at_top_level() {
     %v0 = load %m[%i1] : memref<10xf32>
   }
   %c0 = constant 4 : index
-  if #set0(%c0) {
+  affine.if #set0(%c0) {
   }
   // Top-level IfOp should prevent fusion.
   // CHECK:      for %i0 = 0 to 10 {
@@ -505,7 +505,7 @@ func @should_not_fuse_if_inst_in_loop_nest() {
     store %cf7, %m[%i0] : memref<10xf32>
   }
   for %i1 = 0 to 10 {
-    if #set0(%c4) {
+    affine.if #set0(%c4) {
     }
     %v0 = load %m[%i1] : memref<10xf32>
   }
@@ -515,7 +515,7 @@ func @should_not_fuse_if_inst_in_loop_nest() {
   // CHECK-NEXT:   store %cst, %0[%i0] : memref<10xf32>
   // CHECK-NEXT: }
   // CHECK:      for %i1 = 0 to 10 {
-  // CHECK-NEXT:   if #set0(%c4) {
+  // CHECK-NEXT:   affine.if #set0(%c4) {
   // CHECK-NEXT:   }  
   // CHECK-NEXT:   %1 = load %0[%i1] : memref<10xf32>
   // CHECK-NEXT: }

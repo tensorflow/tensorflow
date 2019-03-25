@@ -91,7 +91,7 @@ func @affine_if_invalid_dim(%arg : index) {
     %dim = addi %arg, %arg : index
 
     // expected-error@+1 {{operand cannot be used as a dimension id}}
-    if #set0(%dim)[%n0] {}
+    affine.if #set0(%dim)[%n0] {}
   }
   return
 }
@@ -103,7 +103,7 @@ func @affine_if_invalid_dim(%arg : index) {
 func @affine_if_invalid_sym() {
   for %i0 = 0 to 7 {
     // expected-error@+1 {{operand cannot be used as a symbol}}
-    if #set0(%i0)[%i0] {}
+    affine.if #set0(%i0)[%i0] {}
   }
   return
 }
@@ -118,7 +118,7 @@ func @affine_if_invalid_dimop_dim(%arg0: index, %arg1: index, %arg2: index, %arg
     %dim = dim %0, 0 : memref<?x?x?x?xf32>
 
     // expected-error@+1 {{operand cannot be used as a dimension id}}
-    if #set0(%dim)[%n0] {}
+    affine.if #set0(%dim)[%n0] {}
   }
   return
 }

@@ -43,7 +43,7 @@ void mlir::getLoopIVs(Instruction &inst, SmallVectorImpl<AffineForOp> *loops) {
   auto *currInst = inst.getParentInst();
   AffineForOp currAffineForOp;
   // Traverse up the hierarchy collecing all 'for' instruction while
-  // skipping over 'if' instructions.
+  // skipping over 'affine.if' instructions.
   while (currInst && ((currAffineForOp = currInst->dyn_cast<AffineForOp>()) ||
                       currInst->isa<AffineIfOp>())) {
     if (currAffineForOp)

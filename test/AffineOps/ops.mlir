@@ -9,12 +9,12 @@ func @attributes() {
 
   // CHECK: if
   // CHECK-NEXT: } {some_attr: true}
-  if () : () () {
+  affine.if () : () () {
   } {some_attr: true}
 
   // CHECK: } else {
   // CHECK: } {some_attr: true}
-  if () : () () {
+  affine.if () : () () {
   } else {
     "foo"() : () -> ()
   } {some_attr: true}

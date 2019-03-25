@@ -456,9 +456,9 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   auto *ifInst = ifOp->getInstruction();
   auto loc = ifInst->getLoc();
 
-  // Start by splitting the block containing the 'if' into two parts.  The part
-  // before will contain the condition, the part after will be the continuation
-  // point.
+  // Start by splitting the block containing the 'affine.if' into two parts. The
+  // part before will contain the condition, the part after will be the
+  // continuation point.
   auto *condBlock = ifInst->getBlock();
   auto *continueBlock = condBlock->splitBlock(ifInst);
 
@@ -508,15 +508,15 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   // Ok, now we just have to handle the condition logic.
   auto integerSet = ifOp->getIntegerSet();
 
-  // Implement short-circuit logic.  For each affine expression in the 'if'
-  // condition, convert it into an affine map and call `affine.apply` to obtain
-  // the resulting value.  Perform the equality or the greater-than-or-equality
-  // test between this value and zero depending on the equality flag of the
-  // condition.  If the test fails, jump immediately to the false branch, which
-  // may be the else block if it is present or the continuation block otherwise.
-  // If the test succeeds, jump to the next block testing the next conjunct of
-  // the condition in the similar way.  When all conjuncts have been handled,
-  // jump to the 'then' block instead.
+  // Implement short-circuit logic.  For each affine expression in the
+  // 'affine.if' condition, convert it into an affine map and call
+  // `affine.apply` to obtain the resulting value.  Perform the equality or the
+  // greater-than-or-equality test between this value and zero depending on the
+  // equality flag of the condition.  If the test fails, jump immediately to the
+  // false branch, which may be the else block if it is present or the
+  // continuation block otherwise. If the test succeeds, jump to the next block
+  // testing the next conjunct of the condition in the similar way.  When all
+  // conjuncts have been handled, jump to the 'then' block instead.
   builder.setInsertionPointToEnd(condBlock);
   Value *zeroConstant = builder.create<ConstantIndexOp>(loc, 0);
 
