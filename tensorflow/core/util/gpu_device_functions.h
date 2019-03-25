@@ -36,6 +36,14 @@ limitations under the License.
 
 namespace tensorflow {
 
+// According to HIP developer guide at
+// https://github.com/ROCm-Developer-Tools/HIP/blob/master/docs/markdown/hip_kernel_language.md#assert
+// assert is not supported by HIP. While we are waiting for assert support in hip kernels, the assert
+// call should be macroed to NOP so that it does not block us from creating a debug build
+#if TENSORFLOW_USE_ROCM
+  #define assert(x) {}
+#endif
+
 namespace detail {
 
 // Helper for range-based for loop using 'delta' increments.
@@ -388,7 +396,7 @@ __device__ inline Eigen::half GpuShuffleXorSync(unsigned mask, Eigen::half value
   return static_cast<Eigen::half>(__shfl_xor(static_cast<float>(value), lane_mask, width));
 }
 #endif
-   
+
 // Variant of the (undocumented) version from the CUDA SDK, but using unsigned
 // instead of float for lo and hi (which is incorrect with ftz, for example).
 // See b/69446944.
@@ -647,7 +655,7 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMax(T* ptr, U value) {
   return atomicMax(ptr, value);
 }
- 
+
 #if TENSORFLOW_USE_ROCM
 
 /*
@@ -655,14 +663,14 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMax(T* ptr, U value) {
  *   __device__  int max(int, int)
  *   __device__  float max(float, float)
  *   __device__  double max(double, double)
- * 
+ *
  * and many others, where as HIP runtime headers only have the "int" version
- * 
- * Therefore need to special case ROCm version to call the correct underlying 
+ *
+ * Therefore need to special case ROCm version to call the correct underlying
  * routines for float and double types.
  *
  */
- 
+
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](float a) { return fmaxf(a, value); });
@@ -674,7 +682,7 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
 }
 
 #else
- 
+
 __device__ inline float GpuAtomicMax(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](float a) { return max(a, value); });
@@ -686,7 +694,7 @@ __device__ inline double GpuAtomicMax(double* ptr, double value) {
 }
 
 #endif
- 
+
 __device__ inline Eigen::half GpuAtomicMax(Eigen::half* ptr,
                                             Eigen::half value) {
   return detail::GpuAtomicCasHelper(
@@ -706,21 +714,21 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicMin(T* ptr, U value) {
   return atomicMin(ptr, value);
 }
- 
+
 #if TENSORFLOW_USE_ROCM
 
-/* 
+/*
  * CUDA runtime headers have the following defined
  *   __device__  int min(int, int)
  *   __device__  float min(float, float)
  *   __device__  double min(double, double)
- * 
+ *
  * and many others, where as HIP runtime headers only have the "int" version
- * 
- * Therefore need to special case ROCm version to call the correct underlying 
+ *
+ * Therefore need to special case ROCm version to call the correct underlying
  * routines for float and double types.
  *
- */ 
+ */
 
 __device__ inline float GpuAtomicMin(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(
@@ -733,7 +741,7 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
 }
 
 #else
- 
+
 __device__ inline float GpuAtomicMin(float* ptr, float value) {
   return detail::GpuAtomicCasHelper(
       ptr, [value](float a) { return min(a, value); });
@@ -745,7 +753,7 @@ __device__ inline double GpuAtomicMin(double* ptr, double value) {
 }
 
 #endif
- 
+
 __device__ inline Eigen::half GpuAtomicMin(Eigen::half* ptr,
                                             Eigen::half value) {
   return detail::GpuAtomicCasHelper(
