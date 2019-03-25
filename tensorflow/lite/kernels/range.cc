@@ -93,18 +93,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, delta->type, dtype);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  switch (dtype) {
-    case kTfLiteInt32:
-      output->type = kTfLiteInt32;
-      break;
-    case kTfLiteFloat32:
-      output->type = kTfLiteFloat32;
-      break;
-    default:
-      context->ReportError(context, "Unknown index output data type: %d",
-                           dtype);
-      return kTfLiteError;
-  }
+  output->type = dtype;
 
   if (IsConstantTensor(start) && IsConstantTensor(limit) &&
       IsConstantTensor(delta)) {
