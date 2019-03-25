@@ -377,6 +377,8 @@ struct NodeTypeIdEdge {
   NodeTypeId dst;
 };
 
+// TODO(benbarsdell): Investigate whether the existing GraphTopologyView can be
+// used instead of this modified version.
 // This is just like GraphTopologyView but with (NodeDef, TypeAttrId) pairs as
 // the vertices instead of just NodeDef.
 // For example, if node A has output A:0 with TypeAttrId 'T', and node B has
