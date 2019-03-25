@@ -40,7 +40,7 @@ import java.util.Map;
 import java.util.PriorityQueue;
 import org.tensorflow.lite.Delegate;
 import org.tensorflow.lite.Interpreter;
-
+import org.tensorflow.lite.experimental.GpuDelegate;
 /**
  * Classifies images with Tensorflow Lite.
  */
@@ -95,8 +95,8 @@ public abstract class ImageClassifier {
           });
 
   /** holds a gpu delegate */
-  Delegate gpuDelegate = null;
-
+  //Delegate gpuDelegate = null;
+  GpuDelegate gpuDelegate = null;
   /** Initializes an {@code ImageClassifier}. */
   ImageClassifier(Activity activity) throws IOException {
     tfliteModel = loadModelFile(activity);
@@ -171,7 +171,8 @@ public abstract class ImageClassifier {
 
   public void useGpu() {
     if (gpuDelegate == null && GpuDelegateHelper.isGpuDelegateAvailable()) {
-      gpuDelegate = GpuDelegateHelper.createGpuDelegate();
+      //gpuDelegate = GpuDelegateHelper.createGpuDelegate();
+      gpuDelegate = new GpuDelegate();
       tfliteOptions.addDelegate(gpuDelegate);
       recreateInterpreter();
     }
@@ -197,6 +198,11 @@ public abstract class ImageClassifier {
     tflite.close();
     tflite = null;
     tfliteModel = null;
+    if (gpuDelegate != null)
+    {
+      gpuDelegate.close();
+      gpuDelegate = null;
+    }
   }
 
   /** Reads label list from Assets. */
