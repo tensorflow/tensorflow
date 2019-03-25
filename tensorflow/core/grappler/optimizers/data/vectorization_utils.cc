@@ -377,22 +377,15 @@ Status Vectorization::Initialize(const FunctionDef& outer_scope,
                             " in function library.");
   }
 
-  auto get_func_sig = [this](const string& op, const OpDef** sig) {
-    return this->lib_def_.LookUpOpDef(op, sig);
-  };
-
-  FunctionBody* outer_fn;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(outer_scope, {}, &lib_def_,
-                                             get_func_sig, &outer_fn));
+  std::unique_ptr<FunctionBody> outer_fn;
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(outer_scope, {}, &lib_def_, &outer_fn));
   // We don't need outer_fn, just the graph
   outer_scope_.reset(outer_fn->graph);
   outer_fn->graph = nullptr;
-  delete outer_fn;
 
-  FunctionBody* tmp;
-  TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*map_defun_fn, {}, &lib_def_,
-                                             get_func_sig, &tmp));
-  map_defun_fn_.reset(tmp);
+  TF_RETURN_IF_ERROR(
+      FunctionDefToBodyHelper(*map_defun_fn, {}, &lib_def_, &map_defun_fn_));
 
   // Find the MapDefun node in outer_scope_
   int node_id = graph_utils::GetFirstElementIndexWithPredicate(

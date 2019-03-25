@@ -339,7 +339,7 @@ def get_slice_sets_and_required_args(slice_sets, tag_spec):
 
 def gather_tag_args(slices, cli_input_args, required_args):
   """Build a dictionary of all the CLI and slice-specified args for a tag."""
-  args = dict()
+  args = {}
 
   for s in slices:
     args = update_args_dict(args, s['args'])
@@ -452,7 +452,7 @@ def gather_existing_partials(partial_path):
     Dict[string, string] of partial short names (like "ubuntu/python" or
       "bazel") to the full contents of that partial.
   """
-  partials = dict()
+  partials = {}
   for path, _, files in os.walk(partial_path):
     for name in files:
       fullpath = os.path.join(path, name)

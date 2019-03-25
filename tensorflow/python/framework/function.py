@@ -262,7 +262,7 @@ class _DefinedFunction(object):
     self._definition = None
     # Constructed only when C API is enabled, lazily
     self._c_func = None
-    self._sub_functions = dict()  # Constructed with _definition or _c_func
+    self._sub_functions = {}  # Constructed with _definition or _c_func
     # pylint: disable=protected-access
     device_funcs = ops.get_default_graph()._device_functions_outer_to_inner
     # pylint: enable=protected-access
@@ -1155,6 +1155,10 @@ def _parse_kwargs_as_attrs(func_name, **kwargs):
   noinline = kwargs.pop("noinline", None)
   if noinline is not None:
     attrs["_noinline"] = attr_value_pb2.AttrValue(b=bool(noinline))
+
+  # For compatibility with previous behavior, Defun does not perform shape
+  # inference through its function call operations.
+  attrs["_disable_call_shape_inference"] = attr_value_pb2.AttrValue(b=True)
 
   compiled = kwargs.pop("compiled", None)
   separate_compiled_gradients = kwargs.pop("separate_compiled_gradients", None)

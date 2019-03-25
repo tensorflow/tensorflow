@@ -51,7 +51,9 @@ struct InputInfo {
 };
 
 // Takes in output gradients, returns input gradients.
-typedef std::function<PyObject*(PyObject*)> PyBackwardFunction;
+typedef std::function<PyObject*(PyObject*,
+                                const std::vector<tensorflow::int64>&)>
+    PyBackwardFunction;
 
 using AttrToInputsMap =
     tensorflow::gtl::FlatMap<string,
@@ -1091,6 +1093,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
 
   tensorflow::Status CallBackwardFunction(
       PyBackwardFunction* backward_function,
+      const std::vector<tensorflow::int64>& unneeded_gradients,
       tensorflow::gtl::ArraySlice<PyObject*> output_gradients,
       std::vector<PyObject*>* result) const final {
     PyObject* grads = PyTuple_New(output_gradients.size());
@@ -1103,7 +1106,7 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
                          reinterpret_cast<PyObject*>(output_gradients[i]));
       }
     }
-    PyObject* py_result = (*backward_function)(grads);
+    PyObject* py_result = (*backward_function)(grads, unneeded_gradients);
     Py_DECREF(grads);
     if (py_result == nullptr) {
       return tensorflow::errors::Internal("gradient function threw exceptions");
@@ -1635,8 +1638,9 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
       op_type, output_tensors, input_ids, input_dtypes,
       [backward_function]() {
         Py_INCREF(backward_function);
-        PyBackwardFunction* function =
-            new PyBackwardFunction([backward_function](PyObject* out_grads) {
+        PyBackwardFunction* function = new PyBackwardFunction(
+            [backward_function](PyObject* out_grads,
+                                const std::vector<tensorflow::int64>& unused) {
               return PyObject_CallObject(backward_function, out_grads);
             });
         return function;
@@ -1648,7 +1652,7 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
-  for (TFE_Py_Tape* tape : SafeTapeSet()) {
+  for (TFE_Py_Tape* tape : *GetTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }
@@ -1701,7 +1705,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
   tensorflow::Safe_PyObjectPtr seq =
       tensorflow::make_safe(PySequence_Fast(target, "expected a sequence"));
   int len = PySequence_Fast_GET_SIZE(seq.get());
-  tensorflow::gtl::FlatMap<tensorflow::int64, PyTapeTensor>
+  std::unordered_map<tensorflow::int64, PyTapeTensor>
       source_tensors_that_are_targets;
   for (int i = 0; i < len; ++i) {
     tensorflow::int64 target_id = target_vec[i];
@@ -2131,15 +2135,29 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         Py_INCREF(num_inputs);
         Py_INCREF(op_inputs);
         Py_INCREF(op_outputs);
-        PyBackwardFunction* function =
-            new PyBackwardFunction([op_name, attrs, num_inputs, op_inputs,
-                                    op_outputs](PyObject* output_grads) {
+        PyBackwardFunction* function = new PyBackwardFunction(
+            [op_name, attrs, num_inputs, op_inputs, op_outputs](
+                PyObject* output_grads,
+                const std::vector<tensorflow::int64>& unneeded_gradients) {
               if (PyErr_Occurred()) {
                 return static_cast<PyObject*>(nullptr);
               }
-              tensorflow::Safe_PyObjectPtr callback_args(
-                  Py_BuildValue("OOOOOO", op_name, attrs, num_inputs, op_inputs,
-                                op_outputs, output_grads));
+              tensorflow::Safe_PyObjectPtr skip_input_indices;
+              if (!unneeded_gradients.empty()) {
+                skip_input_indices.reset(
+                    PyTuple_New(unneeded_gradients.size()));
+                for (int i = 0; i < unneeded_gradients.size(); i++) {
+                  PyTuple_SET_ITEM(
+                      skip_input_indices.get(), i,
+                      GetPythonObjectFromInt(unneeded_gradients[i]));
+                }
+              } else {
+                Py_INCREF(Py_None);
+                skip_input_indices.reset(Py_None);
+              }
+              tensorflow::Safe_PyObjectPtr callback_args(Py_BuildValue(
+                  "OOOOOOO", op_name, attrs, num_inputs, op_inputs, op_outputs,
+                  output_grads, skip_input_indices.get()));
 
               tensorflow::Safe_PyObjectPtr result(
                   PyObject_CallObject(gradient_function, callback_args.get()));

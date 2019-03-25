@@ -51,11 +51,12 @@ void CalculateDiscreteFourierTransform(float* time_series, int time_series_size,
   for (int i = 0; i < time_series_size / 2; ++i) {
     float real = 0;
     for (int j = 0; j < time_series_size; ++j) {
-      real += time_series[j] * cos(j * i * kPi * 2 / time_series_size);
+      real += time_series[j] * std::cos(j * i * kPi * 2 / time_series_size);
     }
     float imaginary = 0;
     for (int j = 0; j < time_series_size; ++j) {
-      imaginary -= time_series[j] * sin(j * i * kPi * 2 / time_series_size);
+      imaginary -=
+          time_series[j] * std::sin(j * i * kPi * 2 / time_series_size);
     }
     fourier_output[(i * 2) + 0] = real;
     fourier_output[(i * 2) + 1] = imaginary;
@@ -66,7 +67,7 @@ void CalculateDiscreteFourierTransform(float* time_series, int time_series_size,
 // of the current sample window are weighted more heavily than those at the end.
 void CalculatePeriodicHann(int window_length, float* window_function) {
   for (int i = 0; i < window_length; ++i) {
-    window_function[i] = 0.5 - 0.5 * cos((2 * kPi * i) / window_length);
+    window_function[i] = 0.5 - 0.5 * std::cos((2 * kPi * i) / window_length);
   }
 }
 

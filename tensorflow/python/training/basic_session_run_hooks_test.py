@@ -1026,7 +1026,7 @@ class StepCounterHookTest(test.TestCase):
       hook.begin()
       mon_sess = monitored_session._HookedSession(sess, [hook])
       mon_sess.run(train_op)  # Run one step to record global step.
-      with test.mock.patch.object(tf_logging, 'warning') as mock_log:
+      with test.mock.patch.object(tf_logging, 'log_first_n') as mock_log:
         for _ in range(30):
           mon_sess.run(train_op)
         self.assertRegexpMatches(

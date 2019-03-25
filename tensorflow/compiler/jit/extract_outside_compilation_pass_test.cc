@@ -300,14 +300,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
       &has_outside_compilation));
 
   // Get rewritten XLA computation function.
-  FunctionBody *xla_fbody = nullptr;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &xla_fbody));
-  std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
+  std::unique_ptr<FunctionBody> xla_fbody;
+  TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                      AttrSlice(), &fld, &xla_fbody));
   auto node_name_index = xla_fbody->graph->BuildNodeNameIndex();
 
   // Check XlaHostCompute nodes.
@@ -343,18 +338,13 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, Basic) {
   EXPECT_EQ(shape_inference_graphs.size(), 0);
 
   // Check host graph: verify we have key placeholder and sequencer.
-  FunctionBody *host_fbody = nullptr;
+  std::unique_ptr<FunctionBody> host_fbody;
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
   host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &host_fbody));
-  std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
   Node *key_placeholder = nullptr, *sequencer = nullptr;
   for (Node *n : host_graph->nodes()) {
@@ -428,18 +418,13 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
       &has_outside_compilation));
 
   // Check host graph is empty.
-  FunctionBody *host_fbody = nullptr;
+  std::unique_ptr<FunctionBody> host_fbody;
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
   host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &host_fbody));
-  std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
   EXPECT_EQ(host_graph->num_nodes(), 2);
 }
@@ -476,31 +461,21 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, XlaHostComputeRemoved) {
       &has_outside_compilation));
 
   // Check rewritten XLA graph: verify that we have no XlaHostCompute.
-  FunctionBody *xla_fbody = nullptr;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &xla_fbody));
-  std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
+  std::unique_ptr<FunctionBody> xla_fbody;
+  TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                      AttrSlice(), &fld, &xla_fbody));
   for (Node *n : xla_fbody->graph->nodes()) {
     EXPECT_NE(n->type_string(), "XlaHostCompute");
   }
 
   // Check host graph: verify we have no placeholder, but we have "const1".
-  FunctionBody *host_fbody = nullptr;
+  std::unique_ptr<FunctionBody> host_fbody;
   AttrValue device_ordinal_temp_value;
   device_ordinal_temp_value.set_i(0);
   protobuf::Map<string, AttrValue> host_func_attrs;
   host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
   TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-      [&](const string &op, const OpDef **sig) {
-        return fld.LookUpOpDef(op, sig);
-      },
-      &host_fbody));
-  std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
   Graph *host_graph = host_fbody->graph;
   int num_key_placeholders = 0;
   for (Node *n : host_graph->nodes()) {
@@ -600,18 +575,14 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
 
   // Check host graph.
   {
-    FunctionBody *host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
     host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &host_fbody));
     Graph *host_graph = host_fbody->graph;
     auto node_name_index = host_graph->BuildNodeNameIndex();
 
@@ -654,14 +625,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
 
   // Check XLA graph.
   {
-    FunctionBody *xla_fbody = nullptr;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &xla_fbody));
-    std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
+    std::unique_ptr<FunctionBody> xla_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                        AttrSlice(), &fld, &xla_fbody));
     Graph *xla_graph = xla_fbody->graph;
     auto node_name_index = xla_graph->BuildNodeNameIndex();
 
@@ -759,18 +725,14 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
 
   // Check host graph.
   {
-    FunctionBody *host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
     host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &host_fbody));
     Graph *host_graph = host_fbody->graph;
     auto node_name_index = host_graph->BuildNodeNameIndex();
 
@@ -899,18 +861,14 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
 
   // Check host graph.
   {
-    FunctionBody *host_fbody = nullptr;
+    std::unique_ptr<FunctionBody> host_fbody;
     AttrValue device_ordinal_temp_value;
     device_ordinal_temp_value.set_i(0);
     protobuf::Map<string, AttrValue> host_func_attrs;
     host_func_attrs["device_ordinal"] = device_ordinal_temp_value;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &host_fbody));
-    std::unique_ptr<FunctionBody> host_fbody_deleter(host_fbody);
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("host_graph"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &host_fbody));
     Graph *host_graph = host_fbody->graph;
     auto node_name_index = host_graph->BuildNodeNameIndex();
 
@@ -918,14 +876,10 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
     Node *call_node = node_name_index["oc_call_fn"];
     EXPECT_NE(call_node, nullptr);
 
-    FunctionBody *call_fbody = nullptr;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("oc_func_call_host_fn"), AttrSlice(&host_func_attrs), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &call_fbody));
-    std::unique_ptr<FunctionBody> call_fbody_deleter(call_fbody);
+    std::unique_ptr<FunctionBody> call_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("oc_func_call_host_fn"),
+                                        AttrSlice(&host_func_attrs), &fld,
+                                        &call_fbody));
 
     // Verify we have _XlaRecvAtHost and _XlaSendFromHost nodes.
     bool has_recv = false, has_send = false;
@@ -942,14 +896,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
 
   // Check XLA graph.
   {
-    FunctionBody *xla_fbody = nullptr;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("cluster_rewritten"), AttrSlice(), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &xla_fbody));
-    std::unique_ptr<FunctionBody> xla_fbody_deleter(xla_fbody);
+    std::unique_ptr<FunctionBody> xla_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("cluster_rewritten"),
+                                        AttrSlice(), &fld, &xla_fbody));
     Graph *xla_graph = xla_fbody->graph;
     auto node_name_index = xla_graph->BuildNodeNameIndex();
 
@@ -958,14 +907,9 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInFunction) {
     EXPECT_NE(fn_node, nullptr);
     EXPECT_EQ(fn_node->type_string(), "fn_oc");
 
-    FunctionBody *call_fbody = nullptr;
-    TF_CHECK_OK(FunctionDefToBodyHelper(
-        *fld.Find("fn_oc"), AttrSlice(), &fld,
-        [&](const string &op, const OpDef **sig) {
-          return fld.LookUpOpDef(op, sig);
-        },
-        &call_fbody));
-    std::unique_ptr<FunctionBody> call_fbody_deleter(call_fbody);
+    std::unique_ptr<FunctionBody> call_fbody;
+    TF_CHECK_OK(FunctionDefToBodyHelper(*fld.Find("fn_oc"), AttrSlice(), &fld,
+                                        &call_fbody));
 
     // Verify we have XlaHostCompute nodes.
     bool has_hc = false;

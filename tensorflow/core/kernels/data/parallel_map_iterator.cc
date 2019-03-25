@@ -207,7 +207,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
       stats_aggregator->AddScalar(
           stats_utils::ThreadUtilizationScalarName(key_prefix_),
           static_cast<float>(num_calls_) /
-              static_cast<float>(num_parallel_calls_->value));
+              static_cast<float>(num_parallel_calls_->value),
+          num_elements());
     }
     RecordBufferEnqueue(ctx.get(), result->return_values);
     result->notification.Notify();
@@ -302,7 +303,8 @@ class ParallelMapIterator : public DatasetBaseIterator {
           stats_aggregator->AddScalar(
               stats_utils::ThreadUtilizationScalarName(key_prefix_),
               static_cast<float>(num_calls_) /
-                  static_cast<float>(num_parallel_calls_->value));
+                  static_cast<float>(num_parallel_calls_->value),
+              num_elements());
         }
         cond_var_->notify_all();
       }

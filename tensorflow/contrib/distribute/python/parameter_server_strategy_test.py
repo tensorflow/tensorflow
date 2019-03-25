@@ -21,16 +21,15 @@ from __future__ import print_function
 import copy
 import threading
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy as core_parameter_server_strategy
 from tensorflow.python.distribute import reduce_util

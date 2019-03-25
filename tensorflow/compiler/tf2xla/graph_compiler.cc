@@ -88,11 +88,18 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
           arg.kind = XlaCompiler::Argument::kParameter;
         }
         break;
-      case XlaExpression::Kind::kResource:
-        // TODO(b/126601755): This is a fairly common use case in TF 2.0 that
-        // we can hit when inlining is disabled or fails.
-        return errors::Unimplemented(
-            "Resource as function argument is not yet implemented.");
+      case XlaExpression::Kind::kResource: {
+        XlaResource* resource = expressions[i]->resource();
+
+        arg.initialized = resource->initialized();
+        arg.kind = XlaCompiler::Argument::kResource;
+        arg.resource_kind = resource->kind();
+        arg.type = resource->type();
+        arg.shape = resource->shape();
+        arg.max_array_size = resource->max_array_size();
+        arg.name = resource->name();
+        break;
+      }
       case XlaExpression::Kind::kTensorList:
         return errors::Unimplemented(
             "TensorList as function argument is not yet implemented.");
@@ -266,7 +273,11 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
     if (arguments[i].kind == XlaCompiler::Argument::kConstant) {
       continue;
     }
-    handles.push_back(expressions[i]->handle());
+    if (arguments[i].kind == XlaCompiler::Argument::kResource) {
+      handles.push_back(expressions[i]->resource()->value());
+    } else {
+      handles.push_back(expressions[i]->handle());
+    }
   }
   if (add_token_input_output) {
     std::vector<string> token_input_nodes;
@@ -296,6 +307,17 @@ Status GraphCompiler::CompileFunctionalNode(Node* n,
       ++computation_output;
     }
   }
+
+  for (int64 i = 0; i < result.resource_updates.size(); i++) {
+    if (result.resource_updates[i].modified) {
+      XlaResource* resource =
+          expressions[result.resource_updates[i].input_index]->resource();
+      xla::XlaOp updated_value =
+          xla::GetTupleElement(output_handle, i + n->num_outputs());
+      TF_RETURN_IF_ERROR(resource->SetValue(updated_value));
+    }
+  }
+
   if (add_token_input_output) {
     TF_RETURN_IF_ERROR(compiler->SetNodeToken(
         n->name(), xla::GetTupleElement(output_handle, computation_output)));

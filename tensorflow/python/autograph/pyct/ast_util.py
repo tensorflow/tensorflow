@@ -200,7 +200,7 @@ def matches(node, pattern):
     bool
   """
   if isinstance(pattern, str):
-    pattern, = parser.parse_str(pattern).body
+    pattern = parser.parse_str(pattern)
 
   matcher = PatternMatcher(pattern)
   matcher.visit(node)

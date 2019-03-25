@@ -58,8 +58,9 @@ class InterleaveDatasetOp : public UnaryDatasetOpKernel {
         errors::InvalidArgument("block_length must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     *output =
         new Dataset(ctx, input, func_, std::move(captured_func), cycle_length,

@@ -513,9 +513,14 @@ Status FindCompilationCandidates(
     op_filter.allow_dummy_ops = always_auto_cluster;
     op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
 
-    if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
-                          lib_runtime)) {
+    if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), *node)) {
+      if (!IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
+                            lib_runtime)) {
+        VLOG(2) << "Rejecting " << node->name() << ": unsupported function "
+                << node->type_string();
+        continue;
+      }
+    } else if (!HasXLAKernel(*node, jit_device_type)) {
       VLOG(2) << "Rejecting " << node->name() << ": unsupported op "
               << node->type_string();
       continue;
@@ -624,6 +629,16 @@ Status FindCompilationCandidates(
     if (node->type_string() == "_Retval") {
       continue;
     }
+
+    if (node->attrs().Find("_scoped_allocator") ||
+        node->attrs().Find("_forward_from")) {
+      // TODO(b/128858118): XLA does not support _scoped_allocator and
+      // _forward_from.
+      VLOG(2) << "Not clustering " << node->name()
+              << " because of _scoped_allocator or _forward_from attribute.";
+      continue;
+    }
+
     candidates->insert(node);
     --fuel;
   }
@@ -1045,6 +1060,29 @@ static Status ShouldCompileClusterImpl(
       (registration->autoclustering_policy ==
            XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
        global_jit_level != OptimizerOptions::OFF);
+
+  if (!*should_compile &&
+      registration->autoclustering_policy ==
+          XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
+      device_type.type_string() == DEVICE_CPU) {
+    static std::once_flag once;
+    std::call_once(once, [] {
+      LOG(WARNING)
+          << "(One-time warning): Not using XLA:CPU for cluster because envvar "
+             "TF_XLA_FLAGS=--tf_xla_cpu_global_jit was not set.  If you want "
+             "XLA:CPU, either set that envvar, or use experimental_jit_scope "
+             "to enable XLA:CPU.  To confirm that XLA is active, pass "
+             "--vmodule=xla_compilation_cache=1 (as a proper command-line "
+             "flag, not via TF_XLA_FLAGS) or set the envvar "
+             "XLA_FLAGS=--xla_hlo_profile.";
+      MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
+      if (flags->tf_xla_cpu_global_jit) {
+        LOG(WARNING)
+            << "(Although the tf_xla_cpu_global_jit flag is currently enabled, "
+               "perhaps it wasn't enabled at process startup?)";
+      }
+    });
+  }
 
   VLOG(3) << (*should_compile ? "Compiling" : "Not compiling")
           << " cluster with device " << chosen_device;

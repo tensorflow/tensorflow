@@ -65,7 +65,15 @@ bool IsTrivialOp(const NodeDef& node, const MutableGraphView& graph_view) {
   if (IsIdentity(node) || IsIdentityNSingleInput(node)) {
     return IsTrivialIdentity(node, graph_view);
   }
-
+  if (IsNoOp(node) && node.input().empty()) {
+    return true;
+  }
+  // Const nodes are always executed before anything else, so if they only
+  // have control outputs we can remove them.
+  if (IsConstant(node) && node.input().empty() &&
+      graph_view.NumFanouts(node, /*include_controlled_nodes=*/false) == 0) {
+    return true;
+  }
   return IsAddN(node) && NumNonControlInputs(node) <= 1;
 }
 
@@ -95,6 +103,13 @@ bool IsOutputPortRefValue(const NodeDef& node, int port_id,
 bool CanRemoveNode(const NodeDef& node, const MutableGraphView& graph_view,
                    const absl::flat_hash_set<string>& function_names,
                    const OpRegistryInterface& op_registry) {
+  if (IsNoOp(node) && node.input().empty()) {
+    return true;
+  }
+  if (IsConstant(node) && node.input().empty() &&
+      graph_view.NumFanouts(node, /*include_controlled_nodes=*/false) == 0) {
+    return true;
+  }
   if (RemovalIncreasesEdgeCount(node, graph_view)) {
     return false;
   }

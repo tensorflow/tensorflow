@@ -90,7 +90,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     layer = rnn.LSTM(units, return_sequences=True)
     model.add(layer)
     outputs = model.layers[-1].output
-    self.assertEqual(outputs.get_shape().as_list(), [None, timesteps, units])
+    self.assertEqual(outputs.shape.as_list(), [None, timesteps, units])
 
   def test_dynamic_behavior_LSTM(self):
     num_samples = 2
@@ -319,12 +319,17 @@ class LSTMV2Test(keras_parameterized.TestCase):
           input_shape=(timestep, input_shape),
           num_classes=rnn_state_size)
       y_train = keras.utils.to_categorical(y_train, rnn_state_size)
+      # For the last batch item of the test data, we filter out the last
+      # timestep to simulate the variable length sequence and masking test.
+      x_train[-2:, -1, :] = 0.0
+      y_train[-2:] = 0
 
       inputs = keras.layers.Input(
           shape=[timestep, input_shape], dtype=dtypes.float32)
+      masked_input = keras.layers.Masking()(inputs)
       lstm_layer = rnn_v1.LSTM(rnn_state_size,
                                recurrent_activation='sigmoid')
-      output = lstm_layer(inputs)
+      output = lstm_layer(masked_input)
       lstm_model = keras.models.Model(inputs, output)
       weights = lstm_model.get_weights()
       y_1 = lstm_model.predict(x_train)
@@ -334,7 +339,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
       with test_util.device(use_gpu=True):
         cudnn_layer = rnn.LSTM(rnn_state_size)
-        cudnn_model = keras.models.Model(inputs, cudnn_layer(inputs))
+        cudnn_model = keras.models.Model(inputs, cudnn_layer(masked_input))
       cudnn_model.set_weights(weights)
       y_3 = cudnn_model.predict(x_train)
       cudnn_model.compile('rmsprop', 'mse')
@@ -580,6 +585,8 @@ class LSTMV2Test(keras_parameterized.TestCase):
     else:
       self.assertEqual(len(layer.get_losses_for(x)), 1)
 
+  # Run in V2 only due to b/120160788.
+  @test_util.run_v2_only
   def test_statefulness_LSTM(self):
     num_samples = 2
     timesteps = 3
@@ -640,7 +647,16 @@ class LSTMV2Test(keras_parameterized.TestCase):
     right_padded_input[1, -2:] = 0
     out7 = model.predict(right_padded_input)
 
+    layer.reset_states()
+
+    mix_padded_input = np.ones((num_samples, timesteps))
+    mix_padded_input[0, 1] = 0
+    mix_padded_input[1, 0] = 0
+    mix_padded_input[1, 2] = 0
+    out8 = model.predict(mix_padded_input)
+
     self.assertAllClose(out7, out6, atol=1e-5)
+    self.assertAllClose(out8, out7, atol=1e-5)
 
   def test_stateful_LSTM_training(self):
     # See b/123587692 for more context.
