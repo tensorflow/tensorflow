@@ -50,9 +50,7 @@ IntegerType IntegerType::getChecked(unsigned width, MLIRContext *context,
   return Base::getChecked(location, context, StandardTypes::Integer, width);
 }
 
-unsigned IntegerType::getWidth() const {
-  return static_cast<ImplType *>(type)->width;
-}
+unsigned IntegerType::getWidth() const { return getImpl()->width; }
 
 /// Float Type.
 
@@ -221,9 +219,7 @@ bool VectorType::verifyConstructionInvariants(llvm::Optional<Location> loc,
   return false;
 }
 
-ArrayRef<int64_t> VectorType::getShape() const {
-  return static_cast<ImplType *>(type)->getShape();
-}
+ArrayRef<int64_t> VectorType::getShape() const { return getImpl()->getShape(); }
 
 /// TensorType
 
@@ -269,11 +265,7 @@ bool RankedTensorType::verifyConstructionInvariants(
 }
 
 ArrayRef<int64_t> RankedTensorType::getShape() const {
-  return static_cast<ImplType *>(type)->getShape();
-}
-
-ArrayRef<int64_t> MemRefType::getShape() const {
-  return static_cast<ImplType *>(type)->getShape();
+  return getImpl()->getShape();
 }
 
 /// UnrankedTensorType
@@ -351,6 +343,10 @@ MemRefType MemRefType::getImpl(ArrayRef<int64_t> shape, Type elementType,
                    cleanedAffineMapComposition, memorySpace);
 }
 
+ArrayRef<int64_t> MemRefType::getShape() const {
+  return static_cast<ImplType *>(type)->getShape();
+}
+
 Type MemRefType::getElementType() const {
   return static_cast<ImplType *>(type)->elementType;
 }
@@ -376,11 +372,7 @@ TupleType TupleType::get(ArrayRef<Type> elementTypes, MLIRContext *context) {
 }
 
 /// Return the elements types for this tuple.
-ArrayRef<Type> TupleType::getTypes() const {
-  return static_cast<ImplType *>(type)->getTypes();
-}
+ArrayRef<Type> TupleType::getTypes() const { return getImpl()->getTypes(); }
 
 /// Return the number of element types.
-unsigned TupleType::size() const {
-  return static_cast<ImplType *>(type)->size();
-}
+unsigned TupleType::size() const { return getImpl()->size(); }

@@ -167,7 +167,7 @@ public:
     }
 
     /// Utility for easy access to the storage instance.
-    ImplType *getImpl() { return static_cast<ImplType *>(type); }
+    ImplType *getImpl() const { return static_cast<ImplType *>(type); }
   };
 
   using ImplType = TypeStorage;

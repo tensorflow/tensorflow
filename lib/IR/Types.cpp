@@ -41,15 +41,13 @@ FunctionType FunctionType::get(ArrayRef<Type> inputs, ArrayRef<Type> results,
 }
 
 ArrayRef<Type> FunctionType::getInputs() const {
-  return static_cast<ImplType *>(type)->getInputs();
+  return getImpl()->getInputs();
 }
 
-unsigned FunctionType::getNumResults() const {
-  return static_cast<ImplType *>(type)->numResults;
-}
+unsigned FunctionType::getNumResults() const { return getImpl()->numResults; }
 
 ArrayRef<Type> FunctionType::getResults() const {
-  return static_cast<ImplType *>(type)->getResults();
+  return getImpl()->getResults();
 }
 
 /// UnknownType
@@ -66,13 +64,11 @@ UnknownType UnknownType::getChecked(Identifier dialect, StringRef typeData,
 
 /// Returns the dialect namespace of the unknown type.
 Identifier UnknownType::getDialectNamespace() const {
-  return static_cast<ImplType *>(type)->dialectNamespace;
+  return getImpl()->dialectNamespace;
 }
 
 /// Returns the raw type data of the unknown type.
-StringRef UnknownType::getTypeData() const {
-  return static_cast<ImplType *>(type)->typeData;
-}
+StringRef UnknownType::getTypeData() const { return getImpl()->typeData; }
 
 /// Verify the construction of an unknown type.
 bool UnknownType::verifyConstructionInvariants(llvm::Optional<Location> loc,

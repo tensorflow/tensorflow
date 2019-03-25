@@ -57,7 +57,7 @@ LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
 }
 
 llvm::Type *LLVMType::getUnderlyingType() const {
-  return static_cast<ImplType *>(type)->underlyingType;
+  return getImpl()->underlyingType;
 }
 
 /*---- LLVM IR Dialect and its registration ----------------------------- */
