@@ -196,8 +196,8 @@ class SamplingDatasetOp : public UnaryDatasetOpKernel {
      private:
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
 
-      float Random()
-          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      float Random() {
+        mutex_lock l(mu_);
         num_random_samples_++;
         auto out = generator_.RandFloat();
         return out;
