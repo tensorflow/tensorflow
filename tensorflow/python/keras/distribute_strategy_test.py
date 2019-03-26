@@ -727,14 +727,14 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       cpu_model = get_model()
       cpu_model.compile(optimizer, loss)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
+      inputs = np.random.random((10, 3)).astype(np.float32)
 
       # As sample size is 10, we batch by 4 so that the last batch is
       # a partial batch. Also `predict()` using numpy array as inputs without
       # distribution strategy uses entire sample as a single batch. As so,
       # we remove parameters `batch_size` and `steps`.
-      predict_ground_truth = cpu_model.predict(inputs)
       cpu_model.set_weights(model_with_ds_strategy.get_weights())
+      predict_ground_truth = cpu_model.predict(inputs)
       self.assertAllClose(
           model_with_ds_strategy.predict(inputs, batch_size=4, steps=3),
           predict_ground_truth,
@@ -1180,7 +1180,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       cpu_model = get_model()
       cpu_model.compile(optimizer, loss)
 
-      inputs = np.zeros((10, 3), dtype=np.float32)
+      inputs = np.random.random((10, 3)).astype(np.float32)
       dataset = dataset_ops.Dataset.from_tensor_slices((inputs))
 
       # As sample size is 10, we batch by 4 so that the last batch is
