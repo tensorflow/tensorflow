@@ -10,7 +10,6 @@ package_group(
         "//tensorflow/compiler/tests/...",
         "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/contrib/compiler/...",
-        "//tensorflow/python/compiler/...",
     ],
 )
 

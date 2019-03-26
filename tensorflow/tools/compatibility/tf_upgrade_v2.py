@@ -883,10 +883,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.conv2d_transpose",
         "tf.test.compute_gradient":
             "tf.compat.v1.test.compute_gradient",
-        "tf.xla.experimental.compile":
-            "tf.compat.v1.xla.experimental.compile",
-        "tf.xla.experimental.jit_scope":
-            "tf.compat.v1.xla.experimental.jit_scope",
     }
     # pylint: enable=line-too-long
 
