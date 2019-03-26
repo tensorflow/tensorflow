@@ -56,7 +56,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # Would fail if there were two batch norms in the graph
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/']
@@ -92,7 +93,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/',
@@ -132,7 +134,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # Would fail if there were two batch norms in the graph
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/']
@@ -167,7 +170,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/',
@@ -216,7 +220,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
 
       # One BN for forwards and one BN for grad
       # (note that we don't cache gradient application)
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'Copy_',
             'Copy.',
             'vs/conv1/Conv2D/convolution.*/Conv_1x1',
@@ -281,7 +286,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # Would fail if there were two batch norms in the graph
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/PopnnGroupNormInference/custom-call.*/']
@@ -341,7 +347,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # Would fail if there were two batch norms in the graph
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/PopnnGroupNormStatistics/custom-call.*/',
@@ -389,7 +396,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # Would fail if there were two batch norms in the graph
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/PopnnGroupNormInference/custom-call.*/',
@@ -453,7 +461,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # One GN for forwards and one GN for grad
-      ok =  ['host-exchange-local-copy-',
+      ok =  [
+        '__seed*','host-exchange-local-copy-',
              'Copy_',
              'vs/conv1/Conv2D/convolution*/Conv_1x1/Convolve',
              'vs/PopnnGroupNormTraining/custom-call*/Norm',

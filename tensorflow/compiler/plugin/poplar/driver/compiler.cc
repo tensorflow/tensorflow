@@ -20,6 +20,8 @@ limitations under the License.
 #include <stdlib.h>
 #include <unistd.h>
 #include <fstream>
+#include <limits>
+#include <random>
 
 #include "absl/strings/str_cat.h"
 
@@ -89,6 +91,7 @@ limitations under the License.
 #include <poplin/codelets.hpp>
 #include <popnn/codelets.hpp>
 #include <popops/codelets.hpp>
+#include <poprand/RandomGen.hpp>
 #include <poprand/codelets.hpp>
 
 namespace se = ::stream_executor;
@@ -279,6 +282,51 @@ HloPrintOptions GetPrintOptions() {
       .set_print_percent(false)
       .set_include_layout_in_shapes(false);
   return opts;
+}
+
+std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
+    poplar::Graph& master_graph, poplar::Graph& graph, int replica_count,
+    poplar::program::Program& prog) {
+  const std::string seed_prefix = "__seed";
+
+  auto seed =
+      graph.addVariable(poplar::UNSIGNED_INT, {2}, seed_prefix + "/tensor");
+  graph.setTileMapping(seed, 0);
+
+  auto data_stream = master_graph.addHostToDeviceFIFO(
+      seed_prefix + "/stream", seed.elementType(),
+      seed.numElements() * std::max(replica_count, 1));
+
+  poplar::program::Sequence seq;
+  if (replica_count > 1) {
+    seq.add(poplar::program::Copy(data_stream,
+                                  master_graph.getNonReplicatedTensor(seed)));
+  } else {
+    seq.add(poplar::program::Copy(data_stream, seed));
+  }
+
+  poprand::setSeed(graph, seed, 0, seq, seed_prefix + "/set");
+
+  seq.add(prog);
+
+  return {seq, data_stream};
+}
+
+void ConnectSeedCallback(poplar::Engine& engine, int replica_count,
+                         poplar::DataStream stream) {
+  std::random_device rd;
+  std::mt19937 gen(rd());
+
+  auto callback = [gen, replica_count](void* ptr) mutable {
+    std::uniform_int_distribution<uint64_t> dis;
+    uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
+
+    for (int i = 0; i < replica_count; ++i) {
+      seedValue[i] = dis(gen);
+    }
+  };
+
+  engine.connectStreamToCallback(stream, callback);
 }
 
 }  // namespace
@@ -511,12 +559,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       return PoplarExceptionToTensorflowStatus("[Build graph] ", e);
     }
 
+    auto seed_setup = InitializeSeed(resources.main_graph, *sharding_main_graph,
+                                     replication_count, visitor.sequence);
+
     // =======================================================================
     // DO NOT CHANGE THE ORDER OF THESE WITHOUT UPDATING PoplarProgramType IN
     // exectutor.h
     // =======================================================================
     progs.push_back(visitor.GetHostToDevice());
-    progs.push_back(visitor.sequence);
+    progs.push_back(seed_setup.first);
     progs.push_back(visitor.GetDeviceToHost());
 
     char* vertex_filename = getenv("TF_DUMP_VERTEX_GRAPH");
@@ -552,6 +603,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
         engine.reset(new poplar::Engine(resources.main_graph, progs, opts,
                                         progress_logging));
+
+        ConnectSeedCallback(*engine, replication_count, seed_setup.second);
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }

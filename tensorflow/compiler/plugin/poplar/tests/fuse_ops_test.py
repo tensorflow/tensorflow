@@ -52,7 +52,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Sigmoid/fusion/Nonlinearity']
+      ok = [
+        '__seed*','Sigmoid/fusion/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testSigmoidNotInplace(self):
@@ -80,7 +81,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Sigmoid/fusion/Nonlinearity',
+      ok = [
+        '__seed*','Sigmoid/fusion/Nonlinearity',
             'Copy_XLA_Args/arg0.*_to_Sigmoid/fusion.clone/OnTileCopy-0',
             'add/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -112,7 +114,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['SigmoidGrad/fusion/NonLinearityGrad']
+      ok = [
+        '__seed*','SigmoidGrad/fusion/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testRelu(self):
@@ -138,7 +141,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Relu/fusion/Nonlinearity']
+      ok = [
+        '__seed*','Relu/fusion/Nonlinearity']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testReluNotInPlace(self):
@@ -164,7 +168,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Relu/fusion/Nonlinearity',
+      ok = [
+        '__seed*','Relu/fusion/Nonlinearity',
             'Copy_XLA_Args/arg0.*_to_Relu/fusion.clone/OnTileCopy-0',
             'add/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -196,7 +201,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['ReluGrad/fusion/NonLinearityGrad']
+      ok = [
+        '__seed*','ReluGrad/fusion/NonLinearityGrad']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testMaxPool(self):
@@ -225,7 +231,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['max/custom-call.*/maxPool5x5']
+      ok = [
+        '__seed*','max/custom-call.*/maxPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFwdAndBwdMaxPool(self):
@@ -276,7 +283,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['Copy_*',
+      ok = [
+        '__seed*','Copy_*',
             'MaxPool/custom-call.*/maxPool2x2/',
             'MaxPoolGrad/custom-call.*/maxPool2x2']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -309,7 +317,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'add/fusion/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -343,7 +352,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'sub/fusion/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -376,7 +386,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'add/fusion/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -409,7 +420,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'sub/fusion/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -445,7 +457,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion.*/Reduce']
+      ok = [
+        '__seed*','GradientDescent/update_vs/conv2d/bias/ResourceApplyGradientDescent/fusion.*/Reduce']
       self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
 
   def testConvolutionBiasApplyVariableLR(self):
@@ -480,7 +493,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['Copy_',
+      ok = [
+        '__seed*','Copy_',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution*/Conv_1x1/Convolve',
             'vs/conv2d/BiasAdd/fusion*/addToChannel',
@@ -529,7 +543,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['avg/custom-call.*/avgPool10x10']
+      ok = [
+        '__seed*','avg/custom-call.*/avgPool10x10']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testAvgPoolValidWithBroadcast(self):
@@ -569,7 +584,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['avg/custom-call.*/avgPool5x5']
+      ok = [
+        '__seed*','avg/custom-call.*/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -611,7 +627,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['avg/custom-call.*/avgPool5x5']
+      ok = [
+        '__seed*','avg/custom-call.*/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFullyConnectedWithBias(self):
@@ -643,7 +660,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'xw_plus_b/MatMul/dot.*/Conv_1/Convolve',
             'xw_plus_b/fusion/addToChannel']
       self.assertTrue(tu.check_compute_sets_in_whitelist_entries(cs_list, ok))
@@ -676,7 +694,8 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy',
+      ok = [
+        '__seed*','host-exchange-local-copy',
             'Copy_',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d/BiasAdd',

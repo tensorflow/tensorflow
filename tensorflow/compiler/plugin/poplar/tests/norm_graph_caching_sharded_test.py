@@ -59,7 +59,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       # Would fail if there were two batch norms in the graph
-      ok = ['progIdCopy/GlobalPre',
+      ok = [
+        '__seed*','progIdCopy/GlobalPre',
             '/OnTileCopy',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1/Convolve',
             'vs/batch_normalization/FusedBatchNorm/batch-norm-inference.*/']
@@ -109,7 +110,8 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       # Two BN for forwards (on shards 0 and 1) and two BN for grad
       # (note that we don't cache gradient application)
-      ok = ['progIdCopy/GlobalPre',
+      ok = [
+        '__seed*','progIdCopy/GlobalPre',
             '/OnTileCopy',
             'Copy_',
             'vs/conv1/Conv2D/convolution.*/Conv_1x1',

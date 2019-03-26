@@ -51,7 +51,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
       # Would fail if there were two convolutions in the graph as they would be
       # called conv2d and conv2d_1
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'Copy_']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -84,7 +85,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
-      ok = ['Copy_*weightsRearranged',
+      ok = [
+        '__seed*','Copy_*weightsRearranged',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/Cast/convert.*/Cast',
@@ -119,7 +121,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
-      ok = ['Copy_*weightsRearranged',
+      ok = [
+        '__seed*','Copy_*weightsRearranged',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
@@ -152,7 +155,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
       # Matches two convolutions
-      ok = ['Copy_*weightsRearranged',
+      ok = [
+        '__seed*','Copy_*weightsRearranged',
             'host-exchange-local-copy-',
             'vs/conv2d/Conv2D/convolution.*/Conv_1x1',
             'vs/conv2d_1/Conv2D/convolution.*/Conv_1x1']
@@ -198,7 +202,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Fwd and BackpropInput should be shared
       # Weight transpose for BackpropInput should be present
       # Both BackpropFilter should be shared
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'Copy_',
             'vs/conv1/Conv2D/convolution.*/Conv_1x1',
             'Sum/reduce.*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
@@ -248,7 +253,8 @@ class ConvGraphCachingTest(test_util.TensorFlowTestCase):
       # Fwd and BackpropInput should be shared
       # Weight transpose for BackpropInput should be present
       # Both BackpropFilter should be shared
-      ok = ['host-exchange-local-copy-',
+      ok = [
+        '__seed*','host-exchange-local-copy-',
             'Copy_',
             'vs/conv1/Conv2D/convolution.*/Conv_1x1',
             'Sum/reduce.*/ReduceFinalStage/IntermediateToOutput/Reduce',
