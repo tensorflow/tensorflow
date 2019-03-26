@@ -42,7 +42,7 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.ops import script_ops
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import image_ops_impl
+from tensorflow.python.framework import tensor_shape
 
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
@@ -3544,21 +3544,40 @@ def combined_non_max_suppression(boxes,
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class)
-  
+ 
+
 @tf_export('image.average_filter_2D')
 def average_filter_2D(input,filter_shape=(3,3)):
-    """  This methods takes 3D Tensor Images.
-         Other than Tensor it takes optional parameter filter_Size
-         Default Filter Shape = (3 , 3)
-         This Median Filtering is done by using 2D filters of user's choice
-         Filter_size should be odd
-         This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
-    """
+    """This method performs Average Filtering on image.Filter shape can be user given.
+       This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
+       Args:
+           input: A 3D `Tensor` of type `float32` or 'int32' or 'float64' or 'int64 and of shape`[rows, columns, channels]`
 
-    input = image_ops_impl._Assert3DImage(input)
-    m,no,ch = int(input.shape[0]),int(input.shape[1]),int(input.shape[2])
+           filter_shape: Optional Argument. A tuple of 2 integers .(R,C).R is the first value is the number of rows in the filter
+           and C is the second value in the filter is the number of columns in the filter. This creates a filter of shape (R,C) or
+           RxC filter. Default value = (3,3)
+
+        Returns:
+            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int64'. Pixel value of returned tensor
+            ranges between 0 to 255
+    """
+    if not isinstance(filter_shape,tuple):
+        raise TypeError("Filter shape must be a tuple")
+    if len(filter_shape) != 2:
+        raise ValueError("Filter shape must be a tuple of 2 integers .Got %s values in tuple"% len(filter_shape))
     filter_shapex = filter_shape[0]
     filter_shapey = filter_shape[1]
+    if isinstance(filter_shapex,int) and isinstance(filter_shapey,int):
+        pass
+    else :
+        raise TypeError("Size of the filter must be Integers")
+    input = image_ops_impl._Assert3DImage(input)
+    m,no,ch = input.shape[0],input.shape[1],input.shape[2]
+    if not m.__eq__(tensor_shape.Dimension(None)) and not no.__eq__(tensor_shape.Dimension(None)) \
+            and not ch.__eq__(tensor_shape.Dimension(None)):
+        m,no,ch = int(m),int(no),int(ch)
+    else :
+        raise TypeError("All the Dimensions of the input image tensor must be Integers")
     if m < filter_shapex or no < filter_shapey:
         raise ValueError("No of Pixels in each dimension of the image should be more than the filter size. Got filter_shape "
                          "(%sx" % filter_shape[0]+"%s)."%filter_shape[1] +" Image Shape (%s)"% input.shape)
@@ -3568,8 +3587,8 @@ def average_filter_2D(input,filter_shape=(3,3)):
     def my_func (input2):
         tf_i = input2.reshape(m*no*ch)
         maxi = max(tf_i)
-        if maxi <= 1:
-            input2 /= 1
+        if maxi == 1:
+            input2 /= maxi
         else :
             input2 /= 255
         #k and l is the Zero-padding size
