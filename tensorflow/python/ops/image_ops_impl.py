@@ -2890,6 +2890,8 @@ def _ssim_per_channel(img1, img2, max_val=1.0, size = 11, sigma = 1.5):
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
+    size: size of gaussian filter.
+    sigma: width of gaussian filter.
 
   Returns:
     A pair of tensors containing and channel-wise SSIM and contrast-structure
@@ -2976,6 +2978,8 @@ def ssim(img1, img2, max_val, filter_size = 11, filter_sigma = 1.5):
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
+    filter_size: size of gaussian filter.
+    filter_sigma: width of gaussian filter.
 
   Returns:
     A tensor containing an SSIM value for each image in batch.  Returned SSIM
