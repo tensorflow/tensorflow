@@ -390,7 +390,7 @@ class DirectSession : public Session {
   std::atomic<int64> edge_name_counter_ = {0};
   std::atomic<int64> handle_name_counter_ = {0};
 
-  // For generating step ids that are unique across this sessions.
+  // For generating step ids that are unique among all sessions.
   static std::atomic_int_fast64_t step_id_counter_;
 
   // Global timeout for all blocking operations in this session.
