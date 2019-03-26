@@ -290,158 +290,6 @@ bool IsCompilableCall(const NodeDef& call_def,
   return true;
 }
 
-// Returns true if the op can be decomposed into XLA ops for which
-// there are fusable elemental implementations.
-//
-// TODO(hpucha): Remove this code since this functionality is subsumed by
-// Grappler XlaFusionOptimizer.
-bool IsXlaFusable(const NodeDef& node) {
-  static const std::unordered_set<std::string>* elementwise_ops =
-      new std::unordered_set<std::string>(
-          {// tf2xla/kernels/aggregate_ops.cc
-           "AddN",
-           // tf2xla/kernels/batchtospace_op.cc
-           "BatchToSpace", "BatchToSpaceND",
-           // tf2xla/kernels/bcast_ops.cc
-           "BroadcastArgs", "BroadcastGradientArgs",
-           // tf2xla/kernels/bias_ops.cc
-           "BiasAdd", "BiasAddV1", "BiasAddGrad" /*(Reduce)*/,
-           // tf2xla/kernels/binary_ops.cc
-           "Add", "Sub", "Mul", "Div", "Atan2", "Complex", "FloorDiv",
-           "FloorMod", "BitwiseAnd", "BitwiseOr", "LeftShift", "RightShift",
-           "LogicalAnd", "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
-           "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "SquaredDifference",
-           "TruncateDiv", "TruncateMod", "Equal", "NotEqual", "Greater",
-           "GreaterEqual", "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad",
-           "SoftsignGrad", "TanhGrad", "Pow", "ApproximateEqual",
-           // tf2xla/kernels/cast_op.cc
-           "Cast",
-           // tf2xla/kernels/categorical_op.cc
-           "Multinomial" /* (Rng ops are disabled on GPU backend currently)*/,
-           // tf2xla/kernels/concat_op.cc
-           "Concat", "ConcatV2", "ConcatOffset",
-           // tf2xla/kernels/const_op.cc
-           "Const",
-           // tf2xla/kernels/cross_op.cc
-           "Cross",
-           // tf2xla/kernels/depthtospace_op.cc
-           "DepthToSpace",
-           // tf2xla/kernels/diag_op.cc
-           "Diag", "DiagPart", "MatrixDiag", "MatrixDiagPart",
-           // tf2xla/kernels/dynamic_stitch_op.cc
-           "DynamicStitch", "ParallelDynamicStitch",
-           // tf2xla/kernels/elu_op.cc
-           "Elu", "EluGrad", "Selu", "SeluGrad",
-           // tf2xla/kernels/fake_quantize_ops.cc
-           "FakeQuantWithMinMaxArgs", "FakeQuantWithMinMaxArgsGradient",
-           "FakeQuantWithMinMaxVars",
-           "FakeQuantWithMinMaxVarsGradient" /*(Reduce)*/,
-           // tf2xla/kernels/fill_op.cc
-           "Fill",
-           // tf2xla/kernels/gather_op.cc
-           "Gather", "GatherV2", "GatherNd",
-           // tf2xla/kernels/identity_op.cc
-           "Identity", "IdentityN", "PreventGradient", "StopGradient",
-           "Snapshot",
-           // tf2xla/kernels/image_ops.cc
-           "RGBToHSV", "HSVToRGB", "AdjustContrastv2" /*(Reduce)*/,
-           "AdjustSaturation", "AdjustHue",
-           // tf2xla/kernels/index_ops.cc
-           "ArgMax", "ArgMin",
-           // tf2xla/kernels/l2loss_op.cc
-           "L2Loss" /*(Reduce)*/,
-           // tf2xla/kernels/lrn_ops.cc (ReduceWindow)
-           "LRN", "LRNGrad",
-           // tf2xla/kernels/matrix_band_part_op.cc
-           "MatrixBandPart",
-           // tf2xla/kernels/matrix_set_diag_op.cc
-           "MatrixSetDiag",
-           // tf2xla/kernels/mirror_pad_op.cc
-           "MirrorPad",
-           // tf2xla/kernels/no_op.cc
-           "NoOp", "ControlTrigger",
-           // tf2xla/kernels/one_hot_op.cc
-           "OneHot",
-           // tf2xla/kernels/pack_op.cc
-           "Pack",
-           // tf2xla/kernels/pad_op.cc
-           "Pad", "PadV2",
-           // tf2xla/kernels/pooling_ops.cc
-           "MaxPool", "MaxPoolV2", "MaxPool3D", "AvgPool",
-           "AvgPool3D", /*(all the pooling ops use ReduceWindow)*/
-           "MaxPoolGrad", "MaxPoolGradV2", "MaxPool3DGrad", "AvgPoolGrad",
-           "AvgPool3DGrad",
-           // tf2xla/kernels/quantize_and_dequantize_op.cc (Reduce)
-           "QuantizeAndDequantizeV2",
-           // tf2xla/kernels/random_ops.cc (Rng ops are disabled on GPU backend
-           // currently)
-           "RandomUniform", "RandomUniformInt", "RandomStandardNormal",
-           "TruncatedNormal",
-           // tf2xla/kernels/reduction_ops.cc (Reduce)
-           "Sum", "Prod", "Min", "Max", "Mean", "All", "Any",
-           // tf2xla/kernels/relu_op.cc
-           "Relu", "Relu6", "ReluGrad", "Relu6Grad",
-           // tf2xla/kernels/reshape_op.cc
-           "Reshape",
-           // tf2xla/kernels/reverse_op.cc
-           "Reverse", "ReverseV2",
-           // tf2xla/kernels/reverse_sequence_op.cc
-           "ReverseSequence",
-           // tf2xla/kernels/scan_ops.cc (ReduceWindow)
-           "Cumsum", "Cumprod",
-           // tf2xla/kernels/scatter_nd_op.cc (Reduce)
-           "ScatterNd",
-           // tf2xla/kernels/segment_reduction_ops.cc (Reduce)
-           "UnsortedSegmentSum",
-           // tf2xla/kernels/select_op.cc
-           "Select",
-           // tf2xla/kernels/sequence_ops.cc
-           "Range", "LinSpace",
-           // tf2xla/kernels/shape_op.cc
-           "Shape", "ShapeN", "Rank", "Size", "ExpandDims", "Squeeze",
-           "ZerosLike", "OnesLike",
-           // tf2xla/kernels/slice_op.cc
-           "Slice",
-           // tf2xla/kernels/softmax_op.cc (Reduce)
-           "Softmax", "LogSoftmax", "SoftmaxCrossEntropyWithLogits",
-           "SparseSoftmaxCrossEntropyWithLogits",
-           // tf2xla/kernels/spacetobatch_op.cc
-           "SpaceToBatchND", "SpaceToBatch",
-           // tf2xla/kernels/spacetodepth_op.cc
-           "SpaceToDepth",
-           // tf2xla/kernels/split_op.cc
-           "Split", "SplitV",
-           // tf2xla/kernels/stack_ops.cc
-           "StackV2", "StackPushV2", "StackPopV2", "StackCloseV2",
-           // tf2xla/kernels/stateless_random_ops.cc (Rng ops are disabled on
-           // GPU
-           // backend currently)
-           "StatelessRandomUniform",
-           "StatelessRandomNormal"
-           // tf2xla/kernels/strided_slice_op.cc
-           "StridedSlice",
-           "StridedSliceGrad", "ResourceStridedSliceAssign",
-           // tf2xla/kernels/tile_ops.cc
-           "Tile",
-           // tf2xla/kernels/training_ops.cc
-           "ResourceApplyGradientDescent", "ResourceApplyMomentum",
-           "ResourceApplyAdagrad", "ResourceApplyAdam", "ResourceApplyRMSProp",
-           "ResourceApplyFtrl", "ResourceApplyFtrlV2",
-           // tf2xla/kernels/transpose_op.cc
-           "Transpose", "InvertPermutation",
-           // tf2xla/kernels/unary_ops.cc
-           "ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
-           "Asinh", "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp",
-           "Expm1", "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal",
-           "Log", "Log1p", "Invert", "LogicalNot", "Neg", "Rint", "Round",
-           "Rsqrt", "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt",
-           "Square", "Tan", "Tanh", "Real", "Imag",
-           // tf2xla/kernels/unpack_op.cc
-           "Unpack"});
-
-  return elementwise_ops->count(node.op()) > 0;
-}
-
 // Nodes that XLA can compile are put in `candidates`.  Nodes put in
 // `isolated_nodes` must either be unclustered or be put in trivial single-node
 // clusters.
@@ -688,13 +536,9 @@ Status MarkForCompilationPass::Run(
     const GraphOptimizationPassOptions& options) {
   // TODO(phawkins): precompute the "GetCompilationDevice" properties of each
   // device ahead of time.
-  OptimizerOptions::GlobalJitLevel global_jit_level =
-      GetGlobalJitLevel(options);
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  bool fusion_only = flags->tf_xla_fusion_only;
-
-  VLOG(1) << "flags->tf_xla_fusion_only = " << flags->tf_xla_fusion_only;
   VLOG(1) << "flags->tf_xla_auto_jit = " << flags->tf_xla_auto_jit;
+
   const FunctionLibraryDefinition* fld = options.flib_def;
 
   // Deadness analysis expects a graph with source and sink edges properly
@@ -764,13 +608,6 @@ Status MarkForCompilationPass::Run(
         VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
         return false;
       }
-    }
-
-    // Check for fusable ops only if requested.
-    if (global_jit_level > 0 && fusion_only && !IsXlaFusable(node->def())) {
-      VLOG(2) << "Rejecting " << node->name()
-              << ": not fusable op but fusion_only enabled.";
-      return false;
     }
 
     return true;
