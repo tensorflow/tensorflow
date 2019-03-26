@@ -111,7 +111,8 @@ tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/internal/quantization_util.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/version.h
+tensorflow/lite/version.h \
+tensorflow/core/public/version.h
 
 THIRD_PARTY_CC_HDRS := \
 third_party/gemmlowp/fixedpoint/fixedpoint.h \
@@ -137,6 +138,9 @@ MBED_PROJECT_FILES := \
 KEIL_PROJECT_FILES := \
   README_KEIL.md \
   keil_project.uvprojx
+
+ARDUINO_PROJECT_FILES := \
+  library.properties
 
 ALL_PROJECT_TARGETS :=
 
