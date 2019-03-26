@@ -1066,7 +1066,7 @@ struct InputOutputData {
 
   size_t TotalBytes() const { return tensor.TotalBytes(); }
 
-  const char* name;
+  string name;
   Tensor tensor;
 };
 
@@ -1122,7 +1122,7 @@ class OpConverterTest : public ::testing::Test {
 
   void CheckDataTypeMatches(const DataVec& datas) {
     for (const auto& data : datas) {
-      const int input_index = engine_->getBindingIndex(data.name);
+      const int input_index = engine_->getBindingIndex(data.name.c_str());
       ASSERT_NE(-1, input_index);
       const nvinfer1::DataType trt_dtype =
           engine_->getBindingDataType(input_index);
@@ -1167,7 +1167,8 @@ class OpConverterTest : public ::testing::Test {
     std::vector<void*> buffers(num_bindings);
 
     for (const auto& data : input_data) {
-      const int input_index = engine_->getBindingIndex(data.name);
+      const int input_index = engine_->getBindingIndex(data.name.c_str());
+      ASSERT_NE(-1, input_index);
       ASSERT_EQ(0, cudaMalloc(&buffers[input_index], data.TotalBytes()));
       ASSERT_EQ(0, cudaMemcpyAsync(buffers[input_index], data.Buffer(),
                                    data.TotalBytes(), cudaMemcpyHostToDevice,
@@ -1181,7 +1182,8 @@ class OpConverterTest : public ::testing::Test {
     };
     std::vector<SizeAndIndex> output_infos;
     for (const auto& data : *output_data) {
-      const int output_index = engine_->getBindingIndex(data.name);
+      const int output_index = engine_->getBindingIndex(data.name.c_str());
+      ASSERT_NE(-1, output_index);
       output_infos.emplace_back(data.TotalBytes(), output_index);
       ASSERT_EQ(0, cudaMalloc(&buffers[output_index], data.TotalBytes()));
     }
@@ -1214,7 +1216,7 @@ class OpConverterTest : public ::testing::Test {
 
   // Add ITensor for both validation and conversion.
   void AddTestTensor(
-      const char* name, const std::vector<int32>& dims, int batch_size = 1,
+      const string& name, const std::vector<int32>& dims, int batch_size = 1,
       nvinfer1::DataType trt_dtype = nvinfer1::DataType::kFLOAT) {
     DataType tf_dtype = TrtDataTypeToTf(trt_dtype);
     ops::Placeholder::Attrs attrs;
@@ -1234,7 +1236,7 @@ class OpConverterTest : public ::testing::Test {
 
   // Add weights for both validation and conversion.
   template <typename T>
-  void AddTestWeights(const char* name, const std::vector<int>& dims,
+  void AddTestWeights(const string& name, const std::vector<int>& dims,
                       const std::vector<T>& values) {
     const DataType dtype = DataTypeToEnum<T>::v();
     const nvinfer1::Dims trt_dims = GetTestDims(dims);
@@ -3881,6 +3883,191 @@ TEST_F(OpConverterTest, ConvertUnary) {
                   NanSensitiveFloatNear(expected_output, 0.0001));
     }
   }
+}
+
+// Get the NodeDef for ConcatV2.
+auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
+  Scope s = Scope::NewRootScope();
+  std::vector<Input> values;
+  for (int i = 0; i < num_inputs; ++i) {
+    const string input_name = StrCat("values_", i);
+    values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
+  }
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  auto concat = ops::Concat(s.WithOpName("my_concat"),
+                            absl::Span<const Input>(values), axis);
+  return concat.operation.node()->def();
+};
+
+template <DataType dtype>
+void TestConvertConcat(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  struct TestParams {
+    std::vector<std::vector<int>> input_shapes;
+    std::vector<std::vector<CType>> input_values;
+    int axis;
+    std::vector<int> expected_output_dims;
+    std::vector<CType> expected_output;
+  };
+
+  // Ok.
+  auto make_vector = [](int size, CType start_value = 0) {
+    std::vector<CType> v(size);
+    for (int i = 0; i < size; ++i) {
+      v[i] = CType(start_value) + CType(i);
+    }
+    return v;
+  };
+  const std::vector<std::vector<CType>> common_input{
+      make_vector(6), make_vector(6, /*start_value=*/6)};
+  const int kConcatOKCases = 4;
+  TestParams ok_params[kConcatOKCases] = {
+      {
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*input_values=*/common_input,
+          /*axis=*/1,
+          /*expected_output_dims=*/{2, 2, 3},
+          /*expected_output=*/make_vector(12),
+      },
+      {
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*input_values=*/common_input,
+          /*axis=*/2,
+          /*expected_output_dims=*/{1, 4, 3},
+          /*expected_output=*/make_vector(12),
+      },
+      {
+          /*input_shapes=*/{{1, 2, 3}, {1, 2, 3}},
+          /*input_values=*/common_input,
+          /*axis=*/3,
+          /*expected_output_dims=*/{1, 2, 6},
+          /*expected_output=*/
+          {CType(0), CType(1), CType(2), CType(6), CType(7), CType(8), CType(3),
+           CType(4), CType(5), CType(9), CType(10), CType(11)},
+      },
+      {
+          /*input_shapes=*/{{1}, {2}, {3}, {1}, {1}, {2}},
+          /*input_values=*/
+          {{CType(1)},
+           {CType(2), CType(3)},
+           {CType(4), CType(5), CType(6)},
+           {CType(7)},
+           {CType(8)},
+           {CType(9), CType(10)}},
+          /*axis=*/1,
+          /*expected_output_dims=*/{10},
+          /*expected_output=*/make_vector(10, /*start_value=*/1),
+      },
+  };
+
+  for (int i = 0; i < kConcatOKCases; ++i) {
+    test->Reset();
+    const int num_inputs = ok_params[i].input_shapes.size();
+    EXPECT_EQ(num_inputs, ok_params[i].input_values.size());
+    NodeDef node_def = get_concat_nodedef(dtype, num_inputs);
+    // Create inputs.
+    for (int j = 0; j < num_inputs; ++j) {
+      test->AddTestTensor(StrCat("values_", j), ok_params[i].input_shapes[j]);
+    }
+    test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
+    test->RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_concat", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+    // Create input data for tensors.
+    DataVec input_data;
+    for (int j = 0; j < num_inputs; ++j) {
+      input_data.push_back(
+          {StrCat("values_", j),
+           test::AsTensor<CType>(ok_params[i].input_values[j])});
+    }
+    DataVec output_data{
+        {"my_concat",
+         ConstructTensor<CType>(ok_params[i].expected_output.size())}};
+    test->BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertConcat) {
+  {
+    // Axis is a tensor, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestTensor("values_1", {1, 2, 3});
+    AddTestTensor("axis", {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"axis\" for ConcatV2 must be a constant, at my_concat");
+  }
+  {
+    // Axis is out of bounds, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestTensor("values_1", {1, 2, 3});
+    AddTestWeights<int32>("axis", {1}, {4});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of 4 is out of bounds, must be in "
+                               "range [-4, 4), at my_concat");
+  }
+  {
+    // Axis is batch dimension, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestTensor("values_1", {1, 2, 3});
+    AddTestWeights<int32>("axis", {1}, {0});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_concat");
+  }
+  {
+    // Inputs have inconsistent rank, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestTensor("values_1", {1, 6});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ConcatV2 received inputs with inconsistent rank, at my_concat");
+  }
+  {
+    // An input is a weight, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestWeights<float>("values_1", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"values_1\" for ConcatV2 must be a tensor, at my_concat");
+  }
+  {
+    // Inputs have inconsistent non-axis shapes, should fail.
+    Reset();
+    NodeDef node_def = get_concat_nodedef(DT_FLOAT, 2);
+    AddTestTensor("values_0", {1, 2, 3});
+    AddTestTensor("values_1", {1, 3, 2});
+    AddTestWeights<int32>("axis", {1}, {1});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "ConcatV2 received inputs with inconsistent shape, at my_concat");
+  }
+
+  TestConvertConcat<DT_FLOAT>(this);
+  // TODO(tmorris): We appear to not be handling FP16 inputs correctly. Enable
+  // once this is fixed.
+  // TestConvertConcat<DT_HALF>(this);
+  // TODO(tmorris): Enable once TRT adds support.
+  // TestConvertConcat<DT_INT32>(this);
 }
 
 }  // namespace convert

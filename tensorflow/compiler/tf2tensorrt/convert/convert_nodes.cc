@@ -3547,81 +3547,64 @@ Status ConvertPad(OpConverterParams* params) {
 Status ConvertConcat(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
+  TFAttrs attrs(node_def);
+  // Get number of tensor inputs.
+  const int num_inputs = attrs.get<int64>("N");
+  if (num_inputs != static_cast<int>(inputs.size()) - 1) {
+    return errors::InvalidArgument(
+        "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
+        node_def.name());
+  }
+  // Validate inputs. Values must be tensors for now.
+  std::vector<std::pair<string, bool>> inputs_is_weight;
+  for (int i = 0; i < num_inputs; ++i) {
+    inputs_is_weight.push_back({StrCat("values_", i), false});
+  }
+  inputs_is_weight.push_back({"axis", true});
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, inputs_is_weight));
   // TODO(tmorris): There is a bug with Concat and INT32 in TRT - it is supposed
   // to be supported.
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
-  // not including the last input (axis) here
-  int input_size = static_cast<int>(inputs.size()) - 1;
-
-  if (!inputs.at(0).is_tensor()) {
-    return errors::InvalidArgument(
-        "Concat in TRT support only Tensor input, at ", node_def.name());
+  const auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
+  if (axis.size() != 1) {
+    return errors::InvalidArgument("Axis for ConcatV2 must be a scalar, at ",
+                                   node_def.name());
   }
-
-  // We are retrieving the axis
-  TRT_ShapedWeights axis = inputs.at(input_size).weights();
-
-  TFAttrs attrs(node_def);
-  auto index_type = attrs.get<DataType>("Tidx");
-
-  // TODO(jie): handle data type
-  // Only expect to handle INT32 as index attributes for now
-  if (index_type != DataType::DT_INT32)
-    return errors::Unimplemented("Tidx supports only DT_INT32, at ",
-                                 node_def.name());
-
-  int index = *(static_cast<int*>(const_cast<void*>(axis.GetValues())));
-
-  // TODO(jie): early termination with no-op (attr_size==1)
-
-  auto dim = inputs.at(0).tensor()->getDimensions();
-  // dimension check
-  if (index > dim.nbDims + 1) {
-    return errors::InvalidArgument(
-        "Concatenate on axis out of dimension range, at ", node_def.name());
-  }
-  if (index == 0) {
-    return errors::InvalidArgument(
-        "Concatenate on batch dimension not supported, at ", node_def.name());
-  }
-  if (index < 0) {
-    index = dim.nbDims + index + 1;
-  }
-
-  std::vector<nvinfer1::ITensor const*> inputs_vec;
-  // Shap chack (all input tensor should have same shape)
-  // starting from 0 since we are probably also doing transpose here;
-  for (int i = 0; i < input_size; i++) {
-    auto tensor_i = inputs.at(i).tensor();
-    auto dim_i = tensor_i->getDimensions();
+  int trt_axis = 0;
+  const auto dim = inputs.at(0).GetTrtDims();
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(axis[0], dim.nbDims, node_def.name(), &trt_axis));
+  // Check that dimensions match on non-concatenate axis.
+  for (int i = 0; i < num_inputs; i++) {
+    auto dim_i = inputs.at(i).GetTrtDims();
     if (dim_i.nbDims != dim.nbDims) {
       return errors::InvalidArgument(
-          "Concatenate receives inputs with inconsistent dimensions, at ",
+          "ConcatV2 received inputs with inconsistent rank, at ",
           node_def.name());
     }
     for (int j = 0; j < dim.nbDims; j++) {
-      // check dimension consistency on non-concatenate axis
-      if (j != index - 1 && dim_i.d[j] != dim.d[j]) {
+      if (j != trt_axis && dim_i.d[j] != dim.d[j]) {
         return errors::InvalidArgument(
-            "Concatenate receives inputs with inconsistent shape, at",
+            "ConcatV2 received inputs with inconsistent shape, at ",
             node_def.name());
       }
     }
-
-    inputs_vec.push_back(tensor_i);
   }
   if (params->validation_only) return Status::OK();
 
-  // nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  // Gather inputs as tensors
+  std::vector<nvinfer1::ITensor const*> input_tensors;
+  for (int i = 0; i < num_inputs; i++) {
+    input_tensors.push_back(inputs.at(i).tensor());
+  }
   nvinfer1::IConcatenationLayer* layer =
       params->converter->network()->addConcatenation(
-          const_cast<nvinfer1::ITensor* const*>(inputs_vec.data()),
-          inputs_vec.size());
+          const_cast<nvinfer1::ITensor* const*>(input_tensors.data()),
+          input_tensors.size());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-  layer->setAxis(index - 1);
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-  params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  layer->setAxis(trt_axis);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 }
 
