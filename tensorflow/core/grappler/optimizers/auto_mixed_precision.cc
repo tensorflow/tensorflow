@@ -287,6 +287,10 @@ class NodeTypeAttrMap {
           input_arg_inds.size(), " non-control input(s), but got ",
           node.input_size());
     }
+    // Note that the mappings generated here include inputs/outputs with fixed
+    // types. This makes the mappings complete (all inputs and outputs are
+    // included), and allows the graph rewriter to propagate black paint
+    // from/through ops with fixed types.
     io2type_entry.first.reserve(input_arg_inds.size());
     for (int i = 0; i < (int)input_arg_inds.size(); ++i) {
       const auto& arg_inds = input_arg_inds[i];
