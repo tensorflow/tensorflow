@@ -3786,7 +3786,7 @@ auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   }
   auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
   auto concat = ops::Concat(s.WithOpName("my_concat"),
-                            gtl::ArraySlice<Input>(values), axis);
+                            absl::Span<const Input>(values), axis);
   return concat.operation.node()->def();
 };
 
