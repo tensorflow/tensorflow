@@ -210,19 +210,6 @@ Attribute AffineApplyOp::constantFold(ArrayRef<Attribute> operands,
 }
 
 namespace {
-/// SimplifyAffineApply operations.
-///
-struct SimplifyAffineApply : public RewritePattern {
-  SimplifyAffineApply(MLIRContext *context)
-      : RewritePattern(AffineApplyOp::getOperationName(), 1, context) {}
-
-  PatternMatchResult match(Instruction *op) const override;
-  void rewrite(Instruction *op, std::unique_ptr<PatternState> state,
-               PatternRewriter &rewriter) const override;
-};
-} // end anonymous namespace.
-
-namespace {
 /// An `AffineApplyNormalizer` is a helper class that is not visible to the user
 /// and supports renumbering operands of AffineApplyOp. This acts as a
 /// reindexing map of Value* to positional dims or symbols and allows
@@ -287,18 +274,6 @@ private:
 public:
   ~AffineApplyNormalizer() { affineApplyDepth()--; }
 };
-
-/// FIXME: this is massive overkill for simple obviously always matching
-/// canonicalizations.  Fix the pattern rewriter to make this easy.
-struct SimplifyAffineApplyState : public PatternState {
-  AffineMap map;
-  SmallVector<Value *, 8> operands;
-
-  SimplifyAffineApplyState(AffineMap map,
-                           const SmallVector<Value *, 8> &operands)
-      : map(map), operands(operands) {}
-};
-
 } // end anonymous namespace.
 
 AffineDimExpr AffineApplyNormalizer::renumberOneDim(Value *v) {
@@ -681,27 +656,30 @@ void mlir::canonicalizeMapAndOperands(
   *operands = resultOperands;
 }
 
-PatternMatchResult SimplifyAffineApply::match(Instruction *op) const {
-  auto apply = op->cast<AffineApplyOp>();
-  auto map = apply.getAffineMap();
+namespace {
+/// Simplify AffineApply operations.
+///
+struct SimplifyAffineApply : public RewritePattern {
+  SimplifyAffineApply(MLIRContext *context)
+      : RewritePattern(AffineApplyOp::getOperationName(), 1, context) {}
 
-  AffineMap oldMap = map;
-  SmallVector<Value *, 8> resultOperands(apply.getOperands());
-  composeAffineMapAndOperands(&map, &resultOperands);
-  if (map != oldMap)
-    return matchSuccess(
-        llvm::make_unique<SimplifyAffineApplyState>(map, resultOperands));
+  PatternMatchResult matchAndRewrite(Instruction *op,
+                                     PatternRewriter &rewriter) const override {
+    auto apply = op->cast<AffineApplyOp>();
+    auto map = apply.getAffineMap();
 
-  return matchFailure();
-}
+    AffineMap oldMap = map;
+    SmallVector<Value *, 8> resultOperands(apply.getOperands());
+    composeAffineMapAndOperands(&map, &resultOperands);
+    if (map != oldMap) {
+      rewriter.replaceOpWithNewOp<AffineApplyOp>(op, map, resultOperands);
+      return matchSuccess();
+    }
 
-void SimplifyAffineApply::rewrite(Instruction *op,
-                                  std::unique_ptr<PatternState> state,
-                                  PatternRewriter &rewriter) const {
-  auto *applyState = static_cast<SimplifyAffineApplyState *>(state.get());
-  rewriter.replaceOpWithNewOp<AffineApplyOp>(op, applyState->map,
-                                             applyState->operands);
-}
+    return matchFailure();
+  }
+};
+} // end anonymous namespace.
 
 void AffineApplyOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
@@ -992,17 +970,8 @@ struct AffineForLoopBoundFolder : public RewritePattern {
   AffineForLoopBoundFolder(MLIRContext *context)
       : RewritePattern(AffineForOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Instruction *op) const override {
-    auto forOp = op->cast<AffineForOp>();
-
-    // If the loop has non-constant bounds, it may be foldable.
-    if (!forOp.hasConstantBounds())
-      return matchSuccess();
-
-    return matchFailure();
-  }
-
-  void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
+  PatternMatchResult matchAndRewrite(Instruction *op,
+                                     PatternRewriter &rewriter) const override {
     auto forOp = op->cast<AffineForOp>();
     auto foldLowerOrUpperBound = [&forOp](bool lower) {
       // Check to see if each of the operands is the result of a constant.  If
@@ -1022,7 +991,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
              "bound maps should have at least one result");
       SmallVector<Attribute, 4> foldedResults;
       if (failed(boundMap.constantFold(operandConstants, foldedResults)))
-        return;
+        return failure();
 
       // Compute the max or min as applicable over the results.
       assert(!foldedResults.empty() &&
@@ -1035,17 +1004,23 @@ struct AffineForLoopBoundFolder : public RewritePattern {
       }
       lower ? forOp.setConstantLowerBound(maxOrMin.getSExtValue())
             : forOp.setConstantUpperBound(maxOrMin.getSExtValue());
+      return success();
     };
 
     // Try to fold the lower bound.
+    bool folded = false;
     if (!forOp.hasConstantLowerBound())
-      foldLowerOrUpperBound(/*lower=*/true);
+      folded |= succeeded(foldLowerOrUpperBound(/*lower=*/true));
 
     // Try to fold the upper bound.
     if (!forOp.hasConstantUpperBound())
-      foldLowerOrUpperBound(/*lower=*/false);
+      folded |= succeeded(foldLowerOrUpperBound(/*lower=*/false));
 
+    // If any of the bounds were folded we return success.
+    if (!folded)
+      return matchFailure();
     rewriter.updatedRootInPlace(op);
+    return matchSuccess();
   }
 };
 } // end anonymous namespace
