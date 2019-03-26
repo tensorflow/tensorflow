@@ -3560,7 +3560,7 @@ def combined_non_max_suppression(boxes,
         score_threshold, pad_per_class)
   
  
-@tf_export('image.average_filter_2D')
+@tf_export('image.median_filter_2D')
 def median_filter_2D(input,filter_shape=(3,3)):
     """This method performs Median Filtering on image.Filter shape can be user given.
        This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
