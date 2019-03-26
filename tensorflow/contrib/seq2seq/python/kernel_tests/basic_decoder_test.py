@@ -36,7 +36,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only
+@test_util.run_v1_only("contrib code not supported in TF2.0")
 class BasicDecoderTest(test.TestCase):
 
   def _testStepWithTrainingHelper(self, use_output_layer):
