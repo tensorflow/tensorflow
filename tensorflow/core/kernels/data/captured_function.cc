@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/time/clock.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
 #include "tensorflow/core/framework/cancellation.h"
@@ -69,7 +70,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     }
 
     void RecordExecutorStarted() override {
-      start_time_ns_ = Env::Default()->NowNanos();
+      start_time_ns_ = absl::GetCurrentTimeNanos();
     }
 
     void RecordComputeStarted() override {}
@@ -77,7 +78,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     void RecordComputeEnded() override {}
 
     void RecordExecutorEnded() override {
-      end_time_ns_ = Env::Default()->NowNanos();
+      end_time_ns_ = absl::GetCurrentTimeNanos();
     }
 
     bool TrackAllocations() const override { return false; }
