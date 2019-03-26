@@ -806,6 +806,10 @@ class Layer(trackable.Trackable):
           self._layers):
         layer._clear_losses()
 
+  @property
+  def metrics(self):
+    return self._metrics + self._gather_children_attribute('metrics')
+
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
     """Adds metric tensor to the layer.
@@ -1828,7 +1832,7 @@ class Layer(trackable.Trackable):
   def _gather_children_attribute(self, attribute):
     assert attribute in {
         'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
-        'losses'
+        'losses', 'metrics'
     }
     if hasattr(self, '_layers'):
       nested_layers = trackable_layer_utils.filter_empty_layer_containers(
