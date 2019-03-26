@@ -158,7 +158,6 @@ class FusionInstructionMerger {
 
  private:
   bool IsFusible(HloInstruction* fusion);
-  bool IsProfitableToFuse(HloInstruction* fusion);
   Status HandleFusion(HloInstruction* fusion);
 
   HloComputation* computation_;
@@ -224,9 +223,6 @@ bool FusionInstructionMerger::IsFusible(HloInstruction* fusion) {
     ++num_fail_not_loop_fusion_;
     return false;
   }
-}
-
-bool FusionInstructionMerger::IsProfitableToFuse(HloInstruction* fusion) {
 
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
@@ -293,7 +289,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
           << " flops_to_bytes_ratio: " << CalculateFlopsToBytesRatio(fusion);
   ++total_visited_;
 
-  if (!IsFusible(fusion) || !IsProfitableToFuse(fusion)) {
+  if (!IsFusible(fusion)) {
     return Status::OK();
   }
 
