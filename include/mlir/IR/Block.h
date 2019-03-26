@@ -180,6 +180,10 @@ public:
   /// they are to be deleted.
   void dropAllReferences();
 
+  /// This drops all uses of values defined in this block or in the blocks of
+  /// nested regions wherever the uses are located.
+  void dropAllDefinedValueUses();
+
   /// Returns true if the ordering of the child instructions is valid, false
   /// otherwise.
   bool isInstOrderValid() { return parentValidInstOrderPair.getInt(); }
@@ -337,8 +341,9 @@ namespace mlir {
 /// is part of - a Function or an operation region.
 class Region {
 public:
-  explicit Region(Function *container);
+  explicit Region(Function *container = nullptr);
   explicit Region(Instruction *container);
+  ~Region();
 
   using RegionType = llvm::iplist<Block>;
   RegionType &getBlocks() { return blocks; }
@@ -378,6 +383,13 @@ public:
   /// in the respective cloned block.
   void cloneInto(Region *dest, BlockAndValueMapping &mapper,
                  MLIRContext *context);
+
+  /// Takes body of another region (that region will have no body after this
+  /// operation completes).  The current body of this region is cleared.
+  void takeBody(Region &other) {
+    blocks.clear();
+    blocks.splice(blocks.end(), other.getBlocks());
+  }
 
 private:
   RegionType blocks;

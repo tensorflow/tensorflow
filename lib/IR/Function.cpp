@@ -40,11 +40,6 @@ Function::Function(Location location, StringRef name, FunctionType type,
       body(this) {}
 
 Function::~Function() {
-  // Instructions may have cyclic references, which need to be dropped before we
-  // can start deleting them.
-  for (auto &bb : *this)
-    bb.dropAllReferences();
-
   // Clean up function attributes referring to this function.
   FunctionAttr::dropFunctionReference(this);
 }

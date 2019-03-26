@@ -115,6 +115,9 @@ public:
   /// be deleted.
   void dropAllReferences();
 
+  /// Drop uses of all values defined by this instruction or its nested regions.
+  void dropAllDefinedValueUses();
+
   /// Unlink this instruction from its current block and insert it right before
   /// `existingInst` which may be in the same or another block in the same
   /// function.

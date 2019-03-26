@@ -312,9 +312,9 @@ public:
                            int requiredOperandCount = -1,
                            Delimiter delimiter = Delimiter::None) = 0;
 
-  /// Parses a region. Any parsed blocks are filled in to the operation's
-  /// regions after the operation is created.
-  virtual bool parseRegion() = 0;
+  /// Parses a region. Any parsed blocks are appended to "region" and must be
+  /// moved to the op regions after the op is created.
+  virtual bool parseRegion(Region &region) = 0;
 
   /// Parses an argument for the entry block of the next region to be parsed.
   virtual bool parseRegionEntryBlockArgument(Type argType) = 0;

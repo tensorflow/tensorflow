@@ -738,8 +738,8 @@ void AffineForOp::build(Builder *builder, OperationState *result,
                        builder->getAffineMapAttr(ubMap));
   result->addOperands(ubOperands);
 
-  // Reserve a region for the body.
-  result->reserveRegions(/*numReserved=*/1);
+  // Create a region for the body.
+  result->addRegion();
 
   // Set the operands list as resizable so that we can freely modify the bounds.
   result->setOperandListToResizable();
@@ -915,8 +915,8 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   }
 
   // Parse the body region.
-  result->reserveRegions(/*numReserved=*/1);
-  if (parser->parseRegion())
+  Region *body = result->addRegion();
+  if (parser->parseRegion(*body))
     return true;
 
   // Parse the optional attribute list.
@@ -1209,7 +1209,9 @@ void AffineIfOp::build(Builder *builder, OperationState *result,
   result->addOperands(conditionOperands);
 
   // Reserve 2 regions, one for the 'then' and one for the 'else' regions.
-  result->reserveRegions(2);
+  result->regions.reserve(2);
+  result->addRegion(nullptr);
+  result->addRegion(nullptr);
 }
 
 bool AffineIfOp::verify() {
@@ -1269,22 +1271,25 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
         parser->getNameLoc(),
         "symbol operand count and integer set symbol count must match");
 
+  // Create the regions for 'then' and 'else'.  The latter must be created even
+  // if it remains empty for the validity of the operation.
+  result->regions.reserve(2);
+  Region *thenRegion = result->addRegion();
+  Region *elseRegion = result->addRegion();
+
   // Parse the 'then' region.
-  if (parser->parseRegion())
+  if (parser->parseRegion(*thenRegion))
     return true;
 
   // If we find an 'else' keyword then parse the 'else' region.
-  if (!parser->parseOptionalKeyword("else")) {
-    if (parser->parseRegion())
+  if (!parser->parseOptionalKeyword("else"))
+    if (parser->parseRegion(*elseRegion))
       return true;
-  }
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
     return true;
 
-  // Reserve 2 regions, one for the 'then' and one for the 'else' regions.
-  result->reserveRegions(2);
   return false;
 }
 

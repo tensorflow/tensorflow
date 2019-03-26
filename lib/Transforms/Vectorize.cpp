@@ -1086,7 +1086,7 @@ static Instruction *vectorizeOneInstruction(Instruction *opInst,
   OperationState newOp(b.getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), vectorOperands,
                        vectorTypes, opInst->getAttrs(), /*successors=*/{},
-                       /*numRegions=*/0, opInst->hasResizableOperandsList());
+                       /*regions=*/{}, opInst->hasResizableOperandsList());
   return b.createOperation(newOp);
 }
 

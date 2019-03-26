@@ -489,6 +489,17 @@ void Instruction::dropAllReferences() {
     dest.drop();
 }
 
+/// This drops all uses of any values defined by this operation or its nested
+/// regions, wherever they are located.
+void Instruction::dropAllDefinedValueUses() {
+  for (auto &val : getInstResults())
+    val.dropAllUses();
+
+  for (auto &region : getRegions())
+    for (auto &block : region)
+      block.dropAllDefinedValueUses();
+}
+
 /// Return true if there are no users of any results of this operation.
 bool Instruction::use_empty() {
   for (auto *result : getResults())

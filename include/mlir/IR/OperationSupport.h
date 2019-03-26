@@ -40,6 +40,7 @@ class OpAsmParser;
 class OpAsmParserResult;
 class OpAsmPrinter;
 class Pattern;
+class Region;
 class RewritePattern;
 class Type;
 class Value;
@@ -229,28 +230,22 @@ struct OperationState {
   SmallVector<NamedAttribute, 4> attributes;
   /// Successors of this operation and their respective operands.
   SmallVector<Block *, 1> successors;
-  unsigned numRegions = 0;
+  /// Regions that the op will hold.
+  SmallVector<std::unique_ptr<Region>, 1> regions;
   /// If the operation has a resizable operand list.
   bool resizableOperandList = false;
 
 public:
-  OperationState(MLIRContext *context, Location location, StringRef name)
-      : context(context), location(location), name(name, context) {}
+  OperationState(MLIRContext *context, Location location, StringRef name);
 
-  OperationState(MLIRContext *context, Location location, OperationName name)
-      : context(context), location(location), name(name) {}
+  OperationState(MLIRContext *context, Location location, OperationName name);
 
   OperationState(MLIRContext *context, Location location, StringRef name,
                  ArrayRef<Value *> operands, ArrayRef<Type> types,
                  ArrayRef<NamedAttribute> attributes,
-                 ArrayRef<Block *> successors = {}, unsigned numRegions = 0,
-                 bool resizableOperandList = false)
-      : context(context), location(location), name(name, context),
-        operands(operands.begin(), operands.end()),
-        types(types.begin(), types.end()),
-        attributes(attributes.begin(), attributes.end()),
-        successors(successors.begin(), successors.end()),
-        numRegions(numRegions) {}
+                 ArrayRef<Block *> successors = {},
+                 MutableArrayRef<std::unique_ptr<Region>> regions = {},
+                 bool resizableOperandList = false);
 
   void addOperands(ArrayRef<Value *> newOperands) {
     assert(successors.empty() &&
@@ -279,8 +274,15 @@ public:
     operands.append(succOperands.begin(), succOperands.end());
   }
 
-  /// Reserve space for new regions.
-  void reserveRegions(unsigned numReserved) { numRegions += numReserved; }
+  /// Create a region that should be attached to the instruction.  These regions
+  /// can be filled in immediately without waiting for Instruction to be
+  /// created.  When it is, the region bodies will be transferred.
+  Region *addRegion();
+
+  /// Take a region that should be attached to the Instruction.  The body of the
+  /// region will be transferred when the Instruction is constructed.  If the
+  /// region is null, a new empty region will be attached to the Instruction.
+  void addRegion(std::unique_ptr<Region> &&region);
 
   /// Sets the operand list of the operation as resizable.
   void setOperandListToResizable(bool isResizable = true) {

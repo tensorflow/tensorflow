@@ -98,6 +98,14 @@ void Block::dropAllReferences() {
     i.dropAllReferences();
 }
 
+void Block::dropAllDefinedValueUses() {
+  for (auto *arg : getArguments())
+    arg->dropAllUses();
+  for (auto &inst : *this)
+    inst.dropAllDefinedValueUses();
+  dropAllUses();
+}
+
 /// Verifies the current ordering of child instructions. Returns false if the
 /// order is valid, true otherwise.
 bool Block::verifyInstOrder() {
@@ -280,11 +288,20 @@ Region::Region(Function *container) : container(container) {}
 
 Region::Region(Instruction *container) : container(container) {}
 
+Region::~Region() {
+  // Instructions may have cyclic references, which need to be dropped before we
+  // can start deleting them.
+  for (auto &bb : *this)
+    bb.dropAllReferences();
+}
+
 Instruction *Region::getContainingInst() {
+  assert(!container.isNull() && "no container");
   return container.dyn_cast<Instruction *>();
 }
 
 Function *Region::getContainingFunction() {
+  assert(!container.isNull() && "no container");
   return container.dyn_cast<Function *>();
 }
 

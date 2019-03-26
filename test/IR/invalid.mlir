@@ -943,3 +943,51 @@ func @invalid_tuple_missing_less(tuple i32>)
 
 // expected-error @+1 {{expected '>' in tuple type}}
 func @invalid_tuple_missing_greater(tuple<i32)
+
+// -----
+
+// Should not crash because of deletion order here.
+func @invalid_region_dominance() {
+  "foo.use" (%1) : (i32) -> ()
+  "foo.region"() : () -> () {
+    %1 = constant 0 : i32  // This value is used outside of the region.
+    "foo.yield" () : () -> ()
+  } {
+    // expected-error @+1 {{expected operation name in quotes}}
+    %2 = constant 1 i32  // Syntax error causes region deletion.
+  }
+  return
+}
+
+// -----
+
+// Should not crash because of deletion order here.
+func @invalid_region_block() {
+  "foo.branch"()[^bb2] : () -> ()  // Attempt to jump into the region.
+
+^bb1:
+  "foo.region"() : () -> () {
+    ^bb2:
+      "foo.yield"() : () -> ()
+  } {
+    // expected-error @+1 {{expected operation name in quotes}}
+    %2 = constant 1 i32  // Syntax error causes region deletion.
+  }
+}
+
+// -----
+
+// Should not crash because of deletion order here.
+func @invalid_region_dominance() {
+  "foo.use" (%1) : (i32) -> ()
+  "foo.region"() : () -> () {
+    "foo.region"() : () -> () {
+      %1 = constant 0 : i32  // This value is used outside of the region.
+      "foo.yield" () : () -> ()
+    }
+  } {
+    // expected-error @+1 {{expected operation name in quotes}}
+    %2 = constant 1 i32  // Syntax error causes region deletion.
+  }
+  return
+}
