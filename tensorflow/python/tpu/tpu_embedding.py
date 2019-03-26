@@ -296,7 +296,7 @@ class TPUEmbedding(object):
                master,
                optimization_parameters=None,
                cluster_def=None,
-               pipeline_execution_with_tensor_core=True):
+               pipeline_execution_with_tensor_core=False):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -315,7 +315,7 @@ class TPUEmbedding(object):
       cluster_def: A ClusterDef object describing the TPU cluster.
       pipeline_execution_with_tensor_core: setting this to `True` makes training
         faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
+        involve the same set of embedding IDs. Please see
         `tpu_embedding_configuration.proto` for details.
 
     Raises:
@@ -587,13 +587,6 @@ class TPUEmbedding(object):
   def _validate_generate_enqueue_ops_sparse_features_list(
       self, sparse_features_list):
     """Validate `sparse_features_list`."""
-    if len(sparse_features_list) != self._num_cores:
-      raise ValueError('Length of `sparse_features_list` should match the '
-                       'number of cores; '
-                       '`len(sparse_features_list)` is {}, '
-                       'number of cores is {}.'.format(
-                           len(sparse_features_list), self._num_cores))
-
     feature_set = set(self._feature_to_table_dict.keys())
     contiguous_device = None
     for i, sparse_features in enumerate(sparse_features_list):
@@ -669,8 +662,7 @@ class TPUEmbedding(object):
       Arguments for `enqueue_tpu_embedding_sparse_tensor_batch()`.
     """
 
-    sample_idcs, embedding_idcs, aggregation_weights, table_ids = (
-        list(), list(), list(), list())
+    sample_idcs, embedding_idcs, aggregation_weights, table_ids = [], [], [], []
     for table_id, table in enumerate(self._table_to_features_dict):
       features = self._table_to_features_dict[table]
       for feature in features:

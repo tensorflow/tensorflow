@@ -193,10 +193,7 @@ class Layer(trackable.Trackable):
     self._outbound_nodes = []
 
     call_argspec = tf_inspect.getfullargspec(self.call)
-    if 'training' in call_argspec.args:
-      self._expects_training_arg = True
-    else:
-      self._expects_training_arg = False
+    self._expects_training_arg = 'training' in call_argspec.args
 
     # Whether the `call` method can be used to build a TF graph without issues.
     self._dynamic = dynamic
@@ -714,9 +711,7 @@ class Layer(trackable.Trackable):
 
   @property
   def updates(self):
-    if not self.trainable and not self.stateful:
-      return []
-    return self._updates + self._gather_children_attribute('updates')
+    return self._get_unfiltered_updates(check_trainable=True)
 
   @property
   def losses(self):
@@ -810,6 +805,10 @@ class Layer(trackable.Trackable):
       for layer in trackable_layer_utils.filter_empty_layer_containers(
           self._layers):
         layer._clear_losses()
+
+  @property
+  def metrics(self):
+    return self._metrics + self._gather_children_attribute('metrics')
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -967,13 +966,15 @@ class Layer(trackable.Trackable):
 
     if inputs is None:
       # Requesting unconditional updates.
-      return [x for x in self._unfiltered_updates if x._unconditional_update]  # pylint: disable=protected-access
+      return [
+          x for x in self._get_unfiltered_updates() if x._unconditional_update  # pylint: disable=protected-access
+      ]
 
     # Requesting input-conditional updates.
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(inputs,
-                                                   self._unfiltered_updates)
-    return [u for u in self._unfiltered_updates if u in reachable]  # pylint: disable=protected-access
+    reachable = tf_utils.get_reachable_from_inputs(
+        inputs, self._get_unfiltered_updates())
+    return [u for u in self._get_unfiltered_updates() if u in reachable]  # pylint: disable=protected-access
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1831,7 +1832,7 @@ class Layer(trackable.Trackable):
   def _gather_children_attribute(self, attribute):
     assert attribute in {
         'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
-        'losses'
+        'losses', 'metrics'
     }
     if hasattr(self, '_layers'):
       nested_layers = trackable_layer_utils.filter_empty_layer_containers(
@@ -1847,10 +1848,10 @@ class Layer(trackable.Trackable):
   def _is_layer(self):
     return True
 
-  @property
-  def _unfiltered_updates(self):
-    # Overridden in `Network`.
-    return self.updates
+  def _get_unfiltered_updates(self, check_trainable=True):
+    if check_trainable and not self.trainable and not self.stateful:
+      return []
+    return self._updates + self._gather_children_attribute('updates')
 
 
 class Node(object):

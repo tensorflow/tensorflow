@@ -18,8 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import textwrap
+
 from tensorflow.python.autograph.pyct import anno
-from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.platform import test
@@ -29,65 +30,100 @@ class OriginInfoTest(test.TestCase):
 
   def test_create_source_map(self):
 
-    def test_fn(x):
-      return x + 1
+    source = """
+        def test_fn(x):
+          return x + 1
+    """
+    source = textwrap.dedent(source)
 
-    node, _ = parser.parse_entity(test_fn)
+    node = parser.parse_str(source)
     fake_origin = origin_info.OriginInfo(
         loc=origin_info.Location('fake_filename', 3, 7),
         function_name='fake_function_name',
         source_code_line='fake source line',
         comment=None)
-    fn_node = node.body[0]
-    anno.setanno(fn_node.body[0], anno.Basic.ORIGIN, fake_origin)
-    converted_code = compiler.ast_to_source(fn_node)
+    anno.setanno(node, anno.Basic.ORIGIN, fake_origin)
 
-    source_map = origin_info.create_source_map(
-        fn_node, converted_code, 'test_filename', [0])
+    source_map = origin_info.create_source_map(node, source, 'test_filename')
 
     loc = origin_info.LineLocation('test_filename', 2)
     self.assertIn(loc, source_map)
     self.assertIs(source_map[loc], fake_origin)
 
+  def test_create_source_map_multiple_nodes(self):
+
+    source = """
+        from __future__ import print_function
+        def test_fn(x):
+          return x + 1
+    """
+    source = textwrap.dedent(source)
+
+    nodes = parser.parse_str(source, single_node=False)
+    fake_import_origin = origin_info.OriginInfo(
+        loc=origin_info.Location('fake_filename', 3, 7),
+        function_name='fake_function_name',
+        source_code_line='fake source line',
+        comment=None)
+    anno.setanno(nodes[0], anno.Basic.ORIGIN, fake_import_origin)
+    fake_function_origin = origin_info.OriginInfo(
+        loc=origin_info.Location('fake_filename', 3, 7),
+        function_name='fake_function_name',
+        source_code_line='fake source line',
+        comment=None)
+    anno.setanno(nodes[1], anno.Basic.ORIGIN, fake_function_origin)
+
+    source_map = origin_info.create_source_map(nodes, source, 'test_filename')
+
+    loc = origin_info.LineLocation('test_filename', 2)
+    self.assertIn(loc, source_map)
+    self.assertIs(source_map[loc], fake_import_origin)
+
+    loc = origin_info.LineLocation('test_filename', 3)
+    self.assertIn(loc, source_map)
+    self.assertIs(source_map[loc], fake_function_origin)
+
   def test_source_map_no_origin(self):
 
-    def test_fn(x):
-      return x + 1
+    source = """
+        def test_fn(x):
+          return x + 1
+    """
+    source = textwrap.dedent(source)
 
-    node, _ = parser.parse_entity(test_fn)
-    fn_node = node.body[0]
-    converted_code = compiler.ast_to_source(fn_node)
+    node = parser.parse_str(source)
 
-    source_map = origin_info.create_source_map(
-        fn_node, converted_code, 'test_filename', [0])
+    source_map = origin_info.create_source_map(node, source, 'test_filename')
 
-    self.assertEqual(len(source_map), 0)
+    self.assertEmpty(source_map)
 
   def test_resolve(self):
 
-    def test_fn(x):
-      """Docstring."""
-      return x  # comment
+    source = """
+        def test_fn(x):
+          '''Docstring.'''
+          return x  # comment
+    """
+    source = textwrap.dedent(source)
 
-    node, source = parser.parse_entity(test_fn)
-    fn_node = node.body[0]
+    node = parser.parse_str(source)
 
-    origin_info.resolve(fn_node, source)
+    origin_info.resolve(node, source)
 
-    origin = anno.getanno(fn_node, anno.Basic.ORIGIN)
-    self.assertEqual(origin.loc.lineno, 1)
+    origin = anno.getanno(node, anno.Basic.ORIGIN)
+    self.assertEqual(origin.loc.lineno, 2)
     self.assertEqual(origin.loc.col_offset, 0)
     self.assertEqual(origin.source_code_line, 'def test_fn(x):')
     self.assertIsNone(origin.comment)
 
-    origin = anno.getanno(fn_node.body[0], anno.Basic.ORIGIN)
-    self.assertEqual(origin.loc.lineno, 2)
+    origin = anno.getanno(node.body[0], anno.Basic.ORIGIN)
+    self.assertEqual(origin.loc.lineno, 3)
     self.assertEqual(origin.loc.col_offset, 2)
-    self.assertEqual(origin.source_code_line, '  """Docstring."""')
+    self.assertEqual(origin.source_code_line, "  '''Docstring.'''")
     self.assertIsNone(origin.comment)
 
-    origin = anno.getanno(fn_node.body[1], anno.Basic.ORIGIN)
-    self.assertEqual(origin.loc.lineno, 3)
+    origin = anno.getanno(node.body[1], anno.Basic.ORIGIN)
+    self.assertEqual(origin.loc.lineno, 4)
     self.assertEqual(origin.loc.col_offset, 2)
     self.assertEqual(origin.source_code_line, '  return x  # comment')
     self.assertEqual(origin.comment, 'comment')

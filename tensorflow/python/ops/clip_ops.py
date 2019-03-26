@@ -50,7 +50,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   correct results.
 
   Args:
-    t: A `Tensor`.
+    t: A `Tensor` or `IndexedSlices`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
       as `t`. The minimum value to clip by.
     clip_value_max: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -58,7 +58,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     name: A name for the operation (optional).
 
   Returns:
-    A clipped `Tensor`.
+    A clipped `Tensor` or `IndexedSlices`.
 
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
@@ -66,16 +66,20 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
-    t = ops.convert_to_tensor(t, name="t")
+    values = ops.convert_to_tensor(
+        t.values if isinstance(t, ops.IndexedSlices) else t, name="t")
 
     # Go through list of tensors, for each value in each tensor clip
-    t_min = math_ops.minimum(t, clip_value_max)
+    t_min = math_ops.minimum(values, clip_value_max)
     # Assert that the shape is compatible with the initial shape,
     # to prevent unintentional broadcasting.
-    _ = t.shape.merge_with(t_min.shape)
+    _ = values.shape.merge_with(t_min.shape)
 
     t_max = math_ops.maximum(t_min, clip_value_min, name=name)
-    _ = t.shape.merge_with(t_max.shape)
+    _ = values.shape.merge_with(t_max.shape)
+
+    if isinstance(t, ops.IndexedSlices):
+      t_max = ops.IndexedSlices(t_max, t.indices, t.dense_shape)
 
   return t_max
   # TODO(scottzhu): switch to use new implmentation in 2 weeks.

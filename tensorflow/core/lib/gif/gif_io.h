@@ -15,7 +15,7 @@ limitations under the License.
 
 // Functions to read and write images in GIF format.
 //
-// The advantage over image/codec/png{enc,dec}ocder.h is that this library
+// The advantage over image/codec/png{enc,dec}oder.h is that this library
 // supports both 8 and 16 bit images.
 //
 // The decoding routine accepts binary image data as a StringPiece.  These are

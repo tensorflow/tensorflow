@@ -135,6 +135,7 @@ class BaseGPUDevice : public LocalDevice {
   std::unique_ptr<ScopedAllocatorMgr> scoped_allocator_mgr_;
 
  private:
+  friend class GPUDeviceTestHelper;
   struct StreamGroup {
     se::Stream* compute = nullptr;
     se::Stream* host_to_device = nullptr;

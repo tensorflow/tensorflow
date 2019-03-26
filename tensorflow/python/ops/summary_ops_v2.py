@@ -60,11 +60,26 @@ _RUN_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,512}$")
 _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 
 
-def _should_record_summaries_internal():
-  """Returns boolean Tensor if summaries should/shouldn't be recorded, or None.
+def _should_record_summaries_internal(default_state):
+  """Returns boolean Tensor if summaries should/shouldn't be recorded.
+
+  Now the summary condition is decided by logical "and" of two conditions:
+  ctx.summary_recording and ctx.summary_recording_distribution_strategy. The
+  former one is usually set by user, and the latter one is controlled by
+  DistributionStrategy (tf.distribute.ReplicaContext).
+
+  Args:
+    default_state: can be True or False. The default summary behavior when user
+      does not specify ctx.summary_recording and
+      ctx.summary_recording_distribution_strategy is True.
   """
-  condition = context.context().summary_recording
-  return condition() if callable(condition) else condition
+  ctx = context.context()
+  resolve = lambda x: x() if callable(x) else x
+  cond_distributed = resolve(ctx.summary_recording_distribution_strategy)
+  cond = resolve(ctx.summary_recording)
+  if cond is None:
+    cond = default_state
+  return math_ops.logical_and(cond_distributed, cond)
 
 
 def _should_record_summaries_v2():
@@ -73,14 +88,12 @@ def _should_record_summaries_v2():
   If no recording status has been set, this defaults to True, unlike the public
   should_record_summaries().
   """
-  result = _should_record_summaries_internal()
-  return True if result is None else result
+  return _should_record_summaries_internal(default_state=True)
 
 
 def should_record_summaries():
   """Returns boolean Tensor which is true if summaries should be recorded."""
-  result = _should_record_summaries_internal()
-  return False if result is None else result
+  return _should_record_summaries_internal(default_state=False)
 
 
 @tf_export("summary.record_if", v1=[])

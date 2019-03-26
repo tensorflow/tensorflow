@@ -842,7 +842,8 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
-    if all(x_shape.dims[d].value is not None for d in axes):
+    if x_shape.rank is not None and all(
+        x_shape.dims[d].value is not None for d in axes):
       counts = 1
       for d in axes:
         counts *= x_shape.dims[d].value

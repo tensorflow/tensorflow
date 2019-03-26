@@ -114,7 +114,7 @@ class OpHint(object):
   FUNCTION_NAME_ATTR = "_tflite_function_name"
   # UUID of the function (each OpHint gets a new uuid).
   FUNCTION_UUID_ATTR = "_tflite_function_uuid"
-  # The index index of the input (or nothing if it is an output).
+  # The input index of the input (or nothing if it is an output).
   FUNCTION_INPUT_INDEX_ATTR = "_tflite_function_input_index"
   # The output index of the output (or nothing if it is an input).
   FUNCTION_OUTPUT_INDEX_ATTR = "_tflite_function_output_index"
@@ -728,10 +728,10 @@ def _find_all_hints_in_nodes(nodes):
   for node in nodes:
     attr = node.attr
     # This is an op hint if it has a FUNCTION_UUID_ATTR, otherwise skip
-    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
     if (OpHint.FUNCTION_UUID_ATTR not in attr
         or not attr[OpHint.FUNCTION_UUID_ATTR].s):
       continue
+    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
 
     # Start building function
     call_def = func_calls[uuid]
@@ -795,7 +795,7 @@ def _find_children_hints_in_while_loop(function_def, nodes_mapping):
 
   # Make nodes inside function def inputs point to the real nodes.
   for node in function_def.node_def:
-    for i in range(len(node.input)):
+    for i, _ in enumerate(node.input):
       if node.input[i] in nodes_mapping:
         node.input[i] = nodes_mapping[node.input[i]]
     new_nodes.append(_copy.deepcopy(node))
@@ -855,7 +855,7 @@ def _find_children_hints(call, graph_def):
               function_inputs = function_def.signature.input_arg
               assert len(inputs_outside_loop) == len(function_inputs)
               nodes_mapping = {}
-              for i in range(len(function_inputs)):
+              for i, _ in enumerate(function_inputs):
                 nodes_mapping[function_inputs[i].name] = inputs_outside_loop[i]
               # TODO(b/123050804): Consider use grappler.
               (children_hints_in_loop,
@@ -928,7 +928,7 @@ def _convert_single_op_hint_to_stub(call,
 
   Args:
     call: A single function call to be converted.
-    graph_def: A graph_def to use as input (that hass call obviously).
+    graph_def: A graph_def to use as input (that has call obviously).
     function_def_nodes: Nodes inside the function def those are not connected to
       the graph.
     is_last_run: Whether it is the last run for a given pass (for OpHint has
@@ -995,7 +995,7 @@ def _convert_single_op_hint_to_stub(call,
     new_node.input.append(input_name)
   new_node.attr[OpHint.TFLITE_INPUT_INDICES].list.i.extend(sorted_input_indices)
 
-  # Ceate the function
+  # Create the function
   new_node.op = call.function_name
   new_node.name = call.uuid
   out.node.extend([new_node])

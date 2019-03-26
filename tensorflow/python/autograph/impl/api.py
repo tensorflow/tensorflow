@@ -21,14 +21,15 @@ from __future__ import print_function
 import collections
 import copy
 import functools
+import inspect
 import os
 import pdb
 import sys
+import textwrap
 
 from enum import Enum
 
 # pylint:disable=g-bad-import-order
-import numpy as np
 import six
 # pylint:enable=g-bad-import-order
 
@@ -36,13 +37,10 @@ import six
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
-from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.autograph.utils import py_func
-from tensorflow.python.framework import tensor_util
-from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
@@ -189,7 +187,8 @@ def _is_known_loaded_type(f, module_name, entity_name):
     # o = ClassType()
     # function(o.method)()
     return True
-  if tf_inspect.ismethod(f):
+  # Note: inspect is required here, to avoid unpacking tf.function decorators.
+  if inspect.ismethod(f):
     f = six.get_unbound_function(f)
     # The the unbound method if of this type. Example:
     #
@@ -352,41 +351,15 @@ def converted_call(f, owner, options, args, kwargs):
 
   result = converted_f(*effective_args, **kwargs)
 
-  # The converted function's closure is simply inserted into the function's
-  # module __dict__. Since modules are permanently cached, that results in
-  # leaking the entire closure.
-  # Normally, it's not safe to delete the module because that may release said
-  # closure as well. However, in the case of converted_call we are certain the
-  # function will not be executed again, so the closure should no longer be
-  # needed so long as the function doesn't return any executable code.
-  # TODO(mdan): Attach the closure properly, using cells.
-  if all(map(_is_not_callable, nest.flatten(result))):
-    del sys.modules[converted_f.__module__]
-
   return result
 
 
-def _is_not_callable(obj):
-  # TODO(brianklee): Handle case when obj is a tensor dependent on a py_func.
-  if isinstance(obj, (int, float, complex, str, bool)):
-    return True
-  if isinstance(obj, (np.ndarray, np.generic)):
-    return True
-  if tensor_util.is_tensor(obj):
-    return True
-  return False
-
-
-# TODO(mdan): Remove obsolete args.
 @tf_export('autograph.to_graph')
 def to_graph(entity,
              recursive=True,
              arg_values=None,
              arg_types=None,
-             experimental_optional_features=converter.Feature.ALL,
-             experimental_strip_decorators=None,
-             experimental_verbose=converter.Verbosity.BRIEF,
-             experimental_partial_types=None):
+             experimental_optional_features=converter.Feature.ALL):
   """Converts a Python entity into a TensorFlow graph.
 
   Also see: `tf.autograph.to_code`, `tf.function`.
@@ -442,9 +415,6 @@ def to_graph(entity,
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
-    experimental_strip_decorators: Deprecated, unused.
-    experimental_verbose: Deprecated, unused.
-    experimental_partial_types: Deprecated, unused.
 
   Returns:
     Same as `entity`, the converted Python function or class.
@@ -452,76 +422,25 @@ def to_graph(entity,
   Raises:
     ValueError: If the entity could not be converted.
   """
-  del experimental_strip_decorators
-  del experimental_verbose
-  del experimental_partial_types
-
   try:
     program_ctx = converter.ProgramContext(
         options=converter.ConversionOptions(
             recursive=recursive,
             optional_features=experimental_optional_features),
         autograph_module=tf_inspect.getmodule(to_graph))
-    nodes, name, namespace = conversion.entity_to_graph(entity, program_ctx,
-                                                        arg_values, arg_types)
-
-    compiled_module, _ = compiler.ast_to_object(
-        nodes,
-        source_prefix=program_ctx.required_imports,
-        include_source_map=True)
-
-    # The compiled code should see everything the entry entity saw.
-    # TODO(mdan): This might not work well if the call tree spans modules?
-    for key, val in namespace.items():
-      # Avoid overwriting entities that have been transformed.
-      if key not in compiled_module.__dict__:
-        compiled_module.__dict__[key] = val
-    compiled = getattr(compiled_module, name)
-
-    if hasattr(entity, '__defaults__'):
-      logging.log(3, 'Default args mapping: %s has: %s', entity,
-                  entity.__defaults__)
-      compiled.__defaults__ = entity.__defaults__
-    else:
-      logging.log(3, 'Default args mapping: %s has no __defaults__', entity)
-
-    logging.log(3, 'Namespace of %s includes: %s', compiled,
-                compiled_module.__dict__.keys())
-
-    if hasattr(compiled, '__globals__'):
-      # Remove self to avoid circular references. This will probably only work
-      # so long as the function is not reentrant.
-      del compiled.__globals__[name]
-
-    # Need this so the source_mapping attribute is available for the context
-    # manager to access for runtime errors.
-    #
-    # Note that compiler.ast_to_object attaches the source map 'ag_source_map__'
-    # symbol to the compiled module.
-    # TODO(mdan): Record this statically in the generated code.
-    # TODO(mdan): Rename this attribute to 'autograph_info__'
-    source_map_attribute_name = 'ag_source_map'
-    if getattr(compiled, source_map_attribute_name, None) is not None:
-      # TODO(znado): change input problem errors into TransformError
-      raise ValueError('cannot convert %s because is has an attribute '
-                       '"%s", which is reserved for AutoGraph.' %
-                       (compiled, source_map_attribute_name))
-    setattr(compiled, source_map_attribute_name,
-            compiled_module.__dict__['ag_source_map__'])
-
-    return compiled
+    return conversion.convert(entity, program_ctx, arg_values, arg_types)
   except (ValueError, AttributeError, KeyError, NameError, AssertionError) as e:
     errors.report_internal_error(entity, e)
 
 
+# TODO(mdan): Remove deprecated indentation arg.
 @tf_export('autograph.to_code')
 def to_code(entity,
             recursive=True,
             arg_values=None,
             arg_types=None,
             indentation='  ',
-            experimental_optional_features=converter.Feature.ALL,
-            experimental_partial_types=None):
+            experimental_optional_features=converter.Feature.ALL):
   """Similar to `to_graph`, but returns Python source code as a string.
 
   Also see: `tf.autograph.to_graph`.
@@ -544,21 +463,15 @@ def to_code(entity,
     experimental_optional_features: `None`, a tuple of, or a single
       `tf.autograph.experimental.Feature` value. Controls the use of
       optional features in the conversion process.
-    experimental_partial_types:  Deprecated, unused.
 
   Returns:
     The converted code as string.
   """
-  del experimental_partial_types
-
-  program_ctx = converter.ProgramContext(
-      options=converter.ConversionOptions(
+  source = tf_inspect.getsource(
+      to_graph(
+          entity,
           recursive=recursive,
-          optional_features=experimental_optional_features),
-      autograph_module=tf_inspect.getmodule(to_graph))
-  nodes, _, _ = conversion.entity_to_graph(entity, program_ctx, arg_values,
-                                           arg_types)
-
-  code = compiler.ast_to_source(nodes, indentation)
-
-  return program_ctx.required_imports + '\n\n' + code
+          arg_values=arg_values,
+          arg_types=arg_types,
+          experimental_optional_features=experimental_optional_features))
+  return textwrap.dedent(source)

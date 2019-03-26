@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import collections
 
+import six
+
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.feature_column import feature_column as core_fc
 from tensorflow.python.feature_column import feature_column_lib as core_fc_lib
@@ -148,13 +150,15 @@ def get_tpu_embedding_config_from_feature_columns(feature_columns):
 class EmbeddingConfigSpec(
     collections.namedtuple('EmbeddingConfigSpec', [
         'feature_columns', 'optimization_parameters', 'clipping_limit',
+        'pipeline_execution_with_tensor_core'
     ])):
   """Class to keep track of embedding config specification."""
 
   def __new__(cls,
               feature_columns,
               optimization_parameters,
-              clipping_limit=None):
+              clipping_limit=None,
+              pipeline_execution_with_tensor_core=False):
     """Creates an EmbeddingConfigSpec instance.
 
     Args:
@@ -164,6 +168,10 @@ class EmbeddingConfigSpec(
         optimizer will be applied to all embedding variables specified by
         `feature_columns`.
       clipping_limit: (Optional) Clipping limit (absolute value).
+      pipeline_execution_with_tensor_core: setting this to `True` makes training
+        faster, but trained model will be different if step N and step N+1
+        involve the same set of embedding IDs. Please see
+        `tpu_embedding_configuration.proto` for details.
 
     Returns:
       An EmbeddingConfigSpec instance.
@@ -199,7 +207,8 @@ class EmbeddingConfigSpec(
         cls,
         feature_columns=feature_columns,
         optimization_parameters=optimization_parameters,
-        clipping_limit=clipping_limit)
+        clipping_limit=clipping_limit,
+        pipeline_execution_with_tensor_core=pipeline_execution_with_tensor_core)
 
 
 class EmbeddingConfig(object):
@@ -263,7 +272,8 @@ class EmbeddingConfig(object):
         master,
         optimization_parameters,
         cluster_def,
-    )
+        pipeline_execution_with_tensor_core=self._embedding_config_spec
+        .pipeline_execution_with_tensor_core)
     return tpu_embedding_
 
   def get_tpu_embedding(self, mode):
@@ -280,5 +290,14 @@ def split_inputs(ctx, features, labels):
     tpu_embedding_ = ctx.embedding_config.tpu_embedding
     for feature_key in tpu_embedding_.feature_to_table_dict:
       sparse_features[feature_key] = features.pop(feature_key)
+
+  for v in six.itervalues(sparse_features):
+    if not v.dtype.is_integer:
+      raise ValueError('SparseTensor with string as values are not supported. '
+                       'If you are using vocabulary_file_categorical_column or '
+                       'vocabulary_list_categorical_column, please call '
+                       'your_column.categorical_column._transform_feature({'
+                       'your_column.key: features[your_column.key]}) in'
+                       'your input_fn() to convert string to int.')
 
   return features, labels, sparse_features

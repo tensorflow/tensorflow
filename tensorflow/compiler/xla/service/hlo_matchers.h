@@ -201,6 +201,7 @@ HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Exp);
+HLO_MATCHER(Fft);
 HLO_MATCHER(Floor);
 HLO_MATCHER(Fusion);
 HLO_MATCHER(AfterAll);

@@ -3,8 +3,8 @@ load(
     "docker_toolchain_autoconfig",
 )
 
-def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, cudnn_version = None, tensorrt_version = None):
-    base = "@ubuntu16.04//image"
+def _tensorflow_rbe_config(name, compiler, python_version, os, cuda_version = None, cudnn_version = None, tensorrt_version = None, tensorrt_install_path = None, cudnn_install_path = None, compiler_prefix = None):
+    base = "@%s//image" % os
     config_repos = [
         "local_config_python",
         "local_config_cc",
@@ -26,7 +26,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
     }
 
     if cuda_version != None:
-        base = "@cuda%s-cudnn%s-ubuntu14.04//image" % (cuda_version, cudnn_version)
+        base = "@cuda%s-cudnn%s-%s//image" % (cuda_version, cudnn_version, os)
 
         # The cuda toolchain currently contains its own C++ toolchain definition,
         # so we do not fetch local_config_cc.
@@ -42,17 +42,18 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
             "TF_ENABLE_XLA": "1",
             "TF_CUDNN_VERSION": cudnn_version,
             "TF_CUDA_VERSION": cuda_version,
-            "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
+            "CUDNN_INSTALL_PATH": cudnn_install_path if cudnn_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "TF_NEED_TENSORRT": "1",
             "TF_TENSORRT_VERSION": tensorrt_version,
-            "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
+            "TENSORRT_INSTALL_PATH": tensorrt_install_path if tensorrt_install_path != None else "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if compiler != "clang" else "",
+            "GCC_HOST_COMPILER_PREFIX": compiler_prefix if compiler_prefix != None else "/usr/bin",
         })
 
     docker_toolchain_autoconfig(
         name = name,
         base = base,
-        bazel_version = "0.21.0",
+        bazel_version = "0.23.2",
         config_repos = config_repos,
         env = env,
         mount_project = "$(mount_project)",

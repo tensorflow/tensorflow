@@ -13,10 +13,6 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "TFRecordCompressionType"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "TFRecordOptions"
     mtype: "<type \'type\'>"
   }

@@ -28,7 +28,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Worker::Worker(WorkerEnv* env) : env_(env) {}
+Worker::Worker(WorkerEnv* env) : env_(env), recent_request_ids_(100000) {}
 
 void Worker::GetStatusAsync(const GetStatusRequest* request,
                             GetStatusResponse* response, StatusCallback done) {
@@ -156,8 +156,14 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
+  Status s = recent_request_ids_.TrackUnique(request->request_id(),
+                                             "RunGraph (Worker)", request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
   std::shared_ptr<WorkerSession> session;
-  Status s;
   if (request->create_worker_session_called()) {
     s = env_->session_mgr->WorkerSessionForSession(request->session_handle(),
                                                    &session);
@@ -266,9 +272,14 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
-  std::shared_ptr<WorkerSession> session;
+  Status s = recent_request_ids_.TrackUnique(
+      request->request_id(), "PartialRunGraph (Worker)", request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
 
-  Status s;
+  std::shared_ptr<WorkerSession> session;
   if (request->create_worker_session_called()) {
     s = env_->session_mgr->WorkerSessionForSession(request->session_handle(),
                                                    &session);

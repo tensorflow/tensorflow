@@ -22,6 +22,7 @@ from __future__ import print_function
 import collections
 from collections import OrderedDict
 import contextlib
+import functools
 import gc
 import itertools
 import math
@@ -32,6 +33,7 @@ import tempfile
 import threading
 import unittest
 
+from absl.testing import parameterized
 import numpy as np
 import six
 
@@ -894,6 +896,58 @@ def run_all_in_graph_and_eager_modes(cls):
   return cls
 
 
+def build_as_function_and_v1_graph(func=None):
+  """Run a test case in v1 graph mode and inside tf.function in eager mode.
+
+  WARNING: This decorator can only be used in test cases that statically checks
+  generated graph. Attempting to evaluate graph or function results via.
+  session.run() or self.evaluate() will fail.
+
+  WARNING: This decorator can only be used for test cases that inherit from
+  absl.testing.parameterized.TestCase.
+
+  Args:
+    func: Test case function to be decorated.
+
+  Returns:
+    Decorated test case function.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError(
+          "`run_in_graph_mode_and_function` only supports test methods.")
+
+    @parameterized.named_parameters(("_v1_graph", "v1_graph"),
+                                    ("_function", "function"))
+    @functools.wraps(f)
+    def decorated(self, run_mode, *args, **kwargs):
+      if run_mode == "v1_graph":
+        with ops.Graph().as_default():
+          f(self, *args, **kwargs)
+      elif run_mode == "function":
+
+        @def_function.function
+        def function_in_eager():
+          f(self, *args, **kwargs)
+
+        # Create a new graph for the eagerly executed version of this test for
+        # better isolation.
+        graph_for_eager_test = ops.Graph()
+        with graph_for_eager_test.as_default(), context.eager_mode():
+          function_in_eager()
+        ops.dismantle_graph(graph_for_eager_test)
+      else:
+        return ValueError("Unknown run mode %s" % run_mode)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
+
+
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
@@ -1426,6 +1480,36 @@ class ErrorLoggingSession(session.Session):
       if not isinstance(e, errors.OutOfRangeError):
         logging.error(str(e))
       raise
+
+
+def use_deterministic_cudnn(func):
+  """Disable autotuning during the call to this function.
+
+  Some tests want to base assertions on a graph being isomorphic with a copy.
+  To ensure this, this decorator disables autotuning.
+
+  Args:
+    func: Function to run with CUDNN autotuning turned off.
+
+  Returns:
+    Decorated function.
+  """
+
+  def decorator(f):
+
+    def decorated(self, *args, **kwargs):
+      original_var = os.environ.get("TF_CUDNN_DETERMINISTIC", "")
+      os.environ["TF_CUDNN_DETERMINISTIC"] = "true"
+      result = f(self, *args, **kwargs)
+      os.environ["TF_CUDNN_DETERMINISTIC"] = original_var
+      return result
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator
 
 
 # The description is just for documentation purposes.

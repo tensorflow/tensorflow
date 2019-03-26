@@ -624,6 +624,7 @@ REGISTER_OP("OptimizeDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("optimization_configs: list(string) = []")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("OptionalFromValue")
@@ -658,6 +659,7 @@ REGISTER_OP("IteratorGetNextAsOptional")
 REGISTER_OP("ModelDataset")
     .Input("input_dataset: variant")
     .Output("handle: variant")
+    .Attr("cpu_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
