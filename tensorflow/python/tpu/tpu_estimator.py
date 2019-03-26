@@ -1364,26 +1364,23 @@ class _InputPipeline(object):
 
 
 def call_computation(computation,
-                     experimental_exported_model_uses_all_cores=True):
+                     experimental_export_device_assignment):
   """Call computation.
-
-  computation uses a single-core for TPU inference. If
-  `experimental_exported_model_uses_all_cores` is `True`, this function will
-  round-robin
-  computation among all TPU cores visible to the host; otherwise, it will use
-  a single core.
 
   Args:
     computation: A Python function that takes no inputs and builds computation
       graph. If `computation` returns m outputs, this function will return a
       list of m Tensors.
-    experimental_exported_model_uses_all_cores: Whether to round-robin among all
-      cores visible to the host, or to use a single core.
+    experimental_export_device_assignment: If `True`, use user-provided device
+      assignment. If `False`, round-robin computation among all TPU cores
+      visible to the host.
 
   Returns:
     A list of output tensors.
   """
-  if experimental_exported_model_uses_all_cores:
+  if experimental_export_device_assignment:
+    return computation()
+  else:
     # Using `TPUPartitionedCall` makes it possible to target a different
     # TPU core with every `Session.run()` call. Note that the entire inference
     # graph executes on a single core, and that invocations of this graph
@@ -1397,8 +1394,6 @@ def call_computation(computation,
         device_ordinal=tpu_ops.tpu_ordinal_selector(),
         Tout=[o.type for o in tpu_subgraph.definition.signature.output_arg],
         f=tpu_subgraph)
-  else:
-    return computation()
 
 
 class _ModelFnWrapper(object):
@@ -2256,7 +2251,6 @@ class TPUEstimator(estimator_lib.Estimator):
                export_to_tpu=True,
                export_to_cpu=True,
                warm_start_from=None,
-               experimental_exported_model_uses_all_cores=False,
                experimental_export_device_assignment=False,
                experimental_embedding_config_spec=None):
     """Constructs an `TPUEstimator` instance.
@@ -2311,12 +2305,6 @@ class TPUEstimator(estimator_lib.Estimator):
         configure warm-starting.  If the string filepath is provided instead of
         a `WarmStartSettings`, then all variables are warm-started, and it is
         assumed that vocabularies and Tensor names are unchanged.
-      experimental_exported_model_uses_all_cores: Whether to round-robin among
-        all cores visible to the host which is serving the saved model, or to
-        use a single core. This is a temporary flag to enable using all TPU
-        cores for inference with TPUPartitionedCall(). Once outside compilation
-        is supported in TPUPartitionedCall(), this flag will be enabled by
-        default.
       experimental_export_device_assignment: Whether to include the device
         assignment in the exported model. Doing so is useful in case of model
         parallel inference but will tie the exported model to the TPU topology
@@ -2389,15 +2377,8 @@ class TPUEstimator(estimator_lib.Estimator):
 
     self._export_to_cpu = export_to_cpu
     self._export_to_tpu = export_to_tpu
-    self._experimental_exported_model_uses_all_cores = (
-        experimental_exported_model_uses_all_cores)
     self._experimental_export_device_assignment = (
         experimental_export_device_assignment)
-    if (experimental_exported_model_uses_all_cores and
-        experimental_export_device_assignment):
-      raise ValueError('experimental_exported_model_uses_all_cores and '
-                       'experimental_export_device_assignment is not supported '
-                       'at the same time.')
 
     self._is_input_fn_invoked = None
     self._rendezvous = {}
@@ -2466,8 +2447,7 @@ class TPUEstimator(estimator_lib.Estimator):
         features, labels, mode, config)
     tensors = call_computation(
         computation,
-        experimental_exported_model_uses_all_cores=self
-        ._experimental_exported_model_uses_all_cores)
+        self._experimental_export_device_assignment)
     estimator_spec, export_outputs_dict, predictions_dict, none_indices = (
         capture.get())
     predictions_list = tensors[:len(predictions_dict)]
@@ -2516,13 +2496,13 @@ class TPUEstimator(estimator_lib.Estimator):
       else:
         device_assignment = None
 
-      if self._experimental_exported_model_uses_all_cores:
+      if self._experimental_export_device_assignment:
+        tensors_on_cpu = tpu.rewrite_for_inference(
+            tpu_computation, device_assignment=device_assignment)
+      else:
         tensors_on_cpu = tpu.rewrite(
             tpu_computation, device_assignment=device_assignment)
         tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
-      else:
-        tensors_on_cpu = tpu.rewrite_for_inference(
-            tpu_computation, device_assignment=device_assignment)
 
       (estimator_spec, export_outputs_dict, export_outputs_list,
        predictions_dict) = (
