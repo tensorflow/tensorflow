@@ -2798,14 +2798,12 @@ def psnr(a, b, max_val, name=None):
     with ops.control_dependencies(checks):
       return array_ops.identity(psnr_val)
 
-_SSIM_k1 = 0.01
-_SSIM_k2 = 0.03
-_SSIM_filter_size = 11
-_SSIM_sigma = 1.5
+_SSIM_K1 = 0.01
+_SSIM_K2 = 0.03
 
 
-def _ssim_helper(x, y, reducer, max_val, compensation = 1.0, SSIM_k1 = _SSIM_k1, SSIM_k2 = _SSIM_k2):
-  """Helper function for computing SSIM.
+def _ssim_helper(x, y, reducer, max_val, compensation=1.0):
+  r"""Helper function for computing SSIM.
 
   SSIM estimates covariances with weighted sums.  The default parameters
   use a biased estimate of the covariance:
@@ -2829,16 +2827,12 @@ def _ssim_helper(x, y, reducer, max_val, compensation = 1.0, SSIM_k1 = _SSIM_k1,
     max_val: The dynamic range (i.e., the difference between the maximum
       possible allowed value and the minimum allowed value).
     compensation: Compensation factor. See above.
-    SSIM_k1: Default value 0.01
-    SSIM_k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
-      of 0< K2 <0.4).
 
   Returns:
     A pair containing the luminance measure, and the contrast-structure measure.
   """
-  c1 = (SSIM_k1 * max_val) ** 2
-  c2 = (SSIM_k2 * max_val) ** 2
+  c1 = (_SSIM_K1 * max_val) ** 2
+  c2 = (_SSIM_K2 * max_val) ** 2
 
   # SSIM luminance measure is
   # (2 * mu_x * mu_y + c1) / (mu_x ** 2 + mu_y ** 2 + c1).
@@ -2879,7 +2873,7 @@ def _fspecial_gauss(size, sigma):
   return array_ops.reshape(g, shape=[size, size, 1, 1])
 
 
-def _ssim_per_channel(img1, img2, max_val=1.0, size = _SSIM_filter_size, sigma = _SSIM_sigma, SSIM_k1 = _SSIM_k1, SSIM_k2 = _SSIM_k2):
+def _ssim_per_channel(img1, img2, max_val=1.0, size = 11, sigma = 1.5):
   """Computes SSIM index between img1 and img2 per color channel.
 
   This function matches the standard SSIM implementation from:
@@ -2896,17 +2890,8 @@ def _ssim_per_channel(img1, img2, max_val=1.0, size = _SSIM_filter_size, sigma =
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
-<<<<<<< HEAD
     size: size of gaussian filter.
     sigma: width of gaussian filter.
-=======
-    size: size of Gaussian filter.
-    sigma: width of filter.
-    SSIM_k1: Default value 0.01
-    SSIM_k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
-      of 0< K2 <0.4).
->>>>>>> 7363c885f14dbad5c758bd00bb86b82280d9953b
 
   Returns:
     A pair of tensors containing and channel-wise SSIM and contrast-structure
@@ -2944,7 +2929,7 @@ def _ssim_per_channel(img1, img2, max_val=1.0, size = _SSIM_filter_size, sigma =
     return array_ops.reshape(y, array_ops.concat([shape[:-3],
                                                   array_ops.shape(y)[1:]], 0))
 
-  luminance, cs = _ssim_helper(img1, img2, reducer, max_val, compensation, SSIM_k1 = SSIM_k1, SSIM_k2 = SSIM_k2)
+  luminance, cs = _ssim_helper(img1, img2, reducer, max_val, compensation)
 
   # Average over the second and the third from the last: height, width.
   axes = constant_op.constant([-3, -2], dtype=dtypes.int32)
@@ -2954,7 +2939,7 @@ def _ssim_per_channel(img1, img2, max_val=1.0, size = _SSIM_filter_size, sigma =
 
 
 @tf_export('image.ssim')
-def ssim(img1, img2, max_val, filter_size = _SSIM_filter_size, filter_sigma = _SSIM_sigma, k1 = _SSIM_k1, k2 = _SSIM_k2):
+def ssim(img1, img2, max_val, filter_size = 11, filter_sigma = 1.5):
   """Computes SSIM index between img1 and img2.
 
   This function is based on the standard SSIM implementation from:
@@ -2976,15 +2961,15 @@ def ssim(img1, img2, max_val, filter_size = _SSIM_filter_size, filter_sigma = _S
 
   ```python
       # Read images from file.
-      im1 = tf.image.decode_png('path/to/im1.png')
-      im2 = tf.image.decode_png('path/to/im2.png')
+      im1 = tf.decode_png('path/to/im1.png')
+      im2 = tf.decode_png('path/to/im2.png')
       # Compute SSIM over tf.uint8 Tensors.
-      ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size = 11, filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
+      ssim1 = tf.image.ssim(im1, im2, max_val=255, filter_size = 11, filter_sigma = 1.5)
 
       # Compute SSIM over tf.float32 Tensors.
       im1 = tf.image.convert_image_dtype(im1, tf.float32)
       im2 = tf.image.convert_image_dtype(im2, tf.float32)
-      ssim2 = tf.image.ssim(im1, im2, max_val=1.0, filter_size = 11, filter_sigma = 1.5, k1 = 0.01, k2 = 0.03)
+      ssim2 = tf.image.ssim(im1, im2, max_val=1.0, filter_size = 11, filter_sigma = 1.5)
       # ssim1 and ssim2 both have type tf.float32 and are almost equal.
   ```
 
@@ -2993,17 +2978,8 @@ def ssim(img1, img2, max_val, filter_size = _SSIM_filter_size, filter_sigma = _S
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
-<<<<<<< HEAD
     filter_size: size of gaussian filter.
     filter_sigma: width of gaussian filter.
-=======
-    filter_size: size of Gaussian filter.
-    filter_sigma: width of filter.
-    k1: Default value 0.01
-    k2: Default value 0.03 (SSIM is less sensitivity to K2 for
-      lower values, so it would be better if we taken the valuesin range
-      of 0< K2 <0.4).
->>>>>>> 7363c885f14dbad5c758bd00bb86b82280d9953b
 
   Returns:
     A tensor containing an SSIM value for each image in batch.  Returned SSIM
@@ -3020,7 +2996,7 @@ def ssim(img1, img2, max_val, filter_size = _SSIM_filter_size, filter_sigma = _S
   max_val = convert_image_dtype(max_val, dtypes.float32)
   img1 = convert_image_dtype(img1, dtypes.float32)
   img2 = convert_image_dtype(img2, dtypes.float32)
-  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, size = filter_size, sigma = filter_sigma, SSIM_k1 = k1, SSIM_k2 = k2)
+  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, size = filter_size, sigma = filter_sigma)
   # Compute average over color channels.
   return math_ops.reduce_mean(ssim_per_channel, [-1])
 
