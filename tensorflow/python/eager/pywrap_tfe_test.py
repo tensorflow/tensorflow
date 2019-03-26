@@ -232,7 +232,8 @@ class Tests(test.TestCase):
   def testEagerExecute_InvalidType(self):
     # Test case for GitHub issue 26879.
     value = keras.layers.Input((128, 128, 1), dtype='float32')
-    with self.assertRaisesRegexp(TypeError, "Expected list for 'values' argument"):
+    with self.assertRaisesRegexp(
+        TypeError, "Expected list for 'values' argument"):
       _ = array_ops.stack(value, axis=1)
 
 
