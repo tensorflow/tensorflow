@@ -246,26 +246,28 @@ inline void Elu(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
-inline void Relu(const RuntimeShape& input_shape, const float* input_data,
-                 const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu(const RuntimeShape& input_shape, const T* input_data,
+                 const RuntimeShape& output_shape, T* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float lower = 0;
-    const float clamped = val < lower ? lower : val;
+    const T val = input_data[i];
+    const T lower = 0;
+    const T clamped = val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
 
-inline void Relu1(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
+template <typename T>
+inline void Relu1(const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Relu1 (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   for (int i = 0; i < flat_size; ++i) {
-    const float val = input_data[i];
-    const float upper = 1;
-    const float lower = -1;
-    const float clamped = val > upper ? upper : val < lower ? lower : val;
+    const T val = input_data[i];
+    const T upper = 1;
+    const T lower = -1;
+    const T clamped = val > upper ? upper : val < lower ? lower : val;
     output_data[i] = clamped;
   }
 }
