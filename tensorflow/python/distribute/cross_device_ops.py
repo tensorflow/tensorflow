@@ -299,6 +299,12 @@ class CrossDeviceOps(object):
     validate_destinations(destinations)
     return self.broadcast_implementation(tensor, destinations)
 
+  def regroup(self, per_replica_value, destinations):
+    return self.regroup_implementation(per_replica_value, destinations)
+
+  def batch_regroup(self, value_destination_pairs):
+    return self.batch_regroup_implementation(value_destination_pairs)
+
   @doc_controls.for_subclass_implementers
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
     """The implementation of reduce of `per_replica_value` to `destinations`.
@@ -358,6 +364,14 @@ class CrossDeviceOps(object):
     """
     return simple_broadcast(tensor, destinations, always_mirrored=True)
 
+  def regroup_implementation(self, per_replica_value, destinations):
+    return value_lib.Mirrored(per_replica_value._index)
+
+  def batch_regroup_implementation(self, value_destination_pairs):
+    return [
+        self.regroup(t, destinations=v)
+        for t, v in value_destination_pairs]
+
 
 @tf_export("distribute.ReductionToOneDevice")
 class ReductionToOneDevice(CrossDeviceOps):
@@ -366,7 +380,10 @@ class ReductionToOneDevice(CrossDeviceOps):
     Batch reduction is done by reduction on each element one by one.
   """
 
-  def __init__(self, reduce_to_device=None, accumulation_fn=None):
+  def __init__(self,
+               reduce_to_device=None,
+               accumulation_fn=None,
+               need_broadcast=True):
     """Constructor.
 
     Args:
@@ -377,6 +394,7 @@ class ReductionToOneDevice(CrossDeviceOps):
     """
     self.reduce_to_device = reduce_to_device
     self.accumulation_fn = accumulation_fn or math_ops.add_n
+    self.need_broadcast = need_broadcast
     super(ReductionToOneDevice, self).__init__()
 
   def reduce_implementation(self, reduce_op, per_replica_value, destinations):
@@ -390,7 +408,10 @@ class ReductionToOneDevice(CrossDeviceOps):
         "Reduce to %s then broadcast to %r." % (reduce_to_device, devices), 10)
     reduced = _simple_reduce(per_replica_value, reduce_to_device,
                              self.accumulation_fn, reduce_op)
-    return self.broadcast(reduced, destinations)
+    if self.need_broadcast:
+      return self.broadcast(reduced, destinations)
+    else:
+      return reduced
 
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs):
     return [

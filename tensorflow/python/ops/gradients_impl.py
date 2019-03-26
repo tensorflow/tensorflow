@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
+from tensorflow.python.distribute import reduce_util as ds_reduce_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
@@ -152,10 +154,12 @@ def gradients(ys,
   # mutating new ops.
   # pylint: disable=protected-access
   with ops.get_default_graph()._mutation_lock():
-    return gradients_util._GradientsHelper(
+    grads = gradients_util._GradientsHelper(
         ys, xs, grad_ys, name, colocate_gradients_with_ops,
         gate_gradients, aggregation_method, stop_gradients,
         unconnected_gradients)
+  
+  return _GradientsReduction(grads, xs)
   # pylint: enable=protected-access
 
 
@@ -268,12 +272,37 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
   # mutating new ops.
   # pylint: disable=protected-access
   with ops.get_default_graph()._mutation_lock():
-    return gradients_util._GradientsHelper(
+    grads = gradients_util._GradientsHelper(
         ys, xs, grad_ys, name, True, gate_gradients,
         aggregation_method, stop_gradients,
         unconnected_gradients)
+
+  return _GradientsReduction(grads, xs)
   # pylint: enable=protected-access
 
+def _GradientsReduction(grads, var_refs):
+  if distribute_ctx.has_strategy():
+    if distribute_ctx.in_cross_replica_context():
+      raise RuntimeError("Use `_distributed_reduction` directly instead of "
+                         "`_GradientsReduction in a cross-replica context.`")
+
+    grads_and_vars = list(zip(grads, var_refs))
+    none_grads_indices = [grads_and_vars.index((g, v)) \
+        for g, v in grads_and_vars if g is None]
+    filtered_grads_and_vars = [(g, v) for g, v in grads_and_vars if g is not None]
+    filtered_reduced_grads = \
+        distribute_ctx.get_replica_context().merge_call(
+            _distributed_reduction, filtered_grads_and_vars)
+    for index in none_grads_indices:
+      filtered_reduced_grads.insert(index, None)
+    return filtered_reduced_grads
+  else:
+    return grads
+
+def _distributed_reduction(distribution, grads_and_vars):
+  reduced_grads = distribution.extended.batch_reduce_to(
+      ds_reduce_util.ReduceOp.SUM, grads_and_vars)
+  return reduced_grads
 
 # TODO(vrv): Make this available when we want to make it public.
 def _hessian_vector_product(ys, xs, v):

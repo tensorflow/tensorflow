@@ -104,7 +104,8 @@ class ParameterServerStrategyExtended(
 
     # We typically don't need to do all-reduce in this strategy.
     self._cross_device_ops = (
-        cross_device_ops_lib.ReductionToOneDevice(reduce_to_device=_LOCAL_CPU))
+        cross_device_ops_lib.ReductionToOneDevice(
+            reduce_to_device=_LOCAL_CPU, need_broadcast=False))
 
   def _initialize_strategy(self, cluster_resolver):
     if cluster_resolver.cluster_spec().as_dict():
@@ -391,6 +392,13 @@ class ParameterServerStrategyExtended(
       self._verify_destinations_not_different_worker(destinations)
     return self._cross_device_ops.batch_reduce(reduce_op,
                                                value_destination_pairs)
+
+  def _regroup(self, value, destinations):
+    del destinations
+    if isinstance(value, values.PerDevice):
+      return list(value._index.values())[0]
+    else:
+      return value
 
   def _select_single_value(self, structured):
     """Select any single values in `structured`."""

@@ -712,6 +712,10 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     return self._get_cross_device_ops().batch_reduce(
         reduce_op, value_destination_pairs)
 
+  def _regroup(self, value, destinations):
+    return self._get_cross_device_ops().regroup(
+        value, destinations)
+
   def _update(self, var, fn, args, kwargs, group):
     # TODO(josh11b): In eager mode, use one thread per device.
     assert isinstance(var, values.DistributedVariable)

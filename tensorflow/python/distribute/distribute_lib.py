@@ -1207,6 +1207,21 @@ class DistributionStrategyExtended(object):
         for t, v in value_destination_pairs
     ]
 
+  def regroup(self, value, destinations):
+    return self._regroup(value, destinations)
+
+  def _regroup(self, value, destinations):
+    raise NotImplementedError("must be implemented in descendants")
+
+  def batch_regroup(self, value_destination_pairs):
+    return self._batch_regroup(value_destination_pairs)
+
+  def _batch_regroup(self, value_destination_pairs):
+    return [
+        self.regroup(t, destinations=v)
+        for t, v in value_destination_pairs
+    ]
+
   def update(self, var, fn, args=(), kwargs=None, group=True):
     """Run `fn` to update `var` using inputs mirrored to the same devices.
 
@@ -1629,6 +1644,10 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
   def _reduce_to(self, reduce_op, value, destinations):
     # TODO(josh11b): Use destinations?
     del reduce_op, destinations
+    return value
+
+  def _regroup(self, value, destinations):
+    del destinations
     return value
 
   def _update(self, var, fn, args, kwargs, group):
