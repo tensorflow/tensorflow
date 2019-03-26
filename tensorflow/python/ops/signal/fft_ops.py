@@ -337,7 +337,7 @@ def fftshift(x, axes=None):
              Axes over which to shift.  Default is None, which shifts all axes.
 
     Returns:
-      `Tensor` of same shape as `x` The shifted tensor.
+      `Tensor`, The shifted tensor.
 
     Example:
       >>> fftshift([ 0.,  1.,  2.,  3.,  4., -5., -4., -3., -2., -1.])
@@ -367,7 +367,7 @@ def ifftshift(x, axes=None):
             Defaults to None, which shifts all axes.
 
     Returns:
-      `Tensor` of same shape as `x` The shifted tensor.
+      `Tensor`, The shifted tensor.
 
     Example:
       >>> ifftshift([[ 0.,  1.,  2.],[ 3.,  4., -4.],[-3., -2., -1.]])
