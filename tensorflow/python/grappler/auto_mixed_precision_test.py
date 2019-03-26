@@ -270,6 +270,8 @@ class AutoMixedPrecisionTest(test.TestCase):
   MIN_GPU_ARCH = None
   IGNORE_PERF_VAR = 'TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_IGNORE_PERFORMANCE'
 
+  # TODO(benbarsdell): Add tests for eager mode with a tf.function.
+
   def setUp(self):
     super(AutoMixedPrecisionTest, self).setUp()
     # Enable the tests to be run on pre-Volta GPUs by telling the grappler pass
