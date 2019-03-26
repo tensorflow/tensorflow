@@ -333,7 +333,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
       delete;
 
   // Returns True if the library contains `func`, False otherwise.
-  virtual bool Contains(const string& func) const;
+  bool Contains(const string& func) const;
 
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
@@ -404,8 +404,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Generates new function name with the specified prefix that is unique
   // across this library.
-  virtual string UniqueFunctionName(StringPiece prefix) const
-      LOCKS_EXCLUDED(mu_);
+  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
 
   // Given a node def 'ndef', inspects attributes of the callee
   // function to derive the attribute 'value' for 'attr'. Returns OK
@@ -421,15 +420,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status GetAttr(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
-  virtual FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
+  FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
 
-  virtual size_t num_functions() const {
+  size_t num_functions() const {
     tf_shared_lock l(mu_);
     return function_defs_.size();
   }
 
   // Returns all the function names in the FunctionLibraryDefinition.
-  virtual std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
+  std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
 
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
@@ -437,20 +436,10 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
 
   // Returns a copy of `*this` with only the subset of functions that are
   // reachable from the nodes of `graph` or `func`.
-  //
-  // NOTE: This method will only consider graph-level dependencies which might
-  // result in pruning functions that are actually "reachable". For example, the
-  // ReduceDatasetOp takes as an input a DT_VARIANT that represents a dataset
-  // and this method will fail to identify any functions used in the dataset as
-  // reachable.
-  virtual FunctionLibraryDefinition ReachableDefinitions(
-      const GraphDef& graph) const;
-  virtual FunctionLibraryDefinition ReachableDefinitions(
-      const FunctionDef& func) const;
+  FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
+  FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
 
  private:
-  friend class FunctionLibraryDefinitionOverlay;
-
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
@@ -460,22 +449,21 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
     OpRegistrationData op_registration_data;
   };
 
-  virtual const FunctionDef* FindHelper(const string& func) const
+  const FunctionDef* FindHelper(const string& func) const
       SHARED_LOCKS_REQUIRED(mu_);
   string FindGradientHelper(const string& func) const
       SHARED_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  virtual Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status AddGradientDefHelper(const GradientDef& grad, bool* added)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
-  virtual const FunctionDef* GetAttrImpl(const NodeDef& ndef) const
-      LOCKS_EXCLUDED(mu_);
+  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const LOCKS_EXCLUDED(mu_);
 
   // Remove all functions in `funcs` and all gradients of functions in
   // `funcs_with_grads` from this library.
@@ -486,8 +474,7 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Remove `func` from the library. Returns non-OK Status unless `func` is in
   // the library. This should only be called when there is a guarantee that the
   // function being removed hasn't been retrieved with `Find`.
-  virtual Status RemoveFunctionHelper(const string& func)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status RemoveFunctionHelper(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Remove gradient of function `func` from the library. Returns non-OK Status
   // unless `func` has a gradient.
@@ -498,63 +485,6 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
       function_defs_ GUARDED_BY(mu_);
   gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
-};
-
-// This class can be used to extend an immutable `FunctionLibraryDefinition`
-// "base" with a mutable "overlay", providing an alternative to copying the base
-// in order to extend it.
-//
-// Any operations that mutate an instance of this class (e.g. `AddFunctionDef`
-// or `RemoveFunction`) will only affect the overlay, while operations that
-// access information about an instance of this class (e.g. `Contains` or
-// `num_functions`) will consider both the base and the overlay.
-//
-// This class is thread-safe but does not assume the ownership of the base. This
-// means that to use it safely, the lifetime of the base should extend past the
-// lifetime of the overlay.
-class FunctionLibraryDefinitionOverlay : public FunctionLibraryDefinition {
- public:
-  FunctionLibraryDefinitionOverlay(
-      const FunctionLibraryDefinition* base_lib_def)
-      : FunctionLibraryDefinition(base_lib_def->default_registry(), {}),
-        base_lib_def_(base_lib_def) {}
-
-  bool Contains(const string& func) const override;
-
-  Status LookUp(const string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override
-      LOCKS_EXCLUDED(mu_);
-
-  string UniqueFunctionName(StringPiece prefix) const override
-      LOCKS_EXCLUDED(mu_);
-
-  FunctionDefLibrary ToProto() const override LOCKS_EXCLUDED(mu_);
-
-  size_t num_functions() const override {
-    tf_shared_lock l(mu_);
-    return function_defs_.size();
-  }
-
-  std::vector<string> ListFunctionNames() const override LOCKS_EXCLUDED(mu_);
-
-  FunctionLibraryDefinition ReachableDefinitions(
-      const GraphDef& graph) const override;
-  FunctionLibraryDefinition ReachableDefinitions(
-      const FunctionDef& func) const override;
-
- protected:
-  const FunctionDef* FindHelper(const string& func) const override
-      SHARED_LOCKS_REQUIRED(mu_);
-
-  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  Status RemoveFunctionHelper(const string& func) override
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
- private:
-  const FunctionLibraryDefinition* const base_lib_def_
-      GUARDED_BY(mu_);  // not owned
 };
 
 // Forward declare. Defined in common_runtime/function.h
