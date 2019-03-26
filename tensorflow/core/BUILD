@@ -4281,6 +4281,7 @@ tf_cc_test_gpu(
         ":test",
         ":test_main",
         ":testlib",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 
