@@ -425,6 +425,39 @@ TEST_FUNC(insertion_in_block) {
   f->print(llvm::outs());
 }
 
+TEST_FUNC(select_op) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto f32Type = FloatType::getF32(&globalContext());
+  auto memrefType = MemRefType::get({-1, -1, -1}, f32Type, {}, 0);
+  auto f = makeFunction("select_op", {}, {memrefType});
+
+  ScopedContext scope(f.get());
+  // clang-format off
+  ValueHandle zero = constant_index(0), one = constant_index(1);
+  MemRefView vA(f->getArgument(0));
+  IndexedValue A(f->getArgument(0));
+  IndexHandle i, j;
+  LoopNestBuilder({&i, &j}, {zero, zero}, {one, one}, {1, 1})({
+    // This test exercises IndexedValue::operator Value*.
+    // Without it, one must force conversion to ValueHandle as such:
+    //   edsc::intrinsics::select(
+    //      i == zero, ValueHandle(A(zero, zero)), ValueHandle(ValueA(i, j)))
+    edsc::intrinsics::select(i == zero, A(zero, zero), A(i, j))
+  });
+
+  // CHECK-LABEL: @select_op
+  //      CHECK: affine.for %i0 = 0 to 1 {
+  // CHECK-NEXT:   affine.for %i1 = 0 to 1 {
+  // CHECK-NEXT:     {{.*}} = cmpi "eq"
+  // CHECK-NEXT:     {{.*}} = load
+  // CHECK-NEXT:     {{.*}} = load
+  // CHECK-NEXT:     {{.*}} = select
+  // clang-format on
+  f->print(llvm::outs());
+}
+
 int main() {
   RUN_TESTS();
   return 0;
