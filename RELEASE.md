@@ -1,3 +1,11 @@
+# Release 1.12.1
+
+## Bug Fixes and Other Changes
+
+* Fixes a potential security vulnerability where carefully crafted GIF images
+  can produce a null pointer dereference during decoding.
+
+
 # Release 1.12.0
 
 ## Major Features and Improvements
