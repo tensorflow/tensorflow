@@ -365,7 +365,7 @@ SpaceToBatchND-Conv2D-BatchToSpaceND operations, converting it to a regular
 Conv2D op with upsampled filters. This transforms should only be used in order
 to run graphs having atrous convolution on platforms that do not yet natively
 support SpaceToBatchND and BatchToSpaceND operations. You will need to make
-sure you run [fold_constants](#fold_constants) after this transform. If
+sure you run [fold_constants](#fold_constants) before this transform. If
 applicable, you should run this transform before
 [fold_batch_norms](#fold_batch_norms).
 
