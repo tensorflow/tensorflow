@@ -24,6 +24,20 @@ namespace ops {
 namespace builtin {
 namespace quantize {
 
+struct OpData {
+  int32_t output_multiplier;
+  int output_shift;
+};
+
+void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  auto* data = new OpData;
+  return data;
+}
+
+void Free(TfLiteContext* context, void* buffer) {
+  delete reinterpret_cast<OpData*>(buffer);
+}
+
 struct OpContext {
   OpContext(TfLiteContext* context, TfLiteNode* node) {
     input = GetInput(context, node, 0);
@@ -34,12 +48,12 @@ struct OpContext {
 };
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   OpContext op_context(context, node);
 
-  TF_LITE_ENSURE(context, op_context.input->type == kTfLiteFloat32);
   TF_LITE_ENSURE(context, op_context.output->type == kTfLiteUInt8 ||
                               op_context.output->type == kTfLiteInt8);
 
@@ -53,32 +67,97 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, affine_quantization->scale);
   TF_LITE_ENSURE(context, affine_quantization->scale->size == 1);
 
+  // For requantize use case.
+  const bool is_requantize = (op_context.input->type == kTfLiteUInt8 ||
+                              op_context.input->type == kTfLiteInt8) &&
+                             (op_context.output->type == kTfLiteUInt8 ||
+                              op_context.output->type == kTfLiteInt8);
+  if (is_requantize) {
+    const double effective_output_scale =
+        static_cast<double>(op_context.input->params.scale) /
+        static_cast<double>(op_context.output->params.scale);
+    QuantizeMultiplier(effective_output_scale, &data->output_multiplier,
+                       &data->output_shift);
+  }
+
   return context->ResizeTensor(context, op_context.output,
                                TfLiteIntArrayCopy(op_context.input->dims));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  OpContext op_context(context, node);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  tflite::QuantizationParams op_params;
-  op_params.zero_point = op_context.output->params.zero_point;
-  op_params.scale = op_context.output->params.scale;
-  switch (op_context.output->type) {
-    case kTfLiteUInt8:
-      optimized_ops::AffineQuantize(op_params, GetTensorShape(op_context.input),
-                                    GetTensorData<float>(op_context.input),
-                                    GetTensorShape(op_context.output),
-                                    GetTensorData<uint8_t>(op_context.output));
-      break;
-    case kTfLiteInt8:
-      optimized_ops::AffineQuantize(op_params, GetTensorShape(op_context.input),
-                                    GetTensorData<float>(op_context.input),
-                                    GetTensorShape(op_context.output),
-                                    GetTensorData<int8_t>(op_context.output));
-      break;
+  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      tflite::QuantizationParams op_params;
+      op_params.zero_point = output->params.zero_point;
+      op_params.scale = output->params.scale;
+      if (output->type == kTfLiteInt8) {
+        optimized_ops::AffineQuantize(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<int8_t>(output));
+      } else if (output->type == kTfLiteUInt8) {
+        optimized_ops::AffineQuantize(
+            op_params, GetTensorShape(input), GetTensorData<float>(input),
+            GetTensorShape(output), GetTensorData<uint8_t>(output));
+      } else {
+        context->ReportError(
+            context,
+            "Input type %d with Output type %d is not currently supported.",
+            input->type, output->type);
+        return kTfLiteError;
+      }
+    } break;
+    case kTfLiteInt8: {
+      const int32_t size =
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+      if (output->type == kTfLiteInt8) {
+        reference_ops::Requantize<int8_t, int8_t>(
+            GetTensorData<int8_t>(input), size, data->output_multiplier,
+            data->output_shift, input->params.zero_point,
+            output->params.zero_point, GetTensorData<int8_t>(output));
+      } else if (output->type == kTfLiteUInt8) {
+        reference_ops::Requantize<int8_t, uint8_t>(
+            GetTensorData<int8_t>(input), size, data->output_multiplier,
+            data->output_shift, input->params.zero_point,
+            output->params.zero_point, GetTensorData<uint8_t>(output));
+      } else {
+        context->ReportError(
+            context,
+            "Input type %d with Output type %d is not currently supported.",
+            input->type, output->type);
+        return kTfLiteError;
+      }
+    } break;
+    case kTfLiteUInt8: {
+      const int32_t size =
+          MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
+      if (output->type == kTfLiteInt8) {
+        reference_ops::Requantize<uint8_t, int8_t>(
+            GetTensorData<uint8_t>(input), size, data->output_multiplier,
+            data->output_shift, input->params.zero_point,
+            output->params.zero_point, GetTensorData<int8_t>(output));
+      } else if (output->type == kTfLiteUInt8) {
+        reference_ops::Requantize<uint8_t, uint8_t>(
+            GetTensorData<uint8_t>(input), size, data->output_multiplier,
+            data->output_shift, input->params.zero_point,
+            output->params.zero_point, GetTensorData<uint8_t>(output));
+      } else {
+        context->ReportError(
+            context,
+            "Input type %d with Output type %d is not currently supported.",
+            input->type, output->type);
+        return kTfLiteError;
+      }
+    } break;
     default:
-      context->ReportError(context, "Type %d not supported.",
-                           op_context.input->type);
+      context->ReportError(
+          context,
+          "Input type %d with Output type %d is not currently supported.",
+          input->type, output->type);
       return kTfLiteError;
   }
 
@@ -88,8 +167,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace quantize
 
 TfLiteRegistration* Register_QUANTIZE_OPT() {
-  static TfLiteRegistration r = {nullptr, nullptr, quantize::Prepare,
-                                 quantize::Eval};
+  static TfLiteRegistration r = {quantize::Init, quantize::Free,
+                                 quantize::Prepare, quantize::Eval};
   return &r;
 }
 
