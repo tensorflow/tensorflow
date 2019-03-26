@@ -4099,7 +4099,6 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
                               DebugString(*in_tensor));
     }
     --dims.nbDims;
-    nvinfer1::ITensor* tmp_tensor = nullptr;
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
         TRT_TensorOrWeights(in_tensor), dims,
         /*validation_only=*/false, out_tensor));
