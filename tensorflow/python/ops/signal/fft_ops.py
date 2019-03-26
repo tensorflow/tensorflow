@@ -359,7 +359,7 @@ def fftshift(x, axes=None):
 @tf_export("signal.ifftshift")
 def ifftshift(x, axes=None):
     """The inverse of fftshift. Although identical for even-length x,
-    the functions differ by one sample for odd-length x..
+    the functions differ by one sample for odd-length x.
 
     Args:
       x: `Tensor`, input tensor.
