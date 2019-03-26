@@ -26,6 +26,7 @@ import platform
 from tensorflow.contrib import autograph
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
+from tensorflow.contrib import bilinear_initializer
 from tensorflow.contrib import checkpoint
 if os.name != "nt" and platform.machine() != "s390x":
   from tensorflow.contrib import cloud
