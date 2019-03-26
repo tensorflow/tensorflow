@@ -583,9 +583,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
                                     arg_nodes, ret_nodes));
 
   std::unique_ptr<MultiDeviceFunctionData> data =
-      absl::make_unique<MultiDeviceFunctionData>(function_name, function_key,
-                                                 ret_node_names.size(), lib_def,
-                                                 std::move(ret_types));
+      absl::make_unique<MultiDeviceFunctionData>(
+          function_name, function_key, ret_node_names.size(),
+          lib_def->ReachableDefinitions(*fdef), std::move(ret_types));
 
   GraphOptimizationPassOptions optimization_options;
   // TODO(iga): Thread other relevant options from SessionOptions.
