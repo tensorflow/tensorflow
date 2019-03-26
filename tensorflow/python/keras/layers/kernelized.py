@@ -107,12 +107,12 @@ class RandomFourierFeatures(base_layer.Layer):
       class. Currently only 'gaussian' and 'laplacian' are supported as string
       initializers (case insensitive). Note that these parameters are not
       trainable.
-    scale: For gaussian and laplacian kernels, this corresponds to a scaling
+    scale: For Gaussian and Laplacian kernels, this corresponds to a scaling
       factor of the corresponding kernel approximated by the layer (see concrete
       definitions above). When provided, it should be a positive float. If None,
       the implementation chooses a default value (1.0 typically). Both the
       approximation error of the kernel and the classification quality are
-      sensitive to this parameter. If trainable is set to True, this paramater
+      sensitive to this parameter. If trainable is set to True, this parameter
       is learned end-to-end during training and the provided value serves as an
       initialization value.
       NOTE: When this layer is used to map the initial features and then the
