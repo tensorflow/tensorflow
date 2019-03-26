@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/tensor.pb.h"        // NOLINT
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"  // NOLINT
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -49,6 +50,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/strided_slice_op.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -2345,10 +2347,11 @@ Status ConvertSqueeze(OpConverterParams* params) {
   return Status::OK();
 }
 
+template <typename Container>
 Status ConvertStridedSliceHelper(OpConverterParams* params,
                                  const TRT_TensorOrWeights& input,
-                                 std::vector<int> begin, std::vector<int> size,
-                                 const std::vector<int>& stride) {
+                                 Container begin, Container size,
+                                 const Container& stride) {
   const auto& node_def = params->node_def;
   // Get input dims.
   nvinfer1::Dims dims = input.GetTrtDims();
@@ -2373,12 +2376,9 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
                                      node_def.op(), ", at ", node_def.name());
     }
   }
-// TRT 5.1 adds a slice layer. For older versions, we attempt to use the
+// TRT 5.1 adds ISliceLayer. For older versions, we attempt to use the
 // padding layer with negative padding.
 #if IS_TRT_VERSION_GE(5, 1, 3, 1)
-  // TODO(laigd): TRT 5.1 RC has a bug when ISliceLayer is used along with
-  // IConcatenationLayer, so disable ISliceLayer for now until it's fixed.
-  // Use ISliceLayer.
   nvinfer1::Dims begin_dims, size_dims, stride_dims;
   TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(begin, &begin_dims,
                                                /*ignore_first_dim=*/true));
@@ -2407,9 +2407,8 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   // Rank must be 2, 3 or 4.
   if (input_dims.size() > 4) {
     return errors::Unimplemented(node_def.op(),
-                                 " for tensors with rank > 4 is "
-                                 "not supported in this version of "
-                                 "TRT, at ",
+                                 " for tensors with rank > 4 is not supported "
+                                 "in this version of TRT, at ",
                                  node_def.name());
   }
   // Reshape if necessary to 4-D, since IPaddingLayer requires a 4-D input.
@@ -2602,83 +2601,93 @@ Status ConvertStridedSlice(OpConverterParams* params) {
       {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
       *params, {DataType::DT_FLOAT, DataType::DT_HALF, DataType::DT_INT32}));
-  // Get input dims.
-  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
-  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  // Add batch dimension so that indexes line up properly.
-  input_dims.insert(input_dims.begin(), inputs.at(0).batch_size());
-  // Get begin and end bounds per axis.
-  std::vector<int> begin = inputs.at(1).weights().ToVector<int>();
-  std::vector<int> end = inputs.at(2).weights().ToVector<int>();
-  std::vector<int> stride = inputs.at(3).weights().ToVector<int>();
-  if (!AllLengthsEqual({input_dims, begin, end, stride})) {
-    return errors::InvalidArgument(
-        "Length of begin, end, and stride arguments must equal rank of input "
-        "for StridedSlice, at ",
-        node_def.name());
-  }
-  // Unsupported mask options.
+
   TFAttrs attrs(node_def);
-  for (const string& attr :
-       {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
+  // Unsupported mask options.
+  for (const string& attr : {"new_axis_mask", "shrink_axis_mask"}) {
     int attr_val = attrs.get<int64>(attr);
     if (attr_val != 0) {
       return errors::Unimplemented(
           attr, " is not supported for StridedSlice, at ", node_def.name());
     }
   }
-  const int begin_mask = attrs.get<int64>("begin_mask");
-  const int end_mask = attrs.get<int64>("end_mask");
-  // Check that batch dimension is unmodified.
-  const bool begin_is_modified = !(begin_mask & 1) && begin[0] != 0;
-  const bool stride_is_modified = stride[0] != 1;
-  // If the batch size is -1 and the end mask is not set, we can only know if
-  // the batch dimension is unmodified when the batch size is defined. When the
-  // batch size is undefined, we don't convert to be safe.
-  const bool batch_size_is_defined = input_dims[0] > 0;
-  const bool end_is_modified =
-      !(end_mask & 1) && (!batch_size_is_defined ||
-                          (batch_size_is_defined && end[0] != input_dims[0]));
-  if (begin_is_modified || stride_is_modified || end_is_modified) {
-    return errors::Unimplemented(
-        "TensorRT does not allow modifications to the batch dimension, at ",
-        node_def.name());
+  const int32 begin_mask = attrs.get<int64>("begin_mask");
+  const int32 end_mask = attrs.get<int64>("end_mask");
+  const int32 ellipsis_mask = attrs.get<int64>("ellipsis_mask");
+
+  // Get input dims.
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  std::vector<int64> input_dims(dims.d, dims.d + dims.nbDims);
+  // Add batch dimension so that indexes line up properly. Set it to -1 if it's
+  // unknown, so ValidateStridedSliceOp() can handle it correctly below.
+  input_dims.insert(input_dims.begin(),
+                    std::max(-1, inputs.at(0).batch_size()));
+
+  const TRT_ShapedWeights& begin_weights = inputs.at(1).weights();
+  const TRT_ShapedWeights& end_weights = inputs.at(2).weights();
+  const TRT_ShapedWeights& stride_weights = inputs.at(3).weights();
+  if (!AllLengthsEqual({begin_weights.ToVector<int>(),
+                        end_weights.ToVector<int>(),
+                        stride_weights.ToVector<int>()})) {
+    return errors::InvalidArgument(
+        "Length of begin, end, and stride must be equal, at ", node_def.name());
   }
-  // Standarize begin and end bounds by applying masks, making negative values
-  // positive, and correcting out of bounds ranges (StridedSlice does this
-  // silently).
-  for (int i = 1; i < input_dims.size(); i++) {
-    // Begin
-    if ((1 << i) & begin_mask) {
-      begin[i] = 0;
-    } else if (begin[i] < 0) {
-      begin[i] += input_dims[i];
-    }
-    begin[i] = std::max(0, std::min(begin[i], input_dims[i]));
-    // End
-    if ((1 << i) & end_mask) {
-      end[i] = input_dims[i];
-    } else if (end[i] < 0) {
-      end[i] += input_dims[i];
-    }
-    end[i] = std::max(0, std::min(end[i], input_dims[i]));
-  }
+
+  PartialTensorShape input_shape(input_dims);
+  PartialTensorShape processing_shape;
+  PartialTensorShape final_shape;
+  bool is_identity;
+  bool is_simple_slice;
+  bool slice_dim0;
+  absl::InlinedVector<int64, 4> begin;
+  absl::InlinedVector<int64, 4> end;
+  absl::InlinedVector<int64, 4> strides;
+  TF_RETURN_IF_ERROR(ValidateStridedSliceOp(
+      &begin_weights.GetTensor(), &end_weights.GetTensor(),
+      stride_weights.GetTensor(), input_shape, begin_mask, end_mask,
+      ellipsis_mask, /*new_axis_mask=*/0,
+      /*shrink_axis_mask=*/0, &processing_shape, &final_shape, &is_identity,
+      &is_simple_slice, &slice_dim0, &begin, &end, &strides));
+
   // Negative or zero strides currently not supported.
-  for (int i = 0; i < input_dims.size(); i++) {
-    if (stride[i] <= 0) {
+  for (int stride : strides) {
+    if (stride <= 0) {
       return errors::Unimplemented(
           "Negative or zero stride values are not supported for StridedSlice, "
           "at ",
           node_def.name());
     }
   }
+
+  // If batch dimension is covered by the ellipsis mask, it means it's left
+  // untouched. Otherwise we check whether it modifies the batch dimension here.
+  if (!(ellipsis_mask & 1) ||
+      begin_weights.shape_.nbDims >= input_dims.size()) {
+    // Check that batch dimension is unmodified. We need to use the expanded
+    // begin/end/strides array since the original array may be incorrect when
+    // (ellipsis_mask&1)==1.
+    const bool begin_is_modified = !(begin_mask & 1) && (begin[0] != 0);
+    const bool stride_is_modified = (strides[0] != 1);
+    // If the batch size is -1 and the end mask is not set, we can only know if
+    // the batch dimension is unmodified when the batch size is defined. When
+    // the batch size is undefined, we don't convert to be safe.
+    const bool batch_size_is_defined = (input_dims[0] > 0);
+    const bool end_is_modified =
+        !(end_mask & 1) && (!batch_size_is_defined ||
+                            (batch_size_is_defined && end[0] != input_dims[0]));
+    if (begin_is_modified || stride_is_modified || end_is_modified) {
+      return errors::Unimplemented(
+          "TensorRT does not allow modifications to the batch dimension, at ",
+          node_def.name());
+    }
+  }
   // TRT Slice layer uses (begin, size) instead of (begin, end)
-  std::vector<int> size(input_dims.size());
+  absl::InlinedVector<int64, 4> size(input_dims.size());
   for (int i = 0; i < input_dims.size(); i++) {
     // Divide by stride (round up)
-    size[i] = (end[i] - begin[i] + stride[i] - 1) / stride[i];
+    size[i] = (end[i] - begin[i] + strides[i] - 1) / strides[i];
   }
-  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, stride);
+  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, strides);
 }
 
 Status ConvertConv2D(OpConverterParams* params) {
