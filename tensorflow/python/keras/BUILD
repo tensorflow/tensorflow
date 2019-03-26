@@ -1299,6 +1299,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "control_flow_test",
+    size = "medium",
+    srcs = ["engine/control_flow_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    shard_count = 8,
+)
+
+tf_py_test(
     name = "hdf5_format_test",
     size = "medium",
     srcs = ["saving/hdf5_format_test.py"],
