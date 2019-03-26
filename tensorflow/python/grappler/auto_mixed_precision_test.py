@@ -370,7 +370,6 @@ class AutoMixedPrecisionTest(test.TestCase):
 
       output_val_ref, output_val, cost_graph = self._run(output)
       node_map = _build_node_map(cost_graph.node)
-      num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
       self._assert_output_fp16(node_map, 'Conv2D')
       self._assert_output_fp16(node_map, 'FusedBatchNorm')
       self._assert_output_fp16(node_map, 'dropout/mul')
@@ -379,8 +378,6 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'Conv2D_1')
 
       output_val_ref, output_val, cost_graph = self._run(output)
-      self.assertEqual(num_to_fp16, 3) # Before Conv2D:0, Conv2D:1, Conv2D_1:1
-      self.assertEqual(num_to_fp32, 1) # After Conv2D_1:0
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
   def test_conv_pool(self):
