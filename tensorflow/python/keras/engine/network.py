@@ -698,17 +698,6 @@ class Network(base_layer.Layer):
         extra_variables=self._non_trainable_weights + self._trainable_weights)
 
   @property
-  def metrics(self):
-    """Returns the network's symbolic metrics.
-
-    Model overrides this function to include the metrics from `compile` API.
-    """
-    metrics = []
-    for layer in self.layers:
-      metrics += layer._metrics  # pylint: disable=protected-access
-    return metrics + self._metrics
-
-  @property
   def _all_metrics_tensors(self):
     """Returns the network's symbolic metric tensors."""
     # TODO(psv): Remove this property.
