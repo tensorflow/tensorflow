@@ -2325,6 +2325,115 @@ TEST_F(OpConverterTest, ConvertSquare) {
   TestConvertSquare<DT_HALF>(this);
 }
 
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+TEST_F(OpConverterTest, ConvertCombinedNMS) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_nms", "CombinedNonMaxSuppression", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "CombinedNonMaxSuppression got 0 inputs but expected 6, at my_nms");
+  }
+  // Get the NodeDef for CombinedNMS.
+  auto get_nms_nodedef = []() -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto boxes_tensor = ops::Placeholder(s.WithOpName("boxes"), DT_FLOAT);
+    auto scores_tensor = ops::Placeholder(s.WithOpName("scores"), DT_FLOAT);
+    auto max_output_size_per_class =
+        ops::Placeholder(s.WithOpName("max_output_size_per_class"), DT_INT32);
+    auto max_total_size =
+        ops::Placeholder(s.WithOpName("max_total_size"), DT_INT32);
+    auto iou_threshold =
+        ops::Placeholder(s.WithOpName("iou_threshold"), DT_FLOAT);
+    auto score_threshold =
+        ops::Placeholder(s.WithOpName("score_threshold"), DT_FLOAT);
+    auto nms_attrs = ops::CombinedNonMaxSuppression::Attrs().PadPerClass(false);
+
+    auto nms_op = ops::CombinedNonMaxSuppression(
+        s.WithOpName("my_nms"), boxes_tensor, scores_tensor,
+        max_output_size_per_class, max_total_size, iou_threshold,
+        score_threshold, nms_attrs);
+    return nms_op.operation.node()->def();
+  };
+
+  struct TestParams {
+    const std::vector<int32> boxes_tensor_dims;
+    const std::vector<int32> scores_tensor_dims;
+    const int32 max_output_size_per_class;
+    const int32 max_total_size;
+    const float iou_threshold;
+    const float score_threshold;
+    const std::vector<int32> expected_nmsed_boxes_dims;
+    const std::vector<int32> expected_nmsed_scores_dims;
+    const std::vector<int32> expected_nmsed_classes_dims;
+  };
+
+  // Ok.
+  const int kCombinedNMSOKCases = 1;
+  TestParams ok_params[kCombinedNMSOKCases] = {
+      // TODO(aaroey): there is a bug in TRT's CombinedNonMaxSuppression
+      // implementation that, the extra output classes that are outside of the
+      // range specified by valid_detections[i] are not zeros but -1s.
+      TestParams{{1, 1, 4}, {1, 3}, 3, 2, .5f, 0, {2, 4}, {2}, {2}}};
+  const int batch_size = 1;
+
+  for (int i = 0; i < kCombinedNMSOKCases; ++i) {
+    Reset();
+
+    AddTestTensor("boxes", ok_params[i].boxes_tensor_dims);
+    AddTestTensor("scores", ok_params[i].scores_tensor_dims);
+    AddTestWeights<int32>("max_output_size_per_class", {1},
+                          {ok_params[i].max_output_size_per_class});
+    AddTestWeights<int32>("max_total_size", {1}, {ok_params[i].max_total_size});
+    AddTestWeights<float>("iou_threshold", {1}, {ok_params[i].iou_threshold});
+    AddTestWeights<float>("score_threshold", {1},
+                          {ok_params[i].score_threshold});
+
+    RunValidationAndConversion(get_nms_nodedef());
+
+    TRT_TensorOrWeights nmsed_boxes;
+    TRT_TensorOrWeights nmsed_scores;
+    TRT_TensorOrWeights nmsed_classes;
+    TRT_TensorOrWeights valid_detections;
+
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms", &nmsed_boxes));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms:1", &nmsed_scores));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms:2", &nmsed_classes));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms:3", &valid_detections));
+
+    EXPECT_TRUE(nmsed_boxes.is_tensor());
+    EXPECT_TRUE(nmsed_scores.is_tensor());
+    EXPECT_TRUE(nmsed_classes.is_tensor());
+    EXPECT_TRUE(valid_detections.is_tensor());
+
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_boxes_dims,
+                             nmsed_boxes.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_scores_dims,
+                             nmsed_scores.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_nmsed_classes_dims,
+                             nmsed_classes.tensor()->getDimensions());
+    ExpectTrtDimsEqualsArray({}, valid_detections.tensor()->getDimensions());
+
+    DataVec output_data{
+        {"my_nms", ConstructTensor<float>(8)},
+        {"my_nms:1", ConstructTensor<float>(2)},
+        {"my_nms:2", ConstructTensor<float>(2)},
+        {"my_nms:3", ConstructTensor<int32>(1)},
+    };
+    const DataVec input_data{
+        {"boxes", test::AsTensor<float>({0, 0, 0.3, 0.4})},
+        {"scores", test::AsTensor<float>({0.4, 0.7, 0.3})}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAre(0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4));
+    EXPECT_THAT(GetSpanForData<float>(output_data[1]), ElementsAre(0.7, 0.4));
+    EXPECT_THAT(GetSpanForData<float>(output_data[2]), ElementsAre(1, 0));
+    EXPECT_THAT(GetSpanForData<float>(output_data[3]), ElementsAre(2));
+  }
+}
+
+#endif  // CombinedNonMaxSuppression
+
 TEST_F(OpConverterTest, ConvertActivation) {
   {
     // Input list is empty, should fail.

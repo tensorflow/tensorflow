@@ -81,6 +81,10 @@ struct BuildXlaOpsPassFlags {
   // Enables lazy compilation for TF/XLA (only when auto-clustering) if true.
   // Defaults to true.
   bool tf_xla_enable_lazy_compilation;
+
+  // If true then insert Print nodes to print out values produced by XLA
+  // clusters.  Useful for debugging.
+  bool tf_xla_print_cluster_outputs;
 };
 
 // Return a pointer to the DumpGraphFlags struct;

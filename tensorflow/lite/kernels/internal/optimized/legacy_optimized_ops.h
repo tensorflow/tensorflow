@@ -234,9 +234,14 @@ inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.output_shift = kDepthwiseReverseShift * output_shift;
 
-  DepthwiseConv(op_params, DimsToShape(input_dims), input_data,
-                DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
-                bias_data, DimsToShape(output_dims), output_data);
+  const RuntimeShape output_shape = DimsToShape(output_dims);
+  const int output_height = output_shape.Dims(1);
+
+  DepthwiseConvImpl(op_params, DimsToShape(input_dims), input_data,
+                    DimsToShape(filter_dims), filter_data,
+                    DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
+                    output_data, /*thread_start=*/0,
+                    /*thread_end=*/output_height, /*thread_dim=*/1);
 }
 
 inline void DepthwiseConv(const uint8* input_data, const Dims<4>& input_dims,

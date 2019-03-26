@@ -1003,6 +1003,39 @@ XLA_TEST_F(ReduceTest, R0ReduceInDisguise) {
                              ErrorSpec(0.001));
 }
 
+class ReduceHloTest : public HloTestBase {};
+
+XLA_TEST_F(ReduceHloTest, HandleReductionToVectorAndOtherReduction) {
+  absl::string_view hlo_string = R"(
+  HloModule HandleReductionToVectorAndOtherReduction
+
+  add {
+    acc = f32[] parameter(1)
+    op = f32[] parameter(0)
+    ROOT out = f32[] add(acc, op)
+  }
+
+  ENTRY main {
+    iota.3 = s32[2,2]{1,0} iota(), iota_dimension=0
+    iota.2 = s32[2,2]{1,0} iota(), iota_dimension=1
+    compare.0 = pred[2,2]{1,0} compare(iota.3, iota.2), direction=EQ
+    broadcast = pred[2,2,2,2]{3,2,1,0} broadcast(compare.0), dimensions={2,3}
+    param_0.16 = f32[2,2,2,2]{3,2,1,0} parameter(0)
+    constant_4 = f32[] constant(0)
+    broadcast.9 = f32[2,2,2,2]{3,2,1,0} broadcast(constant_4), dimensions={}
+    select.0 = f32[2,2,2,2]{3,2,1,0} select(broadcast, param_0.16, broadcast.9)
+    reduce.1 = f32[2,2,2]{2,1,0} reduce(select.0, constant_4), dimensions={2},
+               to_apply=add
+    abs.0 = f32[2,2,2]{2,1,0} abs(reduce.1)
+    log.0 = f32[2,2,2]{2,1,0} log(abs.0)
+    reduce.0 = f32[2,2]{1,0} reduce(log.0, constant_4), dimensions={2},
+               to_apply=add
+    ROOT tuple = (f32[2,2]{1,0}, f64[2,2,2]{2,1,0}) tuple(reduce.0, reduce.1)
+  }
+  )";
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-5, 1e-5}));
+}
+
 class VariadicReduceTest : public HloTestBase {};
 
 XLA_TEST_F(VariadicReduceTest, DISABLED_ON_GPU(Reduce_R3x2_to_R2x2_simple)) {

@@ -2638,14 +2638,39 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
 
   @keras_parameterized.run_all_keras_modes
   def test_model_metrics_list(self):
+
+    class LayerWithAddMetric(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithAddMetric, self).__init__()
+        self.dense = keras.layers.Dense(1, kernel_initializer='ones')
+
+      def __call__(self, inputs):
+        outputs = self.dense(inputs)
+        self.add_metric(
+            math_ops.reduce_sum(outputs), name='metric_1', aggregation='mean')
+        return outputs
+
+    class LayerWithNestedAddMetricLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithNestedAddMetricLayer, self).__init__()
+        self.layer = LayerWithAddMetric()
+
+      def call(self, inputs):
+        outputs = self.layer(inputs)
+        self.add_metric(
+            math_ops.reduce_sum(outputs), name='metric_2', aggregation='mean')
+        return outputs
+
     x = keras.layers.Input(shape=(1,))
-    y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+    y = LayerWithNestedAddMetricLayer()(x)
+
     model = keras.models.Model(x, y)
     model.add_metric(
-        math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+        math_ops.reduce_sum(y), name='metric_3', aggregation='mean')
     with keras.backend.get_graph().as_default():
-      model.add_metric(metrics_module.Mean(name='metric_2')(y))
-
+      model.add_metric(metrics_module.Mean(name='metric_4')(y))
     if testing_utils.should_run_eagerly():
       with self.assertRaisesRegex(
           ValueError,
@@ -2658,14 +2683,15 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
       model.compile(
           'sgd',
           loss='mse',
-          metrics=[metrics_module.Accuracy('acc')],
+          metrics=[metrics_module.Accuracy('metric_5')],
           run_eagerly=False)
 
     # Verify that the metrics added using `compile` and `add_metric` API are
     # included
-    self.assertEqual([m.name for m in model._compile_metrics], ['acc'])
-    self.assertEqual([m.name for m in model.metrics],
-                     ['acc', 'metric_1', 'metric_2'])
+    self.assertEqual([m.name for m in model._compile_metrics], ['metric_5'])
+    self.assertEqual(
+        [m.name for m in model.metrics],
+        ['metric_5', 'metric_3', 'metric_4', 'metric_2', 'metric_1'])
 
   @keras_parameterized.run_all_keras_modes
   def test_model_metrics_list_in_call(self):

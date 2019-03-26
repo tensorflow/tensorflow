@@ -2190,16 +2190,6 @@ tf_kernel_library(
 )
 
 cc_library(
-    name = "string_view_variant_wrapper",
-    hdrs = ["string_view_variant_wrapper.h"],
-    deps = [
-        "//tensorflow/core:framework",
-        "//tensorflow/core:protos_all_cc",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "checkpoint_ops",
     deps = [
         ":generate_vocab_remapping_op",
@@ -5620,6 +5610,8 @@ filegroup(
         "lookup_table_init_op.h",
         "lookup_table_op.h",
         "lookup_util.h",
+        "matrix_diag_op.h",
+        "matrix_set_diag_op.h",
         "maxpooling_op.h",
         "mfcc.h",
         "mfcc_dct.h",
@@ -5778,6 +5770,8 @@ filegroup(
         "lookup_table_op.cc",
         "lookup_util.cc",
         "lrn_op.cc",
+        "matrix_diag_op.cc",
+        "matrix_set_diag_op.cc",
         "maxpooling_op.cc",
         "mfcc.cc",
         "mfcc_dct.cc",

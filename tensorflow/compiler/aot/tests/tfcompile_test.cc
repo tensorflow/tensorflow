@@ -502,20 +502,22 @@ TEST(TFCompileTest, VariableSequentialUpdates) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   // This implements the recursion:
-  // x[0] = 1.0
+  // x[0] = 2.0
   // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
   VariableSequentialUpdatesComp fn;
-  float x = 1;
+  float x = 2;
+  float y = 1;
   fn.set_var_x_data(&x);
+  fn.set_var_y_data(&y);
 
   fn.set_thread_pool(&device);
   // First calculate x[3]
   fn.Run();
-  EXPECT_NEAR(x, 0.458f, 1e-6);
+  EXPECT_NEAR(x, 1.187f, 1e-6);
 
   // Then calculate x[6]
   fn.Run();
-  EXPECT_NEAR(x, 0.062882f, 1e-6);
+  EXPECT_NEAR(x, 0.594322f, 1e-6);
 }
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {

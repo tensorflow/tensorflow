@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python import autograph
 from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -583,6 +584,25 @@ class Layer(trackable.Trackable):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
+
+          # Wrapping `call` function in autograph to allow for dynamic control
+          # dependencies in call. We are limiting this to subclassed layers as
+          # autograph is strictly needed only for subclassed layers.
+          if base_layer_utils.is_subclassed(self):
+            decorators, original_func = tf_decorator.unwrap(self.call)
+            # TODO(psv): Remove optional_features param from the call here
+            # after b/129001876 is fixed.
+            converted_func = autograph.convert(
+                recursive=True, optional_features=None)(
+                    original_func)
+            if decorators:
+              call_fn = tf_decorator.rewrap(self.call, original_func,
+                                            converted_func)
+            else:
+              call_fn = converted_func
+          else:
+            call_fn = self.call
+
           # Explicitly pass the learning phase placeholder to `call` if
           # the `training` argument was left unspecified by the user.
           # This behavior is restricted to the managed Keras FuncGraph.
@@ -600,20 +620,18 @@ class Layer(trackable.Trackable):
                   self._mixed_precision_policy.should_cast_variables), (
                       base_layer_utils.AutoAddUpdates(self,
                                                       inputs)) as auto_updater:
-                outputs = self.call(inputs, *args, **kwargs)
+                outputs = call_fn(inputs, *args, **kwargs)
                 auto_updater.set_outputs(outputs)
 
             except TypeError as e:
-              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
-                          'Tensor objects are only iterable when eager')
               exception_str = str(e)
-              for msg in messages:
-                if msg in exception_str:
-                  raise TypeError('You are attempting to use Python control '
-                                  'flow in a layer that was not declared to be '
-                                  'dynamic. Pass `dynamic=True` to the class '
-                                  'constructor.\nEncountered error:\n"""\n' +
-                                  exception_str + '\n"""')
+              exception_msg = 'Tensor objects are only iterable when eager'
+              if exception_msg in exception_str:
+                raise TypeError('You are attempting to use Python control '
+                                'flow in a layer that was not declared to be '
+                                'dynamic. Pass `dynamic=True` to the class '
+                                'constructor.\nEncountered error:\n"""\n' +
+                                exception_str + '\n"""')
               raise
           else:
             # We will use static shape inference to return symbolic tensors
@@ -805,6 +823,10 @@ class Layer(trackable.Trackable):
       for layer in trackable_layer_utils.filter_empty_layer_containers(
           self._layers):
         layer._clear_losses()
+
+  @property
+  def metrics(self):
+    return self._metrics + self._gather_children_attribute('metrics')
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -1828,7 +1850,7 @@ class Layer(trackable.Trackable):
   def _gather_children_attribute(self, attribute):
     assert attribute in {
         'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
-        'losses'
+        'losses', 'metrics'
     }
     if hasattr(self, '_layers'):
       nested_layers = trackable_layer_utils.filter_empty_layer_containers(

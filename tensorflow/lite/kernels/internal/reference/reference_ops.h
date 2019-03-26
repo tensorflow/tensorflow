@@ -2743,6 +2743,26 @@ inline void AffineQuantize(const tflite::QuantizationParams& op_params,
   }
 }
 
+template <typename input_type, typename output_type>
+inline void Requantize(const input_type* input_data, int32_t size,
+                       int32_t effective_scale_multiplier,
+                       int32_t effective_scale_shift, int32_t input_zeropoint,
+                       int32_t output_zeropoint, output_type* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Requantize");
+  static constexpr int32_t kMinOutput = std::numeric_limits<output_type>::min();
+  static constexpr int32_t kMaxOutput = std::numeric_limits<output_type>::max();
+  for (int i = 0; i < size; ++i) {
+    const int32_t input = input_data[i] - input_zeropoint;
+    const int32_t output =
+        MultiplyByQuantizedMultiplier(input, effective_scale_multiplier,
+                                      effective_scale_shift) +
+        output_zeropoint;
+    const int32_t clamped_output =
+        std::max(std::min(output, kMaxOutput), kMinOutput);
+    output_data[i] = static_cast<output_type>(clamped_output);
+  }
+}
+
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {

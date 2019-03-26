@@ -55,6 +55,8 @@ from tensorflow.lite.testing import string_util_wrapper
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import graph_util as tf_graph_util
 from tensorflow.python.ops import rnn
+from tensorflow.python.ops import array_ops
+
 
 RANDOM_SEED = 342
 TEST_INPUT_DEPTH = 3
@@ -346,7 +348,7 @@ def make_control_dep_tests(options):
 
 
 def toco_convert(
-    options, graph_def_str, input_tensors, output_tensors, **kwargs):
+    options, graph_def, input_tensors, output_tensors, **kwargs):
   """Convert a model's graph def into a tflite model.
 
   NOTE: this currently shells out to the toco binary, but we would like
@@ -354,7 +356,7 @@ def toco_convert(
 
   Args:
     options: An Options instance.
-    graph_def_str: Graph def proto in serialized string format.
+    graph_def: A GraphDef object.
     input_tensors: List of input tensor tuples `(name, shape, type)`.
     output_tensors: List of output tensors (names).
     **kwargs: Extra options to be passed.
@@ -363,6 +365,15 @@ def toco_convert(
     output tflite model, log_txt from conversion
     or None, log_txt if it did not convert properly.
   """
+  # Convert ophint ops if presented.
+  graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
+      graph_def=graph_def)
+  # Warning: `remove_training_nodes` now incorreclty remove all
+  # TF Functions.
+  # TODO(ycling): Investigate. Required for functional control flow.
+  graph_def = tf.graph_util.remove_training_nodes(graph_def)
+  graph_def_str = graph_def.SerializeToString()
+
   extra_toco_options = kwargs.get("extra_toco_options", ExtraTocoOptions())
   input_arrays = [x[0] for x in input_tensors]
   data_types = [_TF_TYPE_INFO[x[2]][1] for x in input_tensors]
@@ -529,12 +540,8 @@ def make_zip_of_tests(options,
           extra_toco_options.split_tflite_lstm_inputs = param_dict_real[
               "split_tflite_lstm_inputs"]
 
-        # Convert ophint ops if presented.
-        graph_def = tf.lite.experimental.convert_op_hints_to_stubs(
-            graph_def=graph_def)
-        graph_def = tf.graph_util.remove_training_nodes(graph_def)
         tflite_model_binary, toco_log = options.tflite_convert_function(
-            options, graph_def.SerializeToString(), input_tensors,
+            options, graph_def, input_tensors,
             output_tensors, extra_toco_options=extra_toco_options)
         report["toco"] = (report_lib.SUCCESS if tflite_model_binary is not None
                           else report_lib.FAILED)
@@ -738,6 +745,40 @@ def make_elu_tests(options):
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 
   make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
+
+@register_make_test_function()
+def make_identity_tests(options):
+  """Make a set of tests to do relu."""
+
+  # Chose a set of parameters
+  test_parameters = [{
+      "input_shape": [[], [1], [3, 3]],
+      "use_snapshot": [False, True],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    # Toco crashes when the model has only one single Identity op. As a
+    # workaround for testing, we put MULs before and after the identity.
+    # TODO(b/129197312): Remove the workaround after the issue is fixed.
+    input_doubled = input_tensor * 2.0
+    if parameters["use_snapshot"]:
+      identity_output = array_ops.snapshot(input_tensor)
+    else:
+      identity_output = tf.identity(input_tensor)
+    out = identity_output * 2.0
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(options, test_parameters, build_graph, build_inputs)
+
 
 @register_make_test_function()
 def make_relu_tests(options):

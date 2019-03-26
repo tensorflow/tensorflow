@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/triangular_solve_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/tuple_thunk.h"
@@ -1172,10 +1173,10 @@ Status IrEmitterUnnested::EmitScatter(
     llvm_ir::SetToFirstInsertPoint(if_window_in_bounds_data.true_block, &b_);
     // All done, now just read from the calculated input from the window, and do
     // an atomic store to the calculated location in the output.
-    llvm_ir::IrArray::Index input_window_index(input_window_multidim,
-                                               index.GetType());
     HloInstruction* output_hlo =
         scatter->IsFused() ? scatter->parent()->FusionInstruction() : scatter;
+    llvm_ir::IrArray::Index input_window_index(
+        input_window_multidim, output_hlo->shape(), index.GetType());
     llvm::Value* output_address =
         GetIrArray(*output_hlo, *output_hlo)
             .EmitArrayElementAddress(input_window_index, &b_);
@@ -2632,10 +2633,9 @@ absl::Span<HloInstruction* const> GetOutputInstructions(
 
 const HloInstruction* GetFirstReduceInstruction(
     absl::Span<HloInstruction* const> instructions) {
-  auto first_reduce_iter =
-      absl::c_find_if(instructions, [](const HloInstruction* inst) {
-        return inst->opcode() == HloOpcode::kReduce;
-      });
+  auto first_reduce_iter = absl::c_find_if(
+      instructions,
+      [](const HloInstruction* inst) { return IsReductionToVector(*inst); });
   CHECK_NE(first_reduce_iter, instructions.end());
   return *first_reduce_iter;
 }
@@ -2713,7 +2713,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
                                           &b_, GetNestedComputer());
   const HloInstruction* first_reduce = nullptr;
   for (int i = 0, e = output_instructions.size(); i != e; ++i) {
-    if (output_instructions[i]->opcode() != HloOpcode::kReduce) {
+    if (!IsReductionToVector(*output_instructions[i])) {
       continue;
     }
     HloInstruction* reduce_inst = output_instructions[i];
@@ -2815,7 +2815,7 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
   std::vector<const HloInstruction*> reduce_instructions;
   absl::c_for_each(GetOutputInstructions(&reduce_or_tuple),
                    [&](const HloInstruction* instr) {
-                     if (instr->opcode() == HloOpcode::kReduce) {
+                     if (IsReductionToVector(*instr)) {
                        reduce_instructions.push_back(instr);
                      }
                    });
@@ -2846,17 +2846,19 @@ void IrEmitterUnnested::EmitEpilogueForReduction(
       // output layout matched the input layout*. This is why we use
       // `reduction_kept_element_shape` rather than `unnested_hlo->shape()` when
       // computing `element_index` below.
+      auto output_array = GetIrArray(*unnested_hlo, *unnested_hlo,
+                                     reduction_output_shape_indices[i]);
       IrArray::Index element_index(
           /*linear=*/Load(
               InBoundsGEP(reduction_info->GetCurrentOutputLinearIndexAddress(),
                           {b_.getInt32(j)}),
               "untransposed_output_linear_addr"),
           reduction_kept_element_shape, &b_);
-      llvm::Value* output_address =
-          GetIrArray(*unnested_hlo, *unnested_hlo,
-                     reduction_output_shape_indices[i])
-              .EmitArrayElementAddress(element_index, &b_,
-                                       "output_element_address");
+      IrArray::Index output_index(element_index.multidim(),
+                                  output_array.GetShape(),
+                                  element_index.GetType());
+      llvm::Value* output_address = output_array.EmitArrayElementAddress(
+          output_index, &b_, "output_element_address");
       // Do not emit atomic operations if each element in the reduction result
       // is computed by one block, that is the dimension being reduced has only
       // one block.
@@ -2929,7 +2931,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
       if (reduce_or_tuple->opcode() == HloOpcode::kTuple) {
         output_shape_index = {i};
       }
-      if (inst->opcode() == HloOpcode::kReduce) {
+      if (IsReductionToVector(*inst)) {
         input_gens.push_back(fused_emitter.GetGenerator(inst->operand(0)));
       } else {
         extra_output_gens.emplace_back(fused_emitter.GetGenerator(inst),
@@ -3169,7 +3171,9 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
                            bool block_contains_multi_tiles) {
     // Calculate the input tile origin from the output tile origin.
     const IrArray::Index input_tile_origin(
-        Permute({0, 2, 1}, output_tile_origin.multidim()));
+        Permute({0, 2, 1}, output_tile_origin.multidim()),
+        Permute({0, 2, 1}, output_tile_origin.dims()),
+        output_tile_origin.GetType());
 
     // If shared memory transpose is needed, wait for all threads to reach this
     // point, lest we copy a value from tile to output before the other thread
@@ -3197,7 +3201,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
           });
 
       // Wait for all threads to reach this point using `__syncthreads` in CUDA.
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, &b_);
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
     }
 
     llvm_ir::TiledParameterInfo tiled_param_info(param_shmem_buffers, y, x);
@@ -3219,7 +3223,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     // buffer for the current tile before we move on to process the next tile
     // and overwrite the shared memory buffers.
     if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
-      llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, &b_);
+      EmitCallToTargetIntrinsic(TargetIntrinsicID::kBarrierId, {}, {}, &b_);
     }
   };
 
@@ -3496,7 +3500,7 @@ Status AreFusedReductionOutputsConsistent(
     absl::Span<HloInstruction* const> output_instructions,
     const HloInstruction* first_reduce) {
   for (const HloInstruction* inst : output_instructions) {
-    if (inst->opcode() == HloOpcode::kReduce) {
+    if (IsReductionToVector(*inst)) {
       // Shapes, layouts and dimensions must be the same for all reduces
       // inside of this fusion.
       TF_RET_CHECK(ShapeUtil::Equal(first_reduce->shape(), inst->shape()));
@@ -3634,7 +3638,7 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
     return false;
   }
 
-  if (unnested_hlo->opcode() == HloOpcode::kReduce) {
+  if (IsReductionToVector(*unnested_hlo)) {
     return true;
   }
 
@@ -3643,14 +3647,14 @@ bool IsUnrollingColumnReductionBeneficial(const HloInstruction* unnested_hlo,
   int64 cannot_be_vectorized = 0;
   const HloInstruction* fused_root = unnested_hlo->fused_expression_root();
   ConstHloInstructionSet use_chain_endings;
-  if (fused_root->opcode() == HloOpcode::kReduce) {
+  if (IsReductionToVector(*fused_root)) {
     use_chain_endings.insert(fused_root);
     // Atomic.add of the reduction result can't be vectorized.
     cannot_be_vectorized++;
   } else {
     CHECK_EQ(fused_root->opcode(), HloOpcode::kTuple);
     for (const HloInstruction* instr : fused_root->operands()) {
-      if (instr->opcode() == HloOpcode::kReduce) {
+      if (IsReductionToVector(*instr)) {
         // Atomic.add of the reduction result can't be vectorized.
         cannot_be_vectorized++;
       } else {
@@ -3776,7 +3780,7 @@ Status IrEmitterUnnested::EmitReductionToVector(HloInstruction* unnested_hlo) {
   // Build an initializer thunk to initialize each reduction output.
   std::vector<std::unique_ptr<Thunk>> thunks;
   for (int i = 0, e = output_instructions.size(); i != e; ++i) {
-    if (output_instructions[i]->opcode() != HloOpcode::kReduce) {
+    if (!IsReductionToVector(*output_instructions[i])) {
       continue;
     }
     TF_ASSIGN_OR_RETURN(

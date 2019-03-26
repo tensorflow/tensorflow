@@ -363,7 +363,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
 
   bool is_optimized = false;
   GraphOptimizationResult optimization_result(item.id);
-  GraphOptimizer* model_pruner = nullptr;
   GraphOptimizer* fusion_optimizer = nullptr;
   GraphOptimizer* sa_optimizer = nullptr;
 
@@ -395,9 +394,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
       if (optimizer->name() == "xla-fusion") {
         if (fusion_optimizer == nullptr) fusion_optimizer = optimizer.get();
         continue;
-      }
-      if (optimizer->name() == "model_pruner") {
-        if (model_pruner == nullptr) model_pruner = optimizer.get();
       }
       RUN_OPTIMIZER_OR_RETURN_IF_ERROR(optimizer.get());
 
@@ -447,10 +443,6 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   optimization_results_.push_back(optimization_result);
 
   if (is_optimized) {
-    // Run the model pruner again to clean things up.
-    if (!cfg_.disable_model_pruning() && model_pruner != nullptr) {
-      RUN_OPTIMIZER_OR_RETURN_IF_ERROR(model_pruner);
-    }
     TF_RETURN_IF_ERROR(TopologicalSort(optimized_graph));
     ReassignColocation(optimized_graph);
     // Make sure that the optimizers preserved the graph version.
