@@ -3553,7 +3553,6 @@ def average_filter_2D(input,filter_shape=(3,3)):
          This Median Filtering is done by using 2D filters of user's choice
          Filter_size should be odd
          This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
-
     """
 
     input = image_ops_impl._Assert3DImage(input)
@@ -3565,9 +3564,8 @@ def average_filter_2D(input,filter_shape=(3,3)):
                          "(%sx" % filter_shape[0]+"%s)."%filter_shape[1] +" Image Shape (%s)"% input.shape)
     if filter_shapex % 2 == 0 or filter_shapey % 2 == 0:
         raise ValueError("Filter size should be odd. Got filter_shape (%sx" % filter_shape[0]+"%s)"%filter_shape[1] )
-    input = math_ops.cast(input,dtypes.int64)
+    input = math_ops.cast(input,dtypes.float64)
     def my_func (input2):
-        input2 = input2.astype('float64')
         tf_i = input2.reshape(m*no*ch)
         maxi = max(tf_i)
         if maxi == 1:
