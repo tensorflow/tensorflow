@@ -43,7 +43,6 @@
 #include "mlir/Transforms/MLPatternLoweringPass.h"
 #include "mlir/Transforms/Passes.h"
 
-///
 /// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
 /// proper abstraction for the hardware.
 ///
@@ -376,9 +375,9 @@ public:
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
   void runOnFunction() {
-    Function *f = getFunction();
+    auto &f = getFunction();
     applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
-                            VectorTransferExpander<VectorTransferWriteOp>>(f);
+                            VectorTransferExpander<VectorTransferWriteOp>>(&f);
   }
 };
 

@@ -87,17 +87,18 @@ struct VectorizerTestPass : public FunctionPass<VectorizerTestPass> {
   static constexpr auto kTestAffineMapAttrName = "affine_map";
 
   void runOnFunction() override;
-  void testVectorShapeRatio(Function *f);
-  void testForwardSlicing(Function *f);
-  void testBackwardSlicing(Function *f);
-  void testSlicing(Function *f);
-  void testComposeMaps(Function *f);
-  void testNormalizeMaps(Function *f);
+  void testVectorShapeRatio();
+  void testForwardSlicing();
+  void testBackwardSlicing();
+  void testSlicing();
+  void testComposeMaps();
+  void testNormalizeMaps();
 };
 
 } // end anonymous namespace
 
-void VectorizerTestPass::testVectorShapeRatio(Function *f) {
+void VectorizerTestPass::testVectorShapeRatio() {
+  auto *f = &getFunction();
   using matcher::Op;
   SmallVector<int64_t, 8> shape(clTestVectorShapeRatio.begin(),
                                 clTestVectorShapeRatio.end());
@@ -156,7 +157,9 @@ static NestedPattern patternTestSlicingOps() {
   return Op(filter);
 }
 
-void VectorizerTestPass::testBackwardSlicing(Function *f) {
+void VectorizerTestPass::testBackwardSlicing() {
+  auto *f = &getFunction();
+
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
@@ -171,7 +174,8 @@ void VectorizerTestPass::testBackwardSlicing(Function *f) {
   }
 }
 
-void VectorizerTestPass::testForwardSlicing(Function *f) {
+void VectorizerTestPass::testForwardSlicing() {
+  auto *f = &getFunction();
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
@@ -186,7 +190,9 @@ void VectorizerTestPass::testForwardSlicing(Function *f) {
   }
 }
 
-void VectorizerTestPass::testSlicing(Function *f) {
+void VectorizerTestPass::testSlicing() {
+  auto *f = &getFunction();
+
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
@@ -204,7 +210,9 @@ static bool customOpWithAffineMapAttribute(Instruction &inst) {
          VectorizerTestPass::kTestAffineMapOpName;
 }
 
-void VectorizerTestPass::testComposeMaps(Function *f) {
+void VectorizerTestPass::testComposeMaps() {
+  auto *f = &getFunction();
+
   using matcher::Op;
   auto pattern = Op(customOpWithAffineMapAttribute);
   SmallVector<NestedMatch, 8> matches;
@@ -234,8 +242,10 @@ static bool singleResultAffineApplyOpWithoutUses(Instruction &inst) {
   return app && app.use_empty();
 }
 
-void VectorizerTestPass::testNormalizeMaps(Function *f) {
+void VectorizerTestPass::testNormalizeMaps() {
   using matcher::Op;
+
+  auto *f = &getFunction();
 
   // Save matched AffineApplyOp that all need to be erased in the end.
   auto pattern = Op(affineApplyOp);
@@ -264,28 +274,27 @@ void VectorizerTestPass::runOnFunction() {
   NestedPatternContext mlContext;
 
   // Only support single block functions at this point.
-  Function *f = getFunction();
-  if (f->getBlocks().size() != 1)
+  Function &f = getFunction();
+  if (f.getBlocks().size() != 1)
     return;
 
-  if (!clTestVectorShapeRatio.empty()) {
-    testVectorShapeRatio(f);
-  }
-  if (clTestForwardSlicingAnalysis) {
-    testForwardSlicing(f);
-  }
-  if (clTestBackwardSlicingAnalysis) {
-    testBackwardSlicing(f);
-  }
-  if (clTestSlicingAnalysis) {
-    testSlicing(f);
-  }
-  if (clTestComposeMaps) {
-    testComposeMaps(f);
-  }
-  if (clTestNormalizeMaps) {
-    testNormalizeMaps(f);
-  }
+  if (!clTestVectorShapeRatio.empty())
+    testVectorShapeRatio();
+
+  if (clTestForwardSlicingAnalysis)
+    testForwardSlicing();
+
+  if (clTestBackwardSlicingAnalysis)
+    testBackwardSlicing();
+
+  if (clTestSlicingAnalysis)
+    testSlicing();
+
+  if (clTestComposeMaps)
+    testComposeMaps();
+
+  if (clTestNormalizeMaps)
+    testNormalizeMaps();
 }
 
 FunctionPassBase *mlir::createVectorizerTestPass() {

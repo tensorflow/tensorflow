@@ -211,8 +211,8 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
 
 void MemRefDataFlowOpt::runOnFunction() {
   // Only supports single block functions at the moment.
-  Function *f = getFunction();
-  if (f->getBlocks().size() != 1) {
+  Function &f = getFunction();
+  if (f.getBlocks().size() != 1) {
     markAllAnalysesPreserved();
     return;
   }
@@ -224,7 +224,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
-  f->walk<LoadOp>([&](LoadOp loadOp) { forwardStoreToLoad(loadOp); });
+  f.walk<LoadOp>([&](LoadOp loadOp) { forwardStoreToLoad(loadOp); });
 
   // Erase all load op's whose results were replaced with store fwd'ed ones.
   for (auto *loadOp : loadOpsToErase) {

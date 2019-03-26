@@ -153,7 +153,7 @@ namespace {
 /// Pass to verify a function and signal failure if necessary.
 class FunctionVerifier : public FunctionPass<FunctionVerifier> {
   void runOnFunction() {
-    if (getFunction()->verify())
+    if (getFunction().verify())
       signalPassFailure();
     markAllAnalysesPreserved();
   }

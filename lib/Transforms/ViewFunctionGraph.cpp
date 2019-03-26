@@ -61,9 +61,9 @@ void mlir::viewGraph(Function &function, const llvm::Twine &name,
   llvm::ViewGraph(&function, name, shortNames, title, program);
 }
 
-llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Function *function,
+llvm::raw_ostream &mlir::writeGraph(llvm::raw_ostream &os, Function &function,
                                     bool shortNames, const llvm::Twine &title) {
-  return llvm::WriteGraph(os, function, shortNames, title);
+  return llvm::WriteGraph(os, &function, shortNames, title);
 }
 
 void mlir::Function::viewGraph() {

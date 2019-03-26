@@ -226,7 +226,7 @@ void CSE::simplifyRegion(DominanceInfo &domInfo, Region &region) {
 }
 
 void CSE::runOnFunction() {
-  simplifyRegion(getAnalysis<DominanceInfo>(), getFunction()->getBody());
+  simplifyRegion(getAnalysis<DominanceInfo>(), getFunction().getBody());
 
   // If no operations were erased, then we mark all analyses as preserved.
   if (opsToErase.empty()) {

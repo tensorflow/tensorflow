@@ -97,7 +97,7 @@ void ConstantFold::runOnFunction() {
   existingConstants.clear();
   opInstsToErase.clear();
 
-  getFunction()->walk([&](Instruction *inst) { foldInstruction(inst); });
+  getFunction().walk([&](Instruction *inst) { foldInstruction(inst); });
 
   // At this point, these operations are dead, remove them.
   // TODO: This is assuming that all constant foldable operations have no

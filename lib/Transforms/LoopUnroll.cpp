@@ -128,7 +128,7 @@ void LoopUnroll::runOnFunction() {
     // Gathers all loops with trip count <= minTripCount. Do a post order walk
     // so that loops are gathered from innermost to outermost (or else unrolling
     // an outer one may delete gathered inner ones).
-    getFunction()->walkPostOrder<AffineForOp>([&](AffineForOp forOp) {
+    getFunction().walkPostOrder<AffineForOp>([&](AffineForOp forOp) {
       Optional<uint64_t> tripCount = getConstantTripCount(forOp);
       if (tripCount.hasValue() && tripCount.getValue() <= clUnrollFullThreshold)
         loops.push_back(forOp);
@@ -142,10 +142,10 @@ void LoopUnroll::runOnFunction() {
                                 ? clUnrollNumRepetitions
                                 : 1;
   // If the call back is provided, we will recurse until no loops are found.
-  Function *func = getFunction();
+  Function &func = getFunction();
   for (unsigned i = 0; i < numRepetitions || getUnrollFactor; i++) {
     InnermostLoopGatherer ilg;
-    ilg.walkPostOrder(func);
+    ilg.walkPostOrder(&func);
     auto &loops = ilg.loops;
     if (loops.empty())
       break;

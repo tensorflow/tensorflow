@@ -32,14 +32,14 @@ namespace {
 /// applies the locally optimal patterns in a roughly "bottom up" way.
 class GreedyPatternRewriteDriver : public PatternRewriter {
 public:
-  explicit GreedyPatternRewriteDriver(Function *fn,
+  explicit GreedyPatternRewriteDriver(Function &fn,
                                       OwningRewritePatternList &&patterns)
-      : PatternRewriter(fn->getContext()), matcher(std::move(patterns), *this),
-        builder(fn) {
+      : PatternRewriter(fn.getContext()), matcher(std::move(patterns), *this),
+        builder(&fn) {
     worklist.reserve(64);
 
     // Add all operations to the worklist.
-    fn->walk([&](Instruction *inst) { addToWorklist(inst); });
+    fn.walk([&](Instruction *inst) { addToWorklist(inst); });
   }
 
   /// Perform the rewrites.
@@ -299,7 +299,7 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
 /// Rewrite the specified function by repeatedly applying the highest benefit
 /// patterns in a greedy work-list driven manner.
 ///
-void mlir::applyPatternsGreedily(Function *fn,
+void mlir::applyPatternsGreedily(Function &fn,
                                  OwningRewritePatternList &&patterns) {
   GreedyPatternRewriteDriver driver(fn, std::move(patterns));
   driver.simplifyFunction();

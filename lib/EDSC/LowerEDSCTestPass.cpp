@@ -40,7 +40,7 @@ struct LowerEDSCTestPass : public FunctionPass<LowerEDSCTestPass> {
 #include "mlir/EDSC/reference-impl.inc"
 
 void LowerEDSCTestPass::runOnFunction() {
-  getFunction()->walk([](Instruction *op) {
+  getFunction().walk([](Instruction *op) {
     if (op->getName().getStringRef() == "print") {
       auto opName = op->getAttrOfType<StringAttr>("op");
       if (!opName) {

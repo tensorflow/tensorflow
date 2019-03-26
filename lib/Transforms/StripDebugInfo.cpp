@@ -29,12 +29,12 @@ struct StripDebugInfo : public FunctionPass<StripDebugInfo> {
 } // end anonymous namespace
 
 void StripDebugInfo::runOnFunction() {
-  Function *func = getFunction();
-  UnknownLoc unknownLoc = UnknownLoc::get(func->getContext());
+  Function &func = getFunction();
+  UnknownLoc unknownLoc = UnknownLoc::get(func.getContext());
 
   // Strip the debug info from the function and its instructions.
-  func->setLoc(unknownLoc);
-  func->walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
+  func.setLoc(unknownLoc);
+  func.walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
 }
 
 /// Creates a pass to strip debug information from a function.

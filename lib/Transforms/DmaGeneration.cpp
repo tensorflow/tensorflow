@@ -754,16 +754,16 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 }
 
 void DmaGeneration::runOnFunction() {
-  Function *f = getFunction();
+  Function &f = getFunction();
   FuncBuilder topBuilder(f);
-  zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
+  zeroIndex = topBuilder.create<ConstantIndexOp>(f.getLoc(), 0);
 
   // Override default is a command line option is provided.
   if (clFastMemoryCapacity.getNumOccurrences() > 0) {
     fastMemCapacityBytes = clFastMemoryCapacity * 1024;
   }
 
-  for (auto &block : *f)
+  for (auto &block : f)
     runOnBlock(&block);
 }
 

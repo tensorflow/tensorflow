@@ -257,7 +257,7 @@ public:
 
   // Initializes the dependence graph based on operations in 'f'.
   // Returns true on success, false otherwise.
-  bool init(Function *f);
+  bool init(Function &f);
 
   // Returns the graph node for 'id'.
   Node *getNode(unsigned id) {
@@ -627,15 +627,15 @@ public:
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
-bool MemRefDependenceGraph::init(Function *f) {
+bool MemRefDependenceGraph::init(Function &f) {
   DenseMap<Value *, SetVector<unsigned>> memrefAccesses;
 
   // TODO: support multi-block functions.
-  if (f->getBlocks().size() != 1)
+  if (f.getBlocks().size() != 1)
     return false;
 
   DenseMap<Instruction *, unsigned> forToNodeMap;
-  for (auto &inst : f->front()) {
+  for (auto &inst : f.front()) {
     if (auto forOp = inst.dyn_cast<AffineForOp>()) {
       // Create graph node 'id' to represent top-level 'forOp' and record
       // all loads and store accesses it contains.

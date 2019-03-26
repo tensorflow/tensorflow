@@ -47,7 +47,7 @@ FunctionPassBase *mlir::createMemRefBoundCheckPass() {
 }
 
 void MemRefBoundCheck::runOnFunction() {
-  getFunction()->walk([](Instruction *opInst) {
+  getFunction().walk([](Instruction *opInst) {
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
       boundCheckLoadOrStoreOp(loadOp);
     } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {

@@ -93,7 +93,7 @@ FunctionPassBase *mlir::createSimplifyAffineStructuresPass() {
 
 void SimplifyAffineStructures::runOnFunction() {
   simplifiedAttributes.clear();
-  getFunction()->walk([&](Instruction *opInst) {
+  getFunction().walk([&](Instruction *opInst) {
     for (auto attr : opInst->getAttrs()) {
       if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>())
         simplifyAndUpdateAttribute(opInst, attr.first, mapAttr);

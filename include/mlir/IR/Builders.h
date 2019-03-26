@@ -177,12 +177,15 @@ class FuncBuilder : public Builder {
 public:
   /// Create a function builder and set the insertion point to the start of
   /// the function.
-  FuncBuilder(Function *func) : Builder(func->getContext()), function(func) {
+  explicit FuncBuilder(Function *func)
+      : Builder(func->getContext()), function(func) {
     if (!func->empty())
       setInsertionPoint(&func->front(), func->front().begin());
     else
       clearInsertionPoint();
   }
+
+  explicit FuncBuilder(Function &func) : FuncBuilder(&func) {}
 
   /// Create a function builder and set insertion point to the given
   /// instruction, which will cause subsequent insertions to go right before it.

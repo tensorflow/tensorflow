@@ -1227,16 +1227,16 @@ void Vectorize::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
-  Function *f = getFunction();
+  Function &f = getFunction();
   for (auto &pat : makePatterns()) {
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n[early-vect] new pattern on Function\n");
-    LLVM_DEBUG(f->print(dbgs()));
+    LLVM_DEBUG(f.print(dbgs()));
     unsigned patternDepth = pat.getDepth();
 
     SmallVector<NestedMatch, 8> matches;
-    pat.match(f, &matches);
+    pat.match(&f, &matches);
     // Iterate over all the top-level matches and vectorize eagerly.
     // This automatically prunes intersecting matches.
     for (auto m : matches) {

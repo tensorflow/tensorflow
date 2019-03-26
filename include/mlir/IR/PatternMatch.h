@@ -350,7 +350,7 @@ private:
 /// Rewrite the specified function by repeatedly applying the highest benefit
 /// patterns in a greedy work-list driven manner.
 ///
-void applyPatternsGreedily(Function *fn, OwningRewritePatternList &&patterns);
+void applyPatternsGreedily(Function &fn, OwningRewritePatternList &&patterns);
 
 } // end namespace mlir
 
