@@ -186,6 +186,8 @@ class TRT_ShapedWeights {
 
   nvinfer1::Weights GetTrtWeights() const;
 
+  const Tensor& GetTensor() const { return tensor_; }
+
   // Returns the raw pointer to the underlying buffer which holds the weights
   // value.
   void* GetValues() const {
