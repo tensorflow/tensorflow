@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
 
@@ -513,6 +514,18 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   void ConnectOutfeedToStreamCallback(se::StreamExecutor* executor,
                                       const OutfeedInfos& outfeed_infos);
 
+  // Creates and launches the thread which will fetch inputs from
+  // the InfeedDatasetIterator and enqueue them in the TransferManager.
+  // The thread is joined when the pointer is deleted.
+  void LaunchInfeedThread(se::StreamExecutor* executor,
+                          const InfeedInfos& infeed_infos);
+
+  std::function<void()> CreateInfeedIOThreadFunction(
+      se::StreamExecutor* executor, const InfeedInfos& infeed_infos);
+
+  // Sets cancellation flags and notifies the threads running in thread_pool_
+  void StopThreadPool();
+
   void DeferredDeallocation();
 
   int ordinal_;
@@ -546,16 +559,28 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   std::list<tensorflow::IpuTraceEvent> reports_;
 
+  std::atomic<bool> infeed_thread_cancelled_;
+
+  static const int NUM_THREADS = 1;
+  tensorflow::thread::ThreadPool thread_pool_;
+
   struct InfeedDatasetIterator {
     std::unique_ptr<tensorflow::data::IteratorBase> iterator;
     std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx;
     const std::vector<xla::Shape> shapes;
     std::vector<bool> used;
+    std::condition_variable tensors_dequeued_cv;
+
     std::vector<tensorflow::Tensor> tensors;
+
+    // Need to acquire mutex before calling this function
+    bool all_tensors_used() {
+      return absl::c_all_of(used, [](bool v) { return v; });
+    }
 
     // Mutex used to make sure only one callback is accessing the dataset
     // iterator.
-    std::recursive_mutex mutex;
+    std::mutex mutex;
 
     InfeedDatasetIterator(
         std::unique_ptr<tensorflow::data::IteratorBase> iterator,
@@ -564,10 +589,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
         : iterator(std::move(iterator)),
           iterator_ctx(std::move(iterator_ctx)),
           shapes(std::move(shapes)),
-          used(shapes.size(), true){};
+          used(shapes.size(), true) {}
   };
+
   absl::flat_hash_map<std::string, std::unique_ptr<InfeedDatasetIterator>>
-      infeed_dataset_iterators;
+      infeed_dataset_iterators_;
 };
 
 }  // namespace poplarplugin

@@ -175,7 +175,9 @@ PoplarExecutor::PoplarExecutor()
       device_open_(false),
       poplar_device_(poplar::Device::createCPUDevice()),
       poplar_device_hash_(0),
-      hardware_configured_(false) {}
+      hardware_configured_(false),
+      thread_pool_(tensorflow::Env::Default(), "poplar_executor_threadpool",
+                   PoplarExecutor::NUM_THREADS) {}
 
 PoplarExecutor::~PoplarExecutor() {}
 
@@ -217,43 +219,40 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
   for (const auto& infeed_info : infeed_infos) {
     const HloInfeedInstruction* inst = infeed_info;
 
-    auto itr = infeed_dataset_iterators.find(inst->infeed_config());
-    if (itr == infeed_dataset_iterators.end()) {
-      LOG(FATAL)
-          << "Trying to access a dataset iterator which has not been created."
-          << " Did you initialize the infeed_queue?";
+    auto itr = infeed_dataset_iterators_.find(inst->infeed_config());
+    if (itr == infeed_dataset_iterators_.end()) {
+      LOG(FATAL) << "Trying to access an infeed dataset iterator which has not "
+                    "been created."
+                 << " Did you initialize the infeed_queue?";
     }
     auto* infeed_dataset_iterator = itr->second.get();
     for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
       current_engine_->connectStreamToCallback(
           GetInfeedCopyHandle(inst->name(), j),
-          [j, infeed_dataset_iterator](void* dest) {
-            std::lock_guard<std::recursive_mutex> g(
-                infeed_dataset_iterator->mutex);
-            // We make an assumption that every sub tensor from the infeed is
-            // dequeued every iteration. If all tensors have been used, then get
-            // the next set of tensors.
-            if (absl::c_all_of(infeed_dataset_iterator->used,
-                               [](bool v) { return v; })) {
-              bool end_of_sequence;
-              std::vector<tensorflow::Tensor> outputs;
-              TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
-                  infeed_dataset_iterator->iterator_ctx.get(), &outputs,
-                  &end_of_sequence));
-              infeed_dataset_iterator->tensors = outputs;
-              if (end_of_sequence) {
-                LOG(INFO) << "The dataset iterator has reached the end of the "
-                             "dataset.";
-              }
-              absl::c_fill(infeed_dataset_iterator->used, false);
+          [this, j, infeed_dataset_iterator](void* dest) {
+            auto infeed_queue_manager = GetXfeedManager(ordinal_)->infeed();
+            auto buffer = infeed_queue_manager->BlockingDequeueBuffer();
+
+            const char* data = reinterpret_cast<const char*>(buffer->data());
+            auto length = buffer->length();
+            CHECK_EQ(length,
+                     ShapeUtil::ByteSizeOf(infeed_dataset_iterator->shapes[j]));
+
+            std::memcpy(dest, data, length);
+
+            infeed_queue_manager->ReleaseCurrentBuffer(
+                length, buffer->data(), infeed_dataset_iterator->shapes[j]);
+
+            bool all_tensors_used = false;
+            {
+              std::lock_guard<std::mutex> lock(infeed_dataset_iterator->mutex);
+              infeed_dataset_iterator->used[j] = true;
+              all_tensors_used = infeed_dataset_iterator->all_tensors_used();
             }
-            // Consume the tensor and copy it into the destination.
-            infeed_dataset_iterator->used[j] = true;
-            auto tensor = infeed_dataset_iterator->tensors[j];
-            const auto tensor_data_ptr = tensor.tensor_data().data();
-            std::memcpy(
-                dest, tensor_data_ptr,
-                ShapeUtil::ByteSizeOf(infeed_dataset_iterator->shapes[j]));
+
+            if (all_tensors_used) {
+              infeed_dataset_iterator->tensors_dequeued_cv.notify_one();
+            }
           });
     }
   }
@@ -299,6 +298,94 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
             outfeed->EnqueueBufferAtomically(buffer, clear_if_full);
           });
     }
+  }
+}
+
+std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
+    se::StreamExecutor* executor, const InfeedInfos& infeed_infos) {
+  infeed_thread_cancelled_ = false;
+
+  std::vector<InfeedDatasetIterator*> infeed_dataset_iterators;
+  infeed_dataset_iterators.reserve(infeed_infos.size());
+  for (const auto& infeed_info : infeed_infos) {
+    const HloInfeedInstruction* inst = infeed_info;
+
+    auto itr = infeed_dataset_iterators_.find(inst->infeed_config());
+    if (itr == infeed_dataset_iterators_.end()) {
+      LOG(FATAL)
+          << "Trying to access an infeed context which has not been created."
+          << " Did you initialize the infeed_queue?";
+    }
+    infeed_dataset_iterators.push_back(itr->second.get());
+  }
+
+  return [this, infeed_dataset_iterators, executor]() {
+    auto platform =
+        se::MultiPlatformManager::PlatformWithName("Poplar").ValueOrDie();
+    auto* transfer_manager = static_cast<PoplarTransferManager*>(
+        xla::TransferManager::GetForPlatform(platform).ValueOrDie());
+
+    while (false == infeed_thread_cancelled_) {
+      for (auto& infeed_dataset_iterator : infeed_dataset_iterators) {
+        {
+          std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
+
+          // We make an assumption that every sub tensor from the infeed is
+          // dequeued every iteration. If all tensors have been used, then get
+          // the next set of tensors.
+          if (infeed_dataset_iterator->all_tensors_used()) {
+            bool end_of_sequence;
+            std::vector<tensorflow::Tensor> outputs;
+            TF_CHECK_OK(infeed_dataset_iterator->iterator->GetNext(
+                infeed_dataset_iterator->iterator_ctx.get(), &outputs,
+                &end_of_sequence));
+            infeed_dataset_iterator->tensors = outputs;
+            if (end_of_sequence) {
+              LOG(INFO) << "The dataset iterator has reached the end of the "
+                           "dataset.";
+            }
+            absl::c_fill(infeed_dataset_iterator->used, false);
+          }
+        }
+
+        for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
+          auto tensor = infeed_dataset_iterator->tensors[j];
+
+          const char* tensor_data = tensor.tensor_data().data();
+          const auto& shape = infeed_dataset_iterator->shapes[j];
+
+          auto literal = MutableBorrowingLiteral(tensor_data, shape);
+          auto status =
+              transfer_manager->TransferLiteralToInfeed(executor, literal);
+
+          if (false == status.ok()) {
+            infeed_thread_cancelled_ = true;
+            return;
+          }
+        }
+
+        std::unique_lock<std::mutex> lock(infeed_dataset_iterator->mutex);
+        infeed_dataset_iterator->tensors_dequeued_cv.wait(lock, [&]() {
+          return infeed_dataset_iterator->all_tensors_used() ||
+                 infeed_thread_cancelled_;
+        });
+      }
+    }
+  };
+}
+
+void PoplarExecutor::LaunchInfeedThread(
+    perftools::gputools::StreamExecutor* executor,
+    const InfeedInfos& infeed_infos) {
+  std::function<void()> infeed_thread_io_fn =
+      CreateInfeedIOThreadFunction(executor, infeed_infos);
+  thread_pool_.Schedule(infeed_thread_io_fn);
+}
+
+void PoplarExecutor::StopThreadPool() {
+  infeed_thread_cancelled_ = true;
+  for (auto& infeed_it : infeed_dataset_iterators_) {
+    infeed_it.second->tensors_dequeued_cv.notify_one();
   }
 }
 
@@ -519,8 +606,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
         // User has specified a configuration
         if (ordinal_ >= current_config_.device_config_size()) {
           return InternalError(
-              "Device ordinal %d not in device configuration list.",
-              ordinal_);
+              "Device ordinal %d not in device configuration list.", ordinal_);
         }
 
         auto device = current_config_.device_config(ordinal_);
@@ -607,9 +693,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(const IpuOptions& cfg) {
           "Unable to acquire poplar device type for ordinal %d", ordinal_);
     }
   } catch (poplar::poplar_error e) {
-    return xla::InternalError(
-        "Unable to open poplar device for ordinal %d: %s", ordinal_,
-        e.what());
+    return xla::InternalError("Unable to open poplar device for ordinal %d: %s",
+                              ordinal_, e.what());
   }
 
   VLOG(1) << "Opened Poplar device type " << GetDeviceTargetName();
@@ -1304,7 +1389,7 @@ void PoplarExecutor::CreateInfeedDatasetIterator(
     std::unique_ptr<tensorflow::data::IteratorBase> iterator,
     std::unique_ptr<tensorflow::data::IteratorContext> iterator_ctx,
     const std::vector<xla::Shape>& shapes) {
-  infeed_dataset_iterators[id] = absl::make_unique<InfeedDatasetIterator>(
+  infeed_dataset_iterators_[id] = absl::make_unique<InfeedDatasetIterator>(
       std::move(iterator), std::move(iterator_ctx), shapes);
 }
 
@@ -1399,7 +1484,12 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       ConnectStreamedVariablesDeviceToHost();
 
       const auto& infeed_infos = executable.GetInfeedInfos();
+      auto infeed_thread_cleanup =
+          tensorflow::gtl::MakeCleanup([this]() { StopThreadPool(); });
       if (!infeed_infos.empty()) {
+        if (!UseSyntheticData()) {
+          LaunchInfeedThread(executor, infeed_infos);
+        }
         ConnectInfeedsToStreamCallback(infeed_infos);
       }
 
