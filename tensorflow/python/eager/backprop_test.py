@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -1099,6 +1100,46 @@ class BackpropTest(test.TestCase):
     grad, var = grads_and_vars[0]
     self.assertAllEqual(7, grad)
     self.assertAllEqual(x, var)
+
+  def testJacobianCustomGradient(self):
+
+    class MyCallable(object):
+
+      def __init__(self):
+        self.a = variables.Variable(1.)
+        self.b = variables.Variable(2.)
+        self.c = variables.Variable(3.)
+
+      def __call__(self, x):
+        return self.a * x * x + self.b * x + self.c
+
+    @def_function.function
+    def call(c, x):
+
+      @custom_gradient.custom_gradient
+      def _call():
+        y = c(x)
+
+        def grad(dy, variables=None):  # pylint: disable=redefined-outer-name
+          with backprop.GradientTape(persistent=True) as g:
+            g.watch(variables)
+            y = c(x)
+          grad_vars = [
+              2 * math_ops.reduce_sum(dy * g.jacobian(y, v)) for v in variables
+          ]
+          del g
+          return (), grad_vars
+
+        return y, grad
+
+      return _call()
+
+    c = MyCallable()
+    x = constant_op.constant([1., 2., 3.])
+    with backprop.GradientTape(persistent=True) as g:
+      g.watch([c.a, c.b, c.c])
+      y = call(c, x)
+    self.assertAllEqual(g.gradient(y, x), None)
 
   @test_util.assert_no_new_tensors
   def testCustomGradient(self):
