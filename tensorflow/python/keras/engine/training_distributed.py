@@ -515,7 +515,7 @@ def experimental_tpu_test_loop(model,
     output_tensors[label] = current_strategy.reduce(reduce_op, output)
   test_op = control_flow_ops.group(output_tensors.values())
 
-  if verbose == 1:
+  if verbose >= 1:
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
