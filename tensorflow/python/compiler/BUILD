@@ -15,5 +15,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = if_not_windows([
         "//tensorflow/python/compiler/tensorrt:init_py",
-    ]),
+    ]) + [
+        "//tensorflow/python/compiler/xla:compiler_py",
+    ],
 )
