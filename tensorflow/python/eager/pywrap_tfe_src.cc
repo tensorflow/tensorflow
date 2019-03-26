@@ -1838,8 +1838,12 @@ bool CheckInputsOk(PyObject* seq, int start_index,
                 << item->ob_type->tp_name;
         return false;
       }
-      for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(item); j++) {
-        PyObject* inner_item = PySequence_Fast_GET_ITEM(item, j);
+      tensorflow::Safe_PyObjectPtr fast_item(PySequence_Fast(item, "Could not parse sequence."));
+      if (fast_item.get() == nullptr) {
+        return false;
+      }
+      for (Py_ssize_t j = 0; j < PySequence_Fast_GET_SIZE(fast_item.get()); j++) {
+        PyObject* inner_item = PySequence_Fast_GET_ITEM(fast_item.get(), j);
         if (!CheckOneInput(inner_item)) {
           VLOG(1) << "Falling back to slow path for Op \"" << op_def.name()
                   << "\", Input \"" << op_def.input_arg(i).name()
