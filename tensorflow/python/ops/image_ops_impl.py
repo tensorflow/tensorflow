@@ -39,6 +39,9 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import deprecation
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import image_ops_impl
+from tensorflow.python.ops import script_ops
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
@@ -3555,3 +3558,55 @@ def combined_non_max_suppression(boxes,
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class)
+@tf_export('image.median_filter_2D')
+def median_filter_2D(input,filter_shape=(3,3)):
+    """  This methods takes 3D Tensor Images.
+         Other than Tensor it takes optional parameter filter_Size
+         Default Filter Shape = (3 , 3)
+         This Median Filtering is done by using 2D filters of user's choice
+         Filter_size should be odd
+         This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
+    """
+
+    input = image_ops_impl._Assert3DImage(input)
+    m,no,ch = int(input.shape[0]),int(input.shape[1]),int(input.shape[2])
+    filter_shapex = filter_shape[0]
+    filter_shapey = filter_shape[1]
+    if m < filter_shapex or no < filter_shapey:
+        raise ValueError("No of Pixels in each dimension of the image should be more than the filter size. Got filter_shape "
+                         "(%sx" % filter_shape[0]+"%s)."%filter_shape[1] +" Image Shape (%s)"% input.shape)
+    if filter_shapex % 2 == 0 or filter_shapey % 2 == 0:
+        raise ValueError("Filter size should be odd. Got filter_shape (%sx" % filter_shape[0]+"%s)"%filter_shape[1] )
+    input = math_ops.cast(input,dtypes.float64)
+    def my_func (input2):
+        tf_i = input2.reshape(m*no*ch)
+        maxi = max(tf_i)
+        if maxi == 1:
+            input2 /= maxi
+        else :
+            input2 /= 255
+        #k and l is the Zero-padding size
+        res = np.empty((m,no,ch))
+        for a in range(ch):
+            img = input2[:,:,a:a+1]
+            img = img.reshape(m,no)
+            k = filter_shapex - 1
+            l = filter_shapey - 1
+            img  = np.pad(img,((k / 2, k / 2), (l / 2,l / 2)),'constant', constant_values=(0, 0))
+            res1 = np.empty((m,no))
+            for i in range(img.shape[0] - k) :
+                for j in range(img.shape[1] - l) :
+                    li = []
+                    for b in range(i, i + filter_shapex):
+                        for d in range(j, j + filter_shapey):
+                            li.append(img[b][d])
+                    li.sort()
+                    res1[i][j] = li[len(li) / 2]
+            res1 = res1.reshape(m,no,1)
+            res[:,:,a:a+1] = res1
+        res *= 255
+        res = res.astype('int64')
+        return res
+
+    y = script_ops.py_func(my_func, [input], dtypes.int64)
+    return y
