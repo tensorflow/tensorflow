@@ -2813,19 +2813,30 @@ def sobel_edges(image):
 
 @tf_export('image.median_filter_1D')
 def median_filter_1D(input,filter_shape=3):
-    """  This methods takes 3D Tensor Images.
-         Other than Tensor it takes optional parameter filter_Size
-         Default Filter Shape = 3
-         This Median Filtering is done by using 1D filters of user's choice
-         Filter_size should be odd
-         This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
+    """This method performs 1D Median Filtering on images.Filter shape can be user given.
+       This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
+       Args:
+           input: A 3D `Tensor` of type `float32` or 'int32' or 'float64' or 'int64 and of shape`[rows, columns, channels]`
+
+           filter_shape: Optional Argument.Single Integer. Default value = 3
+
+        Returns:
+            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int64'. Pixel value of returned tensor
+            ranges between 0 to 255
     """
 
-    input = image_ops_impl._Assert3DImage(input)
-    m,no,ch = int(input.shape[0]),int(input.shape[1]),int(input.shape[2])
+    if not isinstance(filter_shape, int):
+        raise TypeError("Filter shape must be an Integer")
     filter_shapex = filter_shape
+    input = image_ops_impl._Assert3DImage(input)
+    m, no, ch = input.shape[0], input.shape[1], input.shape[2]
+    if not m.__eq__(tensor_shape.Dimension(None)) and not no.__eq__(tensor_shape.Dimension(None)) \
+            and not ch.__eq__(tensor_shape.Dimension(None)):
+        m, no, ch = int(m), int(no), int(ch)
+    else:
+        raise TypeError("All the Dimensions of the input image tensor must be Integers")
     if m * no < filter_shapex :
-        raise ValueError("No of Pixels in each dimension of the image should be more than the filter size. Got filter_shape "
+        raise ValueError("No of Pixels in each channel of the image should be more than the filter size. Got filter_shape "
                          "(%s)"% filter_shape+" Image Shape (%s)"% input.shape)
     if filter_shapex % 2 == 0 :
         raise ValueError("Filter size should be odd. Got filter_shape (%s)" % filter_shape )
