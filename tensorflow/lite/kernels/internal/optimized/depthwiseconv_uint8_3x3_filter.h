@@ -185,7 +185,7 @@ inline int32x4_t vdotq_four_lane_s32(int32x4_t acc, int8x16_t lhs,
   return vaddq_s32(acc, sum);
 }
 
-#endif  // !DOTPROD
+#endif  // !__ARM_FEATURE_DOTPROD
 #endif  // ARM NEON
 
 template <DepthwiseConvOutputRounding output_rounding>
@@ -369,7 +369,6 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
                   OFFSET_OUTPUT_HEIGHT,
               "");
 #endif  // __aarch64__
-
 #endif  // ARM NEON
 
 // Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
@@ -379,37 +378,192 @@ static_assert(offsetof(DepthwiseConvParams, output_height) ==
 struct DepthwiseConvDotProdParams {
   int64_t input_depth;
   int64_t output_depth;
-  int32 workspace_height_stride;
-  int32 input_width_overall_micro_repeats;
-  int32 input_width_micro_repeats;
-  int32 depth_micro_repeats;
-  int32 inbound_block_height;
-  int32 residual_width;
-  int32 input_height_stride;
   int32 stride;
-  int32 output_width_overall_micro_repeats;
-  int32 output_width_micro_repeats;
-  int32 output_residual_width;
-  int32 output_height_stride;
   int32 bias_increment;
-  int32 padding_left;
-  int32 padding_right;
-  int32 padding_top;
-  int32 padding_bottom;
-  int32 height_macro_count;
-  int32 width_macro_count;
-  int32 outbound_block_height;
-  int32 workspace_width_micro_repeats;
+  //
   int32 input_offset;
   int32 output_offset;
   int32 output_multiplier;
   int32 output_shift;
   int32 quantized_activation_min;
   int32 quantized_activation_max;
+  //
+  int32 padding_left;
+  int32 padding_right;
+  int32 padding_top;
+  int32 padding_bottom;
+  //
+  int32 depth_micro_repeats;
+  //
+  int32 width_macro_count;
+  int32 input_width_overall_micro_repeats;
+  int32 input_width_micro_repeats;
+  int32 residual_width;
+  int32 output_width_overall_micro_repeats;
+  int32 output_width_micro_repeats;
+  int32 output_residual_width;
+  int32 workspace_width_micro_repeats;
+  //
+  int32 height_macro_count;
+  int32 inbound_block_height;
+  int32 outbound_block_height;
+  int32 input_height_stride;
+  int32 output_height_stride;
+  int32 workspace_height_stride;
+  //
   int32 four_over_stride;
 };
 
 #ifdef USE_NEON
+#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
+// Represents the number of bytes offset from the start of the
+// DepthwiseConvDotProdParams struct. This is used in the asm to load
+// parameters. Keep these values in sync with the static_asserts below.
+
+#define DP_OFFSET_INPUT_DEPTH 0
+#define DP_OFFSET_OUTPUT_DEPTH DP_OFFSET_INPUT_DEPTH + 8
+#define DP_OFFSET_STRIDE DP_OFFSET_OUTPUT_DEPTH + 8
+#define DP_OFFSET_BIAS_INCREMENT DP_OFFSET_STRIDE + 4
+//
+#define DP_OFFSET_INPUT_OFFSET 24
+#define DP_OFFSET_OUTPUT_OFFSET DP_OFFSET_INPUT_OFFSET + 4
+#define DP_OFFSET_OUTPUT_MULTIPLIER DP_OFFSET_OUTPUT_OFFSET + 4
+#define DP_OFFSET_OUTPUT_SHIFT DP_OFFSET_OUTPUT_MULTIPLIER + 4
+#define DP_OFFSET_QUANTIZED_ACTIVATION_MIN DP_OFFSET_OUTPUT_SHIFT + 4
+#define DP_OFFSET_QUANTIZED_ACTIVATION_MAX \
+  DP_OFFSET_QUANTIZED_ACTIVATION_MIN + 4
+//
+#define DP_OFFSET_PADDING_LEFT 48
+#define DP_OFFSET_PADDING_RIGHT DP_OFFSET_PADDING_LEFT + 4
+#define DP_OFFSET_PADDING_TOP DP_OFFSET_PADDING_RIGHT + 4
+#define DP_OFFSET_PADDING_BOTTOM DP_OFFSET_PADDING_TOP + 4
+//
+#define DP_OFFSET_DEPTH_MICRO_REPEATS DP_OFFSET_PADDING_BOTTOM + 4
+//
+#define DP_OFFSET_WIDTH_MACRO_COUNT 68
+#define DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS \
+  DP_OFFSET_WIDTH_MACRO_COUNT + 4
+#define DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS \
+  DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS + 4
+#define DP_OFFSET_RESIDUAL_WIDTH DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS + 4
+#define DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS \
+  DP_OFFSET_RESIDUAL_WIDTH + 4
+#define DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS \
+  DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS + 4
+#define DP_OFFSET_OUTPUT_RESIDUAL_WIDTH DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS + 4
+#define DP_OFFSET_WORKSPACE_WIDTH_MICRO_REPEATS \
+  DP_OFFSET_OUTPUT_RESIDUAL_WIDTH + 4
+//
+#define DP_OFFSET_HEIGHT_MACRO_COUNT 100
+#define DP_OFFSET_INBOUND_BLOCK_HEIGHT DP_OFFSET_HEIGHT_MACRO_COUNT + 4
+#define DP_OFFSET_OUTBOUND_BLOCK_HEIGHT DP_OFFSET_INBOUND_BLOCK_HEIGHT + 4
+#define DP_OFFSET_INPUT_HEIGHT_STRIDE DP_OFFSET_OUTBOUND_BLOCK_HEIGHT + 4
+#define DP_OFFSET_OUTPUT_HEIGHT_STRIDE DP_OFFSET_INPUT_HEIGHT_STRIDE + 4
+#define DP_OFFSET_WORKSPACE_HEIGHT_STRIDE DP_OFFSET_OUTPUT_HEIGHT_STRIDE + 4
+//
+#define DP_OFFSET_FOUR_OVER_STRIDE DP_OFFSET_WORKSPACE_HEIGHT_STRIDE + 4
+
+static_assert(offsetof(DepthwiseConvDotProdParams, input_depth) ==
+                  DP_OFFSET_INPUT_DEPTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_depth) ==
+                  DP_OFFSET_OUTPUT_DEPTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, stride) == DP_OFFSET_STRIDE,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, bias_increment) ==
+                  DP_OFFSET_BIAS_INCREMENT,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, input_offset) ==
+                  DP_OFFSET_INPUT_OFFSET,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_offset) ==
+                  DP_OFFSET_OUTPUT_OFFSET,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_multiplier) ==
+                  DP_OFFSET_OUTPUT_MULTIPLIER,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_shift) ==
+                  DP_OFFSET_OUTPUT_SHIFT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, quantized_activation_min) ==
+                  DP_OFFSET_QUANTIZED_ACTIVATION_MIN,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, quantized_activation_max) ==
+                  DP_OFFSET_QUANTIZED_ACTIVATION_MAX,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_left) ==
+                  DP_OFFSET_PADDING_LEFT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_right) ==
+                  DP_OFFSET_PADDING_RIGHT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_top) ==
+                  DP_OFFSET_PADDING_TOP,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, padding_bottom) ==
+                  DP_OFFSET_PADDING_BOTTOM,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, depth_micro_repeats) ==
+                  DP_OFFSET_DEPTH_MICRO_REPEATS,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, width_macro_count) ==
+                  DP_OFFSET_WIDTH_MACRO_COUNT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       input_width_overall_micro_repeats) ==
+                  DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, input_width_micro_repeats) ==
+                  DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, residual_width) ==
+                  DP_OFFSET_RESIDUAL_WIDTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       output_width_overall_micro_repeats) ==
+                  DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       output_width_micro_repeats) ==
+                  DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_residual_width) ==
+                  DP_OFFSET_OUTPUT_RESIDUAL_WIDTH,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams,
+                       workspace_width_micro_repeats) ==
+                  DP_OFFSET_WORKSPACE_WIDTH_MICRO_REPEATS,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, height_macro_count) ==
+                  DP_OFFSET_HEIGHT_MACRO_COUNT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, inbound_block_height) ==
+                  DP_OFFSET_INBOUND_BLOCK_HEIGHT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, outbound_block_height) ==
+                  DP_OFFSET_OUTBOUND_BLOCK_HEIGHT,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, input_height_stride) ==
+                  DP_OFFSET_INPUT_HEIGHT_STRIDE,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, output_height_stride) ==
+                  DP_OFFSET_OUTPUT_HEIGHT_STRIDE,
+              "");
+static_assert(offsetof(DepthwiseConvDotProdParams, workspace_height_stride) ==
+                  DP_OFFSET_WORKSPACE_HEIGHT_STRIDE,
+              "");
+//
+static_assert(offsetof(DepthwiseConvDotProdParams, four_over_stride) ==
+                  DP_OFFSET_FOUR_OVER_STRIDE,
+              "");
+#endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
+
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
@@ -3788,7 +3942,6 @@ inline void PreloadInputBlock(
   const int input_height_stride = function_params->input_height_stride;
   const int input_depth = function_params->input_depth;
 
-  {
     const int total_width = 4 * input_width_micro_repeats + residual_width;
     const uint8* row_ptr = input_block_data;
     for (int k_height = 0; k_height < block_height; ++k_height) {
@@ -3800,12 +3953,14 @@ inline void PreloadInputBlock(
       }
       row_ptr += input_height_stride;
     }
-  }
 }
+#endif  // USE_NEON &&__aarch64__
+
+#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
 
 template <>
 struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
-  static void ProcessPerDepthIntrinsics(
+  static void ProcessPerDepthNeon(
       const uint8* filter_data, const int32* bias_data,
       int8* shuffled_filter_data, int32* adjusted_bias_data,
       const DepthwiseConvDotProdParams* function_params) {
@@ -3923,8 +4078,8 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseNeon3x3DotProduct> {
   static inline void Run(const uint8* filter_data, const int32* bias_data,
                          int8* shuffled_filter_data, int32* adjusted_bias_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    ProcessPerDepthIntrinsics(filter_data, bias_data, shuffled_filter_data,
-                              adjusted_bias_data, function_params);
+    ProcessPerDepthNeon(filter_data, bias_data, shuffled_filter_data,
+                        adjusted_bias_data, function_params);
   }
 };
 
@@ -6982,7 +7137,44 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseNeon3x3DotProduct,
   }
 };
 
-#endif  // USE_NEON && __aarch64__
+#undef DP_OFFSET_INPUT_DEPTH
+#undef DP_OFFSET_OUTPUT_DEPTH
+#undef DP_OFFSET_STRIDE
+#undef DP_OFFSET_BIAS_INCREMENT
+//
+#undef DP_OFFSET_INPUT_OFFSET
+#undef DP_OFFSET_OUTPUT_OFFSET
+#undef DP_OFFSET_OUTPUT_MULTIPLIER
+#undef DP_OFFSET_OUTPUT_SHIFT
+#undef DP_OFFSET_QUANTIZED_ACTIVATION_MIN
+#undef DP_OFFSET_QUANTIZED_ACTIVATION_MAX
+//
+#undef DP_OFFSET_PADDING_LEFT
+#undef DP_OFFSET_PADDING_RIGHT
+#undef DP_OFFSET_PADDING_TOP
+#undef DP_OFFSET_PADDING_BOTTOM
+//
+#undef DP_OFFSET_DEPTH_MICRO_REPEATS
+//
+#undef DP_OFFSET_WIDTH_MACRO_COUNT
+#undef DP_OFFSET_INPUT_WIDTH_OVERALL_MICRO_REPEATS
+#undef DP_OFFSET_INPUT_WIDTH_MICRO_REPEATS
+#undef DP_OFFSET_RESIDUAL_WIDTH
+#undef DP_OFFSET_OUTPUT_WIDTH_OVERALL_MICRO_REPEATS
+#undef DP_OFFSET_OUTPUT_WIDTH_MICRO_REPEATS
+#undef DP_OFFSET_OUTPUT_RESIDUAL_WIDTH
+#undef DP_OFFSET_WORKSPACE_WIDTH_MICRO_REPEATS
+//
+#undef DP_OFFSET_HEIGHT_MACRO_COUNT
+#undef DP_OFFSET_INBOUND_BLOCK_HEIGHT
+#undef DP_OFFSET_OUTBOUND_BLOCK_HEIGHT
+#undef DP_OFFSET_INPUT_HEIGHT_STRIDE
+#undef DP_OFFSET_OUTPUT_HEIGHT_STRIDE
+#undef DP_OFFSET_WORKSPACE_HEIGHT_STRIDE
+//
+#undef DP_OFFSET_FOUR_OVER_STRIDE
+
+#endif  // __ARM_FEATURE_DOTPROD && !GOOGLE_L4T
 
 // Top-level implementation function for 3x3 depthwise convolution using NEON
 // dot-product instructions.

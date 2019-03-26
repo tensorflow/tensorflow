@@ -147,7 +147,7 @@ inline void DispatchDepthwiseConv(
 #endif
     }
     case DepthwiseConvImplementation::kUseNeon3x3DotProduct: {
-#if defined(__ARM_FEATURE_DOTPROD) && defined(__aarch64__)
+#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(
               input_shape, filter_shape, params);
@@ -816,7 +816,7 @@ INSTANTIATE_TEST_SUITE_P(
     TestParam::TestNameSuffix);
 #endif
 
-#if defined(__ARM_FEATURE_DOTPROD) && defined(__aarch64__)
+#if defined(__ARM_FEATURE_DOTPROD) && !defined(GOOGLE_L4T)
 INSTANTIATE_TEST_SUITE_P(
     NeonAsm, DepthwiseConvTest,
     testing::Combine(
