@@ -103,7 +103,7 @@ def batch_function(num_batch_threads,
 
     def decorated(*args):  # pylint: disable=missing-docstring
 
-      @function.defun()
+      @function.defun(autograph=False)
       def computation(*computation_args):
         return fn(*computation_args)
 
