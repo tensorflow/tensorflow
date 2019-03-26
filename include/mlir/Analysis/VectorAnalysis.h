@@ -28,9 +28,10 @@ class AffineApplyOp;
 class AffineForOp;
 class AffineMap;
 class FuncBuilder;
-class Instruction;
 class Location;
 class MemRefType;
+class Operation;
+using Instruction = Operation;
 class Value;
 class VectorType;
 

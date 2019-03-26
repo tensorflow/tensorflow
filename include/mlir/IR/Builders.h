@@ -19,7 +19,7 @@
 #define MLIR_IR_BUILDERS_H
 
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Operation.h"
 
 namespace mlir {
 

@@ -38,10 +38,10 @@ namespace mlir {
 class AffineForOp;
 class Block;
 class FlatAffineConstraints;
-class Instruction;
 class Location;
 class MemRefAccess;
-class Instruction;
+class Operation;
+using Instruction = Operation;
 class Value;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from

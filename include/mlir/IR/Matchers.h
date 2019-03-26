@@ -25,7 +25,7 @@
 #define MLIR_MATCHERS_H
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Value.h"
 #include <type_traits>

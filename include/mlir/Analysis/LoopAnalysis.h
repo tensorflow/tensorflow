@@ -31,7 +31,8 @@ namespace mlir {
 class AffineExpr;
 class AffineForOp;
 class AffineMap;
-class Instruction;
+class Operation;
+using Instruction = Operation;
 class MemRefType;
 class Value;
 

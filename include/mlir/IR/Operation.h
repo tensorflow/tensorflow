@@ -1,4 +1,4 @@
-//===- Instruction.h - MLIR Instruction Class -------------------*- C++ -*-===//
+//===- Operation.h - MLIR Operation Class -----------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,16 +15,16 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines the Instruction class.
+// This file defines the Operation class.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_INSTRUCTION_H
-#define MLIR_IR_INSTRUCTION_H
+#ifndef MLIR_IR_OPERATION_H
+#define MLIR_IR_OPERATION_H
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Block.h"
-#include "mlir/IR/InstructionSupport.h"
+#include "mlir/IR/OperationSupport.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ADT/ilist.h"
 #include "llvm/ADT/ilist_node.h"
@@ -40,31 +40,31 @@ class ResultTypeIterator;
 /// Terminator operations can have Block operands to represent successors.
 using BlockOperand = IROperandImpl<Block>;
 
-/// Instruction is a basic unit of execution within a function. Instructions can
-/// be nested within other instructions effectively forming a tree. Child
-/// instructions are organized into instruction blocks represented by a 'Block'
+/// Operation is a basic unit of execution within a function. Operations can
+/// be nested within other operations effectively forming a tree. Child
+/// operations are organized into operation blocks represented by a 'Block'
 /// class.
-class Instruction final
-    : public llvm::ilist_node_with_parent<Instruction, Block>,
-      private llvm::TrailingObjects<Instruction, InstResult, BlockOperand,
+class Operation final
+    : public llvm::ilist_node_with_parent<Operation, Block>,
+      private llvm::TrailingObjects<Operation, InstResult, BlockOperand,
                                     unsigned, Region, detail::OperandStorage> {
 public:
-  /// Create a new Instruction with the specific fields.
-  static Instruction *create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
-                             ArrayRef<Type> resultTypes,
-                             ArrayRef<NamedAttribute> attributes,
-                             ArrayRef<Block *> successors, unsigned numRegions,
-                             bool resizableOperandList, MLIRContext *context);
+  /// Create a new Operation with the specific fields.
+  static Operation *create(Location location, OperationName name,
+                           ArrayRef<Value *> operands,
+                           ArrayRef<Type> resultTypes,
+                           ArrayRef<NamedAttribute> attributes,
+                           ArrayRef<Block *> successors, unsigned numRegions,
+                           bool resizableOperandList, MLIRContext *context);
 
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
-  static Instruction *create(Location location, OperationName name,
-                             ArrayRef<Value *> operands,
-                             ArrayRef<Type> resultTypes,
-                             const NamedAttributeList &attributes,
-                             ArrayRef<Block *> successors, unsigned numRegions,
-                             bool resizableOperandList, MLIRContext *context);
+  static Operation *create(Location location, OperationName name,
+                           ArrayRef<Value *> operands,
+                           ArrayRef<Type> resultTypes,
+                           const NamedAttributeList &attributes,
+                           ArrayRef<Block *> successors, unsigned numRegions,
+                           bool resizableOperandList, MLIRContext *context);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
@@ -75,18 +75,18 @@ public:
     return getName().getAbstractOperation();
   }
 
-  /// Remove this instruction from its parent block and delete it.
+  /// Remove this operation from its parent block and delete it.
   void erase();
 
-  /// Create a deep copy of this instruction, remapping any operands that use
-  /// values outside of the instruction using the map that is provided (leaving
+  /// Create a deep copy of this operation, remapping any operands that use
+  /// values outside of the operation using the map that is provided (leaving
   /// them alone if no entry is present).  Replaces references to cloned
-  /// sub-instructions to the corresponding instruction that is copied, and adds
+  /// sub-operations to the corresponding operation that is copied, and adds
   /// those mappings to the map.
-  Instruction *clone(BlockAndValueMapping &mapper, MLIRContext *context);
-  Instruction *clone(MLIRContext *context);
+  Operation *clone(BlockAndValueMapping &mapper, MLIRContext *context);
+  Operation *clone(MLIRContext *context);
 
-  /// Returns the instruction block that contains this instruction.
+  /// Returns the operation block that contains this operation.
   Block *getBlock() { return block; }
 
   /// Return the context this operation is associated with.
@@ -102,41 +102,41 @@ public:
   /// Set the source location the operation was defined or derived from.
   void setLoc(Location loc) { location = loc; }
 
-  /// Returns the closest surrounding instruction that contains this instruction
-  /// or nullptr if this is a top-level instruction.
-  Instruction *getParentInst();
+  /// Returns the closest surrounding operation that contains this operation
+  /// or nullptr if this is a top-level operation.
+  Operation *getParentInst();
 
-  /// Returns the function that this instruction is part of.
-  /// The function is determined by traversing the chain of parent instructions.
-  /// Returns nullptr if the instruction is unlinked.
+  /// Returns the function that this operation is part of.
+  /// The function is determined by traversing the chain of parent operations.
+  /// Returns nullptr if the operation is unlinked.
   Function *getFunction();
 
-  /// Destroys this instruction and its subclass data.
+  /// Destroys this operation and its subclass data.
   void destroy();
 
-  /// This drops all operand uses from this instruction, which is an essential
+  /// This drops all operand uses from this operation, which is an essential
   /// step in breaking cyclic dependences between references when they are to
   /// be deleted.
   void dropAllReferences();
 
-  /// Drop uses of all values defined by this instruction or its nested regions.
+  /// Drop uses of all values defined by this operation or its nested regions.
   void dropAllDefinedValueUses();
 
-  /// Unlink this instruction from its current block and insert it right before
+  /// Unlink this operation from its current block and insert it right before
   /// `existingInst` which may be in the same or another block in the same
   /// function.
-  void moveBefore(Instruction *existingInst);
+  void moveBefore(Operation *existingInst);
 
-  /// Unlink this operation instruction from its current block and insert it
+  /// Unlink this operation operation from its current block and insert it
   /// right before `iterator` in the specified block.
-  void moveBefore(Block *block, llvm::iplist<Instruction>::iterator iterator);
+  void moveBefore(Block *block, llvm::iplist<Operation>::iterator iterator);
 
-  /// Given an instruction 'other' that is within the same parent block, return
-  /// whether the current instruction is before 'other' in the instruction list
+  /// Given an operation 'other' that is within the same parent block, return
+  /// whether the current operation is before 'other' in the operation list
   /// of the parent block.
   /// Note: This function has an average complexity of O(1), but worst case may
-  /// take O(N) where N is the number of instructions within the parent block.
-  bool isBeforeInBlock(Instruction *other);
+  /// take O(N) where N is the number of operations within the parent block.
+  bool isBeforeInBlock(Operation *other);
 
   void print(raw_ostream &os);
   void dump();
@@ -212,11 +212,11 @@ public:
   // Attributes
   //===--------------------------------------------------------------------===//
 
-  // Instructions may optionally carry a list of attributes that associate
+  // Operations may optionally carry a list of attributes that associate
   // constants to names.  Attributes may be dynamically added and removed over
-  // the lifetime of an instruction.
+  // the lifetime of an operation.
 
-  /// Return all of the attributes on this instruction.
+  /// Return all of the attributes on this operation.
   ArrayRef<NamedAttribute> getAttrs() { return attrs.getAttrs(); }
 
   /// Return the specified attribute if present, null otherwise.
@@ -369,7 +369,7 @@ public:
   // Conversions to declared operations like DimOp
   //===--------------------------------------------------------------------===//
 
-  /// The dyn_cast methods perform a dynamic cast from an Instruction to a typed
+  /// The dyn_cast methods perform a dynamic cast from an Operation to a typed
   /// Op like DimOp.  This returns a null Op on failure.
   template <typename OpClass> OpClass dyn_cast() {
     if (isa<OpClass>())
@@ -377,7 +377,7 @@ public:
     return OpClass();
   }
 
-  /// The cast methods perform a cast from an Instruction to a typed Op like
+  /// The cast methods perform a cast from an Operation to a typed Op like
   /// DimOp.  This aborts if the parameter to the template isn't an instance of
   /// the template type argument.
   template <typename OpClass> OpClass cast() {
@@ -390,31 +390,31 @@ public:
   template <typename OpClass> bool isa() { return OpClass::isClassFor(this); }
 
   //===--------------------------------------------------------------------===//
-  // Instruction Walkers
+  // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk the instructions held by this instruction in preorder, calling the
-  /// callback for each instruction.
-  void walk(const std::function<void(Instruction *)> &callback);
+  /// Walk the operations held by this operation in preorder, calling the
+  /// callback for each operation.
+  void walk(const std::function<void(Operation *)> &callback);
 
   /// Specialization of walk to only visit operations of 'OpTy'.
   template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
-    walk([&](Instruction *inst) {
-      if (auto op = inst->dyn_cast<OpTy>())
-        callback(op);
+    walk([&](Operation *op) {
+      if (auto derivedOp = op->dyn_cast<OpTy>())
+        callback(derivedOp);
     });
   }
 
-  /// Walk the instructions held by this function in postorder, calling the
-  /// callback for each instruction.
-  void walkPostOrder(const std::function<void(Instruction *)> &callback);
+  /// Walk the operations held by this function in postorder, calling the
+  /// callback for each operation.
+  void walkPostOrder(const std::function<void(Operation *)> &callback);
 
   /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
   template <typename OpTy>
   void walkPostOrder(std::function<void(OpTy)> callback) {
-    walkPostOrder([&](Instruction *inst) {
-      if (auto op = inst->dyn_cast<OpTy>())
-        callback(op);
+    walkPostOrder([&](Operation *op) {
+      if (auto derivedOp = op->dyn_cast<OpTy>())
+        callback(derivedOp);
     });
   }
 
@@ -441,13 +441,13 @@ public:
   void emitNote(const Twine &message);
 
 private:
-  Instruction(Location location, OperationName name, unsigned numResults,
-              unsigned numSuccessors, unsigned numRegions,
-              const NamedAttributeList &attributes, MLIRContext *context);
+  Operation(Location location, OperationName name, unsigned numResults,
+            unsigned numSuccessors, unsigned numRegions,
+            const NamedAttributeList &attributes, MLIRContext *context);
 
-  // Instructions are deleted through the destroy() member because they are
+  // Operations are deleted through the destroy() member because they are
   // allocated with malloc.
-  ~Instruction();
+  ~Operation();
 
   /// Returns the operand storage object.
   detail::OperandStorage &getOperandStorage() {
@@ -457,15 +457,15 @@ private:
   // Provide a 'getParent' method for ilist_node_with_parent methods.
   Block *getParent() { return getBlock(); }
 
-  /// The instruction block that containts this instruction.
+  /// The operation block that containts this operation.
   Block *block = nullptr;
 
   /// This holds information about the source location the operation was defined
   /// or derived from.
   Location location;
 
-  /// Relative order of this instruction in its parent block. Used for
-  /// O(1) local dominance checks between instructions.
+  /// Relative order of this operation in its parent block. Used for
+  /// O(1) local dominance checks between operations.
   mutable unsigned orderIndex = 0;
 
   const unsigned numResults, numSuccs, numRegions;
@@ -477,16 +477,16 @@ private:
   NamedAttributeList attrs;
 
   // allow ilist_traits access to 'block' field.
-  friend struct llvm::ilist_traits<Instruction>;
+  friend struct llvm::ilist_traits<Operation>;
 
   // allow block to access the 'orderIndex' field.
   friend class Block;
 
   // allow ilist_node_with_parent to access the 'getParent' method.
-  friend class llvm::ilist_node_with_parent<Instruction, Block>;
+  friend class llvm::ilist_node_with_parent<Operation, Block>;
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<Instruction, InstResult, BlockOperand, unsigned,
+  friend llvm::TrailingObjects<Operation, InstResult, BlockOperand, unsigned,
                                Region, detail::OperandStorage>;
   size_t numTrailingObjects(OverloadToken<InstResult>) const {
     return numResults;
@@ -498,60 +498,63 @@ private:
   size_t numTrailingObjects(OverloadToken<unsigned>) const { return numSuccs; }
 };
 
-inline raw_ostream &operator<<(raw_ostream &os, Instruction &inst) {
-  inst.print(os);
+inline raw_ostream &operator<<(raw_ostream &os, Operation &op) {
+  op.print(os);
   return os;
 }
 
+/// Temporary typedef to Instruction to while the codebase transitions to
+/// Operation.
+using Instruction = Operation;
+
 /// This class implements the const/non-const operand iterators for the
-/// Instruction class in terms of getOperand(idx).
+/// Operation class in terms of getOperand(idx).
 class OperandIterator final
-    : public IndexedAccessorIterator<OperandIterator, Instruction, Value> {
+    : public IndexedAccessorIterator<OperandIterator, Operation, Value> {
 public:
   /// Initializes the operand iterator to the specified operand index.
-  OperandIterator(Instruction *object, unsigned index)
-      : IndexedAccessorIterator<OperandIterator, Instruction, Value>(object,
-                                                                     index) {}
+  OperandIterator(Operation *object, unsigned index)
+      : IndexedAccessorIterator<OperandIterator, Operation, Value>(object,
+                                                                   index) {}
 
   Value *operator*() const { return this->object->getOperand(this->index); }
 };
 
 // Implement the inline operand iterator methods.
-inline auto Instruction::operand_begin() -> operand_iterator {
+inline auto Operation::operand_begin() -> operand_iterator {
   return operand_iterator(this, 0);
 }
 
-inline auto Instruction::operand_end() -> operand_iterator {
+inline auto Operation::operand_end() -> operand_iterator {
   return operand_iterator(this, getNumOperands());
 }
 
-inline auto Instruction::getOperands() -> operand_range {
+inline auto Operation::getOperands() -> operand_range {
   return {operand_begin(), operand_end()};
 }
 
-/// This class implements the result iterators for the Instruction class
+/// This class implements the result iterators for the Operation class
 /// in terms of getResult(idx).
 class ResultIterator final
-    : public IndexedAccessorIterator<ResultIterator, Instruction, Value> {
+    : public IndexedAccessorIterator<ResultIterator, Operation, Value> {
 public:
   /// Initializes the result iterator to the specified index.
-  ResultIterator(Instruction *object, unsigned index)
-      : IndexedAccessorIterator<ResultIterator, Instruction, Value>(object,
-                                                                    index) {}
+  ResultIterator(Operation *object, unsigned index)
+      : IndexedAccessorIterator<ResultIterator, Operation, Value>(object,
+                                                                  index) {}
 
   Value *operator*() const { return this->object->getResult(this->index); }
 };
 
-/// This class implements the result type iterators for the Instruction
+/// This class implements the result type iterators for the Operation
 /// class in terms of getResult(idx)->getType().
 class ResultTypeIterator final
-    : public IndexedAccessorIterator<ResultTypeIterator, Instruction, Value> {
+    : public IndexedAccessorIterator<ResultTypeIterator, Operation, Value> {
 public:
   /// Initializes the result type iterator to the specified index.
-  ResultTypeIterator(Instruction *object, unsigned index)
-      : IndexedAccessorIterator<ResultTypeIterator, Instruction, Value>(object,
-                                                                        index) {
-  }
+  ResultTypeIterator(Operation *object, unsigned index)
+      : IndexedAccessorIterator<ResultTypeIterator, Operation, Value>(object,
+                                                                      index) {}
 
   Type operator*() const {
     return this->object->getResult(this->index)->getType();
@@ -559,31 +562,31 @@ public:
 };
 
 // Implement the inline result iterator methods.
-inline auto Instruction::result_begin() -> result_iterator {
+inline auto Operation::result_begin() -> result_iterator {
   return result_iterator(this, 0);
 }
 
-inline auto Instruction::result_end() -> result_iterator {
+inline auto Operation::result_end() -> result_iterator {
   return result_iterator(this, getNumResults());
 }
 
-inline auto Instruction::getResults() -> llvm::iterator_range<result_iterator> {
+inline auto Operation::getResults() -> llvm::iterator_range<result_iterator> {
   return {result_begin(), result_end()};
 }
 
-inline auto Instruction::result_type_begin() -> result_type_iterator {
+inline auto Operation::result_type_begin() -> result_type_iterator {
   return result_type_iterator(this, 0);
 }
 
-inline auto Instruction::result_type_end() -> result_type_iterator {
+inline auto Operation::result_type_end() -> result_type_iterator {
   return result_type_iterator(this, getNumResults());
 }
 
-inline auto Instruction::getResultTypes()
+inline auto Operation::getResultTypes()
     -> llvm::iterator_range<result_type_iterator> {
   return {result_type_begin(), result_type_end()};
 }
 
 } // end namespace mlir
 
-#endif // MLIR_IR_INSTRUCTION_H
+#endif // MLIR_IR_OPERATION_H

@@ -28,7 +28,7 @@
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"

@@ -1,4 +1,4 @@
-//===- InstructionSupportTest.cpp - Instruction support unit tests --------===//
+//===- OperationSupportTest.cpp - Operation support unit tests ------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/InstructionSupport.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/StandardTypes.h"
 #include "gtest/gtest.h"
@@ -24,10 +24,10 @@ using namespace mlir;
 using namespace mlir::detail;
 
 namespace {
-Instruction *createInst(MLIRContext *context, bool resizableOperands,
-                        ArrayRef<Value *> operands = llvm::None,
-                        ArrayRef<Type> resultTypes = llvm::None) {
-  return Instruction::create(
+Operation *createOp(MLIRContext *context, bool resizableOperands,
+                    ArrayRef<Value *> operands = llvm::None,
+                    ArrayRef<Type> resultTypes = llvm::None) {
+  return Operation::create(
       UnknownLoc::get(context), OperationName("foo.bar", context), operands,
       resultTypes, llvm::None, llvm::None, 0, resizableOperands, context);
 }
@@ -36,14 +36,14 @@ TEST(OperandStorageTest, NonResizable) {
   MLIRContext context;
   Builder builder(&context);
 
-  Instruction *useInst =
-      createInst(&context, /*resizableOperands=*/false, /*operands=*/llvm::None,
-                 builder.getIntegerType(16));
-  Value *operand = useInst->getResult(0);
+  Operation *useOp =
+      createOp(&context, /*resizableOperands=*/false, /*operands=*/llvm::None,
+               builder.getIntegerType(16));
+  Value *operand = useOp->getResult(0);
 
   // Create a non-resizable instruction with one operand.
-  Instruction *user = createInst(&context, /*resizableOperands=*/false, operand,
-                                 builder.getIntegerType(16));
+  Operation *user = createOp(&context, /*resizableOperands=*/false, operand,
+                             builder.getIntegerType(16));
 
   // Sanity check the storage.
   EXPECT_EQ(user->hasResizableOperandsList(), false);
@@ -58,21 +58,21 @@ TEST(OperandStorageTest, NonResizable) {
 
   // Destroy the instructions.
   user->destroy();
-  useInst->destroy();
+  useOp->destroy();
 }
 
 TEST(OperandStorageDeathTest, AddToNonResizable) {
   MLIRContext context;
   Builder builder(&context);
 
-  Instruction *useInst =
-      createInst(&context, /*resizableOperands=*/false, /*operands=*/llvm::None,
-                 builder.getIntegerType(16));
-  Value *operand = useInst->getResult(0);
+  Operation *useOp =
+      createOp(&context, /*resizableOperands=*/false, /*operands=*/llvm::None,
+               builder.getIntegerType(16));
+  Value *operand = useOp->getResult(0);
 
   // Create a non-resizable instruction with one operand.
-  Instruction *user = createInst(&context, /*resizableOperands=*/false, operand,
-                                 builder.getIntegerType(16));
+  Operation *user = createOp(&context, /*resizableOperands=*/false, operand,
+                             builder.getIntegerType(16));
 
   // Sanity check the storage.
   EXPECT_EQ(user->hasResizableOperandsList(), false);
@@ -85,14 +85,14 @@ TEST(OperandStorageTest, Resizable) {
   MLIRContext context;
   Builder builder(&context);
 
-  Instruction *useInst =
-      createInst(&context, /*resizableOperands=*/false, /*operands=*/llvm::None,
-                 builder.getIntegerType(16));
-  Value *operand = useInst->getResult(0);
+  Operation *useOp =
+      createOp(&context, /*resizableOperands=*/false, /*operands=*/llvm::None,
+               builder.getIntegerType(16));
+  Value *operand = useOp->getResult(0);
 
   // Create a resizable instruction with one operand.
-  Instruction *user = createInst(&context, /*resizableOperands=*/true, operand,
-                                 builder.getIntegerType(16));
+  Operation *user = createOp(&context, /*resizableOperands=*/true, operand,
+                             builder.getIntegerType(16));
 
   // Sanity check the storage.
   EXPECT_EQ(user->hasResizableOperandsList(), true);
@@ -111,7 +111,7 @@ TEST(OperandStorageTest, Resizable) {
 
   // Destroy the instructions.
   user->destroy();
-  useInst->destroy();
+  useOp->destroy();
 }
 
 } // end namespace

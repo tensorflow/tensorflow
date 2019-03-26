@@ -29,7 +29,8 @@
 namespace mlir {
 class Block;
 class Function;
-class Instruction;
+class Operation;
+using Instruction = Operation;
 class Value;
 
 /// Operands contain a Value.

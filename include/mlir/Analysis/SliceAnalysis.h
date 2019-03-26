@@ -27,7 +27,8 @@
 
 namespace mlir {
 
-class Instruction;
+class Operation;
+using Instruction = Operation;
 
 /// Type of the condition to limit the propagation of transitive use-defs.
 /// This can be used in particular to limit the propagation to a given Scope or

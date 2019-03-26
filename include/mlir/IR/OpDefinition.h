@@ -28,7 +28,7 @@
 #ifndef MLIR_IR_OPDEFINITION_H
 #define MLIR_IR_OPDEFINITION_H
 
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Operation.h"
 #include <type_traits>
 
 namespace mlir {
@@ -782,7 +782,7 @@ protected:
   /// This is a private constructor only accessible through the
   /// Instruction::cast family of methods.
   explicit Op(Instruction *state) : OpState(state) {}
-  friend class Instruction;
+  friend class Operation;
 
 private:
   template <typename... Types> struct BaseVerifier;

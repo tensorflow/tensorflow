@@ -17,7 +17,7 @@
 
 #include "mlir/IR/Value.h"
 #include "mlir/IR/Function.h"
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Operation.h"
 using namespace mlir;
 
 /// If this value is the result of an Instruction, return the instruction

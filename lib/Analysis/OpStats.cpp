@@ -15,8 +15,8 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"

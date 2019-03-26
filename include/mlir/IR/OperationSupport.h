@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file defines a number of support types that Instruction and related
+// This file defines a number of support types that Operation and related
 // classes build on top of.
 //
 //===----------------------------------------------------------------------===//
@@ -27,14 +27,18 @@
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/Location.h"
 #include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/PointerUnion.h"
+#include "llvm/Support/TrailingObjects.h"
 #include <memory>
 
 namespace mlir {
 class Block;
 class Dialect;
-class Instruction;
+class Operation;
+using Instruction = Operation;
 struct OperationState;
 class OpAsmParser;
 class OpAsmParserResult;
@@ -79,23 +83,22 @@ public:
   Dialect &dialect;
 
   /// Return true if this "op class" can match against the specified operation.
-  bool (&isClassFor)(Instruction *op);
+  bool (&isClassFor)(Operation *op);
 
   /// Use the specified object to parse this ops custom assembly format.
   bool (&parseAssembly)(OpAsmParser *parser, OperationState *result);
 
   /// This hook implements the AsmPrinter for this operation.
-  void (&printAssembly)(Instruction *op, OpAsmPrinter *p);
+  void (&printAssembly)(Operation *op, OpAsmPrinter *p);
 
   /// This hook implements the verifier for this operation.  It should emits an
   /// error message and returns true if a problem is detected, or returns false
   /// if everything is ok.
-  bool (&verifyInvariants)(Instruction *op);
+  bool (&verifyInvariants)(Operation *op);
 
   /// This hook implements a constant folder for this operation.  It fills in
   /// `results` on success.
-  LogicalResult (&constantFoldHook)(Instruction *op,
-                                    ArrayRef<Attribute> operands,
+  LogicalResult (&constantFoldHook)(Operation *op, ArrayRef<Attribute> operands,
                                     SmallVectorImpl<Attribute> &results);
 
   /// This hook implements a generalized folder for this operation.  Operations
@@ -118,7 +121,7 @@ public:
   /// "x+0 -> x", "min(x,y,x,z) -> min(x,y,z)", "x+y-x -> y", etc), but does
   /// not allow for canonicalizations that need to introduce new operations, not
   /// even constants (e.g. "x-x -> 0" cannot be expressed).
-  LogicalResult (&foldHook)(Instruction *op, SmallVectorImpl<Value *> &results);
+  LogicalResult (&foldHook)(Operation *op, SmallVectorImpl<Value *> &results);
 
   /// This hook returns any canonicalization pattern rewrites that the operation
   /// supports, for use by the canonicalization pass.
@@ -147,14 +150,14 @@ public:
 private:
   AbstractOperation(
       StringRef name, Dialect &dialect, OperationProperties opProperties,
-      bool (&isClassFor)(Instruction *op),
+      bool (&isClassFor)(Operation *op),
       bool (&parseAssembly)(OpAsmParser *parser, OperationState *result),
-      void (&printAssembly)(Instruction *op, OpAsmPrinter *p),
-      bool (&verifyInvariants)(Instruction *op),
-      LogicalResult (&constantFoldHook)(Instruction *op,
+      void (&printAssembly)(Operation *op, OpAsmPrinter *p),
+      bool (&verifyInvariants)(Operation *op),
+      LogicalResult (&constantFoldHook)(Operation *op,
                                         ArrayRef<Attribute> operands,
                                         SmallVectorImpl<Attribute> &results),
-      LogicalResult (&foldHook)(Instruction *op,
+      LogicalResult (&foldHook)(Operation *op,
                                 SmallVectorImpl<Value *> &results),
       void (&getCanonicalizationPatterns)(OwningRewritePatternList &results,
                                           MLIRContext *context))
@@ -274,14 +277,14 @@ public:
     operands.append(succOperands.begin(), succOperands.end());
   }
 
-  /// Create a region that should be attached to the instruction.  These regions
-  /// can be filled in immediately without waiting for Instruction to be
+  /// Create a region that should be attached to the operation.  These regions
+  /// can be filled in immediately without waiting for Operation to be
   /// created.  When it is, the region bodies will be transferred.
   Region *addRegion();
 
-  /// Take a region that should be attached to the Instruction.  The body of the
-  /// region will be transferred when the Instruction is constructed.  If the
-  /// region is null, a new empty region will be attached to the Instruction.
+  /// Take a region that should be attached to the Operation.  The body of the
+  /// region will be transferred when the Operation is constructed.  If the
+  /// region is null, a new empty region will be attached to the Operation.
   void addRegion(std::unique_ptr<Region> &&region);
 
   /// Sets the operand list of the operation as resizable.
@@ -290,6 +293,142 @@ public:
   }
 };
 
+namespace detail {
+/// A utility class holding the information necessary to dynamically resize
+/// operands.
+struct ResizableStorage {
+  ResizableStorage(InstOperand *opBegin, unsigned numOperands)
+      : firstOpAndIsDynamic(opBegin, false), capacity(numOperands) {}
+
+  ~ResizableStorage() { cleanupStorage(); }
+
+  /// Cleanup any allocated storage.
+  void cleanupStorage() {
+    // If the storage is dynamic, then we need to free the storage.
+    if (isStorageDynamic())
+      free(firstOpAndIsDynamic.getPointer());
+  }
+
+  /// Sets the storage pointer to a new dynamically allocated block.
+  void setDynamicStorage(InstOperand *opBegin) {
+    /// Cleanup the old storage if necessary.
+    cleanupStorage();
+    firstOpAndIsDynamic.setPointerAndInt(opBegin, true);
+  }
+
+  /// Returns the current storage pointer.
+  InstOperand *getPointer() { return firstOpAndIsDynamic.getPointer(); }
+  const InstOperand *getPointer() const {
+    return firstOpAndIsDynamic.getPointer();
+  }
+
+  /// Returns if the current storage of operands is in the trailing objects is
+  /// in a dynamically allocated memory block.
+  bool isStorageDynamic() const { return firstOpAndIsDynamic.getInt(); }
+
+  /// A pointer to the first operand element. This is either to the trailing
+  /// objects storage, or a dynamically allocated block of memory.
+  llvm::PointerIntPair<InstOperand *, 1, bool> firstOpAndIsDynamic;
+
+  // The maximum number of operands that can be currently held by the storage.
+  unsigned capacity;
+};
+
+/// This class handles the management of operation operands. Operands are
+/// stored similarly to the elements of a SmallVector except for two key
+/// differences. The first is the inline storage, which is a trailing objects
+/// array. The second is that being able to dynamically resize the operand list
+/// is optional.
+class OperandStorage final
+    : private llvm::TrailingObjects<OperandStorage, ResizableStorage,
+                                    InstOperand> {
+public:
+  OperandStorage(unsigned numOperands, bool resizable)
+      : numOperands(numOperands), resizable(resizable) {
+    // Initialize the resizable storage.
+    if (resizable) {
+      new (&getResizableStorage())
+          ResizableStorage(getTrailingObjects<InstOperand>(), numOperands);
+    }
+  }
+
+  ~OperandStorage() {
+    // Manually destruct the operands.
+    for (auto &operand : getInstOperands())
+      operand.~InstOperand();
+
+    // If the storage is resizable then destruct the utility.
+    if (resizable)
+      getResizableStorage().~ResizableStorage();
+  }
+
+  /// Replace the operands contained in the storage with the ones provided in
+  /// 'operands'.
+  void setOperands(Operation *owner, ArrayRef<Value *> operands);
+
+  /// Erase an operand held by the storage.
+  void eraseOperand(unsigned index);
+
+  /// Get the operation operands held by the storage.
+  ArrayRef<InstOperand> getInstOperands() const {
+    return {getRawOperands(), size()};
+  }
+  MutableArrayRef<InstOperand> getInstOperands() {
+    return {getRawOperands(), size()};
+  }
+
+  /// Return the number of operands held in the storage.
+  unsigned size() const { return numOperands; }
+
+  /// Returns the additional size necessary for allocating this object.
+  static size_t additionalAllocSize(unsigned numOperands, bool resizable) {
+    return additionalSizeToAlloc<ResizableStorage, InstOperand>(
+        resizable ? 1 : 0, numOperands);
+  }
+
+  /// Returns if this storage is resizable.
+  bool isResizable() const { return resizable; }
+
+private:
+  /// Clear the storage and destroy the current operands held by the storage.
+  void clear() { numOperands = 0; }
+
+  /// Returns the current pointer for the raw operands array.
+  InstOperand *getRawOperands() {
+    return resizable ? getResizableStorage().getPointer()
+                     : getTrailingObjects<InstOperand>();
+  }
+  const InstOperand *getRawOperands() const {
+    return resizable ? getResizableStorage().getPointer()
+                     : getTrailingObjects<InstOperand>();
+  }
+
+  /// Returns the resizable operand utility class.
+  ResizableStorage &getResizableStorage() {
+    assert(resizable);
+    return *getTrailingObjects<ResizableStorage>();
+  }
+  const ResizableStorage &getResizableStorage() const {
+    assert(resizable);
+    return *getTrailingObjects<ResizableStorage>();
+  }
+
+  /// Grow the internal resizable operand storage.
+  void grow(ResizableStorage &resizeUtil, size_t minSize);
+
+  /// The current number of operands, and the current max operand capacity.
+  unsigned numOperands : 31;
+
+  /// Whether this storage is resizable or not.
+  bool resizable : 1;
+
+  // This stuff is used by the TrailingObjects template.
+  friend llvm::TrailingObjects<OperandStorage, ResizableStorage, InstOperand>;
+  size_t numTrailingObjects(OverloadToken<ResizableStorage>) const {
+    return resizable ? 1 : 0;
+  }
+};
+} // end namespace detail
 } // end namespace mlir
 
 namespace llvm {

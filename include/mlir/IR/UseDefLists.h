@@ -28,8 +28,9 @@
 
 namespace mlir {
 
-class Instruction;
 class IROperand;
+class Operation;
+using Instruction = Operation;
 template <typename OperandType> class ValueUseIterator;
 
 class IRObjectWithUseList {

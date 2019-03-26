@@ -16,7 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/Instruction.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 using namespace mlir;
 

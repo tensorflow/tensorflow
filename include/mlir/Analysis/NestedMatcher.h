@@ -24,7 +24,8 @@
 namespace mlir {
 
 struct NestedPattern;
-class Instruction;
+class Operation;
+using Instruction = Operation;
 
 /// An NestedPattern captures nested patterns in the IR.
 /// It is used in conjunction with a scoped NestedPatternContext which is an

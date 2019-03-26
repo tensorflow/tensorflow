@@ -35,7 +35,8 @@ class AffineApplyOp;
 class AffineForOp;
 class AffineValueMap;
 class FlatAffineConstraints;
-class Instruction;
+class Operation;
+using Instruction = Operation;
 class Value;
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
