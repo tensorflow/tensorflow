@@ -270,6 +270,7 @@ def _maybe_load_rccl_ops_so():
   with _module_lock:
     global _rccl_ops_so
     if not _rccl_ops_so:
+      import os
       library_filename = os.path.join(resource_loader.get_data_files_path(),
                                     '_rccl_ops.so')
       _rccl_ops_so = load_library.load_op_library(library_filename)
