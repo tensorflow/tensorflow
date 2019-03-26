@@ -396,6 +396,9 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
 
   StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
 
+  StatusOr<HloInstruction*> OptimizeDotOfReorderContractingDims(
+      HloInstruction* dot);
+
   HloComputation* GetOrCreateScalarAddComputation() {
     if (scalar_add_computation_) {
       return scalar_add_computation_;
@@ -1628,6 +1631,267 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
   return memoized_lookup;
 }
 
+StatusOr<HloInstruction*>
+AlgebraicSimplifierVisitor::OptimizeDotOfReorderContractingDims(
+    HloInstruction* dot) {
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
+  // We require that the contracting dimension size is 1
+  if (dnums.lhs_contracting_dimensions_size() != 1 ||
+      dnums.rhs_contracting_dimensions_size() != 1) {
+    return nullptr;
+  }
+  HloInstruction* lhs = dot->mutable_operand(0);
+  HloInstruction* rhs = dot->mutable_operand(1);
+  bool const_on_rhs = false;
+  // We require that the dot has one and only one constant operand.
+  if (lhs->opcode() != HloOpcode::kConstant &&
+      rhs->opcode() == HloOpcode::kConstant) {
+    const_on_rhs = true;
+  } else if (lhs->opcode() == HloOpcode::kConstant &&
+             rhs->opcode() != HloOpcode::kConstant) {
+    const_on_rhs = false;
+  } else {
+    return nullptr;
+  }
+
+  VLOG(10) << "Found Dot reorder contracting dims candidate: "
+           << dot->ToString();
+
+  auto is_eligible_reorder_op = [](
+      const HloInstruction* op, const std::vector<int64>& out_contracting_dims,
+      std::vector<int64>& in_contracting_dims) {
+    if (op->opcode() != HloOpcode::kReshape &&
+        op->opcode() != HloOpcode::kTranspose) {
+      return false;
+    }
+    if (op->opcode() == HloOpcode::kReshape) {
+      // We require that reshape op does not change the non-contracting
+      // dimensions. It is possible to relax this restriction if needed
+      const std::vector<int64> in_dims = op->operand(0)->shape().dimensions();
+      const std::vector<int64> out_dims = op->shape().dimensions();
+      int64 out_contracting_left_idx = out_contracting_dims.front();
+      int64 out_contracting_right_idx = out_contracting_dims.back();
+      for (int i = 0; i < out_contracting_left_idx; i++) {
+        if (out_dims[i] != in_dims[i]) {
+          return false;
+        }
+      }
+      for (int i = out_dims.size() - 1, j = in_dims.size() - 1;
+           i > out_contracting_right_idx; i--, j--) {
+        if (out_dims[i] != in_dims[j]) {
+          return false;
+        }
+      }
+      int64 in_contracting_dims_size =
+          in_dims.size() - out_contracting_left_idx -
+          (out_dims.size() - 1 - out_contracting_right_idx);
+      in_contracting_dims.resize(in_contracting_dims_size);
+      std::iota(in_contracting_dims.begin(), in_contracting_dims.end(),
+                out_contracting_left_idx);
+    } else {  // HloOpcode::kTranspose
+      // We require that transpose only touch contracting dimensions
+      std::vector<int64> transpose_dimensions = op->dimensions();
+      for (int64 i = 0; i < transpose_dimensions.size(); i++) {
+        if (transpose_dimensions[i] != i &&
+            (std::find(out_contracting_dims.begin(), out_contracting_dims.end(),
+                       i) == out_contracting_dims.end() ||
+             std::find(out_contracting_dims.begin(), out_contracting_dims.end(),
+                       transpose_dimensions[i]) ==
+                 out_contracting_dims.end())) {
+          return false;
+        }
+      }
+      in_contracting_dims = out_contracting_dims;
+    }
+    return true;
+  };
+
+  // Reordering elements in contracting dimensions happens when both transpose
+  // and reshape touch the contracting dimensions. We consider the optimization
+  // profitable in when we see both transpose and reshape in eligible ops. If
+  // there is just reshape or just transpose, it is likely that there is no
+  // need for a copy anyway.
+  auto is_profitable_reorder_ops = [](const std::vector<HloInstruction*>& ops) {
+    bool has_reshape = false;
+    bool has_transpose = false;
+    // if the reordering operations already apply on constant, they can be
+    // folded anyway
+    if (ops.back()->mutable_operand(0)->opcode() == HloOpcode::kConstant) {
+      return false;
+    }
+    // When the op has multiple users, we may not be able to remove it.
+    for (const auto op : ops) {
+      if (op->user_count() > 1) {
+        return false;
+      }
+      has_reshape |= (op->opcode() == HloOpcode::kReshape);
+      has_transpose |= (op->opcode() == HloOpcode::kTranspose);
+    }
+    return (has_reshape && has_transpose);
+  };
+
+  auto inverse_reorder_op = [this](
+      const HloInstruction* reorder_op,
+      HloInstruction* anchor_op,  // input to the inversed op
+      const std::vector<int64>& reorder_in_contracting_dims,
+      const std::vector<int64>& anchor_in_contracting_dims,
+      std::vector<int64>& anchor_out_contracting_dims) -> HloInstruction* {
+    // To compute the new shape, start from anchor_op input shape and replace
+    // the contracting dimensions with the contracting dimensions from the
+    // reorder_op input
+    auto reorder_in_dims = reorder_op->operand(0)->shape().dimensions();
+    auto anchor_in_dims = anchor_op->shape().dimensions();
+    std::vector<int64> anchor_out_dims;
+    // Collect left non-contracting dimensions if exist
+    if (anchor_in_contracting_dims.front() > 0) {
+      std::copy(anchor_in_dims.begin(),
+                anchor_in_dims.begin() + anchor_in_contracting_dims.front(),
+                std::back_inserter(anchor_out_dims));
+    }
+    // Collect contracting dimensions and their indices
+    int64 i = anchor_in_contracting_dims.front();
+    for (auto d : reorder_in_contracting_dims) {
+      anchor_out_dims.push_back(reorder_in_dims[d]);
+      anchor_out_contracting_dims.push_back(i);
+      i++;
+    }
+    // Collect right non-contracting dimensions if exist
+    if (anchor_in_contracting_dims.back() < anchor_in_dims.size() - 1) {
+      std::copy(anchor_in_dims.begin() + anchor_in_contracting_dims.back() + 1,
+                anchor_in_dims.end(), std::back_inserter(anchor_out_dims));
+    }
+    if (reorder_op->opcode() == HloOpcode::kReshape) {
+      // Inverse reshape op: use the new shape to create a new reshape op
+      return this->computation_->AddInstruction(HloInstruction::CreateReshape(
+          ShapeUtil::MakeShape(anchor_op->shape().element_type(),
+                               anchor_out_dims),
+          anchor_op));
+    } else {  // HloOpcode::kTranspose
+      // Inverse transpose op: Compute the new permutation vector, then create
+      // a new transpose op based on new shape and new permutation vector
+      std::vector<int64> transpose_dims = reorder_op->dimensions();
+      std::vector<int64> transpose_delta;
+      std::vector<int64> new_transpose_dims;
+      // Collect the "distance" of the permutation for each contracting dimension
+      // in the reorder op
+      for (int64 i = reorder_in_contracting_dims.front();
+           i <= reorder_in_contracting_dims.back(); i++) {
+        transpose_delta.push_back(transpose_dims[i] - i);
+      }
+      // Apply the same distance to each contracting dimension in the anchor_op
+      // input.
+      int j = 0;
+      for (int64 i = 0; i < anchor_in_dims.size(); i++) {
+        if (i < anchor_in_contracting_dims.front() ||
+            i > anchor_in_contracting_dims.back()) {
+          // Non-contracting dimensions are not permuted
+          new_transpose_dims.push_back(i);
+        } else {
+          new_transpose_dims.push_back(i + transpose_delta[j]);
+          j++;
+        }
+      }
+      return this->computation_->AddInstruction(HloInstruction::CreateTranspose(
+          ShapeUtil::MakeShape(anchor_op->shape().element_type(),
+                               anchor_out_dims),
+          anchor_op, new_transpose_dims));
+    }
+  };
+
+  // Eligibility check
+  // reorder_ops keep track of the eligible reordering ops in the non-const path
+  std::vector<HloInstruction*> reorder_ops;
+  // reorder_contracting_dims keep track of the contracting dimensions in
+  // each reorder op in the above list. The contracting dimensions are
+  // represented by a vector of indices.
+  std::vector<std::vector<int64>> reorder_contracting_dims;
+  std::vector<int64> reorder_out_contracting_dims = {
+      const_on_rhs ? dnums.lhs_contracting_dimensions(0)
+                   : dnums.rhs_contracting_dimensions(0)};
+  std::vector<int64> reorder_in_contracting_dims;
+  reorder_contracting_dims.push_back(reorder_out_contracting_dims);
+  HloInstruction* anchor_op = const_on_rhs ? lhs : rhs;
+  while (is_eligible_reorder_op(anchor_op, reorder_out_contracting_dims,
+                                reorder_in_contracting_dims)) {
+    VLOG(10) << "Reordering op fusion candidate: " << anchor_op->ToString();
+    reorder_ops.push_back(anchor_op);
+    reorder_contracting_dims.push_back(reorder_in_contracting_dims);
+    reorder_out_contracting_dims = reorder_in_contracting_dims;
+    anchor_op = anchor_op->mutable_operand(0);
+    reorder_in_contracting_dims.clear();
+  }
+
+  // Profitability check
+  if (reorder_ops.empty() || !is_profitable_reorder_ops(reorder_ops)) {
+    VLOG(10) << "... Not profitable";
+    return nullptr;
+  }
+
+  // Do the actual transformation
+  std::vector<int64> anchor_in_contracting_dims = {
+      const_on_rhs ? dnums.rhs_contracting_dimensions(0)
+                   : dnums.lhs_contracting_dimensions(0)};
+  std::vector<int64> anchor_out_contracting_dims;
+  anchor_op = const_on_rhs ? rhs : lhs;
+  for (int i = 0; i < reorder_ops.size(); i++) {
+    TF_RET_CHECK(reorder_ops[i]->opcode() == HloOpcode::kReshape ||
+                 reorder_ops[i]->opcode() == HloOpcode::kTranspose);
+    HloInstruction* reorder_op = reorder_ops[i];
+    // Verify if the contracting dimensions in the output of reorder_ops[i] and
+    // the input of anchor_op match
+    TF_RET_CHECK(reorder_contracting_dims[i].size() ==
+                 anchor_in_contracting_dims.size());
+    for (int64 j = 0; j < reorder_contracting_dims[i].size(); j++) {
+      TF_RET_CHECK(
+          reorder_op->shape().dimensions(reorder_contracting_dims[i][j]) ==
+          anchor_op->shape().dimensions(anchor_in_contracting_dims[j]));
+    }
+    // Verify if contracting dimensions are contiguous
+    for (int64 j = 1; j < reorder_contracting_dims[i].size(); j++) {
+      TF_RET_CHECK(reorder_contracting_dims[i][j] -
+                       reorder_contracting_dims[i][j - 1] ==
+                   1);
+      TF_RET_CHECK(anchor_in_contracting_dims[j] -
+                       anchor_in_contracting_dims[j - 1] ==
+                   1);
+    }
+    anchor_op = inverse_reorder_op(
+        reorder_ops[i], anchor_op,
+        reorder_contracting_dims[i + 1], // contracting dims of reorder input
+        anchor_in_contracting_dims, anchor_out_contracting_dims);
+    anchor_in_contracting_dims = anchor_out_contracting_dims;
+    anchor_out_contracting_dims.clear();
+    VLOG(10) << "Inserted inverse reorder op: " << anchor_op->ToString();
+  }
+
+  HloInstruction* new_reorder_op = reorder_ops.back()->mutable_operand(0);
+  HloInstruction* new_const_op = anchor_op;
+  HloInstruction* new_dot_op = nullptr;
+  HloInstruction* orig_reorder_op = const_on_rhs ? lhs : rhs;
+  // Reshape the input of the reordering chain to flatten contracting dimensions
+  // if it has multiple contracting dimensions. The new reordering op chain on
+  // the const op side also need a reshape in this case.
+  if (reorder_contracting_dims.back().size() != 1) {
+    HloInstruction* const_op = const_on_rhs ? rhs : lhs;
+    new_reorder_op = computation_->AddInstruction(HloInstruction::CreateReshape(
+        orig_reorder_op->shape(), new_reorder_op));
+    new_const_op = computation_->AddInstruction(
+        HloInstruction::CreateReshape(const_op->shape(), anchor_op));
+  }
+  if (const_on_rhs) {
+    new_dot_op = computation_->AddInstruction(
+        HloInstruction::CreateDot(dot->shape(), new_reorder_op, new_const_op,
+                                  dnums, dot->precision_config()));
+  } else {
+    new_dot_op = computation_->AddInstruction(
+        HloInstruction::CreateDot(dot->shape(), new_const_op, new_reorder_op,
+                                  dnums, dot->precision_config()));
+  }
+  VLOG(10) << " ... Replaced with new dot operation: "
+           << new_dot_op->ToString();
+  return new_dot_op;
+}
+
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   HloInstruction *lhs, *rhs;
   CHECK(Match(dot, m::Dot(m::Op(&lhs), m::Op(&rhs))));
@@ -1759,6 +2023,14 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     new_dot = AddReduce(new_dot, reduce_dims);
     new_dot = AsType(new_dot, dot->shape().element_type());
     return ReplaceInstruction(dot, new_dot);
+  }
+
+  // Simplify dot(reorder_contracting_dim_ops(a), ConstB) to:
+  // dot(a, reorder_constracting_dim_inverse_ops(ConstB)
+  TF_ASSIGN_OR_RETURN(HloInstruction * dot_of_reorder_optimized,
+                      OptimizeDotOfReorderContractingDims(dot));
+  if (dot_of_reorder_optimized) {
+    return ReplaceInstruction(dot, dot_of_reorder_optimized);
   }
 
   if (lhs->shape().rank() > 2 || rhs->shape().rank() > 2 ||
