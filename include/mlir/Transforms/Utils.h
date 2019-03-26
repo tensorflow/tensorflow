@@ -88,9 +88,9 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
                                          ArrayRef<Instruction *> affineApplyOps,
                                          SmallVectorImpl<Value *> *results);
 
-/// Given an operation instruction, inserts one or more single result affine
-/// apply operations, results of which are exclusively used by this operation
-/// instruction. The operands of these newly created affine apply ops are
+/// Given an instruction, inserts one or more single result affine apply
+/// operations, results of which are exclusively used by this instruction.
+/// The operands of these newly created affine apply ops are
 /// guaranteed to be loop iterators or terminal symbols of a function.
 ///
 /// Before
@@ -108,14 +108,15 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 ///   %idx_ = affine.apply (d0) -> (d0 mod 2) (%i)
 ///   %v = "compute"(%idx_, ...)
 
-/// This allows the application of  different transformations on send and
-/// compute (for eg.  / different shifts/delays)
+/// This allows the application of different transformations on send and
+/// compute (for eg. different shifts/delays)
 ///
-/// Returns nullptr either if none of opInst's operands were the result of an
-/// affine.apply (i.e., there was no affine computation slice to create), or if
-/// all the affine.apply op's supplying operands to this opInst did not have any
-/// uses other than those in this opInst. The method otherwise returns the list
-/// of affine.apply operations created in output argument `sliceOps`.
+/// Fills `sliceOps` with the list of affine.apply operations.
+/// In the following cases, `sliceOps` remains empty:
+///   1. If none of opInst's operands were the result of an affine.apply
+///      (i.e., there was no affine computation slice to create).
+///   2. If all the affine.apply op's supplying operands to this opInst did not
+///      have any uses other than those in this opInst.
 void createAffineComputationSlice(Instruction *opInst,
                                   SmallVectorImpl<AffineApplyOp> *sliceOps);
 
