@@ -1240,6 +1240,11 @@ Status AutoMixedPrecisionImpl::Optimize() {
   AddWhitelistOps(&white_set);
   VLOG(2) << "Finished pass 1";
 
+  if (white_set.empty()) {
+    LOG(INFO) << "No whitelist ops found, nothing to do";
+    return Status::OK();
+  }
+
   absl::flat_hash_set<int> black_set;
   VLOG(2) << "Beginning pass 2 to propagate black forwards from blacklist ops "
              "through clear/graylist ops";
