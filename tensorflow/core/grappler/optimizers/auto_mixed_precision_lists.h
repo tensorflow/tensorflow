@@ -234,6 +234,7 @@ class AutoMixedPrecisionLists {
         "Neg",
         "NextIteration",
         "NotEqual",
+        "OneHot",
         "OnesLike",
         "Pack",
         "Pad",
