@@ -3558,7 +3558,7 @@ def average_filter_2D(input,filter_shape=(3,3)):
            RxC filter. Default value = (3,3)
 
         Returns:
-            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int64'. Pixel value of returned tensor
+            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int32'. Pixel value of returned tensor
             ranges between 0 to 255
     """
     if not isinstance(filter_shape,tuple):
@@ -3571,7 +3571,7 @@ def average_filter_2D(input,filter_shape=(3,3)):
         pass
     else :
         raise TypeError("Size of the filter must be Integers")
-    input = image_ops_impl._Assert3DImage(input)
+    input = _Assert3DImage(input)
     m,no,ch = input.shape[0],input.shape[1],input.shape[2]
     if not m.__eq__(tensor_shape.Dimension(None)) and not no.__eq__(tensor_shape.Dimension(None)) \
             and not ch.__eq__(tensor_shape.Dimension(None)):
@@ -3585,10 +3585,11 @@ def average_filter_2D(input,filter_shape=(3,3)):
         raise ValueError("Filter size should be odd. Got filter_shape (%sx" % filter_shape[0]+"%s)"%filter_shape[1] )
     input = math_ops.cast(input,dtypes.float64)
     def my_func (input2):
+        input2 = input2.numpy()
         tf_i = input2.reshape(m*no*ch)
         maxi = max(tf_i)
         if maxi == 1:
-            input2 /= maxi
+            input2 /= 1
         else :
             input2 /= 255
         #k and l is the Zero-padding size
@@ -3610,8 +3611,9 @@ def average_filter_2D(input,filter_shape=(3,3)):
             res1 = res1.reshape(m,no,1)
             res[:,:,a:a+1] = res1
         res *= 255
-        res = res.astype('int64')
+        res = res.astype('int32')
         return res
 
-    y = script_ops.py_func(my_func, [input], dtypes.int64)
+    y = script_ops.eager_py_func(my_func, [input], dtypes.int32)
+    y = array_ops.reshape(array_ops.concat(y,1),[m,no,ch])
     return y
