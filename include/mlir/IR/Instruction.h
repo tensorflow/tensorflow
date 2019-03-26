@@ -92,6 +92,10 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext();
 
+  /// Return the dialact this operation is associated with, or nullptr if the
+  /// associated dialect is not registered.
+  Dialect *getDialect();
+
   /// The source location the operation was defined or derived from.
   Location getLoc() { return location; }
 

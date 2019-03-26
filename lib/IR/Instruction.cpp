@@ -300,6 +300,19 @@ MLIRContext *Instruction::getContext() {
   return getFunction()->getContext();
 }
 
+/// Return the dialact this operation is associated with, or nullptr if the
+/// associated dialect is not registered.
+Dialect *Instruction::getDialect() {
+  if (auto *abstractOp = getAbstractOperation())
+    return &abstractOp->dialect;
+
+  // If this operation hasn't been registered or doesn't have abstract
+  // operation, fall back to a dialect which matches the prefix.
+  auto opName = getName().getStringRef();
+  auto dialectPrefix = opName.split('.').first;
+  return getContext()->getRegisteredDialect(dialectPrefix);
+}
+
 Instruction *Instruction::getParentInst() {
   return block ? block->getContainingInst() : nullptr;
 }
