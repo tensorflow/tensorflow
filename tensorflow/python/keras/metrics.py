@@ -2273,10 +2273,10 @@ class MeanIoU(Metric):
       Update op.
     """
     # Flatten the input if its rank > 1.
-    if y_pred.shape.ndims > 1:
+    if array_ops.rank(y_pred).numpy() > 1:
       y_pred = array_ops.reshape(y_pred, [-1])
 
-    if y_true.shape.ndims > 1:
+    if array_ops.rank(y_true).numpy() > 1:
       y_true = array_ops.reshape(y_true, [-1])
 
     if sample_weight is not None and sample_weight.shape.ndims > 1:
