@@ -155,6 +155,9 @@ def IsTensorTypePred : CPred<"{0}.isa<TensorType>()">;
 // Whether a type is a VectorOrTensorType.
 def IsVectorOrTensorTypePred : CPred<"{0}.isa<VectorOrTensorType>()">;
 
+// Whether a type is a TupleType.
+def IsTupleTypePred : CPred<"{0}.isa<TupleType>()">;
+
 // For a TensorType, verify that it is a statically shaped tensor.
 def IsStaticShapeTensorTypePred :
   CPred<"{0}.cast<TensorType>().hasStaticShape()">;
@@ -188,6 +191,9 @@ class BuildableType<code builder> {
   // Format: this will be affixed to the builder.
   code builderCall = builder;
 }
+
+// Any type at all.
+def AnyType : Type<CPred<"true">, "any type">;
 
 // Any type from the given list
 class AnyTypeOf<list<Type> allowedTypes, string description> : Type<
@@ -317,6 +323,12 @@ def IntegerLike : TypeConstraint<AnyOf<[Integer.predicate, Index.predicate,
 def FloatLike : TypeConstraint<AnyOf<[Float.predicate,
         TypedVector<Float>.predicate, TypedTensor<Float>.predicate]>,
     "floating-point-like">;
+    
+// This represents a generic tuple without any constraints on elemental type,
+// ranks, or size. As Tuples can contain tensors, vectors, or scalar values
+// there is not only a single elemental type.
+def Tuple : Type<IsTupleTypePred, "tuple">;
+
 
 //===----------------------------------------------------------------------===//
 // Attribute definitions
