@@ -920,7 +920,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
-  @combinations.generate(all_strategy_combinations())
+  @combinations.generate(strategy_minus_tpu_combinations())
   def test_on_dataset_with_unknown_cardinality_without_steps(
       self, distribution):
     with self.cached_session():

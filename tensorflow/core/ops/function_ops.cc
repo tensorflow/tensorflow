@@ -60,11 +60,11 @@ REGISTER_SYSTEM_OP("_Arg")
           context->set_output(0, context->UnknownShape());
         }
       } else {
-        const AttrValue* shape_attr = context->attrs().Find("_shapes");
-        if (shape_attr && shape_attr->has_shape()) {
+        const AttrValue* shape_attr = context->attrs().Find("_output_shapes");
+        if (shape_attr && shape_attr->has_list()) {
           if (shape_attr->list().shape().empty()) {
             return errors::InvalidArgument(
-                "Invalid \"_shapes\" attribute value for _Arg node: ",
+                "Invalid \"_output_shapes\" attribute value for _Arg node: ",
                 shape_attr->DebugString());
           }
           const TensorShapeProto& shape_proto = shape_attr->list().shape(0);

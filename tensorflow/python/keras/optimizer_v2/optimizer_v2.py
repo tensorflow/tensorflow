@@ -421,9 +421,9 @@ class OptimizerV2(trackable.Trackable):
     var_list = [v for (_, v) in grads_and_vars]
 
     # Create iteration if necessary.
-    _ = self.iterations
-    self._create_hypers()
     with ops.init_scope():
+      _ = self.iterations
+      self._create_hypers()
       self._create_slots(var_list)
 
     self._prepare(var_list)

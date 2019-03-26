@@ -154,10 +154,17 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":distribute_lib",
+        ":input_lib",
+        ":reduce_util",
+        ":values",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -545,5 +552,20 @@ py_test(
         ":combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:backend",
+    ],
+)
+
+py_library(
+    name = "multi_worker_test_base",
+    srcs = ["multi_worker_test_base.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:distributed_framework_test_lib",
+        "//tensorflow/python:session",
+        "//tensorflow/python:util",
+        "//tensorflow/python/estimator:estimator_py",
+        "//third_party/py/numpy",
     ],
 )

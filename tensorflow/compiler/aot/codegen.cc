@@ -213,7 +213,11 @@ Status GenResultMethods(const tf2xla::Config& config,
     return errors::Internal("codegen requires the XLA result to be a tuple");
   }
   size_t num_results = ps.result().tuple_shapes_size();
-  if (config.fetch_size() + config.variable_size() != num_results) {
+  int readonly_variables = absl::c_count_if(
+      config.variable(),
+      [](const tf2xla::Variable& var) { return var.readonly(); });
+  if (config.fetch_size() + config.variable_size() - readonly_variables !=
+      num_results) {
     return errors::InvalidArgument("mismatch between fetch_size(",
                                    config.fetch_size(), ")+variable_size(",
                                    config.variable_size(), ") and tuple_size(",
@@ -256,15 +260,17 @@ Status GenVariableMethods(const tf2xla::Config& config,
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
     const string code = R"(
-  void set_var_{{NAME}}_data({{TYPE}}* data) {
+  void set_var_{{NAME}}_data({{MAYBE_CONST}}{{TYPE}}* data) {
     set_arg_data({{I}}, data);
   }
 )";
     const tf2xla::Variable& var = config.variable(i - config.feed_size());
+    rewrites.emplace_back("{{MAYBE_CONST}}", var.readonly() ? "const " : "");
     *methods += RewriteWithName(
         var.name().empty() ? var.node_name() : var.name(), code, rewrites);
   }
   size_t num_results = ps.result().tuple_shapes_size();
+  int variable_num = -1;
   for (int i = config.fetch_size(); i < num_results; ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(AddRewritesForShape(
@@ -285,7 +291,10 @@ Status GenVariableMethods(const tf2xla::Config& config,
         result_data({{I}}))){{INDICES}};
   }
 )";
-    const tf2xla::Variable& var = config.variable(i - config.fetch_size());
+    do {
+      ++variable_num;
+    } while (config.variable(variable_num).readonly());
+    const tf2xla::Variable& var = config.variable(variable_num);
     *methods += RewriteWithName(
         var.name().empty() ? var.node_name() : var.name(), code, rewrites);
   }

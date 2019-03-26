@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/internal/optimized/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/pooling.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -275,7 +276,11 @@ void MaxEvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   type::MaxPool(op_params, GetTensorShape(input),                     \
                 GetTensorData<int8_t>(input), GetTensorShape(output), \
                 GetTensorData<int8_t>(output))
-  TF_LITE_MAX_POOL(reference_integer_ops);
+  if (kernel_type == kReference) {
+    TF_LITE_MAX_POOL(reference_integer_ops);
+  } else {
+    TF_LITE_MAX_POOL(optimized_integer_ops);
+  }
 #undef TF_LITE_MAX_POOL
 }
 

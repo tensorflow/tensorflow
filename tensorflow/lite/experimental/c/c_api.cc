@@ -80,10 +80,11 @@ void TFL_InterpreterOptionsSetNumThreads(TFL_InterpreterOptions* options,
   options->num_threads = num_threads;
 }
 
-TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetErrorReporter(
-    TFL_InterpreterOptions* options,
-    void (*reporter)(void* user_data, const char* format, va_list args),
-    void* user_data) {
+void TFL_InterpreterOptionsSetErrorReporter(TFL_InterpreterOptions* options,
+                                            void (*reporter)(void* user_data,
+                                                             const char* format,
+                                                             va_list args),
+                                            void* user_data) {
   options->error_reporter = reporter;
   options->error_reporter_user_data = user_data;
 }

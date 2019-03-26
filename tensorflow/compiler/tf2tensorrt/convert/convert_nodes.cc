@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tensor_coding.h"
 #include "tensorflow/core/platform/types.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
+#include "tensorrt/include/NvInferPlugin.h"
 
 // Check if the types are equal. Cast to int first so that failure log message
 // would work!
@@ -59,7 +61,7 @@ limitations under the License.
 
 #define TFTRT_INTERNAL_ERROR_AT_NODE(node)                           \
   do {                                                               \
-    return errors::Internal("TFTRT::", __FUNCTION__,                 \
+    return errors::Internal("TFTRT::", __FUNCTION__, ":", __LINE__,  \
                             " failed to add TRT layer, at: ", node); \
   } while (0)
 
@@ -274,9 +276,9 @@ Status ValidateTensorProperties(const string& producer_node_type,
     return errors::OutOfRange("Input tensor rank is greater than ",
                               nvinfer1::Dims::MAX_DIMS + 1);
   }
-  if (producer_node_type != "Const" && shape.dims() < 2) {
+  if (producer_node_type != "Const" && shape.dims() < 1) {
     return errors::InvalidArgument(
-        "Input tensor with rank<2 is not supported since the first dimension "
+        "Scalar input tensor is not supported since the first dimension "
         "is treated as batch dimension by TRT");
   }
   *trt_dims = TensorShapeToTrtDims(shape, /*ignore_first_dim=*/true);
@@ -337,7 +339,12 @@ string DebugString(const nvinfer1::DataType trt_dtype) {
 string DebugString(const nvinfer1::Dims& dims) {
   string out = StrCat("nvinfer1::Dims(nbDims=", dims.nbDims, ", d=");
   for (int i = 0; i < dims.nbDims; ++i) {
-    StrAppend(&out, dims.d[i], "[", DebugString(dims.type[i]), "],");
+    StrAppend(&out, dims.d[i]);
+    if (VLOG_IS_ON(2)) {
+      StrAppend(&out, "[", DebugString(dims.type[i]), "],");
+    } else {
+      StrAppend(&out, ",");
+    }
   }
   StrAppend(&out, ")");
   return out;
@@ -562,16 +569,52 @@ inline bool HasStaticShape(const nvinfer1::Dims& dims) {
   return true;
 }
 
-// Returns total number of elements in dims. Returning 0 means either some dim
-// is 0 or the number of dims is 0.
-// Note that for TF scalar constant, we always convert to dims [1].
-int64_t TrtDimsNumElements(const nvinfer1::Dims& dims) {
-  if (dims.nbDims == 0) return 0;
+int64_t Prod(const nvinfer1::Dims& dims) {
   int64_t count = 1;
   for (int d = 0; d < dims.nbDims; ++d) {
     count *= dims.d[d];
   }
   return count;
+}
+
+// Returns total number of elements in a TensorRT weights dimensions.
+// Returning 0 means either some dim is 0 or the number of dims is 0 (TensorRT
+// doesn't allow scalar weights).
+// Note that for TF scalar constant, we always convert to dims [1].
+int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims) {
+  if (dims.nbDims == 0) return 0;
+  return Prod(dims);
+}
+
+// Returns total number of elements in an ITensor dimension.
+// Returns 1 if the number of dims is 0 (the total number is fully determined by
+// the batch size).
+// Returns -1 if any dimension is known.
+int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims) {
+  if (!HasStaticShape(dims)) return -1;
+  return Prod(dims);
+}
+
+bool DimsHaveSameSize(const nvinfer1::Dims& lhs, const nvinfer1::Dims& rhs,
+                      bool is_tensor) {
+  if (is_tensor) {
+    return TrtTensorDimsNumElements(lhs) == TrtTensorDimsNumElements(rhs);
+  }
+  return TrtWeightDimsNumElements(lhs) == TrtWeightDimsNumElements(rhs);
+}
+
+// Returns whether both dimensions are fully specified and the total number of
+// elements equals.
+bool AreDimsStaticWithSameSize(const nvinfer1::Dims& lhs,
+                               const nvinfer1::Dims& rhs, bool is_tensor) {
+  if (!HasStaticShape(lhs) || !HasStaticShape(rhs)) return false;
+  return DimsHaveSameSize(lhs, rhs, is_tensor);
+}
+
+bool AreDimsStaticWithDifferentSize(const nvinfer1::Dims& lhs,
+                                    const nvinfer1::Dims& rhs, bool is_tensor) {
+  if (!HasStaticShape(lhs) || !HasStaticShape(rhs)) return false;
+  return !DimsHaveSameSize(lhs, rhs, is_tensor);
 }
 
 static std::vector<std::pair<int, int>> CreateSamePadding(
@@ -619,7 +662,9 @@ TRT_ShapedWeights::TRT_ShapedWeights(DataType type, nvinfer1::Dims dims,
 TRT_ShapedWeights::TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
     : shape_(rhs.shape_), type_(rhs.type_), tensor_(rhs.tensor_) {}
 
-int64_t TRT_ShapedWeights::count() const { return TrtDimsNumElements(shape_); }
+int64_t TRT_ShapedWeights::count() const {
+  return TrtWeightDimsNumElements(shape_);
+}
 
 nvinfer1::Weights TRT_ShapedWeights::GetTrtWeights() const {
   nvinfer1::DataType trt_type(nvinfer1::DataType::kFLOAT);
@@ -990,11 +1035,45 @@ Status TrtNodeValidator::ConvertConstToWeights(
   return status;
 }
 
+static void InitializeTrtPlugins() {
+  static mutex plugin_mutex(LINKER_INITIALIZED);
+  static bool plugin_initialized = false;
+  static Logger trt_logger;
+  mutex_lock lock(plugin_mutex);
+  if (plugin_initialized) return;
+
+  plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
+  if (!plugin_initialized) {
+    LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
+                  "fail later.";
+  }
+
+  int num_trt_plugins = 0;
+  nvinfer1::IPluginCreator* const* trt_plugin_creator_list =
+      getPluginRegistry()->getPluginCreatorList(&num_trt_plugins);
+  if (!trt_plugin_creator_list) {
+    LOG(WARNING) << "Can not find any TensorRT plugins in registry.";
+  } else {
+    VLOG(1) << "Found the following " << num_trt_plugins
+            << " TensorRT plugins in registry:";
+    for (int i = 0; i < num_trt_plugins; ++i) {
+      if (!trt_plugin_creator_list[i]) {
+        LOG(WARNING) << "TensorRT plugin at index " << i
+                     << " is not accessible (null pointer returned by "
+                        "getPluginCreatorList for this plugin)";
+      } else {
+        VLOG(1) << "  " << trt_plugin_creator_list[i]->getPluginName();
+      }
+    }
+  }
+}
+
 Converter::Converter(nvinfer1::INetworkDefinition* trt_network,
                      TrtPrecisionMode precision_mode, bool use_calibration)
     : trt_network_(trt_network),
       precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
+  InitializeTrtPlugins();
   this->RegisterOpConverters();
 }
 
@@ -1226,20 +1305,15 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                         const nvinfer1::Dims& dims,
                                         const bool validation_only,
                                         const nvinfer1::ITensor** tensor) {
-  // If -1 is not used for one of the dims, we can check if the shapes are
-  // compatible.
-  bool can_check_shapes = true;
-  for (int i = 0; i < dims.nbDims; i++) {
-    if (dims.d[i] == -1) {
-      can_check_shapes = false;
-      break;
-    }
-  }
-  if (can_check_shapes &&
-      TrtDimsNumElements(input.GetTrtDims()) != TrtDimsNumElements(dims)) {
-    return errors::InvalidArgument("Reshape shapes are not compatible (",
-                                   DebugString(input.GetTrtDims()), " vs ",
-                                   DebugString(dims), ")");
+  const nvinfer1::Dims input_dims = input.GetTrtDims();
+  // If one of input_dims and dims doesn't have static shape, it means some of
+  // the dims are unknown or need to be inferred. And we don't do further checks
+  // but rely on the caller to not make mistakes.
+  // Otherwise we do simple check to make sure the total sizes are the same.
+  if (AreDimsStaticWithDifferentSize(input_dims, dims, input.is_tensor())) {
+    return errors::InvalidArgument(
+        "Incompatible shapes: ", DebugString(input_dims), " vs. ",
+        DebugString(dims));
   }
   if (validation_only) {
     *tensor = nullptr;
@@ -1247,7 +1321,7 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
   }
 
   if (input.is_tensor()) {
-    if (DimsEqual(input.GetTrtDims(), dims)) {
+    if (DimsEqual(input_dims, dims)) {
       *tensor = input.tensor();
     } else {
       nvinfer1::IShuffleLayer* layer = this->network()->addShuffle(
@@ -2123,6 +2197,18 @@ Status ConvertReshape(OpConverterParams* params) {
   //     not ok
   // else:
   //   not ok
+  //
+  // Note that the following is ok no matter whether reshape_batch_dim is fixed
+  // or not:
+  //
+  // ```
+  // input_batch_dim is not fixed &&
+  //     reshape_dims are fixed &&
+  //     prod(input_dims) == prod(reshape_dims),
+  // ```
+  //
+  // because the non-batch dims of the new and old shapes match, and TF runtime
+  // should make sure the batch dim is not changed.
 
   const int input_batch_dim = input_tensor.batch_size();
   const int reshape_batch_dim = weights_ptr[0];
@@ -2139,19 +2225,18 @@ Status ConvertReshape(OpConverterParams* params) {
   bool reshape_may_change_batch_dim = false;
   if (input_batch_dim > 0) {        // Batch size is fixed.
     if (reshape_batch_dim == -1) {  // Other dims of the shape must be fixed.
-      if (!HasStaticShape(input_dims) ||
-          TrtDimsNumElements(reshape_dims) != TrtDimsNumElements(input_dims)) {
+      if (!AreDimsStaticWithSameSize(input_dims, reshape_dims,
+                                     /*is_tensor=*/true)) {
         reshape_may_change_batch_dim = true;
       }
     } else if (reshape_batch_dim != input_batch_dim) {
       reshape_may_change_batch_dim = true;
+    } else {
+      // This means (input_batch_dim>0 && input_batch_dim==reshape_batch_dim),
+      // and TF runtime should make sure non-batch dims are matched.
     }
-  } else if (HasStaticShape(input_dims)) {
-    if (!HasStaticShape(reshape_dims) ||
-        TrtDimsNumElements(reshape_dims) != TrtDimsNumElements(input_dims)) {
-      reshape_may_change_batch_dim = true;
-    }
-  } else {
+  } else if (!AreDimsStaticWithSameSize(input_dims, reshape_dims,
+                                        /*is_tensor=*/true)) {
     reshape_may_change_batch_dim = true;
   }
   VLOG(1) << "input_batch_dim=" << input_batch_dim
@@ -2163,12 +2248,13 @@ Status ConvertReshape(OpConverterParams* params) {
         "Reshape on batch dimension is not supported, at ", node_def.name());
     return errors::Unimplemented(msg);
   }
-  if (params->validation_only) return Status::OK();
 
   // Start conversion.
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, reshape_dims, /*validation_only=*/false, &output_tensor));
+      input_tensor, reshape_dims, params->validation_only, &output_tensor));
+  if (params->validation_only) return Status::OK();
+
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return Status::OK();
@@ -3951,9 +4037,188 @@ Status ConvertTopK(OpConverterParams* params) {
   return Status::OK();
 }
 
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+Status ConvertCombinedNMS(OpConverterParams* params) {
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"boxes", false},
+                                   {"scores", false},
+                                   {"max_output_size_per_class", true},
+                                   {"max_total_size", true},
+                                   {"iou_threshold", true},
+                                   {"score_threshold", true}}));
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+
+  nvinfer1::ITensor* boxes_tensor =
+      const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
+  nvinfer1::ITensor* scores_tensor =
+      const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor());
+  TRT_ShapedWeights output_size_per_class = inputs.at(2).weights();
+  TRT_ShapedWeights total_size = inputs.at(3).weights();
+  TRT_ShapedWeights iou_threshold = inputs.at(4).weights();
+  TRT_ShapedWeights score_threshold = inputs.at(5).weights();
+
+  // Validate tensors and weights (also set some of the needed plugin fields)
+  const auto boxes_dims = boxes_tensor->getDimensions();
+  const auto scores_dims = scores_tensor->getDimensions();
+  if (boxes_dims.nbDims != 3) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin input boxes must be 3-D excluding batch ",
+        node_def.name());
+  }
+  const int num_classes = scores_dims.d[1];
+  bool box_check = boxes_dims.d[1] == 1 || boxes_dims.d[1] == num_classes;
+  if (!box_check) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin third dimension of boxes must be either 1 "
+        "or num_classes ",
+        node_def.name());
+  }
+  if (output_size_per_class.shape_.nbDims != 1) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin max_output_size_per_class must be 0-D ",
+        node_def.name());
+  }
+  int max_size_per_class = *(
+      static_cast<int*>(const_cast<void*>(output_size_per_class.GetValues())));
+  if (max_size_per_class <= 0) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin max_output_size_per_class should be > 0",
+        node_def.name());
+  }
+  if (total_size.shape_.nbDims != 1) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin max_total_size must be 0-D ",
+        node_def.name());
+  }
+  int max_total_size =
+      *(static_cast<int*>(const_cast<void*>(total_size.GetValues())));
+  if (max_total_size <= 0) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin max_total_size should be > 0",
+        node_def.name());
+  }
+  if (iou_threshold.shape_.nbDims != 1) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin iou_threshold must be 0-D ",
+        node_def.name());
+  }
+  float iou_thresh =
+      *(static_cast<float*>(const_cast<void*>(iou_threshold.GetValues())));
+  if (iou_thresh < 0.0 || iou_thresh > 1.0) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin iou_threshold must be in [0, 1]",
+        node_def.name());
+  }
+  if (score_threshold.shape_.nbDims != 1) {
+    return errors::InvalidArgument(
+        "TensorRT BatchedNMS Plugin score_threshold must be 0-D ",
+        node_def.name());
+  }
+
+  if (params->validation_only) return Status::OK();
+
+  // TF op CombinedNonMaxSuppression doesn't have the option of
+  // not normalizing coordinates.
+  const bool is_normalized = true;
+  // Set plugin fields and the field collection
+  TFAttrs attrs(node_def);
+  bool share_location = (boxes_dims.d[1] == 1);
+  const bool pad_per_class = attrs.get<bool>("pad_per_class");
+  int top_k;
+  if (pad_per_class) {
+    top_k = std::min(max_size_per_class * num_classes, max_total_size);
+  } else {
+    top_k = max_total_size;
+  }
+  const int keep_top_k = top_k;
+  float score_thresh =
+      *(static_cast<float*>(const_cast<void*>(score_threshold.GetValues())));
+  const int background_id = -1;
+  nvinfer1::PluginField fields[8] = {
+      nvinfer1::PluginField{"shareLocation", &share_location,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"backgroundLabelId", &background_id,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"numClasses", &num_classes,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"topK", &top_k, nvinfer1::PluginFieldType::kINT32,
+                            1},
+      nvinfer1::PluginField{"keepTopK", &keep_top_k,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+      nvinfer1::PluginField{"scoreThreshold", &score_thresh,
+                            nvinfer1::PluginFieldType::kFLOAT32, 1},
+      nvinfer1::PluginField{"iouThreshold", &iou_thresh,
+                            nvinfer1::PluginFieldType::kFLOAT32, 1},
+      nvinfer1::PluginField{"isNormalized", &is_normalized,
+                            nvinfer1::PluginFieldType::kINT32, 1},
+  };
+  nvinfer1::PluginFieldCollection fc{8, fields};
+
+  // Get plugin creator
+  auto creator =
+      getPluginRegistry()->getPluginCreator("BatchedNMS_TRT", "1", "");
+  TFTRT_RETURN_ERROR_IF_NULLPTR(creator, node_def.name());
+
+  // Create plugin
+  nvinfer1::IPluginV2* plugin =
+      creator->createPlugin(node_def.name().c_str(), &fc);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(plugin, node_def.name());
+
+  // Set plugin inputs
+  std::vector<nvinfer1::ITensor*> plugin_inputs;
+  plugin_inputs.push_back(boxes_tensor);
+  plugin_inputs.push_back(scores_tensor);
+
+  // Add plugin to network
+  nvinfer1::IPluginV2Layer* layer = params->converter->network()->addPluginV2(
+      &plugin_inputs[0], static_cast<int>(plugin_inputs.size()), *plugin);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+
+  auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
+                                  nvinfer1::ITensor** out_tensor) {
+    nvinfer1::Dims dims = in_tensor->getDimensions();
+    if (dims.d[dims.nbDims - 1] != 1) {
+      return errors::Internal("Expect last dims to be 1, for tensor ",
+                              DebugString(*in_tensor));
+    }
+    --dims.nbDims;
+    // TODO(laigd): get rid of all the const_cast like this.
+    const nvinfer1::ITensor* tmp_tensor;
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        TRT_TensorOrWeights(in_tensor), dims,
+        /*validation_only=*/false, &tmp_tensor));
+    *out_tensor = const_cast<nvinfer1::ITensor*>(tmp_tensor);
+    return Status::OK();
+  };
+
+  // Set plugin outputs
+  nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
+  nvinfer1::ITensor* output_nmsed_scores = nullptr;
+  nvinfer1::ITensor* output_nmsed_classes = nullptr;
+  nvinfer1::ITensor* output_num_detections = nullptr;
+  TF_RETURN_IF_ERROR(
+      shrink_last_dim(layer->getOutput(2), &output_nmsed_scores));
+  TF_RETURN_IF_ERROR(
+      shrink_last_dim(layer->getOutput(3), &output_nmsed_classes));
+  TF_RETURN_IF_ERROR(
+      shrink_last_dim(layer->getOutput(0), &output_num_detections));
+
+  params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
+  params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
+  params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_classes));
+  params->outputs->push_back(TRT_TensorOrWeights(output_num_detections));
+
+  return Status::OK();
+}
+#endif  // CombinedNonMaxSuppression
+
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
   (*registration)["BiasAdd"] = ConvertBiasAdd;
+#if IS_TRT_VERSION_GE(5, 1, 0, 0)
+  (*registration)["CombinedNonMaxSuppression"] = ConvertCombinedNMS;
+#endif
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
   (*registration)["Conv2D"] = ConvertConv2D;

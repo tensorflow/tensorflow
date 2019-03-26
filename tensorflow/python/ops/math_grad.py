@@ -52,6 +52,13 @@ def _ArgMinGrad(op, grad):
 ops.NotDifferentiable("EuclideanNorm")
 
 
+_empty_tuple = ()
+
+
+def _IsScalar(x):
+  return x._shape_tuple() is _empty_tuple  # pylint: disable=protected-access
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
@@ -978,16 +985,33 @@ def _ShapesFullySpecifiedAndEqual(x, y, grad):
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
   """Gradient for Add."""
-  x = op.inputs[0]
   y = op.inputs[1]
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      return grad, None
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+  x = op.inputs[0]
   if (isinstance(grad, ops.Tensor) and
       _ShapesFullySpecifiedAndEqual(x, y, grad)):
     return grad, grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  return (array_ops.reshape(math_ops.reduce_sum(grad, rx), sx),
-          array_ops.reshape(math_ops.reduce_sum(grad, ry), sy))
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  else:
+    gx = array_ops.reshape(math_ops.reduce_sum(grad, rx), sx)
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  else:
+    gy = array_ops.reshape(math_ops.reduce_sum(grad, ry), sy)
+  return (gx, gy)
+
 
 
 @ops.RegisterGradient("Sub")
@@ -1188,10 +1212,31 @@ def _PowGrad(op, grad):
   return gx, gy
 
 
-def _MaximumMinimumGrad(op, grad, selector_op):
-  """Factor out the code for the gradient of Maximum or Minimum."""
+def _MaximumMinimumGradInputOnly(op, grad, selector_op):
   x = op.inputs[0]
   y = op.inputs[1]
+  zeros = array_ops.zeros_like(grad)
+  xmask = selector_op(x, y)
+  xgrad = array_ops.where(xmask, grad, zeros)
+  ygrad = None  # Return None for ygrad since the config allows that.
+  return (xgrad, ygrad)
+
+
+def _MaximumMinimumGrad(op, grad, selector_op):
+  """Factor out the code for the gradient of Maximum or Minimum."""
+  y = op.inputs[1]
+  skip_input_indices = None
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None and 1 in skip_input_indices and _IsScalar(
+        y):
+      # When we want to get gradients for the first input only, and the second
+      # input tensor is a scalar, we can do a much simpler calculation
+      return _MaximumMinimumGradInputOnly(op, grad, selector_op)
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
+  x = op.inputs[0]
   gdtype = grad.dtype
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
@@ -1199,10 +1244,18 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   zeros = array_ops.zeros(gradshape, gdtype)
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
-  xgrad = array_ops.where(xmask, grad, zeros)
-  ygrad = array_ops.where(xmask, zeros, grad)
-  gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
-  gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
+  if skip_input_indices is not None and 0 in skip_input_indices:
+    gx = None
+  else:
+    xgrad = array_ops.where(xmask, grad, zeros)
+    gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
+
+  if skip_input_indices is not None and 1 in skip_input_indices:
+    gy = None
+  else:
+    ygrad = array_ops.where(xmask, zeros, grad)
+    gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
+
   return (gx, gy)
 
 
@@ -1256,9 +1309,51 @@ def _SelectGrad(op, grad):
       c, zeros, grad))
 
 
+def _MatMulGradAgainstFirstOnly(op, grad):
+  """Gradient for MatMul, only for the first input."""
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  b = math_ops.conj(op.inputs[1])
+  if not t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul(grad, b, transpose_b=True)
+  elif not t_a and t_b:
+    grad_a = gen_math_ops.mat_mul(grad, b)
+  elif t_a and not t_b:
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_b=True)
+  elif t_a and t_b:
+    grad_a = gen_math_ops.mat_mul(b, grad, transpose_a=True, transpose_b=True)
+  return grad_a, None
+
+
+def _MatMulGradAgainstSecondOnly(op, grad):
+  """Gradient for MatMul, only for the second input."""
+  t_a = op.get_attr("transpose_a")
+  t_b = op.get_attr("transpose_b")
+  a = math_ops.conj(op.inputs[0])
+  if not t_a and not t_b:
+    grad_b = gen_math_ops.mat_mul(a, grad, transpose_a=True)
+  elif not t_a and t_b:
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True)
+  elif t_a and not t_b:
+    grad_b = gen_math_ops.mat_mul(a, grad)
+  elif t_a and t_b:
+    grad_b = gen_math_ops.mat_mul(grad, a, transpose_a=True, transpose_b=True)
+  return None, grad_b
+
+
 @ops.RegisterGradient("MatMul")
 def _MatMulGrad(op, grad):
   """Gradient for MatMul."""
+  try:
+    skip_input_indices = op.skip_input_indices
+    if skip_input_indices is not None:
+      if 1 in skip_input_indices:
+        return _MatMulGradAgainstFirstOnly(op, grad)
+      elif 0 in skip_input_indices:
+        return _MatMulGradAgainstSecondOnly(op, grad)
+  except AttributeError:
+    # No gradient skipping, so do the full gradient computation
+    pass
 
   t_a = op.get_attr("transpose_a")
   t_b = op.get_attr("transpose_b")

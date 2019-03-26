@@ -3323,6 +3323,39 @@ class Graph(object):
           if op.outputs:
             node.attr["_output_shapes"].list.shape.extend(
                 [output.get_shape().as_proto() for output in op.outputs])
+        for function_def in graph.library.function:
+          defined_function = self._functions[function_def.signature.name]
+          try:
+            func_graph = defined_function.graph
+          except AttributeError:
+            # _DefinedFunction doesn't have a graph, _EagerDefinedFunction
+            # does. Both rely on ops.py, so we can't really isinstance check
+            # them.
+            continue
+          input_shapes = function_def.attr["_input_shapes"]
+          try:
+            func_graph_inputs = func_graph.inputs
+          except AttributeError:
+            continue
+          for input_tensor in func_graph_inputs:
+            if input_tensor.dtype == dtypes.resource:
+              # TODO(allenl): Save and restore handle data, then save the
+              # resource placeholder's shape. Right now some shape functions get
+              # confused if we set the shape of the resource placeholder (to a
+              # scalar of course) and there isn't any handle data.
+              input_shapes.list.shape.add().CopyFrom(
+                  tensor_shape.TensorShape(None).as_proto())
+            else:
+              input_shapes.list.shape.add().CopyFrom(
+                  input_tensor.get_shape().as_proto())
+          for node in function_def.node_def:
+            try:
+              op = func_graph.get_operation_by_name(node.name)
+            except KeyError:
+              continue
+            node.attr["_output_shapes"].list.shape.extend(
+                [output.get_shape().as_proto() for output in op.outputs])
+
     return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
@@ -5085,6 +5118,18 @@ class Graph(object):
   def _distribution_strategy_stack(self, _distribution_strategy_stack):
     self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
         _distribution_strategy_stack)
+
+  @property
+  def _global_distribute_strategy_scope(self):
+    """For implementing `tf.distribute.set_strategy()`."""
+    if not hasattr(self._thread_local, "distribute_strategy_scope"):
+      self._thread_local.distribute_strategy_scope = None
+    return self._thread_local.distribute_strategy_scope
+
+  @_global_distribute_strategy_scope.setter
+  def _global_distribute_strategy_scope(self, distribute_strategy_scope):
+    self._thread_local.distribute_strategy_scope = (
+        distribute_strategy_scope)
 
   @property
   def _auto_cast_variable_read_dtype(self):

@@ -43,7 +43,7 @@ int WindowProcessSamples(struct WindowState* state, const int16_t* samples,
   int16_t max_abs_output_value = 0;
   for (i = 0; i < size; ++i) {
     int16_t new_value =
-        (((int32_t) *input++) * *coefficients++) >> kFrontendWindowBits;
+        (((int32_t)*input++) * *coefficients++) >> kFrontendWindowBits;
     *output++ = new_value;
     if (new_value < 0) {
       new_value = -new_value;

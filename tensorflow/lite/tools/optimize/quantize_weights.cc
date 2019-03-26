@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/model_utils.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 
 namespace tflite {
@@ -197,7 +198,7 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
 // Returns the index of the Dequantize op_code.
 // If a Dequantize op_code doesn't exist, adds it and returns its index.
 int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
-  for (int i = 0; i < model->operator_codes.size(); ++i) {
+  for (size_t i = 0; i < model->operator_codes.size(); ++i) {
     if (model->operator_codes[i]->builtin_code == BuiltinOperator_DEQUANTIZE) {
       return i;
     }
@@ -388,14 +389,15 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
     // Create a new tensor to be the output of the dequantize op.
     std::unique_ptr<TensorT> dequantize_output;
     const string dequant_name = tensor->name + "_dequantize";
-    MakeTensor(dequant_name, tensor->shape, &dequantize_output);
+    utils::MakeTensor(dequant_name, tensor->shape, TensorType_FLOAT32,
+                      &dequantize_output);
     const int32_t dequantize_output_idx = subgraph->tensors.size();
     subgraph->tensors.push_back(std::move(dequantize_output));
 
     // Create the Dequantize operation.
     std::unique_ptr<OperatorT> dequantize_op;
-    MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
-                           dequantize_output_idx);
+    utils::MakeDequantizeOperator(model.get(), &dequantize_op, tensor_idx,
+                                  dequantize_output_idx);
 
     LOG(INFO) << "Creating Dequantize op with name " << dequant_name << ".";
 

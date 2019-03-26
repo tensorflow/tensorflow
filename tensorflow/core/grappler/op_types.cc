@@ -43,8 +43,7 @@ bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
 bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
-  return node.op() == "RealDiv" || node.op() == "Div" ||
-         node.op() == "DivNoNan" || node.op() == "Xdivy" ||
+  return node.op() == "RealDiv" || node.op() == "Div" || node.op() == "Xdivy" ||
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 

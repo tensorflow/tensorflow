@@ -56,10 +56,16 @@ NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
 ]
 
-# List of files to be configured for using Bazel on Apple platforms.
+# List of files to configure when building Bazel on Apple platforms.
 APPLE_BAZEL_FILES = [
     'tensorflow/lite/experimental/objc/BUILD',
     'tensorflow/lite/experimental/swift/BUILD'
+]
+
+# List of files to move when building for iOS.
+IOS_FILES = [
+    'tensorflow/lite/experimental/objc/TensorFlowLiteObjC.podspec',
+    'tensorflow/lite/experimental/swift/TensorFlowLiteSwift.podspec',
 ]
 
 if platform.machine() == 'ppc64le':
@@ -1501,7 +1507,7 @@ def set_other_mpi_vars(environ_cp):
         (mpi_home, mpi_home, mpi_home))
 
 
-def system_specific_config(env):
+def system_specific_test_config(env):
   """Add default build and test flags required for TF tests to bazelrc."""
   write_to_bazelrc('test --flaky_test_attempts=3')
   write_to_bazelrc('test --test_size_filters=small,medium')
@@ -1520,10 +1526,6 @@ def system_specific_config(env):
   elif is_macos():
     write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
     write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
-    # TODO(pcloudy): Remove BAZEL_USE_CPP_ONLY_TOOLCHAIN after Bazel is upgraded
-    # to 0.24.0.
-    # For working around https://github.com/bazelbuild/bazel/issues/7607
-    write_to_bazelrc('build --action_env=BAZEL_USE_CPP_ONLY_TOOLCHAIN=1')
   elif is_linux():
     if env.get('TF_NEED_CUDA', None) == '1':
       write_to_bazelrc('test --test_tag_filters=-no_gpu')
@@ -1585,24 +1587,24 @@ def config_info_line(name, help_text):
   print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
-def configure_apple_bazel_rules():
-  """Configures Bazel rules for building on Apple platforms.
+def configure_ios():
+  """Configures TensorFlow for iOS builds.
 
-  Enables analyzing and building Apple Bazel rules on Apple platforms. This
-  function will only be executed if `is_macos()` is true.
+  This function will only be executed if `is_macos()` is true.
   """
   if not is_macos():
     return
-  for filepath in APPLE_BAZEL_FILES:
-    print(
-        'Configuring %s file to analyze and build Bazel rules on Apple platforms.'
-        % filepath)
-    existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
-    renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)
-    os.rename(existing_filepath, renamed_filepath)
   if _TF_CURRENT_BAZEL_VERSION is None or _TF_CURRENT_BAZEL_VERSION < 23000:
     print(
         'Building Bazel rules on Apple platforms requires Bazel 0.23 or later.')
+  for filepath in APPLE_BAZEL_FILES:
+    existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
+    renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)
+    symlink_force(existing_filepath, renamed_filepath)
+  for filepath in IOS_FILES:
+    filename = os.path.basename(filepath)
+    new_filepath = os.path.join(_TF_WORKSPACE_ROOT, filename)
+    symlink_force(filepath, new_filepath)
 
 
 def main():
@@ -1648,7 +1650,7 @@ def main():
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
   else:
-    environ_cp['TF_CONFIGURE_APPLE_BAZEL_RULES'] = '0'
+    environ_cp['TF_CONFIGURE_IOS'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1751,15 +1753,19 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
-  system_specific_config(os.environ)
+  system_specific_test_config(os.environ)
 
-  if get_var(
-      environ_cp, 'TF_CONFIGURE_APPLE_BAZEL_RULES',
-      'Configure Bazel rules for Apple platforms', False,
-      ('Would you like to configure Bazel rules for building on Apple platforms?'
-      ), 'Configuring Bazel rules for Apple platforms.',
-      'Not configuring Bazel rules for Apple platforms.'):
-    configure_apple_bazel_rules()
+  if get_var(environ_cp, 'TF_CONFIGURE_IOS', 'Configure TensorFlow for iOS',
+             False, ('Would you like to configure TensorFlow for iOS builds?'),
+             'Configuring TensorFlow for iOS builds.',
+             'Not configuring TensorFlow for iOS builds.'):
+    configure_ios()
+  else:
+    # TODO(pcloudy): Remove BAZEL_USE_CPP_ONLY_TOOLCHAIN after Bazel is upgraded
+    # to 0.24.0.
+    # For working around https://github.com/bazelbuild/bazel/issues/7607
+    if is_macos():
+      write_to_bazelrc('build --action_env=BAZEL_USE_CPP_ONLY_TOOLCHAIN=1')
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '

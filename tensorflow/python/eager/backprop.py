@@ -88,11 +88,12 @@ def make_attr(attr_type, value):
 class _MockOp(object):
   """Pretends to be a tf.Operation for the gradient functions."""
 
-  def __init__(self, attrs, inputs, outputs, typ):
+  def __init__(self, attrs, inputs, outputs, typ, skip_input_indices):
     self.attrs = attrs
     self.inputs = inputs
     self.outputs = outputs
     self.type = typ
+    self.skip_input_indices = skip_input_indices
 
   def get_attr(self, attr):
     typ = op_attr_type(self.type, attr)
@@ -111,7 +112,7 @@ class _MockOp(object):
 
 
 def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
-                       out_grads):
+                       out_grads, skip_input_indices):
   """Calls the gradient function of the op.
 
   Args:
@@ -121,11 +122,13 @@ def _gradient_function(op_name, attr_tuple, num_inputs, inputs, outputs,
     inputs: inputs to the original operation.
     outputs: outputs to the original operation.
     out_grads: gradients of the operation wrt its outputs.
+    skip_input_indices: a tuple that is passed to the gradient function,
+      indicating which inputs to skip calculating the gradient for
 
   Returns:
     The gradients with respect to the inputs of the function, as a list.
   """
-  mock_op = _MockOp(attr_tuple, inputs, outputs, op_name)
+  mock_op = _MockOp(attr_tuple, inputs, outputs, op_name, skip_input_indices)
   grad_fn = ops._gradient_registry.lookup(op_name)  # pylint: disable=protected-access
   if grad_fn is None:
     return [None] * num_inputs
@@ -974,7 +977,7 @@ class GradientTape(object):
     definition of a Jacobian.
 
     Example usage:
-    
+
     ```python
     with tf.GradientTape() as g:
       x  = tf.constant([1.0, 2.0])

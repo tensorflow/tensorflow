@@ -341,6 +341,57 @@ class EagerFunctionTest(xla_test.XLATestCase):
       var = f()
       self.assertEqual(1.0, var.numpy())
 
+  def testResourceVariableNoInlineReadWrite(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(1.0)
+      w = resource_variable_ops.ResourceVariable(0.0)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def g(x):
+        w.assign(w.read_value() + x)
+        return v.read_value() + x * w.read_value()
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def f():
+        return g(1.0) + g(2.0) + g(3.0) + g(4.0) + g(5.0)
+
+      # 1 + 1*1 + 1 + 2*3 + 1 + 3*6 + 1 + 4*10 + 1 + 5*15
+      self.assertEqual(145.0, f().numpy())
+      self.assertEqual(15.0, w.read_value().numpy())
+
+  def testResourceVariableNoInlineReadOnly(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(10.0)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def g():
+        return v.read_value()
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def f():
+        return g() + g() + g() + g() + g()
+
+      self.assertEqual(50.0, f().numpy())
+
+  def testResourceVariableNoInlineWriteOnly(self):
+    with self.test_scope():
+      v = resource_variable_ops.ResourceVariable(0.0)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def g(x):
+        v.assign(x)
+
+      @function.defun_with_attributes(attributes={'_noinline': True})
+      def f():
+        g(1.0)
+        g(2.0)
+        g(3.0)
+        g(4.0)
+        g(5.0)
+
+      f()
+      self.assertEqual(5.0, v.read_value().numpy())
+
   def testUpdateVariable(self):
     with self.test_scope():
       v = resource_variable_ops.ResourceVariable(1.0)

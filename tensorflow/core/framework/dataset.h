@@ -528,6 +528,12 @@ class IteratorBase {
     return errors::Unimplemented("RestoreInternal");
   }
 
+  // Returns the number of elements produced by this itertaor.
+  int64 num_elements() const {
+    if (node_) return node_->num_elements();
+    return 0;
+  }
+
  private:
   friend class DatasetBase;  // for access to `AddCleanupFunction`
   friend class DatasetBaseIterator;  // for access to `node_`
