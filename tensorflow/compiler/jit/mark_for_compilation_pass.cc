@@ -52,6 +52,14 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
+bool HasResourceOutput(const Node& node) {
+  return absl::c_count(node.output_types(), DT_RESOURCE) != 0;
+}
+
+bool HasResourceInput(const Node& node) {
+  return absl::c_count(node.input_types(), DT_RESOURCE) != 0;
+}
+
 // The clusters we create here are eventually lowered into an
 // _XlaCompile/_XlaRun pair with a TF executor "fallback" that uses the
 // PartitionedCall op to execute the cluster in the regular graph executor if
@@ -68,53 +76,109 @@ namespace {
 // cluster.
 const char* kXlaAlreadyClustered = "_XlaAlreadyClustered";
 
-// Aggregates information about what kinds of ops are allowed.
-struct OperationFilter {
-  // Whether resource variable ops are allowed.  We do not allow resource
-  // variable ops in called functions (either as direct TF calls or as higher
-  // order control flow ops) because we do not yet model their memory effects in
-  // jit/resource_variable_safety_analysis.
-  bool allow_resource_ops;
+// Checks whether a TF node can be compiled or not.  "Recursive" as in for call
+// and functional while nodes it recursively checks whether the callee functions
+// can be compiled.
+class RecursiveCompilabilityChecker {
+ public:
+  // Aggregates information about what kinds of ops are allowed.
+  struct OperationFilter {
+    // Whether resource variable ops are allowed are allowed in callees.  We do
+    // not allow resource variable ops in called functions (either as direct TF
+    // calls or as higher order control flow ops) because we do not yet model
+    // their memory effects in jit/resource_variable_safety_analysis.
+    bool allow_resource_ops_in_called_functions;
 
-  // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
-  // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
-  // auto-clustering stateful RNG ops.
-  bool allow_stateful_rng_ops;
+    // Whether resource operations that do not operate on resource variables are
+    // allowed.
+    bool allow_non_resource_var_resource_ops;
 
-  // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
-  // to cluster ControlTrigger because of how we use deadness analysis.
-  bool allow_control_trigger;
+    // Whether operations that produce resources (like StackV2) are allowed.
+    bool allow_resource_producing_ops;
 
-  // Whether ops with dummy implementations are allowed. We avoid
-  // auto-clustering these ops so that the user is not surprised when XLA is
-  // implicitly enabled. If the user explicitly specifies to use XLA, it is fine
-  // to resort to a dummy implementation. Currently Assert and CheckNumerics ops
-  // have dummy XLA implementations.
-  bool allow_dummy_ops;
+    // Whether stateful RNG ops are allowed.  XLA's RNG does not have the same
+    // seeding behavior as TensorFlow's RNG (b/34749654).  So we avoid
+    // auto-clustering stateful RNG ops.
+    bool allow_stateful_rng_ops;
 
-  // Whether ops that produce or consume DT_VARIANT values are allowed.  We
-  // don't auto-cluster these ops because we don't yet support live-in or
-  // live-out DT_VARIANT values.
-  bool allow_ops_producing_or_consuming_variant;
+    // TODO(b/118970344): Whether ControlTrigger ops are allowed.  It is unsound
+    // to cluster ControlTrigger because of how we use deadness analysis.
+    bool allow_control_trigger;
+
+    // Whether ops with dummy implementations are allowed. We avoid
+    // auto-clustering these ops so that the user is not surprised when XLA is
+    // implicitly enabled. If the user explicitly specifies to use XLA, it is
+    // fine to resort to a dummy implementation. Currently Assert and
+    // CheckNumerics ops have dummy XLA implementations.
+    bool allow_dummy_ops;
+
+    // Whether ops that produce or consume DT_VARIANT values are allowed.  We
+    // don't auto-cluster these ops because we don't yet support live-in or
+    // live-out DT_VARIANT values.
+    bool allow_ops_producing_or_consuming_variant;
+  };
+
+  RecursiveCompilabilityChecker(const OperationFilter* op_filter,
+                                const DeviceType* jit_device_type)
+      : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
+
+  // Returns true if `node` can be compiled by XLA.
+  bool IsCompilableNode(const Node& node, FunctionLibraryRuntime* lib_runtime) {
+    return IsCompilableNode(node, /*depth=*/0, lib_runtime);
+  }
+
+  // Returns true if `call_def` can be compiled by XLA.  It is assumed that
+  // `call_def` is a call operation.
+  bool IsCompilableCall(const NodeDef& call_def,
+                        FunctionLibraryRuntime* lib_runtime) {
+    return IsCompilableCall(call_def, /*depth=*/0, lib_runtime);
+  }
+
+ private:
+  bool IsCompilableNode(const Node& node, int depth,
+                        FunctionLibraryRuntime* lib_runtime);
+  bool IsCompilableCall(const NodeDef& call_def, int depth,
+                        FunctionLibraryRuntime* lib_runtime);
+  bool IsCompilableWhile(const Node& while_node, int depth,
+                         FunctionLibraryRuntime* lib_runtime);
+
+  // Returns true if `node` is a resource operation recognized by tf2xla that
+  // operates on something other than resource variables.
+  bool IsNonResourceVarResourceOp(const Node& node) {
+    // TODO(b/112837194): We can't cluster these because we only support
+    // snapshotting resource variables (and we can't e.g. snapshot stacks). This
+    // limitation may be fixable with some work.
+    const XlaResourceOpInfo* op_info =
+        GetResourceOpInfoForOp(node.type_string());
+    return op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
+  }
+
+  bool IsDummyImplOp(absl::string_view op_name) {
+    return op_name == "Assert" || op_name == "CheckNumerics";
+  }
+
+  bool IsStatefulRandomOp(absl::string_view op_name) {
+    return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
+           op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
+           op_name == "TruncatedNormal" || op_name == "Multinomial";
+  }
+
+  bool OpProducesOrConsumesVariant(const Node& node) {
+    auto is_variant = [](DataType dtype) { return dtype == DT_VARIANT; };
+    return absl::c_any_of(node.input_types(), is_variant) ||
+           absl::c_any_of(node.output_types(), is_variant);
+  }
+
+  bool HasXLAKernel(const Node& node);
+
+  // Make sure we don't recurse infinitely on recursive functions.
+  const int kMaxRecursionDepth = 10;
+
+  const OperationFilter& op_filter_;
+  const DeviceType& jit_device_type_;
 };
 
-bool IsDummyImplOp(absl::string_view op_name) {
-  return op_name == "Assert" || op_name == "CheckNumerics";
-}
-
-bool IsStatefulRandomOp(absl::string_view op_name) {
-  return op_name == "RandomUniform" || op_name == "RandomShuffle" ||
-         op_name == "RandomUniformInt" || op_name == "RandomStandardNormal" ||
-         op_name == "TruncatedNormal" || op_name == "Multinomial";
-}
-
-bool OpProducesOrConsumesVariant(const Node& node) {
-  auto is_variant = [](DataType dtype) { return dtype == DT_VARIANT; };
-  return absl::c_any_of(node.input_types(), is_variant) ||
-         absl::c_any_of(node.output_types(), is_variant);
-}
-
-bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
+bool RecursiveCompilabilityChecker::HasXLAKernel(const Node& node) {
   // There is a SymbolicGradient kernel on the XLA_JIT device, but the gradient
   // is really a kind of function call and will be handled by
   // IsCompilableCall().
@@ -137,44 +201,14 @@ bool HasXLAKernel(const Node& node, const DeviceType& jit_device_type) {
     return false;
   }
 
-  return FindKernelDef(jit_device_type, node.def(), nullptr, nullptr).ok();
+  return FindKernelDef(jit_device_type_, node.def(), nullptr, nullptr).ok();
 }
-
-bool HasResourceOutput(const Node& node) {
-  return std::find(node.output_types().begin(), node.output_types().end(),
-                   DT_RESOURCE) != node.output_types().end();
-}
-
-bool HasResourceInput(const Node& node) {
-  return std::find(node.input_types().begin(), node.input_types().end(),
-                   DT_RESOURCE) != node.input_types().end();
-}
-
-// Returns true if `node` is a resource operation recognized by tf2xla that
-// operates on something other than resource variables.
-bool IsNonResourceVarResourceOp(const Node& node) {
-  // TODO(b/112837194): We can't cluster these because we only support
-  // snapshotting resource variables (and we can't e.g. snapshot stacks).  This
-  // limitation may be fixable with some work.
-  const XlaResourceOpInfo* op_info = GetResourceOpInfoForOp(node.type_string());
-  return op_info && op_info->resource_kind() != XlaResourceKind::kVariable;
-}
-
-// Make sure we don't recurse infinitely on recursive functions.
-const int kMaxRecursionDepth = 10;
-
-bool IsCompilableCall(const NodeDef& call_def,
-                      const DeviceType& jit_device_type,
-                      const OperationFilter& op_filter, int depth,
-                      FunctionLibraryRuntime* lib_runtime);
 
 // Tests whether 'while_node' is a completely compilable loop.
 // Every operator in the condition and body functions must be compilable for a
 // while loop to be compilable.
-bool IsCompilableWhile(const Node& while_node,
-                       const DeviceType& jit_device_type,
-                       const OperationFilter& op_filter, int depth,
-                       FunctionLibraryRuntime* lib_runtime) {
+bool RecursiveCompilabilityChecker::IsCompilableWhile(
+    const Node& while_node, int depth, FunctionLibraryRuntime* lib_runtime) {
   const NameAttrList* name_attr;
   NodeDef call;
   Status status;
@@ -188,8 +222,7 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_cond");
   call.set_op(cond_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, op_filter, depth + 1,
-                        lib_runtime)) {
+  if (!IsCompilableCall(call, depth + 1, lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop condition: " << cond_func;
     return false;
@@ -204,8 +237,7 @@ bool IsCompilableWhile(const Node& while_node,
   call.set_name("while_body");
   call.set_op(body_func);
   *call.mutable_attr() = name_attr->attr();
-  if (!IsCompilableCall(call, jit_device_type, op_filter, depth + 1,
-                        lib_runtime)) {
+  if (!IsCompilableCall(call, depth + 1, lib_runtime)) {
     VLOG(2) << "Rejecting While " << while_node.name()
             << ": can't compile loop body: " << body_func;
     return false;
@@ -216,10 +248,8 @@ bool IsCompilableWhile(const Node& while_node,
 // Tests whether 'call_def' is a call to a completely compilable function.
 // Every operator in the function must be compilable for a function to be
 // compilable.
-bool IsCompilableCall(const NodeDef& call_def,
-                      const DeviceType& jit_device_type,
-                      const OperationFilter& op_filter, int depth,
-                      FunctionLibraryRuntime* lib_runtime) {
+bool RecursiveCompilabilityChecker::IsCompilableCall(
+    const NodeDef& call_def, int depth, FunctionLibraryRuntime* lib_runtime) {
   if (depth > kMaxRecursionDepth) {
     VLOG(2) << "Rejecting " << call_def.op()
             << ": function depth limit exceeded.";
@@ -254,40 +284,109 @@ bool IsCompilableCall(const NodeDef& call_def,
   }
 
   for (Node* node : fbody->graph->op_nodes()) {
-    if (node->type_string() == "_Arg" || node->type_string() == "_Retval")
-      continue;
-    if (node->type_string() == "While") {
-      // Handle functional While loop.
-      return IsCompilableWhile(*node, jit_device_type, op_filter, depth + 1,
-                               lib_runtime);
-    }
-    if (!op_filter.allow_resource_ops &&
-        (HasResourceInput(*node) || HasResourceOutput(*node))) {
-      return false;
-    }
-    if (!op_filter.allow_stateful_rng_ops &&
-        IsStatefulRandomOp(node->type_string())) {
-      return false;
-    }
-    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
-      return false;
-    }
-    if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
-      return false;
-    }
-    if (!op_filter.allow_ops_producing_or_consuming_variant &&
-        OpProducesOrConsumesVariant(*node)) {
-      return false;
-    }
-    if (!HasXLAKernel(*node, jit_device_type) &&
-        !IsCompilableCall(node->def(), jit_device_type, op_filter, depth + 1,
-                          lib_runtime)) {
-      VLOG(2) << "Rejecting " << call_def.op() << ": unsupported op "
-              << node->name() << ": " << node->def().ShortDebugString();
+    if (!IsCompilableNode(*node, depth + 1, lib_runtime)) {
       return false;
     }
   }
+
   return true;
+}
+
+bool LogNotCompilableAndReturn(const Node& node,
+                               absl::string_view reason = "") {
+  VLOG(3) << "Not clustering " << node.name() << " (op " << node.type_string()
+          << ")" << (reason.empty() ? "" : ": ") << reason;
+  return false;
+}
+
+bool RecursiveCompilabilityChecker::IsCompilableNode(
+    const Node& node, int depth, FunctionLibraryRuntime* lib_runtime) {
+  // _Arg nodes in a top-level function represent feeds and _Retval nodes in a
+  // top-level function represent fetches.
+  if (depth == 0 &&
+      (node.type_string() == "_Arg" || node.type_string() == "_Retval")) {
+    return LogNotCompilableAndReturn(node, "depth is 0");
+  }
+
+  if (node.attrs().Find("_scoped_allocator") ||
+      node.attrs().Find("_forward_from")) {
+    // TODO(b/128858118): XLA does not support _scoped_allocator and
+    // _forward_from.
+    return LogNotCompilableAndReturn(
+        node, "_scoped_allocator or _forward_from attribute");
+  }
+
+  if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), node)) {
+    if (!IsCompilableCall(node.def(), depth + 1, lib_runtime)) {
+      return LogNotCompilableAndReturn(node, "unsupported function");
+    }
+  } else if (!HasXLAKernel(node)) {
+    return LogNotCompilableAndReturn(node, "unsupported op");
+  }
+
+  if (node.type_string() == "While" &&
+      !IsCompilableWhile(node, depth + 1, lib_runtime)) {
+    return LogNotCompilableAndReturn(node, "unsupported while");
+  }
+
+  if (!op_filter_.allow_stateful_rng_ops &&
+      IsStatefulRandomOp(node.type_string())) {
+    return LogNotCompilableAndReturn(node, "stateful random op");
+  }
+
+  if (!op_filter_.allow_control_trigger && node.IsControlTrigger()) {
+    return LogNotCompilableAndReturn(node);
+  }
+
+  if (!op_filter_.allow_dummy_ops && IsDummyImplOp(node.type_string())) {
+    return LogNotCompilableAndReturn(node, "dummy op");
+  }
+
+  if (!op_filter_.allow_ops_producing_or_consuming_variant &&
+      OpProducesOrConsumesVariant(node)) {
+    return LogNotCompilableAndReturn(node, "DT_VARIANT producer/consumer");
+  }
+
+  if (!op_filter_.allow_resource_producing_ops && HasResourceOutput(node)) {
+    // We don't have a way of returning values of type DT_RESOURCE from XLA
+    // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
+    return LogNotCompilableAndReturn(node, "DT_RESOURCE producer");
+  }
+
+  if (!op_filter_.allow_non_resource_var_resource_ops &&
+      IsNonResourceVarResourceOp(node)) {
+    // XlaLaunchOp also cannot snapshot resources that are not resource
+    // variables so we avoid clustering resource operations that operate on
+    // non-resource variables.
+    return LogNotCompilableAndReturn(node, "non-resource variable resource op");
+  }
+
+  if (!op_filter_.allow_resource_ops_in_called_functions && depth > 0 &&
+      HasResourceInput(node)) {
+    return LogNotCompilableAndReturn(node,
+                                     "resource variable op in called function");
+  }
+
+  return true;
+}
+
+RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
+    const XlaOpRegistry::DeviceRegistration& registration) {
+  bool always_auto_cluster = registration.autoclustering_policy ==
+                             XlaOpRegistry::AutoclusteringPolicy::kAlways;
+
+  RecursiveCompilabilityChecker::OperationFilter op_filter;
+  op_filter.allow_non_resource_var_resource_ops =
+      registration.compile_all_resource_ops;
+  op_filter.allow_non_resource_var_resource_ops =
+      registration.compile_all_resource_ops;
+  op_filter.allow_resource_producing_ops =
+      registration.compile_all_resource_ops;
+  op_filter.allow_stateful_rng_ops = always_auto_cluster;
+  op_filter.allow_control_trigger = always_auto_cluster;
+  op_filter.allow_dummy_ops = always_auto_cluster;
+  op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
+  return op_filter;
 }
 
 // Nodes that XLA can compile are put in `candidates`.  Nodes put in
@@ -351,59 +450,11 @@ Status FindCompilationCandidates(
         XlaOpRegistry::GetCompilationDevice(device_type.type(), &registration));
     DeviceType jit_device_type(registration->compilation_device_name);
 
-    bool always_auto_cluster = registration->autoclustering_policy ==
-                               XlaOpRegistry::AutoclusteringPolicy::kAlways;
+    RecursiveCompilabilityChecker::OperationFilter op_filter =
+        CreateOperationFilter(*registration);
 
-    OperationFilter op_filter;
-    op_filter.allow_resource_ops = registration->compile_all_resource_ops;
-    op_filter.allow_stateful_rng_ops = always_auto_cluster;
-    op_filter.allow_control_trigger = always_auto_cluster;
-    op_filter.allow_dummy_ops = always_auto_cluster;
-    op_filter.allow_ops_producing_or_consuming_variant = always_auto_cluster;
-
-    if (IsFunctionCall(*lib_runtime->GetFunctionLibraryDefinition(), *node)) {
-      if (!IsCompilableCall(node->def(), jit_device_type, op_filter, 0,
-                            lib_runtime)) {
-        VLOG(2) << "Rejecting " << node->name() << ": unsupported function "
-                << node->type_string();
-        continue;
-      }
-    } else if (!HasXLAKernel(*node, jit_device_type)) {
-      VLOG(2) << "Rejecting " << node->name() << ": unsupported op "
-              << node->type_string();
-      continue;
-    }
-
-    if (!op_filter.allow_stateful_rng_ops &&
-        IsStatefulRandomOp(node->type_string())) {
-      VLOG(2) << "Rejecting " << node->name() << ": stateful random operation";
-      continue;
-    }
-    if (!op_filter.allow_control_trigger && node->IsControlTrigger()) {
-      VLOG(2) << "Rejecting " << node->name() << ": is a control trigger op";
-      continue;
-    }
-    if (!op_filter.allow_dummy_ops && IsDummyImplOp(node->type_string())) {
-      VLOG(2) << "Rejecting " << node->name() << ": dummy op ("
-              << node->type_string() << ")";
-      continue;
-    }
-    if (!op_filter.allow_ops_producing_or_consuming_variant &&
-        OpProducesOrConsumesVariant(*node)) {
-      VLOG(2) << "Rejecting " << node->name()
-              << ": produces or consumes DT_VARIANT";
-      continue;
-    }
-
-    if (!registration->compile_all_resource_ops &&
-        (HasResourceOutput(*node) || IsNonResourceVarResourceOp(*node))) {
-      // We don't have a way of returning values of type DT_RESOURCE from XLA
-      // computations so we avoid auto-clustering nodes producing DT_RESOURCE.
-      // XlaLaunchOp also cannot snapshot resources that are not resource
-      // variables so we avoid clustering resource operations that operate on
-      // non-resource variables.
-      VLOG(2) << "Rejecting: " << node->name() << ": resource output "
-              << node->type_string();
+    if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
+             .IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
 
@@ -459,33 +510,6 @@ Status FindCompilationCandidates(
         }
       }
     }
-    // We don't auto-cluster functional control flow nodes containing resource
-    // operations because safety checks are trickier in this case.
-    // registration->compile_all_resource_ops is true for XLA_CPU/XLA_GPU but
-    // not for CPU/GPU.
-    if (node->type_string() == "While" &&
-        !IsCompilableWhile(*node, jit_device_type, op_filter, 0, lib_runtime)) {
-      continue;
-    }
-    // _Arg nodes in a top-level function represent feeds.
-    // Do not compile them.
-    if (node->type_string() == "_Arg") {
-      continue;
-    }
-    // _Retval nodes in a top-level function represent fetches.
-    // Do not compile them.
-    if (node->type_string() == "_Retval") {
-      continue;
-    }
-
-    if (node->attrs().Find("_scoped_allocator") ||
-        node->attrs().Find("_forward_from")) {
-      // TODO(b/128858118): XLA does not support _scoped_allocator and
-      // _forward_from.
-      VLOG(2) << "Not clustering " << node->name()
-              << " because of _scoped_allocator or _forward_from attribute.";
-      continue;
-    }
 
     candidates->insert(node);
     --fuel;
@@ -522,14 +546,17 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef) {
 
   // We can always *compile* resource operations, stateful RNGs and dummy ops,
   // even if we are sometimes unable to auto-cluster them.
-  OperationFilter op_filter;
-  op_filter.allow_resource_ops = true;
+  RecursiveCompilabilityChecker::OperationFilter op_filter;
+  op_filter.allow_resource_ops_in_called_functions = true;
+  op_filter.allow_non_resource_var_resource_ops = true;
+  op_filter.allow_resource_producing_ops = true;
   op_filter.allow_stateful_rng_ops = true;
   op_filter.allow_control_trigger = true;
   op_filter.allow_dummy_ops = true;
   op_filter.allow_ops_producing_or_consuming_variant = true;
 
-  return IsCompilableCall(ndef, jit_device_type, op_filter, 0, flr);
+  return RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
+      .IsCompilableCall(ndef, flr);
 }
 
 Status MarkForCompilationPass::Run(
