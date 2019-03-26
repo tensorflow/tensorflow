@@ -132,6 +132,20 @@ class BackpropTest(test.TestCase):
     self.assertAllEqual(dx, 2.0)
     self.assertAllEqual(dy, 3.0)
 
+  def testCustomGradientEmptyError(self):
+
+    @custom_gradient.custom_gradient
+    def identity(x):
+      def grad(_):
+        return []  # This return value is wrong!
+      return x, grad
+
+    x = variables.Variable(1.0)
+    with backprop.GradientTape() as t:
+      y = identity(x)
+    with self.assertRaises(ValueError):
+      t.gradient(y, [x])
+
   def testOutputGradUsedInComputation(self):
     with backprop.GradientTape() as t:
       x = constant_op.constant(3.0)
@@ -353,6 +367,16 @@ class BackpropTest(test.TestCase):
       t.reset()
       loss += v * v
     self.assertAllEqual(t.gradient(loss, v), 2.0)
+
+  def testPythonMax(self):
+    x = [resource_variable_ops.ResourceVariable(2.),
+         resource_variable_ops.ResourceVariable(3.),
+         resource_variable_ops.ResourceVariable(5.)]
+    with backprop.GradientTape() as t:
+      f = max(x)
+    grad = t.gradient(f, x)
+    self.assertAllEqual(self.evaluate(f), 5.)
+    self.assertAllEqual(self.evaluate(grad), [None, None, 1.0])
 
   def testAutomaticWatchedVariables(self):
     with backprop.GradientTape() as t:
@@ -674,10 +698,8 @@ class BackpropTest(test.TestCase):
     with backprop.GradientTape() as g:
       x = variables.Variable([3.0])
       y = variables.Variable([2.0])
-    with self.assertRaisesRegexp(
-        ValueError,
-        'GradientTape.gradient is not supported for variable targets.'):
-      g.gradient(x, y)
+    grad = g.gradient(x, y)
+    self.assertAllEqual(grad, None)
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only('b/120545219')

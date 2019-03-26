@@ -111,18 +111,17 @@ Some arguments are renamed, please refer to documentation. In addition:
 
 Switch to `tf.estimator.train_and_evaluate`. Some differences:
 
-* Most of the constructor arguments, like `train_input_fn`, `eval_input_fn`,
-  should be wrapped into `tf.estimator.TrainSpec` and `tf.estimator.EvalSpec`.
-* Remove the `experiment_fn`. Instead, create the `Estimator`,
-  `train_spec` and `eval_spec`, then call `tf.estimator.train_and_evaluate`
-  directly.
-* Inside `tf.estimator.EvalSpec`, the `exporter` field is the replacement
-  for `export_strategy`. To be precise, `tf.estimator.LatestExporter` is the
-  replacement for `tf.contrib.learn.make_export_strategy`. If you want to export
-  only at the end of training  use `tf.estimator.FinalExporter`.
-* If the `TF_CONFIG` environment variable is constructed manually, please read
-  the `train_and_evaluate` documentation for the new requirementds (in
-  particular, the chief node and evaluator node).
+*   Most of the constructor arguments, like `train_input_fn`, `eval_input_fn`,
+    should be wrapped into `tf.estimator.TrainSpec` and `tf.estimator.EvalSpec`.
+*   Remove the `experiment_fn`. Instead, create the `Estimator`, `train_spec`
+    and `eval_spec`, then call `tf.estimator.train_and_evaluate` directly.
+*   Inside `tf.estimator.EvalSpec`, the `exporter` field is the replacement for
+    `export_strategy`. To be precise, `tf.estimator.LatestExporter` is the
+    replacement for `tf.contrib.learn.make_export_strategy`. If you want to
+    export only at the end of training use `tf.estimator.FinalExporter`.
+*   If the `TF_CONFIG` environment variable is constructed manually, please read
+    the `train_and_evaluate` documentation for the new requirements (in
+    particular, the chief node and evaluator node).
 
 ## Others Classes and Functions
 

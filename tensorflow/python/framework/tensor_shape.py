@@ -74,9 +74,8 @@ def enable_v2_tensorshape():
   # in `tensor_shape[i]`, but they would not be.
   ```
   """
-  global _TENSORSHAPE_V2_OVERRIDE, TensorShape  # pylint: disable=invalid-name
+  global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
-  TensorShape = TensorShapeV2
 
 
 @tf_export(v1=["disable_v2_tensorshape"])
@@ -85,9 +84,8 @@ def disable_v2_tensorshape():
 
   See docstring for `enable_v2_tensorshape` for details about the new behavior.
   """
-  global _TENSORSHAPE_V2_OVERRIDE, TensorShape  # pylint: disable=invalid-name
+  global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
-  TensorShape = TensorShapeV1
 
 
 @tf_export("compat.dimension_value",
@@ -271,10 +269,11 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-    tf.Dimension(n)   .merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(n)   .merge_with(tf.Dimension(None)) == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(n))    == tf.Dimension(n)
-    tf.Dimension(None).merge_with(tf.Dimension(None)) == tf.Dimension(None)
+    tf.Dimension(n)   .merge_with(tf.Dimension(n))     == tf.Dimension(n)
+    tf.Dimension(n)   .merge_with(tf.Dimension(None))  == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(n))     == tf.Dimension(n)
+    # equivalent to tf.Dimension(None)
+    tf.Dimension(None).merge_with(tf.Dimension(None))
 
     # raises ValueError for n != m
     tf.Dimension(n)   .merge_with(tf.Dimension(m))
@@ -304,10 +303,10 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    + tf.Dimension(n)    == tf.Dimension(m + n)
-    tf.Dimension(m)    + tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) + tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    + tf.Dimension(n)     == tf.Dimension(m + n)
+    tf.Dimension(m)    + tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -339,10 +338,10 @@ class Dimension(object):
     Dimensions are subtracted as follows:
 
     ```python
-    tf.Dimension(m)    - tf.Dimension(n)    == tf.Dimension(m - n)
-    tf.Dimension(m)    - tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) - tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    - tf.Dimension(n)     == tf.Dimension(m - n)
+    tf.Dimension(m)    - tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -378,10 +377,10 @@ class Dimension(object):
     Dimensions are summed as follows:
 
     ```python
-    tf.Dimension(m)    * tf.Dimension(n)    == tf.Dimension(m * n)
-    tf.Dimension(m)    * tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) * tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    * tf.Dimension(n)     == tf.Dimension(m * n)
+    tf.Dimension(m)    * tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -417,10 +416,10 @@ class Dimension(object):
     Dimensions are divided as follows:
 
     ```python
-    tf.Dimension(m)    // tf.Dimension(n)    == tf.Dimension(m // n)
-    tf.Dimension(m)    // tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) // tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    // tf.Dimension(n)     == tf.Dimension(m // n)
+    tf.Dimension(m)    // tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -469,16 +468,64 @@ class Dimension(object):
     """
     return self // other
 
+  def __rdiv__(self, other):
+    """Use `__floordiv__` via `x // y` instead.
+
+    This function exists only to have a better error message. Instead of:
+    `TypeError: unsupported operand type(s) for /: 'int' and 'Dimension'`,
+    this function will explicitly call for usage of `//` instead.
+
+    Args:
+      other: Another `Dimension`.
+
+    Raises:
+      TypeError.
+    """
+    raise TypeError("unsupported operand type(s) for /: '{}' and 'Dimension', "
+                    "please use // instead".format(type(other).__name__))
+
+  def __truediv__(self, other):
+    """Use `__floordiv__` via `x // y` instead.
+
+    This function exists only to have a better error message. Instead of:
+    `TypeError: unsupported operand type(s) for /: 'Dimension' and 'int'`,
+    this function will explicitly call for usage of `//` instead.
+
+    Args:
+      other: Another `Dimension`.
+
+    Raises:
+      TypeError.
+    """
+    raise TypeError("unsupported operand type(s) for /: 'Dimension' and '{}', "
+                    "please use // instead".format(type(other).__name__))
+
+  def __rtruediv__(self, other):
+    """Use `__floordiv__` via `x // y` instead.
+
+    This function exists only to have a better error message. Instead of:
+    `TypeError: unsupported operand type(s) for /: 'int' and 'Dimension'`,
+    this function will explicitly call for usage of `//` instead.
+
+    Args:
+      other: Another `Dimension`.
+
+    Raises:
+      TypeError.
+    """
+    raise TypeError("unsupported operand type(s) for /: '{}' and 'Dimension', "
+                    "please use // instead".format(type(other).__name__))
+
   def __mod__(self, other):
     """Returns `self` modulo `other`.
 
     Dimension moduli are computed as follows:
 
     ```python
-    tf.Dimension(m)    % tf.Dimension(n)    == tf.Dimension(m % n)
-    tf.Dimension(m)    % tf.Dimension(None) == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(n)    == tf.Dimension(None)
-    tf.Dimension(None) % tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(m)    % tf.Dimension(n)     == tf.Dimension(m % n)
+    tf.Dimension(m)    % tf.Dimension(None)  # equiv. to tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(n)     # equiv. to tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
 
     Args:
@@ -634,8 +681,8 @@ def as_dimension(value):
     return Dimension(value)
 
 
-@tf_export(v1=["TensorShape"])
-class TensorShapeV1(object):
+@tf_export("TensorShape")
+class TensorShape(object):
   """Represents the shape of a `Tensor`.
 
   A `TensorShape` represents a possibly-partial shape specification for a
@@ -694,7 +741,7 @@ class TensorShapeV1(object):
   @property
   def _v2_behavior(self):
     if _TENSORSHAPE_V2_OVERRIDE is None:
-      return False
+      return tf2.enabled()
     return _TENSORSHAPE_V2_OVERRIDE
 
   def __repr__(self):
@@ -1148,22 +1195,6 @@ def unknown_shape(rank=None, **kwargs):
     return TensorShape(None)
   else:
     return TensorShape([Dimension(None)] * rank)
-
-
-@tf_export("TensorShape", v1=[])
-class TensorShapeV2(TensorShapeV1):
-
-  @property
-  def _v2_behavior(self):
-    if _TENSORSHAPE_V2_OVERRIDE is None:
-      return True
-    return _TENSORSHAPE_V2_OVERRIDE
-
-
-if tf2.enabled():
-  TensorShape = TensorShapeV2
-else:
-  TensorShape = TensorShapeV1
 
 
 def scalar():

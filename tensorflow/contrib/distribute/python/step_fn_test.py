@@ -20,9 +20,9 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python.single_loss_example import single_loss_example
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.ops import variables
@@ -32,36 +32,33 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.distributions_and_v1_optimizers(),
-          combinations.combine(mode=combinations.graph_and_eager_modes),
-          combinations.combine(is_tpu=[False])) +
-      combinations.combine(
-          distribution=[combinations.tpu_strategy],
-          optimizer_fn=combinations.optimizers_v1,
-          mode=["graph"],
-          is_tpu=[True]))
+          strategy_combinations.distributions_and_v1_optimizers(),
+          combinations.combine(
+              mode=strategy_combinations.graph_and_eager_modes),
+          combinations.combine(is_tpu=[False])) + combinations.combine(
+              distribution=[strategy_combinations.tpu_strategy],
+              optimizer_fn=strategy_combinations.optimizers_v1,
+              mode=["graph"],
+              is_tpu=[True]))
   def testTrainNetwork(self, distribution, optimizer_fn, is_tpu):
     with distribution.scope():
       single_loss_step, layer = single_loss_example(
           optimizer_fn, distribution, use_bias=True, iterations_per_step=2)
 
-      self.evaluate(distribution.initialize())
       if context.executing_eagerly():
+        single_loss_step.initialize()
         run_step = single_loss_step
       else:
         with self.cached_session() as sess:
-          sess.run(single_loss_step._iterator.initializer)
+          sess.run(single_loss_step.initialize())
           run_step = sess.make_callable(single_loss_step())
       self.evaluate(variables.global_variables_initializer())
 
       weights, biases = [], []
       for _ in range(5):
         run_step()
-
         weights.append(self.evaluate(layer.kernel))
         biases.append(self.evaluate(layer.bias))
-
-      self.evaluate(distribution.finalize())
 
       error = abs(numpy.add(numpy.squeeze(weights), numpy.squeeze(biases)) - 1)
       is_not_increasing = all(y <= x for x, y in zip(error, error[1:]))

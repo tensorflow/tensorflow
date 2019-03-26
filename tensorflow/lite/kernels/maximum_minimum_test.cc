@@ -112,6 +112,17 @@ TEST(MaxMinOpTest, Uint8Test) {
                      {0, 0, 1, 11, 2, 1});
 }
 
+TEST(MaxMinOpTest, Int8Test) {
+  std::initializer_list<int8_t> data1 = {1, 0, 2, 11, 2, 23};
+  std::initializer_list<int8_t> data2 = {0, 0, 1, 12, 123, 1};
+  TestModel<int8_t>(BuiltinOperator_MAXIMUM, {TensorType_INT8, {3, 1, 2}},
+                    {TensorType_INT8, {3, 1, 2}}, {TensorType_INT8, {3, 1, 2}},
+                    data1, data2, {1, 0, 2, 12, 123, 23});
+  TestModel<int8_t>(BuiltinOperator_MINIMUM, {TensorType_INT8, {3, 1, 2}},
+                    {TensorType_INT8, {3, 1, 2}}, {TensorType_INT8, {3, 1, 2}},
+                    data1, data2, {0, 0, 1, 11, 2, 1});
+}
+
 TEST(MaximumOpTest, FloatWithBroadcastTest) {
   std::initializer_list<float> data1 = {1.0, 0.0, -1.0, -2.0, -1.44, 11.0};
   std::initializer_list<float> data2 = {0.5, 2.0};

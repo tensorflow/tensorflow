@@ -37,7 +37,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, b=('a', 'c'))[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
 
     self.assertEquals((2, 3), result.test_fn(2, 3))
 
@@ -50,7 +50,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, a='b')[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEquals(7, result.test_fn(2))
 
   def test_replace_function_name(self):
@@ -62,7 +62,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, fname='test_fn')[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEquals(7, result.test_fn(2))
 
   def test_replace_code_block(self):
@@ -79,7 +79,7 @@ class TemplatesTest(test.TestCase):
                 gast.Name('a', None, None)
             ], gast.BinOp(gast.Name('a', None, None), gast.Add(), gast.Num(1))),
         ] * 2)[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEquals(3, result.test_fn(1))
 
   def test_replace_attribute(self):
@@ -89,7 +89,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, foo='b')[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     mod = imp.new_module('test')
     mod.b = 3
     self.assertEquals(3, result.test_fn(mod))
@@ -179,7 +179,7 @@ class TemplatesTest(test.TestCase):
 
     source = parser.parse_expression('f(d=3, f=5)')
     node = templates.replace(template, kws=source.keywords)[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEquals(9, result.test_fn())
 
     with self.assertRaises(ValueError):
@@ -199,7 +199,7 @@ class TemplatesTest(test.TestCase):
 
     source = parser.parse_expression('f()(b)')
     node = templates.replace(template, foo=source)[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEquals(15, result.test_fn())
 
   def test_replace_name_with_dict(self):
@@ -210,7 +210,7 @@ class TemplatesTest(test.TestCase):
 
     source = parser.parse_expression('{\'bar\': 3}')
     node = templates.replace(template, foo=source)[0]
-    result, _ = compiler.ast_to_object(node)
+    result, _, _ = compiler.ast_to_object(node)
     self.assertEquals(3, result.test_fn())
 
   def test_replace_as_expression(self):
@@ -237,6 +237,26 @@ class TemplatesTest(test.TestCase):
     """
     source = parser.parse_expression('[a(b(1))]')
     templates.replace_as_expression(template, bar=source)
+
+  def test_star_comprehension_in_function_call(self):
+    template = """
+      a = foo(func, args)
+    """
+    source = parser.parse_expression('bar(*[i for i in range(j)])')
+    node = templates.replace(template, func=source.func, args=source.args)
+    arg_node = node[0].value.args[1].value
+    self.assertIsInstance(arg_node.generators[0].target.ctx, gast.Store)
+    self.assertIsInstance(arg_node.elt.ctx, gast.Load)
+
+  def test_lambda_in_function_call(self):
+    template = """
+      a = foo(arg)
+    """
+    source = parser.parse_expression('[lambda i: i]')
+    node = templates.replace(template, arg=source)
+    lambda_arg = node[0].value.args[0].elts[0]
+    self.assertIsInstance(lambda_arg.args.args[0].ctx, gast.Param)
+    self.assertIsInstance(lambda_arg.body.ctx, gast.Load)
 
 
 if __name__ == '__main__':

@@ -35,6 +35,8 @@ class ShapeTest : public ::testing::Test {
   const Shape opaque_ = ShapeUtil::MakeOpaqueShape();
   const Shape token_ = ShapeUtil::MakeTokenShape();
   const Shape scalar_ = ShapeUtil::MakeShape(F32, {});
+  const Shape scalar_with_tile_ =
+      ShapeUtil::MakeShapeWithLayout(F32, {}, {}, {Tile({256})});
   const Shape matrix_ = ShapeUtil::MakeShape(U32, {1, 2});
   const Shape matrix2_ = ShapeUtil::MakeShapeWithLayout(S32, {3, 4}, {0, 1});
   const Shape tuple_ =
@@ -66,6 +68,8 @@ TEST_F(ShapeTest, ShapeToString) {
 
   EXPECT_EQ("opaque[]", opaque_.ToString(/*print_layout=*/true));
   EXPECT_EQ("f32[]", scalar_.ToString(/*print_layout=*/true));
+  EXPECT_EQ("f32[]{:T(256)}",
+            scalar_with_tile_.ToString(/*print_layout=*/true));
   EXPECT_EQ("u32[1,2]{1,0}", matrix_.ToString(/*print_layout=*/true));
   EXPECT_EQ("s32[3,4]{0,1}", matrix2_.ToString(/*print_layout=*/true));
   EXPECT_EQ("(opaque[], f32[], u32[1,2]{1,0}, s32[3,4]{0,1})",
@@ -83,6 +87,24 @@ TEST_F(ShapeTest, DynamicShapeToString) {
 
   array_shape.set_dynamic_dimension(2, false);
   EXPECT_EQ("f32[<=23,44,55]", array_shape.ToString());
+}
+
+TEST_F(ShapeTest, EqualityTest) {
+  // Different layouts.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {0, 1}));
+
+  // Different dims.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(F32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+
+  // Different elements.
+  EXPECT_NE(ShapeUtil::MakeShapeWithLayout(S32, {44, 23}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
+
+  // Equal shapes.
+  EXPECT_EQ(ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}),
+            ShapeUtil::MakeShapeWithLayout(F32, {23, 44}, {1, 0}));
 }
 
 TEST_F(ShapeTest, IsStatic) {

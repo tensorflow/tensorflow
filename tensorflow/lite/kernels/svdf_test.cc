@@ -209,7 +209,7 @@ class HybridSVDFOpModel : public BaseSVDFOpModel {
     tensor_type_ = tensor_type;
   }
 
-  void SetWeights(int weights_idx, std::vector<float> f) {
+  void SetWeights(int weights_idx, const std::vector<float>& f) {
     if (tensor_type_ == TensorType_UINT8) {
       SymmetricQuantizeAndPopulate(weights_idx, f);
     } else {

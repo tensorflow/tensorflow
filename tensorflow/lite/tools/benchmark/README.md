@@ -5,7 +5,7 @@
 A simple C++ binary to benchmark a TFLite model and its individual operators,
 both on desktop machines and on Android. The binary takes a TFLite model,
 generates random inputs and then repeatedly runs the model for specified number
-of runs. Aggregrate latency statistics are reported after running the benchmark.
+of runs. Aggregate latency statistics are reported after running the benchmark.
 
 The instructions below are for running the binary on Desktop and Android,
 for iOS please use the

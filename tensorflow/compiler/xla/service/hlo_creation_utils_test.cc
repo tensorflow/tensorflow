@@ -191,9 +191,8 @@ TEST_F(HloCreationUtilsTest, BroadcastZeros_S32) {
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloInstruction * zeros,
-      BroadcastZeros(module->entry_computation(), S32, {2, 2}));
+  HloInstruction* zeros =
+      BroadcastZeros(module->entry_computation(), S32, {2, 2});
   entry_computation->set_root_instruction(zeros);
 
   HloEvaluator evaluator;
@@ -211,9 +210,8 @@ TEST_F(HloCreationUtilsTest, BroadcastZeros_F32) {
                                              /*output_shape_dims=*/{2, 2},
                                              &param, &entry_computation);
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      HloInstruction * zeros,
-      BroadcastZeros(module->entry_computation(), F32, {2, 2}));
+  HloInstruction* zeros =
+      BroadcastZeros(module->entry_computation(), F32, {2, 2});
   entry_computation->set_root_instruction(zeros);
 
   HloEvaluator evaluator;

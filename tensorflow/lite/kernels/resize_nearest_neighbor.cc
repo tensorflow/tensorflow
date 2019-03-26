@@ -57,11 +57,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-  // TODO(ahentz): Our current implementations rely on the inputs being 4D.
+  // TODO(ahentz): Our current implementations rely on the input being 4D,
+  // and the size being 1D tensor with exactly 2 elements.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
-
   TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, size->dims->data[0], 2);
+
   output->type = input->type;
 
   if (!IsConstantTensor(size)) {
@@ -106,8 +108,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           GetTensorShape(size), GetTensorData<int32>(size),
           GetTensorShape(output), GetTensorData<uint8_t>(output));
     }
+  } else if (output->type == kTfLiteInt8) {
+    reference_ops::ResizeNearestNeighbor(
+        op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+        GetTensorShape(size), GetTensorData<int32>(size),
+        GetTensorShape(output), GetTensorData<int8_t>(output));
   } else {
-    context->ReportError(context, "Output type is %d, requires float or uint8.",
+    context->ReportError(context,
+                         "Output type is %d, requires float, uint8 or int8.",
                          output->type);
     return kTfLiteError;
   }

@@ -26,7 +26,6 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 
 @keras_parameterized.run_all_keras_modes
@@ -51,7 +50,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     layer = keras.layers.SimpleRNN(units, input_shape=(None, embedding_dim))
     model = keras.models.Sequential()
     model.add(layer)
-    model.compile(RMSPropOptimizer(0.01), 'mse')
+    model.compile('rmsprop', 'mse')
     x = np.random.random((num_samples, timesteps, embedding_dim))
     y = np.random.random((num_samples, units))
     model.train_on_batch(x, y)
@@ -107,8 +106,7 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
     model = keras.models.Sequential()
     model.add(keras.layers.Masking(input_shape=(3, 4)))
     model.add(layer_class(units=5, return_sequences=True, unroll=False))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=RMSPropOptimizer(0.01))
+    model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
     model.fit(inputs, targets, epochs=1, batch_size=2, verbose=1)
 
   def test_from_config_SimpleRNN(self):

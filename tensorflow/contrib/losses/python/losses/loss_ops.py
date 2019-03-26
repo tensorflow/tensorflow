@@ -22,6 +22,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.framework.python.ops import add_arg_scope
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -100,8 +101,8 @@ def compute_weighted_loss(losses, weights=1.0, scope=None):
   with ops.name_scope(scope, "weighted_loss", [losses, weights]):
     losses = ops.convert_to_tensor(losses)
     input_dtype = losses.dtype
-    losses = math_ops.to_float(losses)
-    weights = math_ops.to_float(ops.convert_to_tensor(weights))
+    losses = math_ops.cast(losses, dtypes.float32)
+    weights = math_ops.cast(ops.convert_to_tensor(weights), dtypes.float32)
 
     if losses.get_shape().ndims is None:
       raise ValueError("losses.get_shape().ndims cannot be None")
@@ -147,8 +148,8 @@ def _num_present(losses, weights, per_batch=False):
     batch_size = array_ops.reshape(
         array_ops.slice(array_ops.shape(losses), [0], [1]), [])
     num_per_batch = math_ops.div(
-        math_ops.to_float(array_ops.size(losses)),
-        math_ops.to_float(batch_size))
+        math_ops.cast(array_ops.size(losses), dtypes.float32),
+        math_ops.cast(batch_size, dtypes.float32))
     num_per_batch = array_ops.where(
         math_ops.equal(weights, 0), 0.0, num_per_batch)
     num_per_batch = math_ops.multiply(
@@ -159,12 +160,14 @@ def _num_present(losses, weights, per_batch=False):
   if weights.get_shape().ndims >= 1:
     axis = list(range(1, weights.get_shape().ndims))
     num_nonzero_per_batch = math_ops.reduce_sum(
-        math_ops.to_float(math_ops.not_equal(weights, 0)), axis=axis)
+        math_ops.cast(math_ops.not_equal(weights, 0), dtypes.float32),
+        axis=axis)
 
   # Next, determine the number of elements that weights would broadcast to:
   broadcast_dims = array_ops.slice(
       array_ops.shape(losses), [weights.get_shape().ndims], [-1])
-  num_to_broadcast = math_ops.to_float(math_ops.reduce_prod(broadcast_dims))
+  num_to_broadcast = math_ops.cast(math_ops.reduce_prod(broadcast_dims),
+                                   dtypes.float32)
 
   num_per_batch = math_ops.multiply(num_nonzero_per_batch, num_to_broadcast)
   return num_per_batch if per_batch else math_ops.reduce_sum(num_per_batch)
@@ -262,8 +265,8 @@ def absolute_difference(predictions, labels=None, weights=1.0, scope=None):
   with ops.name_scope(scope, "absolute_difference",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtypes.float32)
+    labels = math_ops.cast(labels, dtypes.float32)
     losses = math_ops.abs(math_ops.subtract(predictions, labels))
     return compute_weighted_loss(losses, weights, scope=scope)
 
@@ -438,8 +441,8 @@ def log_loss(predictions, labels=None, weights=1.0, epsilon=1e-7, scope=None):
   with ops.name_scope(scope, "log_loss",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtypes.float32)
+    labels = math_ops.cast(labels, dtypes.float32)
     losses = -math_ops.multiply(
         labels, math_ops.log(predictions + epsilon)) - math_ops.multiply(
             (1 - labels), math_ops.log(1 - predictions + epsilon))
@@ -473,7 +476,7 @@ def hinge_loss(logits, labels=None, scope=None):
   with ops.name_scope(scope, "hinge_loss", [logits, labels]) as scope:
     logits.get_shape().assert_is_compatible_with(labels.get_shape())
     # We first need to convert binary labels to -1/1 labels (as floats).
-    labels = math_ops.to_float(labels)
+    labels = math_ops.cast(labels, dtypes.float32)
     all_ones = array_ops.ones_like(labels)
     labels = math_ops.subtract(2 * labels, all_ones)
     return nn_ops.relu(
@@ -509,9 +512,9 @@ def mean_squared_error(predictions, labels=None, weights=1.0, scope=None):
   with ops.name_scope(scope, "mean_squared_error",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
-    losses = math_ops.square(math_ops.subtract(predictions, labels))
+    predictions = math_ops.cast(predictions, dtypes.float32)
+    labels = math_ops.cast(labels, dtypes.float32)
+    losses = math_ops.squared_difference(predictions, labels)
     return compute_weighted_loss(losses, weights, scope=scope)
 
 
@@ -563,9 +566,9 @@ def mean_pairwise_squared_error(predictions,
   with ops.name_scope(scope, "mean_pairwise_squared_error",
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
-    weights = math_ops.to_float(ops.convert_to_tensor(weights))
+    predictions = math_ops.cast(predictions, dtypes.float32)
+    labels = math_ops.cast(labels, dtypes.float32)
+    weights = math_ops.cast(ops.convert_to_tensor(weights), dtypes.float32)
 
     diffs = math_ops.subtract(predictions, labels)
 
@@ -638,8 +641,8 @@ def cosine_distance(predictions,
                       [predictions, labels, weights]) as scope:
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    predictions = math_ops.to_float(predictions)
-    labels = math_ops.to_float(labels)
+    predictions = math_ops.cast(predictions, dtypes.float32)
+    labels = math_ops.cast(labels, dtypes.float32)
 
     radial_diffs = math_ops.multiply(predictions, labels)
     losses = 1 - math_ops.reduce_sum(

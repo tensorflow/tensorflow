@@ -132,6 +132,35 @@ REGISTER_OP("If")
       return Status::OK();
     });
 
+REGISTER_OP("Case")
+    .Input("branch_index: int32")
+    .Input("input: Tin")
+    .Output("output: Tout")
+    .Attr("Tin: list(type) >= 0")
+    .Attr("Tout: list(type) >= 0")
+    .Attr("branches: list(func) >= 1")
+    .Attr("output_shapes: list(shape) = []")
+    .SetIsStateful()
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      std::vector<PartialTensorShape> output_shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
+      // If `output_shapes` attr is set use that as the shapes of the outputs
+      // else return unknown shapes.
+      if (output_shapes.empty()) return shape_inference::UnknownShape(c);
+      if (output_shapes.size() != c->num_outputs()) {
+        return errors::InvalidArgument(
+            "`output_shapes` must be the same length as num outputs (",
+            output_shapes.size(), " vs. ", c->num_outputs());
+      }
+      for (size_t i = 0; i < output_shapes.size(); ++i) {
+        shape_inference::ShapeHandle output_shape_handle;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(
+            output_shapes[i], &output_shape_handle));
+        c->set_output(static_cast<int>(i), output_shape_handle);
+      }
+      return Status::OK();
+    });
+
 // TODO(drpng): remove this.
 REGISTER_OP("_While")
     .Input("input: T")
@@ -170,6 +199,7 @@ REGISTER_OP("While")
     .Attr("cond: func")
     .Attr("body: func")
     .Attr("output_shapes: list(shape) = []")
+    .Attr("parallel_iterations: int = 10")
     .SetIsStateful()
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
@@ -219,6 +249,8 @@ REGISTER_OP("For")
     .Attr("body: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
+// While no useful shape function is registered for function call ops directly,
+// ShapeRefiner is run by default to perform shape inference.
 REGISTER_OP("PartitionedCall")
     .Input("args: Tin")
     .Output("output: Tout")

@@ -71,6 +71,9 @@ internal::StreamExecutorInterface *StreamExecutorImplementationFromPlatformKind(
     case PlatformKind::kCuda:
       factory = *internal::MakeCUDAExecutorImplementation();
       break;
+    case PlatformKind::kROCm:
+      factory = *internal::MakeROCMExecutorImplementation();
+      break;
     case PlatformKind::kOpenCL:
       factory = *internal::MakeOpenCLExecutorImplementation();
       break;
@@ -188,6 +191,8 @@ StreamExecutor::StreamExecutor(
       memory_limit_bytes_(GetMemoryLimitBytes()) {
   if (port::Lowercase(platform_->Name()) == "cuda") {
     platform_kind_ = PlatformKind::kCuda;
+  } else if (port::Lowercase(platform_->Name()) == "rocm") {
+    platform_kind_ = PlatformKind::kROCm;
   } else if (port::Lowercase(platform_->Name()) == "opencl") {
     platform_kind_ = PlatformKind::kOpenCL;
   } else if (port::Lowercase(platform_->Name()) == "host") {
@@ -406,14 +411,16 @@ StreamExecutor::createRnnSequenceTensorDescriptor(int max_seq_length,
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
 StreamExecutor::createRnnSequenceTensorDescriptor(
     int max_seq_length, int batch_size, int data_size,
-    const absl::Span<const int> &seq_lengths, dnn::DataType data_type) {
+    const absl::Span<const int> &seq_lengths, bool time_major,
+    dnn::DataType data_type) {
   dnn::DnnSupport *dnn_support = AsDnn();
   if (!dnn_support) {
     return port::Status(port::error::UNKNOWN,
                         "Fail to find the dnn implementation.");
   }
   return dnn_support->createRnnSequenceTensorDescriptor(
-      max_seq_length, batch_size, data_size, seq_lengths, data_type);
+      max_seq_length, batch_size, data_size, seq_lengths, time_major,
+      data_type);
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnStateTensorDescriptor>>
@@ -485,6 +492,10 @@ port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
 
   result = implementation_->BlockHostUntilDone(stream);
   return result;
+}
+
+port::Status StreamExecutor::GetStatus(Stream *stream) {
+  return implementation_->GetStatus(stream);
 }
 
 void *StreamExecutor::Allocate(uint64 size) {
@@ -860,6 +871,10 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
 
   implementation_->UnregisterTraceListener(listener);
   return true;
+}
+
+absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+  return implementation_->GetAllocatorStats();
 }
 
 template <typename TraceCallT, typename... ArgsT>

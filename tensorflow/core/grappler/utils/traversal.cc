@@ -44,8 +44,8 @@ enum class NodeState { kNotVisited, kVisiting, kDone };
 
 void DfsTraversal(const GraphTopologyView& graph_view,
                   const absl::Span<const NodeDef* const> from,
-                  TraversalDirection direction,
-                  const std::function<bool(const NodeDef*)>& should_visit,
+                  const TraversalDirection direction,
+                  const DfsPredicates& predicates,
                   const DfsCallbacks& callbacks) {
   std::vector<DfsStackElem> stack;
   stack.reserve(from.size());
@@ -66,8 +66,8 @@ void DfsTraversal(const GraphTopologyView& graph_view,
     NodeState& state = node_state[w.node];
     if (state == NodeState::kDone) continue;
 
-    // Skip nodes that do not match predicate.
-    if (should_visit && !should_visit(graph_view.GetNode(w.node))) {
+    // Skip nodes that we should not enter.
+    if (predicates.enter && !predicates.enter(graph_view.GetNode(w.node))) {
       state = NodeState::kDone;
       continue;
     }
@@ -98,6 +98,11 @@ void DfsTraversal(const GraphTopologyView& graph_view,
     // Enqueue the node again with the children_visited flag set to true.
     stack.emplace_back(w.node, true, w.src);
 
+    // Check if we can continue traversal from the current node.
+    if (predicates.advance && !predicates.advance(graph_view.GetNode(w.node))) {
+      continue;
+    }
+
     // Now enqueue the fanin/fanout nodes.
     if (direction == TraversalDirection::kFollowInputs) {
       for (const int fanin : graph_view.GetFanin(w.node)) {
@@ -111,14 +116,10 @@ void DfsTraversal(const GraphTopologyView& graph_view,
   }
 }
 
-// Traverse the graph in DFS order in the given direction, starting from the
-// list of nodes specified in the `from` argument. Call corresponding
-// callbacks for each visited node.
 void DfsTraversal(const GraphTopologyView& graph_view,
                   const absl::Span<const NodeDef* const> from,
                   TraversalDirection direction, const DfsCallbacks& callbacks) {
-  const auto visit_all = [](const NodeDef*) { return true; };
-  DfsTraversal(graph_view, from, direction, visit_all, callbacks);
+  DfsTraversal(graph_view, from, direction, {}, callbacks);
 }
 
 }  // namespace grappler

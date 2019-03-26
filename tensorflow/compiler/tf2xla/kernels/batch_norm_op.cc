@@ -18,6 +18,8 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -34,6 +36,7 @@ class FusedBatchNormOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
+    is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -64,14 +67,35 @@ class FusedBatchNormOp : public XlaOpKernel {
       ctx->SetOutput(0, xla::ConvertElementType(xla::GetTupleElement(output, 0),
                                                 input_type));
       ctx->SetOutput(1, xla::GetTupleElement(output, 1));
-      ctx->SetOutput(2, xla::GetTupleElement(output, 2));
+      xla::XlaOp variance = xla::GetTupleElement(output, 2);
+      // Apply Bessel's correction.
+      int total_input_size = ctx->InputShape(0).num_elements();
+      int total_scale_size = ctx->InputShape(1).num_elements();
+      int sample_size = total_input_size / total_scale_size;
+      int sample_size_minus_one = std::max(1, sample_size - 1);
+
+      xla::XlaOp factor =
+          xla::Div(xla::ScalarLike(variance, sample_size),
+                   xla::ScalarLike(variance, sample_size_minus_one));
+      xla::XlaOp corrected = xla::Mul(variance, factor);
+      ctx->SetOutput(2, corrected);
 
       // Output 3 and 4 for "FusedBatchNorm" are currently marked as "reserved
       // space 1 & 2". They are used to pass the per-batch mean and
       // variance to the gradient. Here we maintain the same behavior by setting
       // them to the mean and variance calculated by BatchNormTraining.
       ctx->SetOutput(3, xla::GetTupleElement(output, 1));
-      ctx->SetOutput(4, xla::GetTupleElement(output, 2));
+      if (is_on_gpu_) {
+        // The last two outputs from the FusedBatchNorm training TensorFlow GPU
+        // op are implementation defined.  For now we rely on the in-practice
+        // behavior of the op:
+        //   output 3 is the mean
+        //   output 4 is rsqrt(variance + epsilon)
+        ctx->SetOutput(4, xla::Rsqrt(xla::Add(
+                              variance, xla::ScalarLike(variance, epsilon_))));
+      } else {
+        ctx->SetOutput(4, variance);
+      }
     } else {
       xla::XlaOp output = xla::BatchNormInference(
           input, ctx->Input(1), ctx->Input(2), ctx->Input(3), ctx->Input(4),
@@ -89,6 +113,7 @@ class FusedBatchNormOp : public XlaOpKernel {
   float epsilon_;
   TensorFormat data_format_;
   bool is_training_;
+  bool is_on_gpu_;
 };
 
 REGISTER_XLA_OP(Name("FusedBatchNorm"), FusedBatchNormOp);
@@ -104,6 +129,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, FormatFromString(data_format_str, &data_format_),
         errors::InvalidArgument("Invalid data format: ", data_format_str));
+    is_on_gpu_ = ctx->device_type().type_string() == DEVICE_GPU_XLA_JIT;
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -130,6 +156,22 @@ class FusedBatchNormGradOp : public XlaOpKernel {
     xla::XlaOp scale_backprop;
     xla::XlaOp offset_backprop;
     if (is_training_) {
+      if (is_on_gpu_) {
+        // The last two inputs to the FusedBatchNormGrad training TensorFlow GPU
+        // op are implementation defined.  For now we rely on the in-practice
+        // behavior of the op: input 3 is the mean input 4 is rsqrt(variance +
+        // epsilon)
+        //
+        // The XLA op expects:
+        //   input 3 is the mean
+        //   input 4 is the variance
+        //
+        // so we adjust input 4 here.
+        xla::XlaOp one = xla::ScalarLike(var, 1.0f);
+        xla::XlaOp epsilon = xla::ScalarLike(var, epsilon_);
+        var = xla::Sub(one / (var * var), epsilon);
+      }
+
       xla::XlaOp output =
           xla::BatchNormGrad(activations, scale, mean, var, grad_backprop,
                              epsilon_, feature_index);
@@ -158,9 +200,8 @@ class FusedBatchNormGradOp : public XlaOpKernel {
       offset_backprop = XlaHelpers::ConvertElementType(reduce, scale_dtype);
 
       // scratch1 = rsqrt(pop_var + epsilon)
-      auto neg_half = XlaHelpers::FloatLiteral(b, scale_dtype, -0.5);
-      auto scratch1 = xla::Pow(
-          xla::Add(var, xla::ConstantR0<float>(b, epsilon_)), neg_half);
+      auto epsilon = XlaHelpers::FloatLiteral(b, scale_dtype, epsilon_);
+      auto scratch1 = xla::Rsqrt(xla::Add(var, epsilon));
 
       // scratch2 = sum(y_backprop * (x - mean))
       auto mul =
@@ -187,6 +228,7 @@ class FusedBatchNormGradOp : public XlaOpKernel {
   TensorFormat data_format_;
   float epsilon_;
   bool is_training_;
+  bool is_on_gpu_;
 };
 
 REGISTER_XLA_OP(Name("FusedBatchNormGrad"), FusedBatchNormGradOp);

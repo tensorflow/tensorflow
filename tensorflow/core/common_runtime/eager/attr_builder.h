@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -53,10 +54,6 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list);
 
-// Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list);
-
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
 // An AttrBuilder is a convenience class to help with that - providing a smaller
 // interface than NodeDefBuilder and avoiding expensive (unnecessary?) sanity
@@ -74,7 +71,7 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // AttrBuilder a;
 // a.NumInputs(2);
 // a.Set("T", TF_FLOAT);
-// uint64 cache_key = a.CacheKey("cpu:0");
+// tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
 // const NodeDef& n = a.BuildNodeDef();
 //
 // Note that all calls to Set and NumInputs should happen before calling
@@ -100,10 +97,27 @@ class AttrBuilder {
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
     SetInAttrValueMap(node_def_->mutable_attr(), string(attr_name), value);
+    cached_cache_key_ = absl::nullopt;
     return *this;
   }
 
-  tensorflow::Fprint128 CacheKey(const string& device) const;
+  // Retrieves the attribute value.
+  // Note that Get() can involve a linear scan of all attributes with the same
+  // value type in this Node. This is not an issue, because Get is used rarely
+  // and nodes have a small number of attributes.
+  template <class T>
+  Status Get(StringPiece attr_name, T* value) const {
+    // Common attributes are stored in AttrVecs. This Get() template
+    // is specialized for them below. If we end up here, the type must be
+    // among those that we store in the node_def_.
+    if (node_def_ == nullptr) {
+      return errors::NotFound("No attr named'", attr_name,
+                              "' found in AttrBuilder for ", op_name_);
+    }
+    return GetNodeAttr(node_def_, attr_name, value);
+  }
+
+  tensorflow::Fprint128 CacheKey(const string& device);
 
   void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
@@ -111,6 +125,8 @@ class AttrBuilder {
  private:
   template <class T>
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
+
+  tensorflow::Fprint128 BuildCacheKeyForDevice(const string& device) const;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
@@ -126,17 +142,11 @@ class AttrBuilder {
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
-    // Copied from NodeDefBuilder::Attr
-    const AttrValue* found = AttrSlice(m).Find(attr_name);
-    AttrValue attr_value;
-    if (found == nullptr) {
+    // If attribute is set more than once, its first value prevails
+    if (AttrSlice(m).Find(attr_name) == nullptr) {
+      AttrValue attr_value;
       SetAttrValue(value, &attr_value);
       m->insert(AttrValueMap::value_type(attr_name, attr_value));
-    } else {
-      // TODO(ashankar): Do what is done in
-      // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
-      SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[attr_name] = attr_value;
     }
   }
 
@@ -148,6 +158,9 @@ class AttrBuilder {
   int num_inputs_;
   std::unique_ptr<NodeDef> node_def_;
   bool node_def_finalized_;
+
+  absl::optional<tensorflow::Fprint128> cached_cache_key_;
+  string device_for_cached_cache_key_;
 };  // namespace tensorflow
 
 template <>
@@ -159,6 +172,16 @@ AttrBuilder& AttrBuilder::Set(StringPiece attr_name, bool&& value);
 template <>
 AttrBuilder& AttrBuilder::Set(StringPiece attr_name,
                               tensorflow::DataType&& value);
+
+template <>
+Status AttrBuilder::Get(StringPiece attr_name, int* value) const;
+template <>
+Status AttrBuilder::Get(StringPiece attr_name, float* value) const;
+template <>
+Status AttrBuilder::Get(StringPiece attr_name, bool* value) const;
+template <>
+Status AttrBuilder::Get(StringPiece attr_name,
+                        tensorflow::DataType* value) const;
 
 }  // namespace tensorflow
 

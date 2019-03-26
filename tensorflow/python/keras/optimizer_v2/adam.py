@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -26,7 +27,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.optimizers.Adam', v1=[])
+@keras_export('keras.optimizers.Adam')
 class Adam(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adam algorithm.
 
@@ -35,8 +36,6 @@ class Adam(optimizer_v2.OptimizerV2):
   reference, the method is 'computationally efficient, has little memory
   requirement, invariant to diagonal rescaling of gradients, and is well suited
   for problems that are large in terms of data/parameters'.
-
-  Note, amsgrad is currently not supported and the argument can only be False.
 
   # References
       See [Kingma et al., 2014](http://arxiv.org/abs/1412.6980)
@@ -63,7 +62,7 @@ class Adam(optimizer_v2.OptimizerV2):
       $$t := 0 \text{(Initialize timestep)}$$
 
       The update rule for `variable` with gradient `g` uses an optimization
-      described at the end of section2 of the paper:
+      described at the end of section 2 of the paper:
 
       $$t := t + 1$$
       $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
@@ -81,7 +80,7 @@ class Adam(optimizer_v2.OptimizerV2):
       $$t := 0 \text{(Initialize timestep)}$$
 
       The update rule for `variable` with gradient `g` uses an optimization
-      described at the end of section2 of the paper:
+      described at the end of section 2 of the paper:
 
       $$t := t + 1$$
       $$lr_t := \text{learning\_rate} * \sqrt{1 - beta_2^t} / (1 - beta_1^t)$$
@@ -131,6 +130,8 @@ class Adam(optimizer_v2.OptimizerV2):
         compatibility, recommended to use `learning_rate` instead.
     """
 
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     super(Adam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)

@@ -228,7 +228,7 @@ def extract_features(features, feature_columns, use_core_columns):
       indices = array_ops.concat([
           array_ops.slice(categorical_tensor.indices, [0, 0], [-1, 1]),
           array_ops.expand_dims(
-              math_ops.to_int64(categorical_tensor.values), -1)
+              math_ops.cast(categorical_tensor.values, dtypes.int64), -1)
       ], 1)
       tensor = sparse_tensor.SparseTensor(
           indices=indices, values=weight_tensor.values, dense_shape=shape)
@@ -566,9 +566,10 @@ class GradientBoostedDecisionTreeModel(object):
     # Determine if ensemble is colocated with the inputs.
     if self._ensemble_handle.device != input_deps[0].device:
       # Create a local ensemble and get its local stamp.
-      with ops.name_scope("local_ensemble", "TreeEnsembleVariable") as name:
+      with ops.name_scope("local_ensemble", "TreeEnsembleVariable"):
         local_ensemble_handle = (
-            gen_model_ops.decision_tree_ensemble_resource_handle_op(name=name))
+            gen_model_ops.decision_tree_ensemble_resource_handle_op(
+                self._ensemble_handle.op.name + "/local_ensemble"))
         create_op = gen_model_ops.create_tree_ensemble_variable(
             local_ensemble_handle, stamp_token=-1, tree_ensemble_config="")
         with ops.control_dependencies([create_op]):
@@ -610,8 +611,9 @@ class GradientBoostedDecisionTreeModel(object):
         learner_pb2.LearnerConfig.TREE_PER_CLASS and
         self._logits_dimension != 1):
       # Choose the class for which the tree is built (one vs rest).
-      return math_ops.to_int32(
-          predictions_dict[NUM_TREES_ATTEMPTED] % self._logits_dimension)
+      return math_ops.cast(
+          predictions_dict[NUM_TREES_ATTEMPTED] % self._logits_dimension,
+          dtypes.int32)
     return constant_op.constant(-1, dtype=dtypes.int32)
 
   def update_stats(self, loss, predictions_dict, gradients=None, hessians=None):

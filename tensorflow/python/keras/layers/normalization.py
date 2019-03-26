@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python import tf2
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -39,12 +38,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
-from tensorflow.python.util.tf_export import tf_export
 
 
-@keras_export('keras.layers.BatchNormalization', v1=[])
-class BatchNormalizationV2(Layer):
-  """Batch normalization layer (Ioffe and Szegedy, 2014).
+class BatchNormalizationBase(Layer):
+  """Base class of Batch normalization layer (Ioffe and Szegedy, 2014).
 
   Normalize the activations of the previous layer at each batch,
   i.e. applies a transformation that maintains the mean activation
@@ -52,19 +49,19 @@ class BatchNormalizationV2(Layer):
 
   Arguments:
     axis: Integer, the axis that should be normalized
-        (typically the features axis).
-        For instance, after a `Conv2D` layer with
-        `data_format="channels_first"`,
-        set `axis=1` in `BatchNormalization`.
+      (typically the features axis).
+      For instance, after a `Conv2D` layer with
+      `data_format="channels_first"`,
+      set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
     center: If True, add offset of `beta` to normalized tensor.
-        If False, `beta` is ignored.
+      If False, `beta` is ignored.
     scale: If True, multiply by `gamma`.
-        If False, `gamma` is not used.
-        When the next layer is linear (also e.g. `nn.relu`),
-        this can be disabled since the scaling
-        will be done by the next layer.
+      If False, `gamma` is not used.
+      When the next layer is linear (also e.g. `nn.relu`),
+      this can be disabled since the scaling
+      will be done by the next layer.
     beta_initializer: Initializer for the beta weight.
     gamma_initializer: Initializer for the gamma weight.
     moving_mean_initializer: Initializer for the moving mean.
@@ -90,8 +87,7 @@ class BatchNormalizationV2(Layer):
       if the fused implementation cannot be used. If `None`, use the faster
       implementation if possible. If False, do not used the fused
       implementation.
-    trainable: Boolean, if `True` also add variables to the graph collection
-      `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
+    trainable: Boolean, if `True` the variables will be marked as trainable.
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
       which means batch normalization is performed across the whole batch. When
       `virtual_batch_size` is not `None`, instead perform "Ghost Batch
@@ -111,20 +107,30 @@ class BatchNormalizationV2(Layer):
       `None`, no adjustment is applied. Cannot be specified if
       virtual_batch_size is specified.
 
+  Call arguments:
+    inputs: Input tensor (of any rank).
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode.
+      - `training=True`: The layer will normalize its inputs using the
+        mean and variance of the current batch of inputs.
+      - `training=False`: The layer will normalize its inputs using the
+        mean and variance of its moving statistics, learned during training.
+
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as input.
+    Same shape as input.
 
   References:
-      - [Batch Normalization: Accelerating Deep Network Training by Reducing
-        Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+    - [Batch Normalization: Accelerating Deep Network Training by Reducing
+      Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
-  # The BatchNormalizationV1 subclass sets this to False to use the V1 behavior.
+  # By default, the base class uses V2 behavior. The BatchNormalization V1
+  # subclass sets this to False to use the V1 behavior.
   _USE_V2_BEHAVIOR = True
 
   def __init__(self,
@@ -150,7 +156,7 @@ class BatchNormalizationV2(Layer):
                adjustment=None,
                name=None,
                **kwargs):
-    super(BatchNormalizationV2, self).__init__(
+    super(BatchNormalizationBase, self).__init__(
         name=name, trainable=trainable, **kwargs)
     if isinstance(axis, list):
       self.axis = axis[:]
@@ -230,6 +236,14 @@ class BatchNormalizationV2(Layer):
     except ValueError:
       return False
 
+  @property
+  def _param_dtype(self):
+    # Raise parameters of fp16 batch norm to fp32
+    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
+      return dtypes.float32
+    else:
+      return self.dtype or dtypes.float32
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -292,12 +306,6 @@ class BatchNormalizationV2(Layer):
         raise ValueError('Unsupported axis, fused batch norm only supports '
                          'axis == [1] or axis == [3]')
 
-    # Raise parameters of fp16 batch norm to fp32
-    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
-      param_dtype = dtypes.float32
-    else:
-      param_dtype = self.dtype or dtypes.float32
-
     axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
       if axis_to_dim[x] is None:
@@ -322,31 +330,33 @@ class BatchNormalizationV2(Layer):
       self.gamma = self.add_weight(
           name='gamma',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(
-            1.0, dtype=param_dtype, shape=param_shape)
+        self._gamma_const = K.constant(
+            1.0, dtype=self._param_dtype, shape=param_shape)
 
     if self.center:
       self.beta = self.add_weight(
           name='beta',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(
-            0.0, dtype=param_dtype, shape=param_shape)
+        self._beta_const = K.constant(
+            0.0, dtype=self._param_dtype, shape=param_shape)
 
     try:
       # Disable variable partitioning when creating the moving mean and variance
@@ -358,20 +368,22 @@ class BatchNormalizationV2(Layer):
       self.moving_mean = self.add_weight(
           name='moving_mean',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.moving_mean_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=tf_variables.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN,
+          experimental_autocast=False)
 
       self.moving_variance = self.add_weight(
           name='moving_variance',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.moving_variance_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=tf_variables.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN,
+          experimental_autocast=False)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -382,26 +394,28 @@ class BatchNormalizationV2(Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
+          """Create a renorm variable."""
           var = self.add_weight(
               name=name,
               shape=shape,
-              dtype=param_dtype,
+              dtype=self._param_dtype,
               initializer=init_ops.zeros_initializer(),
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
-              aggregation=tf_variables.VariableAggregation.MEAN)
+              aggregation=tf_variables.VariableAggregation.MEAN,
+              experimental_autocast=False)
           return var
 
-        with distribution_strategy_context.get_distribution_strategy(
-        ).colocate_vars_with(self.moving_mean):
+        with distribution_strategy_context.get_strategy(
+        ).extended.colocate_vars_with(self.moving_mean):
           self.renorm_mean = _renorm_variable('renorm_mean', param_shape)
           self.renorm_mean_weight = _renorm_variable('renorm_mean_weight', ())
         # We initialize renorm_stddev to 0, and maintain the (0-initialized)
         # renorm_stddev_weight. This allows us to (1) mix the average
         # stddev with the minibatch stddev early in training, and (2) compute
         # the unbiased average stddev by dividing renorm_stddev by the weight.
-        with distribution_strategy_context.get_distribution_strategy(
-        ).colocate_vars_with(self.moving_variance):
+        with distribution_strategy_context.get_strategy(
+        ).extended.colocate_vars_with(self.moving_variance):
           self.renorm_stddev = _renorm_variable('renorm_stddev', param_shape)
           self.renorm_stddev_weight = _renorm_variable('renorm_stddev_weight',
                                                        ())
@@ -413,15 +427,6 @@ class BatchNormalizationV2(Layer):
   def _assign_moving_average(self, variable, value, momentum):
     with ops.name_scope(None, 'AssignMovingAvg',
                         [variable, value, momentum]) as scope:
-      # TODO(b/120571621): We want to avoid colocating the variables here
-      # since TPUStrategy does not implement replica local variables.
-      # Remove this hack once we support TPULocalVariables.
-      is_tpu_strategy = False
-      if distribution_strategy_context.has_distribution_strategy():
-        distribute = distribution_strategy_context.get_distribution_strategy()
-        if distribute.__class__.__name__ == 'TPUStrategy':
-          is_tpu_strategy = True
-
       with ops.colocate_with(variable):
         decay = ops.convert_to_tensor(1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
@@ -474,7 +479,7 @@ class BatchNormalizationV2(Layer):
       momentum = ops.convert_to_tensor(self.momentum)
     if training_value or training_value is None:
       if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_distribution_strategy()
+        strategy = distribution_strategy_context.get_strategy()
         mean_update = strategy.extended.update(
             self.moving_mean, self._assign_moving_average,
             (mean, self.momentum))
@@ -587,7 +592,7 @@ class BatchNormalizationV2(Layer):
       return outputs
 
     # Compute the axes along which to reduce the mean / variance
-    input_shape = inputs.get_shape()
+    input_shape = inputs.shape
     ndims = len(input_shape)
     reduction_axes = [i for i in range(ndims) if i not in self.axis]
     if self.virtual_batch_size is not None:
@@ -598,8 +603,7 @@ class BatchNormalizationV2(Layer):
     broadcast_shape = [1] * ndims
     broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
     def _broadcast(v):
-      if (v is not None and
-          len(v.get_shape()) != ndims and
+      if (v is not None and len(v.shape) != ndims and
           reduction_axes != list(range(ndims - 1))):
         return array_ops.reshape(v, broadcast_shape)
       return v
@@ -632,7 +636,9 @@ class BatchNormalizationV2(Layer):
       # but not a constant. However, this makes the code simpler.
       keep_dims = self.virtual_batch_size is not None or len(self.axis) > 1
       mean, variance = self._moments(
-          inputs, reduction_axes, keep_dims=keep_dims)
+          math_ops.cast(inputs, self._param_dtype),
+          reduction_axes,
+          keep_dims=keep_dims)
 
       moving_mean = self.moving_mean
       moving_variance = self.moving_variance
@@ -666,7 +672,8 @@ class BatchNormalizationV2(Layer):
         scale, offset = _compose_transforms(r, d, scale, offset)
 
       if distribution_strategy_context.in_cross_replica_context():
-        strategy = distribution_strategy_context.get_distribution_strategy()
+        strategy = distribution_strategy_context.get_strategy()
+
         def _do_update(var, value):
           """Compute the updates for mean and variance."""
           if in_eager_mode and not self.trainable:
@@ -710,6 +717,10 @@ class BatchNormalizationV2(Layer):
     variance = math_ops.cast(variance, inputs.dtype)
     if offset is not None:
       offset = math_ops.cast(offset, inputs.dtype)
+    if scale is not None:
+      scale = math_ops.cast(scale, inputs.dtype)
+    # TODO(reedwm): Maybe do math in float32 if given float16 inputs, if doing
+    # math in float16 hurts validation accuracy of popular models like resnet.
     outputs = nn.batch_normalization(inputs,
                                      _broadcast(mean),
                                      _broadcast(variance),
@@ -758,22 +769,22 @@ class BatchNormalizationV2(Layer):
                       'layer cannot be serialized and has been omitted from '
                       'the layer config. It will not be included when '
                       're-creating the layer from the saved config.')
-    base_config = super(BatchNormalizationV2, self).get_config()
+    base_config = super(BatchNormalizationBase, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
-def _replace_in_v2_docstring(old, new):
-  string = BatchNormalizationV2.__doc__
+def _replace_in_base_docstring(old, new):
+  string = BatchNormalizationBase.__doc__
   if old not in string:
-    raise ValueError('Could not find following string in BatchNormalizationV2 '
-                     'docstring: "{}"'.format(old))
+    raise ValueError('Could not find following string in BatchNormalizationBase'
+                     ' docstring: "{}"'.format(old))
   return string.replace(old, new)
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring
-class BatchNormalizationV1(BatchNormalizationV2):
+class BatchNormalization(BatchNormalizationBase):
 
-  __doc__ = _replace_in_v2_docstring(
+  __doc__ = _replace_in_base_docstring(
       '''
     fused: if `True`, use a faster, fused implementation, or raise a ValueError
       if the fused implementation cannot be used. If `None`, use the faster
@@ -787,22 +798,223 @@ class BatchNormalizationV1(BatchNormalizationV2):
   _USE_V2_BEHAVIOR = False
 
 
-BatchNormalization = None  # pylint: disable=invalid-name
+@keras_export('keras.layers.experimental.LayerNormalization')
+class LayerNormalization(Layer):
+  """Layer normalization layer (Ba et al., 2016).
 
+  Normalize the activations of the previous layer for each given example in a
+  batch independently, rather than across a batch like Batch Normalization.
+  i.e. applies a transformation that maintains the mean activation within each
+  example close to 0 and the activation standard deviation close to 1.
 
-@tf_export(v1=['enable_v2_batch_normalization'])
-def enable_v2_batch_normalization():
-  global BatchNormalization  # pylint: disable=invalid-name
-  BatchNormalization = BatchNormalizationV2
+  Given a tensor `inputs` of rank `R`, moments are calculated and normalization
+  is performed over all axes in norm_axis.  Scaling and centering,
+  if requested, is performed over all axes in params_axis.
 
+  By default, normalization is performed over all but the first axis
+  (the `HWC` if `inputs` is `NHWC`), while the `beta` and `gamma` trainable
+  parameters are calculated for the rightmost axis (the `C` if `inputs` is
+  `NHWC`).  Scaling and recentering is performed via broadcast of the
+  `beta` and `gamma` parameters with the normalized tensor.
 
-@tf_export(v1=['disable_v2_batch_normalization'])
-def disable_v2_batch_normalization():
-  global BatchNormalization  # pylint: disable=invalid-name
-  BatchNormalization = BatchNormalizationV1
+  The shapes of `beta` and `gamma` are
+  `[inputs.shape[i] for i in (param axes)]`,
+  and this part of the inputs' shape must be fully defined.
 
+  Arguments:
+    norm_axis: Integer or List. normalization will be
+      performed along these dimensions. If unspecified (None), it will default
+      to the dimensions `begin_norm_axis : rank(inputs)`
+    params_axis: Integer or List. The (beta, gamma) dimensions: scale
+      and centering parameters will have take their shapes from these axes and
+      will be broadcast with the normalized inputs accordingly. If unspecified
+      (None), it will default to the last dimension
+    epsilon: Small float added to variance to avoid dividing by zero.
+    center: If True, add offset of `beta` to normalized tensor.
+        If False, `beta` is ignored.
+    scale: If True, multiply by `gamma`.
+      If False, `gamma` is not used.
+      When the next layer is linear (also e.g. `nn.relu`),
+      this can be disabled since the scaling
+      will be done by the next layer.
+    beta_initializer: Initializer for the beta weight.
+    gamma_initializer: Initializer for the gamma weight.
+    beta_regularizer: Optional regularizer for the beta weight.
+    gamma_regularizer: Optional regularizer for the gamma weight.
+    beta_constraint: Optional constraint for the beta weight.
+    gamma_constraint: Optional constraint for the gamma weight.
+    trainable: Boolean, if `True` the variables will be marked as trainable.
 
-if tf2.enabled():
-  enable_v2_batch_normalization()
-else:
-  disable_v2_batch_normalization()
+  Input shape:
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
+
+  Output shape:
+    Same shape as input.
+
+  References:
+    - [Layer Normalization](https://arxiv.org/abs/1607.06450)
+  """
+
+  def __init__(self,
+               norm_axis=None,
+               params_axis=-1,
+               epsilon=1e-12,
+               center=True,
+               scale=True,
+               beta_initializer='zeros',
+               gamma_initializer='ones',
+               beta_regularizer=None,
+               gamma_regularizer=None,
+               beta_constraint=None,
+               gamma_constraint=None,
+               trainable=True,
+               name=None,
+               **kwargs):
+    super(LayerNormalization, self).__init__(
+        name=name, trainable=trainable, **kwargs)
+    if isinstance(norm_axis, list):
+      self.norm_axis = norm_axis[:]
+    elif isinstance(norm_axis, int):
+      self.norm_axis = norm_axis
+    elif norm_axis is None:
+      self.norm_axis = None
+    else:
+      raise TypeError('norm_axis must be int or list or None, type given: %s'
+                      % type(norm_axis))
+
+    if isinstance(params_axis, list):
+      self.params_axis = params_axis[:]
+    elif isinstance(params_axis, int):
+      self.params_axis = params_axis
+    else:
+      raise TypeError('params_axis must be int or list, type given: %s'
+                      % type(params_axis))
+
+    self.epsilon = epsilon
+    self.center = center
+    self.scale = scale
+    self.beta_initializer = initializers.get(beta_initializer)
+    self.gamma_initializer = initializers.get(gamma_initializer)
+    self.beta_regularizer = regularizers.get(beta_regularizer)
+    self.gamma_regularizer = regularizers.get(gamma_regularizer)
+    self.beta_constraint = constraints.get(beta_constraint)
+    self.gamma_constraint = constraints.get(gamma_constraint)
+
+    self.supports_masking = True
+
+  def build(self, input_shape):
+    ndims = len(input_shape)
+    if ndims is None:
+      raise ValueError('Input shape %s has undefined rank.' % input_shape)
+
+    # Handle an unspecified norm_axis
+    if self.norm_axis is None:
+      self.norm_axis = list(range(1, ndims))
+
+    # Convert axes to lists and resolve negatives
+    if isinstance(self.norm_axis, int):
+      self.norm_axis = [self.norm_axis]
+    for idx, x in enumerate(self.norm_axis):
+      if x < 0:
+        self.norm_axis[idx] = ndims + x
+
+    if isinstance(self.params_axis, int):
+      self.params_axis = [self.params_axis]
+    for idx, x in enumerate(self.params_axis):
+      if x < 0:
+        self.params_axis[idx] = ndims + x
+
+    # Validate axes
+    for x in self.norm_axis:
+      if x < 0 or x >= ndims:
+        raise ValueError('Invalid axis: %d' % x)
+    if len(self.norm_axis) != len(set(self.norm_axis)):
+      raise ValueError('Duplicate axis: %s' % self.norm_axis)
+
+    for x in self.params_axis:
+      if x < 0 or x >= ndims:
+        raise ValueError('Invalid axis: %d' % x)
+    if len(self.params_axis) != len(set(self.params_axis)):
+      raise ValueError('Duplicate axis: %s' % self.params_axis)
+
+    param_shape = [input_shape[dim] for dim in self.params_axis]
+
+    if self.scale:
+      self.gamma = self.add_weight(
+          name='gamma',
+          shape=param_shape,
+          initializer=self.gamma_initializer,
+          regularizer=self.gamma_regularizer,
+          constraint=self.gamma_constraint,
+          trainable=True,
+          experimental_autocast=False)
+    else:
+      self.gamma = None
+
+    if self.center:
+      self.beta = self.add_weight(
+          name='beta',
+          shape=param_shape,
+          initializer=self.beta_initializer,
+          regularizer=self.beta_regularizer,
+          constraint=self.beta_constraint,
+          trainable=True,
+          experimental_autocast=False)
+    else:
+      self.beta = None
+
+  def call(self, inputs):
+    # Compute the axes along which to reduce the mean / variance
+    input_shape = inputs.shape
+    ndims = len(input_shape)
+
+    # Calculate the moments on the last axis (layer activations).
+    mean, variance = nn.moments(inputs, self.norm_axis, keep_dims=True)
+
+    # Broadcasting only necessary for norm where the params axes aren't just
+    # the last dimension
+    broadcast_shape = [1] * ndims
+    for dim in self.params_axis:
+      broadcast_shape[dim] = input_shape.dims[dim].value
+    def _broadcast(v):
+      if (v is not None and len(v.shape) != ndims and
+          self.params_axis != [ndims - 1]):
+        return array_ops.reshape(v, broadcast_shape)
+      return v
+    scale, offset = _broadcast(self.gamma), _broadcast(self.beta)
+
+    # Compute layer normalization using the batch_normalization function.
+    outputs = nn.batch_normalization(
+        inputs,
+        mean,
+        variance,
+        offset=offset,
+        scale=scale,
+        variance_epsilon=self.epsilon)
+
+    # If some components of the shape got lost due to adjustments, fix that.
+    outputs.set_shape(input_shape)
+
+    return outputs
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
+  def get_config(self):
+    config = {
+        'norm_axis': self.norm_axis,
+        'params_axis': self.params_axis,
+        'epsilon': self.epsilon,
+        'center': self.center,
+        'scale': self.scale,
+        'beta_initializer': initializers.serialize(self.beta_initializer),
+        'gamma_initializer': initializers.serialize(self.gamma_initializer),
+        'beta_regularizer': regularizers.serialize(self.beta_regularizer),
+        'gamma_regularizer': regularizers.serialize(self.gamma_regularizer),
+        'beta_constraint': constraints.serialize(self.beta_constraint),
+        'gamma_constraint': constraints.serialize(self.gamma_constraint)
+    }
+    base_config = super(LayerNormalization, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))

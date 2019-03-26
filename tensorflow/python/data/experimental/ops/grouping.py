@@ -130,7 +130,8 @@ def bucket_by_sequence_length(element_length_func,
                               padded_shapes=None,
                               padding_values=None,
                               pad_to_bucket_boundary=False,
-                              no_padding=False):
+                              no_padding=False,
+                              drop_remainder=False):
   """A transformation that buckets elements in a `Dataset` by length.
 
   Elements of the `Dataset` are grouped together by length and then are padded
@@ -160,6 +161,10 @@ def bucket_by_sequence_length(element_length_func,
       any elements with length longer than `max(bucket_boundaries)`.
     no_padding: `bool`, indicates whether to pad the batch features (features
       need to be either of type `tf.SparseTensor` or of same shape).
+    drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+      whether the last batch should be dropped in the case it has fewer than
+      `batch_size` elements; the default behavior is not to drop the smaller
+      batch.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -209,7 +214,7 @@ def bucket_by_sequence_length(element_length_func,
       """Batch elements in dataset."""
       batch_size = window_size_fn(bucket_id)
       if no_padding:
-        return grouped_dataset.batch(batch_size)
+        return grouped_dataset.batch(batch_size, drop_remainder=drop_remainder)
       none_filler = None
       if pad_to_bucket_boundary:
         err_msg = ("When pad_to_bucket_boundary=True, elements must have "
@@ -224,10 +229,11 @@ def bucket_by_sequence_length(element_length_func,
                                             dtype=dtypes.int64)
           bucket_boundary = boundaries[bucket_id]
           none_filler = bucket_boundary - 1
-      shapes = make_padded_shapes(
-          padded_shapes or grouped_dataset.output_shapes,
-          none_filler=none_filler)
-      return grouped_dataset.padded_batch(batch_size, shapes, padding_values)
+      input_shapes = dataset_ops.get_legacy_output_shapes(grouped_dataset)
+      shapes = make_padded_shapes(padded_shapes or input_shapes,
+                                  none_filler=none_filler)
+      return grouped_dataset.padded_batch(
+          batch_size, shapes, padding_values, drop_remainder=drop_remainder)
 
     def _apply_fn(dataset):
       return dataset.apply(
@@ -270,6 +276,7 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
           "`key_func` must return a single tf.int64 tensor. "
           "Got type=%s and shape=%s"
           % (self._key_func.output_types, self._key_func.output_shapes))
+
   def _make_init_func(self, init_func):
     """Make wrapping defun for init_func."""
     self._init_func = dataset_ops.StructuredFunctionWrapper(

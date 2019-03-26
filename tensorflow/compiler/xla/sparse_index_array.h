@@ -135,7 +135,7 @@ void SparseIndexArray::SortWithValues(absl::Span<NativeT> values) {
   auto sort_order_less = [this](int64 lhs, int64 rhs) {
     return IndexUtil::CompareIndices(At(lhs), At(rhs)) < 0;
   };
-  std::sort(sort_order.begin(), sort_order.end(), sort_order_less);
+  absl::c_sort(sort_order, sort_order_less);
 
   // Reorder the array elements according to sort_order.  Work through the array
   // and follow cycles so we can do the reorder in-place.

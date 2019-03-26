@@ -22,10 +22,12 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import function
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -70,6 +72,52 @@ class GetSingleElementTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).window(2).flat_map(flat_map_func)
     self.assertDatasetProduces(
         dataset, [[0, 1], [2, 3], [4, 5], [6, 7], [8, 9]])
+
+  def testSideEffect(self):
+    counter_var = variables.Variable(0)
+
+    def increment_fn(x):
+      counter_var.assign_add(1)
+      return x
+
+    def dataset_fn():
+      return dataset_ops.Dataset.range(1).map(increment_fn)
+
+    @function.defun
+    def fn():
+      _ = get_single_element.get_single_element(dataset_fn())
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 1)
+
+  def testAutomaticControlDependencies(self):
+    counter_var = variables.Variable(1)
+
+    def increment_fn(x):
+      counter_var.assign(counter_var + 1)
+      return x
+
+    def multiply_fn(x):
+      counter_var.assign(counter_var * 2)
+      return x
+
+    def dataset1_fn():
+      return dataset_ops.Dataset.range(1).map(increment_fn)
+
+    def dataset2_fn():
+      return dataset_ops.Dataset.range(1).map(multiply_fn)
+
+    @function.defun
+    def fn():
+      _ = get_single_element.get_single_element(dataset1_fn())
+      _ = get_single_element.get_single_element(dataset2_fn())
+      return "hello"
+
+    self.evaluate(counter_var.initializer)
+    self.assertEqual(self.evaluate(fn()), b"hello")
+    self.assertEqual(self.evaluate(counter_var), 4)
 
 
 if __name__ == "__main__":

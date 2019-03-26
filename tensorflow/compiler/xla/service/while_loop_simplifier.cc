@@ -109,8 +109,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       // operand appears in, but it may appear more than once!
       if (user->user_count() == 1 && user->users().front() == while_body_root &&
           while_body_root->operand_index(user) == user->tuple_index() &&
-          std::count(while_body_root->operands().begin(),
-                     while_body_root->operands().end(), user) == 1) {
+          absl::c_count(while_body_root->operands(), user) == 1) {
         continue;
       }
 
@@ -127,7 +126,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // through to the while body's root, count that element as "used", since
   // removing that element would be observable.
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    if (used_tuple_indices.count(i)) {
+    if (used_tuple_indices.contains(i)) {
       continue;
     }
 
@@ -158,7 +157,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                           used_tuple_indices.end());
-  std::sort(new_to_old_tuple_idx.begin(), new_to_old_tuple_idx.end());
+  absl::c_sort(new_to_old_tuple_idx);
 
   absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
   for (int64 new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
@@ -181,7 +180,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // replace the old instructions after we remove unused elements from the while
   // tuple.
   auto make_while_computation_replacements = [&](const HloComputation* comp) {
-    std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements;
 
     auto* param = comp->parameter_instruction(0);
@@ -233,7 +232,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       while_cond->CloneWithReplacements(
           make_while_computation_replacements(while_cond));
 
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
   new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());

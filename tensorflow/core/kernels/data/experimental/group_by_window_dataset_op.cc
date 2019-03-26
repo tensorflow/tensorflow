@@ -42,18 +42,18 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_key_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(key_func_, ctx,
-                                                 "key_func_other_arguments",
-                                                 &captured_key_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            key_func_, ctx, "key_func_other_arguments",
+                            /*params=*/{}, &captured_key_func));
     std::unique_ptr<CapturedFunction> captured_reduce_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(reduce_func_, ctx,
-                                                 "reduce_func_other_arguments",
-                                                 &captured_reduce_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            reduce_func_, ctx, "reduce_func_other_arguments",
+                            /*params=*/{}, &captured_reduce_func));
     std::unique_ptr<CapturedFunction> captured_window_size_func;
-    OP_REQUIRES_OK(ctx,
-                   CapturedFunction::Create(window_size_func_, ctx,
-                                            "window_size_func_other_arguments",
-                                            &captured_window_size_func));
+    OP_REQUIRES_OK(
+        ctx, CapturedFunction::Create(
+                 window_size_func_, ctx, "window_size_func_other_arguments",
+                 /*params=*/{}, &captured_window_size_func));
 
     *output = new Dataset(
         ctx, input, key_func_, reduce_func_, window_size_func_,
@@ -89,8 +89,8 @@ class GroupByWindowDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::GroupByWindow")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::GroupByWindow")});
     }
 
     const DataTypeVector& output_dtypes() const override {

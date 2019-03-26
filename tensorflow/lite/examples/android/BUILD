@@ -40,7 +40,7 @@ android_binary(
         "@tflite_mobilenet_ssd//:mobilenet_ssd.tflite",
         "@tflite_mobilenet_ssd_quant//:detect.tflite",
         "//tensorflow/lite/examples/android/app/src/main/assets:box_priors.txt",
-        "//tensorflow/lite/examples/android/app/src/main/assets:coco_labels_list.txt",
+        "//tensorflow/lite/examples/android/app/src/main/assets:labelmap.txt",
     ],
     assets_dir = "",
     custom_package = "org.tensorflow.lite.demo",

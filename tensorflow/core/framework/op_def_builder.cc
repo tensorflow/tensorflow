@@ -316,6 +316,14 @@ bool ConsumeInOutTimesType(StringPiece* sp, StringPiece* out) {
       .GetResult(sp, out);
 }
 
+bool ConsumeControlOutName(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .One(Scanner::LETTER)
+      .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .GetResult(sp, out);
+}
+
 #define VERIFY(expr, ...)                                             \
   do {                                                                \
     if (!(expr)) {                                                    \
@@ -408,6 +416,25 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
 }
 
 #undef VERIFY
+
+string ControlOutError(StringPiece orig, const string& op_name) {
+  return strings::StrCat(" from ControlOutput(\"", orig, "\") for Op ",
+                         op_name);
+}
+
+void FinalizeControlOutput(StringPiece name, OpDef* op_def,
+                           std::vector<string>* errors) {
+  StringPiece orig(name);
+
+  // Parse control output name.
+  StringPiece tmp_name;
+  if (!ConsumeControlOutName(&orig, &tmp_name)) {
+    errors->push_back(strings::StrCat("Trouble parsing 'name:'",
+                                      ControlOutError(orig, op_def->name())));
+  }
+
+  *op_def->add_control_output() = string(tmp_name.data(), tmp_name.size());
+}
 
 int num_leading_spaces(StringPiece s) {
   size_t i = 0;
@@ -545,6 +572,11 @@ OpDefBuilder& OpDefBuilder::Output(string spec) {
   return *this;
 }
 
+OpDefBuilder& OpDefBuilder::ControlOutput(string name) {
+  control_outputs_.push_back(std::move(name));
+  return *this;
+}
+
 #ifndef TF_LEAN_BINARY
 OpDefBuilder& OpDefBuilder::Doc(string text) {
   if (!doc_.empty()) {
@@ -589,8 +621,7 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetShapeFn(
-    Status (*fn)(shape_inference::InferenceContext*)) {
+OpDefBuilder& OpDefBuilder::SetShapeFn(OpShapeInferenceFn fn) {
   if (op_reg_data_.shape_inference_fn != nullptr) {
     errors_.push_back(
         strings::StrCat("SetShapeFn called twice for Op ", op_def()->name()));
@@ -613,6 +644,9 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   }
   for (StringPiece output : outputs_) {
     FinalizeInputOrOutput(output, true, op_def, &errors);
+  }
+  for (StringPiece control_output : control_outputs_) {
+    FinalizeControlOutput(control_output, op_def, &errors);
   }
   FinalizeDoc(doc_, op_def, &errors);
 

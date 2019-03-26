@@ -20,15 +20,26 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
+
+Status GetCompileTimeConstInputs(const Node* node,
+                                 std::vector<int>* const_input_idxs,
+                                 FunctionLibraryRuntime* flib_runtime);
+
 // Backwards dataflow analysis that finds arguments to a graph that must be
 // compile-time constants.
 Status BackwardsConstAnalysis(const Graph& g,
                               std::vector<bool>* compile_time_const_arg_indices,
                               std::vector<bool>* compile_time_const_nodes,
+                              FunctionLibraryRuntime* flib_runtime,
                               std::function<bool(const Edge&)> edge_filter) {
   std::vector<bool> compile_time_const_nodes_impl;
   if (compile_time_const_nodes) {
@@ -61,7 +72,18 @@ Status BackwardsConstAnalysis(const Graph& g,
       }
       for (const Edge* pred : node->in_edges()) {
         if (!pred->IsControlEdge() && edge_filter(*pred)) {
-          (*compile_time_const_nodes)[pred->src()->id()] = true;
+          // If the src node of the `pred` is an IdentityN do not mark it as a
+          // compile-time const. Only mark the corresponding input to the
+          // IdentityN node as a const.
+          // Note: XLA IdentityN op simply forwards its inputs so this is safe.
+          while (edge_filter(*pred) &&
+                 pred->src()->type_string() == "IdentityN") {
+            status = pred->src()->input_edge(pred->src_output(), &pred);
+            if (!status.ok()) return;
+          }
+          if (edge_filter(*pred)) {
+            (*compile_time_const_nodes)[pred->src()->id()] = true;
+          }
         }
       }
       return;
@@ -69,17 +91,29 @@ Status BackwardsConstAnalysis(const Graph& g,
 
     // Mark any compile-time constant operator arguments as const.
     std::vector<int> const_input_idxs;
-    status = XlaOpRegistry::CompileTimeConstantInputs(
-        node->def(), node->op_def(), &const_input_idxs);
+    status = GetCompileTimeConstInputs(node, &const_input_idxs, flib_runtime);
 
     if (!status.ok()) {
       return;
     }
 
     for (Edge const* edge : node->in_edges()) {
-      if (absl::c_binary_search(const_input_idxs, edge->dst_input()) &&
+      if (!edge->IsControlEdge() &&
+          absl::c_binary_search(const_input_idxs, edge->dst_input()) &&
           edge_filter(*edge)) {
-        (*compile_time_const_nodes)[edge->src()->id()] = true;
+        // Do not mark IdentityN nodes as compile-time const.
+        // If the src node of the `pred` is an IdentityN do not mark it as a
+        // compile-time const. Only mark the corresponding input to the
+        // IdentityN node as a const.
+        // Note: XLA IdentityN op simply forwards its inputs so this is safe.
+        while (edge_filter(*edge) &&
+               edge->src()->type_string() == "IdentityN") {
+          status = edge->src()->input_edge(edge->src_output(), &edge);
+          if (!status.ok()) return;
+        }
+        if (edge_filter(*edge)) {
+          (*compile_time_const_nodes)[edge->src()->id()] = true;
+        }
       }
     }
   };
@@ -89,6 +123,94 @@ Status BackwardsConstAnalysis(const Graph& g,
   DFS(g, /*enter=*/{}, /*leave=*/visit, NodeComparatorName{},
       [](const Edge& edge) { return !edge.src()->IsNextIteration(); });
   return status;
+}
+
+Status GetFunctionBody(FunctionLibraryRuntime* flib_runtime, const Node* node,
+                       StringPiece func_attr_name, const FunctionBody** fbody) {
+  NameAttrList name_attr_list;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node->def(), func_attr_name, &name_attr_list));
+  FunctionLibraryRuntime::Handle func_handle;
+  TF_RETURN_IF_ERROR(flib_runtime->Instantiate(
+      name_attr_list.name(), AttrSlice(&name_attr_list.attr()), &func_handle));
+  *fbody = flib_runtime->GetFunctionBody(func_handle);
+  return Status::OK();
+}
+
+Status GetCompileTimeConstInputs(const Node* node,
+                                 std::vector<int>* const_input_idxs,
+                                 FunctionLibraryRuntime* flib_runtime) {
+  // TODO(b/124403063): Implement similar functionality for function call nodes.
+  if (node->type_string() == "While") {
+    // For While nodes, recurse into the body and cond graphs.
+    const FunctionBody* fcond = nullptr;
+    const FunctionBody* fbody = nullptr;
+    TF_RETURN_IF_ERROR(GetFunctionBody(flib_runtime, node, "cond", &fcond));
+    TF_RETURN_IF_ERROR(GetFunctionBody(flib_runtime, node, "body", &fbody));
+    TF_RET_CHECK(fcond);
+    TF_RET_CHECK(fbody);
+    int num_inputs = fbody->fdef.signature().input_arg_size();
+
+    // Stores which of the loop inputs are expected to be compile time
+    // constants.
+    std::vector<bool> compile_time_const_arg_indices(num_inputs);
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(fcond->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(fbody->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+    for (int i = 0; i < num_inputs; i++) {
+      if (compile_time_const_arg_indices[i]) {
+        // Check that this input is actually a loop invariant.
+        // NOTE(srbs): Ideally this should raise an error if the loop body
+        // requires the input at this index to be a compile time const but it is
+        // not a loop invariant. However, that causes problems because const
+        // analysis is performed for the entire graph (in the
+        // MarkForCompilationPass for example) and not just for the ops
+        // that will actually be run using XLA kernels. So we silently return
+        // here and let the error be raised during the actual compilation of the
+        // XLA graph.
+        Node* arg_i = fbody->arg_nodes[i];
+        Node* ret_i = fbody->ret_nodes[i];
+        const Node* ret_i_input_0;
+        TF_RETURN_IF_ERROR(ret_i->input_node(0, &ret_i_input_0));
+        if (ret_i_input_0->id() == arg_i->id()) {
+          const_input_idxs->push_back(i);
+        }
+      }
+    }
+  } else if (node->type_string() == "If") {
+    const FunctionBody* fthen = nullptr;
+    const FunctionBody* felse = nullptr;
+    TF_RETURN_IF_ERROR(
+        GetFunctionBody(flib_runtime, node, "then_branch", &fthen));
+    TF_RETURN_IF_ERROR(
+        GetFunctionBody(flib_runtime, node, "else_branch", &felse));
+    TF_RET_CHECK(fthen);
+    TF_RET_CHECK(felse);
+    int num_inputs = fthen->fdef.signature().input_arg_size();
+    // Stores indices of the "branch function" inputs that are expected to be
+    // compile time constants.
+    std::vector<bool> compile_time_const_arg_indices(num_inputs);
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(fthen->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+    TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+        *(felse->graph), &compile_time_const_arg_indices,
+        /*compile_time_const_nodes=*/nullptr, flib_runtime));
+    for (int i = 0; i < compile_time_const_arg_indices.size(); i++) {
+      if (compile_time_const_arg_indices[i]) {
+        // The 0th input is the loop condition which is not passed to the
+        // branches. So the i'th input of a branch function corresponds to
+        // i + 1'th input of the If op.
+        const_input_idxs->push_back(i + 1);
+      }
+    }
+  } else {
+    return XlaOpRegistry::CompileTimeConstantInputs(node->def(), node->op_def(),
+                                                    const_input_idxs);
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

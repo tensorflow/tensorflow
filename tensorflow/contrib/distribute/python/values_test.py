@@ -20,10 +20,11 @@ from __future__ import print_function
 
 import os
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
+from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
@@ -36,6 +37,16 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import saver as saver_lib
+
+
+# TODO(rchao): Merge parameter_server_strategy_with_two_gpus into
+# third_party/tensorflow/python/distribute/strategy_combinations.py
+# pylint: disable=g-long-lambda
+parameter_server_strategy_with_two_gpus = combinations.NamedDistribution(
+    "ParameterServer2GPUs",
+    lambda: parameter_server_strategy.ParameterServerStrategy(
+        num_gpus_per_worker=2),
+    required_gpus=2)
 
 
 class DistributedValuesTest(test.TestCase):
@@ -495,11 +506,12 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     save_path = self._save_normal()
     self._restore_mirrored(save_path)
 
-  @combinations.generate(combinations.combine(
-      distribution=[
-          combinations.mirrored_strategy_with_one_gpu,
-          combinations.core_mirrored_strategy_with_one_gpu],
-      mode=["graph"]))
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_gpu,
+          ],
+          mode=["graph"]))
   def testFetchAMirroredVariable(self, distribution):
     with self.session(graph=ops.Graph()) as sess, distribution.scope():
       with ops.device("/device:GPU:0"):
@@ -511,6 +523,35 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       sess.run({"complicated": mirrored})
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["graph", "eager"]))
+  def testAssignOutOfScope_mirrored(self, distribution):
+    with distribution.scope():
+      mirrored = variables_lib.Variable(1.)
+    if not isinstance(mirrored, values.MirroredVariable):
+      self.assertIsInstance(mirrored, values.TPUMirroredVariable)
+    self.evaluate(mirrored.assign(3.))
+    self.assertEqual(self.evaluate(mirrored.read_value()), 3.)
+    for component in mirrored.values:
+      self.assertEqual(self.evaluate(component.read_value()), 3.)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[parameter_server_strategy_with_two_gpus],
+          mode=["graph", "eager"]))
+  def testAssignOutOfScope_aggregating(self, distribution):
+    with distribution.scope():
+      aggregating = variables_lib.Variable(1.)
+    self.assertIsInstance(aggregating, values.AggregatingVariable)
+    self.evaluate(aggregating.assign(3.))
+    self.assertEqual(self.evaluate(aggregating.read_value()), 3.)
+    self.assertEqual(self.evaluate(aggregating._v.read_value()), 3.)
 
 _devices = ("/device:GPU:0", "/device:CPU:0")
 
@@ -522,11 +563,11 @@ def _make_replica_local(method, strategy=None):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.ReplicaLocalVariable(strategy, device_map, v, method)
+  replica_local = values.SyncOnReadVariable(strategy, device_map, v, method)
   return v, replica_local
 
 
-class ReplicaLocalVariablePropertiesTest(test.TestCase):
+class SyncOnReadVariablePropertiesTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -549,7 +590,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
-    replica_local = values.ReplicaLocalVariable(
+    replica_local = values.SyncOnReadVariable(
         None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, replica_local.name)
@@ -572,12 +613,13 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
       self.assertEqual(converted.dtype, replica_local.dtype)
 
 
-@combinations.generate(combinations.combine(
-    distribution=[
-        combinations.mirrored_strategy_with_gpu_and_cpu,
-        combinations.core_mirrored_strategy_with_gpu_and_cpu],
-    mode=["graph", "eager"]))
-class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
+@combinations.generate(
+    combinations.combine(
+        distribution=[
+            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+        ],
+        mode=["graph", "eager"]))
+class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):
@@ -656,7 +698,8 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
   def _save_replica_local_sum(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      v, replica_local = _make_replica_local("sum", distribution)
+      v, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [1.5, 2.])

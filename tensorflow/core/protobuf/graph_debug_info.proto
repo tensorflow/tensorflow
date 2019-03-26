@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package tensorflow;
+option cc_enable_arenas = true;
+option java_outer_classname = "GraphDebugInfoProtos";
+option java_multiple_files = true;
+option java_package = "org.tensorflow.framework";
+
+message GraphDebugInfo {
+  // This represents a file/line location in the source code.
+  message FileLineCol {
+    // File name index, which can be used to retrive the file name string from
+    // `files`. The value should be between 0 and (len(files)-1)
+    int32 file_index = 1;
+
+    // Line number in the file.
+    int32 line = 2;
+
+    // Col number in the file line.
+    int32 col = 3;
+
+    // Name of function contains the file line.
+    string func = 4;
+
+    // Source code contained in this file line.
+    string code = 5;
+  }
+
+  // This represents a stack trace which is a ordered list of `FileLineCol`.
+  message StackTrace {
+    // Each line in the stack trace.
+    repeated FileLineCol file_line_cols = 1;
+  }
+
+  // This stores all the source code file names and can be indexed by the
+  // `file_index`.
+  repeated string files = 1;
+
+  // This maps a node name to a stack trace in the source code.
+  map<string, StackTrace> traces = 2;
+}

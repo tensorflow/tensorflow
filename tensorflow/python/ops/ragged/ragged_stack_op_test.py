@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged_array_ops.stack."""
+"""Tests for ragged_concat_ops.stack."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,7 +22,7 @@ from absl.testing import parameterized
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops.ragged import ragged_array_ops
+from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
@@ -330,7 +330,7 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
         if rrank != 0 else constant_op.constant(rt_input)
         for (rt_input, rrank) in zip(rt_inputs, ragged_ranks)
     ]
-    stacked = ragged_array_ops.stack(rt_inputs, axis)
+    stacked = ragged_concat_ops.stack(rt_inputs, axis)
     if expected_ragged_rank is not None:
       self.assertEqual(stacked.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
@@ -360,7 +360,7 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
           message='axis=3 out of bounds: expected -3<=axis<3'),
   )
   def testError(self, rt_inputs, axis, error, message):
-    self.assertRaisesRegexp(error, message, ragged_array_ops.stack, rt_inputs,
+    self.assertRaisesRegexp(error, message, ragged_concat_ops.stack, rt_inputs,
                             axis)
 
   def testSingleTensorInput(self):
@@ -371,7 +371,7 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
     equivalent to expand_dims(axis=0).  This test exercises that path.
     """
     rt_inputs = ragged_factory_ops.constant([[1, 2], [3, 4]])
-    stacked = ragged_array_ops.stack(rt_inputs, 0)
+    stacked = ragged_concat_ops.stack(rt_inputs, 0)
     self.assertRaggedEqual(stacked, [[[1, 2], [3, 4]]])
 
 

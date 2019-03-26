@@ -164,7 +164,6 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_RepeatedInput) {
   item.graph.Swap(&output);
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
@@ -356,6 +355,32 @@ TEST_F(DependencyOptimizerTest, RemoveIdentityOps_DeviceBoundaries) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
+TEST_F(DependencyOptimizerTest, RemoveIdentityOps_IdenticalDevices) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  auto id_a = ops::Identity(s.WithOpName("id_a").WithDevice("/CPU:1"), x);
+  Output id =
+      ops::Identity(s.WithControlDependencies(id_a).WithDevice("/CPU:0"), id_a);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("Identity");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.name(), "id_a");
+    if (node.name() == "Identity") {
+      EXPECT_EQ(node.input(0), "x");
+    }
+  }
+}
+
 TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
@@ -443,31 +468,31 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
     EXPECT_NE("id_b", node.name());
     EXPECT_NE("id_c", node.name());
     if (node.name() == "a_a" || node.name() == "a_b") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("x", node.input(0));
       ++found;
     }
     if (node.name() == "a_c" || node.name() == "a_d") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("z", node.input(0));
       EXPECT_EQ("^x", node.input(1));
       ++found;
     }
     if (node.name() == "b_a") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("^y", node.input(1));
       EXPECT_EQ("^z", node.input(2));
       ++found;
     }
     if (node.name() == "c_a") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("^y", node.input(1));
       ++found;
     }
     if (node.name() == "c_b") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("z", node.input(0));
       EXPECT_EQ("^x", node.input(1));
       EXPECT_EQ("^y", node.input(2));
@@ -748,7 +773,6 @@ TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
   EXPECT_EQ(3, output.node_size());
   for (const auto& node : output.node()) {
     EXPECT_NE("x_on_2", node.name());

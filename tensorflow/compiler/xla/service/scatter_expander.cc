@@ -59,7 +59,7 @@ static StatusOr<HloInstruction*> CanonicalizeScatterIndices(
   TF_ASSIGN_OR_RETURN(
       HloInstruction * transposed_scatter_indices,
       TransposeIndexVectorDimToLast(scatter_indices, index_vector_dim));
-  if (ShapeUtil::Rank(scatter_indices->shape()) == index_vector_dim + 1 &&
+  if (scatter_indices->shape().rank() == index_vector_dim + 1 &&
       scatter_indices->shape().dimensions(index_vector_dim) == 1) {
     auto new_shape =
         ShapeUtil::DeleteDimension(index_vector_dim, scatter_indices->shape());
@@ -134,6 +134,13 @@ static StatusOr<HloInstruction*> ExpandIndexVectorIntoOperandSpace(
     int64 operand_rank) {
   HloComputation* computation = index_vector->parent();
   const Shape& index_shape = index_vector->shape();
+
+  // Scatter of a scalar. Return a zero-sized vector of indices.
+  if (operand_rank == 0) {
+    return computation->AddInstruction(HloInstruction::CreateConstant(
+        LiteralUtil::CreateFromDimensions(index_shape.element_type(), {0})));
+  }
+
   HloInstruction* zero =
       computation->AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateFromDimensions(index_shape.element_type(), {1})));
@@ -171,12 +178,12 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
   // Valid range for the index: [0, operand_dims - window_sizes]
 
   // Check if the index has any negative values.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * zero_index,
+  HloInstruction* zero_index =
       BroadcastZeros(computation, index->shape().element_type(),
-                     AsInt64Slice(index->shape().dimensions())));
-  TF_ASSIGN_OR_RETURN(HloInstruction * negative_index_check,
-                      MakeBinaryHlo(HloOpcode::kLe, zero_index, index));
+                     AsInt64Slice(index->shape().dimensions()));
+  TF_ASSIGN_OR_RETURN(
+      HloInstruction * negative_index_check,
+      MakeCompareHlo(ComparisonDirection::kLe, zero_index, index));
 
   // Check if the index is OOB w.r.t. the operand dimensions and window sizes.
   std::vector<int64> max_valid_index(operand_dims.size());
@@ -187,9 +194,9 @@ static StatusOr<HloInstruction*> CheckIndexValidity(
       HloInstruction * max_valid_index_constant,
       MakeR1ConstantHlo<int64>(computation, index->shape().element_type(),
                                max_valid_index));
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * oob_index_check,
-      MakeBinaryHlo(HloOpcode::kGe, max_valid_index_constant, index));
+  TF_ASSIGN_OR_RETURN(HloInstruction * oob_index_check,
+                      MakeCompareHlo(ComparisonDirection::kGe,
+                                     max_valid_index_constant, index));
 
   // Combine the results of the two checks above.
   TF_ASSIGN_OR_RETURN(
@@ -222,10 +229,9 @@ static StatusOr<std::vector<HloInstruction*>> ScatterLoopBody(
   bool has_scalar_indices = scatter_indices->shape().dimensions_size() == 1;
 
   // Build a vector form of the induction variable of the while loop.
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * induction_var_as_vector,
+  HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
-                       /*result_shape_bounds=*/{1}));
+                       /*result_shape_bounds=*/{1});
 
   // Pick the index to scatter from scatter_indices based on the induction_var
   // and transform that to an index into the `operand` space.

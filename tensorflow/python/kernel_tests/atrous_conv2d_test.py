@@ -160,7 +160,7 @@ class AtrousConv2DTest(test.TestCase):
                                                       [x_shape, f_shape],
                                                       output, y_shape)
         print("atrous_conv2d gradient err = %g " % err)
-        err_tolerance = 1e-3
+        err_tolerance = 4e-3 if test_util.is_xla_enabled() else 1e-3
         self.assertLess(err, err_tolerance)
 
 

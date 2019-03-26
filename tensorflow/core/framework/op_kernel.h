@@ -16,7 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 #define TENSORFLOW_CORE_FRAMEWORK_OP_KERNEL_H_
 
-#include <atomic>
 #include <functional>
 
 #include <utility>
@@ -48,7 +47,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -118,34 +116,10 @@ class OpKernel {
   virtual AsyncOpKernel* AsAsync() { return nullptr; }
   virtual const AsyncOpKernel* AsAsync() const { return nullptr; }
 
-  // Initial time (in CPU cycles) we expect an operation to take.  Used to
-  // determine whether an operation should be place in a threadpool.  Operations
-  // start out "expensive".
-  static const uint64 kInitialCostEstimateCycles = 100 * 1000 * 1000;
-  static const uint64 kOpIsExpensiveThresholdCycles = 5000;
-  static const uint64 kCostDecay = 10;
-
   // Returns true iff this op kernel is considered "expensive". The
   // runtime may use this flag to optimize graph execution for example
   // to "inline" inexpensive kernels.
-  virtual bool IsExpensive() {
-    return expensive_ && (cost_estimate_.load(std::memory_order_relaxed) >
-                          kOpIsExpensiveThresholdCycles);
-  }
-
-  // Updates the dynamic cost estimate, which is used to determine whether this
-  // op is expensive. The new cost estimate is a weighted average of the old
-  // cost estimate and the latest cost.
-  void UpdateCostEstimate(uint64 elapsed_cycles) {
-    // N.B. Updates to `cost_estimate_` are atomic but unlocked.  Simulataneous
-    // updates may result in one or more updates being ignored.  This does not
-    // affect correctness but may slow down the update frequency.
-    cost_estimate_.store(
-        (kCostDecay - 1) * cost_estimate_.load(std::memory_order_relaxed) /
-                kCostDecay +
-            (elapsed_cycles / kCostDecay),
-        std::memory_order_relaxed);
-  }
+  virtual bool IsExpensive() { return expensive_; }
 
   // Accessors.
   const NodeDef& def() const { return *def_; }
@@ -210,7 +184,6 @@ class OpKernel {
   NameRangeMap input_name_map_;
   NameRangeMap output_name_map_;
   bool expensive_;
-  std::atomic_uint_fast64_t cost_estimate_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernel);
 };
@@ -231,6 +204,8 @@ class AsyncOpKernel : public OpKernel {
   const AsyncOpKernel* AsAsync() const final { return this; }
 
   void Compute(OpKernelContext* context) final;
+
+  bool IsExpensive() override { return true; }
 };
 
 // Wraps a tensor that is held by an Op across calls to Compute(). For
@@ -525,11 +500,42 @@ struct TensorValue {
 // Used to store partitioned graphs from function-calling ops.
 struct GraphCollector {
   mutex mu;
-  std::vector<GraphDef> graphs GUARDED_BY(mu);
+  std::vector<GraphDef> partitioned_graphs GUARDED_BY(mu);
+  GraphDef raw_graph GUARDED_BY(mu);
+  GraphDef optimized_graph GUARDED_BY(mu);
 
-  void CollectGraph(const GraphDef& graph) {
+  bool dirty GUARDED_BY(mu);
+
+  GraphCollector() : dirty(false) {}
+
+  void CollectRawGraph(const GraphDef& graph) {
     mutex_lock ml(mu);
-    graphs.push_back(graph);
+    raw_graph.MergeFrom(graph);
+    dirty = true;
+  }
+
+  void CollectOptimizedGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    optimized_graph.MergeFrom(graph);
+    dirty = true;
+  }
+
+  void CollectPartitionedGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    partitioned_graphs.push_back(graph);
+    dirty = true;
+  }
+
+  void ClearGraphs() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    raw_graph.Clear();
+    optimized_graph.Clear();
+    partitioned_graphs.clear();
+    dirty = false;
+  }
+
+  bool HasUpdatedGraphs() {
+    mutex_lock ml(mu);
+    return dirty;
   }
 };
 
@@ -606,6 +612,9 @@ class OpKernelContext {
     // The session state for this op.
     SessionState* session_state = nullptr;
 
+    // Unique session identifier. Can be empty.
+    string session_handle;
+
     // The tensor store for this op.
     TensorStore* tensor_store = nullptr;
 
@@ -643,6 +652,10 @@ class OpKernelContext {
     static const int kNoReservation = -1;
     // Values in [0,...) represent reservations for the indexed output.
     const int* forward_from_array = nullptr;
+
+    // For tracking actively running deferred ops.
+    std::function<void()> inc_num_deferred_ops_function = []() {};
+    std::function<void()> dec_num_deferred_ops_function = []() {};
   };
 
   // params must outlive the OpKernelContext.
@@ -1034,6 +1047,9 @@ class OpKernelContext {
   // An op kernel can access the session state it belongs to.
   SessionState* session_state() const { return params_->session_state; }
 
+  // Unique identifier of the session it belongs to. Can be empty.
+  string session_handle() const { return params_->session_handle; }
+
   // An op kernel can access the tensor store of the run it belongs to.
   TensorStore* tensor_store() const { return params_->tensor_store; }
 
@@ -1097,7 +1113,7 @@ class OpKernelContext {
 
   // Cancellation.
   //
-  // EXPERIMENTAL. See the implementation in tensorflow::TensorQueue for an
+  // EXPERIMENTAL. See the implementation in tensorflow::FIFOQueue for an
   // example of how to use this API.
   CancellationManager* cancellation_manager() const {
     return params_->cancellation_manager;
@@ -1165,6 +1181,24 @@ class OpKernelContext {
   void clear_recorded_memory() LOCKS_EXCLUDED(stats_mu_);
 
   bool input_is_ref(int index) const;
+
+  // Used by OpKernel implementations to track actively running deferred ops.
+  //
+  // A deferred op is one whose Compute method returns (or whose ComputeAsync
+  // method invokes the callback) when work is scheduled onto a device. At that
+  // point, we don't know when the work will actually complete (or if it has
+  // already completed) on the device. These functions allow the executor to
+  // track the status of deferred ops and act accordingly.
+  //
+  // Deferred OpKernel implementations must use these methods to get two
+  // functions. It then must call these two functions in pairs, before and after
+  // device execution, respectively.
+  TF_MUST_USE_RESULT std::function<void()> inc_num_deferred_ops_function() {
+    return params_->inc_num_deferred_ops_function;
+  }
+  TF_MUST_USE_RESULT std::function<void()> dec_num_deferred_ops_function() {
+    return params_->dec_num_deferred_ops_function;
+  }
 
  private:
   Allocator* get_allocator(AllocatorAttributes attr);
@@ -1408,23 +1442,21 @@ class OpKernelRegistrar {
     // Perform the check in the header to allow compile-time optimization
     // to a no-op, allowing the linker to remove the kernel symbols.
     if (kernel_def != nullptr) {
-      struct PtrOpKernelFactory : public OpKernelFactory {
-        explicit PtrOpKernelFactory(
-            OpKernel* (*create_func)(OpKernelConstruction*))
-            : create_func_(create_func) {}
-
-        OpKernel* Create(OpKernelConstruction* context) override {
-          return (*create_func_)(context);
-        }
-
-        OpKernel* (*create_func_)(OpKernelConstruction*);
-      };
       InitInternal(kernel_def, kernel_class_name,
                    absl::make_unique<PtrOpKernelFactory>(create_fn));
     }
   }
 
  private:
+  struct PtrOpKernelFactory : public OpKernelFactory {
+    explicit PtrOpKernelFactory(OpKernel* (*create_func)(OpKernelConstruction*))
+        : create_func_(create_func) {}
+
+    OpKernel* Create(OpKernelConstruction* context) override;
+
+    OpKernel* (*create_func_)(OpKernelConstruction*);
+  };
+
   void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
                     std::unique_ptr<OpKernelFactory> factory);
 };

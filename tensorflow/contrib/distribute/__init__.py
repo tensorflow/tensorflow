@@ -35,8 +35,8 @@ from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
 from tensorflow.python.distribute.cross_device_ops import *
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.distribute.distribute_coordinator import run_standard_tensorflow_server
-from tensorflow.python.training.distribute import *
-from tensorflow.python.training.distribution_strategy_context import *
+from tensorflow.python.distribute.distribute_lib import *
+from tensorflow.python.distribute.distribution_strategy_context import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 
@@ -64,7 +64,9 @@ _allowed_symbols = [
     'get_distribution_strategy',
     'get_loss_reduction',
     'get_replica_context',
+    'get_strategy',
     'has_distribution_strategy',
+    'has_strategy',
     'in_cross_replica_context',
     'require_replica_context',
     'run_standard_tensorflow_server',

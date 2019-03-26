@@ -19,7 +19,10 @@ java_test(
         "//tensorflow/lite/java/ovic/src/testdata:ovic_testdata",
     ],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
+    tags = [
+        "no_mac",
+        "no_oss",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.ovic.OvicClassifierTest",
     visibility = ["//visibility:public"],
     deps = [
@@ -87,7 +90,10 @@ java_test(
         "//tensorflow/lite/java/ovic/src/testdata:ovic_testdata",
     ],
     javacopts = JAVACOPTS,
-    tags = ["no_oss"],
+    tags = [
+        "no_mac",
+        "no_oss",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+    ],
     test_class = "org.tensorflow.ovic.OvicDetectorTest",
     visibility = ["//visibility:public"],
     deps = [

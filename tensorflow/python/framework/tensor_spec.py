@@ -37,7 +37,7 @@ class TensorSpec(object):
 
   __slots__ = ["_shape", "_shape_tuple", "_dtype", "_name"]
 
-  def __init__(self, shape, dtype, name=None):
+  def __init__(self, shape, dtype=dtypes.float32, name=None):
     """Creates a TensorSpec.
 
     Args:
@@ -108,7 +108,9 @@ class TensorSpec(object):
     return hash((self._shape_tuple, self.dtype))
 
   def __eq__(self, other):
-    return self.shape == other.shape and self.dtype == other.dtype
+    return (self._shape_tuple == other._shape_tuple  # pylint: disable=protected-access
+            and self.dtype == other.dtype
+            and self._name == other._name)  # pylint: disable=protected-access
 
   def __ne__(self, other):
     return not self == other

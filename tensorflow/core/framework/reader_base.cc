@@ -202,7 +202,7 @@ string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
   string work;
   Notification n;
   queue->TryDequeue(
-      context, [this, context, &n, &work](const QueueInterface::Tuple& tuple) {
+      context, [context, &n, &work](const QueueInterface::Tuple& tuple) {
         if (context->status().ok()) {
           if (tuple.size() != 1) {
             context->SetStatus(
@@ -241,7 +241,7 @@ Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
   num_records_produced_ = state.num_records_produced();
   work_ = state.current_work();
   if (work_started_ < 0 || work_finished_ < 0 || num_records_produced_ < 0) {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
     const string debug_string = "<debug state not available>";
 #else
     const string debug_string = state.DebugString();
@@ -251,7 +251,7 @@ Status ReaderBase::RestoreBaseState(const ReaderBaseState& state) {
         debug_string);
   }
   if (work_started_ > work_finished_) {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || (__EMSCRIPTEN__)
     const string debug_string = "<debug state not available>";
 #else
     const string debug_string = state.DebugString();

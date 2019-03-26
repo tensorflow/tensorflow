@@ -23,8 +23,11 @@ limitations under the License.
 #include <iterator>
 #include <memory>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
+
+#include "absl/meta/type_traits.h"
 
 namespace tensorflow {
 namespace gtl {
@@ -48,16 +51,38 @@ inline const T* vector_as_array(const std::vector<T, Allocator>* v) {
   return v->data();
 }
 
+namespace gtl_internal {
+
+// HasMember is true_type or false_type, depending on whether or not
+// T has a __resize_default_init member. Resize will call the
+// __resize_default_init member if it exists, and will call the resize
+// member otherwise.
+template <typename string_type, typename = void>
+struct ResizeUninitializedTraits {
+  using HasMember = std::false_type;
+  static void Resize(string_type* s, size_t new_size) { s->resize(new_size); }
+};
+
+// __resize_default_init is provided by libc++ >= 8.0 and by Google's internal
+// ::string implementation.
+template <typename string_type>
+struct ResizeUninitializedTraits<
+    string_type, absl::void_t<decltype(std::declval<string_type&>()
+                                           .__resize_default_init(237))> > {
+  using HasMember = std::true_type;
+  static void Resize(string_type* s, size_t new_size) {
+    s->__resize_default_init(new_size);
+  }
+};
+
+}  // namespace gtl_internal
+
 // Like str->resize(new_size), except any new characters added to "*str" as a
 // result of resizing may be left uninitialized, rather than being filled with
 // '0' bytes. Typically used when code is then going to overwrite the backing
-// store of the string with known data. Uses a Google extension to ::string.
+// store of the string with known data.
 inline void STLStringResizeUninitialized(string* s, size_t new_size) {
-#if __google_stl_resize_uninitialized_string
-  s->resize_uninitialized(new_size);
-#else
-  s->resize(new_size);
-#endif
+  gtl_internal::ResizeUninitializedTraits<string>::Resize(s, new_size);
 }
 
 // Calls delete (non-array version) on the SECOND item (pointer) in each pair in

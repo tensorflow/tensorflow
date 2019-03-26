@@ -58,6 +58,24 @@ xla_proto_library(
 )
 
 cc_library(
+    name = "comparison_util",
+    srcs = [
+        "comparison_util.cc",
+    ],
+    hdrs = [
+        "comparison_util.h",
+    ],
+    visibility = [":friends"],
+    deps = [
+        ":statusor",
+        ":types",
+        ":util",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
+
+cc_library(
     name = "execution_options_util",
     srcs = [
         "execution_options_util.cc",
@@ -150,9 +168,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor/lib",
     ],
 )
 
@@ -194,7 +210,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
@@ -717,6 +733,7 @@ cc_library(
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
@@ -741,6 +758,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_evaluator",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
@@ -824,13 +842,14 @@ cc_library(
         "debug_options_parsers.h",
     ],
     hdrs = ["debug_options_flags.h"],
+    visibility = [":friends"],
     deps =
         [
             ":parse_flags_from_env",
+            ":status",
             "//tensorflow/compiler/xla:xla_proto",
             "//tensorflow/compiler/xla/service:hlo",
             "//tensorflow/core:framework_internal",
-            "//tensorflow/core:lib",
             "@com_google_absl//absl/strings",
         ],
 )

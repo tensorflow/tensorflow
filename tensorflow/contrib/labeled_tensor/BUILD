@@ -155,7 +155,7 @@ py_library(
         ":core",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:numerics",
         "//tensorflow/python:random_ops",

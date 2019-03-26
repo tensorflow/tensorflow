@@ -35,6 +35,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_MODEL_H_
 
 #include <memory>
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
@@ -197,12 +198,14 @@ class InterpreterBuilder {
   TfLiteStatus BuildLocalIndexToRegistrationMapping();
   TfLiteStatus ParseNodes(
       const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-      Interpreter* interpreter);
+      Subgraph* subgraph);
   TfLiteStatus ParseTensors(
       const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
       const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-      Interpreter* interpreter);
+      Subgraph* subgraph);
   TfLiteStatus ApplyDelegates(Interpreter* interpreter);
+  TfLiteStatus ParseQuantization(const QuantizationParameters* src_quantization,
+                                 TfLiteQuantization* quantization);
 
   const ::tflite::Model* model_;
   const OpResolver& op_resolver_;

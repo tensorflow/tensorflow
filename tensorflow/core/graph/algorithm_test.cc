@@ -156,7 +156,6 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
 
 TEST(AlgorithmTest, PostOrderWithEdgeFilter) {
   GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-  string error;
   Node* n0 = ops::SourceOp("TestParams", b.opts().WithName("n0"));
   Node* n1 = ops::UnaryOp("TestUnary", n0, b.opts().WithName("n1"));
   Node* n2 = ops::UnaryOp("TestUnary", n1, b.opts().WithName("n2"));

@@ -10,6 +10,9 @@ build:android_arm64 --config=android
 build:android_arm64 --cpu=arm64-v8a
 build:android_arm64 --fat_apk_cpu=arm64-v8a
 
+# Sets the default Apple platform to macOS.
+build --apple_platform_type=macos
+
 # Config to use a mostly-static build and disable modular op registration
 # support (this will revert to loading TensorFlow with RTLD_GLOBAL in Python).
 # By default, TensorFlow will build with a dependence on
@@ -25,12 +28,14 @@ build --define framework_shared_object=true
 # If you would like to use a local MKL instead of downloading, please set the
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
+build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
 build:mkl -c opt
 
 # This config option is used to enable MKL-DNN open source library only,
 # without depending on MKL binary version.
 build:mkl_open_source_only --define=build_with_mkl_dnn_only=true
 build:mkl_open_source_only --define=build_with_mkl=true --define=enable_mkl=true
+build:mkl_open_source_only --define=tensorflow_mkldnn_contraction_kernel=0
 
 build:download_clang --crosstool_top=@local_config_download_clang//:toolchain
 build:download_clang --define=using_clang=true
@@ -65,6 +70,7 @@ build:sycl_trisycl --define=using_sycl=true --define=using_trisycl=true
 build:gdr --define=with_gdr_support=true
 build:ngraph --define=with_ngraph_support=true
 build:verbs --define=with_verbs_support=true
+build:numa --define=with_numa_support=true
 
 # Options to disable default on features
 build:noaws --define=no_aws_support=true
@@ -78,7 +84,7 @@ build --define=use_fast_cpp_protos=true
 build --define=allow_oversize_protos=true
 
 build --spawn_strategy=standalone
-build --genrule_strategy=standalone
+build --strategy=Genrule=standalone
 build -c opt
 
 # Other build flags.
@@ -87,6 +93,12 @@ build --define=grpc_no_ares=true
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true
 build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
+
+# Build TF with C++ 17 features.
+build:c++17 --cxxopt=-std=c++1z
+build:c++17 --cxxopt=-stdlib=libc++
+build:c++1z --cxxopt=-std=c++1z
+build:c++1z --cxxopt=-stdlib=libc++
 
 # Default paths for TF_SYSTEM_LIBS
 build --define=PREFIX=/usr

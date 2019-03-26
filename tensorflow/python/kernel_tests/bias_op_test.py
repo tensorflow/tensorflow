@@ -35,8 +35,6 @@ class BiasAddTest(test.TestCase):
 
   def _npBias(self, inputs, bias):
     assert len(bias.shape) == 1
-    print(inputs.shape)
-    print(bias.shape)
     assert inputs.shape[-1] == bias.shape[0]
     return inputs + bias.reshape(([1] * (len(inputs.shape) - 1)) +
                                  [bias.shape[0]])
@@ -132,6 +130,12 @@ class BiasAddTest(test.TestCase):
       self._testAll(
           np.random.rand(4, 3, 2, 3).astype(t),
           np.random.rand(3).astype(t))
+      self._testAll(
+          np.random.rand(2048, 4, 4, 4).astype(t),
+          np.random.rand(4).astype(t))
+      self._testAll(
+          np.random.rand(4, 4, 4, 2048).astype(t),
+          np.random.rand(2048).astype(t))
 
   @test_util.run_deprecated_v1
   def test5DFloatTypes(self):
@@ -188,7 +192,7 @@ class BiasAddTest(test.TestCase):
                                                             bias_add_grad,
                                                             bias.shape)
 
-      threshold = 2e-3
+      threshold = 5e-3
       if dtype == dtypes.float64:
         threshold = 1e-10
       self.assertAllClose(tensor_jacob_t, tensor_jacob_n, threshold, threshold)
@@ -196,9 +200,7 @@ class BiasAddTest(test.TestCase):
       self.assertAllClose(grad_jacob_t, grad_jacob_n, threshold, threshold)
 
   @test_util.run_deprecated_v1
-  def testGradientTensor(self):
-    # TODO(yongtang): BiasAddGrad with NCHW only works 4D. Reenable once
-    # all dimensions are supported.
+  def testGradientTensor2D(self):
     for (data_format, use_gpu) in ("NHWC", False), ("NHWC", True):
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         np_input = np.array(
@@ -208,14 +210,43 @@ class BiasAddTest(test.TestCase):
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
   @test_util.run_deprecated_v1
+  def testGradientTensor3D(self):
+    for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
+                                   ("NCHW", False), ("NCHW", True)]:
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+        np_input = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                            dtype=dtype.as_numpy_dtype).reshape(1, 3, 2)
+        bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
+        self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+
+  @test_util.run_deprecated_v1
   def testGradientTensor4D(self):
-    # BiasAddGrad with NCHW support 4D so all are enabled.
+    for (data_format, use_gpu) in [("NHWC", False)]:
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+        np_input = np.arange(
+            1.0, 49.0, dtype=dtype.as_numpy_dtype).reshape(
+                [2, 3, 4, 2]).astype(np.float32)
+        bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
+        self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+        np_input = np.arange(
+            1.0, 513.0, dtype=dtype.as_numpy_dtype).reshape(
+                [64, 2, 2, 2]).astype(np.float32)
+        self._testGradient(np_input, bias, dtype, data_format, use_gpu)
+        np_input = np.arange(
+            1.0, 513.0, dtype=dtype.as_numpy_dtype).reshape(
+                [2, 2, 2, 64]).astype(np.float32)
+        self._testGradient(np_input,
+                           np.random.rand(64).astype(dtype.as_numpy_dtype),
+                           dtype, data_format, use_gpu)
+
+  @test_util.run_deprecated_v1
+  def testGradientTensor5D(self):
     for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
                                    ("NCHW", False), ("NCHW", True)]:
       for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
         np_input = np.arange(
             1.0, 49.0, dtype=dtype.as_numpy_dtype).reshape(
-                [2, 3, 4, 2]).astype(np.float32)
+                [1, 2, 3, 4, 2]).astype(np.float32)
         bias = np.array([1.3, 2.4], dtype=dtype.as_numpy_dtype)
         self._testGradient(np_input, bias, dtype, data_format, use_gpu)
 
@@ -227,10 +258,15 @@ class BiasAddTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testEmptyGradient(self):
-    # TODO(yongtang): BiasAddGrad with NCHW only works 4D. Reenable once
-    # all dimensions are supported.
     for (data_format, use_gpu) in ("NHWC", False), ("NHWC", True):
-      for shape in (0, 0), (2, 0), (0, 2), (4, 3, 0), (4, 0, 3), (0, 4, 3):
+      for shape in (0, 0), (2, 0), (0, 2):
+        self._testGradient(
+            np.random.randn(*shape), np.random.randn(shape[-1]), dtypes.float64,
+            data_format, use_gpu)
+
+    for (data_format, use_gpu) in [("NHWC", False), ("NHWC", True),
+                                   ("NCHW", False), ("NCHW", True)]:
+      for shape in (4, 3, 0), (4, 0, 3), (0, 4, 3):
         self._testGradient(
             np.random.randn(*shape),
             np.random.randn(shape[-1]), dtypes.float64, data_format, use_gpu)

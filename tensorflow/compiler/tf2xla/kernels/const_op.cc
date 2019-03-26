@@ -83,6 +83,17 @@ class ConstOp : public XlaOpKernel {
             return;
           }
           break;
+        case DT_COMPLEX128:
+          if (proto_.scomplex_val_size() == 2) {
+            ctx->SetOutput(
+                0,
+                xla::Broadcast(xla::ConstantR0<xla::complex128>(
+                                   b, xla::complex128(proto_.dcomplex_val(0),
+                                                      proto_.dcomplex_val(1))),
+                               shape.dim_sizes()));
+            return;
+          }
+          break;
         case DT_INT32:
           if (proto_.int_val_size() == 1) {
             ctx->SetOutput(

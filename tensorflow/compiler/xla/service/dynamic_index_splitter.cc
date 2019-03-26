@@ -45,17 +45,10 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
       }
       auto parent = dynamic_op->parent();
       bool is_update = dynamic_op->opcode() == HloOpcode::kDynamicUpdateSlice;
-      int64 index_operand_number = Cast<HloDynamicIndexInstruction>(dynamic_op)
-                                       ->first_index_operand_number();
-      auto index_operand = dynamic_op->mutable_operand(index_operand_number);
-      if (ShapeUtil::IsScalar(index_operand->shape())) {
-        // This DS/DUS already uses scalar indices.
-        continue;
-      }
-      TF_RET_CHECK(index_operand->shape().rank() == 1);
-      int64 num_indices = index_operand->shape().dimensions(0);
+      int64 num_indices = dynamic_op->operand(0)->shape().rank();
+
       if (num_indices == 0) {
-        // If the operand dimension is 0, directly replace R0 DS/DUS with the
+        // If the operand rank is 0, directly replace R0 DS/DUS with the
         // operand (for DS) or update (for DUS).
         if (is_update) {
           TF_CHECK_OK(parent->ReplaceInstruction(
@@ -67,6 +60,15 @@ StatusOr<bool> DynamicIndexSplitter::Run(HloModule* module) {
         changed = true;
         continue;
       }
+
+      int64 index_operand_number = Cast<HloDynamicIndexInstruction>(dynamic_op)
+                                       ->first_index_operand_number();
+      auto index_operand = dynamic_op->mutable_operand(index_operand_number);
+      if (ShapeUtil::IsScalar(index_operand->shape())) {
+        // This DS/DUS already uses scalar indices.
+        continue;
+      }
+      TF_RET_CHECK(index_operand->shape().rank() == 1);
       auto index_element_type = index_operand->shape().element_type();
       std::vector<HloInstruction*> index_array;
       for (int64 dim = 0; dim < num_indices; ++dim) {

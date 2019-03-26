@@ -4,11 +4,11 @@ load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive", "http_file"
 
 http_archive(
     name = "io_bazel_rules_closure",
-    sha256 = "a38539c5b5c358548e75b44141b4ab637bba7c4dc02b46b1f62a96d6433f56ae",
-    strip_prefix = "rules_closure-dbb96841cc0a5fb2664c37822803b06dab20c7d1",
+    sha256 = "ddce3b3a3909f99b28b25071c40b7fec7e2e1d1d1a4b2e933f3082aa99517105",
+    strip_prefix = "rules_closure-316e6133888bfc39fb860a4f1a31cfcbae485aef",
     urls = [
-        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",
-        "https://github.com/bazelbuild/rules_closure/archive/dbb96841cc0a5fb2664c37822803b06dab20c7d1.tar.gz",  # 2018-04-13
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",
+        "https://github.com/bazelbuild/rules_closure/archive/316e6133888bfc39fb860a4f1a31cfcbae485aef.tar.gz",  # 2019-03-21
     ],
 )
 
@@ -29,7 +29,7 @@ load(
 bazel_toolchains_repositories()
 
 load(
-    "@io_bazel_rules_docker//container:container.bzl",
+    "@io_bazel_rules_docker//repositories:repositories.bzl",
     container_repositories = "repositories",
 )
 
@@ -43,29 +43,47 @@ remote_config_workspace()
 # Apple and Swift rules.
 http_archive(
     name = "build_bazel_rules_apple",
-    sha256 = "4fe4ee824200b48821730f89ff260984332dc3551db587c24691235d1d96a8a7",
-    strip_prefix = "rules_apple-0.10.0",
-    urls = ["https://github.com/bazelbuild/rules_apple/archive/0.10.0.tar.gz"],
-)
-http_archive(
-    name = "build_bazel_rules_swift",
-    sha256 = "6544ff5615febec0342de1127144d2f3e43ea80fb7f9b1ade65e6a184e39e618",
-    strip_prefix = "rules_swift-0.5.0",
-    urls = ["https://github.com/bazelbuild/rules_swift/archive/0.5.0.tar.gz"],
-)
-http_archive(
-    name = "bazel_skylib",
-    sha256 = "eb5c57e4c12e68c0c20bc774bfbc60a568e800d025557bc4ea022c6479acc867",
-    strip_prefix = "bazel-skylib-0.6.0",
-    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/0.6.0.tar.gz"],
+    sha256 = "4b90786009fa8df25230442244bad2832ba8d6bc4987f68150a7de59c8827e90",
+    strip_prefix = "rules_apple-0.14.0",
+    urls = ["https://github.com/bazelbuild/rules_apple/archive/0.14.0.tar.gz"],
 )
 http_file(
     name = "xctestrunner",
     executable = 1,
-    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.5/ios_test_runner.par"],
+    urls = ["https://github.com/google/xctestrunner/releases/download/0.2.6/ios_test_runner.par"],
 )
-load("@build_bazel_rules_apple//apple:repositories.bzl", "apple_rules_dependencies")
-apple_rules_dependencies(ignore_version_differences = True)
+
+http_archive(
+    name = "bazel_skylib",
+    sha256 = "2c62d8cd4ab1e65c08647eb4afe38f51591f43f7f0885e7769832fa137633dcb",
+    strip_prefix = "bazel-skylib-0.7.0",
+    urls = ["https://github.com/bazelbuild/bazel-skylib/archive/0.7.0.tar.gz"],
+)
+
+http_archive(
+    name = "build_bazel_apple_support",
+    sha256 = "835663c4bb02f4bf01dce8a2a176df7fa682dbb867d3698ae12258c1628bb8f0",
+    strip_prefix = "apple_support-0.5.0",
+    urls = ["https://github.com/bazelbuild/apple_support/archive/0.5.0.tar.gz"],
+)
+
+http_archive(
+    name = "build_bazel_rules_swift",
+    sha256 = "32d124878cd49775d84f59ba90440c8b23b7c775aec8fec1978f751c76ddee8a",
+    strip_prefix = "rules_swift-0.7.0",
+    urls = ["https://github.com/bazelbuild/rules_swift/archive/0.7.0.tar.gz"],
+)
+
+http_archive(
+    name = "com_github_apple_swift_swift_protobuf",
+    type = "zip",
+    strip_prefix = "swift-protobuf-1.2.0/",
+    urls = ["https://github.com/apple/swift-protobuf/archive/1.2.0.zip"],
+)
+
+# Use swift_rules_dependencies to fetch the tolchains.
+# Since we defined all the "git_repository" rules above, the following call will
+# skip redefining them.
 load("@build_bazel_rules_swift//swift:repositories.bzl", "swift_rules_dependencies")
 swift_rules_dependencies()
 
@@ -73,7 +91,7 @@ swift_rules_dependencies()
 # files, in case the parsing of those build files depends on the bazel
 # version we require here.
 load("//tensorflow:version_check.bzl", "check_bazel_version_at_least")
-check_bazel_version_at_least("0.18.0")
+check_bazel_version_at_least("0.19.0")
 
 load("//tensorflow:workspace.bzl", "tf_workspace")
 
@@ -134,4 +152,3 @@ http_archive(
         "http://download.tensorflow.org/models/speech_commands_v0.01.zip",
     ],
 )
-

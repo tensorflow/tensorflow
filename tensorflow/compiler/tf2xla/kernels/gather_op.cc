@@ -167,13 +167,13 @@ class GatherOp : public XlaOpKernel {
 
       OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &axis));
       const auto params_dims = input_shape.dims();
+      OP_REQUIRES(
+          context, -params_dims <= axis && axis < params_dims,
+          errors::InvalidArgument("Expected axis in the range [", -params_dims,
+                                  ", ", params_dims, "), but got ", axis));
       if (axis < 0) {
         axis += params_dims;
       }
-      OP_REQUIRES(
-          context, 0 <= axis && axis < params_dims,
-          errors::InvalidArgument("Expected axis in the range [", -params_dims,
-                                  ", ", params_dims, "), but got ", axis));
     }
 
     DataType index_type = input_type(1);

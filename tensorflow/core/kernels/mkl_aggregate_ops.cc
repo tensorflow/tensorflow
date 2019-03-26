@@ -101,7 +101,7 @@ class MklAddNOp : public OpKernel {
         }
       }
 
-      std::vector<double> coeff(2, 1.0);
+      const std::vector<float> coeff(2, 1.0f);
       MklDnnData<T> src1(&cpu_engine);
       MklDnnData<T> src2(&cpu_engine);
       MklDnnData<T> dst(&cpu_engine);

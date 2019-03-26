@@ -30,7 +30,7 @@ namespace xla {
 
 // The context in which a computation is called by another computation.
 enum class CallContext {
-  // In a parallel contex the computation is applied to each element of the
+  // In a parallel context the computation is applied to each element of the
   // array argument(s). kMap and kReduce instructions call computations in
   // parallel context.
   kParallel,
@@ -255,6 +255,10 @@ class CallGraph {
 
  private:
   CallGraph(const HloModule* module);
+
+  // Not copyable.
+  CallGraph(const CallGraph&) = delete;
+  CallGraph& operator=(const CallGraph&) = delete;
 
   // Sets the call contexts for every node in the graph.
   void SetCallContexts();

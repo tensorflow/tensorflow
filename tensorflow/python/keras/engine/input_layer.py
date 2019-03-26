@@ -77,8 +77,9 @@ class InputLayer(base_layer.Layer):
         dtype = backend.floatx()
       else:
         dtype = backend.dtype(input_tensor)
-    elif input_tensor and input_tensor.dtype != dtype:
-      raise ValueError('`input_tensor.dtype` differs from `dtype`.')
+    elif input_tensor is not None and input_tensor.dtype != dtype:
+      raise ValueError('`input_tensor.dtype` differs from `dtype`: %s vs. %s' %
+                       (input_tensor.dtype, dtype))
     super(InputLayer, self).__init__(dtype=dtype, name=name)
     self.built = True
     self.sparse = sparse
@@ -117,11 +118,12 @@ class InputLayer(base_layer.Layer):
                          'InputLayer, you should instantiate your model and '
                          'directly call it on your input.')
       self.is_placeholder = False
-      self._batch_input_shape = tuple(input_tensor.get_shape().as_list())
+      self._batch_input_shape = tuple(input_tensor.shape.as_list())
 
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
     input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
+    input_tensor._keras_mask = None
     base_layer.Node(
         self,
         inbound_layers=[],

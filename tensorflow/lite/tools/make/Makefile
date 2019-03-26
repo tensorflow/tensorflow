@@ -1,3 +1,7 @@
+# Make uses /bin/sh by default, which is incompatible with the bashisms seen
+# below.
+SHELL := /bin/bash
+
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
 	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
@@ -51,7 +55,7 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG
+CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
 CCFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
@@ -86,6 +90,8 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/experimental/c/*.c) \
+$(wildcard tensorflow/lite/experimental/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc)
 ifneq ($(BUILD_TYPE),micro)
@@ -109,17 +115,40 @@ $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
-$(wildcard tensorflow/lite/kernels/test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
+
 ifeq ($(BUILD_TYPE),micro)
-CORE_CC_EXCLUDE_SRCS += \
-tensorflow/lite/mmap_allocation.cc \
-tensorflow/lite/nnapi_delegate.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation.cc
 else
-CORE_CC_EXCLUDE_SRCS += \
-tensorflow/lite/mmap_allocation_disabled.cc \
-tensorflow/lite/nnapi_delegate_disabled.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/mmap_allocation_disabled.cc
 endif
+
+BUILD_WITH_NNAPI=true
+ifeq ($(BUILD_TYPE),micro)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(TARGET),ios)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(TARGET),rpi)
+	BUILD_WITH_NNAPI=false
+endif
+ifeq ($(BUILD_WITH_NNAPI),true)
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate_disabled.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate.cc
+endif
+
+ifeq ($(TARGET),ios)
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_default.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
+endif
+
+
 # Filter out all the excluded files.
 TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 

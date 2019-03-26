@@ -295,11 +295,12 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <typename Device, class T>
-class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
+template <typename Device, class T, bool is_depthwise>
+class MklConvCustomBackpropInputOp
+    : public MklConvBackpropCommonOp<Device, T, is_depthwise> {
  public:
   explicit MklConvCustomBackpropInputOp(OpKernelConstruction* context)
-      : MklConvBackpropCommonOp<Device, T>(context) {}
+      : MklConvBackpropCommonOp<Device, T, is_depthwise>(context) {}
 
   ~MklConvCustomBackpropInputOp() {}
 
@@ -367,7 +368,7 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &fwd_src_dims, &fwd_filter_dims,
           &strides, &dilations, &fwd_output_dims_tf_order, &fwd_output_dims,
-          &padding_left, &padding_right, false);
+          &padding_left, &padding_right, false, is_depthwise);
       if (!context->status().ok()) return;
 
       // Create Convolution forward descriptor since Convolution backward
@@ -383,9 +384,11 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
       auto fwd_filter_md =
           filter_mkl_shape.IsMklTensor()
               ? filter_mkl_shape.GetMklLayout()
-              : memory::desc(
-                    fwd_filter_dims, MklDnnType<T>(),
-                    is_conv2d ? memory::format::hwio : memory::format::dhwio);
+              : memory::desc(fwd_filter_dims, MklDnnType<T>(),
+                             is_depthwise
+                                 ? memory::hwigo
+                                 : (is_conv2d ? memory::format::hwio
+                                              : memory::format::dhwio));
 
       conv_utl.GetInputSizeInMklOrder(diff_dst_tf_shape, &diff_dst_dims);
       if (!context->status().ok()) return;
@@ -554,18 +557,22 @@ class MklConvCustomBackpropInputOp : public MklConvBackpropCommonOp<Device, T> {
   }
 };
 
-#define REGISTER_MKL_CPU_KERNELS(T)                                    \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")              \
-                              .Device(DEVICE_CPU)                      \
-                              .TypeConstraint<T>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),    \
-                          MklConvCustomBackpropInputOp<CPUDevice, T>); \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv3DBackpropInputV2")            \
-                              .Device(DEVICE_CPU)                      \
-                              .TypeConstraint<T>("T")                  \
-                              .Label(mkl_op_registry::kMklOpLabel),    \
-                          MklConvCustomBackpropInputOp<CPUDevice, T>);
-
+#define REGISTER_MKL_CPU_KERNELS(T)                                           \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")                     \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklOpLabel),           \
+                          MklConvCustomBackpropInputOp<CPUDevice, T, false>); \
+  REGISTER_KERNEL_BUILDER(Name("_MklConv3DBackpropInputV2")                   \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklOpLabel),           \
+                          MklConvCustomBackpropInputOp<CPUDevice, T, false>); \
+  REGISTER_KERNEL_BUILDER(Name("_MklDepthwiseConv2dNativeBackpropInput")      \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<T>("T")                         \
+                              .Label(mkl_op_registry::kMklOpLabel),           \
+                          MklConvCustomBackpropInputOp<CPUDevice, T, true>);
 TF_CALL_float(REGISTER_MKL_CPU_KERNELS);
 #undef REGISTER_MKL_CPU_KERNELS
 

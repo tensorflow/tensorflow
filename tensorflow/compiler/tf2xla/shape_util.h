@@ -45,12 +45,23 @@ xla::Shape TensorShapeToXLAShape(xla::PrimitiveType type,
                                  const TensorShape& tensor_shape);
 
 // Given an XLA shape with layouts, builds a layout vector in the form able to
-// be fed to an InfeedEnqueue/InfeedEnqueueTuple ops.
+// be fed to ops like InfeedEnqueue/InfeedEnqueueTuple/XRTAllocateV2/....
 // THe returned vector is a linearized sequence of the minor-to-major values of
 // the layouts held within the input shape.
 // In case the input shape is a tuple, the minor-to-major values will be in the
 // order of the tuple elements within the tuple shape.
-xla::StatusOr<std::vector<int>> GetInfeedLayoutVector(const xla::Shape& shape);
+// If a shape (or a subshape of a tuple shape) has missing layout, a rank long
+// sequence of -1 values will be emittted.
+xla::StatusOr<std::vector<int>> GetShapeLayoutVector(const xla::Shape& shape);
+
+// Given the input shape and a linearized sequence of the minor-to-major values
+// of the layouts, create the output shape by rewriting the input shape layouts.
+// If a layout is missing (has -1 values) for a matching tuple subshape, the
+// layout_func will be called, if not nullptr.
+Status GetShapeWithLayout(
+    const xla::Shape& input_shape, absl::Span<const int64> minor_to_major,
+    const std::function<xla::Layout(const xla::Shape&)>& layout_func,
+    xla::Shape* output_shape);
 
 }  // namespace tensorflow
 

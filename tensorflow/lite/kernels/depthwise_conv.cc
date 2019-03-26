@@ -21,11 +21,13 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/kernels/gemm_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/optimized/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -58,9 +60,14 @@ struct OpData {
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
   int32_t output_activation_max;
+
+  // Per channel output multiplier and shift.
+  std::vector<int32_t> per_channel_output_multiplier;
+  std::vector<int> per_channel_output_shift;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
+  gemm_support::IncrementUsageCounter(context);
   // This is a builtin op, so we don't use the contents in 'buffer', if any.
   // Instead, we allocate a new object to carry information from Prepare() to
   // Eval().
@@ -68,6 +75,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
+  gemm_support::DecrementUsageCounter(context);
   delete reinterpret_cast<OpData*>(buffer);
 }
 
@@ -99,14 +107,15 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     SizeOfDimension(filter, 3));
 
   const TfLiteType data_type = input->type;
-  TF_LITE_ENSURE(context,
-                 data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8);
+  TF_LITE_ENSURE(context, data_type == kTfLiteFloat32 ||
+                              data_type == kTfLiteUInt8 ||
+                              data_type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, output->type, data_type);
   TF_LITE_ENSURE_EQ(context, filter->type, data_type);
 
   if (hasBias) {
     bias = GetInput(context, node, kBiasTensor);
-    if (data_type == kTfLiteUInt8) {
+    if (data_type == kTfLiteUInt8 || data_type == kTfLiteInt8) {
       TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
       TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
     } else {
@@ -150,17 +159,25 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      filter_width, out_width);
 
   // Note that quantized inference requires that all tensors have their
-  // parameters set. This is usually done during quantized training.
+  // parameters set. This is usually done during quantized training or
+  // calibration.
   if (data_type != kTfLiteFloat32) {
-    double real_multiplier = 0.0;
-    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-        context, input, filter, bias, output, &real_multiplier));
-    int exponent;
-    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
-    data->output_shift = -exponent;
-    CalculateActivationRangeUint8(params->activation, output,
-                                  &data->output_activation_min,
-                                  &data->output_activation_max);
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    const int number_channel = affine_quantization->scale->size;
+    data->per_channel_output_multiplier.resize(number_channel);
+    data->per_channel_output_shift.resize(number_channel);
+    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+        context, input, filter, bias, output, params->activation,
+        &data->output_multiplier, &data->output_shift,
+        &data->output_activation_min, &data->output_activation_max,
+        data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data()));
   }
 
   TfLiteIntArray* outputSize = TfLiteIntArrayCreate(4);
@@ -216,17 +233,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
 
-  void (*depthwise_conv)(const DepthwiseParams&, const RuntimeShape&,
-                         const uint8*, const RuntimeShape&, const uint8*,
-                         const RuntimeShape&, const int32*, const RuntimeShape&,
-                         uint8*);
-
-  if (kernel_type == kReference) {
-    depthwise_conv = &reference_ops::DepthwiseConv;
-  } else {
-    depthwise_conv = &optimized_ops::DepthwiseConv;
-  }
-
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -243,11 +249,47 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.output_shift = -data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
-  depthwise_conv(op_params, GetTensorShape(input),
-                 GetTensorData<uint8_t>(input), GetTensorShape(filter),
-                 GetTensorData<uint8_t>(filter), GetTensorShape(bias),
-                 GetTensorData<int32_t>(bias), GetTensorShape(output),
-                 GetTensorData<uint8_t>(output));
+  if (kernel_type == kReference) {
+    reference_ops::DepthwiseConv(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<uint8_t>(output));
+  } else {
+    gemmlowp::GemmContext* gemm_context = gemm_support::GetFromContext(context);
+    optimized_ops::DepthwiseConv(
+        op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
+        GetTensorShape(filter), GetTensorData<uint8_t>(filter),
+        GetTensorShape(bias), GetTensorData<int32_t>(bias),
+        GetTensorShape(output), GetTensorData<uint8_t>(output), gemm_context);
+  }
+}
+
+void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+                             TfLiteDepthwiseConvParams* params, OpData* data,
+                             const TfLiteTensor* input,
+                             const TfLiteTensor* filter,
+                             const TfLiteTensor* bias, TfLiteTensor* output) {
+  DepthwiseParams op_params;
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = data->padding.width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.depth_multiplier = params->depth_multiplier;
+  op_params.input_offset = input->params.zero_point;
+  op_params.weights_offset = 0;
+  op_params.output_offset = output->params.zero_point;
+
+  reference_integer_ops::DepthwiseConvPerChannel(
+      op_params, data->per_channel_output_multiplier.data(),
+      data->per_channel_output_shift.data(), GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(filter),
+      GetTensorData<int8>(filter), GetTensorShape(bias),
+      GetTensorData<int32>(bias), GetTensorShape(output),
+      GetTensorData<int8>(output));
 }
 
 template <KernelType kernel_type>
@@ -273,6 +315,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalQuantized<kernel_type>(context, node, params, data, input, filter,
                                  bias, output);
       break;
+    case kTfLiteInt8: {
+      EvalQuantizedPerChannel(context, node, params, data, input, filter, bias,
+                              output);
+      break;
+    }
     default:
       context->ReportError(context, "Type %d not currently supported.",
                            input->type);

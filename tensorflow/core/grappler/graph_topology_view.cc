@@ -40,7 +40,8 @@ inline void SortAndRemoveDuplicates(T* v) {
 
 Status GraphTopologyView::InitializeFromGraph(
     const GraphDef& graph,
-    const absl::Span<const GraphView::Edge> ephemeral_edges) {
+    const absl::Span<const GraphView::Edge> ephemeral_edges,
+    bool ignore_control_edges) {
   if (graph_ != nullptr) {
     return errors::InvalidArgument("GraphTopologyView is already initialized.");
   }
@@ -62,19 +63,39 @@ Status GraphTopologyView::InitializeFromGraph(
   // 1. Add ephemeral edges to the adjacency lists.
   for (const GraphView::Edge& edge : ephemeral_edges) {
     const auto src = node_name_to_index_.find(edge.src.node->name());
-    if (src == node_name_to_index_.end()) {
-      return errors::InvalidArgument("Non-existent src node: ",
-                                     edge.src.node->name());
+    const bool valid_src = src != node_name_to_index_.end();
+    if (!valid_src) {
+      const string error_message =
+          absl::StrCat("Non-existent src node: ", edge.src.node->name());
+      if (skip_invalid_edges_) {
+        VLOG(0) << "Skip error: " << error_message;
+      } else {
+        return errors::InvalidArgument(error_message);
+      }
     }
+
     const auto dst = node_name_to_index_.find(edge.dst.node->name());
-    if (dst == node_name_to_index_.end()) {
-      return errors::InvalidArgument("Non-existent dst node: ",
-                                     edge.dst.node->name());
+    const bool valid_dst = dst != node_name_to_index_.end();
+
+    if (!valid_dst) {
+      const string error_message =
+          absl::StrCat("Non-existent dst node: ", edge.dst.node->name());
+      if (skip_invalid_edges_) {
+        VLOG(0) << "Skip error: " << error_message;
+      } else {
+        return errors::InvalidArgument(error_message);
+      }
     }
-    const int src_idx = src->second;
-    const int dst_idx = dst->second;
-    fanins_[dst_idx].push_back(src_idx);
-    fanouts_[src_idx].push_back(dst_idx);
+
+    if (valid_dst && valid_src) {
+      const int src_idx = src->second;
+      const int dst_idx = dst->second;
+      if (ignore_control_edges && (src_idx < 0 || dst_idx < 0)) {
+        continue;
+      }
+      fanins_[dst_idx].push_back(src_idx);
+      fanouts_[src_idx].push_back(dst_idx);
+    }
   }
 
   // 2. Add graph edges to the adjacency lists.
@@ -84,14 +105,27 @@ Status GraphTopologyView::InitializeFromGraph(
 
     for (const string& input : node.input()) {
       TensorId tensor = ParseTensorName(input);
-      const auto it = node_name_to_index_.find(tensor.node());
-      if (it == node_name_to_index_.end()) {
-        return errors::InvalidArgument("Non-existent input ", input,
-                                       " for node ", node.name());
+      if (ignore_control_edges && IsTensorIdControl(tensor)) {
+        continue;
       }
-      const int input_idx = it->second;
-      fanins_[node_idx].push_back(input_idx);
-      fanouts_[input_idx].push_back(node_idx);
+      const auto it = node_name_to_index_.find(tensor.node());
+      const bool valid_input = it != node_name_to_index_.end();
+
+      if (!valid_input) {
+        const string error_message = absl::StrCat("Non-existent input ", input,
+                                                  " in node ", node.name());
+        if (skip_invalid_edges_) {
+          VLOG(3) << "Skip error: " << error_message;
+        } else {
+          return errors::InvalidArgument(error_message);
+        }
+      }
+
+      if (valid_input) {
+        const int input_idx = it->second;
+        fanins_[node_idx].push_back(input_idx);
+        fanouts_[input_idx].push_back(node_idx);
+      }
     }
 
     // Dedup the input list while it's still hot in cache.
@@ -106,8 +140,22 @@ Status GraphTopologyView::InitializeFromGraph(
   return Status::OK();
 }
 
+Status GraphTopologyView::InitializeFromGraph(
+    const GraphDef& graph,
+    const absl::Span<const GraphView::Edge> ephemeral_edges) {
+  return InitializeFromGraph(graph, ephemeral_edges,
+                             /*ignore_control_edges=*/false);
+}
+
+Status GraphTopologyView::InitializeFromGraph(const GraphDef& graph,
+                                              bool ignore_control_edges) {
+  return InitializeFromGraph(graph, absl::Span<GraphView::Edge>(),
+                             ignore_control_edges);
+}
+
 Status GraphTopologyView::InitializeFromGraph(const GraphDef& graph) {
-  return InitializeFromGraph(graph, absl::Span<GraphView::Edge>());
+  return InitializeFromGraph(graph, absl::Span<GraphView::Edge>(),
+                             /*ignore_control_edges*/ false);
 }
 
 bool GraphTopologyView::HasNode(const absl::string_view node_name) const {

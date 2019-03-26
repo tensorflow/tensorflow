@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "EncodeWav"
+  endpoint {
+    name: "audio.encode_wav"
+  }
+}

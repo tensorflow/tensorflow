@@ -125,6 +125,10 @@ class AdaptiveSharedBatchScheduler
     int max_batch_size = 1000;
     // Maximum number of enqueued (i.e. non-scheduled) batches.
     int max_enqueued_batches = 10;
+    // Amount of time non-full batches must wait before becoming schedulable.
+    // A non-zero value can improve performance by limiting the scheduling of
+    // nearly empty batches.
+    int64 batch_timeout_micros = 0;
   };
 
   using BatchProcessor = std::function<void(std::unique_ptr<Batch<TaskType>>)>;
@@ -267,8 +271,11 @@ class ASBSQueue : public BatchScheduler<TaskType> {
 template <typename TaskType>
 class ASBSBatch : public Batch<TaskType> {
  public:
-  ASBSBatch(ASBSQueue<TaskType>* queue, int64 creation_time_micros)
-      : queue_(queue), creation_time_micros_(creation_time_micros) {}
+  ASBSBatch(ASBSQueue<TaskType>* queue, int64 creation_time_micros,
+            int64 batch_timeout_micros)
+      : queue_(queue),
+        creation_time_micros_(creation_time_micros),
+        schedulable_time_micros_(creation_time_micros + batch_timeout_micros) {}
 
   ~ASBSBatch() override {}
 
@@ -276,9 +283,12 @@ class ASBSBatch : public Batch<TaskType> {
 
   int64 creation_time_micros() const { return creation_time_micros_; }
 
+  int64 schedulable_time_micros() const { return schedulable_time_micros_; }
+
  private:
   ASBSQueue<TaskType>* queue_;
   const int64 creation_time_micros_;
+  const int64 schedulable_time_micros_;
   TF_DISALLOW_COPY_AND_ASSIGN(ASBSBatch);
 };
 }  // namespace internal
@@ -377,7 +387,12 @@ void AdaptiveSharedBatchScheduler<TaskType>::AddBatch(
     bool also_schedule_closed_batch) {
   mutex_lock l(mu_);
   batches_.push_back(batch);
-  MaybeScheduleNextBatch();
+  // Maybe schedule this batch once it becomes schedulable.
+  GetEnv()->SchedClosureAfter(
+      batch->schedulable_time_micros() - batch->creation_time_micros(), [this] {
+        mutex_lock l(mu_);
+        MaybeScheduleNextBatch();
+      });
   if (also_schedule_closed_batch) {
     MaybeScheduleClosedBatch();
   }
@@ -400,21 +415,22 @@ void AdaptiveSharedBatchScheduler<TaskType>::MaybeScheduleNextBatch() {
           in_flight_batches_limit_ - in_flight_batches_) {
     return;
   }
-  auto best_it = batches_.begin();
-  double best_score =
-      (*best_it)->creation_time_micros() -
-      options_.full_batch_scheduling_boost_micros * (*best_it)->size() /
-          static_cast<double>((*best_it)->queue()->max_task_size());
-  for (auto it = batches_.begin() + 1; it != batches_.end(); it++) {
+  auto best_it = batches_.end();
+  double best_score;
+  int64 now_micros = GetEnv()->NowMicros();
+  for (auto it = batches_.begin(); it != batches_.end(); it++) {
+    if ((*it)->schedulable_time_micros() > now_micros) continue;
     const double score =
         (*it)->creation_time_micros() -
         options_.full_batch_scheduling_boost_micros * (*it)->size() /
             static_cast<double>((*it)->queue()->max_task_size());
-    if (score < best_score) {
+    if (best_it == batches_.end() || score < best_score) {
       best_score = score;
       best_it = it;
     }
   }
+  // No schedulable batches.
+  if (best_it == batches_.end()) return;
   const internal::ASBSBatch<TaskType>* batch = *best_it;
   batches_.erase(best_it);
   // Queue may destroy itself after ReleaseBatch is called.
@@ -552,7 +568,8 @@ Status ASBSQueue<TaskType>::Schedule(std::unique_ptr<TaskType>* task) {
     if (!current_batch_) {
       num_enqueued_batches_++;
       current_batch_ = new_batch =
-          new ASBSBatch<TaskType>(this, scheduler_->GetEnv()->NowMicros());
+          new ASBSBatch<TaskType>(this, scheduler_->GetEnv()->NowMicros(),
+                                  options_.batch_timeout_micros);
     }
     current_batch_->AddTask(std::move(*task));
     num_enqueued_tasks_++;

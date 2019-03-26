@@ -33,12 +33,13 @@ limitations under the License.
 
 namespace stream_executor {
 namespace cuda {
-
 // Opaque and unique identifier for the CUDA platform plugin.
 // This is needed so that plugins can refer to/identify this platform without
 // instantiating a CudaPlatform object.
 extern const Platform::Id kCudaPlatformId;
+}  // namespace cuda
 
+namespace gpu {
 // Cuda-specific platform plugin, registered as a singleton value via module
 // initializer.
 class CudaPlatform : public Platform {
@@ -101,6 +102,12 @@ class CudaPlatform : public Platform {
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudaPlatform);
 };
+
+}  // namespace gpu
+
+namespace cuda {
+
+using CudaPlatform = gpu::CudaPlatform;
 
 }  // namespace cuda
 }  // namespace stream_executor

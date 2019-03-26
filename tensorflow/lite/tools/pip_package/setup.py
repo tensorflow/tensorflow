@@ -57,12 +57,22 @@ RELATIVE_MAKEFILE_PATH = os.path.join(RELATIVE_MAKE_DIR, 'Makefile')
 DOWNLOAD_SCRIPT_PATH = os.path.join(MAKE_DIR, 'download_dependencies.sh')
 
 
+# Check physical memory and if we are on a reasonable non small SOC machine
+# with more than 4GB, use all the CPUs, otherwisxe only 1.
+def get_build_cpus():
+  physical_bytes = os.sysconf('SC_PAGESIZE') * os.sysconf('SC_PHYS_PAGES')
+  if physical_bytes < (1<<30) * 4:
+    return 1
+  else:
+    return multiprocessing.cpu_count()
+
+
 def make_args(target='', quiet=True):
   """Construct make command line."""
   args = (['make', 'SHELL=/bin/bash', '-C', TENSORFLOW_DIR]
           + MAKE_CROSS_OPTIONS +
           ['-f', RELATIVE_MAKEFILE_PATH, '-j',
-           str(multiprocessing.cpu_count())])
+           str(get_build_cpus())])
   if quiet:
     args.append('--quiet')
   if target:

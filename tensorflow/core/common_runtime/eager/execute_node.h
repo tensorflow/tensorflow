@@ -31,7 +31,7 @@ namespace tensorflow {
 
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(uint64 id, EagerContext* ctx, Device* op_device,
+  ExecuteNode(uint64 id, EagerContext* ctx,
               const tensorflow::gtl::InlinedVector<TensorHandle*, 4>& inputs,
               KernelAndDevice* kernel, NodeExecStats* maybe_stats,
               StepStats* maybe_step_stats, GraphCollector* graph_collector,
@@ -39,7 +39,6 @@ class ExecuteNode : public EagerNode {
               const tensorflow::gtl::InlinedVector<TensorHandle*, 2>& retvals)
       : EagerNode(id),
         ctx_(ctx),
-        op_device_(op_device),
         inputs_(inputs),
         kernel_(kernel),
         maybe_stats_(maybe_stats),
@@ -64,9 +63,9 @@ class ExecuteNode : public EagerNode {
   }
 
   tensorflow::Status Run() override {
-    const Status status = EagerExecute(
-        ctx_, op_device_, inputs_, kernel_, maybe_stats_.get(),
-        maybe_step_stats_, graph_collector_, retvals_.begin(), retvals_.size());
+    const Status status = EagerKernelExecute(
+        ctx_, inputs_, kernel_, maybe_stats_.get(), maybe_step_stats_,
+        graph_collector_, retvals_.begin(), retvals_.size());
     if (status.ok()) {
       return status;
     } else {
@@ -79,7 +78,6 @@ class ExecuteNode : public EagerNode {
 
  private:
   tensorflow::EagerContext* ctx_;
-  tensorflow::Device* op_device_;
   tensorflow::gtl::InlinedVector<TensorHandle*, 4> inputs_;
   tensorflow::KernelAndDevice* kernel_;
   std::unique_ptr<NodeExecStats> maybe_stats_;

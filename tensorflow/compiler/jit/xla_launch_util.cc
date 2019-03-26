@@ -377,7 +377,7 @@ Status XlaComputationLaunchContext::PopulateOutputs(
     }
 
     if (VLOG_IS_ON(3)) {
-      VLOG(3) << ctx->mutable_output(i)->DebugString();
+      VLOG(3) << ctx->mutable_output(i)->DeviceSafeDebugString();
     }
   }
 

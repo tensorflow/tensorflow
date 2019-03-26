@@ -76,6 +76,7 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
 }
 
 TEST(ResizeBilinear, TestResizeBilinear8Bit) {
+  RandomEngine().seed(38291);
   const int kTestsToRun = 100 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
@@ -91,6 +92,7 @@ TEST(ResizeBilinear, TestResizeBilinear8Bit) {
 }
 
 TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
+  RandomEngine().seed(38291);
   const int kTestsToRun = 100 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
@@ -106,6 +108,7 @@ TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
 }
 
 TEST(ResizeBilinear, TestResizeBilinear) {
+  RandomEngine().seed(38291);
   const int kTestsToRun = 100 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
@@ -121,6 +124,7 @@ TEST(ResizeBilinear, TestResizeBilinear) {
 }
 
 TEST(ResizeBilinear2x2, TestResizeBilinear) {
+  RandomEngine().seed(38291);
   const int kTestsToRun = 100 * 1000;
   for (int i = 0; i < kTestsToRun; i++) {
     const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);

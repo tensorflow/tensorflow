@@ -341,6 +341,44 @@ TEST_F(GraphPropertiesTest, VarHandles) {
   EXPECT_EQ(7, prop.shape().dim(1).size());
 }
 
+TEST_F(GraphPropertiesTest, WhileLoopWithVarHandleOpInput) {
+  // Test graph is first generated in python using:
+  /*
+    i0 = tf.constant(0)
+    v = tf.get_variable(initializer=i0, name='loop_var', use_resource=True)
+    def cond(i, x):
+      return i < 3
+    def body(i, x):
+      return i + 1, x + x
+    v, y = tf.while_loop(cond, body, loop_vars=[v, tf.constant(1)])
+  */
+  // and then modified by hand such that the ReadVariableOp is inside the loop
+  // body instead of outside the while loop (which is the case when constructed
+  // using the python API), such that we have the following pattern: VarHandleOp
+  // -> Enter -> Switch -> ReadVariableOp -> other parts of loop body. Note
+  // DT_RESOURCE is passed all the way until ReadVariableOp.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "while_loop_var_handle_op.pbtxt");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+
+  std::vector<string> resource_nodes{
+      "loop_var",       "while/Enter",         "while/Merge", "while/Switch",
+      "while/Identity", "while/NextIteration", "while/Exit"};
+  for (const string& node : resource_nodes) {
+    const auto props = properties.GetOutputProperties(node);
+    EXPECT_GE(props.size(), 1);  // Merge has 2 outputs.
+    EXPECT_EQ("resource: []", PropToString(props[0]));
+  }
+
+  // After ReadVariableOp, the shape should be recovered.
+  const auto props = properties.GetOutputProperties("while/ReadVariableOp");
+  EXPECT_EQ(1, props.size());
+  EXPECT_EQ("int32: []", PropToString(props[0]));
+}
+
 TEST_F(GraphPropertiesTest, QueueWithOnlyDequeue_NoShapeAttr) {
   tensorflow::Scope root = tensorflow::Scope::NewRootScope();
   auto q1 = ops::FIFOQueue(root.WithOpName("Queue1"), {DataType::DT_FLOAT});
@@ -937,6 +975,52 @@ TEST_F(GraphPropertiesTest, IdentityPassingShape) {
   EXPECT_EQ("float: [5,5]", PropToString(out_prop0));
 }
 
+TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
+  // When using aggressive_shape_inference, we run EvaluateNode() for
+  // whitelisted ops and small input / output tensors. For instance, Fill op is
+  // evaluated and produces output tensor value if output tensor size is smal
+  // (currently, fewer than 17 elements); otherwise we don't run EvalauteNode().
+  // This is to avoid wasting time and memory for producing huge tensors (e.g.,
+  // initializing a large table using Fill.
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), 4, {2});  // 4x4
+    Output b = ops::Const(s.WithOpName("const"), 0.1f, {});
+    // Shape described by a is small; expect output values of Fill op.
+    Output c = ops::Fill(s.WithOpName("fill"), a, b);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("fill");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [4,4]", PropToString(out_prop0));
+    EXPECT_TRUE(out_prop0.has_value());
+  }
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    Output a = ops::Const(s.WithOpName("a"), 1000, {4});  // 1000x1000x1000x1000
+    Output b = ops::Const(s.WithOpName("const"), 0.1f, {});
+    // Shape described by a is huge; in that case we skip value inference.
+    // Otherwise, it'd be too much overhead.
+    Output c = ops::Fill(s.WithOpName("fill"), a, b);
+
+    GrapplerItem item;
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("fill");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [1000,1000,1000,1000]", PropToString(out_prop0));
+    EXPECT_FALSE(out_prop0.has_value());
+  }
+}
+
 TEST_F(GraphPropertiesTest, PackWithConstInput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output a = ops::Const(s.WithOpName("a"), 1, {});
@@ -1118,6 +1202,61 @@ TEST_F(GraphPropertiesTest, FunctionReturnTensorValue) {
   ExpectTensorValues({5, 7}, out_prop0.value());
   ExpectTensorValues({5, 7},
                      properties.GetInputProperties("MyFunc")[0].value());
+}
+
+TEST_F(GraphPropertiesTest, ArithmeticFunctionReturnTensorValue) {
+  FunctionDefLibrary library;
+  // Function that adds two input values.
+  *library.add_function() = FunctionDefHelper::Create(
+      "MyFunc",                                                   // Name
+      {"x: int32", "y: int32"},                                   // Inputs
+      {"out: int32"},                                             // Outputs
+      {},                                                         // Attrs
+      {{{"a"}, "Add", {"x", "y"}, {{"T", DataType::DT_INT32}}}},  // Nodes
+      {{"out", "a:z:0"}});                                        // Returns
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(s.graph()->AddFunctionLibrary(library));
+
+  Output shape = ops::Const(s.WithOpName("shape"), {5, 7}, {2});
+  auto _shape = tensorflow::ops::AsNodeOut(s, shape);
+  auto builder =
+      tensorflow::NodeBuilder("MyFunc", "MyFunc", s.graph()->op_registry());
+  tensorflow::Node* func_op;
+  TF_CHECK_OK(
+      builder.Input(_shape).Input(_shape).Finalize(s.graph(), &func_op));
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  {
+    GraphProperties properties(item);
+    // Without aggressive_shape_inference, the internal function does not
+    // evaluate output value.
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/false));
+    const auto out_props = properties.GetOutputProperties("MyFunc");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("int32: [2]", PropToString(out_prop0));
+    EXPECT_FALSE(out_prop0.has_value());
+  }
+
+  {
+    GraphProperties properties(item);
+    // With aggressive_shape_inference, output value is evaluated.
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/true,
+        /*aggressive_shape_inference=*/true));
+    const auto out_props = properties.GetOutputProperties("MyFunc");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("int32: [2]", PropToString(out_prop0));
+    EXPECT_TRUE(out_prop0.has_value());
+
+    ExpectTensorValues({10, 14}, out_prop0.value());
+    ExpectTensorValues({5, 7},
+                       properties.GetInputProperties("MyFunc")[0].value());
+    ExpectTensorValues({5, 7},
+                       properties.GetInputProperties("MyFunc")[1].value());
+  }
 }
 
 TEST_F(GraphPropertiesTest, FunctionWithScalarInput) {
@@ -1642,7 +1781,7 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  // Without aggresive shape inference, it cannot infer output value of
+  // Without aggressive shape inference, it cannot infer output value of
   // StridedSlice with ShrinkAxisMask.
   {
     GraphProperties properties(item);
@@ -1652,7 +1791,7 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
     EXPECT_FALSE(properties.GetOutputProperties("slice").at(0).has_value());
   }
 
-  // InferStatically with aggresive shape inference can infer output value of
+  // InferStatically with aggressive shape inference can infer output value of
   // StridedSlice with ShrinkAxisMask.
   {
     GraphProperties properties(item);
@@ -1707,6 +1846,103 @@ TEST_F(GraphPropertiesTest, ValuePropagationThroughArithmeticOps) {
   EXPECT_EQ("int32: [2]", PropToString(c_plus_b_plus_2a_prop));
   EXPECT_TRUE(c_plus_b_plus_2a_prop.has_value());
   ExpectTensorValues({20, 24}, c_plus_b_plus_2a_prop.value());
+}
+
+TEST_F(GraphPropertiesTest, ShapeAnnotation) {
+  GrapplerItem item;
+  TF_CHECK_OK(NodeDefBuilder("Input", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", PartialTensorShape({-1, -1}))
+                  .Finalize(item.graph.add_node()));
+  // Annotate shapes.
+  TF_CHECK_OK(NodeDefBuilder("Identity", "Identity")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("_same_output_for_iterations", true)
+                  .Attr("_output_shape_vector", {TensorShape({5, 7})})
+                  .Input("Input", 0, DT_FLOAT)
+                  .Finalize(item.graph.add_node()));
+  {
+    GraphProperties properties(item);
+    // Without aggressive_shape_inference, ignore annotated information.
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/false));
+    const auto props = properties.GetOutputProperties("Identity");
+    EXPECT_EQ(1, props.size());
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ(2, prop.shape().dim_size());
+    // Get unknown shapes without using annotated information.
+    EXPECT_EQ("float: [-1,-1]", PropToString(prop));
+  }
+  {
+    GraphProperties properties(item);
+    // Use annotated information.
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true));
+    const auto props = properties.GetOutputProperties("Identity");
+    EXPECT_EQ(1, props.size());
+    const OpInfo::TensorProperties& prop = props[0];
+    EXPECT_EQ(DT_FLOAT, prop.dtype());
+    EXPECT_EQ(2, prop.shape().dim_size());
+    // Update output shape using annotated shapes.
+    EXPECT_EQ("float: [5,7]", PropToString(prop));
+  }
+}
+
+TEST_F(GraphPropertiesTest, ShapeAnnotationWithCompatibleShapes) {
+  GrapplerItem item;
+  TF_CHECK_OK(NodeDefBuilder("Input", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", PartialTensorShape({-1, 100}))
+                  .Finalize(item.graph.add_node()));
+  // Annotate shapes.
+  TF_CHECK_OK(NodeDefBuilder("Identity", "Identity")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("_same_output_for_iterations", true)
+                  .Attr("_output_shape_vector", {TensorShape({10, 100})})
+                  .Input("Input", 0, DT_FLOAT)
+                  .Finalize(item.graph.add_node()));
+  GraphProperties properties(item);
+  // Use annotated information.
+  TF_CHECK_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/false,
+      /*aggressive_shape_inference=*/true));
+  const auto props = properties.GetOutputProperties("Identity");
+  EXPECT_EQ(1, props.size());
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  // Compatible shapes. Update output shape using annotated shapes.
+  EXPECT_EQ("float: [10,100]", PropToString(prop));
+}
+
+TEST_F(GraphPropertiesTest, ShapeAnnotationWithIncompatibleShapes) {
+  GrapplerItem item;
+  TF_CHECK_OK(NodeDefBuilder("Input", "Placeholder")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("shape", PartialTensorShape({-1, 100}))
+                  .Finalize(item.graph.add_node()));
+  // Annotate shapes.
+  TF_CHECK_OK(NodeDefBuilder("Identity", "Identity")
+                  .Attr("dtype", DT_FLOAT)
+                  .Attr("_same_output_for_iterations", true)
+                  .Attr("_output_shape_vector", {TensorShape({10, 10})})
+                  .Input("Input", 0, DT_FLOAT)
+                  .Finalize(item.graph.add_node()));
+  GraphProperties properties(item);
+  // Use annotated information.
+  TF_CHECK_OK(properties.InferStatically(
+      /*assume_valid_feeds=*/false,
+      /*aggressive_shape_inference=*/true));
+  const auto props = properties.GetOutputProperties("Identity");
+  EXPECT_EQ(1, props.size());
+  const OpInfo::TensorProperties& prop = props[0];
+  EXPECT_EQ(DT_FLOAT, prop.dtype());
+  EXPECT_EQ(2, prop.shape().dim_size());
+  // Incompatible shapes. Do not use annotated shapes.
+  EXPECT_EQ("float: [-1,100]", PropToString(prop));
 }
 
 }  // namespace

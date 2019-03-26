@@ -18,19 +18,21 @@ limitations under the License.
 
 #include "mkldnn.hpp"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
+#include "tensorflow/core/kernels/concat_lib_cpu.h"
+#include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::concat;
 using mkldnn::stream;
-#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -156,7 +158,6 @@ class MklConcatOp : public OpKernel {
       OpInputList input_tensors;
       GetMklInputList(context, "values", &input_tensors);
       const int N = input_tensors.size();
-
       // Get Tensor shapes.
       std::vector<MklDnnShape> mkl_input_shapes(N);
       GetMklShapeList(context, "values", &mkl_input_shapes);
@@ -215,7 +216,8 @@ class MklConcatOp : public OpKernel {
         else
           are_all_mkl_inputs = false;
 
-        if (s_dims != 4) invoke_eigen = true;
+        if (s_dims != 4 && s_dims != 2) invoke_eigen = true;
+
         ++i;
       }
 
@@ -226,8 +228,50 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
+      OpInputList input_mins, input_maxes;
+      if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
+        // MKL-DNN concat does not support input tensors that have different
+        // ranges. Check if the ranges of the all input tensors are the same.
+        // If not, forward it to Eigen implementation.
+
+        OP_REQUIRES_OK(context, context->input_list("input_mins", &input_mins));
+        OP_REQUIRES(context, (input_mins.size() == N),
+                    errors::InvalidArgument(
+                        "QuantizedConcatOp : Expected mins input list length ",
+                        input_mins.size(), " to equal values length ", N));
+
+        OP_REQUIRES_OK(context,
+                       context->input_list("input_maxes", &input_maxes));
+        OP_REQUIRES(context, (input_maxes.size() == N),
+                    errors::InvalidArgument(
+                        "QuantizedConcatOp : Expected maxes input list length ",
+                        input_maxes.size(), " to equal values length ", N));
+        float input_min = input_mins[0].flat<float>()(0);
+        float input_max = input_maxes[0].flat<float>()(0);
+        const float eps = 1.0e-6;
+        for (int i = 1; i < N; ++i) {
+          float min = input_mins[i].flat<float>()(0);
+          float max = input_maxes[i].flat<float>()(0);
+
+          if (fabs(input_min - min) > eps || fabs(input_max - max) > eps) {
+            invoke_eigen = true;
+            break;
+          }
+        }
+      }
+
       // Call Eigen library
       if (invoke_eigen) {
+        // MKL-DNN quantized concat does not support input tensors with
+        // different ranges.
+        // TODO (mabuzain): Add quantized version of CallEigen() to support
+        // this case.
+        OP_REQUIRES(
+            context,
+            (!std::is_same<T, qint8>::value && !std::is_same<T, quint8>::value),
+            errors::Unimplemented("MKL DNN quantized concat does not "
+                                  "support input tensors that have "
+                                  "different ranges"));
         CallEigenVersion(context, input_tensors, mkl_input_shapes);
         return;
       }
@@ -248,6 +292,7 @@ class MklConcatOp : public OpKernel {
 
       bool isMklReorderNeeded = false;
       memory::format mkl_common_format = memory::format::any;
+      std::vector<primitive::at> inputs;
       if (are_all_mkl_inputs) {
         mkl_common_format =
             FindMklCommonFormat(mkl_input_shapes, concat_dim,
@@ -257,18 +302,17 @@ class MklConcatOp : public OpKernel {
           // All MKL tensors have a same format. Reorder is not needed.
           for (int k = 0; k < N; k++) {
             if (input_tensors[k].NumElements() == 0) continue;
-
             auto src_md = mkl_input_shapes[k].GetMklLayout();
             srcs[k].SetUsrMem(src_md, &input_tensors[k]);
             auto src_mpd = srcs[k].GetUsrMemPrimDesc();
             srcs_pd.push_back(src_mpd);
+            inputs.push_back(srcs[k].GetOpMem());
           }
         } else {
           // MKL tensors have different formats.
           // Reorder them to most common format.
           for (int k = 0; k < N; k++) {
             if (input_tensors[k].NumElements() == 0) continue;
-
             auto src_md = mkl_input_shapes[k].GetMklLayout();
             srcs[k].SetUsrMem(src_md, &input_tensors[k]);
 
@@ -285,18 +329,25 @@ class MklConcatOp : public OpKernel {
       } else {  // All TF inputs
         for (int k = 0; k < N; k++) {
           if (input_tensors[k].NumElements() == 0) continue;
-
-          memory::dims src_dims = TFShapeToMklDnnDims(input_tensors[k].shape());
+          TensorShape s_shape = input_tensors[k].shape();
+          memory::dims src_dims = TFShapeToMklDnnDims(s_shape);
           dst_concat_dim_size += src_dims[concat_dim];
+          size_t s_dims = s_shape.dims();
 
           // It does not matter what data format to be used (NHWC versus NCHW).
           // We just need to ensure that output uses same data format as inputs.
+          if (s_dims == 4)
+            mkl_common_format = memory::format::nchw;
+          else if (s_dims == 2)
+            mkl_common_format = memory::format::nc;
+
           auto src_md =
-              memory::desc(src_dims, MklDnnType<T>(), memory::format::nchw);
+              memory::desc(src_dims, MklDnnType<T>(), mkl_common_format);
 
           srcs[k].SetUsrMem(src_md, &input_tensors[k]);
           auto src_mpd = srcs[k].GetUsrMemPrimDesc();
           srcs_pd.push_back(src_mpd);
+          inputs.push_back(srcs[k].GetOpMem());
         }
       }
       dst_dims[concat_dim] = dst_concat_dim_size;
@@ -308,29 +359,34 @@ class MklConcatOp : public OpKernel {
         // Since we are passing a specific format for destination,
         // we need to have dst_dims in MklDnn order (NCHW).
         auto orig_tf_format = mkl_input_shapes[0].GetTfDataFormat();
-        dst_dims_in_nchw = MklDnnDimsInNCHW(
-            dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
-        // Set the output format same as the most common format of inputs
-        // to avoid layout conversions.
-        dst_md =
-            memory::desc(dst_dims_in_nchw, MklDnnType<T>(), mkl_common_format);
+        if (dst_dims.size() == 4) {
+          dst_dims_in_nchw = MklDnnDimsInNCHW(
+              dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
+          // Set the output format same as the most common format of inputs
+          // to avoid layout conversions.
+          dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
+                                mkl_common_format);
+        } else if (dst_dims.size() == 2 &&
+                   mkl_common_format == memory::format::nc) {
+          // When memory::format::nc, dst_dims are already in MKL-DNN order
+          dst_md = memory::desc(dst_dims, MklDnnType<T>(), mkl_common_format);
+        } else {
+          TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
+                             "Unsupported tensor dimension or"
+                             "MKL-DNN memory format"));
+        }
       } else {
         // All inputs are TF tensors.
-        // Set the output format same as input format (nchw).
-        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nchw);
+        // Set the output format same as input format (nchw/nc).
+        dst_md = memory::desc(dst_dims, MklDnnType<T>(), mkl_common_format);
       }
 
-      std::vector<primitive::at> inputs;
       if (isMklReorderNeeded) {
         for (int k = 0; k < input_tensors.size(); k++) {
           if (input_tensors[k].NumElements() > 0) {
             srcs[k].CheckReorderToOpMem(srcs_pd[k]);
+            inputs.push_back(srcs[k].GetOpMem());
           }
-        }
-      }
-      for (int k = 0; k < input_tensors.size(); k++) {
-        if (input_tensors[k].NumElements() > 0) {
-          inputs.push_back(srcs[k].GetOpMem());
         }
       }
 
@@ -344,36 +400,65 @@ class MklConcatOp : public OpKernel {
       if (are_all_mkl_inputs)
         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
 
-      auto concat_pd = concat::primitive_desc(concat_dim, srcs_pd);
-      auto dst_pd = concat_pd.dst_primitive_desc();
-
-      MklDnnShape dnn_shape_dst;
-      TensorShape tf_shape_dst;
-      Tensor* dst_tensor = nullptr;
-      if (are_all_mkl_inputs) {
-        dnn_shape_dst.SetMklTensor(true);
+      if (!inputs.empty()) {
+        auto concat_pd = concat::primitive_desc(concat_dim, srcs_pd);
         auto dst_pd = concat_pd.dst_primitive_desc();
-        dnn_shape_dst.SetMklLayout(&dst_pd);
-        dnn_shape_dst.SetElemType(MklDnnType<T>());
-        dnn_shape_dst.SetTfLayout(dst_dims.size(), dst_dims_in_nchw,
-                                  mkl_input_shapes[0].GetTfDataFormat());
-        tf_shape_dst.AddDim((dst_pd.get_size() / sizeof(T)));
+
+        MklDnnShape dnn_shape_dst;
+        TensorShape tf_shape_dst;
+        Tensor* dst_tensor = nullptr;
+        if (are_all_mkl_inputs) {
+          dnn_shape_dst.SetMklTensor(true);
+          auto dst_pd = concat_pd.dst_primitive_desc();
+          dnn_shape_dst.SetMklLayout(&dst_pd);
+          dnn_shape_dst.SetElemType(MklDnnType<T>());
+          dnn_shape_dst.SetTfLayout(dst_dims.size(), dst_dims_in_nchw,
+                                    mkl_input_shapes[0].GetTfDataFormat());
+          tf_shape_dst.AddDim((dst_pd.get_size() / sizeof(T)));
+        } else {
+          dnn_shape_dst.SetMklTensor(false);
+          tf_shape_dst = MklDnnDimsToTFShape(dst_dims);
+        }
+        AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
+                                  dnn_shape_dst);
+        DCHECK(dst_tensor == nullptr) << "Output tensor pointer is NULL";
+
+        if (dnn_shape_dst.IsMklTensor()) dst_md = dnn_shape_dst.GetMklLayout();
+        dst.SetUsrMem(dst_md, dst_tensor);
+
+        auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
+        std::vector<primitive> net;
+        net.push_back(concat_op);
+        stream(stream::kind::eager).submit(net).wait();
+
+        // For quantized concat, min and max outputs are also computed.
+        if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value) {
+          Tensor* output_min = nullptr;
+          Tensor* output_max = nullptr;
+          MklDnnShape output_min_mkl_shape, output_max_mkl_shape;
+          output_min_mkl_shape.SetMklTensor(false);
+          output_max_mkl_shape.SetMklTensor(false);
+          AllocateOutputSetMklShape(context, 1, &output_min, {},
+                                    output_min_mkl_shape);
+          AllocateOutputSetMklShape(context, 2, &output_max, {},
+                                    output_max_mkl_shape);
+          // All input tensors should have the same range, just use the
+          // first one
+          output_min->flat<float>()(0) = input_mins[0].flat<float>()(0);
+          output_max->flat<float>()(0) = input_maxes[0].flat<float>()(0);
+        }
       } else {
+        MklDnnShape dnn_shape_dst;
+        TensorShape tf_shape_dst;
+        Tensor* dst_tensor = nullptr;
         dnn_shape_dst.SetMklTensor(false);
         tf_shape_dst = MklDnnDimsToTFShape(dst_dims);
+
+        AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
+                                  dnn_shape_dst);
+        DCHECK(dst_tensor == nullptr) << "Output tensor pointer is NULL";
       }
-      AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
-                                dnn_shape_dst);
-      CHECK_NOTNULL(dst_tensor);
 
-      dst_md =
-          dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout() : dst_md;
-      dst.SetUsrMem(dst_md, dst_tensor);
-
-      auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
-      std::vector<primitive> net;
-      net.push_back(concat_op);
-      stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -423,7 +508,7 @@ class MklConcatOp : public OpKernel {
         output_tensor->flat<uint8>().size() * sizeof(uint8));
   }
 
-  // This method finds the most commom format accross all MKL inputs
+  // This method finds the most common format across all MKL inputs
   // Inputs:
   //   1. input_shapes: shapes of input (MKL) tensors.
   //   2. concat_dim: concat dimension.
@@ -489,6 +574,20 @@ class MklConcatOp : public OpKernel {
                           MklConcatOp<CPUDevice, type, NAME_IS_AXIS>)
 
 TF_CALL_float(REGISTER_MKL_CPU);
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T")
+                            .HostMemory("axis")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklConcatOp<CPUDevice, quint8, NAME_IS_AXIS>)
+
+REGISTER_KERNEL_BUILDER(Name("_MklQuantizedConcatV2")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<qint8>("T")
+                            .HostMemory("axis")
+                            .Label(mkl_op_registry::kMklQuantizedOpLabel),
+                        MklConcatOp<CPUDevice, qint8, NAME_IS_AXIS>)
 
 #undef REGISTER_CONCAT_MKL
 }  // namespace tensorflow

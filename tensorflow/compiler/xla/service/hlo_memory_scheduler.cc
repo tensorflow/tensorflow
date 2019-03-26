@@ -205,6 +205,7 @@ class ListScheduler {
   // than not taking subcomputations into account at all. In the future, we may
   // improve accounting for subcomputation memory (b/65409243).
   int64 BytesFreedIfScheduled(const ReadyListEntry& entry) {
+    auto instruction = entry.instruction;
     int64 freed_bytes = 0;
     for (const auto& kv : entry.used_buffer_unscheduled_use_counts) {
       auto buffer = kv->first;
@@ -216,7 +217,7 @@ class ListScheduler {
     // We only count the memory usage of the largest subcomputation, instead of
     // adding them all, because subcomputations won't execute in parallel.
     int64 max_subcomputation_bytes = 0;
-    for (const auto* c : entry.instruction->called_computations()) {
+    for (const auto* c : instruction->called_computations()) {
       auto it = memory_by_computation_.find(c);
       if (it != memory_by_computation_.end()) {
         int64 subcomputation_bytes = it->second;
@@ -226,10 +227,10 @@ class ListScheduler {
       }
     }
     int64 bytes_defined;
+    auto opcode = instruction->opcode();
     if (max_subcomputation_bytes > 0 &&
-        (entry.instruction->opcode() == HloOpcode::kWhile ||
-         entry.instruction->opcode() == HloOpcode::kCall ||
-         entry.instruction->opcode() == HloOpcode::kConditional)) {
+        (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
+         opcode == HloOpcode::kConditional)) {
       // The output buffer of while/call/conditional is always aliased with the
       // output buffer of the root instruction in the body. Don't double count.
       bytes_defined = max_subcomputation_bytes;

@@ -110,7 +110,7 @@ class HloSchedule {
 
   // Returns true if the schedule has a sequence for the given computation.
   bool is_computation_scheduled(const HloComputation* computation) const {
-    return sequences_.count(computation->unique_id()) == 1;
+    return sequences_.contains(computation->unique_id());
   }
 
   // Updates the schedule such that it is (again) a valid schedule for the

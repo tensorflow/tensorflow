@@ -46,6 +46,10 @@ class TopKV2OpModel : public SingleOpModel {
     PopulateTensor<uint8_t>(input_, data);
   }
 
+  void SetInputInt8(std::initializer_list<int8_t> data) {
+    PopulateTensor<int8_t>(input_, data);
+  }
+
   void SetInputInt32(std::initializer_list<int32_t> data) {
     PopulateTensor<int32_t>(input_, data);
   }
@@ -64,6 +68,10 @@ class TopKV2OpModel : public SingleOpModel {
 
   std::vector<uint8_t> GetValuesUInt8() {
     return ExtractVector<uint8_t>(output_values_);
+  }
+
+  std::vector<int8_t> GetValuesInt8() {
+    return ExtractVector<int8_t>(output_values_);
   }
 
   std::vector<int32_t> GetValuesInt32() {
@@ -126,6 +134,14 @@ TEST(TopKV2OpTest, TypeUint8) {
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 0, 1}));
   EXPECT_THAT(m.GetValuesUInt8(), ElementsAreArray({3, 2, 251, 250}));
+}
+
+TEST(TopKV2OpTest, TypeInt8) {
+  TopKV2OpModel m({2, 3}, TensorType_INT8, 2);
+  m.SetInputInt8({1, 2, 3, -126, 125, -24});
+  m.Invoke();
+  EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 1, 2}));
+  EXPECT_THAT(m.GetValuesInt8(), ElementsAreArray({3, 2, 125, -24}));
 }
 
 // Check that int32_t works.

@@ -21,14 +21,20 @@ import copy
 import gc
 import os
 import pickle
+import re
 
+from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -49,7 +55,8 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
-class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
+class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
+                              parameterized.TestCase):
 
   def tearDown(self):
     gc.collect()
@@ -286,12 +293,19 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       tmp_dir = self.get_temp_dir()
       fname = os.path.join(tmp_dir, "var.pickle")
       with open(fname, "wb") as f:
-        v = resource_variable_ops.ResourceVariable(10.0)
+        v = resource_variable_ops.ResourceVariable(
+            10.0,
+            dtype=dtypes.float16,
+            name="v")
         pickle.dump(v, f)
 
       with open(fname, "rb") as f:
-        v = pickle.load(f)
-        self.assertAllEqual(v.numpy(), 10.0)
+        new_v = pickle.load(f)
+        self.assertEqual(new_v.name, v.name)
+        self.assertEqual(new_v.shape, v.shape)
+        self.assertEqual(new_v.dtype, v.dtype)
+        self.assertEqual(new_v.trainable, v.trainable)
+        self.assertAllEqual(new_v.numpy(), v.numpy())
 
   @test_util.run_in_graph_and_eager_modes
   def testScatterDiv(self):
@@ -1012,7 +1026,8 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testAssignIncompatibleShape(self):
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
     self.evaluate(v.initializer)
-    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+    pattern = re.compile("shapes must be equal", re.IGNORECASE)
+    with self.assertRaisesRegexp(Exception, pattern):
       self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
 
   @test_util.run_in_graph_and_eager_modes
@@ -1027,67 +1042,190 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         with self.assertRaises(errors.InvalidArgumentError):
           session.run(copied.initializer)
 
+  def create_variant_shape_and_type_data(self):
+    variant_shape_and_type_data = (
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData())
+    variant_shape_and_type_data.is_set = True
+    stored_shape = tensor_shape.TensorShape([None, 4]).as_proto()
+    stored_dtype = dtypes.float32.as_datatype_enum
+    # NOTE(ebrevdo): shape_and_type lacks append() in some versions of protobuf.
+    variant_shape_and_type_data.shape_and_type.extend([
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+            shape=stored_shape, dtype=stored_dtype)])
+    return variant_shape_and_type_data
 
-class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):
+  @def_function.function
+  def create_constant_variant(self, value):
+    value = constant_op.constant(
+        tensor_pb2.TensorProto(
+            dtype=dtypes.variant.as_datatype_enum,
+            tensor_shape=tensor_shape.TensorShape([]).as_proto(),
+            variant_val=[
+                tensor_pb2.VariantTensorDataProto(
+                    # Match registration in variant_op_registry.cc
+                    type_name=b"int",
+                    metadata=np.array(value, dtype=np.int32).tobytes())
+            ]))
+    return value
 
+  # TODO(ebrevdo): Add run_in_graph_and_eager_modes once we can create
+  # EagerTensor constants with TensorProto inputs.
   @test_util.run_in_graph_and_eager_modes()
-  def test_dense_var_to_tensor_read_dtype_same_as_var_dtype(self):
-    # read_dtype is same as dtype
-    v = resource_variable_ops.ResourceVariable(1.0, dtype=dtypes.float32)
-    v = resource_variable_ops._MixedPrecisionVariable(v, dtypes.float32)
-    if not context.executing_eagerly():
-      v.initializer.run()
-
-    # dtype is not read_dtype, return NotImplemented
+  def testVariantInitializer(self):
+    variant_shape_and_type_data = self.create_variant_shape_and_type_data()
+    value = self.create_constant_variant(3)
+    initializer = array_ops.fill([3], value)
+    resource_variable_ops._set_handle_shapes_and_types(  # pylint: disable=protected-access
+        initializer, variant_shape_and_type_data,
+        graph_mode=not context.executing_eagerly())
+    v = resource_variable_ops.ResourceVariable(initializer)
+    read = array_ops.identity(v)
+    read_variant_shape_and_type = (
+        resource_variable_ops.get_eager_safe_handle_data(read))
     self.assertEqual(
-        NotImplemented, v._dense_var_to_tensor(dtype=dtypes.float16))
-    self.assertEqual(NotImplemented,
-                     v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
-
-    # as_ref is False
-    t = v._dense_var_to_tensor(as_ref=False)
-    self.assertTrue(isinstance(t, ops.Tensor))
-    self.assertEqual(t.dtype, dtypes.float32)
-    self.assertEqual(self.evaluate(t), 1.0)
-
-    t = v._dense_var_to_tensor(dtype=dtypes.float32, as_ref=False)
-    self.assertTrue(isinstance(t, ops.Tensor))
-    self.assertEqual(t.dtype, dtypes.float32)
-    self.assertEqual(self.evaluate(t), 1.0)
-
-    # as_ref is True
-    self.assertEqual(NotImplemented, v._dense_var_to_tensor(as_ref=True))
-    self.assertEqual(NotImplemented,
-                     v._dense_var_to_tensor(dtype=dtypes.float32, as_ref=True))
-
-  @test_util.run_in_graph_and_eager_modes()
-  def test_dense_var_to_tensor_read_dtype_different_from_var_dtype(self):
-    # read_dtype is different from dtype
-    v = resource_variable_ops.ResourceVariable(1.0, dtype=dtypes.float32)
-    v = resource_variable_ops._MixedPrecisionVariable(v, dtypes.float16)
+        read_variant_shape_and_type, variant_shape_and_type_data)
+    gather = v.sparse_read([0])
+    gather_variant_shape_and_type = (
+        resource_variable_ops.get_eager_safe_handle_data(gather))
+    self.assertEqual(
+        gather_variant_shape_and_type, variant_shape_and_type_data)
+    # Make sure initializer runs.
     if not context.executing_eagerly():
-      v.initializer.run()
+      self.evaluate(v.initializer)
+      self.evaluate(read.op)
+      self.evaluate(gather.op)
 
-    # as_ref is False
-    t = v._dense_var_to_tensor(as_ref=False)
-    self.assertTrue(isinstance(t, ops.Tensor))
-    self.assertEqual(t.dtype, dtypes.float16)
-    self.assertEqual(self.evaluate(t), 1.0)
+  @parameterized.parameters([
+      # batch_dims=0 (equivalent to tf.gather)
+      dict(  # 2D indices
+          batch_dims=0,
+          params=[6, 7, 8, 9],
+          indices=[[2, 1], [0, 3]],
+          expected=[[8, 7], [6, 9]]),
+      dict(  # 3D indices
+          batch_dims=0,
+          params=[6, 7, 8, 9],
+          indices=[[[3, 1], [2, 0]], [[0, 3], [2, 2]]],
+          expected=[[[9, 7], [8, 6]], [[6, 9], [8, 8]]]),
+      dict(  # 4D indices
+          batch_dims=0,
+          params=[8, 9],
+          indices=[[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                   [[[1, 1], [0, 0]], [[0, 1], [1, 0]]]],
+          expected=[[[[8, 9], [9, 8]], [[8, 8], [9, 9]]],
+                    [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
 
-    t = v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=False)
-    self.assertTrue(isinstance(t, ops.Tensor))
-    self.assertEqual(t.dtype, dtypes.float16)
-    self.assertEqual(self.evaluate(t), 1.0)
+      # batch_dims=indices.shape.ndims - 1 (equivalent to tf.batch_gather)
+      dict(  # 2D indices (1 batch dim)
+          batch_dims=1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[[2, 1], [0, 3]],
+          expected=[[12, 11], [20, 23]]),
+      dict(  # 3D indices (2 batch dims)
+          batch_dims=2,
+          params=[[[100, 101], [110, 111]], [[200, 201], [210, 211]]],
+          indices=[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+          expected=[[[100, 101], [111, 110]], [[200, 200], [211, 211]]]),
+      dict(  # 2D indices (1 batch dim)
+          batch_dims=1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[[2, 1], [0, 3]],
+          expected=[[12, 11], [20, 23]]),
+      dict(  # 3D indices (2 batch dims)
+          batch_dims=2,
+          params=[[[100, 101], [110, 111]], [[200, 201], [210, 211]]],
+          indices=[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+          expected=[[[100, 101], [111, 110]], [[200, 200], [211, 211]]]),
 
-    # as_ref is True
-    self.assertEqual(NotImplemented, v._dense_var_to_tensor(as_ref=True))
-    self.assertEqual(NotImplemented,
-                     v._dense_var_to_tensor(dtype=dtypes.float16, as_ref=True))
+      # 0 < batch_dims < indices.shape.ndims - 1
+      dict(  # 3D indices (1 batch dim)
+          batch_dims=1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[[[3, 1], [2, 0]], [[0, 3], [2, 2]]],
+          expected=[[[13, 11], [12, 10]], [[20, 23], [22, 22]]]),
+      dict(  # 4D indices (1 batch dim)
+          batch_dims=1,
+          params=[[6, 7], [8, 9]],
+          indices=[[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                   [[[1, 1], [0, 0]], [[0, 1], [1, 0]]]],
+          expected=[[[[6, 7], [7, 6]], [[6, 6], [7, 7]]],
+                    [[[9, 9], [8, 8]], [[8, 9], [9, 8]]]]),
+      dict(  # 4D indices (2 batch dims)
+          batch_dims=2,
+          params=[[[2, 3], [4, 5]], [[6, 7], [8, 9]]],
+          indices=[[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
+                   [[[1, 1], [0, 0]], [[0, 1], [1, 0]]]],
+          expected=[[[[2, 3], [3, 2]], [[4, 4], [5, 5]]],
+                    [[[7, 7], [6, 6]], [[8, 9], [9, 8]]]]),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDims(self, params, indices, batch_dims, expected):
+    var = resource_variable_ops.ResourceVariable(params, name="var0")
+    with ops.control_dependencies([var.initializer]):
+      result = resource_variable_ops.resource_gather(
+          var.handle, indices, dtype=var.dtype, batch_dims=batch_dims)
+    self.assertAllEqual(expected, result)
 
-  @test_util.run_in_graph_and_eager_modes()
-  def testDistributeStrategy(self):
-    v = resource_variable_ops.ResourceVariable(1, dtype=dtypes.int32)
-    self.assertIsNone(v.distribute_strategy)
+  @parameterized.parameters([
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=0,
+          output_shape=[2, 3, 8, 9, 10, 3, 4, 5, 6, 7]
+          # = indices.shape + params.shape[1:]
+      ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=1,
+          output_shape=[2, 3, 8, 9, 10, 4, 5, 6, 7]
+          # = params.shape[:1] + indices.shape[1:] + params.shape[2:]
+      ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 8, 9, 10],
+          batch_dims=2,
+          output_shape=[2, 3, 8, 9, 10, 5, 6, 7]
+          # = params.shape[:2] + indices.shape[2:] + params.shape[3:]
+      ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 4, 9, 10],
+          batch_dims=3,
+          output_shape=[2, 3, 4, 9, 10, 6, 7]
+          # = params.shape[:3] + indices.shape[3:] + params.shape[4:]
+      ),
+      dict(
+          params_shape=[2, 3, 4, 5, 6, 7],
+          indices_shape=[2, 3, 4, 5, 10],
+          batch_dims=4,
+          output_shape=[2, 3, 4, 5, 10, 7]
+          # = params.shape[:4] + indices.shape[4:] + params.shape[5:]
+      ),
+  ])
+  @test_util.run_in_graph_and_eager_modes
+  def testGatherWithBatchDimsMatchesTensor(self, params_shape, indices_shape,
+                                           batch_dims, output_shape):
+    """Checks that gather with batch_dims returns the correct shape."""
+    # Generate a `params` tensor with the indicated shape.
+    params_size = np.prod(params_shape)
+    params = np.reshape(np.arange(params_size, dtype=np.int32), params_shape)
+
+    # Generate an `indices` tensor with the indicated shape, where each index
+    # is within the appropriate range.
+    indices_size = np.prod(indices_shape)
+    indices = np.reshape(np.arange(indices_size, dtype=np.int32), indices_shape)
+    indices = indices % params_shape[batch_dims]
+
+    var = resource_variable_ops.ResourceVariable(params, name="var0")
+    with ops.control_dependencies([var.initializer]):
+      expected = array_ops.gather(
+          var.read_value(), indices, batch_dims=batch_dims)
+      result = resource_variable_ops.resource_gather(
+          var.handle, indices, dtype=var.dtype, batch_dims=batch_dims)
+
+    self.assertAllEqual(output_shape, result.shape.as_list())
+    self.assertAllEqual(expected, result)
 
 
 if __name__ == "__main__":

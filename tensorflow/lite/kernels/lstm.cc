@@ -381,10 +381,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                     context->ResizeTensor(context, output, output_size));
 
   // The weights are of consistent type, so it suffices to check one.
-  // TODO(mirkov): create a utility/macro for this check, so all Ops can use it.
-  const bool is_hybrid_op = ((input_to_output_weights->type == kTfLiteUInt8 ||
-                              input_to_output_weights->type == kTfLiteInt8) &&
-                             input->type == kTfLiteFloat32);
+  const bool is_hybrid_op = IsHybridOp(input, input_to_output_weights);
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
@@ -840,6 +837,8 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
       return full::Init(context, buffer, length);
     case kTfLiteLSTMBasicKernel:
       return basic::Init(context, buffer, length);
+    default:
+      return nullptr;
   }
 }
 void Free(TfLiteContext* context, void* buffer) {
@@ -855,6 +854,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       return full::Prepare(context, node);
     case kTfLiteLSTMBasicKernel:
       return basic::Prepare(context, node);
+    default:
+      return kTfLiteError;
   }
 }
 
@@ -865,6 +866,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       return full::Eval(context, node);
     case kTfLiteLSTMBasicKernel:
       return basic::Eval(context, node);
+    default:
+      return kTfLiteError;
   }
 }
 

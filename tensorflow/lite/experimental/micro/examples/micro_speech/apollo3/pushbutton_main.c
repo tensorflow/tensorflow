@@ -157,7 +157,7 @@ void pdm_data_get(void) {
 // PDM interrupt handler.
 //
 //*****************************************************************************
-void am_pdm_isr(void) {
+void am_pdm0_isr(void) {
   uint32_t ui32Status;
   //
   // Read the interrupt status.

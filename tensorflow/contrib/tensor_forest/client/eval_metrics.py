@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.contrib import losses
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
@@ -35,7 +36,7 @@ FEATURE_IMPORTANCE_NAME = 'global_feature_importance'
 
 def _top_k_generator(k):
   def _top_k(probabilities, targets):
-    targets = math_ops.to_int32(targets)
+    targets = math_ops.cast(targets, dtypes.int32)
     if targets.get_shape().ndims > 1:
       targets = array_ops.squeeze(targets, axis=[1])
     return metrics.mean(nn.in_top_k(probabilities, targets, k))
@@ -48,18 +49,19 @@ def _accuracy(predictions, targets, weights=None):
 
 
 def _r2(probabilities, targets, weights=None):
-  targets = math_ops.to_float(targets)
+  targets = math_ops.cast(targets, dtypes.float32)
   y_mean = math_ops.reduce_mean(targets, 0)
-  squares_total = math_ops.reduce_sum(math_ops.square(targets - y_mean), 0)
+  squares_total = math_ops.reduce_sum(
+      math_ops.squared_difference(targets, y_mean), 0)
   squares_residuals = math_ops.reduce_sum(
-      math_ops.square(targets - probabilities), 0)
+      math_ops.squared_difference(targets, probabilities), 0)
   score = 1 - math_ops.reduce_sum(squares_residuals / squares_total)
   return metrics.mean(score, weights=weights)
 
 
 def _squeeze_and_onehot(targets, depth):
   targets = array_ops.squeeze(targets, axis=[1])
-  return array_ops.one_hot(math_ops.to_int32(targets), depth)
+  return array_ops.one_hot(math_ops.cast(targets, dtypes.int32), depth)
 
 
 def _sigmoid_entropy(probabilities, targets, weights=None):
@@ -74,7 +76,7 @@ def _sigmoid_entropy(probabilities, targets, weights=None):
 def _softmax_entropy(probabilities, targets, weights=None):
   return metrics.mean(
       losses.sparse_softmax_cross_entropy(probabilities,
-                                          math_ops.to_int32(targets)),
+                                          math_ops.cast(targets, dtypes.int32)),
       weights=weights)
 
 

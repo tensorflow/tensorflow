@@ -63,12 +63,12 @@ bool IsControlFlowOp(const string& tensorflow_op) {
   return false;
 }
 
-// Check if a TensorFlow Op is unsupportred by the Flex runtime.
+// Check if a TensorFlow Op is unsupported by the Flex runtime.
 bool IsUnsupportedFlexOp(const string& tensorflow_op) {
   if (IsControlFlowOp(tensorflow_op)) {
     return true;
   }
-  // `HashTableV2` isn't supported for now since it requires an additinonal
+  // `HashTableV2` isn't supported for now since it requires an additional
   // initialization step.
   // TODO(b/117651199): Support `HashTableV2` with Flex runtime.
   if (tensorflow_op == "HashTableV2") {
@@ -157,7 +157,7 @@ OperatorKey::OperatorKey(
         string(::tflite::kFlexCustomCodePrefix) + flex_tensorflow_op_;
   } else {
     // If Flex is disabled or the original TensorFlow NodeDef isn't available,
-    // we produce a custom op. This gives developers a chance to implemenr
+    // we produce a custom op. This gives developers a chance to implement
     // custom ops.
     custom_code_ = name;
   }
@@ -222,7 +222,8 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
 
     std::vector<int> shape;
     if (array.has_shape()) {
-      for (int d : array.shape().dims()) {
+      shape.reserve(array.shape().dims().size());
+      for (const auto& d : array.shape().dims()) {
         shape.push_back(d);
       }
     }
@@ -384,7 +385,7 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
       mutating_input_variables = tflite_op->GetMutatingInputVariables(*op);
 
       if (!mutating_input_variables.empty()) {
-        for (int i = 0; i < op->inputs.size(); ++i) {
+        for (size_t i = 0; i < op->inputs.size(); ++i) {
           if (!mutating_input_variables[i]) {
             continue;
           }

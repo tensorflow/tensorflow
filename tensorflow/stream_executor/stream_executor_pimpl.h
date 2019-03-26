@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/types/optional.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
@@ -420,7 +421,7 @@ class StreamExecutor {
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,
                                     const absl::Span<const int> &seq_lengths,
-                                    dnn::DataType data_type);
+                                    bool time_major, dnn::DataType data_type);
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
@@ -485,6 +486,9 @@ class StreamExecutor {
   // previously registered.
   bool UnregisterTraceListener(TraceListener* listener);
 
+  // Return allocator statistics.
+  absl::optional<AllocatorStats> GetAllocatorStats();
+
  private:
   template <typename BeginCallT, typename CompleteCallT,
             typename ReturnT, typename... BeginArgsT>
@@ -523,6 +527,9 @@ class StreamExecutor {
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
   port::Status BlockHostUntilDone(Stream *stream);
+
+  // Without blocking the device, retrieve the current stream status.
+  port::Status GetStatus(Stream *stream);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,
@@ -853,7 +860,7 @@ DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
   }
   CreateAllocRecord(opaque, sizeof(T) * element_count);
   return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count,
-                                    true /* = is_sub_buffer */));
+                                          true /* = is_sub_buffer */));
 }
 
 template <typename... Params, typename... Args>

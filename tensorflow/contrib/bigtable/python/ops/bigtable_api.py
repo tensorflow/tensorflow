@@ -221,7 +221,7 @@ class BigtableTable(object):
       A `tf.data.Dataset`. containing `tf.string` Tensors corresponding to all
       of the row keys matching that prefix.
     """
-    return dataset_ops.DatasetV1Adapter(_BigtablePrefixKeyDataset(self, prefix))
+    return _BigtablePrefixKeyDataset(self, prefix)
 
   def sample_keys(self):
     """Retrieves a sampling of row keys from the Bigtable table.
@@ -233,7 +233,7 @@ class BigtableTable(object):
     Returns:
       A `tf.data.Dataset` returning string row keys.
     """
-    return dataset_ops.DatasetV1Adapter(_BigtableSampleKeysDataset(self))
+    return _BigtableSampleKeysDataset(self)
 
   def scan_prefix(self, prefix, probability=None, columns=None, **kwargs):
     """Retrieves row (including values) from the Bigtable service.
@@ -278,8 +278,7 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    return dataset_ops.DatasetV1Adapter(
-        _BigtableScanDataset(self, prefix, "", "", normalized, probability))
+    return _BigtableScanDataset(self, prefix, "", "", normalized, probability)
 
   def scan_range(self, start, end, probability=None, columns=None, **kwargs):
     """Retrieves rows (including values) from the Bigtable service.
@@ -324,8 +323,7 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    return dataset_ops.DatasetV1Adapter(
-        _BigtableScanDataset(self, "", start, end, normalized, probability))
+    return _BigtableScanDataset(self, "", start, end, normalized, probability)
 
   def parallel_scan_prefix(self,
                            prefix,
@@ -381,8 +379,7 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    ds = dataset_ops.DatasetV1Adapter(
-        _BigtableSampleKeyPairsDataset(self, prefix, "", ""))
+    ds = _BigtableSampleKeyPairsDataset(self, prefix, "", "")
     return self._make_parallel_scan_dataset(ds, num_parallel_scans, probability,
                                             normalized)
 
@@ -444,8 +441,7 @@ class BigtableTable(object):
     """
     probability = _normalize_probability(probability)
     normalized = _normalize_columns(columns, kwargs)
-    ds = dataset_ops.DatasetV1Adapter(
-        _BigtableSampleKeyPairsDataset(self, "", start, end))
+    ds = _BigtableSampleKeyPairsDataset(self, "", start, end)
     return self._make_parallel_scan_dataset(ds, num_parallel_scans, probability,
                                             normalized)
 
@@ -475,15 +471,17 @@ class BigtableTable(object):
     """
     if timestamp is None:
       timestamp = -1  # Bigtable server provided timestamp.
-    for tensor_type in nest.flatten(dataset.output_types):
+    for tensor_type in nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset)):
       if tensor_type != dtypes.string:
         raise ValueError("Not all elements of the dataset were `tf.string`")
-    for shape in nest.flatten(dataset.output_shapes):
+    for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       if not shape.is_compatible_with(tensor_shape.scalar()):
         raise ValueError("Not all elements of the dataset were scalars")
     if len(column_families) != len(columns):
       raise ValueError("len(column_families) != len(columns)")
-    if len(nest.flatten(dataset.output_types)) != len(columns) + 1:
+    if len(nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset))) != len(columns) + 1:
       raise ValueError("A column name must be specified for every component of "
                        "the dataset elements. (e.g.: len(columns) != "
                        "len(dataset.output_types))")

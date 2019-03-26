@@ -21,14 +21,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -68,6 +67,13 @@ class GenericFftOp : public XlaOpKernel {
       }
       for (int i = 0; i < fft_rank_; i++) {
         int index = input_shape.dims() - fft_rank_ + i;
+        OP_REQUIRES(
+            ctx,
+            input_shape.dim_size(index) == 0 ||
+                input_shape.dim_size(index) >= expected_sizes[i],
+            errors::InvalidArgument(
+                "Input dimension ", index, " must have length of at least ",
+                expected_sizes[i], " but got: ", input_shape.dim_size(index)));
         if (input_shape.dim_size(index) > expected_sizes[i]) {
           slice_sizes[index] = expected_sizes[i];
         } else {

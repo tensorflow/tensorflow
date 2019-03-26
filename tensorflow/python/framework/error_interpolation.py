@@ -31,7 +31,7 @@ import six
 
 from tensorflow.python.util import tf_stack
 
-_NAME_REGEX = r"[A-Za-z0-9.][A-Za-z0-9_.\-/]*?"
+_NAME_REGEX = r"[A-Za-z0-9_.][A-Za-z0-9_.\-/]*?"
 _TAG_REGEX = r"{{{{({name}) ({name})}}}}".format(name=_NAME_REGEX)
 _INTERPOLATION_REGEX = r"^(.*?)({tag})".format(tag=_TAG_REGEX)
 _INTERPOLATION_PATTERN = re.compile(_INTERPOLATION_REGEX, re.DOTALL)
@@ -41,11 +41,13 @@ _ParseTag = collections.namedtuple("_ParseTag", ["type", "name"])
 _BAD_FILE_SUBSTRINGS = [
     os.path.join("tensorflow", "python"),
     os.path.join("tensorflow", "contrib"),
+    os.path.join("tensorflow_estimator", "python"),
+    os.path.join("tensorflow_estimator", "contrib"),
     "<embedded",
 ]
 
 
-def _parse_message(message):
+def parse_message(message):
   """Parses the message.
 
   Splits the message into separators and tags. Tags are named tuples
@@ -210,6 +212,39 @@ def _get_defining_frame_from_op(op):
   frame_index = _find_index_of_defining_frame_for_op(op)
   return op.traceback[frame_index]
 
+def compute_useful_stack(op):
+  """Return a list of line name and lineno pairs, which form a 'useful' stack.
+
+  Starting from the defining frame to the outermost one, this method computes
+  the contiguous portion of the 'useful' stack trace and returns each line as
+  a line name and lineno pair.
+
+  Args:
+    op: op.Operation object having a _traceback member.
+
+  Returns:
+    A list of line name and lineno pairs. Below is an example of returned list:
+    [("tool_utils.py", "124", "func1", "a={}"), ("tool_utils.py", "21", "func2",
+    "for i in range(10):"), ....]
+  """
+  defining_frame_index = _find_index_of_defining_frame_for_op(op)
+  stack_trace = []
+  # The stack trace is collected from the defining (included) to the outermost.
+  # Include `frame_num` frames at most.
+  # Two lines from the TensorFlow library are included to show the node
+  # definition.
+  frame_num = 10
+  innermost_excluded = min(defining_frame_index + 2 + 1, len(op.traceback))
+  outermost_included = max(innermost_excluded - frame_num, 0)
+  for index in reversed(range(outermost_included, innermost_excluded)):
+    frame = op.traceback[index]
+    filename = frame[tf_stack.TB_FILENAME]
+    lineno = frame[tf_stack.TB_LINENO]
+    func = frame[tf_stack.TB_FUNCNAME]
+    code = frame[tf_stack.TB_CODEDICT]
+    stack_trace.append((filename, lineno, func, code))
+  return stack_trace
+
 
 def compute_field_dict(op, strip_file_prefix=""):
   """Return a dictionary mapping interpolation tokens to values.
@@ -288,21 +323,18 @@ def traceback_files_common_prefix(all_ops):
   return os.path.split(os.path.commonprefix(list(files)))[0]
 
 
-def _sources_for_node(name, graph):
-  """Gets the top-level root input nodes for 'name' node.
-
-  We recursively traverse the graph from 'name' node to its inputs and collect
-  all the nodes which don't have any inputs.
+def _sources_for_node(node, graph):
+  """Gets the input op nodes for 'node'.
 
   Args:
-    name: The name of the node.
+    node: The node.
     graph: The graph containing the node.
 
   Returns:
-    The unique top-level root input nodes.
+    The unique input nodes.
   """
-  def _helper(name, graph, seen_names, inputs):
-    """Recursive helper. 'seen_names' and 'inputs' are mutated."""
+  inputs = set()
+  for name in node.node_def.input:
     if name.startswith("^"):
       name = name[1:]
     try:
@@ -312,20 +344,9 @@ def _sources_for_node(name, graph):
       try:
         op = graph.get_operation_by_name(name)
       except KeyError:
-        return
-    name = op.name
-    if name in seen_names:
-      return
-    seen_names.add(name)
-    if not op.node_def.input:
-      inputs.add(op)
-      return
-    for n in op.node_def.input:
-      _helper(n, graph, seen_names, inputs)
+        continue
+    inputs.add(op)
 
-  names = set()
-  inputs = set()
-  _helper(name, graph, names, inputs)
   return list(inputs)
 
 
@@ -376,7 +397,7 @@ def interpolate(error_message, graph):
   Returns:
     The string with tags of the form {{type name}} interpolated.
   """
-  seps, tags = _parse_message(error_message)
+  seps, tags = parse_message(error_message)
   subs = []
   end_msg = collections.defaultdict(list)
   tagged_ops = []
@@ -389,7 +410,7 @@ def interpolate(error_message, graph):
     if op is None:
       tagged_ops.append(None)
     else:
-      tagged_ops.append([op] + _sources_for_node(op.name, graph))
+      tagged_ops.append([op] + _sources_for_node(op, graph))
 
   common_prefix = traceback_files_common_prefix(tagged_ops)
   for tag, ops in zip(tags, tagged_ops):
@@ -404,6 +425,8 @@ def interpolate(error_message, graph):
         msg = "node %s%s placed on device %s " % (
             ops[0].name, field_dict["defined_at"], field_dict["devices"])
         end_msg["colocations"].append(field_dict["devs_and_colocs"])
+    if tag.type == "function_node":
+      msg = ""
     subs.append(msg)
 
   if "source_nodes" in end_msg:

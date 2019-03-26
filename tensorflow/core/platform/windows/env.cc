@@ -40,13 +40,30 @@ namespace tensorflow {
 
 namespace {
 
+mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+
+std::map<std::thread::id, string>& GetThreadNameRegistry()
+    EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
+  static auto* thread_name_registry = new std::map<std::thread::id, string>();
+  return *thread_name_registry;
+}
+
 class StdThread : public Thread {
  public:
-  // name and thread_options are both ignored.
+  // thread_options is ignored.
   StdThread(const ThreadOptions& thread_options, const string& name,
             std::function<void()> fn)
-      : thread_(fn) {}
-  ~StdThread() { thread_.join(); }
+      : thread_(fn) {
+    mutex_lock l(name_mutex);
+    GetThreadNameRegistry().emplace(thread_.get_id(), name);
+  }
+
+  ~StdThread() override {
+    std::thread::id thread_id = thread_.get_id();
+    thread_.join();
+    mutex_lock l(name_mutex);
+    GetThreadNameRegistry().erase(thread_id);
+  }
 
  private:
   std::thread thread_;
@@ -82,6 +99,21 @@ class WindowsEnv : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
     return new StdThread(thread_options, name, fn);
+  }
+
+  int32 GetCurrentThreadId() override {
+    return static_cast<int32>(::GetCurrentThreadId());
+  }
+
+  bool GetCurrentThreadName(string* name) override {
+    mutex_lock l(name_mutex);
+    auto thread_name = GetThreadNameRegistry().find(std::this_thread::get_id());
+    if (thread_name != GetThreadNameRegistry().end()) {
+      *name = thread_name->second;
+      return true;
+    } else {
+      return false;
+    }
   }
 
   static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,

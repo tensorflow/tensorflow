@@ -47,29 +47,30 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
 
   // Read start indices from start_indices_generator.
   const int64 rank = output_shape.rank();
-  IrArray::Index start_index(b->getInt64Ty(), rank);
+  std::vector<llvm::Value*> start_multi_index(rank);
   for (int64 i = 0; i < rank; ++i) {
-    TF_ASSIGN_OR_RETURN(start_index[i], start_indices_generator(i));
+    TF_ASSIGN_OR_RETURN(start_multi_index[i], start_indices_generator(i));
     llvm::Value* output_dim_size = llvm::ConstantInt::get(
-        start_index[i]->getType(), output_shape.dimensions(i));
+        start_multi_index[i]->getType(), output_shape.dimensions(i));
     llvm::Value* update_dim_size = llvm::ConstantInt::get(
-        start_index[i]->getType(), update_shape.dimensions(i));
+        start_multi_index[i]->getType(), update_shape.dimensions(i));
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, output_dim_size - update_dim_size)
     llvm::Value* max_bound = b->CreateSub(output_dim_size, update_dim_size);
-    llvm::Value* zero = llvm::ConstantInt::get(start_index[i]->getType(), 0);
-    start_index[i] =
+    llvm::Value* zero =
+        llvm::ConstantInt::get(start_multi_index[i]->getType(), 0);
+    start_multi_index[i] =
         b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SGE
                                                 : llvm::ICmpInst::ICMP_UGE,
-                                      zero, start_index[i]),
-                        zero, start_index[i]);
+                                      zero, start_multi_index[i]),
+                        zero, start_multi_index[i]);
 
-    start_index[i] =
+    start_multi_index[i] =
         b->CreateSelect(b->CreateICmp(is_signed ? llvm::ICmpInst::ICMP_SLE
                                                 : llvm::ICmpInst::ICMP_ULE,
-                                      max_bound, start_index[i]),
-                        max_bound, start_index[i]);
+                                      max_bound, start_multi_index[i]),
+                        max_bound, start_multi_index[i]);
   }
 
   auto loop_body_emitter = [&](const IrArray::Index& update_index) -> Status {
@@ -78,14 +79,16 @@ static Status EmitDynamicUpdateSliceInPlaceImpl(
     //
     //   output_index[dim] = start_index[dim] + update_index[dim]
     //
-    IrArray::Index output_index(start_index.GetType(), rank);
+    std::vector<llvm::Value*> output_multi_index(rank);
     for (int64 i = 0; i < rank; ++i) {
-      llvm::Value* start_index0 =
-          b->CreateSExtOrBitCast(start_index[i], update_index[i]->getType());
-      output_index[i] = b->CreateAdd(start_index0, update_index[i]);
+      llvm::Value* start_index0 = b->CreateSExtOrBitCast(
+          start_multi_index[i], update_index[i]->getType());
+      output_multi_index[i] = b->CreateAdd(start_index0, update_index[i]);
     }
 
     // Do output[output_index] = update[update_index].
+    IrArray::Index output_index(output_multi_index, output_shape,
+                                b->getInt64Ty());
     TF_ASSIGN_OR_RETURN(llvm::Value * update_data,
                         update_array_generator(update_index));
     output_array.EmitWriteArrayElement(output_index, update_data, b);
@@ -113,20 +116,10 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
   Shape output_shape = output_array.GetShape();
   Shape update_shape = update_array.GetShape();
 
-  IndexGenerator start_indices_generator;
-  // TODO(b/118437727): Remove the R1 path, and rename the variables.
-  if (start_indices_array.GetShape().rank() == 1) {
-    start_indices_generator = [&](int64 index) {
-      return start_indices_array.EmitReadArrayElement(
-          IrArray::Index({b->getInt64(index)}), b);
-    };
-  } else {
-    start_indices_generator = [&](int64 index) {
-      return operand_arrays[2 + index].EmitReadArrayElement(
-          IrArray::Index(b->getInt64Ty()), b);
-    };
-  }
-
+  IndexGenerator start_indices_generator = [&](int64 index) {
+    return operand_arrays[2 + index].EmitReadArrayElement(
+        IrArray::Index(b->getInt64Ty()), b);
+  };
   ElementGenerator update_array_generator = [&](const IrArray::Index& index) {
     return update_array.EmitReadArrayElement(index, b);
   };
@@ -178,21 +171,11 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
   TF_RETURN_IF_ERROR(dynamic_update_slice->Accept(&fused_emitter));
   ElementGenerator update_array_generator = fused_emitter.GetGenerator(update);
 
-  // TODO(b/118437727): Remove the R1 path, and rename the variables.
-  IndexGenerator start_indices_generator;
-  if (start_indices->shape().rank() == 1) {
-    start_indices_generator = [&](int64 index) {
-      return fused_emitter.GetGenerator(start_indices)(
-          IrArray::Index({b->getInt64(index)}));
-    };
-  } else {
-    start_indices_generator = [&](int64 index) {
-      ElementGenerator element_generator =
-          fused_emitter.GetGenerator(dynamic_update_slice->operand(2 + index));
-      return element_generator(IrArray::Index(b->getInt64Ty()));
-    };
-  }
-
+  IndexGenerator start_indices_generator = [&](int64 index) {
+    ElementGenerator element_generator =
+        fused_emitter.GetGenerator(dynamic_update_slice->operand(2 + index));
+    return element_generator(IrArray::Index(b->getInt64Ty()));
+  };
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
   return EmitDynamicUpdateSliceInPlaceImpl(
       update_shape, start_indices_generator, is_signed, update_array_generator,

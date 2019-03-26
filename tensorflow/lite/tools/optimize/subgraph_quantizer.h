@@ -40,8 +40,28 @@ class SubgraphQuantizer {
  private:
   // Quantizes ops with bias tensors.
   TfLiteStatus QuantizeOpWithBias(BuiltinOperator op_code, OperatorT* op);
-  TfLiteStatus AsymmetricQuantizeTensor(BuiltinOperator op_code,
-                                        int32_t tensor_idx);
+
+  // Average and Max pool need special treatement. The scales are propagated
+  // from inputs to outputs.
+  TfLiteStatus PropagateMinMaxForAvgAndMaxPool(BuiltinOperator op_code,
+                                               OperatorT* op);
+
+  // Asymmetric quantizes inputs and outputs of an Softmax Op.
+  // Input is quantized with the min-max range and output is hardcoded to have
+  // 1/256 as scale and -128 as zero point.
+  TfLiteStatus AsymmetricQuantizeSoftmax(BuiltinOperator op_code,
+                                         OperatorT* op);
+
+  // Quantizes an Op with multiple inputs and outputs. E.g Add.
+  TfLiteStatus QuantizeInputsAndOutputs(BuiltinOperator op_code, OperatorT* op);
+
+  // Quantizes a tensor, if the tensor has a buffer, the buffer is quantized
+  // symmetrically, otherwise inputs and outputs quantization params are
+  // computed using min, max information present in the tensor.
+  TfLiteStatus QuantizeTensor(BuiltinOperator op_code, int32_t tensor_idx);
+
+  // Returns true if |tensor_idx| is a tensor of type Float32.
+  bool IsFloat32TypeTensor(int32_t tensor_idx) const;
 
   ModelT* model_;
   SubGraphT* subgraph_;

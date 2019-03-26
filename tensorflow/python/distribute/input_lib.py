@@ -21,16 +21,20 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.data.util import structure
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_ops
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
 
@@ -91,237 +95,6 @@ class InputWorkers(object):
         self.__class__.__name__, debug_repr, self._device_map)
 
 
-class PerReplicaDataIterator(object):
-  """An iterator (like `tf.data.Iterator`) into a `PerReplicaDataset`."""
-
-  def __init__(self, iterator, input_workers, worker_index, prefetch_on_device):
-    assert isinstance(input_workers, InputWorkers)
-    self._iterator = iterator
-    self._input_workers = input_workers
-    self._worker_index = worker_index
-    self._prefetch_on_device = prefetch_on_device
-
-  @property
-  def initializer(self):
-    return self._iterator.initializer
-
-  def get_next_as_list(self, name=None):
-    """Scatter the input across devices."""
-    if self._prefetch_on_device:
-      data_list = self._iterator.get_next()
-    else:
-      batch = self._iterator.get_next(name=name)
-      data_list = []
-      def get_ith(i):
-        return lambda x: x[i]
-
-      devices = self._input_workers.compute_devices_for_worker(
-          self._worker_index)
-      for i, d in enumerate(devices):
-        v = nest.map_structure(get_ith(i), batch)
-        if context.executing_eagerly():
-          with ops.device(d):
-            v = nest.map_structure(array_ops.identity, v)
-        data_list.append(v)
-
-    return data_list
-
-  def get_next(self, name=None):
-    assert self._input_workers.num_workers == 1
-    data_list = self.get_next_as_list(name)
-    return values.regroup(self._input_workers.device_map, data_list)
-
-  @property
-  def output_classes(self):
-    return self._iterator.output_classes
-
-  @property
-  def output_shapes(self):
-    return self._iterator.output_shapes
-
-  @property
-  def output_types(self):
-    return self._iterator.output_types
-
-
-class PerReplicaDataset(object):
-  """Like `tf.data.Dataset` split devices, producing `PerReplica` data."""
-
-  def __init__(self, dataset, input_workers, worker_index,
-               prefetch_on_device=None):
-    assert isinstance(input_workers, InputWorkers)
-    assert worker_index is not None
-    assert worker_index is not True  # pylint: disable=g-bool-id-comparison
-    assert worker_index is not False  # pylint: disable=g-bool-id-comparison
-    self._input_workers = input_workers
-    self._worker_index = worker_index
-
-    # Default to using prefetching, unless specified.
-    self._prefetch_on_device = prefetch_on_device
-    if self._prefetch_on_device is None:
-      self._prefetch_on_device = True
-
-    self._dataset = dataset
-    if not self._prefetch_on_device:
-      # TODO(priyag): If dropping remainder is not appropriate, find another
-      # approach to distributing the dataset when not possible to divide evenly.
-      # Possibly not an issue when we start using PartitionedDataset.
-      num_replicas = len(
-          self._input_workers.compute_devices_for_worker(self._worker_index))
-      self._dataset = self._dataset.batch(num_replicas, drop_remainder=True)
-    else:
-      self._replica_devices = self._input_workers.compute_devices_for_worker(
-          self._worker_index)
-
-  def make_one_shot_iterator(self):
-    """Get a one time use iterator for the distributed PerReplicaDataset."""
-    # Graph mode with one shot iterator is disabled.
-    if not context.executing_eagerly():
-      raise ValueError("Cannot create a one shot iterator. Please use "
-                       "`make_initializable_iterator()` instead.")
-    if self._prefetch_on_device:
-      dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-          self._dataset, self._replica_devices)
-    else:
-      dataset_iterator = dataset_ops.make_one_shot_iterator(self._dataset)
-    return PerReplicaDataIterator(
-        dataset_iterator,
-        self._input_workers,
-        self._worker_index,
-        prefetch_on_device=self._prefetch_on_device)
-
-  def make_initializable_iterator(self):
-    """Get an initializable iterator for the distributed PerReplicaDataset."""
-    # Eager mode generates already initialized iterators. Hence we cannot create
-    # an initializable iterator.
-    if context.executing_eagerly():
-      raise ValueError("Cannot create initializable iterator in Eager mode. "
-                       "Please use `make_one_shot_iterator` instead.")
-    if self._prefetch_on_device:
-      dataset_iterator = multi_device_iterator_ops.MultiDeviceIterator(
-          self._dataset, self._replica_devices)
-    else:
-      dataset_iterator = dataset_ops.make_initializable_iterator(self._dataset)
-    return PerReplicaDataIterator(
-        dataset_iterator, self._input_workers, self._worker_index,
-        prefetch_on_device=self._prefetch_on_device)
-
-
-class MultiWorkerDataIterator(object):
-  """An iterator (like `tf.data.Iterator`) into a `MultiWorkerDataset`."""
-
-  def __init__(self, iterators, input_workers):
-    """Initialize the `MultiWorkerDataIterator` object.
-
-    Args:
-      iterators: a list of worker, iterator pairs.
-      input_workers: an `InputWorkers` object.
-
-    Raises:
-      ValueError: if iterators and input_workers are not compatible.
-    """
-    assert isinstance(input_workers, InputWorkers)
-    workers = tuple(d for d, _ in iterators)
-    if workers != input_workers.worker_devices:
-      raise ValueError("iterators and input_workers are not compatible. "
-                       "iterator workers: %r input_workers devices: %r" %
-                       (workers, input_workers.worker_devices))
-    self._iterators = tuple(i for _, i in iterators)
-    self._input_workers = input_workers
-
-  @property
-  def initializer(self):
-    return control_flow_ops.group(
-        tuple(iterator.initializer for iterator in self._iterators))
-
-  def get_iterator(self, worker):
-    for i, w in enumerate(self._input_workers.worker_devices):
-      if worker == w:
-        return self._iterators[i]
-    return None
-
-  @property
-  def output_shapes(self):
-    return self._iterators[0].output_shapes
-
-  @property
-  def output_types(self):
-    return self._iterators[0].output_types
-
-  def get_next(self, name=None):
-    """Scatter the input across hosts and devices."""
-    replicas = []
-    for worker, iterator in zip(self._input_workers.worker_devices,
-                                self._iterators):
-      if name is not None:
-        d = tf_device.DeviceSpec.from_string(worker)
-        new_name = "%s_%s_%d" % (name, d.job, d.task)
-      else:
-        new_name = None
-      with ops.device(worker):
-        data_per_worker = iterator.get_next_as_list(name=new_name)
-        # Append to replicas to get a flat list of values indexed by replica.
-        replicas.extend(data_per_worker)
-
-    return values.regroup(self._input_workers.device_map, replicas)
-
-
-class MultiWorkerDataset(object):
-  """Like a `tf.data.Dataset` that distributes data to different workers.
-
-  Each worker gets one shard of the input dataset. This currently does not work
-  in eager mode.
-  """
-
-  def __init__(self, dataset_fn, input_workers, prefetch_on_device=None,
-               auto_shard=False):
-    """Initialize the MultiWorkerDataset object.
-
-    Args:
-      dataset_fn: a function or a list of functions that returns a
-        `tf.data.Dataset`.
-      input_workers: an `InputWorkers` object.
-      prefetch_on_device: whether to prefetch to devices.
-      auto_shard: whether to auto-shard the dataset.
-    """
-    assert isinstance(input_workers, InputWorkers)
-    if isinstance(dataset_fn, (list, tuple)):
-      if len(dataset_fn) != input_workers.num_workers:
-        raise ValueError("If `dataset_fn` is a list, it must have one entry "
-                         "per worker")
-    # TODO(rohanj): b/120673685 to track re-enabling auto sharding.
-    if auto_shard:
-      raise ValueError("Currently autosharding is not supported.")
-    self._input_workers = input_workers
-    self._datasets = []
-    # TODO(yuefengz, priyag): support different set of jobs for input
-    # processing.
-    for i, worker in enumerate(input_workers.worker_devices):
-      with ops.device(worker):
-        if isinstance(dataset_fn, (list, tuple)):
-          worker_input = dataset_fn[i]()
-        else:
-          worker_input = dataset_fn()
-        dataset = PerReplicaDataset(worker_input, input_workers, i,
-                                    prefetch_on_device=prefetch_on_device)
-        self._datasets.append((worker, dataset))
-
-  def make_one_shot_iterator(self):
-    iterators = []
-    for worker, dataset in self._datasets:
-      with ops.device(worker):
-        iterators.append((worker, dataset_ops.make_one_shot_iterator(dataset)))
-    return MultiWorkerDataIterator(iterators, self._input_workers)
-
-  def make_initializable_iterator(self):
-    iterators = []
-    for worker, dataset in self._datasets:
-      with ops.device(worker):
-        iterators.append(
-            (worker, dataset_ops.make_initializable_iterator(dataset)))
-    return MultiWorkerDataIterator(iterators, self._input_workers)
-
-
 class InputIterator(object):
   """An input iterator, intended to be passed to `DistributionStrategy.run`."""
 
@@ -349,7 +122,20 @@ class InputIterator(object):
 class InputIteratorImpl(InputIterator):
   """Common implementation for all input iterators."""
 
-  def __init__(self, input_workers, iterators):
+  def __init__(self, input_workers, iterators, **kwargs):
+    # TODO(b/128995245): Remove this temporary flag once the zero batch case can
+    # be correctly handled.
+    self._enable_get_next_as_optional = False
+    if len(kwargs) > 1:
+      raise ValueError("InputIteratorImpl constructor only takes one "
+                       "experimental flag now")
+    if len(kwargs) == 1:
+      if "_enable_get_next_as_optional" not in kwargs:
+        raise ValueError("InputIteratorImpl constructor does not support "
+                         "arguments: {}".format(kwargs))
+      self._enable_get_next_as_optional = (
+          kwargs["_enable_get_next_as_optional"])
+
     assert isinstance(input_workers, InputWorkers)
     if not input_workers.worker_devices:
       raise ValueError("Should have at least one worker for input iterator.")
@@ -359,7 +145,22 @@ class InputIteratorImpl(InputIterator):
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
+    if not self._enable_get_next_as_optional:
+      replicas = []
+      for i, worker in enumerate(self._input_workers.worker_devices):
+        if name is not None:
+          d = tf_device.DeviceSpec.from_string(worker)
+          new_name = "%s_%s_%d" % (name, d.job, d.task)
+        else:
+          new_name = None
+        with ops.device(worker):
+          # Make `replicas` a flat list of values across all replicas.
+          replicas.extend(
+              self._iterators[i].get_next_as_list_deprecated(new_name))
+      return values.regroup(self._input_workers.device_map, replicas)
+
     replicas = []
+    worker_has_values = []
     for i, worker in enumerate(self._input_workers.worker_devices):
       if name is not None:
         d = tf_device.DeviceSpec.from_string(worker)
@@ -367,8 +168,61 @@ class InputIteratorImpl(InputIterator):
       else:
         new_name = None
       with ops.device(worker):
+        worker_has_value, next_element = (
+            self._iterators[i].get_next_as_list(new_name))
+        worker_has_values.append(worker_has_value)
         # Make `replicas` a flat list of values across all replicas.
-        replicas.extend(self._iterators[i].get_next_as_list(new_name))
+        replicas.append(next_element)
+
+    out_of_range_replicas = []
+
+    def out_of_range_fn(worker_index, device):
+      """This function will throw an OutOfRange error."""
+      # As this will be only called when there is no data left, so calling
+      # get_next() will trigger an OutOfRange error.
+      data = self._iterators[worker_index].get_next(device)
+      out_of_range_replicas.append(data)
+      return data
+
+    # `global_has_value` indicates whether there is data in this global batch.
+    # We do a all-reduce across all the workers in the multi-worker case.
+    # TODO(b/126259107): Do strategy.reduce for CollectiveAllReduceStrategy.
+    if len(worker_has_values) > 1:
+      with ops.device(self._input_workers.compute_devices_for_worker(0)[0]):
+        # Place the tf.reduce_any op in device 0 to minimize communication
+        # cost.
+        # TODO(b/128545270): Investigate why placing it on worker 0 will cause
+        # the entire data to copy back from device to host.
+        global_has_value = math_ops.reduce_any(worker_has_values)
+    else:
+      global_has_value = worker_has_values[0]
+
+    results = []
+    for i, worker in enumerate(self._input_workers.worker_devices):
+      with ops.device(worker):
+        devices = self._input_workers.compute_devices_for_worker(i)
+        for j, device in enumerate(devices):
+          with ops.device(device):
+            # pylint: disable=undefined-loop-variable
+            # pylint: disable=cell-var-from-loop
+            # It is fine for the lambda to capture variables from the loop as
+            # the lambda is executed in the loop as well.
+            result = control_flow_ops.cond(global_has_value,
+                                           lambda: replicas[i][j],
+                                           lambda: out_of_range_fn(i, device))
+            # pylint: enable=cell-var-from-loop
+            # pylint: enable=undefined-loop-variable
+            results.append(result)
+    replicas = results
+
+    # Some dimensions in `replicas` will become unknown after we conditionally
+    # return the real tensors or the dummy tensors. We fix the input shapes by
+    # using the shapes from `out_of_range_replicas` because it is calling
+    # get_next() inside.
+    flattened_replicas = nest.flatten(replicas)
+    for i, replica_data in enumerate(nest.flatten(out_of_range_replicas)):
+      flattened_replicas[i].set_shape(replica_data.get_shape())
+    replicas = nest.pack_sequence_as(replicas, flattened_replicas)
 
     return values.regroup(self._input_workers.device_map, replicas)
 
@@ -409,15 +263,13 @@ class InputIteratorImpl(InputIterator):
 class InputFunctionIterator(InputIteratorImpl):
   """Iterator created from input function."""
 
-  def __init__(self, input_fn, input_workers, input_contexts):
+  def __init__(self, input_fn, input_workers, input_contexts, **kwargs):
     """Make an iterator for input provided via an input function.
 
     Currently implements PER_WORKER mode, in which the `input_fn` is called
     once on each worker.
 
     TODO(priyag): Add other replication modes.
-    TODO(priyag): Allow taking input function that returns a callable that
-    returns nest of tensors.
 
     Args:
       input_fn: Input function that returns a `tf.data.Dataset` object.
@@ -425,6 +277,7 @@ class InputFunctionIterator(InputIteratorImpl):
       input_contexts: A list of `InputContext` instances to be passed to call(s)
         to `input_fn`. Length and order should match worker order in
         `worker_device_pairs`.
+      **kwargs: Additional experimental flags. Will be removed in future.
     """
     assert isinstance(input_workers, InputWorkers)
     if input_workers.num_workers != len(input_contexts):
@@ -438,19 +291,24 @@ class InputFunctionIterator(InputIteratorImpl):
       worker = input_workers.worker_devices[i]
       with ops.device(worker):
         result = input_fn(ctx)
-        if not isinstance(result, dataset_ops.DatasetV2):
-          raise ValueError("input_fn must return a tf.data.Dataset.")
         devices = input_workers.compute_devices_for_worker(i)
-        iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        if isinstance(result, dataset_ops.DatasetV2):
+          iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        elif callable(result):
+          iterator = _SingleWorkerCallableIterator(result, worker, devices)
+        else:
+          raise ValueError(
+              "input_fn must return a tf.data.Dataset or a callable.")
         iterators.append(iterator)
 
-    super(InputFunctionIterator, self).__init__(input_workers, iterators)
+    super(InputFunctionIterator, self).__init__(
+        input_workers, iterators, **kwargs)
 
 
 class DatasetIterator(InputIteratorImpl):
   """Iterator created from input dataset."""
 
-  def __init__(self, dataset, input_workers, split_batch_by=None):
+  def __init__(self, dataset, input_workers, split_batch_by=None, **kwargs):
     """Make an iterator for the dataset on given devices.
 
     If `split_batch_by` is not None, we "split" each batch of the
@@ -475,10 +333,11 @@ class DatasetIterator(InputIteratorImpl):
       input_workers: an `InputWorkers` object.
       split_batch_by: Optional integer. If present, we "split" each batch of the
         dataset by `split_batch_by` value.
+      **kwargs: Additional experimental flags. Will be removed in future.
     """
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = _split_dataset_batch(dataset, split_batch_by)
+      dataset = batching._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
 
     iterators = []
     for i, worker in enumerate(input_workers.worker_devices):
@@ -487,11 +346,53 @@ class DatasetIterator(InputIteratorImpl):
         cloned_dataset = dataset
         if not context.executing_eagerly():
           cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
         iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
                                                 worker_devices)
         iterators.append(iterator)
 
-    super(DatasetIterator, self).__init__(input_workers, iterators)
+    self._element_structure = dataset._element_structure  # pylint: disable=protected-access
+
+    super(DatasetIterator, self).__init__(input_workers, iterators, **kwargs)
+
+
+def _dummy_tensor_fn(value_structure):
+  """A function to create dummy tensors from `value_structure`."""
+
+  def create_dummy_tensor(feature_shape, feature_type):
+    """Create a dummy tensor with possible batch dimensions set to 0."""
+
+    # Ideally we should set the batch dimension to 0, however as in
+    # DistributionStrategy we don't know the batch dimension, we try to
+    # guess it as much as possible. If the feature has unknown dimensions, we
+    # will set them to 0. If the feature shape is already static, we guess the
+    # first dimension as batch dimension and set it to 0.
+    dims = []
+    for dim in feature_shape.dims:
+      if dim.value is None:
+        dims.append(tensor_shape.Dimension(0))
+      else:
+        dims.append(dim)
+    if feature_shape.is_fully_defined() and dims:
+      dims[0] = tensor_shape.Dimension(0)
+
+    # Create the dummy tensor.
+    dummy_tensor = array_ops.zeros(tensor_shape.TensorShape(dims), feature_type)
+    return dummy_tensor
+
+  result = []
+  # pylint: disable=protected-access
+  for feature_shape, feature_type in zip(value_structure._flat_shapes,
+                                         value_structure._flat_types):
+    result.append(create_dummy_tensor(feature_shape, feature_type))
+
+  if isinstance(value_structure, structure.NestedStructure):
+    result = nest.pack_sequence_as(value_structure._nested_structure, result)
+  else:
+    result = result[0]
+  # pylint: enable=protected-access
+
+  return result
 
 
 class _SingleWorkerDatasetIterator(object):
@@ -519,12 +420,58 @@ class _SingleWorkerDatasetIterator(object):
       self._iterator = multi_device_iterator_ops.MultiDeviceIterator(
           self._dataset, self._devices)
 
-  def get_next_as_list(self, name=None):
+  def get_next(self, device, name=None):
+    """Get next element for the given device."""
+    del name
+    with ops.device(self._worker):
+      return self._iterator.get_next(device)
+
+  def get_next_as_list_deprecated(self, name=None):
     """Get next element from the underlying iterator."""
     del name
     with ops.device(self._worker):
       data_list = self._iterator.get_next()
       return data_list
+
+  def get_next_as_list(self, name=None):
+    """Get next element from underlying iterator.
+
+    If there is no data left, a list of dummy tensors with possible batch
+    dimensions set to 0 will be returned.
+
+    Args:
+      name: not used.
+
+    Returns:
+      A boolean tensor indicates whether there is any data in next element and
+      the real data as the next element or a list of dummy tensors if no data
+      left.
+    """
+    del name
+    with ops.device(self._worker):
+      data_list = self._iterator.get_next_as_optional()
+      result = []
+      for i, data in enumerate(data_list):
+        # Place the condition op in the same device as the data so the data
+        # doesn't need to be sent back to the worker.
+        with ops.device(self._devices[i]):
+          # As MultiDeviceIterator will fetch data in order, so we only need to
+          # check if the first replica has value to see whether there is data
+          # left for this single worker.
+          if i == 0:
+            worker_has_value = data.has_value()
+
+          # pylint: disable=unnecessary-lambda
+          # pylint: disable=cell-var-from-loop
+          real_data = control_flow_ops.cond(
+              data.has_value(),
+              lambda: data.get_value(),
+              lambda: _dummy_tensor_fn(data.value_structure))
+          result.append(real_data)
+          # pylint: enable=cell-var-from-loop
+          # pylint: enable=unnecessary-lambda
+
+      return worker_has_value, result
 
   def initialize(self):
     """Initialze underlying iterator.
@@ -537,56 +484,87 @@ class _SingleWorkerDatasetIterator(object):
       A list of any initializer ops that should be run.
     """
     if context.executing_eagerly():
-      self._make_iterator()
+      self._iterator._eager_reset()  # pylint: disable=protected-access
       return []
     else:
       return [self._iterator.initializer]
 
   @property
   def output_classes(self):
-    return self._iterator.output_classes
+    return dataset_ops.get_legacy_output_classes(self._iterator)
 
   @property
   def output_shapes(self):
-    return self._iterator.output_shapes
+    return dataset_ops.get_legacy_output_shapes(self._iterator)
 
   @property
   def output_types(self):
-    return self._iterator.output_types
+    return dataset_ops.get_legacy_output_types(self._iterator)
 
 
-def _split_dataset_batch(dataset, split_batch_by):
-  """Divide a batch-ed dataset's batches into smaller batches."""
-  # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+class _SingleWorkerCallableIterator(object):
+  """Iterator for a single tensor-returning callable."""
+
+  def __init__(self, fn, worker, devices):
+    self._fn = fn
+    self._worker = worker
+    self._devices = devices
+
+  def get_next(self, device, name=None):
+    """Get next element for the given device from the callable."""
+    del device, name
+    with ops.device(self._worker):
+      return self._fn()
+
+  def get_next_as_list_deprecated(self, name=None):
+    """Get next element from the callable."""
+    del name
+    with ops.device(self._worker):
+      data_list = [self._fn() for _ in self._devices]
+      return data_list
+
+  def get_next_as_list(self, name=None):
+    """Get next element from the callable."""
+    del name
+    with ops.device(self._worker):
+      data_list = [self._fn() for _ in self._devices]
+      return constant_op.constant(True), data_list
+
+  def initialize(self):
+    # TODO(petebu) Should this throw an exception instead?
+    return []
+
+
+# TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+def _get_batched_dataset(d):
+  """Get the batched dataset from `d`."""
   # pylint: disable=protected-access
-  def _get_batch_dataset(d):
-    """Get the underlying batch dataset from the dataset object."""
-    if isinstance(d, dataset_ops.DatasetV1Adapter):
-      d = d._dataset
+  if isinstance(d, dataset_ops.DatasetV1Adapter):
+    d = d._dataset
 
-    if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
-      return d
-    elif isinstance(d, dataset_ops.PrefetchDataset):
-      return _get_batch_dataset(d._input_dataset)
-    raise ValueError(
-        "Unable to get batched dataset from the input dataset. `batch` "
-        "`map_and_batch` need to be the last operations on the dataset. "
-        "The batch operations can be followed by a prefetch.")
+  if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
+    return d
+  elif isinstance(d, (dataset_ops.PrefetchDataset,
+                      dataset_ops._OptionsDataset)):
+    return _get_batched_dataset(d._input_dataset)
 
-  batched_dataset = _get_batch_dataset(dataset)
-  if isinstance(batched_dataset, dataset_ops.BatchDataset):
-    batch_size = batched_dataset._batch_size
-    drop_remainder = batched_dataset._drop_remainder
-  elif isinstance(batched_dataset, batching._MapAndBatchDataset):
-    batch_size = batched_dataset._batch_size_t
-    drop_remainder = batched_dataset._drop_remainder_t
+  raise ValueError(
+      "Unable to get batched dataset from the input dataset. `batch` "
+      "`map_and_batch` need to be the last operations on the dataset. "
+      "The batch operations can be followed by a prefetch.")
 
-  prefetch_buffer = None
-  if isinstance(dataset, dataset_ops.PrefetchDataset):
-    prefetch_buffer = dataset._buffer_size
-  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
-        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
-    prefetch_buffer = dataset._dataset._buffer_size
+
+def _get_batched_dataset_attributes(d):
+  """Get `batch_size`, `drop_remainder` of dataset."""
+  # pylint: disable=protected-access
+  assert isinstance(d,
+                    (dataset_ops.BatchDataset, batching._MapAndBatchDataset))
+  if isinstance(d, dataset_ops.BatchDataset):
+    batch_size = d._batch_size
+    drop_remainder = d._drop_remainder
+  elif isinstance(d, batching._MapAndBatchDataset):
+    batch_size = d._batch_size_t
+    drop_remainder = d._drop_remainder_t
   # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
@@ -595,17 +573,29 @@ def _split_dataset_batch(dataset, split_batch_by):
   if tensor_util.is_tensor(drop_remainder):
     drop_remainder = tensor_util.constant_value(drop_remainder)
 
-  if batch_size % split_batch_by:
-    raise ValueError(
-        "Batch size %s cannot be sharded evenly across replicas %s" % (
-            batch_size, split_batch_by))
-  new_batch_size = batch_size // split_batch_by
+  return batch_size, drop_remainder
 
-  dataset = dataset.apply(batching.unbatch())
-  dataset = dataset.batch(new_batch_size, drop_remainder=drop_remainder)
-  if prefetch_buffer is not None:
-    dataset = dataset.prefetch(prefetch_buffer)
-  return dataset
+
+# TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+def _get_dataset_attributes(dataset):
+  """Get the underlying attributes from the dataset object."""
+  # pylint: disable=protected-access
+
+  # First, get batch_size and drop_remainder from the dataset. We need
+  # to walk back the dataset creation process and find the batched version in
+  # order to get the attributes.
+  batched_dataset = _get_batched_dataset(dataset)
+  batch_size, drop_remainder = _get_batched_dataset_attributes(batched_dataset)
+
+  # Second, prefetch buffer should be get from the original dataset.
+  prefetch_buffer = None
+  if isinstance(dataset, dataset_ops.PrefetchDataset):
+    prefetch_buffer = dataset._buffer_size
+  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
+        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
+    prefetch_buffer = dataset._dataset._buffer_size
+
+  return batch_size, drop_remainder, prefetch_buffer
 
 
 class MultiStepContext(object):
@@ -675,7 +665,7 @@ class MultiStepContext(object):
       if reduce_op is None:
         self._last_step_outputs[name] = output
       else:
-        distribution = distribution_strategy_context.get_distribution_strategy()
+        distribution = distribution_strategy_context.get_strategy()
         self._last_step_outputs[name] = distribution.reduce(reduce_op, output)
     else:
       assert reduce_op is not None
@@ -702,6 +692,7 @@ class MultiStepContext(object):
       def merge_fn(distribution, value):
         # NOTE(priyag): For non tensor outputs, we simply return all the values
         # in a list as reduction doesn't make sense on non tensors.
-        self._non_tensor_outputs[name] = distribution.unwrap(value)
+        self._non_tensor_outputs[name] = (
+            distribution.experimental_local_results(value))
       distribution_strategy_context.get_replica_context().merge_call(
           merge_fn, args=(output,))

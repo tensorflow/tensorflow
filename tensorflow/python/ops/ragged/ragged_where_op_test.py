@@ -17,13 +17,11 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 from absl.testing import parameterized
-
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_test_util
+from tensorflow.python.ops.ragged import ragged_where_op
 from tensorflow.python.platform import googletest
 
 
@@ -182,7 +180,7 @@ class RaggedWhereOpTest(ragged_test_util.RaggedTensorTestCase,
               [[[[], [b'A']]], [[[b'b']]]])),
   ])   # pyformat: disable
   def testRaggedWhere(self, condition, expected, x=None, y=None):
-    result = ragged_array_ops.where(condition, x, y)
+    result = ragged_where_op.where(condition, x, y)
     self.assertRaggedEqual(result, expected)
 
   @parameterized.parameters([
@@ -201,7 +199,7 @@ class RaggedWhereOpTest(ragged_test_util.RaggedTensorTestCase,
   ])
   def testRaggedWhereErrors(self, condition, error, message, x=None, y=None):
     with self.assertRaisesRegexp(error, message):
-      ragged_array_ops.where(condition, x, y)
+      ragged_where_op.where(condition, x, y)
 
 
 if __name__ == '__main__':

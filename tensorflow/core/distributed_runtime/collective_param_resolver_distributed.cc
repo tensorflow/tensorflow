@@ -82,15 +82,21 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
     const ConfigProto& config, const DeviceMgr* dev_mgr,
     DeviceResolverDistributed* dev_resolver, WorkerCacheInterface* worker_cache,
     const string& task_name)
-    : CollectiveParamResolverLocal(dev_mgr, dev_resolver, task_name),
+    : CollectiveParamResolverLocal(config, dev_mgr, dev_resolver, task_name),
       worker_cache_(worker_cache),
       group_leader_(task_name == config.experimental().collective_group_leader()
                         ? ""
-                        : config.experimental().collective_group_leader()) {}
+                        : config.experimental().collective_group_leader()) {
+  VLOG(1) << "CompleteParamResolverDistributed ctor task={" << task_name
+          << "} config.collective_group_leader={"
+          << config.experimental().collective_group_leader() << "}";
+}
 
 void CollectiveParamResolverDistributed::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
     const StatusCallback& done) {
+  VLOG(1) << "CompleteParams distributed " << device << " for " << cp << ": "
+          << cp->ToString();
   CompleteGroupDistributed(device, cp, cancel_mgr,
                            [this, device, cp, cancel_mgr, done](
                                const Status& s, const GroupRec* gr) {
@@ -115,7 +121,7 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
   }
   CompleteGroupDistributed(
       cp.instance.device_names[0], &cp, cancel_mgr,
-      [this, response, done](const Status& s, const GroupRec* gr) {
+      [response, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           mutex_lock l(gr->mu);
           response->set_group_key(gr->group.group_key);
@@ -153,7 +159,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   string* device = new string(request->device());
   VLOG(1) << "New cp " << cp << " for device " << *device << " : "
           << cp->ToString();
-  StatusCallback done_and_cleanup = [this, cp, device, done](const Status& s) {
+  StatusCallback done_and_cleanup = [cp, device, done](const Status& s) {
     done(s);
     delete cp;
     delete device;
@@ -174,13 +180,17 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
                   // retrieve it.
                   FindInstanceRec(
                       gr, cp,
-                      [this, gr, cp, response, done_and_cleanup](
-                          const Status& fi_status, InstanceRec* ir) {
+                      [cp, response, done_and_cleanup](const Status& fi_status,
+                                                       InstanceRec* ir) {
                         if (fi_status.ok()) {
                           mutex_lock l(ir->out_mu);
                           ir->WaitForOutMu(l);
                           response->set_instance_key(cp->instance.instance_key);
                           response->set_source_rank(ir->source_rank);
+                          if (!cp->instance.communicator_key.empty()) {
+                            response->set_communicator_key(
+                                cp->instance.communicator_key);
+                          }
                           done_and_cleanup(fi_status);
                         } else {
                           done_and_cleanup(fi_status);
@@ -283,8 +293,10 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
   using InstanceRecPointer = InstanceRec*;
   InstanceRecPointer* irp = new InstanceRecPointer(nullptr);
   int32 source_rank = resp.source_rank();
+  string communicator_key = resp.communicator_key();
 
-  auto continue_with_ir = [this, cp, irp, source_rank, done](const Status& s) {
+  auto continue_with_ir = [cp, irp, source_rank, communicator_key,
+                           done](const Status& s) {
     if (!s.ok()) {
       done(s);
       delete irp;
@@ -305,6 +317,19 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
           break;
         }
         ir->source_rank = source_rank;
+      }
+      if (ir->communicator_key != communicator_key) {
+        if (!ir->communicator_key.empty()) {
+          ir->status = errors::Internal(
+              "UpdateInstanceCache: CompleteInstanceResponse for instance ",
+              cp->instance.instance_key,
+              " gives communicator_key with size =", communicator_key.size(),
+              " but cache already holds communicator_key with size=",
+              ir->communicator_key.size());
+          status = ir->status;
+          break;
+        }
+        ir->communicator_key = communicator_key;
       }
       if (ir->known_count < cp->group.group_size) {
         ir->known_count = cp->group.group_size;
@@ -327,11 +352,11 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
     delete irp;
   };
 
-  FindInstanceRec(
-      gr, cp, [this, irp, continue_with_ir](const Status s, InstanceRec* irec) {
-        *irp = irec;
-        continue_with_ir(s);
-      });
+  FindInstanceRec(gr, cp,
+                  [irp, continue_with_ir](const Status s, InstanceRec* irec) {
+                    *irp = irec;
+                    continue_with_ir(s);
+                  });
 }
 
 void CollectiveParamResolverDistributed::CompleteInstanceDistributed(

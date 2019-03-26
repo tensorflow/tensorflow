@@ -22,6 +22,7 @@ import os
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -49,11 +50,21 @@ def build_tensor_info(tensor):
   Args:
     tensor: Tensor or SparseTensor whose name, dtype and shape are used to
         build the TensorInfo. For SparseTensors, the names of the three
-        constitutent Tensors are used.
+        constituent Tensors are used.
 
   Returns:
     A TensorInfo protocol buffer constructed based on the supplied argument.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError("build_tensor_info is not supported in Eager mode.")
+  return build_tensor_info_internal(tensor)
+
+
+def build_tensor_info_internal(tensor):
+  """Utility function to build TensorInfo proto from a Tensor."""
   tensor_info = meta_graph_pb2.TensorInfo(
       dtype=dtypes.as_dtype(tensor.dtype).as_datatype_enum,
       tensor_shape=tensor.get_shape().as_proto())

@@ -38,7 +38,7 @@ namespace grappler {
 //   b = Placeholder(..)
 //   c = AddN([a, a, b])
 //
-// GraphView edges:         [a:0 -> c:0, a:0 -> c:1, b:0 -> c:3]
+// GraphView edges:         [a:0 -> c:0, a:0 -> c:1, b:0 -> c:2]
 // GraphTopologyView edges: [a -> c, b -> c]
 //
 // GraphView is used for exploring single node fanins and fanouts, and
@@ -47,6 +47,8 @@ namespace grappler {
 class GraphTopologyView {
  public:
   GraphTopologyView() = default;
+  explicit GraphTopologyView(bool skip_invalid_edges)
+      : skip_invalid_edges_(skip_invalid_edges) {}
 
   // Initialize graph topology view from the graph. It's possible to pass
   // additional edges that do not exist in a graph, but must be respected when
@@ -54,7 +56,11 @@ class GraphTopologyView {
   // execution of dequeue/enqueue ops from the same queue resource, but we might
   // want to enforce ordering between them for the purpose of graph analysis.
   Status InitializeFromGraph(const GraphDef& graph,
+                             absl::Span<const GraphView::Edge> ephemeral_edges,
+                             bool ignore_control_edges);
+  Status InitializeFromGraph(const GraphDef& graph,
                              absl::Span<const GraphView::Edge> ephemeral_edges);
+  Status InitializeFromGraph(const GraphDef& graph, bool ignore_control_edges);
   Status InitializeFromGraph(const GraphDef& graph);
 
   bool is_initialized() const { return graph_ != nullptr; }
@@ -84,6 +90,10 @@ class GraphTopologyView {
   const absl::InlinedVector<int, 2>& GetFanout(int node_idx) const;
 
  private:
+  // If true, all invalid edges and inputs (srd, dst or input node not found in
+  // a graph) will be skipped, otherwise initialization will fail with error.
+  bool skip_invalid_edges_ = false;
+
   // WARN: `graph_` must outlive this object and graph nodes must not be
   // destructed, because node names captured with absl::string_view.
   const GraphDef* graph_ = nullptr;  // do not own

@@ -32,19 +32,37 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/posix/posix_file_system.h"
 
 namespace tensorflow {
 
 namespace {
 
+mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+
+std::map<std::thread::id, string>& GetThreadNameRegistry()
+    EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
+  static auto* thread_name_registry = new std::map<std::thread::id, string>();
+  return *thread_name_registry;
+}
+
 class StdThread : public Thread {
  public:
-  // name and thread_options are both ignored.
+  // thread_options is ignored.
   StdThread(const ThreadOptions& thread_options, const string& name,
             std::function<void()> fn)
-      : thread_(fn) {}
-  ~StdThread() override { thread_.join(); }
+      : thread_(fn) {
+    mutex_lock l(name_mutex);
+    GetThreadNameRegistry().emplace(thread_.get_id(), name);
+  }
+
+  ~StdThread() override {
+    std::thread::id thread_id = thread_.get_id();
+    thread_.join();
+    mutex_lock l(name_mutex);
+    GetThreadNameRegistry().erase(thread_id);
+  }
 
  private:
   std::thread thread_;
@@ -84,6 +102,44 @@ class PosixEnv : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
     return new StdThread(thread_options, name, fn);
+  }
+
+  int32 GetCurrentThreadId() override {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    // Has to be casted to long first, else this error appears:
+    // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+    // is not allowed
+    return static_cast<int32>(static_cast<int64>(pthread_self()));
+#else
+    return static_cast<int32>(pthread_self());
+#endif
+  }
+
+  bool GetCurrentThreadName(string* name) override {
+    {
+      mutex_lock l(name_mutex);
+      auto thread_name =
+          GetThreadNameRegistry().find(std::this_thread::get_id());
+      if (thread_name != GetThreadNameRegistry().end()) {
+        *name = thread_name->second;
+        return true;
+      }
+    }
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
+    return false;
+#else
+    char buf[100];
+    int res = pthread_getname_np(pthread_self(), buf, static_cast<size_t>(100));
+    if (res != 0) {
+      return false;
+    }
+    *name = buf;
+    return true;
+#endif
   }
 
   void SchedClosure(std::function<void()> closure) override {

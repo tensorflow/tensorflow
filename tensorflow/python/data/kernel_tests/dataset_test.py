@@ -92,15 +92,16 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       ("TFRecord", lambda: readers.TFRecordDataset(""), 1),
   )
   def testDatasetSimpleSourceInputs(self, dataset_fn, num_inputs=0):
-    self.assertEqual(num_inputs, len(dataset_fn()._inputs()))
+    self.assertLen(dataset_fn()._inputs(), num_inputs)
 
+  @test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
   def testDatasetComplexSourceInputs(self):
     dataset_fn = dataset_ops.Dataset.from_sparse_tensor_slices(
         sparse_tensor.SparseTensor(
             indices=np.array([[0, 0], [1, 0], [2, 0]]),
             values=np.array([0, 0, 0]),
             dense_shape=np.array([3, 1])))
-    self.assertEqual(0, len(dataset_fn._inputs()))
+    self.assertEmpty(dataset_fn._inputs())
 
   @parameterized.named_parameters(
       ("Batch",
@@ -266,24 +267,24 @@ class DatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
           round_trip_dataset, [self.evaluate(tf_value_fn())],
           requires_initialization=True)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("graph mode specific, no eager or V2 test coverage")
   def testSkipEagerSameGraphErrorOneShot(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
         dataset = dataset.batch(2)
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("graph mode specific, no eager or V2 test coverage")
   def testSkipEagerSameGraphErrorOneShotSimple(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():
       with test.mock.patch.object(logging, "warning") as mock_log:
-        _ = dataset.make_one_shot_iterator()
+        _ = dataset_ops.make_one_shot_iterator(dataset)
         self.assertRegexpMatches(
             str(mock_log.call_args), "Please ensure that all datasets in the "
             "pipeline are created in the same graph as the iterator.")
 
-  @test_util.run_deprecated_v1
+  @test_util.run_v1_only("graph mode specific, no eager or V2 test coverage")
   def testSkipEagerSameGraphErrorInitializable(self):
     dataset = dataset_ops.Dataset.range(10)
     with ops.Graph().as_default():

@@ -107,6 +107,7 @@ bazel build -c opt ${PI_COPTS} \
   --copt=-funsafe-math-optimizations --copt=-ftree-vectorize \
   --copt=-fomit-frame-pointer --cpu=armeabi \
   --crosstool_top=@local_config_arm_compiler//:toolchain \
+  --define tensorflow_mkldnn_contraction_kernel=0 \
   --verbose_failures \
   //tensorflow:libtensorflow.so \
   //tensorflow:libtensorflow_framework.so \

@@ -15,12 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
-#include <limits>
-#include <list>
-#include <queue>
-#include <unordered_map>
-#include <unordered_set>
-#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -44,7 +38,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
-using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 namespace {
 
@@ -52,6 +45,7 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeAndType;
 using shape_inference::ShapeHandle;
+using TensorVector = gtl::InlinedVector<TensorValue, 4>;
 
 template <typename Handle>
 struct HashHandle {
@@ -416,6 +410,7 @@ NodeDef MakeConstNodeDefFromShape(InferenceContext* ic,
   return MakeConstNodeDefFromTensorProto(
       ic, MakeTensorProtoFromShape(ic, shape, tensor_as_shape, dtype), dtype);
 }
+
 }  // namespace
 
 // Queue of nodes to process. Nodes can be enqueued in any order, but will be
@@ -465,6 +460,35 @@ class TopoQueue {
   std::set<NodeAndId, OrderByIdAscending> queue_;
 };
 
+bool IsNumericType(const DataType dtype) {
+  static const gtl::FlatSet<DataType>* const kRealNumberTypes =
+      CHECK_NOTNULL((new gtl::FlatSet<DataType>{
+          // Floating point.
+          DT_BFLOAT16,
+          DT_HALF,
+          DT_FLOAT,
+          DT_DOUBLE,
+          // Int / UInt.
+          DT_INT8,
+          DT_INT16,
+          DT_INT32,
+          DT_INT64,
+          DT_UINT8,
+          DT_UINT16,
+          DT_UINT32,
+          DT_UINT64,
+          // Quantized Int.
+          DT_QINT8,
+          DT_QUINT8,
+          DT_QINT16,
+          DT_QUINT16,
+          DT_QINT32,
+          // Bool.
+          DT_BOOL,
+      }));
+  return kRealNumberTypes->find(dtype) != kRealNumberTypes->end();
+}
+
 bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
   static const gtl::FlatSet<string>* const kOpTpeWhitelist =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
@@ -509,6 +533,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "Split",
           "Range",
           "Fill",
+          "Cast",
       }));
   return kOpTpeWhitelist->find(op_type) != kOpTpeWhitelist->end();
 }
@@ -607,8 +632,8 @@ class SymbolicShapeRefiner {
                                           " was not found in the graph.");
       }
 
-      InferenceContext* input_inference_context = GetContext(input_node);
-      if (input_inference_context == nullptr) {
+      InferenceContext* input_ic = GetContext(input_node);
+      if (input_ic == nullptr) {
         return errors::FailedPrecondition(
             "Inference context has not been created for ", input_tensor.node());
       }
@@ -616,8 +641,8 @@ class SymbolicShapeRefiner {
       int output_port_num = input_tensor.index();
       AttrValue attr_output_shape;
       TensorShapeProto proto;
-      const auto& handle = input_inference_context->output(output_port_num);
-      input_inference_context->ShapeHandleToProto(handle, &proto);
+      const auto& handle = input_ic->output(output_port_num);
+      input_ic->ShapeHandleToProto(handle, &proto);
       // There may be dim.size < -1 in SymbolicShapeRefiner. Change those to -1.
       for (int i = 0; i < proto.dim_size(); i++) {
         if (proto.dim(i).size() < -1) {
@@ -661,7 +686,7 @@ class SymbolicShapeRefiner {
 
     // Perform inference on function body.
     GraphProperties gp(grappler_function_item);
-    TF_RETURN_IF_ERROR(gp.InferStatically(true));
+    TF_RETURN_IF_ERROR(gp.InferStatically(true, aggressive_shape_inference_));
 
     // Add return nodes for output shapes.
     int output = 0;
@@ -669,7 +694,7 @@ class SymbolicShapeRefiner {
     ctx->output_tensor_protos.resize(grappler_function_item.output_size(),
                                      nullptr);
     for (auto const& out_arg : grappler_function_item.outputs()) {
-      if (out_arg.output_tensors.size() > 1) {
+      if (out_arg.output_nodes.size() > 1) {
         // TODO(jmdecker): Handle case of multiple output tensors
         return errors::Unimplemented(
             "Output arguments with multiple output tensors are not yet "
@@ -678,7 +703,7 @@ class SymbolicShapeRefiner {
 
       // It is guaranteed that output_tensors does not contain any control
       // inputs, so port_id >= 0.
-      TensorId out_tensor = ParseTensorName(out_arg.output_tensors[0]);
+      TensorId out_tensor = ParseTensorName(out_arg.output_nodes[0]);
 
       const NodeDef* retnode = gv.GetNode(out_tensor.node());
       if (retnode == nullptr) {
@@ -715,145 +740,132 @@ class SymbolicShapeRefiner {
     return Status::OK();
   }
 
+  // Prepares input shapes/values/handles, then runs shape inference, and
+  // finally sets output shapes/values/handles.
   Status UpdateNode(const NodeDef* node, bool* refined) {
-    NodeContext* node_context = GetNodeContext(node);
-    if (node_context == nullptr) {
+    NodeContext* ctx = GetNodeContext(node);
+    if (ctx == nullptr) {
       TF_RETURN_IF_ERROR(AddNode(node));
-      node_context = CHECK_NOTNULL(GetNodeContext(node));
+      ctx = CHECK_NOTNULL(GetNodeContext(node));
       *refined = true;
     }
 
     // Check if the shapes of the nodes in the fan-in of this node have changed,
     // and if they have, update the node input shapes.
-    InferenceContext* inference_context = node_context->inference_context.get();
-    std::vector<Tensor> const_values(inference_context->num_inputs());
-    std::vector<const Tensor*> input_tensors(inference_context->num_inputs(),
-                                             nullptr);
-    std::vector<ShapeHandle> input_tensors_as_shapes(
-        inference_context->num_inputs());
-    node_context->input_tensor_protos.resize(inference_context->num_inputs(),
-                                             nullptr);
+    InferenceContext* ic = ctx->inference_context.get();
+    std::vector<Tensor> const_values(ic->num_inputs());
+    std::vector<const Tensor*> input_tensors(ic->num_inputs(), nullptr);
+    std::vector<ShapeHandle> input_tensors_as_shapes(ic->num_inputs());
+    ctx->input_tensor_protos.resize(ic->num_inputs(), nullptr);
 
-    for (int dst_input = 0; dst_input < inference_context->num_inputs();
-         ++dst_input) {
-      GraphView::InputPort port(node, dst_input);
-      for (const GraphView::OutputPort fanin : graph_.GetFanin(port)) {
-        int src_output = fanin.port_id;
-        const NodeDef* input = fanin.node;
-        NodeContext* c = GetNodeContext(input);
-        if (c == nullptr) {
-          return errors::FailedPrecondition(
-              "Input ", dst_input, " ('", input->name(), "') for '",
-              node->name(),
-              "' was not previously added to SymbolicShapeRefiner.");
-        }
+    for (int dst_input = 0; dst_input < ic->num_inputs(); ++dst_input) {
+      const GraphView::InputPort port(node, dst_input);
+      const GraphView::OutputPort fanin = graph_.GetRegularFanin(port);
+      int src_output = fanin.port_id;
+      const NodeDef* src = fanin.node;
+      NodeContext* src_ctx = GetNodeContext(src);
+      InferenceContext* src_ic = src_ctx->inference_context.get();
+      if (src_ctx == nullptr) {
+        return errors::FailedPrecondition(
+            "Input ", dst_input, " ('", src->name(), "') for '", node->name(),
+            "' was not previously added to SymbolicShapeRefiner.");
+      }
 
-        if (src_output >= c->inference_context->num_outputs())
-          return errors::OutOfRange("src_output = ", src_output,
-                                    ", but num_outputs is only ",
-                                    c->inference_context->num_outputs());
+      if (src_output >= src_ic->num_outputs()) {
+        return errors::OutOfRange("src_output = ", src_output,
+                                  ", but num_outputs is only ",
+                                  src_ic->num_outputs());
+      }
 
-        // Propagate input node's NodeContext info to the current node's
-        // NodeContext:
-        // output_tensor_protos to input_tensor_protos and input_tensors, and
-        // output_tensors_as_shapes to input_tensors_as_shapes.
+      // Propagate input node's NodeContext info to the current node's
+      // NodeContext:
+      // output_tensor_protos to input_tensor_protos and input_tensors, and
+      // output_tensors_as_shapes to input_tensors_as_shapes.
 
-        if (c->output_tensors_as_shapes.size() > src_output) {
-          input_tensors_as_shapes[dst_input] =
-              c->output_tensors_as_shapes[src_output];
-        }
+      if (src_ctx->output_tensors_as_shapes.size() > src_output) {
+        input_tensors_as_shapes[dst_input] =
+            src_ctx->output_tensors_as_shapes[src_output];
+      }
 
-        if (c->output_tensor_protos.size() > src_output) {
-          auto* tensor_proto = c->output_tensor_protos[src_output];
-          if (tensor_proto != nullptr &&
-              const_values[dst_input].FromProto(*tensor_proto)) {
-            input_tensors[dst_input] = &const_values[dst_input];
-            node_context->input_tensor_protos[dst_input] = tensor_proto;
+      if (src_ctx->output_tensor_protos.size() > src_output) {
+        auto* tensor_proto = src_ctx->output_tensor_protos[src_output];
+        if (tensor_proto != nullptr &&
+            const_values[dst_input].FromProto(*tensor_proto)) {
+          input_tensors[dst_input] = &const_values[dst_input];
+          ctx->input_tensor_protos[dst_input] = tensor_proto;
 
-            if (!inference_context->FullyDefined(
-                    input_tensors_as_shapes[dst_input])) {
-              // Shape from a Const is not fully defined when the Const has
-              // value -1 (e.g., Reshape(x, Const(-1)) to reshape an arbitrary
-              // tensor x to a vector).
-              // It's possible that the same Const with -1 is used in many
-              // places, but that doesn't mean the resultant shapes are
-              // identical. e.g., x1 = Reshape(x, c) and y1 = Reshape(y, c),
-              // where c is -1. In this case, shape inference yields both x1 and
-              // y1 as rank 1, size unknown, but still the shapes of x1 and y1
-              // can be different. (even if we use different Const(-1) for x1
-              // and x2, graph optimzier may merge them to single Const through
-              // duplicate removal.)
-              // If we reuse output_tensors_as_shapes to input_tensors_as_shapes
-              // by copying ShapeHandle, they share the same Shape object, and
-              // SymbolicShapeManager, later in InferStatically(), assigns the
-              // same symbolic dim value (unique value < -1); in the above
-              // Reshape example, the shapes of x1 and y1 become, for example,
-              // [-278] and graph optimizer may yield incorrect output 'cause it
-              // assumes x1 and y1 have the same shape.
-              // To prevent this, we re-create a ShapeHandle from the Const
-              // tensor, instead of reusing output_tensors_as_shapes (so that
-              // ShapeHandles of the const fanouts have the same values,
-              // but different Shape objects -- SymbolicShapeManager assigns
-              // different symbol id to each fanout shape).
-              // TODO(dyoon): clean up the way values are propagated.
-              MaybeTensorValueToShape(inference_context,
-                                      const_values[dst_input],
-                                      &input_tensors_as_shapes[dst_input]);
-            }
+          if (!ic->FullyDefined(input_tensors_as_shapes[dst_input])) {
+            // Shape from a Const is not fully defined when the Const has
+            // value -1 (e.g., Reshape(x, Const(-1)) to reshape an arbitrary
+            // tensor x to a vector).
+            // It's possible that the same Const with -1 is used in many
+            // places, but that doesn't mean the resultant shapes are
+            // identical. e.g., x1 = Reshape(x, c) and y1 = Reshape(y, c),
+            // where c is -1. In this case, shape inference yields both x1 and
+            // y1 as rank 1, size unknown, but still the shapes of x1 and y1
+            // can be different. (even if we use different Const(-1) for x1
+            // and x2, graph optimzier may merge them to single Const through
+            // duplicate removal.)
+            // If we reuse output_tensors_as_shapes to input_tensors_as_shapes
+            // by copying ShapeHandle, they share the same Shape object, and
+            // SymbolicShapeManager, later in InferStatically(), assigns the
+            // same symbolic dim value (unique value < -1); in the above
+            // Reshape example, the shapes of x1 and y1 become, for example,
+            // [-278] and graph optimizer may yield incorrect output 'cause it
+            // assumes x1 and y1 have the same shape.
+            // To prevent this, we re-create a ShapeHandle from the Const
+            // tensor, instead of reusing output_tensors_as_shapes (so that
+            // ShapeHandles of the const fanouts have the same values,
+            // but different Shape objects -- SymbolicShapeManager assigns
+            // different symbol id to each fanout shape).
+            // TODO(dyoon): clean up the way values are propagated.
+            MaybeTensorValueToShape(ic, const_values[dst_input],
+                                    &input_tensors_as_shapes[dst_input]);
           }
         }
+      }
 
-        DCHECK_GE(dst_input, 0);
-        // NOTE: we check only shape is refined; we do not (yet) check whether
-        // tensor value is refined.
-        if (!*refined && !inference_context->input(dst_input).SameHandle(
-                             c->inference_context->output(src_output))) {
+      // NOTE: we check only shape is refined; we do not (yet) check whether
+      // tensor value is refined.
+      if (!*refined &&
+          !ic->input(dst_input).SameHandle(src_ic->output(src_output))) {
+        *refined = true;
+      }
+      ic->SetInput(dst_input, src_ic->output(src_output));
+
+      if (!*refined && ic->requested_input_tensor_as_partial_shape(dst_input)) {
+        // The input value may have changed. Since we have no way to know if
+        // that's indeed the case, err on the safe side.
+        *refined = true;
+      }
+
+      // Also propagate handle shape and dtype of edges which are carrying
+      // resource handles.
+      if (ctx->input_types[dst_input] == DT_RESOURCE) {
+        auto* outputs = src_ic->output_handle_shapes_and_types(src_output);
+        if (!outputs) continue;
+        auto* inputs = ic->input_handle_shapes_and_types(dst_input);
+
+        if (!inputs || !EquivalentShapesAndTypes(*outputs, *inputs))
           *refined = true;
-        }
-        inference_context->SetInput(dst_input,
-                                    c->inference_context->output(src_output));
-
-        if (!*refined &&
-            inference_context->requested_input_tensor_as_partial_shape(
-                dst_input)) {
-          // The input value may have changed. Since we have no way to know if
-          // that's indeed the case, err on the safe side.
-          *refined = true;
-        }
-
-        // Also propagate handle shape and dtype of edges which are carrying
-        // resource handles.
-        if (node_context->input_types[dst_input] == DT_RESOURCE) {
-          auto* outputs =
-              c->inference_context->output_handle_shapes_and_types(src_output);
-          if (!outputs) continue;
-          auto* inputs =
-              inference_context->input_handle_shapes_and_types(dst_input);
-
-          if (!inputs || !EquivalentShapesAndTypes(*outputs, *inputs)) {
-            *refined = true;
-          }
-          inference_context->set_input_handle_shapes_and_types(dst_input,
-                                                               *outputs);
-        }
+        ic->set_input_handle_shapes_and_types(dst_input, *outputs);
       }
     }
 
     // Make sure we schedule the fanout of resources (which have no input)
     // whenever the resources are updated.
-    *refined |= inference_context->num_inputs() == 0;
+    *refined |= ic->num_inputs() == 0;
 
     if (!*refined) {
       // No input shape has changed, we're done.
       return Status::OK();
     }
 
-    node_context->inference_context->set_input_tensors(input_tensors);
-    node_context->inference_context->set_input_tensors_as_shapes(
-        input_tensors_as_shapes);
+    ic->set_input_tensors(input_tensors);
+    ic->set_input_tensors_as_shapes(input_tensors_as_shapes);
 
     // Properly handle function nodes.
-    if (node_context->op_data && node_context->op_data->is_function_op) {
+    if (ctx->op_data && ctx->op_data->is_function_op) {
       // TODO(jmdecker): Detect if the input shapes have changed for this
       // function. Note that when we hit a function call node, refined will be
       // true, as the updates to the call node will have changed, even if it's
@@ -870,7 +882,7 @@ class SymbolicShapeRefiner {
     }
 
     // Update the shapes of the outputs.
-    return InferShapes(*node, node_context);
+    return InferShapes(*node, ctx);
   }
 
   Status SetUnknownShape(const NodeDef* node, int output_port) {
@@ -962,6 +974,41 @@ class SymbolicShapeRefiner {
           continue;
         }
         return false;
+      }
+    }
+    return true;
+  }
+
+  // Return true if the annotated shape is compatible with shape inference
+  // result. Examples:
+  // Inferred shape: ?, annotated shape: [10, 10] -> true;
+  // Inferred shape: [-1, 10], annotated shape: [10, 10] -> true;
+  // Inferred shape: [-1, 100], annotated shape: [10, 10] -> false;
+  // Inferred shape: [-1, 10, 10], annotated shape: [10, 10] -> false.
+  bool CompatibleShapes(ShapeHandle inferred_shape,
+                        ShapeHandle annotated_shape) const {
+    if (inferred_shape.SameHandle(annotated_shape)) {
+      return true;
+    }
+    if (!InferenceContext::RankKnown(inferred_shape)) {
+      return true;
+    }
+    if (InferenceContext::Rank(inferred_shape) !=
+        InferenceContext::Rank(annotated_shape)) {
+      return false;
+    }
+    const int rank = InferenceContext::Rank(inferred_shape);
+    for (int i = 0; i < rank; ++i) {
+      if (!InferenceContext::DimKnownRank(inferred_shape, i)
+               .SameHandle(
+                   InferenceContext::DimKnownRank(annotated_shape, i))) {
+        int64 val1 = InferenceContext::Value(
+            InferenceContext::DimKnownRank(inferred_shape, i));
+        int64 val2 = InferenceContext::Value(
+            InferenceContext::DimKnownRank(annotated_shape, i));
+        if (val1 >= 0 && val1 != val2) {
+          return false;
+        }
       }
     }
     return true;
@@ -1087,15 +1134,20 @@ class SymbolicShapeRefiner {
         c->output_tensor_protos.size() < ic->num_outputs()) {
       return false;
     } else {
+      // Checks if we can get output value via either output_tensor_proto or
+      // output_tensors_as_shapes.
       for (int i = 0; i < ic->num_outputs(); i++) {
-        if (c->output_tensor_protos.size() <= i ||
-            c->output_tensor_protos[i] == nullptr) {
-          return false;
+        if (c->output_tensor_protos.size() > i &&
+            c->output_tensor_protos[i] != nullptr) {
+          continue;
         }
-        if (c->output_tensors_as_shapes.size() <= i ||
-            !ic->FullyDefined(c->output_tensors_as_shapes[i])) {
-          return false;
+        if (c->output_tensors_as_shapes.size() > i &&
+            ic->FullyDefined(c->output_tensors_as_shapes[i])) {
+          continue;
         }
+
+        // Unknown for output[i].
+        return false;
       }
     }
     return true;
@@ -1122,9 +1174,9 @@ class SymbolicShapeRefiner {
     return true;
   }
 
-  // Returns true if we want to update output values with running EvaluateNode()
-  // for this op, based on op type, data type, and size.
-  bool ShouldUpdateOutputValues(NodeContext* c, int64 max_size) {
+  // Returns true if we want to update output shapes and values with running
+  // EvaluateNode() for this op, based on op type, data type, and size.
+  bool ShouldUpdateOutputShapesAndValues(NodeContext* c, int64 max_size) {
     InferenceContext* ic = c->inference_context.get();
 
     // Due to the cost of running EvaluateNode(), we limit only to white listed
@@ -1133,16 +1185,16 @@ class SymbolicShapeRefiner {
       return false;
     }
 
-    // Check input dtypes are integer.
+    // Check input dtypes are number types.
     for (const auto& input_type : c->input_types) {
-      if (input_type != DT_INT32 && input_type != DT_INT64) {
+      if (!IsNumericType(input_type)) {
         return false;
       }
     }
 
-    // Check output dtypes are integer.
+    // Check output dtypes are number types.
     for (const auto& output_type : c->output_types) {
-      if (output_type != DT_INT32 && output_type != DT_INT64) {
+      if (!IsNumericType(output_type)) {
         return false;
       }
     }
@@ -1165,7 +1217,7 @@ class SymbolicShapeRefiner {
     // elements is larger than the given max size.
     for (int i = 0; i < ic->num_outputs(); i++) {
       const ShapeHandle& shape_handle = ic->output(i);
-      if (!ic->FullyDefined(shape_handle) &&
+      if (!ic->FullyDefined(shape_handle) ||
           ic->Value(ic->NumElements(shape_handle)) > max_size) {
         return false;
       }
@@ -1192,11 +1244,11 @@ class SymbolicShapeRefiner {
         const DataType& data_type = c->input_types[i];
         int32 rank = ic->Rank(shape_handle);
         if (rank < 1) {
-          input_tensor_vector->emplace_back(Tensor(data_type, {}));
+          input_tensor_vector->at(i) = Tensor(data_type, {});
         } else {
-          input_tensor_vector->emplace_back(Tensor(data_type, {rank}));
+          input_tensor_vector->at(i) = Tensor(data_type, {rank});
         }
-        auto* tensor = &input_tensor_vector->back();
+        auto* tensor = &input_tensor_vector->at(i);
         if (data_type == DT_INT32) {
           auto flat = tensor->flat<int32>();
           for (int j = 0; j < rank; j++) {
@@ -1215,8 +1267,9 @@ class SymbolicShapeRefiner {
     }
   }
 
-  // Run a node to infer output values, and add it to the NodeContext.
-  Status UpdateOutputValues(const NodeDef& node, NodeContext* c) {
+  // Run a node to infer output shapes and values, and add it to the
+  // NodeContext.
+  Status UpdateOutputShapesAndValues(const NodeDef& node, NodeContext* c) {
     InferenceContext* ic = c->inference_context.get();
 
     // Input to EvaluateNode()
@@ -1247,7 +1300,7 @@ class SymbolicShapeRefiner {
           ic->MakeShapeFromTensorShape(t->shape(), &output_shape));
       if (ic->FullyDefined(ic->output(k)) &&
           !EquivalentShapes(ic->output(k), output_shape)) {
-        LOG(WARNING) << "UpdateOutputValues() -- node: " << node.name()
+        LOG(WARNING) << "UpdateOutputShapesAndValues() -- node: " << node.name()
                      << ", inferred output shape "
                      << "doesn't match for k=" << k << ": "
                      << "ic->output(k): " << ic->DebugString(ic->output(k))
@@ -1264,6 +1317,54 @@ class SymbolicShapeRefiner {
       const_tensors_to_propagate_.push_back(tensor_proto);
       c->output_tensor_protos[k] = &const_tensors_to_propagate_.back();
     }
+    return Status::OK();
+  }
+
+  // Update output shapes with annotated information.
+  // Currently only handle nodes with static shapes, i.e. shapes do not change
+  // during execution.
+  // TODO(andiryxu): Use annotated shapes in Enter/Merge etc as well.
+  Status UpdateOutputShapesUsingAnnotatedInformation(const NodeDef& node,
+                                                     NodeContext* c) const {
+    const auto& attr = node.attr();
+    if (attr.count(kOutputSame) == 0 || !attr.at(kOutputSame).b() ||
+        attr.count(kOutputShapes) == 0)
+      return Status::OK();
+
+    InferenceContext* ic = c->inference_context.get();
+    int output_size = attr.at(kOutputShapes).list().shape_size();
+
+    for (int i = 0; i < ic->num_outputs(); i++) {
+      // Annotated Switch node has only one output. Propagate the shape to all
+      // the outputs.
+      int shape_index = IsSwitch(node) ? 0 : i;
+      if (shape_index >= output_size) {
+        LOG(WARNING)
+            << "UpdateOutputShapesUsingAnnotatedInformation() -- node: "
+            << node.name() << ", inferred output shape size "
+            << ic->num_outputs() << ", annotated output shape size "
+            << output_size;
+        break;
+      }
+
+      const TensorShapeProto& shape =
+          attr.at(kOutputShapes).list().shape(shape_index);
+      ShapeHandle output_shape;
+      TF_RETURN_IF_ERROR(ic->MakeShapeFromShapeProto(shape, &output_shape));
+
+      // Only use annotated shapes if the inference shape is unknown and
+      // compatible with annotated shapes.
+      if (!ic->FullyDefined(ic->output(i)) &&
+          CompatibleShapes(ic->output(i), output_shape)) {
+        VLOG(3) << "UpdateOutputShapesUsingAnnotatedInformation() -- node: "
+                << node.name() << ", inferred output shape " << i << ": "
+                << "ic->output(i): " << ic->DebugString(ic->output(i))
+                << ", annotated output shape: " << ic->DebugString(output_shape)
+                << " -- " << node.ShortDebugString();
+        ic->set_output(i, output_shape);
+      }
+    }
+
     return Status::OK();
   }
 
@@ -1459,16 +1560,19 @@ class SymbolicShapeRefiner {
     }
 
     if (aggressive_shape_inference_) {
+      // Update output shapes with annotated information. This is optional.
+      UpdateOutputShapesUsingAnnotatedInformation(node, c).IgnoreError();
+
       // Update output tensor values using EvaluateNode() if we can.
       // Due to the cost of EvaluateNode(), we run it only for certain op types
       // (white listed) and small integer tensors.
 
-      const int max_elelment_size = 17;  // Max up to 4x4 matrix or similar.
+      const int max_element_size = 17;  // Max up to 4x4 matrix or similar.
       if (AllOutputValuesKnown(c) || !AllInputValuesKnown(c) ||
-          !ShouldUpdateOutputValues(c, max_elelment_size)) {
+          !ShouldUpdateOutputShapesAndValues(c, max_element_size)) {
         return Status::OK();
       }
-      UpdateOutputValues(node, c).IgnoreError();  // This is optional.
+      UpdateOutputShapesAndValues(node, c).IgnoreError();  // This is optional.
     }
     return Status::OK();
   }
@@ -1676,45 +1780,52 @@ Status GraphProperties::RelaxEnqueueShapesAndMergeTypes(
 
 // Compute the output shape of the merge node as the union of the available
 // input shapes.
-Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                                        const NodeDef* node,
-                                        bool* new_shapes) const {
-  InferenceContext* c = shape_refiner->GetContext(node);
-  if (!c) {
+Status GraphProperties::UpdateMerge(SymbolicShapeRefiner* shape_refiner,
+                                    const NodeDef* node,
+                                    bool* new_shapes) const {
+  InferenceContext* ic = shape_refiner->GetContext(node);
+  if (!ic) {
     // Now we can run shape inference
     TF_RETURN_IF_ERROR(shape_refiner->AddNode(node));
-    c = CHECK_NOTNULL(shape_refiner->GetContext(node));
+    ic = CHECK_NOTNULL(shape_refiner->GetContext(node));
     *new_shapes = true;
 
     // Infer the shape of the second output once and for all since it never
     // changes.
-    ShapeHandle out1 = c->Scalar();
-    c->set_output(1, out1);
+    ShapeHandle out1 = ic->Scalar();
+    ic->set_output(1, out1);
   }
 
   ShapeHandle out;
+  const std::vector<ShapeAndType>* out_handle = nullptr;
   bool out_initialized = false;
-  for (const GraphView::Edge fanin :
-       shape_refiner->graph().GetFaninEdges(*node, false)) {
-    InferenceContext* in = shape_refiner->GetContext(fanin.src.node);
-    if (!in) {
+  for (const GraphView::Edge fanin : shape_refiner->graph().GetFaninEdges(
+           *node, /*include_controlling_edges=*/false)) {
+    InferenceContext* src_ic = shape_refiner->GetContext(fanin.src.node);
+    if (!src_ic) {
       // Handling a loop for the first time, the back edge won't have any shape
       // info.
       continue;
     }
-    ShapeHandle input = in->output(fanin.src.port_id);
-    CHECK_EQ(fanin.dst.node, node);
-    c->SetInput(fanin.dst.port_id, input);
+    ShapeHandle input = src_ic->output(fanin.src.port_id);
+    ic->SetInput(fanin.dst.port_id, input);
+    auto* input_handle =
+        src_ic->output_handle_shapes_and_types(fanin.src.port_id);
+    if (input_handle)
+      ic->set_input_handle_shapes_and_types(fanin.dst.port_id, *input_handle);
     if (!out_initialized) {
       out_initialized = true;
       out = input;
-      continue;
+      out_handle = input_handle;
+    } else {
+      // Note here only out, not out_handle, is modified.
+      out = shape_refiner->OutputAsUnion(node, 0, input, out);
     }
-    out = shape_refiner->OutputAsUnion(node, 0, input, out);
   }
 
-  if (*new_shapes || !shape_refiner->EquivalentShapes(out, c->output(0))) {
-    c->set_output(0, out);
+  if (*new_shapes || !shape_refiner->EquivalentShapes(out, ic->output(0))) {
+    ic->set_output(0, out);
+    if (out_handle) ic->set_output_handle_shapes_and_types(0, *out_handle);
     *new_shapes = true;
   }
 
@@ -1724,26 +1835,26 @@ Status GraphProperties::UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
 // Manually propagate the input shape for Enter nodes.
 Status GraphProperties::UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                                     const NodeDef* node, bool* new_shapes) {
-  auto enter_ctx = shape_refiner->GetContext(node);
-  if (!enter_ctx) {
+  InferenceContext* ic = shape_refiner->GetContext(node);
+  if (!ic) {
     TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(node, new_shapes));
-    enter_ctx = shape_refiner->GetContext(node);
+    ic = shape_refiner->GetContext(node);
   }
 
-  GraphView::InputPort inp(node, 0);
-  GraphView::OutputPort fanin = shape_refiner->graph().GetRegularFanin(inp);
+  GraphView::InputPort port(node, 0);
+  GraphView::OutputPort fanin = shape_refiner->graph().GetRegularFanin(port);
 
-  InferenceContext* in = shape_refiner->GetContext(fanin.node);
-  ShapeHandle input = in->output(fanin.port_id);
-  if (!enter_ctx->output(0).SameHandle(input)) {
-    enter_ctx->SetInput(0, input);
-    enter_ctx->set_output(0, input);
+  InferenceContext* src_ic = shape_refiner->GetContext(fanin.node);
+  ShapeHandle input = src_ic->output(fanin.port_id);
+  if (!ic->output(0).SameHandle(input)) {
+    ic->SetInput(0, input);
+    ic->set_output(0, input);
     *new_shapes = true;
   }
-  auto* outputs = in->output_handle_shapes_and_types(fanin.port_id);
+  auto* outputs = src_ic->output_handle_shapes_and_types(fanin.port_id);
   if (outputs) {
-    enter_ctx->set_input_handle_shapes_and_types(0, *outputs);
-    enter_ctx->set_output_handle_shapes_and_types(0, *outputs);
+    ic->set_input_handle_shapes_and_types(0, *outputs);
+    ic->set_output_handle_shapes_and_types(0, *outputs);
     *new_shapes = true;
   }
   return Status::OK();
@@ -1759,7 +1870,7 @@ Status GraphProperties::UpdateShapes(
     TF_RETURN_IF_ERROR(UpdateEnter(shape_refiner, n, new_shapes));
   } else if (IsMerge(*n)) {
     // Properly handle merge nodes.
-    TF_RETURN_IF_ERROR(UpdateMergeNode(shape_refiner, n, new_shapes));
+    TF_RETURN_IF_ERROR(UpdateMerge(shape_refiner, n, new_shapes));
   } else if (IsEnqueue(*n)) {
     // Make sure the shapes of enqueued tensors are propagated to the queue
     // itself.
@@ -1773,6 +1884,7 @@ Status GraphProperties::UpdateShapes(
     // UpdateNode calls UpdateFunction if a function node is detected.
     TF_RETURN_IF_ERROR(shape_refiner->UpdateNode(n, new_shapes));
   }
+
   return Status::OK();
 }
 
@@ -1806,8 +1918,8 @@ Status GraphProperties::PropagateShapes(
       TF_RETURN_IF_ERROR(
           UpdateShapes(shape_refiner, resource_handles, n, &updated));
       if (updated) {
-        for (const GraphView::InputPort& fanout :
-             shape_refiner->graph().GetFanouts(*n, false)) {
+        for (const auto& fanout : shape_refiner->graph().GetFanouts(
+                 *n, /*include_controlled_nodes=*/false)) {
           new_shapes->push(fanout.node);
         }
         // Make sure the corresponding queue nodes are (re)processed.
@@ -1832,7 +1944,7 @@ Status GraphProperties::PropagateShapes(
 Status GraphProperties::UpdateQueue(const NodeDef* queue_node,
                                     SymbolicShapeRefiner* shape_refiner,
                                     bool* new_shapes) {
-  auto ctx = shape_refiner->GetNodeContext(queue_node);
+  auto* ctx = shape_refiner->GetNodeContext(queue_node);
   if (!ctx) {
     TF_RETURN_IF_ERROR(shape_refiner->AddNode(queue_node));
     ctx = CHECK_NOTNULL(shape_refiner->GetNodeContext(queue_node));

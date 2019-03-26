@@ -37,9 +37,15 @@ StatusOr<bool> ZeroSizedHloElimination::Run(HloModule* module) {
       }
       if (comp->IsRemovable(instruction) &&
           ShapeUtil::IsZeroElementArray(instruction->shape())) {
+        // If the instruction doesn't have a layout, use a default layout for
+        // the literal.
+        Shape shape = instruction->shape();
+        if (!LayoutUtil::HasLayout(shape)) {
+          LayoutUtil::SetToDefaultLayout(&shape);
+        }
         TF_RETURN_IF_ERROR(comp->ReplaceWithNewInstruction(
-            instruction, HloInstruction::CreateConstant(
-                             Literal::CreateFromShape(instruction->shape()))));
+            instruction,
+            HloInstruction::CreateConstant(Literal::CreateFromShape(shape))));
         changed = true;
       }
     }

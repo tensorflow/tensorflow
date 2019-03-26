@@ -1,6 +1,14 @@
 path: "tensorflow.distribute"
 tf_module {
   member {
+    name: "CrossDeviceOps"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "HierarchicalCopyAllReduce"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "InputContext"
     mtype: "<type \'type\'>"
   }
@@ -13,8 +21,20 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "NcclAllReduce"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OneDeviceStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "ReduceOp"
     mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "ReductionToOneDevice"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "ReplicaContext"
@@ -31,6 +51,18 @@ tf_module {
   member {
     name: "StrategyExtended"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "cluster_resolver"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member_method {
+    name: "experimental_set_strategy"
+    argspec: "args=[\'strategy\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_loss_reduction"

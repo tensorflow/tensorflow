@@ -83,9 +83,10 @@ TEST_P(AsyncInterleaveManyTest, Model) {
   EXPECT_GE(async_interleave_many->OutputTime(&input_times), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(Test, AsyncInterleaveManyTest,
-                        ::testing::Combine(::testing::Values(1, 2),
-                                           ::testing::Values(0, 50, 100, 200)));
+INSTANTIATE_TEST_SUITE_P(Test, AsyncInterleaveManyTest,
+                         ::testing::Combine(::testing::Values(1, 2),
+                                            ::testing::Values(0, 50, 100,
+                                                              200)));
 
 class AsyncKnownRatioTest
     : public ::testing::TestWithParam<std::tuple<int64, int64, int64>> {};
@@ -156,10 +157,10 @@ TEST_P(AsyncKnownRatioTest, Model) {
   EXPECT_GE(async_known_many->OutputTime(&input_times), 0);
 }
 
-INSTANTIATE_TEST_CASE_P(Test, AsyncKnownRatioTest,
-                        ::testing::Combine(::testing::Values(1, 2, 4, 8),
-                                           ::testing::Values(0, 50, 100, 200),
-                                           ::testing::Values(0, 1, 2, 4)));
+INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioTest,
+                         ::testing::Combine(::testing::Values(1, 2, 4, 8),
+                                            ::testing::Values(0, 50, 100, 200),
+                                            ::testing::Values(0, 1, 2, 4)));
 
 TEST(InterleaveManyTest, Model) {
   std::shared_ptr<Node> interleave_many =
@@ -245,7 +246,7 @@ TEST_P(KnownRatioTest, Model) {
             num_inputs_per_output * (50 + 100) + 64);
 }
 
-INSTANTIATE_TEST_CASE_P(Test, KnownRatioTest, ::testing::Values(0, 1, 2, 4));
+INSTANTIATE_TEST_SUITE_P(Test, KnownRatioTest, ::testing::Values(0, 1, 2, 4));
 
 TEST(SourceTest, Model) {
   std::shared_ptr<Node> source = model::MakeSourceNode({0, "source", nullptr});

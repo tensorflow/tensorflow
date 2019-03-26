@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_convert.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/toco/toco_port.h"
 
 namespace toco {
 namespace {
@@ -61,8 +63,7 @@ TEST(TocoTest, BadOutputArray) {
 
   EXPECT_DEATH(Convert(input, toco_flags, model_flags, &output).ok(),
                "Specified output array .output1. is not produced by any op "
-               "in this graph. Is it a typo. To silence this message, pass "
-               "this flag:  allow_nonexistent_arrays");
+               "in this graph. Is it a typo");
 }
 
 TEST(TocoTest, BadOutputFormat) {
@@ -171,3 +172,10 @@ TEST(TocoTest, TransientStringTensors) {
 
 }  // namespace
 }  // namespace toco
+
+int main(int argc, char** argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  ::toco::port::InitGoogleWasDoneElsewhere();
+  return RUN_ALL_TESTS();
+}

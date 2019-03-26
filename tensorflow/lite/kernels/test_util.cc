@@ -47,7 +47,12 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
 }
 
 int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
-  int id = AddTensor<float>(t, {}, is_variable);
+  int id = 0;
+  if (t.per_channel_quantization) {
+    id = AddTensorPerChannelQuant(t);
+  } else {
+    id = AddTensor<float>(t, {}, is_variable);
+  }
   inputs_.push_back(id);
   return id;
 }
@@ -119,7 +124,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   CHECK(interpreter_ != nullptr);
 
-  for (int i = 0; i < input_shapes.size(); ++i) {
+  for (size_t i = 0; i < input_shapes.size(); ++i) {
     const int input_idx = interpreter_->inputs()[i];
     if (input_idx == kOptionalTensor) continue;
     const auto& shape = input_shapes[i];

@@ -26,17 +26,36 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
 
+# b/123041942
+# In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
+# layers, it gets serialized as 'softmax_v2' instead of 'softmax' as the
+# internal method name is returned in serialization. This results in errors in
+# model exporting and loading as Keras can't find any activation function with
+# the name of `softmax_v2`.
+
+# This dict maps the activation function name from its v2 version to its
+# canonical name.
+_TF_ACTIVATIONS_V2 = {
+    'softmax_v2': 'softmax',
+}
+
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
-  """Softmax activation function.
+  """The softmax activation function transforms the outputs so that all values are in
+
+  range (0, 1) and sum to 1. It is often used as the activation for the last
+  layer of a classification network because the result could be interpreted as
+  a probability distribution. The softmax of x is calculated by
+  exp(x)/tf.reduce_sum(exp(x)).
 
   Arguments:
       x : Input tensor.
       axis: Integer, axis along which the softmax normalization is applied.
 
   Returns:
-      Tensor, output of softmax transformation.
+      Tensor, output of softmax transformation (all values are non-negative
+        and sum to 1).
 
   Raises:
       ValueError: In case `dim(x) == 1`.
@@ -152,16 +171,53 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
+  """Hyperbolic Tangent activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The tanh activation: `tanh(x) = sinh(x)/cosh(x) = ((exp(x) -
+      exp(-x))/(exp(x) + exp(-x)))`.
+  """
   return nn.tanh(x)
 
 
 @keras_export('keras.activations.sigmoid')
 def sigmoid(x):
+  """Sigmoid.
+
+  Applies the sigmoid activation function. The sigmoid function is defined as
+  1 divided by (1 + exp(-x)). It's curve is like an "S" and is like a smoothed
+  version of the Heaviside (Unit Step Function) function. For small values
+  (<-5) the sigmoid returns a value close to zero and for larger values (>5)
+  the result of the function gets close to 1.
+  Arguments:
+      x: A tensor or variable.
+
+  Returns:
+      A tensor.
+  Sigmoid activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The sigmoid activation: `(1.0 / (1.0 + exp(-x)))`.
+  """
   return nn.sigmoid(x)
 
 
 @keras_export('keras.activations.exponential')
 def exponential(x):
+  """Exponential activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The exponential activation: `exp(x)`.
+  """
   return math_ops.exp(x)
 
 
@@ -185,11 +241,21 @@ def hard_sigmoid(x):
 
 @keras_export('keras.activations.linear')
 def linear(x):
+  """Linear activation function.
+
+  Arguments:
+      x: Input tensor.
+
+  Returns:
+      The linear activation: `x`.
+  """
   return x
 
 
 @keras_export('keras.activations.serialize')
 def serialize(activation):
+  if activation.__name__ in _TF_ACTIVATIONS_V2:
+    return _TF_ACTIVATIONS_V2[activation.__name__]
   return activation.__name__
 
 

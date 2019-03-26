@@ -40,8 +40,6 @@ limitations under the License.
 namespace xla {
 namespace {
 
-namespace gtl = ::tensorflow::gtl;
-
 class HloProfileTest : public ClientLibraryTestBase {};
 
 struct ParsedProfileOutputLine {
@@ -174,9 +172,8 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   exec_run_options.set_allocator(backend->memory_allocator());
   exec_run_options.set_intra_op_thread_pool(
       backend->eigen_intra_op_thread_pool_device());
-  ServiceExecutableRunOptions run_options(
-      exec_run_options, /*borrow_stream=*/nullptr,
-      backend->eigen_intra_op_thread_pool());
+  ServiceExecutableRunOptions run_options(exec_run_options,
+                                          /*borrow_stream=*/nullptr);
   std::vector<const ShapedBuffer*> args = {&lhs_arg, &rhs_arg};
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,

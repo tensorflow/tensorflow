@@ -40,7 +40,7 @@ To run it. Prepare `./mobilenet_quant_v1_224.tflite`, `./grace_hopper.bmp`, and 
 
 Run it:
 ```
-> ./label_image                                        
+> ./label_image
 Loaded model ./mobilenet_quant_v1_224.tflite
 resolved reporter
 invoked
@@ -51,9 +51,9 @@ average time: 100.986 ms
 0.0235294: 514 cornet
 0.0196078: 835 suit
 ```
-Run `interpreter->Invoker()` 100 times:
+Run `interpreter->Invoke()` 100 times:
 ```
-> ./label_image   -c 100                               
+> ./label_image   -c 100
 Loaded model ./mobilenet_quant_v1_224.tflite
 resolved reporter
 invoked

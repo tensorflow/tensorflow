@@ -17,8 +17,10 @@ limitations under the License.
 
 #include <cstring>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/string.h"
 
 namespace tflite {
 namespace {
@@ -32,6 +34,8 @@ class MockErrorReporter : public ErrorReporter {
   }
   char* GetBuffer() { return buffer_; }
   int GetBufferSize() { return buffer_size_; }
+
+  string GetAsString() const { return string(buffer_, buffer_size_); }
 
  private:
   static constexpr int kBufferSize = 256;
@@ -60,25 +64,56 @@ class MockDataAllocator : public BuiltinDataAllocator {
 
 }  // namespace
 
-TEST(FlatbufferConversions, TestParseOpDataConv) {
-  MockErrorReporter mock_reporter;
-  ErrorReporter* reporter = &mock_reporter;
-  MockDataAllocator mock_allocator;
+class FlatbufferConversionsTest : public ::testing::Test {
+ public:
+  const Operator* BuildTestOperator(BuiltinOptions op_type,
+                                    flatbuffers::Offset<void> options) {
+    flatbuffers::Offset<Operator> offset =
+        CreateOperatorDirect(builder_, 0, nullptr, nullptr, op_type, options,
+                             nullptr, CustomOptionsFormat_FLEXBUFFERS, nullptr);
+    builder_.Finish(offset);
+    void* pointer = builder_.GetBufferPointer();
+    return flatbuffers::GetRoot<Operator>(pointer);
+  }
 
-  flatbuffers::FlatBufferBuilder builder;
-  flatbuffers::Offset<void> conv_options =
-      CreateConv2DOptions(builder, Padding_SAME, 1, 2,
-                          ActivationFunctionType_RELU, 3, 4)
-          .Union();
-  flatbuffers::Offset<Operator> conv_offset = CreateOperatorDirect(
-      builder, 0, nullptr, nullptr, BuiltinOptions_Conv2DOptions, conv_options,
-      nullptr, CustomOptionsFormat_FLEXBUFFERS, nullptr);
-  builder.Finish(conv_offset);
-  void* conv_pointer = builder.GetBufferPointer();
-  const Operator* conv_op = flatbuffers::GetRoot<Operator>(conv_pointer);
+ protected:
+  MockErrorReporter mock_reporter_;
+  MockDataAllocator mock_allocator_;
+  flatbuffers::FlatBufferBuilder builder_;
+};
+
+TEST_F(FlatbufferConversionsTest, ParseBadSqueeze) {
+  const Operator* op = BuildTestOperator(
+      BuiltinOptions_SqueezeOptions, CreateSqueezeOptions(builder_).Union());
   void* output_data = nullptr;
-  EXPECT_EQ(kTfLiteOk, ParseOpData(conv_op, BuiltinOperator_CONV_2D, reporter,
-                                   &mock_allocator, &output_data));
+  EXPECT_NE(kTfLiteOk, ParseOpData(op, BuiltinOperator_SQUEEZE, &mock_reporter_,
+                                   &mock_allocator_, &output_data));
+  EXPECT_THAT(mock_reporter_.GetAsString(),
+              ::testing::ContainsRegex(
+                  "Input array not provided for operation 'squeeze'"));
+}
+
+TEST_F(FlatbufferConversionsTest, ParseBadReshape) {
+  const Operator* op = BuildTestOperator(
+      BuiltinOptions_ReshapeOptions, CreateSqueezeOptions(builder_).Union());
+  void* output_data = nullptr;
+  EXPECT_NE(kTfLiteOk, ParseOpData(op, BuiltinOperator_RESHAPE, &mock_reporter_,
+                                   &mock_allocator_, &output_data));
+  EXPECT_THAT(mock_reporter_.GetAsString(),
+              ::testing::ContainsRegex(
+                  "Input array not provided for operation 'reshape'"));
+}
+
+TEST_F(FlatbufferConversionsTest, TestParseOpDataConv) {
+  const Operator* conv_op =
+      BuildTestOperator(BuiltinOptions_Conv2DOptions,
+                        CreateConv2DOptions(builder_, Padding_SAME, 1, 2,
+                                            ActivationFunctionType_RELU, 3, 4)
+                            .Union());
+  void* output_data = nullptr;
+  EXPECT_EQ(kTfLiteOk,
+            ParseOpData(conv_op, BuiltinOperator_CONV_2D, &mock_reporter_,
+                        &mock_allocator_, &output_data));
   EXPECT_NE(nullptr, output_data);
   TfLiteConvParams* params = reinterpret_cast<TfLiteConvParams*>(output_data);
   EXPECT_EQ(kTfLitePaddingSame, params->padding);
@@ -89,30 +124,20 @@ TEST(FlatbufferConversions, TestParseOpDataConv) {
   EXPECT_EQ(4, params->dilation_height_factor);
 }
 
-TEST(FlatbufferConversions, TestParseOpDataCustom) {
-  MockErrorReporter mock_reporter;
-  ErrorReporter* reporter = &mock_reporter;
-  MockDataAllocator mock_allocator;
-
-  flatbuffers::FlatBufferBuilder builder;
-  flatbuffers::Offset<void> null_options;
-  flatbuffers::Offset<Operator> custom_offset = CreateOperatorDirect(
-      builder, 0, nullptr, nullptr, BuiltinOptions_NONE, null_options, nullptr,
-      CustomOptionsFormat_FLEXBUFFERS, nullptr);
-  builder.Finish(custom_offset);
-  void* custom_pointer = builder.GetBufferPointer();
-  const Operator* custom_op = flatbuffers::GetRoot<Operator>(custom_pointer);
+TEST_F(FlatbufferConversionsTest, TestParseOpDataCustom) {
+  const Operator* custom_op =
+      BuildTestOperator(BuiltinOptions_NONE, flatbuffers::Offset<void>());
   void* output_data = nullptr;
-  EXPECT_EQ(kTfLiteOk, ParseOpData(custom_op, BuiltinOperator_CUSTOM, reporter,
-                                   &mock_allocator, &output_data));
+  EXPECT_EQ(kTfLiteOk,
+            ParseOpData(custom_op, BuiltinOperator_CUSTOM, &mock_reporter_,
+                        &mock_allocator_, &output_data));
   EXPECT_EQ(nullptr, output_data);
 }
 
-TEST(FlatbufferConversions, TestConvertTensorType) {
-  MockErrorReporter mock_reporter;
-  ErrorReporter* reporter = &mock_reporter;
+TEST_F(FlatbufferConversionsTest, TestConvertTensorType) {
   TfLiteType type;
-  EXPECT_EQ(kTfLiteOk, ConvertTensorType(TensorType_FLOAT32, &type, reporter));
+  EXPECT_EQ(kTfLiteOk,
+            ConvertTensorType(TensorType_FLOAT32, &type, &mock_reporter_));
   EXPECT_EQ(kTfLiteFloat32, type);
 }
 
