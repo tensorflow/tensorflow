@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Library for controlling the Tensorflow/XLA JIT compiler."""
+"""A module for controlling the Tensorflow/XLA JIT compiler."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+# pylint: disable=unused-import
 from tensorflow.python.compiler.xla import jit
-
-experimental_jit_scope = jit.experimental_jit_scope
+from tensorflow.python.compiler.xla import xla
+# pylint: enable=unused-import
