@@ -3082,6 +3082,16 @@ string ConvolutionDimensionNumbersToString(
                 StrJoin(output_dims, ""));
 }
 
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups) {
+  std::vector<string> replica_group_str;
+  replica_group_str.reserve(replica_groups.size());
+  for (const ReplicaGroup& group : replica_groups) {
+    replica_group_str.push_back(
+        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
+  }
+  return StrCat("{", StrJoin(replica_group_str, ","), "}");
+}
+
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name) {
   static std::unordered_map<string, RandomDistribution>* map = [] {
     static auto* map = new std::unordered_map<string, RandomDistribution>;
