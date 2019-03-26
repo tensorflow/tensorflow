@@ -653,8 +653,7 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
     perm.order[0] = 1;
     perm.order[1] = 0;
     for (int i = 0; i < 2; ++i) {
-      nvinfer1::ITensor* input_tensor =
-          const_cast<nvinfer1::ITensor*>(params->inputs[0].tensor());
+      nvinfer1::ITensor* input_tensor = params->inputs[0].tensor();
       nvinfer1::IShuffleLayer* layer =
           params->converter->network()->addShuffle(*input_tensor);
       layer->setFirstTranspose(perm);
@@ -693,7 +692,7 @@ TEST_F(ConverterTest, RenameAndMarkOutputTensors) {
 TEST_F(ConverterTest, TransposeTensor) {
   nvinfer1::ITensor* input_tensor = converter_->network()->addInput(
       "", nvinfer1::DataType::kFLOAT, GetTestDims({2, 3, 5}));
-  const nvinfer1::ITensor* output_tensor = nullptr;
+  nvinfer1::ITensor* output_tensor = nullptr;
 
   // Rank doesn't match.
   ExpectStatus(
@@ -719,12 +718,12 @@ void TestPrepareTensorForShape_Tensor(
     const char* expected_error_msg_substr = nullptr) {
   nvinfer1::ITensor* input_tensor = converter->network()->addInput(
       "", nvinfer1::DataType::kFLOAT, GetTestDims(tensor_dims));
-  TRT_TensorOrWeights tw(input_tensor);
-  const nvinfer1::ITensor* output_tensor = nullptr;
+  nvinfer1::ITensor* output_tensor = nullptr;
 
   for (bool validation_only : {false, true}) {
     const Status status = converter->PrepareTensorForShape(
-        tw, GetTestDims(reshape_dims), validation_only, &output_tensor);
+        TRT_TensorOrWeights(input_tensor), GetTestDims(reshape_dims),
+        validation_only, &output_tensor);
     if (expected_code == error::OK) {
       TF_EXPECT_OK(status);
       if (validation_only) {
@@ -771,11 +770,11 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
 TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
   TRT_ShapedWeights weights =
       weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({2, 3, 5}));
-  TRT_TensorOrWeights tw(weights);
-  const nvinfer1::ITensor* output_tensor = nullptr;
+  nvinfer1::ITensor* output_tensor = nullptr;
   for (bool validation_only : {false, true}) {
     TF_EXPECT_OK(converter_->PrepareTensorForShape(
-        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+        TRT_TensorOrWeights(weights), GetTestDims({10, 3}), validation_only,
+        &output_tensor));
     if (validation_only) {
       EXPECT_EQ(nullptr, output_tensor);
     } else {
@@ -826,8 +825,7 @@ void TestGetWeightRange(ConverterTest* test, TrtWeightStore* weight_store) {
   TRT_ShapedWeights weights =
       weight_store->GetTempWeights(DataTypeToEnum<T>::v(), GetTestDims({2, 3}));
   const std::vector<T> values = {T(3), T(1), T(2), T(6), T(5), T(4)};
-  memcpy(const_cast<void*>(weights.GetValues()), values.data(),
-         weights.size_bytes());
+  memcpy(weights.GetValues(), values.data(), weights.size_bytes());
 
   float out_min = 0.0f;
   float out_max = 0.0f;
@@ -1248,8 +1246,7 @@ class OpConverterTest : public ::testing::Test {
       weights = converter_->weight_store_.GetTempWeights(dtype, trt_dims);
       QCHECK_EQ(weights.size_bytes(), sizeof(T) * values.size())
           << weights.size_bytes() << " vs " << sizeof(T) * values.size();
-      memcpy(const_cast<void*>(weights.GetValues()), values.data(),
-             weights.size_bytes());
+      memcpy(weights.GetValues(), values.data(), weights.size_bytes());
     }
     // Add weights for validation.
     TensorShape shape;
