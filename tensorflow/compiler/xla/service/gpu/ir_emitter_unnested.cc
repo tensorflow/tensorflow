@@ -706,13 +706,14 @@ Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
 
 Status IrEmitterUnnested::EmitExtraOutputsForReduce(
     const HloInstruction* unnested_hlo, const IrArray::Index& index,
+    bool use_linear_index,
     absl::Span<const std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
         extra_output_gens) {
   for (int i = 0; i != extra_output_gens.size(); ++i) {
     llvm::Value* extra_output_address =
         GetIrArray(*unnested_hlo, *unnested_hlo, extra_output_gens[i].second)
-            .EmitArrayElementAddress(index, &b_,
-                                     "extra_output_element_address");
+            .EmitArrayElementAddress(index, &b_, "extra_output_element_address",
+                                     use_linear_index);
     TF_ASSIGN_OR_RETURN(llvm::Value* const extra_output_ir_value,
                         extra_output_gens[i].first(index));
     Store(extra_output_ir_value, extra_output_address);
@@ -2945,10 +2946,18 @@ void IrEmitterUnnested::EmitTileElementForReduction(
     });
   }
 
+  Shape reduction_operand_shape =
+      GetFirstReduceInstruction(output_instructions)->operand(0)->shape();
   IrArray::Index input_index =
       reduction_info->GetKernelMappingScheme()->GetUnnormalizedIndex(
-          index,
-          GetFirstReduceInstruction(output_instructions)->operand(0)->shape());
+          index, reduction_operand_shape);
+  // Clear the linear index field of the IrArray::Index to enable the use of
+  // GetElementPointer with array types. This enables the vectorization of
+  // the computation for different partial results. Use this index if
+  // 'num_partial_results > 1'.
+  int num_partial_results = reduction_info->GetNumberOfPartialResults();
+  auto index_without_linear = IrArray::Index(
+      input_index.multidim(), reduction_operand_shape, input_index.GetType());
   absl::Span<llvm::AllocaInst* const> partial_reduction_result_addresses =
       reduction_info->GetPartialResultAddresses();
   absl::Span<llvm::AllocaInst* const> reduction_input_addresses =
@@ -2959,7 +2968,10 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   // Emit code to generate the input and perform the reduction computation for
   // each reduction instruction.
   for (int i = 0; i != reducers.size(); ++i) {
-    llvm::Value* const input_ir_value = input_gens[i](input_index).ValueOrDie();
+    llvm::Value* const input_ir_value =
+        input_gens[i](num_partial_results > 1 ? index_without_linear
+                                              : input_index)
+            .ValueOrDie();
     Store(input_ir_value, reduction_input_addresses[i]);
     llvm::Value* partial_result_address =
         InBoundsGEP(partial_reduction_result_addresses[i],
@@ -2971,8 +2983,9 @@ void IrEmitterUnnested::EmitTileElementForReduction(
 
   // Emit code to generate the output for the non-reduction instructions in the
   // fusion, if any.
-  TF_CHECK_OK(
-      EmitExtraOutputsForReduce(unnested_hlo, input_index, extra_output_gens));
+  TF_CHECK_OK(EmitExtraOutputsForReduce(
+      unnested_hlo, input_index,
+      /*use_linear_index=*/num_partial_results == 1, extra_output_gens));
 }
 
 // Emits a kernel for the hlo instruction using the given tiling scheme.
