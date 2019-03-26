@@ -91,8 +91,6 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
       static_cast<HloParameterInstruction*>(inst);
   const auto param_num = param_inst->parameter_number();
 
-  poplar::Graph& graph = GetGraph(resources_, param_inst);
-
   std::vector<xla::Shape> shapes = FlattenedXlaShape(param_inst->shape());
   auto& inputs = inputs_[param_num];
   auto& used = used_tensors_[param_num];
@@ -140,6 +138,9 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
                   << " sub tensor " << i << ".";
           add_output_tensor = false;
         } else {
+          poplar::Graph& graph =
+              GetGraphWithOutputIndex(resources_, param_inst, i);
+
           if (HasTensorAllocationTarget(src, resources_) ||
               t.containsConstant()) {
             TF_ASSIGN_OR_RETURN(inputs[i], AddTensor(graph, src, shapes[i],
@@ -161,7 +162,6 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
 
 StatusOr<poplar::Tensor> SubComputationVisitor::PostProcessParameterAllocation(
     const HloInstruction* inst, int64 flat_tuple_index, poplar::Tensor tensor) {
-  poplar::Graph& graph = GetGraph(resources_, inst);
   const auto param_num = inst->parameter_number();
   inputs_[param_num][flat_tuple_index] = tensor;
   has_allocation_target_[param_num][flat_tuple_index] = true;

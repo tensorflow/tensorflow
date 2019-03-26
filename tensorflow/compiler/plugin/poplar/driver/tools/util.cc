@@ -14,8 +14,58 @@ namespace xla {
 namespace poplarplugin {
 
 bool IsSupportedSharding(const HloSharding& sharding) {
-  // We currently only support sharding with unique devices.
-  return sharding.HasUniqueDevice();
+  // We support unique single device sharding, representing an op/tensor which
+  // is on an IPU, or single device sharding in a tuple/tree, repesenting a
+  // tuple/tree of tensors on multiple devices.
+  if (sharding.IsTuple()) {
+    for (const auto& s : sharding.tuple_elements()) {
+      if (!sharding.HasUniqueDevice()) {
+        return false;
+      }
+    }
+    return true;
+  } else {
+    return sharding.HasUniqueDevice();
+  }
+}
+
+// Get the sharding for a particular input operand of an instruction
+HloSharding GetShardingForOperand(const HloInstruction* inst, int operand) {
+  switch (inst->opcode()) {
+    case HloOpcode::kCall: {
+      auto* comp = inst->to_apply();
+      return comp->parameter_instruction(operand)->sharding();
+    }
+    case HloOpcode::kWhile: {
+      auto* comp = inst->while_body();
+      return comp->parameter_instruction(operand)->sharding();
+    }
+    case HloOpcode::kConditional: {
+      auto* comp = inst->true_computation();
+      return comp->parameter_instruction(operand)->sharding();
+    }
+    case HloOpcode::kTuple: {
+      auto s = inst->sharding();
+      return s.GetSubSharding(inst->shape(), {operand});
+    }
+    default: { return inst->sharding(); }
+  }
+}
+
+const HloSharding& GetShardingOfOutputTensor(const HloInstruction* inst) {
+  return inst->sharding();
+}
+
+std::vector<int64> GetShardingDeviceIdVector(const HloSharding& sharding) {
+  std::vector<int64> ids;
+  if (sharding.IsTuple()) {
+    for (const auto& s : sharding.tuple_elements()) {
+      ids.push_back(s.GetUniqueDevice());
+    }
+  } else {
+    ids.push_back(sharding.GetUniqueDevice());
+  }
+  return ids;
 }
 
 bool HaveSharding(HloComputation* comp) {
@@ -41,23 +91,12 @@ bool HaveSharding(HloModule* module) {
   return false;
 }
 
-std::vector<int64> GetShardingDeviceId(const HloInstruction* inst) {
-  // This function works on the assumptions:
-  // * that all the instructions either have sharding or none of them do (see
-  //   ShardingPass).
-  // * If an instruction has sharding, then that sharding contains a unique
-  //   device.
-  std::vector<int64> sharding_info;
-  sharding_info.push_back(inst->has_sharding() &&
-                                  inst->sharding().HasUniqueDevice()
-                              ? inst->sharding().GetUniqueDevice()
-                              : 0);
-
-  return sharding_info;
-}
-
 int64 GetSingleShardingDeviceId(const HloInstruction* inst) {
-  return GetShardingDeviceId(inst)[0];
+  if (inst->has_sharding()) {
+    return GetShardingDeviceIdVector(inst->sharding())[0];
+  } else {
+    return 0;
+  }
 }
 
 int64 CountShapes(const Shape& shape) {

@@ -201,7 +201,10 @@ int64 MaximalShard(const HloModule* module) {
       if (inst->has_sharding()) {
         auto sharding = inst->sharding();
         if (IsSupportedSharding(sharding)) {
-          maximal_shard = std::max(maximal_shard, sharding.GetUniqueDevice());
+          const auto& vec = GetShardingDeviceIdVector(sharding);
+          for (auto s : vec) {
+            maximal_shard = std::max(maximal_shard, s);
+          }
         }
       }
     }

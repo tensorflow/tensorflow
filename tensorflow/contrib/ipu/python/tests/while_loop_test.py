@@ -258,49 +258,5 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(out[0], {})
 
-  # TODO enable when feeding placeholders into while loops by capture works
-  # def testSimpleXlaCompileTrainingInLoopWithParam(self):
-  #   dataset = create_increasing_dataset(3)
-  #
-  #   infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-  #
-  #   def my_net(lr):
-  #     def my_model(lr, loss):
-  #       with ops.device("/device:IPU:0"):
-  #         x, y = infeed_queue.get_next()
-  #         inp = x
-  #
-  #         x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
-  #                                  use_bias=False)
-  #         x = math_ops.reduce_max(x,  axis=[1, 2])
-  #
-  #         cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
-  #         loss = math_ops.reduce_mean(cross_entropy)
-  #
-  #         optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
-  #         train = optim.minimize(cross_entropy)
-  #
-  #         autoshard.automatic_sharding(2, inp, loss, [])
-  #
-  #         return [lr, loss, train]
-  #
-  #     loss = 0.0
-  #     return loops.repeat(2, my_model, [lr, loss], infeed_queue)
-  #
-  #   lr = array_ops.placeholder(dtypes.float32, [])
-  #   out = ipu_compiler.compile(my_net, inputs=[lr])
-  #
-  #   cfg = ipu.utils.create_ipu_config(profiling=False)
-  #   cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-  #   cfg = ipu.utils.auto_select_ipus(cfg, 2)
-  #   ipu.utils.configure_ipu_system(cfg)
-  #
-  #   with session_lib.Session() as sess:
-  #     sess.run(infeed_queue.initializer)
-  #     sess.run(variables.global_variables_initializer())
-  #     sess.run(out[0], {lr: 0.1})
-
-
-
 if __name__ == "__main__":
     googletest.main()

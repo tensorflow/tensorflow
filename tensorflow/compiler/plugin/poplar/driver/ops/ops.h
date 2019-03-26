@@ -73,6 +73,13 @@ poplar::Graph& GetReplicatedGraph(CompilerResources&);
 // Get the appropriate virtual graph, or the replicated/master graph if not
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
 
+// Get the virtual graph for a particular output of an operation. Operations
+// like Parameter, Infeed, Call, While, Tuple can have multiple tensor
+// outputs on different IPUs.
+poplar::Graph& GetGraphWithOutputIndex(CompilerResources&,
+                                       const HloInstruction*,
+                                       int flattened_output_tuple_index);
+
 bool HasReplicatedGraph(CompilerResources&);
 
 // Convert a poplar/poplibs exception to a Tensorflow error Status

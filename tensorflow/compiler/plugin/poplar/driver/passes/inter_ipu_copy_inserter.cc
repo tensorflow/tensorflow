@@ -26,6 +26,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+using UserAndParam = std::pair<HloInstruction*, int>;
+
 StatusOr<bool> InterIpuCopyInserter::Run(HloModule* module) {
   if (!HaveSharding(module)) {
     return false;
@@ -38,78 +40,85 @@ StatusOr<bool> InterIpuCopyInserter::Run(HloModule* module) {
       continue;
     }
 
-    // Now add InterIpuCopy instructions between nodes which are on different
+    // Add InterIpuCopy instructions between nodes which are on different
     // devices
     auto original_insts = comp->MakeInstructionPostOrder();
     for (auto* inst : original_insts) {
-      auto opcode = inst->opcode();
-      if (opcode == HloOpcode::kTuple ||
-          opcode == HloOpcode::kGetTupleElement) {
-        continue;
-      }
-
       if (!inst->has_sharding()) {
         continue;
       }
 
-      const auto& src_sharding = inst->sharding();
-      if (!src_sharding.HasUniqueDevice()) {
-        return xla::FailedPrecondition("No unique IPU number on %s",
-                                       inst->name());
+      if (inst->opcode() == HloOpcode::kAfterAll) {
+        continue;
       }
 
-      int src_ipu = src_sharding.GetUniqueDevice();
+      const auto& src_sharding = GetShardingOfOutputTensor(inst);
 
-      FindAllUsers finder;
-      finder.Find(inst);
-      auto paths = finder.Paths();
-
-      std::multimap<int, HloInstruction*> ipu_map;
-      std::set<int> ipu_nums;
-      for (const auto& path : paths) {
-        auto user = path.back();
-        auto next = path.front();
-
-        if (inst->parent() != next->parent()) {
-          return xla::FailedPrecondition(
-              "Instructions on different computations %s, %s", inst->name(),
-              next->name());
+      // Construct a map from the sharding of the tensor users' operand inputs
+      // (represented as a vector of int64 values, to all users and operand
+      // indices.
+      std::multimap<std::vector<int64>, UserAndParam> dst_sharding_map;
+      std::set<std::vector<int64>> dst_shardings;
+      std::map<std::vector<int64>, HloSharding> sharding_map;
+      for (const auto& user : inst->users()) {
+        if (user->opcode() == HloOpcode::kAfterAll) {
+          continue;
         }
 
-        const auto& dst_sharding = user->sharding();
-        if (!dst_sharding.HasUniqueDevice()) {
-          return xla::FailedPrecondition("No unique IPU number on %s",
-                                         user->name());
+        if (user->opcode() == HloOpcode::kGetTupleElement) {
+          // GTEs should always have the same sharding as the tuple
+          const auto& s = inst->sharding();
+          const auto& tuple_sub_sharding =
+              s.IsTuple()
+                  ? s.GetSubSharding(inst->shape(), {user->tuple_index()})
+                  : s;
+          if (tuple_sub_sharding != user->sharding()) {
+            return InternalError(
+                "Different sharding on Tuple and GTE: %s != %s",
+                inst->ToString(), user->ToString());
+          }
+          continue;
         }
 
-        int dst_ipu = dst_sharding.GetUniqueDevice();
+        for (int operand = 0; operand < user->operand_count(); operand++) {
+          if (user->operand(operand) == inst) {
+            const auto& dst_sharding = GetShardingForOperand(user, operand);
 
-        if (src_ipu != dst_ipu) {
-          ipu_map.insert(std::make_pair(dst_ipu, next));
-          ipu_nums.insert(dst_ipu);
-        }
-      }
+            std::vector<int64> sharding_vector =
+                GetShardingDeviceIdVector(dst_sharding);
 
-      for (auto ipu : ipu_nums) {
-        added = true;
-        auto range = ipu_map.equal_range(ipu);
-        HloInstruction* inst_on_ipu;
-        if (inst->opcode() == HloOpcode::kConstant ||
-            IsPopOpsFusion(inst, "wide_const")) {
-          inst_on_ipu = comp->AddInstruction(inst->Clone());
-        } else {
-          inst_on_ipu = comp->AddInstruction(HloInstruction::CreateCustomCall(
-              inst->shape(), {inst}, "inter_ipu_copy", ""));
-        }
-        inst_on_ipu->set_device_sharding(ipu);
-
-        for (auto user = range.first; user != range.second; ++user) {
-          auto* u = user->second;
-          for (int operand = 0; operand < u->operand_count(); operand++) {
-            if (u->operand(operand) == inst) {
-              u->ReplaceOperandWith(operand, inst_on_ipu);
+            if (src_sharding != dst_sharding) {
+              auto u = std::make_pair(user, operand);
+              dst_sharding_map.insert(std::make_pair(sharding_vector, u));
+              dst_shardings.insert(sharding_vector);
+              sharding_map.insert(
+                  std::make_pair(sharding_vector, dst_sharding));
             }
           }
+        }
+      }
+
+      // For each unique destination sharding that is not the same as the
+      // sharding of the source of the tensors, add an inter-ipu copy to move
+      // the tensors to the other devices.
+      for (auto s : dst_shardings) {
+        added = true;
+        auto range = dst_sharding_map.equal_range(s);
+        HloInstruction* new_inst;
+        if (inst->opcode() == HloOpcode::kConstant ||
+            IsPopOpsFusion(inst, "wide_const")) {
+          new_inst = comp->AddInstruction(inst->Clone());
+        } else {
+          new_inst = comp->AddInstruction(HloInstruction::CreateCustomCall(
+              inst->shape(), {inst}, "inter_ipu_copy", ""));
+        }
+
+        new_inst->set_sharding(sharding_map.at(s));
+
+        for (auto user = range.first; user != range.second; ++user) {
+          auto* u = user->second.first;
+          auto o = user->second.second;
+          u->ReplaceOperandWith(o, new_inst);
         }
       }
     }

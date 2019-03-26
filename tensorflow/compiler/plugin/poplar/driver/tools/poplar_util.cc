@@ -28,18 +28,27 @@ poplar::Graph& GetReplicatedGraph(CompilerResources& res) {
   return GetMasterGraph(res);
 }
 
-poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
+poplar::Graph& GetGraphWithOutputIndex(CompilerResources& res,
+                                       const HloInstruction* inst,
+                                       int flattened_output_tuple_index) {
   if (inst->has_sharding()) {
-    const auto& sharding = inst->sharding();
-    if (sharding.HasUniqueDevice()) {
-      uint64 device_id = sharding.GetUniqueDevice();
-      if (device_id < res.shard_graphs.size()) {
-        return res.shard_graphs[device_id];
-      }
+    const auto& sharding = GetShardingDeviceIdVector(inst->sharding());
+    if (flattened_output_tuple_index >= sharding.size()) {
+      flattened_output_tuple_index = 0;
+    }
+
+    int device_id = sharding[flattened_output_tuple_index];
+
+    if (flattened_output_tuple_index < res.shard_graphs.size()) {
+      return res.shard_graphs[device_id];
     }
   }
 
   return GetReplicatedGraph(res);
+}
+
+poplar::Graph& GetGraph(CompilerResources& res, const HloInstruction* inst) {
+  return GetGraphWithOutputIndex(res, inst, 0);
 }
 
 bool HasReplicatedGraph(CompilerResources& res) {

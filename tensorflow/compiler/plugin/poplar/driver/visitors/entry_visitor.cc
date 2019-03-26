@@ -103,7 +103,8 @@ StatusOr<poplar::Tensor> EntryVisitor::PostProcessParameterAllocation(
   // between runs
   if (in_info.IsResourceNotModified()) {
     poplar::Tensor non_modified_tensor = tensor;
-    poplar::Graph& graph = GetGraph(resources_, inst);
+    poplar::Graph& graph =
+        GetGraphWithOutputIndex(resources_, inst, flat_tuple_index);
     tensor = graph.clone(non_modified_tensor,
                          GetDebugName(inst) + ".resource_not_modified_clone");
     sequence.add(poplar::program::Copy(non_modified_tensor, tensor));

@@ -29,7 +29,8 @@ namespace poplarplugin {
 Status DeferredAllocationVisitor::AllocateInput(const HloInstruction* inst,
                                                 int64 flat_tuple_index,
                                                 const Shape& shape) {
-  poplar::Graph& graph = GetGraph(resources_, inst);
+  poplar::Graph& graph =
+      GetGraphWithOutputIndex(resources_, inst, flat_tuple_index);
 
   auto source = std::make_pair(inst, flat_tuple_index);
   // Do the allocation.
