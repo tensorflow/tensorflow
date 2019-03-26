@@ -63,7 +63,8 @@ class AutoMixedPrecisionLists {
 #if CUDA_VERSION >= 9010  // Fp16 BatchMatMul is slow before CUDA 9.1.
       "BatchMatMul",
 #endif
-          "Conv2D", "Conv2DBackpropFilter", "Conv2DBackpropInput",
+          "BlockLSTM", "BlockLSTMGrad", "Conv2D", "Conv2DBackpropFilter",
+          "Conv2DBackpropInput",
           // TODO(benbarsdell): Enable these when Tensor Core kernels are
           // available for 3D convolutions.
           // "Conv3D",
@@ -72,7 +73,8 @@ class AutoMixedPrecisionLists {
           // "Conv3DBackpropInput",
           // "Conv3DBackpropInputV2",
           "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNBackpropV2",
-          "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3",
+          "CudnnRNNBackpropV3", "CudnnRNNV2", "CudnnRNNV3", "GRUBlockCell",
+          "GRUBlockCellGrad", "LSTMBlockCell", "LSTMBlockCellGrad",
           // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
           // available for depthwise convolutions.
           // "DepthwiseConv2dNative",
