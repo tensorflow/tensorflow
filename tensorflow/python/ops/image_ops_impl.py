@@ -3538,9 +3538,10 @@ def combined_non_max_suppression(boxes,
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class)
 
+  
 @tf_export('image.average_filter_1D')
 def average_filter_1D(input,filter_shape=3):
-    """This method performs 1D Average Filtering on images. Filter shape can be user given.
+    """This method performs 1D Median Filtering on images.Filter shape can be user given.
        This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
        Args:
            input: A 3D `Tensor` of type `float32` or 'int32' or 'float64' or 'int64 and of shape`[rows, columns, channels]`
@@ -3548,14 +3549,14 @@ def average_filter_1D(input,filter_shape=3):
            filter_shape: Optional Argument.Single Integer. Default value = 3
 
         Returns:
-            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int64'. Pixel value of returned tensor
+            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int32'. Pixel value of returned tensor
             ranges between 0 to 255
     """
 
     if not isinstance(filter_shape, int):
         raise TypeError("Filter shape must be an Integer")
     filter_shapex = filter_shape
-    input = image_ops_impl._Assert3DImage(input)
+    input = _Assert3DImage(input)
     m, no, ch = input.shape[0], input.shape[1], input.shape[2]
     if not m.__eq__(tensor_shape.Dimension(None)) and not no.__eq__(tensor_shape.Dimension(None)) \
             and not ch.__eq__(tensor_shape.Dimension(None)):
@@ -3569,6 +3570,7 @@ def average_filter_1D(input,filter_shape=3):
         raise ValueError("Filter size should be odd. Got filter_shape (%s)" % filter_shape )
     input = math_ops.cast(input,dtypes.float64)
     def my_func (input2):
+        input2 = input2.numpy()
         tf_i = input2.reshape(m*no*ch)
         maxi = max(tf_i)
         if maxi <= 1:
@@ -3587,13 +3589,13 @@ def average_filter_1D(input,filter_shape=3):
                 li = []
                 for b in range(i, i + filter_shapex):
                     li.append(img[b])
-                res1[i] = sum(li) / filter_shapex
+                res1[i] = sum(li) / len(li)
             res1 = res1.reshape(m,no,1)
             res[:,:,a:a+1] = res1
         res *= 255
-        res = res.astype('int64')
+        res = res.astype('int32')
         return res
 
-    y = script_ops.py_func(my_func, [input], dtypes.int64)
+    y = script_ops.eager_py_func(my_func, [input], dtypes.int32)
+    y = array_ops.reshape(array_ops.concat(y,1),[m,no,ch])
     return y
-
