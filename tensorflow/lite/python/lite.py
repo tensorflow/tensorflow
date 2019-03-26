@@ -597,7 +597,7 @@ class TFLiteConverter(object):
     """
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file)
+    keras_model = _keras.models.load_model(model_file, compile=False)
     sess = _keras.backend.get_session()
 
     # Get input and output tensors.
