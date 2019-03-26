@@ -509,6 +509,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -533,6 +534,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -555,7 +557,8 @@ ifeq ($(TARGET),IOS)
 		LDFLAGS := -arch arm64 \
 		-fembed-bitcode \
 		-miphoneos-version-min=${MIN_SDK_VERSION} \
-		-framework Accelerate \
+	  -framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -579,7 +582,8 @@ ifeq ($(TARGET),IOS)
 		LDFLAGS := -arch i386 \
 		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
-		-framework Accelerate \
+    -framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -603,6 +607,7 @@ ifeq ($(TARGET),IOS)
 		-fembed-bitcode \
 		-mios-simulator-version-min=${MIN_SDK_VERSION} \
 		-framework Accelerate \
+    -framework CoreFoundation \
 		-Xlinker -S \
 		-Xlinker -x \
 		-Xlinker -dead_strip \
@@ -895,6 +900,14 @@ $(HOST_OBJDIR)%.pb.o: $(HOST_GENDIR)%.pb.cc
 # Ensures we wait until proto_text has generated the .h files from protos before
 # we compile the C++.
 $(PROTO_TEXT_OBJS) : $(PROTO_TEXT_PB_H_FILES)
+
+# Ensures we link CoreFoundation as it is used for time library when building
+# for Mac.
+ifeq ($(TARGET),IOS)
+  ifeq ($(IOS_ARCH),X86_64)
+    HOST_LDOPTS += -framework CoreFoundation
+  endif
+endif
 
 # Runs proto_text to generate C++ source files from protos.
 $(PROTO_TEXT): $(PROTO_TEXT_OBJS) $(PROTO_TEXT_PB_H_FILES)
