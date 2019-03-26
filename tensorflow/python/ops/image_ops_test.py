@@ -4637,7 +4637,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     expected = self._ssim[np.triu_indices(3)]
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
-    ssim = image_ops.ssim(*ph, max_val=1.0)
+    ssim = image_ops.ssim(*ph, max_val=1.0, filter_size=11, filter_sigma=1.5)
     with self.cached_session(use_gpu=True):
       scores = [ssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4652,7 +4652,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = np.concatenate(img2)
 
     ssim = image_ops.ssim(constant_op.constant(img1),
-                          constant_op.constant(img2), 1.0)
+                          constant_op.constant(img2), 1.0, filter_size=11,filter_sigma=1.5)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4664,7 +4664,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img1 = array_ops.expand_dims(img, axis=0)  # batch dims: 1, 2.
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
-    ssim = image_ops.ssim(img1, img2, 1.0)
+    ssim = image_ops.ssim(img1, img2, 1.0, 11, 1.5)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4679,7 +4679,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = img2.reshape((1, 16, 16, 1))
 
     ssim = image_ops.ssim(constant_op.constant(img1),
-                          constant_op.constant(img2), 255)
+                          constant_op.constant(img2), 255, 11, 1.5)
     with self.cached_session(use_gpu=True):
       self.assertLess(ssim.eval(), 0)
 
@@ -4689,10 +4689,10 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = self._RandomImage((1, 16, 16, 3), 255)
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
-    ssim_uint8 = image_ops.ssim(img1, img2, 255)
+    ssim_uint8 = image_ops.ssim(img1, img2, 255, 11, 1.5)
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
-    ssim_float32 = image_ops.ssim(img1, img2, 1.0)
+    ssim_float32 = image_ops.ssim(img1, img2, 1.0, 11, 1.5)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(
           ssim_uint8.eval(), self.evaluate(ssim_float32), atol=0.001)
