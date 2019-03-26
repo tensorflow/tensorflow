@@ -21,6 +21,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops as _ops
+from tensorflow.python.ops import manip_ops
 from tensorflow.python.framework import tensor_util as _tensor_util
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.ops import gen_spectral_ops
@@ -323,6 +324,66 @@ def _irfft_grad_helper(rank, rfft_fn):
     return the_rfft * _math_ops.cast(rsize * mask, _dtypes.complex64), None
 
   return _grad
+
+@tf_export("signal.fftshift")
+def fftshift(x, axes=None):
+    """Shift the zero-frequency component to the center of the spectrum.
+    This function swaps half-spaces for all axes listed (defaults to all).
+    Note that ``y[0]`` is the Nyquist component only if ``len(x)`` is even.
+
+    Args:
+      x: `Tensor`, input tensor.
+      axes: `int` or shape `tuple`, optional
+             Axes over which to shift.  Default is None, which shifts all axes.
+
+    Returns:
+      `Tensor` of same shape as `x` The shifted tensor.
+
+    Example:
+      >>> fftshift([ 0.,  1.,  2.,  3.,  4., -5., -4., -3., -2., -1.])
+      <tf.Tensor: id=3, shape=(10,), dtype=float32,numpy=array
+      ([-5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.], dtype=float32)>
+    """
+    x = _ops.convert_to_tensor_v2(x)
+    if axes is None:
+        axes = tuple(range(x.ndim))
+        shift = [dim // 2 for dim in x.shape]
+    elif isinstance(axes, int):
+        shift = x.shape[axes] // 2
+    else:
+        shift = [x.shape[ax] // 2 for ax in axes]
+
+    return manip_ops.roll(x, shift, axes)
+
+
+@tf_export("signal.ifftshift")
+def ifftshift(x, axes=None):
+    """The inverse of fftshift. Although identical for even-length x,
+    the functions differ by one sample for odd-length x..
+
+    Args:
+      x: `Tensor`, input tensor.
+      axes: `int` or shape `tuple` Axes over which to calculate.
+            Defaults to None, which shifts all axes.
+
+    Returns:
+      `Tensor` of same shape as `x` The shifted tensor.
+
+    Example:
+      >>> ifftshift([[ 0.,  1.,  2.],[ 3.,  4., -4.],[-3., -2., -1.]])
+      <tf.Tensor: id=13, shape=(3, 3), dtype=float32, numpy=array
+      ([[ 4., -4.,  3.],[-2., -1., -3.],[ 1.,  2.,  0.]], dtype=float32)>
+    """
+    x = _ops.convert_to_tensor_v2(x)
+    if axes is None:
+        axes = tuple(range(x.ndim))
+        shift = [-(dim // 2) for dim in x.shape]
+    elif isinstance(axes, int):
+        shift = -(x.shape[axes] // 2)
+    else:
+        shift = [-(x.shape[ax] // 2) for ax in axes]
+
+    return manip_ops.roll(x, shift, axes)
 
 
 _ops.RegisterGradient("RFFT")(_rfft_grad_helper(1, irfft))

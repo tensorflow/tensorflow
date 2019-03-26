@@ -9,7 +9,6 @@ py_library(
     srcs = [
         "dct_ops.py",
         "fft_ops.py",
-        "helper.py",
         "mel_ops.py",
         "mfcc_ops.py",
         "reconstruction_ops.py",
