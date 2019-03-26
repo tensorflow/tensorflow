@@ -39,8 +39,9 @@ from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import script_ops
+from tensorflow.python.framework import tensor_shape
+
 
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
