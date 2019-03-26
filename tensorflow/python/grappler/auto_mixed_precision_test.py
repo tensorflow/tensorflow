@@ -191,31 +191,20 @@ def _make_node_with_color(color, input_tensor, name=None):
   raise ValueError("Invalid node color: " + str(color))
 
 
-def _build_intertwined_loop_graph(inp_a_colors, inp_b_colors, body_a_colors,
-                                  body_b_colors, out_a_colors, out_b_colors):
-  """ Builds a test graph with intertwined loops """
+def _build_simple_loop_graph(inp_colors, body_colors, out_colors):
+  """ Builds a test graph with a simple loop """
   a = _input([8, 8])
-  for i, color in enumerate(inp_a_colors):
-    a = _make_node_with_color(color, a, 'inputA_%i' % i)
-  b = _input([8, 8])
-  for i, color in enumerate(inp_b_colors):
-    b = _make_node_with_color(color, b, 'inputB_%i' % i)
-  def body_a(x):
-    for i, color in enumerate(body_a_colors):
-      x = _make_node_with_color(color, x, 'bodyA_%i' % i)
+  for i, color in enumerate(inp_colors):
+    a = _make_node_with_color(color, a, 'input_%i' % i)
+  def body(x):
+    for i, color in enumerate(body_colors):
+      x = _make_node_with_color(color, x, 'body_%i' % i)
     return x
-  def body_b(x):
-    for i, color in enumerate(body_b_colors):
-      x = _make_node_with_color(color, x, 'bodyB_%i' % i)
-    return x
-  a, b = _loop_vars_intertwined(a, b, body_a, body_b)[2:]
-  for i, color in enumerate(out_a_colors):
-    a = _make_node_with_color(color, a, 'outputA_%i' % i)
-  for i, color in enumerate(out_b_colors):
-    b = _make_node_with_color(color, b, 'outputB_%i' % i)
+  _, a = _simple_loop(a, body)
+  for i, color in enumerate(out_colors):
+    a = _make_node_with_color(color, a, 'output_%i' % i)
   a = array_ops.identity(a)
-  b = array_ops.identity(b)
-  return a, b
+  return a
 
 
 def _get_config(auto_mixed_precision=True):
@@ -303,27 +292,21 @@ class AutoMixedPrecisionTest(test.TestCase):
 
     return output_val_ref, output_val, metadata.cost_graph
 
-  def _run_intertwined_loop_test(self, inp_a, inp_b, body_a, body_b, out_a,
-                                 out_b, expected_num_to_fp16,
-                                 expected_num_to_fp32):
-    """Runs a test of an intertwined loop with different node colors in
-    different sections of the graph. The arguments must be strings where each
-    character represents the color of a node in that section of the graph:
-    w = white, g = gray, c = clear, b = black. CAPITALIZED characters indicate
-    that the node is expected to be changed to DT_HALF during graph
-    optimization.
+  def _run_simple_loop_test(self, inp, body, out):
+    """Runs a test of a simple loop with different node colors in different
+    sections of the graph. The arguments must be strings where each character
+    represents the color of a node in that section of the graph:
+    w = white, g = gray, c = clear, b = black.
+    CAPITALIZED characters indicate that the node is expected to be changed to
+    DT_HALF during graph optimization.
 
-    inp_a -> loop [ body_a ] -> out_a
-               :             |
-                ======<<=====
-               |             :
-    inp_b -> loop [ body_b ] -> out_b
+    inp -> loop [ body ] -> out
     """
     if test.is_gpu_available(cuda_only=True,
                              min_cuda_compute_capability=self.MIN_GPU_ARCH):
       random_seed.set_random_seed(0)
       expected_types = []
-      for section in [inp_a, inp_b, body_a, body_b, out_a, out_b]:
+      for section in [inp, body, out]:
         section_expected_types = []
         for color in section:
           if color.isupper():
@@ -333,14 +316,11 @@ class AutoMixedPrecisionTest(test.TestCase):
           section_expected_types.append(expected_type)
         expected_types.append(section_expected_types)
 
-      a, b = _build_intertwined_loop_graph(inp_a, inp_b, body_a, body_b,
-                                           out_a, out_b)
-      output_val_ref, output_val, cost_graph = self._run((a, b))
+      a = _build_simple_loop_graph(inp, body, out)
+      output_val_ref, output_val, cost_graph = self._run(a)
       node_map = _build_node_map(cost_graph.node)
-      num_to_fp16, num_to_fp32 = _count_casts(cost_graph.node)
 
-      section_names = ['inputA', 'inputB', 'while/bodyA', 'while/bodyB',
-                       'outputA', 'outputB']
+      section_names = ['input', 'while/body', 'output']
       all_types_correct = True
       for section_name, expected_types in zip(section_names, expected_types):
         for i, expected_type in enumerate(expected_types):
@@ -352,9 +332,7 @@ class AutoMixedPrecisionTest(test.TestCase):
                   (node_name, expected_type, optimized_type))
             all_types_correct = False
       self.assertTrue(all_types_correct)
-      self.assertEqual(num_to_fp16, expected_num_to_fp16)
-      self.assertEqual(num_to_fp32, expected_num_to_fp32)
-      self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
+      self.assertAllClose(output_val_ref, output_val, atol=2e-3, rtol=1e-3)
 
   def test_conv_bn(self):
     """ Test graph with convolution followed by batch norm """
@@ -538,37 +516,30 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'while/Tanh_1')
       self.assertAllClose(output_val_ref, output_val, atol=1e-3, rtol=1e-3)
 
-  def test_propagation_through_intertwined_loop_1(self):
-    self._run_intertwined_loop_test('C', 'C', 'bgW', 'C', 'g', 'b', 4, 3)
+  def test_propagation_through_simple_loop_1(self):
+    self._run_simple_loop_test('W', 'C', 'C')
 
-  def test_propagation_through_intertwined_loop_2(self):
-    # Note that this results in NextIteration and Merge being painted different
-    # colors, requiring NextIteration to be forced to match.
-    self._run_intertwined_loop_test('b', 'g', 'gW', 'C', 'c', 'C', 3, 2)
+  def test_propagation_through_simple_loop_2(self):
+    self._run_simple_loop_test('C', 'C', 'W')
 
-  def test_propagation_through_intertwined_loop_3(self):
-    self._run_intertwined_loop_test('g', 'g', 'g', 'g', 'W', 'c', 3, 2)
+  def test_propagation_through_simple_loop_3(self):
+    self._run_simple_loop_test('W', 'G', 'W')
 
-  def test_propagation_through_intertwined_loop_4(self):
-    self._run_intertwined_loop_test('W', 'g', 'g', 'g', 'g', 'g', 3, 2)
+  def test_propagation_through_simple_loop_4(self):
+    self._run_simple_loop_test('W', 'gbg', 'W')
 
-  def test_propagation_through_intertwined_loop_5(self):
-    self._run_intertwined_loop_test('W', 'c', 'b', 'c', 'c', 'W', 4, 2)
+  def test_propagation_through_simple_loop_5(self):
+    self._run_simple_loop_test('b', 'gWC', 'c')
 
-  def test_propagation_through_intertwined_loop_6(self):
-    self._run_intertwined_loop_test('b', 'g', 'g', 'g', 'g', 'W', 2, 1)
+  def test_propagation_through_simple_loop_6(self):
+    self._run_simple_loop_test('b', 'CWCG', 'C')
 
-  def test_propagation_through_intertwined_loop_7(self):
-    self._run_intertwined_loop_test('c', 'c', 'bWg', 'c', 'g', 'b', 2, 1)
+  def test_propagation_through_simple_loop_7(self):
+    self._run_simple_loop_test('C', 'GWCG', 'C')
 
-  def test_propagation_through_intertwined_loop_8(self):
-    self._run_intertwined_loop_test('C', 'C', 'C', 'C', 'W', 'g', 3, 2)
+  def test_propagation_through_simple_loop_8(self):
+    self._run_simple_loop_test('C', 'CgbgWC', 'g')
 
-  def test_propagation_through_intertwined_loop_9(self):
-    self._run_intertwined_loop_test('W', 'g', 'G', 'G', 'g', 'W', 4, 2)
-
-  def test_propagation_through_intertwined_loop_10(self):
-    self._run_intertwined_loop_test('g', 'g', 'GWG', 'G', 'g', 'g', 3, 2)
 
 if __name__ == '__main__':
   test.main()
