@@ -2,6 +2,7 @@
 #   Contains the Keras API (internal TensorFlow version).
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -1425,13 +1426,10 @@ py_library(
     ],
 )
 
-# TODO(b/129155953): Fix the flakiness and re-enable distribute_strategy_test_tpu target.
-cuda_py_test(
+distribute_py_test(
     name = "distribute_strategy_test",
     srcs = ["distribute_strategy_test.py"],
-    additional_deps = [
-        ":distribute_strategy_test_lib",
-    ],
+    full_precision = True,
     main = "distribute_strategy_test.py",
     shard_count = 32,
     tags = [
@@ -1439,5 +1437,8 @@ cuda_py_test(
         "no_oss",  # TODO(b/117919883): Fix python error.
         "no_windows_gpu",
         "notsan",
+    ],
+    deps = [
+        ":distribute_strategy_test_lib",
     ],
 )
