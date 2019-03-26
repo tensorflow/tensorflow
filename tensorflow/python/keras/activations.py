@@ -175,6 +175,21 @@ def sigmoid(x):
 
 @keras_export('keras.activations.exponential')
 def exponential(x):
+<<<<<<< HEAD
+=======
+  '''
+  It is a function which converts values into its exponential.
+  
+  Arguments:
+      x = input tesor
+      y = e^x
+  Returns:
+      A tensor
+
+  Input:[-0.5 -0.1  0.   0.1  0.5] 
+  Output:[0.60653067 0.9048374  1.         1.105171   1.6487212 ]
+  '''
+>>>>>>> c5ffa1c... modified some activation functions
   return math_ops.exp(x)
 
 
