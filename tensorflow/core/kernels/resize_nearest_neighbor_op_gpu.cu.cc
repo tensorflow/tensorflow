@@ -63,7 +63,6 @@ __global__ void ResizeNearestNeighborNHWC(
   }
 }
 
-#ifdef GOOGLE_CUDA
 template <typename T, bool align_corners>
 __global__ void LegacyResizeNearestNeighborNHWC(
     const int nthreads, const T* bottom_data, const int in_height,
@@ -92,7 +91,6 @@ __global__ void LegacyResizeNearestNeighborNHWC(
     top_data[index] = ldg(bottom_data_n + idx);
   }
 }
-#endif
 
 template <typename T>
 __global__ void ResizeNearestNeighborBackwardNHWC(
@@ -125,7 +123,6 @@ __global__ void ResizeNearestNeighborBackwardNHWC(
   }
 }
 
-#ifdef GOOGLE_CUDA
 template <typename T, bool align_corners>
 __global__ void LegacyResizeNearestNeighborBackwardNHWC(
     const int nthreads, const T* top_diff, const int in_height,
@@ -154,7 +151,6 @@ __global__ void LegacyResizeNearestNeighborBackwardNHWC(
     GpuAtomicAdd(bottom_diff_n + idx, ldg(top_diff + index));
   }
 }
-#endif 
 
 }  // namespace
 
@@ -178,17 +174,6 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
     if (output_size == 0) return true;
 
     GpuLaunchConfig config = GetGpuLaunchConfig(output_size, d);
-#if TENSORFLOW_USE_ROCM
-    GPU_LAUNCH_KERNEL((ResizeNearestNeighborNHWC<T>),
-        dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-        output_size, input.data(),
-        static_cast<int>(in_height),
-        static_cast<int>(in_width),
-        channels,
-        static_cast<int>(out_height),
-        static_cast<int>(out_width),
-        height_scale, width_scale, output.data());
-#else 
     if (half_pixel_centers) {
       GPU_LAUNCH_KERNEL((ResizeNearestNeighborNHWC<T>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
@@ -211,7 +196,6 @@ struct ResizeNearestNeighbor<GPUDevice, T, half_pixel_centers, align_corners> {
         static_cast<int>(out_width),
         height_scale, width_scale, output.data());
     }
-#endif 
     return d.ok();
   }
 };
@@ -254,20 +238,6 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
     if (input_size == 0) return true;
 
     GpuLaunchConfig input_config = GetGpuLaunchConfig(input_size, d);
-#if TENSORFLOW_USE_ROCM
-    GPU_LAUNCH_KERNEL((ResizeNearestNeighborBackwardNHWC<T>),
-        dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
-        d.stream(),
-        input_config.virtual_thread_count, input.data(),
-        static_cast<int>(in_height),
-        static_cast<int>(in_width),
-        channels,
-        static_cast<int>(out_height),
-        static_cast<int>(out_width),
-        height_scale, width_scale,
-        output.data());
-      return d.ok();
-#else 
     if (half_pixel_centers) {
       GPU_LAUNCH_KERNEL((ResizeNearestNeighborBackwardNHWC<T>),
         dim3(input_config.block_count), dim3(input_config.thread_per_block), 0,
@@ -296,7 +266,6 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
         output.data());
       return d.ok();
     }
-#endif 
 
   }
 };

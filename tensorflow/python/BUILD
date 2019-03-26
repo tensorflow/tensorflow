@@ -3611,7 +3611,6 @@ cuda_py_test(
         ":image_ops",
         "//third_party/py/numpy",
     ],
-    tags = ["no_rocm",],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3638,7 +3637,6 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
-    tags = ["no_rocm",],
     xla_enable_strict_auto_jit = True,
 )
 
