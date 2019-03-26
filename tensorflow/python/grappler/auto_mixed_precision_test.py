@@ -183,11 +183,11 @@ def _make_node_with_color(color, input_tensor, name=None):
     weights = _weight(input_tensor.get_shape().as_list())
     return math_ops.matmul(input_tensor, weights, name=name)
   if color == 'g': # Gray node
-    return math_ops.sqrt(input_tensor, name=name)
+    return math_ops.add(input_tensor, 0.1, name=name)
   if color == 'c': # Clear node
     return nn.relu(input_tensor, name=name)
   if color == 'b': # Black node
-    return math_ops.log(input_tensor, name=name)
+    return math_ops.sqrt(math_ops.pow(input_tensor, 2.), name=name)
   raise ValueError("Invalid node color: " + str(color))
 
 
