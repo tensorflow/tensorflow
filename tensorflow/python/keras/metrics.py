@@ -2272,11 +2272,15 @@ class MeanIoU(Metric):
     Returns:
       Update op.
     """
+    # Converted y_true and y_pred into Tensors
+    y_true = ops.convert_to_tensor(y_true)
+    y_pred = ops.convert_to_tensor(y_pred)
+    
     # Flatten the input if its rank > 1.
-    if array_ops.rank(y_pred).numpy() > 1:
+    if y_pred.shape.ndims > 1:
       y_pred = array_ops.reshape(y_pred, [-1])
 
-    if array_ops.rank(y_true).numpy() > 1:
+    if y_true.shape.ndims > 1:
       y_true = array_ops.reshape(y_true, [-1])
 
     if sample_weight is not None and sample_weight.shape.ndims > 1:
