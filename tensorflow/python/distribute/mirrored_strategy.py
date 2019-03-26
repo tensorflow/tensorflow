@@ -892,6 +892,7 @@ class _MirroredReplicaThread(threading.Thread):
   def record_thread_local_context_fields(self):
     """Record thread local fields of context.context() in self."""
     ctx = context.context()
+    self._summary_step = ctx.summary_step
     self._summary_writer = ctx.summary_writer
     self._summary_recording = ctx.summary_recording
     self._summary_recording_distribution_strategy = (
@@ -901,6 +902,7 @@ class _MirroredReplicaThread(threading.Thread):
   def restore_thread_local_context_fields(self):
     """Restore thread local fields of context.context() from self."""
     ctx = context.context()
+    ctx.summary_step = self._summary_step
     ctx.summary_writer = self._summary_writer
     ctx.summary_recording = self._summary_recording
     ctx.summary_recording_distribution_strategy = (
