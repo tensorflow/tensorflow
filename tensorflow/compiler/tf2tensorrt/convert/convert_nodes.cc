@@ -3513,7 +3513,7 @@ Status ConvertConcat(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TFAttrs attrs(node_def);
   // Get number of tensor inputs.
-  const int num_inputs = attrs.get<int>("N");
+  const int num_inputs = attrs.get<int64>("N");
   if (num_inputs != static_cast<int>(inputs.size()) - 1) {
     return errors::InvalidArgument(
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
@@ -3532,7 +3532,7 @@ Status ConvertConcat(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   const auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
   if (axis.size() != 1) {
-    return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
+    return errors::InvalidArgument("Axis for ConcatV2 must be a scalar, at ",
                                     node_def.name());
   }
   int trt_axis = 0;
