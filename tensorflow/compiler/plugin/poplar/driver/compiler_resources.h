@@ -63,6 +63,8 @@ struct CompilerResources {
 
   bool disable_graph_convolution_caching;
 
+  uint32 replication_factor;
+
   std::map<std::string, TensorMap> tensor_maps;
 
   conv_graph_caching::ConvolutionGraphCache conv_graph_cache;
@@ -88,13 +90,15 @@ struct CompilerResources {
                     poprand::RandomGenMode mode,
                     const poplar::OptionFlags& conv_options,
                     const poplar::OptionFlags& pooling_options,
-                    bool disable_graph_convolution_caching, HloModule* module)
+                    bool disable_graph_convolution_caching,
+                    uint32 replication_factor, HloModule* module)
       : main_graph(dev),
         annotations(module),
         random(mode, seed),
         default_conv_options(conv_options),
         default_pooling_options(pooling_options),
-        disable_graph_convolution_caching(disable_graph_convolution_caching) {}
+        disable_graph_convolution_caching(disable_graph_convolution_caching),
+        replication_factor(replication_factor) {}
 };
 
 }  // namespace poplarplugin

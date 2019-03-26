@@ -246,20 +246,39 @@ tf_py_test(
     ],
 )
 
+tf_py_test(
+    name = "replicated_graph_test",
+    size = "large",
+    tags = ['exclusive'],
+    srcs = ["python/tests/replicated_graph_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/plugin/poplar:test_utils_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
 test_suite(
     name = "all_tests",
     tests = [
         "autoshard_cnn_test",
-        "ops_test",
-        "while_loop_perf_test",
         "conditional_test",
-        "mapping_test",
-        "while_loop_test",
-        "sort_op_test",
-        "multi_ipu_test",
         "infeed_outfeed_test",
+        "mapping_test",
+        "multi_ipu_test",
+        "ops_test",
         "popnn_normalization_test",
         "popops_cross_replica_sum_test",
+        "replicated_graph_test",
+        "sort_op_test",
+        "while_loop_perf_test",
+        "while_loop_test",
     ],
 )
 

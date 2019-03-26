@@ -67,7 +67,16 @@ StatusOr<popops::expr::BinaryOpType> LookupComparisonFn(
 Status SetVertexField(poplar::Graph& graph, const poplar::FieldRef& field,
                       const Literal& literal);
 
+// Get the master graph
+poplar::Graph& GetMasterGraph(CompilerResources&);
+
+// Get the replicated graph if there is one, master graph if not
+poplar::Graph& GetReplicatedGraph(CompilerResources&);
+
+// Get the appropriate virtual graph, or the replicated/master graph if not
 poplar::Graph& GetGraph(CompilerResources&, const HloInstruction*);
+
+bool HasReplicatedGraph(CompilerResources&);
 
 // Convert a poplar/poplibs exception to a Tensorflow error Status
 Status PoplarExceptionToTensorflowStatus(const std::string& prefix,

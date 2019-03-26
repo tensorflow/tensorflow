@@ -273,21 +273,21 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
 
   return opts
 
-def set_recomputation_options(opts, recompute_non_linearities=True):
+def set_recomputation_options(opts, recompute_norm_inputs=True):
   """Set re-computation options.
 
   Args:
-    :param recompute_non_linearities: Whether or not to re-compute the non
-      linearities during training. Enabling this option can reduce memory
-      usage at the expense of extra computation.
+    :param recompute_norm_inputs: Whether or not to re-compute the norm inputs
+      during training. Enabling this option can reduce memory usage at the
+      expense of extra computation.
 
   Returns:
 
     :return: The IpuOptions configuration protobuf.
   """
 
-  opts.speed_size_config.recompute_non_linearities = recompute_non_linearities
-  opts.speed_size_config.has_recompute_non_linearities = True
+  opts.speed_size_config.recompute_norm_inputs = recompute_norm_inputs
+  opts.speed_size_config.has_recompute_norm_inputs = True
 
   return opts
 

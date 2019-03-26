@@ -80,8 +80,8 @@ message IpuOptions {
     bool disable_graph_convolution_caching = 2;
 
     // Option to enable re-computation of non linearities.
-    bool recompute_non_linearities = 3;
-    bool has_recompute_non_linearities = 4;
+    bool recompute_norm_inputs = 3;
+    bool has_recompute_norm_inputs = 4;
   }
 
   SpeedSizeConfig speed_size_config = 6;

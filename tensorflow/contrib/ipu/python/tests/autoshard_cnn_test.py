@@ -183,9 +183,8 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
       def my_net():
-        def my_model(loss):
+        def my_model(loss, x, y):
           with ops.device("/device:IPU:0"):
-            x, y = infeed_queue.get_next()
             inp = x
 
             x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
@@ -207,7 +206,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       ipu_compiler.compile(my_net, inputs=[])
 
@@ -232,9 +231,8 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
       def my_net():
-        def my_model(loss):
+        def my_model(loss, x, y):
           with ops.device("/device:IPU:0"):
-            x, y = infeed_queue.get_next()
             inp = x
 
             lstm_cell = popnn_rnn.PopnnLSTM(256, dtype=dtypes.float32)
@@ -251,7 +249,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       ipu_compiler.compile(my_net, inputs=[])
 
@@ -277,9 +275,8 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
       def my_net(lr):
-        def my_model(loss):
+        def my_model(loss, x, y):
           with ops.device("/device:IPU:0"):
-            x, y = infeed_queue.get_next()
             inp = x
 
             x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
@@ -301,7 +298,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
             return [loss, train]
 
         loss = 0.0
-        return loops.repeat(10, my_model, [loss], infeed_queue)
+        return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=False)
 
       lr = array_ops.placeholder(dtypes.float32, [])
       ipu_compiler.compile(my_net, inputs=[lr])

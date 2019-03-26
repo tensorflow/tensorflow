@@ -42,7 +42,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_wide_const.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/hlo_computation_name_uniquify.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inter_ipu_copy_inserter.h"
-#include "tensorflow/compiler/plugin/poplar/driver/passes/non_linearity_recomputation.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/norm_input_recomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_gather_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/root_token_replacer.h"
@@ -345,6 +345,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
                               poplarExecutor->GetConvolutionOptions(),
                               poplarExecutor->GetPoolingOptions(),
                               poplarExecutor->DisableGraphConvCaching(),
+                              poplarExecutor->GetNumberOfReplicas(),
                               module.get());
 
   resources.main_graph.addCodelets(GetPathToGraphProgFile("tf.gp"));
@@ -355,11 +356,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   poplar::Graph* sharding_main_graph = &resources.main_graph;
 
-  int replication_count = poplarExecutor->GetNumberOfReplicas();
-  if (replication_count > 1) {
+  const auto replication_factor = resources.replication_factor;
+  if (replication_factor > 1) {
     resources.replicated_graph =
-        resources.main_graph.createReplicatedGraph(replication_count);
-    VLOG(1) << "Created " << replication_count << " replica IPU graphs";
+        resources.main_graph.createReplicatedGraph(replication_factor);
+    VLOG(1) << "Created " << replication_factor << " replica IPU graphs.";
     sharding_main_graph = &(resources.replicated_graph.value());
   }
 
@@ -436,8 +437,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<WhileLoopToRepeatSimplify>();
     }
     pipeline.AddPass<HloSubcomputationUnification>();
-    pipeline.AddPass<NonLinearityRecomputaion>(
-        poplarExecutor->NonLinearityRecomputaionEnabled());
+    pipeline.AddPass<NormInputRecomputation>(
+        poplarExecutor->NormInputRecomputationEnabled());
     pipeline.AddPass<HloDCE>();
     pipeline.AddPass<DependencyReplacer>(true);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
@@ -535,8 +536,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
         // Generate this JSON early so that the VLOG trace can contain the
         // output whether the engine compilation completes or not.
-        map_json =
-            GetTensorMappingJson(resources.main_graph, resources.tensor_maps);
+        map_json = GetTensorMappingJson(GetReplicatedGraph(resources),
+                                        resources.tensor_maps);
 
         auto& opts = poplarExecutor->GetOptionsFlags();
         auto progress_logging = [](int progress, int total) {
@@ -588,7 +589,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       std::move(profile_index_map), std::move(engine),
       std::move(resources.annotations.input_output_aliasing_map),
       is_constant_graph, std::move(constant_output), is_remap_graph,
-      std::move(remaped_output), replication_count,
+      std::move(remaped_output), replication_factor,
       std::move(resources.annotations.infeed_infos),
       std::move(resources.annotations.outfeed_infos));
 

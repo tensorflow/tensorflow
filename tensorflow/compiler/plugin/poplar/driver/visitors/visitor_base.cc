@@ -448,7 +448,6 @@ Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
   }
 
   HloOutfeedInstruction* outfeed = Cast<HloOutfeedInstruction>(inst);
-  poplar::Graph& graph = GetGraph(resources_, inst);
   poplar::program::Sequence& seq = sequence;
 
   // operand 1 is the input
@@ -477,6 +476,12 @@ Status BaseVisitor::HandleOutfeed(HloInstruction* inst) {
 
   for (unsigned i = 0; i < input_tensors.size(); ++i) {
     poplar::Tensor& in = input_tensors[i];
+    poplar::Graph& graph = GetMasterGraph(resources_);
+
+    if (HasReplicatedGraph(resources_)) {
+      in = graph.getNonReplicatedTensor(in);
+    }
+
     auto fifo = graph.addDeviceToHostFIFO(GetOutfeedCopyHandle(inst->name(), i),
                                           in.elementType(), in.numElements());
 
