@@ -128,7 +128,6 @@ class AutoMixedPrecisionLists {
         "SoftplusGrad",
         "Sqrt",
         "Sub",
-        "Sum",
         "Tanh",
         "TanhGrad",
     };
@@ -163,6 +162,7 @@ class AutoMixedPrecisionLists {
         "Softmax",
         "SoftmaxCrossEntropyWithLogits",
         "SparseSoftmaxCrossEntropyWithLogits",
+        "Sum",
     };
     UpdateList(&list, to_add, to_remove);
     return list;

@@ -373,8 +373,6 @@ class AutoMixedPrecisionTest(test.TestCase):
       self._assert_output_fp16(node_map, 'Conv2D')
       self._assert_output_fp16(node_map, 'FusedBatchNorm')
       self._assert_output_fp16(node_map, 'dropout/mul')
-      self._assert_output_fp16(node_map, 'dropout/Cast')
-      self._assert_output_fp16(node_map, 'dropout/mul_1')
       self._assert_output_fp16(node_map, 'Conv2D_1')
 
       output_val_ref, output_val, cost_graph = self._run(output)
