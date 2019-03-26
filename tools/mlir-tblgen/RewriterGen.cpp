@@ -550,8 +550,9 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
 
   bool isSameValueType = resultOp.hasTrait("SameOperandsAndResultType");
   bool isBroadcastable = resultOp.hasTrait("BroadcastableTwoOperandsOneResult");
+  bool useFirstAttr = resultOp.hasTrait("FirstAttrDerivedResultType");
 
-  if (isConstOp || isSameValueType || isBroadcastable) {
+  if (isConstOp || isSameValueType || isBroadcastable || useFirstAttr) {
     os.indent(4) << formatv("auto {0} = rewriter.create<{1}>(loc", resultValue,
                             resultOp.getQualCppClassName());
   } else {

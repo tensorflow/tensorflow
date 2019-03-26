@@ -31,6 +31,25 @@ def ThreeResultOp : Op<"three_result_op", []> {
 // CHECK: void ThreeResultOp::build(Builder *builder, OperationState *result, Type x, Type resultType1, Type z)
 // CHECK:   result->addTypes({x, resultType1, z});
 
+def IntegerTypeAttr : TypeAttrBase<"IntegerType", "Integer type attribute">;
+def TypeAttrResultTypeOp : Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
+  let arguments = (ins I32:$x, IntegerTypeAttr:$attr, F32Attr:$f32);
+  let results = (outs Tensor:$y);
+}
+
+// CHECK-LABEL: TypeAttrResultTypeOp definitions
+// CHECK: void TypeAttrResultTypeOp::build(Builder *builder, OperationState *result, Value *x, TypeAttr attr, FloatAttr f32)
+// CHECK: result->addTypes({attr.getValue()});
+
+def ValueAttrResultTypeOp : Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
+  let arguments = (ins I32:$x, F32Attr:$attr);
+  let results = (outs Tensor:$y);
+}
+
+// CHECK-LABEL: ValueAttrResultTypeOp definitions
+// CHECK: void ValueAttrResultTypeOp::build(Builder *builder, OperationState *result, Value *x, FloatAttr attr)
+// CHECK: result->addTypes({attr.getType()});
+
 def VariadicResultOp : Op<"variadic_op", []> {
   let results = (outs I32:$x, Variadic<I32>:$y);
 }

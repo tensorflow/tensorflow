@@ -379,8 +379,10 @@ private:
 
   // Generates the build() method that takes each result-type/operand/attribute
   // as a stand-alone parameter. Using the first operand's type as all result
-  // types if `isAllSameType` is true.
-  void genStandaloneParamBuilder(bool isAllSameType);
+  // types if `useOperandType` is true. Using the first attribute's type as all
+  // result types if `useAttrType` true. Don't set `useOperandType` and
+  // `useAttrType` at the same time.
+  void genStandaloneParamBuilder(bool useOperandType, bool useAttrType);
 
   void genOpNameGetter();
 
@@ -501,7 +503,14 @@ void OpEmitter::genNamedResultGetters() {
   }
 }
 
-void OpEmitter::genStandaloneParamBuilder(bool isAllSameType) {
+void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
+                                          bool useAttrType) {
+  if (useOperandType && useAttrType) {
+    PrintFatalError(def.getLoc(),
+                    "Op definition has both 'SameOperandsAndResultType' and "
+                    "'FirstAttrIsResultType' trait specified.");
+  }
+
   auto numResults = op.getNumResults();
   llvm::SmallVector<std::string, 4> resultNames;
   resultNames.reserve(numResults);
@@ -509,7 +518,7 @@ void OpEmitter::genStandaloneParamBuilder(bool isAllSameType) {
   std::string paramList = "Builder *builder, OperationState *result";
 
   // Emit parameters for all return types
-  if (!isAllSameType) {
+  if (!useOperandType && !useAttrType) {
     for (unsigned i = 0; i != numResults; ++i) {
       std::string resultName = op.getResultName(i);
       if (resultName.empty())
@@ -556,7 +565,7 @@ void OpEmitter::genStandaloneParamBuilder(bool isAllSameType) {
 
   // Push all result types to the result
   if (numResults > 0) {
-    if (!isAllSameType) {
+    if (!useOperandType && !useAttrType) {
       bool hasVariadicResult = op.hasVariadicResult();
       int numNonVariadicResults =
           numResults - static_cast<int>(hasVariadicResult);
@@ -573,10 +582,20 @@ void OpEmitter::genStandaloneParamBuilder(bool isAllSameType) {
         method.body() << "  result->addTypes(" << resultNames.back() << ");\n";
       }
     } else {
-      auto resultType = formatv("{0}->getType()", getArgumentName(op, 0)).str();
+      std::string resultType;
+      if (useAttrType) {
+        const auto &namedAttr = op.getAttribute(0);
+        if (namedAttr.attr.isTypeAttr()) {
+          resultType = formatv("{0}.getValue()", namedAttr.name);
+        } else {
+          resultType = formatv("{0}.getType()", namedAttr.name);
+        }
+      } else {
+        resultType = formatv("{0}->getType()", getArgumentName(op, 0)).str();
+      }
       method.body() << "  result->addTypes({" << resultType;
       for (unsigned i = 1; i != numResults; ++i)
-        method.body() << resultType;
+        method.body() << ", " << resultType;
       method.body() << "});\n\n";
     }
   }
@@ -657,7 +676,7 @@ void OpEmitter::genBuilder() {
 
   // 1. Stand-alone parameters
 
-  genStandaloneParamBuilder(/*isAllSameType=*/false);
+  genStandaloneParamBuilder(/*useOperandType=*/false, /*useAttrType=*/false);
 
   // 2. Aggregated parameters
 
@@ -695,8 +714,10 @@ void OpEmitter::genBuilder() {
 
   // 3. Deduced result types
 
-  if (!op.hasVariadicResult() && op.hasTrait("SameOperandsAndResultType"))
-    genStandaloneParamBuilder(/*isAllSameType=*/true);
+  bool useOperandType = op.hasTrait("SameOperandsAndResultType");
+  bool useAttrType = op.hasTrait("FirstAttrDerivedResultType");
+  if (!op.hasVariadicResult() && (useOperandType || useAttrType))
+    genStandaloneParamBuilder(useOperandType, useAttrType);
 }
 
 void OpEmitter::genCanonicalizerDecls() {

@@ -43,6 +43,8 @@ public:
     Native,
     // OpTrait corresponding to predicate on operation.
     Pred,
+    // OpTrait controlling op definition generator internals.
+    Internal
   };
 
   explicit OpTrait(Kind kind, const llvm::Record *def);
@@ -77,6 +79,17 @@ public:
   StringRef getDescription() const;
 
   static bool classof(const OpTrait *t) { return t->getKind() == Kind::Pred; }
+};
+
+// OpTrait controlling op definition generator internals.
+class InternalOpTrait : public OpTrait {
+public:
+  // Returns the trait controlling op definition generator internals.
+  StringRef getTrait() const;
+
+  static bool classof(const OpTrait *t) {
+    return t->getKind() == Kind::Internal;
+  }
 };
 
 } // end namespace tblgen

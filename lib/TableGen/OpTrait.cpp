@@ -32,6 +32,8 @@ mlir::tblgen::OpTrait mlir::tblgen::OpTrait::create(const llvm::Init *init) {
   auto def = cast<llvm::DefInit>(init)->getDef();
   if (def->isSubClassOf("PredOpTrait"))
     return OpTrait(Kind::Pred, def);
+  if (def->isSubClassOf("OpGenInternalTrait"))
+    return OpTrait(Kind::Internal, def);
   assert(def->isSubClassOf("NativeOpTrait"));
   return OpTrait(Kind::Native, def);
 }
@@ -40,6 +42,10 @@ mlir::tblgen::OpTrait::OpTrait(Kind kind, const llvm::Record *def)
     : def(def), kind(kind){};
 
 llvm::StringRef mlir::tblgen::NativeOpTrait::getTrait() const {
+  return def->getValueAsString("trait");
+}
+
+llvm::StringRef mlir::tblgen::InternalOpTrait::getTrait() const {
   return def->getValueAsString("trait");
 }
 

@@ -53,8 +53,12 @@ public:
   explicit Attribute(const llvm::DefInit *init);
 
   // Returns true if this attribute is a derived attribute (i.e., a subclass
-  // of `DrivedAttr`).
+  // of `DerivedAttr`).
   bool isDerivedAttr() const;
+
+  // Returns true if this attribute is a type attribute (i.e., a subclass
+  // of `TypeAttrBase`).
+  bool isTypeAttr() const;
 
   // Returns true if this attribute has storage type set.
   bool hasStorageType() const;

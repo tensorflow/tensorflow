@@ -101,9 +101,13 @@ StringRef tblgen::Operator::getArgName(int index) const {
 
 bool tblgen::Operator::hasTrait(StringRef trait) const {
   for (auto t : getTraits()) {
-    if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&t))
+    if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
         return true;
+    } else if (auto opTrait = dyn_cast<tblgen::InternalOpTrait>(&t)) {
+      if (opTrait->getTrait() == trait)
+        return true;
+    }
   }
   return false;
 }

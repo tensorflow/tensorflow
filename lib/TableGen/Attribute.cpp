@@ -55,6 +55,10 @@ bool tblgen::Attribute::isDerivedAttr() const {
   return def->isSubClassOf("DerivedAttr");
 }
 
+bool tblgen::Attribute::isTypeAttr() const {
+  return def->isSubClassOf("TypeAttrBase");
+}
+
 bool tblgen::Attribute::hasStorageType() const {
   const auto *init = def->getValueInit("storageType");
   return !getValueAsString(init).empty();

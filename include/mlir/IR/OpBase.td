@@ -524,6 +524,11 @@ class NativeOpTrait<string prop> : OpTrait {
   string trait = prop;
 }
 
+// Specify a trait to control op definition generator internals.
+class OpGenInternalTrait<string prop> : OpTrait {
+  string trait = prop;
+}
+
 // Specify a trait by way of a predicate on the operation.
 class PredOpTrait<string d, Pred p> : OpTrait {
   string desc = d;
@@ -544,6 +549,12 @@ def SameValueShape   : NativeOpTrait<"SameOperandsAndResultShape">;
 def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
 // op is a terminator
 def Terminator       : NativeOpTrait<"IsTerminator">;
+
+// op result type is derived from the first attribute. If the attribute is an
+// subclass of `TypeAttrBase`, its value is used, otherwise, the type of the
+// attribute content is used.
+def FirstAttrDerivedResultType :
+  OpGenInternalTrait<"FirstAttrDerivedResultType">;
 
 //===----------------------------------------------------------------------===//
 // Op definitions
