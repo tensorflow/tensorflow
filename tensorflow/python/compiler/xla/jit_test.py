@@ -12,18 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for contrib.compiler.jit."""
+"""Tests for python.compiler.xla.jit."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.compiler import jit
+from tensorflow.python.compiler.xla import jit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -44,6 +45,7 @@ def enable_jit_nonstateful(node_def):
     raise ValueError("Unregistered op being created: %s" % node_def)
 
 
+@test_util.run_v1_only("b/128927195")
 class JITTest(test.TestCase):
 
   def compute(self, use_jit, compute_fn):
@@ -170,6 +172,7 @@ class JITTest(test.TestCase):
       self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
 
+@test_util.run_v1_only("b/128927195")
 class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
