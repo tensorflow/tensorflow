@@ -83,8 +83,6 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "train/queue_runner/__init__.py",
     "user_ops/__init__.py",
     "version/__init__.py",
-    "xla/__init__.py",
-    "xla/experimental/__init__.py",
     # END GENERATED FILES
 ]
 
