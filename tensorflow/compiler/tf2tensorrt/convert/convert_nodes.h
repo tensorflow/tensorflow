@@ -284,9 +284,7 @@ class TRT_TensorOrWeights {
   bool is_tensor() const { return initialized_ && is_tensor_; }
   bool is_weights() const { return initialized_ && !is_tensor_; }
 
-  nvinfer1::ITensor* tensor();
-
-  const nvinfer1::ITensor* tensor() const;
+  nvinfer1::ITensor* tensor() const;
 
   TRT_ShapedWeights& weights() {
     CHECK(is_weights());
@@ -495,7 +493,7 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
-                         const nvinfer1::ITensor** output_tensor);
+                         nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims' (which
   // doesn't contain the batch dimension).
@@ -506,7 +504,7 @@ class Converter {
   Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
-                               const nvinfer1::ITensor** tensor);
+                               nvinfer1::ITensor** tensor);
 
   // Return OK if the broadcast scheme is supported and compute the shapes after
   // broadcasting.
