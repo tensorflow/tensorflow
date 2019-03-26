@@ -307,11 +307,11 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
 
 ### Additional Apollo3 Instructions
 
-To flash a part with JFlash Lite, do the following: 
+To flash a part with JFlash Lite, do the following:
 
-1. At the command line: JFlashLiteExe 
-2. Device = AMA3B1KK-KBR 
-3. Interface = SWD at 1000 kHz 
+1. At the command line: JFlashLiteExe
+2. Device = AMA3B1KK-KBR
+3. Interface = SWD at 1000 kHz
 4. Data file = `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
 5. Prog Addr = 0x0000C000
 
@@ -359,6 +359,27 @@ To flash a part with JFlash Lite, do the following:
     &nbsp;&nbsp;&nbsp;&nbsp;cd
     tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 \
     &nbsp;&nbsp;&nbsp;&nbsp;./flash_program executable_name to load into flash.
+
+## Implement target optimized kernels
+The reference kernels in tensorflow/lite/experimental/micro/kernels are
+implemented in pure C/C++. It might not utilize all HW architecture specific
+optimizations, such as DSP instructions etc. The instructions below provides an
+example on how to compile an external lib with HW architecture specific
+optimizations and link it with the microlite lib.
+
+### CMSIS-NN optimized kernels (---under development---)
+To utilize the CMSIS-NN optimized kernels, choose your target, e.g. Bluepill,
+and build with:
+
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TAGS=cmsis-nn TARGET=bluepill test
+
+That will build the microlite lib including CMSIS-NN optimized kernels based on
+the version downloaded by 'download_dependencies.sh', so make sure you have run
+this script. If you want to utilize another version of CMSIS, clone it to a
+custom location run the following command:
+
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile CMSIS_PATH=<CUSTOM_LOCATION> TAGS=cmsis-nn TARGET=bluepill test
+(--- Under development, it will build, but test will fail ---)
 
 ## Goals
 
