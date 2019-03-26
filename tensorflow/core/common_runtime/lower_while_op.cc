@@ -111,7 +111,7 @@ class LowerWhileHelper {
 
   // Updates consumers of the original `while_op_` to instead use the outputs
   // from the exit nodes in `exit_nodes_`. Also updates any outgoing control
-  // edges to depend on `lowered_while_output_` instead.
+  // edges to depend on `lowered_while_executed_` instead.
   Status UpdateConsumers();
 
   // Returns unique name containing the name of the While op being rewritten
@@ -128,6 +128,9 @@ class LowerWhileHelper {
   Node* body_call_node_;
   // The IdentityN node with the same outputs as the original While op.
   Node* lowered_while_output_;
+  // The NoOp node with control edges from all Exit nodes. This node will be
+  // used as a source of outgoing control edges from lowered While node.
+  Node* lowered_while_executed_;
   Graph* graph_;
   const FunctionLibraryDefinition& flib_;
   // Name of the `while_op_`.
@@ -323,14 +326,27 @@ Status LowerWhileHelper::CreateExitNodes() {
     outputs.emplace_back(NodeOut(exit_node, 0));
   }
 
+  // We split data and control outputs of lowered while op, because otherwise
+  // after lowering of multi-device loop body we might end up with DT_RESOURCE
+  // inputs from multiple devices coming into IdentityN.
+
   // Add an IdentityN node that has the same outputs and same name as the
-  // original functional While op. This is used for
-  // 1. Rewiring the control edges with the original while op as src.
-  // 2. Fetching the output of the While node by name in calls to sess.run.
-  NodeBuilder ib(name_, "IdentityN", OpRegistry::Global(), &debug_info_);
-  ib.Input(outputs);
-  ib.Device(while_op_->requested_device());
-  TF_RETURN_IF_ERROR(ib.Finalize(graph_, &lowered_while_output_));
+  // original functional While op. This is used for fetching the output of the
+  // While node by name in calls to sess.run.
+  TF_RETURN_IF_ERROR(
+      NodeBuilder(name_, "IdentityN", OpRegistry::Global(), &debug_info_)
+          .Input(outputs)
+          .Device(while_op_->requested_device())
+          .Finalize(graph_, &lowered_while_output_));
+
+  // Add a NoOp node that has control edges from all Exit nodes. This node is
+  // used for rewriting control edges with the original while op as src.
+  TF_RETURN_IF_ERROR(NodeBuilder(NewName("LoopExecuted"), "NoOp",
+                                 OpRegistry::Global(), &debug_info_)
+                         .ControlInputs(exit_nodes_)
+                         .Device(while_op_->requested_device())
+                         .Finalize(graph_, &lowered_while_executed_));
+
   return Status::OK();
 }
 
@@ -358,7 +374,7 @@ Status LowerWhileHelper::UpdateMergeNodes() {
 Status LowerWhileHelper::UpdateConsumers() {
   for (const Edge* e : while_op_->out_edges()) {
     if (e->IsControlEdge()) {
-      graph_->AddControlEdge(lowered_while_output_, e->dst());
+      graph_->AddControlEdge(lowered_while_executed_, e->dst());
     } else {
       // Feed the outputs directly from the exit nodes so that downstream ops
       // can start before all the outputs have been computed.
