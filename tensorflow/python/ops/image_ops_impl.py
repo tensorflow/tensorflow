@@ -3581,8 +3581,8 @@ def median_filter_2D(input,filter_shape=(3,3)):
     def my_func (input2):
         tf_i = input2.reshape(m*no*ch)
         maxi = max(tf_i)
-        if maxi == 1:
-            input2 /= maxi
+        if maxi <= 1:
+            input2 /= 1
         else :
             input2 /= 255
         #k and l is the Zero-padding size
