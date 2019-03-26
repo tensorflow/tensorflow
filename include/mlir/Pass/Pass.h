@@ -108,6 +108,9 @@ protected:
     return *getPassState().irAndPassFailed.getPointer();
   }
 
+  /// Return the MLIR context for the current function being transformed.
+  MLIRContext &getContext() { return *getFunction().getContext(); }
+
   /// Returns the current pass state.
   PassStateT &getPassState() {
     assert(passState && "pass state was never initialized");
@@ -149,6 +152,9 @@ protected:
 
   /// Return the current module being transformed.
   Module &getModule() { return *getPassState().irAndPassFailed.getPointer(); }
+
+  /// Return the MLIR context for the current module being transformed.
+  MLIRContext &getContext() { return *getModule().getContext(); }
 
   /// Returns the current pass state.
   PassStateT &getPassState() {
