@@ -201,14 +201,15 @@ message DebugOptions {
   bool xla_allow_scalar_index_dynamic_ops = 107;
 
   enum StepMarkerLocation {
-    // Generate step mark at each iteration of top level while loop, which
-    // is assumed to be a training loop. This is the default.
+    // Generate a step marker at the program entry. This handles the case where
+    // each step is done by one or multiple program execution(s). Only the first
+    // program will be tagged for generating a step marker at the program entry.
+    // This is the default.
     STEP_MARK_AT_ENTRY = 0;
-    // Generate step mark at program entry. This handles the case where each
-    // step are done by one or multiple programs execution. Only the first
-    // program will be tagged for generating step mark at program entry.
+    // Generate a step marker at each iteration of the top level while loop,
+    // which is assumed to be a training loop.
     STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
-    // No step mark.
+    // No step marker generated.
     STEP_MARK_NONE = 2;
   }
   // Option to emit a target-specific marker to indicate the start of a training
