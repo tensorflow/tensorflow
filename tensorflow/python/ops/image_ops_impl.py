@@ -3585,7 +3585,7 @@ def median_filter_2D(input,filter_shape=(3,3)):
         pass
     else :
         raise TypeError("Size of the filter must be Integers")
-    input = image_ops_impl._Assert3DImage(input)
+    input = _Assert3DImage(input)
     m,no,ch = input.shape[0],input.shape[1],input.shape[2]
     if not m.__eq__(tensor_shape.Dimension(None)) and not no.__eq__(tensor_shape.Dimension(None)) \
             and not ch.__eq__(tensor_shape.Dimension(None)):
@@ -3603,7 +3603,7 @@ def median_filter_2D(input,filter_shape=(3,3)):
         tf_i = input2.reshape(m*no*ch)
         maxi = max(tf_i)
         if maxi == 1:
-            input2 /= maxi
+            input2 /= 1
         else :
             input2 /= 255
         #k and l is the Zero-padding size
@@ -3621,7 +3621,8 @@ def median_filter_2D(input,filter_shape=(3,3)):
                     for b in range(i, i + filter_shapex):
                         for d in range(j, j + filter_shapey):
                             li.append(img[b][d])
-                    res1[i][j] = sum(li) / len(li)
+                    li.sort()
+                    res1[i][j] = li[len(li) / 2]
             res1 = res1.reshape(m,no,1)
             res[:,:,a:a+1] = res1
         res *= 255
