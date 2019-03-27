@@ -522,11 +522,26 @@ def _make_replica_local(method, strategy=None):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.ReplicaLocalVariable(strategy, device_map, v, method)
+  replica_local = values.SyncOnReadVariable(strategy, device_map, v, method)
   return v, replica_local
 
 
-class ReplicaLocalVariablePropertiesTest(test.TestCase):
+class TPUMirroredVariableTest(test.TestCase, parameterized.TestCase):
+
+  def testFetchOnFrozenGraph(self):
+    with context.graph_mode():
+      v = values.TPUMirroredVariable(
+          strategy=None,
+          device_map=values.SingleDeviceMap("/cpu:0"),
+          values=[variables_lib.Variable(42.)],
+          aggregation=None)
+
+      self.evaluate(variables_lib.global_variables_initializer())
+      ops.get_default_graph().finalize()
+      self.assertEqual(42., self.evaluate(v))
+
+
+class SyncOnReadVariablePropertiesTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -549,7 +564,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
-    replica_local = values.ReplicaLocalVariable(
+    replica_local = values.SyncOnReadVariable(
         None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, replica_local.name)
@@ -577,7 +592,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
         combinations.mirrored_strategy_with_gpu_and_cpu,
         combinations.core_mirrored_strategy_with_gpu_and_cpu],
     mode=["graph", "eager"]))
-class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
+class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):
@@ -656,7 +671,8 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
   def _save_replica_local_sum(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      v, replica_local = _make_replica_local("sum", distribution)
+      v, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [1.5, 2.])

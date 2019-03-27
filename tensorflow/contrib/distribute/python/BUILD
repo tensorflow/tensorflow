@@ -260,18 +260,8 @@ py_library(
     srcs = ["tpu_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":one_device_strategy",
         "//tensorflow/contrib/tpu:tpu_lib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute:tpu_strategy",
     ],
 )
 
@@ -515,6 +505,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":multi_worker_test_base",
         ":mirrored_strategy",
@@ -800,6 +791,6 @@ tf_xla_py_test(
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
 )

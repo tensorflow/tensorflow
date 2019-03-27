@@ -582,7 +582,6 @@ class MapUnstageOp : public OpKernel {
 
     const Tensor* key_tensor;
     const Tensor* indices_tensor;
-    OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
@@ -644,7 +643,6 @@ class MapPeekOp : public OpKernel {
 
     const Tensor* key_tensor;
     const Tensor* indices_tensor;
-    OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));

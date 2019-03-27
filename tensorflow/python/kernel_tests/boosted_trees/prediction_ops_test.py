@@ -897,11 +897,36 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose(expected_logits, logits)
 
   @test_util.run_deprecated_v1
+  def testPredictionOnEmptyEnsembleMultiClass(self):
+    """Tests that prediction on empty ensemble does not fail for multiclass."""
+    with self.cached_session() as session:
+      # Create an empty ensemble.
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto='')
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [36, 32]
+      feature_1_values = [11, 27]
+      logits_dimension = 2
+      expected_logits = [[0.0, 0.0], [0.0, 0.0]]
+
+      # Prediction should work fine.
+      predict_op = boosted_trees_ops.predict(
+          tree_ensemble_handle,
+          bucketized_features=[feature_0_values, feature_1_values],
+          logits_dimension=logits_dimension)
+
+      logits = session.run(predict_op)
+      self.assertAllClose(expected_logits, logits)
+
+  @test_util.run_deprecated_v1
   def testPredictionMultipleTree(self):
     """Tests the predictions work when we have multiple trees."""
     with self.cached_session() as session:
       tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
-      text_format.Merge("""
+      text_format.Merge(
+          """
         trees {
           nodes {
             bucketized_split {
@@ -1003,6 +1028,158 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
           tree_ensemble_handle,
           bucketized_features=[feature_0_values, feature_1_values],
           logits_dimension=1)
+
+      logits = session.run(predict_op)
+      self.assertAllClose(expected_logits, logits)
+
+  @test_util.run_deprecated_v1
+  def testPredictionMultipleTreeMultiClass(self):
+    """Tests the predictions work when we have multiple trees."""
+    with self.cached_session() as session:
+      tree_ensemble_config = boosted_trees_pb2.TreeEnsemble()
+      text_format.Merge(
+          """
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 1
+              threshold: 28
+              left_id: 1
+              right_id: 2
+            }
+            metadata {
+              gain: 7.62
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: 0.51
+              }
+              vector: {
+                value: 1.14
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: 1.29
+              }
+              vector: {
+                value: 8.79
+              }
+            }
+          }
+        }
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 1
+              threshold: 26
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 50
+              left_id: 3
+              right_id: 4
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: -4.33
+              }
+              vector: {
+                value: 7.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: 0.2
+              }
+              vector: {
+                value: 5.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: -4.1
+              }
+              vector: {
+                value: 6.0
+              }
+            }
+          }
+        }
+        trees {
+          nodes {
+            bucketized_split {
+              feature_id: 0
+              threshold: 34
+              left_id: 1
+              right_id: 2
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: 2.0
+              }
+              vector: {
+                value: -7.0
+              }
+            }
+          }
+          nodes {
+            leaf {
+              vector: {
+                value: 6.3
+              }
+              vector: {
+                value: 5.0
+              }
+            }
+          }
+        }
+        tree_weights: 0.1
+        tree_weights: 0.2
+        tree_weights: 1.0
+      """, tree_ensemble_config)
+
+      # Create existing ensemble with one root split
+      tree_ensemble = boosted_trees_ops.TreeEnsemble(
+          'ensemble', serialized_proto=tree_ensemble_config.SerializeToString())
+      tree_ensemble_handle = tree_ensemble.resource_handle
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      feature_0_values = [36, 32]
+      feature_1_values = [11, 27]
+
+      # Example 1: tree 0: (0.51, 1.14), tree 1: (0.2, 5.0), tree 2: (6.3, 5.0)
+      #
+      #            logits = (0.1*0.51+0.2*0.2+1*6.3,
+      #                      0.1*1.14+0.2*5.0+1*5)
+      # Example 2: tree 0: (0.51, 1.14), tree 1: (-4.33, 7.0), tree 2: (2.0, -7)
+      #
+      #            logits = (0.1*0.51+0.2*-4.33+1*2.0,
+      #                      0.1*1.14+0.2*7.0+1*-7)
+      logits_dimension = 2
+      expected_logits = [[6.391, 6.114], [1.185, -5.486]]
+
+      # Prediction should work fine.
+      predict_op = boosted_trees_ops.predict(
+          tree_ensemble_handle,
+          bucketized_features=[feature_0_values, feature_1_values],
+          logits_dimension=logits_dimension)
 
       logits = session.run(predict_op)
       self.assertAllClose(expected_logits, logits)

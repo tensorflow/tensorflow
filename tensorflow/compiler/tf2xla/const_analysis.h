@@ -34,11 +34,13 @@ namespace tensorflow {
 // `compile_time_const_nodes`, if `compile_time_const_nodes` is not null.
 //
 // Only propagate const-ness along edges for which `edge_filter` returns true.
-Status BackwardsConstAnalysis(const Graph& g,
-                              std::vector<bool>* compile_time_const_arg_indices,
-                              std::vector<bool>* compile_time_const_nodes,
-                              std::function<bool(const Edge&)> edge_filter =
-                                  [](const Edge& e) { return true; });
+Status BackwardsConstAnalysis(
+    const Graph& g, std::vector<bool>* compile_time_const_arg_indices,
+    std::vector<bool>* compile_time_const_nodes,
+    FunctionLibraryRuntime* flib_runtime,
+    std::function<bool(const Edge&)> edge_filter = [](const Edge& e) {
+      return true;
+    });
 
 }  // namespace tensorflow
 

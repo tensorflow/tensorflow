@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/control_flow_ops.h"
 #include "tensorflow/core/kernels/data/generator_dataset_op.h"
 #include "tensorflow/core/kernels/data/iterator_ops.h"
+#include "tensorflow/core/kernels/data/optional_ops.h"
 #include "tensorflow/core/kernels/data/prefetch_dataset_op.h"
 #include "tensorflow/core/kernels/fifo_queue.h"
 #include "tensorflow/core/kernels/function_ops.h"
@@ -253,6 +254,15 @@ class XlaAssignVariableOp : public OpKernel {
                               .Device(DEVICE)                                  \
                               .HostMemory("string_handle"),                    \
                           data::IteratorFromStringHandleOp);                   \
+  REGISTER_KERNEL_BUILDER(Name("OptionalNone").Device(DEVICE),                 \
+                          data::OptionalNoneOp);                               \
+  REGISTER_KERNEL_BUILDER(Name("OptionalFromValue").Device(DEVICE),            \
+                          data::OptionalFromValueOp);                          \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("OptionalHasValue").Device(DEVICE).HostMemory("has_value"),         \
+      data::OptionalHasValueOp);                                               \
+  REGISTER_KERNEL_BUILDER(Name("OptionalGetValue").Device(DEVICE),             \
+                          data::OptionalGetValueOp);                           \
   REGISTER_KERNEL_BUILDER(Name(FunctionLibraryDefinition::kArgOp)              \
                               .Device(DEVICE)                                  \
                               .HostMemory("output")                            \

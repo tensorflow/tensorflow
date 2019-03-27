@@ -16,26 +16,25 @@ limitations under the License.
 #define TENSORFLOW_LITE_TOOLS_EVALUATION_IDENTITY_STAGE_H_
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/core/public/session.h"
 #include "tensorflow/lite/tools/evaluation/evaluation_stage.h"
 #include "tensorflow/lite/tools/evaluation/proto/evaluation_config.pb.h"
 
 namespace tflite {
 namespace evaluation {
 
-// Simple EvaluationStage subclass that encapsulates the functionality of
-// tensorflow::ops::Identity. Primarily used for tests.
-// Initializer TAGs (Object Class): INPUT_TYPE (DataType)
-// Input TAGs (Object Class): INPUT_TENSORS (std::vector<Tensor>)
-// Output TAGs (Object Class): OUTPUT_TENSORS (std::vector<Tensor>)
-// TODO(b/122482115): Migrate common TF-related code into an abstract class.
+// Simple EvaluationStage that passes INPUT_VALUE to OUTPUT_VALUE if the former
+// is non-zero, DEFAULT_VALUE otherwise. Primarily used for tests.
+// Initializer TAGs (Object Class): DEFAULT_VALUE (float)
+// Input TAGs (Object Class): INPUT_VALUE (float)
+// Output TAGs (Object Class): OUTPUT_VALUE (float)
 class IdentityStage : public EvaluationStage {
  public:
-  explicit IdentityStage(const EvaluationStageConfig& config);
+  explicit IdentityStage(const EvaluationStageConfig& config)
+      : EvaluationStage(config) {}
 
-  bool Run(absl::flat_hash_map<std::string, void*>& object_map,
-           EvaluationStageMetrics& metrics) override;
+  bool Run(absl::flat_hash_map<std::string, void*>& object_map) override;
+
+  EvaluationStageMetrics LatestMetrics() override;
 
   ~IdentityStage() {}
 
@@ -43,28 +42,24 @@ class IdentityStage : public EvaluationStage {
   bool DoInit(absl::flat_hash_map<std::string, void*>& object_map) override;
 
   std::vector<std::string> GetInitializerTags() override {
-    return {kInputTypeTag};
+    return {kDefaultValueTag};
   }
-  std::vector<std::string> GetInputTags() override {
-    return {kInputTensorsTag};
-  }
+  std::vector<std::string> GetInputTags() override { return {kInputValueTag}; }
   std::vector<std::string> GetOutputTags() override {
-    return {kOutputTensorsTag};
+    return {kOutputValueTag};
   }
 
  private:
-  ::tensorflow::DataType* input_type_;
-  ::tensorflow::GraphDef graph_def_;
-  ::tensorflow::Output stage_output_;
-  std::unique_ptr<::tensorflow::Session> session_;
-  std::vector<::tensorflow::Tensor> tensor_outputs_;
-  std::string stage_input_name_;
-  std::string stage_output_name_;
+  float default_value_ = 0;
+  float current_value_ = 0;
+  int num_runs_ = 0;
 
-  static const char kInputTypeTag[];
-  static const char kInputTensorsTag[];
-  static const char kOutputTensorsTag[];
+  static const char kDefaultValueTag[];
+  static const char kInputValueTag[];
+  static const char kOutputValueTag[];
 };
+
+DECLARE_FACTORY(IdentityStage);
 
 }  // namespace evaluation
 }  // namespace tflite

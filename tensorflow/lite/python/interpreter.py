@@ -216,7 +216,8 @@ class Interpreter(object):
   def get_tensor(self, tensor_index):
     """Gets the value of the input tensor (get a copy).
 
-    If you wish to avoid the copy, use `tensor()`.
+    If you wish to avoid the copy, use `tensor()`. This function cannot be used
+    to read intermediate results.
 
     Args:
       tensor_index: Tensor index of tensor to get. This value can be gotten from
@@ -233,7 +234,8 @@ class Interpreter(object):
     This allows reading and writing to this tensors w/o copies. This more
     closely mirrors the C++ Interpreter class interface's tensor() member, hence
     the name. Be careful to not hold these output references through calls
-    to `allocate_tensors()` and `invoke()`.
+    to `allocate_tensors()` and `invoke()`. This function cannot be used to read
+    intermediate results.
 
     Usage:
 

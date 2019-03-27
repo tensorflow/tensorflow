@@ -81,14 +81,6 @@ TEST(CollectionRegistryDeathTest, DuplicateRegistration) {
       "/tensorflow/metric");
 }
 
-TEST(CollectMetricsTest, NoMetrics) {
-  auto* collection_registry = CollectionRegistry::Default();
-  const std::unique_ptr<CollectedMetrics> collected_metrics =
-      collection_registry->CollectMetrics({});
-  EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
-  EXPECT_EQ(0, collected_metrics->point_set_map.size());
-}
-
 TEST(CollectMetricsTest, Counter) {
   auto counter_with_labels = std::unique_ptr<Counter<2>>(
       Counter<2>::New("/tensorflow/test/counter_with_labels",
@@ -111,7 +103,7 @@ TEST(CollectMetricsTest, Counter) {
         collection_registry->CollectMetrics(options);
 
     if (collect_metric_descriptors) {
-      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+      ASSERT_GE(collected_metrics->metric_descriptor_map.size(), 2);
 
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/counter_with_labels");
@@ -134,7 +126,7 @@ TEST(CollectMetricsTest, Counter) {
       EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
     }
 
-    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+    ASSERT_GE(collected_metrics->point_set_map.size(), 2);
 
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/counter_with_labels");
@@ -201,7 +193,7 @@ TEST(CollectMetricsTest, Gauge) {
         collection_registry->CollectMetrics(options);
 
     if (collect_metric_descriptors) {
-      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+      ASSERT_GE(collected_metrics->metric_descriptor_map.size(), 2);
 
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/string_gauge_with_labels");
@@ -224,7 +216,7 @@ TEST(CollectMetricsTest, Gauge) {
       EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
     }
 
-    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+    ASSERT_GE(collected_metrics->point_set_map.size(), 2);
 
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/string_gauge_with_labels");
@@ -307,7 +299,7 @@ TEST(CollectMetricsTest, Sampler) {
         collection_registry->CollectMetrics(options);
 
     if (collect_metric_descriptors) {
-      ASSERT_EQ(2, collected_metrics->metric_descriptor_map.size());
+      ASSERT_GE(collected_metrics->metric_descriptor_map.size(), 2);
 
       const MetricDescriptor& ld = *collected_metrics->metric_descriptor_map.at(
           "/tensorflow/test/sampler_with_labels");
@@ -330,7 +322,7 @@ TEST(CollectMetricsTest, Sampler) {
       EXPECT_EQ(0, collected_metrics->metric_descriptor_map.size());
     }
 
-    ASSERT_EQ(2, collected_metrics->point_set_map.size());
+    ASSERT_GE(collected_metrics->point_set_map.size(), 2);
 
     const PointSet& lps = *collected_metrics->point_set_map.at(
         "/tensorflow/test/sampler_with_labels");

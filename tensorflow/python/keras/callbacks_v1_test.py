@@ -452,6 +452,7 @@ class TestTensorBoardV1(test.TestCase):
     tb_cbk.writer = FileWriterStub(temp_dir)
 
     tb_cbk.on_batch_end(0, {'acc': 5.0})
+    tb_cbk.on_train_end()
     batch_step, batch_summary = tb_cbk.writer.batch_summary
     self.assertEqual(batch_step, 0)
     self.assertEqual(batch_summary.value[0].simple_value, 5.0)
@@ -459,6 +460,7 @@ class TestTensorBoardV1(test.TestCase):
     tb_cbk = callbacks_v1.TensorBoard(temp_dir, update_freq='epoch')
     tb_cbk.writer = FileWriterStub(temp_dir)
     tb_cbk.on_epoch_end(0, {'acc': 10.0})
+    tb_cbk.on_train_end()
     epoch_step, epoch_summary = tb_cbk.writer.epoch_summary
     self.assertEqual(epoch_step, 0)
     self.assertEqual(epoch_summary.value[0].simple_value, 10.0)
@@ -530,6 +532,7 @@ class TestTensorBoardV1(test.TestCase):
     self.assertEqual(tb_cbk.writer.batch_summaries, [])
     tb_cbk.on_epoch_end(0, {'acc': 10.0, 'size': 1})
     self.assertEqual(len(tb_cbk.writer.epoch_summaries), 1)
+    tb_cbk.on_train_end()
 
     # Batch mode
     tb_cbk = callbacks_v1.TensorBoard(temp_dir, update_freq='batch')
@@ -540,6 +543,7 @@ class TestTensorBoardV1(test.TestCase):
     tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
     self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
     self.assertFalse(tb_cbk.writer.epoch_summaries)
+    tb_cbk.on_train_end()
 
     # Integer mode
     tb_cbk = callbacks_v1.TensorBoard(temp_dir, update_freq=20)
@@ -556,6 +560,7 @@ class TestTensorBoardV1(test.TestCase):
     tb_cbk.on_batch_end(0, {'acc': 10.0, 'size': 10})
     self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
     self.assertFalse(tb_cbk.writer.epoch_summaries)
+    tb_cbk.on_train_end()
 
 
 if __name__ == '__main__':

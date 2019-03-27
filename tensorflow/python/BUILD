@@ -12,6 +12,7 @@ visibility = [
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
+    "//third_party/py/tensorflow_examples:__subpackages__",
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
@@ -72,6 +73,7 @@ py_library(
     deps = [
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/tpu:tpu_estimator",
     ] + if_not_v2(["//tensorflow/contrib:contrib_py"]),
 )
 
@@ -121,6 +123,7 @@ py_library(
         ":clustering_ops",
         ":collective_ops",
         ":cond_v2",
+        ":config",
         ":confusion_matrix",
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
@@ -178,7 +181,9 @@ py_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
@@ -270,7 +275,10 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
 )
 
 tf_py_test(
@@ -495,7 +503,7 @@ tf_cc_shared_object(
         "//conditions:default": [
             "-lm",
         ],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
     }),
     deps = [
@@ -679,6 +687,7 @@ py_library(
     deps = [
         ":common_shapes",
         ":composite_tensor",
+        ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
         ":framework_fast_tensor_util",
@@ -855,6 +864,22 @@ py_library(
 )
 
 py_library(
+    name = "convert_to_constants",
+    srcs = [
+        "framework/convert_to_constants.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":platform",
+        ":tensor_util",
+        ":tf_optimizer",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
     name = "kernels",
     srcs = [
         "framework/kernels.py",
@@ -972,6 +997,30 @@ tf_py_test(
         ":auto_control_deps",
         ":client_testlib",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "config",
+    srcs = ["framework/config.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+tf_py_test(
+    name = "config_test",
+    size = "small",
+    srcs = ["framework/config_test.py"],
+    additional_deps = [
+        ":config",
+        ":constant_op",
+        ":client_testlib",
+        ":platform",
+        ":util",
     ],
 )
 
@@ -1252,6 +1301,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "framework/contrib_test.py",
+    tags = [
+        "no_pip",
+    ],
 )
 
 tf_py_test(
@@ -1815,7 +1867,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/training/checkpointable:__pkg__",
+        "//tensorflow/python/training/tracking:__pkg__",
     ],
 )
 
@@ -1993,6 +2045,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/contrib/tpu:__pkg__",
+        "//tensorflow/python/tpu:__pkg__",
     ],
     deps = [
         "//tensorflow/core:tpu_configuration_ops_op_lib",
@@ -3059,11 +3112,14 @@ tf_py_test(
     name = "sparse_ops_test",
     srcs = ["ops/sparse_ops_test.py"],
     additional_deps = [
+        ":array_grad",
         ":constant_op",
         ":dtypes",
         ":framework_test_lib",
         ":sparse_ops",
         ":sparse_tensor",
+        ":sparse_grad",
+        ":gradient_checker_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -3281,10 +3337,12 @@ py_library(
         ":smart_cond",
         ":summary_op_util",
         ":summary_ops_gen",
+        ":tensor_util",
         ":training_util",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:profiler",
         "@six_archive//:six",
     ],
 )
@@ -3371,7 +3429,7 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -3669,6 +3727,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     shard_count = 16,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3729,7 +3788,7 @@ py_library(
         ["training/**/*.py"],
         exclude = [
             "**/*test*",
-            "training/checkpointable/**/*.py",
+            "training/tracking/**/*.py",
             "training/saving/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
@@ -3790,8 +3849,9 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:python_state",
+        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3871,9 +3931,9 @@ py_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3954,6 +4014,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
+        "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
         "//third_party/py/numpy",
@@ -3990,16 +4051,6 @@ tf_py_test(
         ":util",
     ],
     main = "util/serialization_test.py",
-)
-
-tf_py_test(
-    name = "future_api_test",
-    size = "small",
-    srcs = ["util/future_api_test.py"],
-    additional_deps = [
-        ":util",
-        "//tensorflow:tensorflow_py",
-    ],
 )
 
 tf_py_test(
@@ -4285,7 +4336,7 @@ tf_py_wrap_cc(
         "util/transform_graph.i",
         "util/util.i",
     ],
-    # add win_def_file
+    # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,
@@ -4343,43 +4394,27 @@ tf_py_wrap_cc(
 # ** Targets for Windows build (start) **
 # We need the following targets to expose symbols from _pywrap_tensorflow.dll
 
-# Build a cc_binary from tf_custom_op_library_additional_deps_impl,
-# it contains all object code from its dependencies.
-tf_native_cc_binary(
-    name = "tf_custom_op_library_additional_deps.so",
-    linkshared = 1,
-    linkstatic = 1,
-    deps = tf_custom_op_library_additional_deps_impl(),
-)
-
-# Get a DEF file generated by parsing all object files
-# of tf_custom_op_library_additional_deps.so
-filegroup(
-    name = "pywrap_tensorflow_def_file",
-    srcs = [":tf_custom_op_library_additional_deps.so"],
-    output_group = "def_file",
-)
-
 # Filter the DEF file to reduce the number of symbols to 64K or less.
 # Note that we also write the name of the pyd file into DEF file so that
 # the dynamic libraries of custom ops can find it at runtime.
 genrule(
     name = "pywrap_tensorflow_filtered_def_file",
-    srcs = [":pywrap_tensorflow_def_file"],
+    srcs = ["//tensorflow:tensorflow_def_file"],
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
     cmd = select({
         "//tensorflow:windows": """
               $(location @local_config_def_file_filter//:def_file_filter) \\
-              --input $(location :pywrap_tensorflow_def_file) \\
+              --input $(location //tensorflow:tensorflow_def_file) \\
               --output $@ \\
               --target _pywrap_tensorflow_internal.pyd
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
     tools = ["@local_config_def_file_filter//:def_file_filter"],
+    visibility = ["//visibility:public"],
 )
 
-# Get the import library of  _pywrap_tensorflow_internal.dll
+# Get the import library of _pywrap_tensorflow_internal.pyd
 filegroup(
     name = "get_pywrap_tensorflow_import_lib_file",
     srcs = [":_pywrap_tensorflow_internal.so"],
@@ -4657,7 +4692,7 @@ tf_py_test(
     ],
     grpc_enabled = True,
     tags = [
-        "no_gpu",
+        "no_gpu",  # b/127001953
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],
@@ -4760,7 +4795,10 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_gpu",  # b/127386241
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(
@@ -4788,6 +4826,17 @@ tf_py_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_py_test(
+    name = "convert_to_constants_test",
+    size = "small",
+    srcs = ["framework/convert_to_constants_test.py"],
+    additional_deps = [
+        ":convert_to_constants",
+        "client_testlib",
+        "framework_test_lib",
     ],
 )
 
@@ -5110,6 +5159,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     tags = [
+        "no_pip",  # Relies on contrib
         "no_windows",
         "notsan",  # intermittent races on a few percent of runs
     ],
@@ -5200,6 +5250,7 @@ tf_py_test(
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/testing:testing_py",
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_coordinator",
     ],
     tags = [
@@ -6018,6 +6069,7 @@ tf_py_test(
         "grappler",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "nomac",
     ],
 )
 

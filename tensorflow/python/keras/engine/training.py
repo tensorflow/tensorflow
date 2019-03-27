@@ -48,7 +48,7 @@ from tensorflow.python.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -141,7 +141,7 @@ class Model(Network):
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def compile(self,
               optimizer,
               loss=None,
@@ -206,6 +206,12 @@ class Model(Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     run_eagerly = kwargs.pop('run_eagerly', None)
+    if run_eagerly and getattr(self, '_contains_symbolic_tensors', False):
+      raise ValueError(
+          'We currently do not support enabling `run_eagerly` on compile if '
+          '`model.add_loss(tensor)` or `model.add_metric(tensor)` '
+          'has been called.')
+
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
 
@@ -241,13 +247,30 @@ class Model(Network):
         raise ValueError('target_tensors is not supported with '
                          'DistributionStrategy.')
 
+      if run_eagerly:
+        raise ValueError(
+            'We currently do not support enabling `run_eagerly` with '
+            'distribution strategy.')
+
+      if getattr(self, '_contains_symbolic_tensors', False):
+        raise ValueError(
+            'We currently do not support compiling the model with distribution '
+            'strategy if `model.add_loss(tensor)` or `model.add_metric(tensor)`'
+            ' has been called.')
+
+      if not self.built or not self.inputs or not self.outputs:
+        raise ValueError(
+            'We currently do not support distribution strategy with a '
+            '`Sequential` model that is created without `input_shape`/'
+            '`input_dim` set in its first layer or a subclassed model.')
+
     loss = loss or {}
 
     self.optimizer = optimizer
     # We've disabled automatic dependency tracking for this method, but do want
-    # to add a checkpoint dependency on the optimizer if it's checkpointable.
-    if isinstance(self.optimizer, checkpointable.Checkpointable):
-      self._track_checkpointable(
+    # to add a checkpoint dependency on the optimizer if it's trackable.
+    if isinstance(self.optimizer, trackable.Trackable):
+      self._track_trackable(
           self.optimizer, name='optimizer', overwrite=True)
     self.loss = loss
     self._compile_metrics = metrics or []
@@ -614,11 +637,15 @@ class Model(Network):
             next epoch. When training with input tensors such as
             TensorFlow data tensors, the default `None` is equal to
             the number of samples in your dataset divided by
-            the batch size, or 1 if that cannot be determined.
+            the batch size, or 1 if that cannot be determined. If x is a
+            `tf.data` dataset or a dataset iterator, and 'steps_per_epoch'
+            is None, the epoch will run until the input dataset is exhausted.
         validation_steps: Only relevant if `validation_data` is provided and
             is a dataset or dataset iterator. Total number of steps (batches of
             samples) to draw before stopping when performing validation
-            at the end of every epoch.
+            at the end of every epoch. If validation_data is a `tf.data` dataset
+            or a dataset iterator, and 'validation_steps' is None, validation
+            will run until the `validation_data` dataset is exhausted.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections.Container` instance (e.g. list, tuple, etc.). If an
             integer, specifies how many training epochs to run before a new
@@ -662,11 +689,6 @@ class Model(Network):
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
 
-    # When the model expects dictionary inputs (i.e. FeatureColumn-based
-    # models), set run_eagerly to True as there's no support for graph
-    # functions.
-    training_utils.set_run_eagerly_for_dict_structure(self, x)
-
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if K.in_multi_worker_mode():
@@ -674,6 +696,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run training inside the distributed coordinator."""
+          filtered_callbacks = distributed_training_utils \
+              .filter_distributed_callbacks(callbacks)
           return training_distributed.fit_distributed(
               self,
               x=x,
@@ -681,7 +705,7 @@ class Model(Network):
               batch_size=batch_size,
               epochs=epochs,
               verbose=verbose,
-              callbacks=callbacks,
+              callbacks=filtered_callbacks,
               validation_split=validation_split,
               validation_data=validation_data,
               shuffle=shuffle,
@@ -901,6 +925,8 @@ class Model(Network):
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
             Ignored with the default value of `None`.
+            If x is a `tf.data` dataset or a dataset iterator, and `steps` is
+            None, 'evaluate' will run until the dataset is exhausted.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during evaluation.
             See [callbacks](/api_docs/python/tf/keras/callbacks).
@@ -934,6 +960,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run evaluation inside the distributed coordinator."""
+          filtered_callbacks = distributed_training_utils \
+              .filter_distributed_callbacks(callbacks)
           return training_distributed.evaluate_distributed(
               self,
               x=x,
@@ -942,7 +970,7 @@ class Model(Network):
               verbose=verbose,
               sample_weight=sample_weight,
               steps=steps,
-              callbacks=callbacks)
+              callbacks=filtered_callbacks)
 
         # Independent worker only for now.
         return dc.run_distribute_coordinator(
@@ -1047,7 +1075,9 @@ class Model(Network):
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
-            Ignored with the default value of `None`.
+            Ignored with the default value of `None`. If x is a `tf.data`
+            dataset or a dataset iterator, and `steps` is None, `predict` will
+            run until the input dataset is exhausted.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during prediction.
             See [callbacks](/api_docs/python/tf/keras/callbacks).
@@ -1211,10 +1241,11 @@ class Model(Network):
           reset_metrics=reset_metrics,
           output_loss_metrics=self._output_loss_metrics)
     else:
+      x = training_utils.ModelInputs(x).as_list()
+      ins = x + (y or []) + (sample_weights or [])
+
       if not isinstance(K.symbolic_learning_phase(), int):
-        ins = x + y + sample_weights + [True]
-      else:
-        ins = x + y + sample_weights
+        ins += [True]  # Add learning phase value.
 
       if reset_metrics:
         self._make_train_function()
@@ -1285,7 +1316,8 @@ class Model(Network):
           reset_metrics=reset_metrics,
           output_loss_metrics=self._output_loss_metrics)
     else:
-      inputs = x + y + sample_weights
+      x = training_utils.ModelInputs(x).as_list()
+      inputs = x + (y or []) + (sample_weights or [])
       if reset_metrics:
         self._make_test_function()
         outputs = self.test_function(inputs)  # pylint: disable=not-callable
@@ -1761,7 +1793,7 @@ class Model(Network):
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.EagerIterator)):
           ds_batch_size = tensor_shape.as_dimension(
-              nest.flatten(x.output_shapes)[0][0]).value
+              nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None and ds_batch_size != static_batch_size:
             raise ValueError('The batch output shape of your `Dataset` is {}, '
                              'which is incompatible with the specified batch '
@@ -1891,6 +1923,9 @@ class Model(Network):
     updated_metrics_dict = collections.OrderedDict()
     for metric_name, (metric_fn, stateful_metric_fn) in metrics_dict.items():
       metric_name = self._add_unique_metric_name(metric_name, output_index)
+
+      # Update the name on the metric class to be the unique generated name.
+      stateful_metric_fn._name = metric_name  # pylint: disable=protected-access
       updated_metrics_dict[metric_name] = (metric_fn, stateful_metric_fn)
       # Keep track of metric name, function and stateful function.
       self._compile_metrics_names.append(metric_name)
@@ -2659,7 +2694,7 @@ class Model(Network):
           'However we received `validation_data=%s`' % validation_data)
     return val_x, val_y, val_sample_weight
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _set_inputs(self, inputs, outputs=None, training=None):
     """Set model's input and output specs based on the input data received.
 
@@ -2729,10 +2764,17 @@ class Model(Network):
         # itself isn't dynamic.
         # Obtain symbolic outputs by calling the model.
         with K.get_graph().as_default():
+          contains_symbolic_tensors = getattr(
+              self, '_contains_symbolic_tensors', False)
           if self._expects_training_arg:
             outputs = self.call(inputs, training=training)
           else:
             outputs = self.call(inputs)
+          # Reset to the previously saved value. If `call()` had `add_metric`
+          # or `add_loss`, then `_contains_symbolic_tensors` will have been set
+          # to True since we are not in `__call__` context. Hence we are
+          # resetting to the old value here.
+          self._contains_symbolic_tensors = contains_symbolic_tensors
       else:
         # Case: network's `call` is dynamic.
         try:
