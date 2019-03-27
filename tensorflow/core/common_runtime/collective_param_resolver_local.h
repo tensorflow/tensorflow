@@ -201,11 +201,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                                            const StatusCallback& done)
       LOCKS_EXCLUDED(ir->out_mu);
 
-  // Complete source data and/or nccl communicator key.
+  // Complete instance params after waiting for group.
   // Precondition: *cp has complete group data and default_rank.
   void WaitForGroup(InstanceRec* ir, CollectiveParams* cp, bool is_source,
-                    bool init_source, bool init_nccl, const IRConsumer& f)
-      LOCKS_EXCLUDED(ir->out_mu);
+                    const IRConsumer& f) LOCKS_EXCLUDED(ir->out_mu);
 
   // If cp.device_names contains only devices local to this process
   // populates *localities, else returns an error.
