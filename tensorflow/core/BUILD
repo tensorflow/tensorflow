@@ -2840,6 +2840,7 @@ tf_cuda_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/time",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/kernels:bounds_check",
         "//third_party/eigen3",
@@ -4281,6 +4282,7 @@ tf_cc_test_gpu(
         ":test",
         ":test_main",
         ":testlib",
+        "//tensorflow/core/kernels:cwise_op",
     ],
 )
 

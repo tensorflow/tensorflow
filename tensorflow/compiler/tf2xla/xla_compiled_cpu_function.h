@@ -166,7 +166,8 @@ class XlaCompiledCpuFunction {
   //
   // Allocated memory must be aligned to the size specified by
   // tensorflow::tfcompile::runtime::kAlign. If possible, use the functions in
-  // tensorflow/compiler/aot/runtime.h to ensure correct alignment.
+  // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
+  // alignment.
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.

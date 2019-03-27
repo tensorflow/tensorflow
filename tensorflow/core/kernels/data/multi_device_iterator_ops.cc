@@ -94,7 +94,6 @@ class MultiDeviceIterator : public ResourceBase {
                         MultiDeviceIteratorCallback callback) {
     tf_shared_lock l(mu_);
     IteratorContext::Params params(ctx);
-    params.function_library = lib_def_;
     params.lib = lib_;
     params.function_handle_cache = function_handle_cache_.get();
     params.resource_mgr = &resource_mgr_;
@@ -109,11 +108,6 @@ class MultiDeviceIterator : public ResourceBase {
 
   const std::vector<PartialTensorShape>& output_shapes() const {
     return output_shapes_;
-  }
-
-  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
-    tf_shared_lock l(mu_);
-    return lib_def_;
   }
 
   FunctionLibraryRuntime* const lib() {

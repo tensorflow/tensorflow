@@ -130,6 +130,14 @@ class CapturedFunction {
                        std::vector<Tensor>&& captured_inputs, Params params,
                        std::unique_ptr<CapturedFunction>* out_function);
 
+  // Adds the definition of this captured function into the given graph,
+  // returning its captured inputs and types through the respective output
+  // arguments.
+  Status AddToGraph(SerializationContext* ctx,
+                    DatasetBase::DatasetGraphDefBuilder* b,
+                    std::vector<Node*>* other_arguments,
+                    DataTypeVector* other_arguments_types) const;
+
   // Instantiates this function for use in the given context, providing an
   // InstantiatedCapturedFunction that can be used to execute functions.
   Status Instantiate(IteratorContext* ctx,
@@ -147,17 +155,23 @@ class CapturedFunction {
   // Indicates whether the function is multi-device.
   bool is_multi_device_function() const { return is_multi_device_function_; }
 
+  // Returns the transitive set of function definition required to instantiate
+  // this function.
+  const FunctionLibraryDefinition* lib_def() const { return &lib_def_; }
+
   // Indicates whether the function should use inter op parallelism.
   bool use_inter_op_parallelism() const { return use_inter_op_parallelism_; }
 
  private:
   CapturedFunction(const NameAttrList& func,
-                   std::vector<Tensor> captured_inputs, Params params);
+                   std::vector<Tensor> captured_inputs,
+                   FunctionLibraryDefinition&& flib_def, Params params);
 
   const NameAttrList func_;
   const std::vector<Tensor> captured_inputs_;
   const bool use_inter_op_parallelism_;
   const bool is_multi_device_function_;
+  const FunctionLibraryDefinition lib_def_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CapturedFunction);
 };

@@ -1056,12 +1056,6 @@ bool FunctionLibraryDefinition::Contains(const string& func) const {
   return function_defs_.find(func) != function_defs_.end();
 }
 
-bool FunctionLibraryDefinitionOverlay::Contains(const string& func) const {
-  tf_shared_lock l(mu_);
-  return function_defs_.find(func) != function_defs_.end() ||
-         base_lib_def_->Contains(func);
-}
-
 const FunctionDef* FunctionLibraryDefinition::Find(const string& func) const {
   tf_shared_lock l(mu_);
   return FindHelper(func);
@@ -1075,15 +1069,6 @@ const FunctionDef* FunctionLibraryDefinition::FindHelper(
   } else {
     return &iter->second->fdef;
   }
-}
-
-const FunctionDef* FunctionLibraryDefinitionOverlay::FindHelper(
-    const string& func) const {
-  const FunctionDef* result = FunctionLibraryDefinition::FindHelper(func);
-  if (result != nullptr) {
-    return result;
-  }
-  return base_lib_def_->FindHelper(func);
 }
 
 Status FunctionLibraryDefinition::AddFunctionDef(const FunctionDef& fdef) {
@@ -1116,21 +1101,6 @@ Status FunctionLibraryDefinition::AddFunctionDefHelper(const FunctionDef& fdef,
   entry->reset(new FunctionDefAndOpRegistration(fdef));
   *added = true;
   return Status::OK();
-}
-
-Status FunctionLibraryDefinitionOverlay::AddFunctionDefHelper(
-    const FunctionDef& fdef, bool* added) {
-  const FunctionDef* f = base_lib_def_->Find(fdef.signature().name());
-  if (f != nullptr) {
-    if (!FunctionDefsEqual(fdef, *f)) {
-      return errors::InvalidArgument(
-          "Cannot add function '", fdef.signature().name(),
-          "' because a different function with the same name already exists.");
-    }
-    // Ignore duplicate FunctionDefs.
-    return Status::OK();
-  }
-  return FunctionLibraryDefinition::AddFunctionDefHelper(fdef, added);
 }
 
 Status FunctionLibraryDefinition::AddGradientDef(const GradientDef& grad) {
@@ -1261,16 +1231,6 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   return Status::OK();
 }
 
-Status FunctionLibraryDefinitionOverlay::RemoveFunctionHelper(
-    const string& func) {
-  if (base_lib_def_->Contains(func)) {
-    return errors::InvalidArgument(
-        "Cannot remove function '", func,
-        "' because it is part of the immutable base of an overlay.");
-  }
-  return FunctionLibraryDefinition::RemoveFunctionHelper(func);
-}
-
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {
@@ -1314,35 +1274,11 @@ Status FunctionLibraryDefinition::LookUp(
   return default_registry_->LookUp(op, op_reg_data);
 }
 
-Status FunctionLibraryDefinitionOverlay::LookUp(
-    const string& op, const OpRegistrationData** op_reg_data) const {
-  tf_shared_lock l(mu_);
-  auto iter = function_defs_.find(op);
-  if (iter != function_defs_.end()) {
-    *op_reg_data = &iter->second->op_registration_data;
-    return Status::OK();
-  }
-  return base_lib_def_->LookUp(op, op_reg_data);
-}
-
 string FunctionLibraryDefinition::UniqueFunctionName(StringPiece prefix) const {
   tf_shared_lock l(mu_);
   int index = 0;
   string name = strings::StrCat(prefix, index);
   while (function_defs_.find(name) != function_defs_.end()) {
-    ++index;
-    name = strings::StrCat(prefix, index);
-  }
-  return name;
-}
-
-string FunctionLibraryDefinitionOverlay::UniqueFunctionName(
-    StringPiece prefix) const {
-  tf_shared_lock l(mu_);
-  int index = 0;
-  string name = strings::StrCat(prefix, index);
-  while (function_defs_.find(name) != function_defs_.end() ||
-         base_lib_def_->Contains(name)) {
     ++index;
     name = strings::StrCat(prefix, index);
   }
@@ -1387,34 +1323,9 @@ std::vector<string> FunctionLibraryDefinition::ListFunctionNames() const {
   return function_names;
 }
 
-std::vector<string> FunctionLibraryDefinitionOverlay::ListFunctionNames()
-    const {
-  tf_shared_lock l(mu_);
-  std::vector<string> function_names = base_lib_def_->ListFunctionNames();
-  function_names.reserve(function_names.size() + function_defs_.size());
-  for (const auto& it : function_defs_) {
-    function_names.emplace_back(it.first);
-  }
-  return function_names;
-}
-
 FunctionDefLibrary FunctionLibraryDefinition::ToProto() const {
   FunctionDefLibrary lib;
   tf_shared_lock l(mu_);
-  for (const auto& f : function_defs_) {
-    *lib.add_function() = f.second->fdef;
-  }
-  for (const auto& g : func_grad_) {
-    GradientDef* gd = lib.add_gradient();
-    gd->set_function_name(g.first);
-    gd->set_gradient_func(g.second);
-  }
-  return lib;
-}
-
-FunctionDefLibrary FunctionLibraryDefinitionOverlay::ToProto() const {
-  tf_shared_lock l(mu_);
-  FunctionDefLibrary lib = base_lib_def_->ToProto();
   for (const auto& f : function_defs_) {
     *lib.add_function() = f.second->fdef;
   }
@@ -1583,29 +1494,9 @@ FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
   return ReachableFunctionLibraryDefinition(*this, graph.node());
 }
 
-FunctionLibraryDefinition
-FunctionLibraryDefinitionOverlay::ReachableDefinitions(
-    const GraphDef& graph) const {
-  // TODO(jsimsa): Figure out whether we can avoid computing the reachable
-  // definitions without having to use `ToProto` and `FunctionLibraryDefinition`
-  // constructor to merge the overlay and the base.
-  FunctionLibraryDefinition flib(default_registry_, ToProto());
-  return ReachableFunctionLibraryDefinition(flib, graph.node());
-}
-
 FunctionLibraryDefinition FunctionLibraryDefinition::ReachableDefinitions(
     const FunctionDef& func) const {
   return ReachableFunctionLibraryDefinition(*this, func.node_def());
-}
-
-FunctionLibraryDefinition
-FunctionLibraryDefinitionOverlay::ReachableDefinitions(
-    const FunctionDef& func) const {
-  // TODO(jsimsa): Figure out whether we can avoid computing the reachable
-  // definitions without having to use `ToProto` and `FunctionLibraryDefinition`
-  // constructor to merge the overlay and the base.
-  FunctionLibraryDefinition flib(default_registry_, ToProto());
-  return ReachableFunctionLibraryDefinition(flib, func.node_def());
 }
 
 void FunctionDefHelper::AttrValueWrapper::InitFromString(StringPiece val) {

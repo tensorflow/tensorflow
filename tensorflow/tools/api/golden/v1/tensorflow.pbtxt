@@ -669,6 +669,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "xla"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "zeros_initializer"
     mtype: "<type \'type\'>"
   }

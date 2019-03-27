@@ -974,21 +974,6 @@ TEST(FunctionLibraryDefinitionTest, Contains) {
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
 }
 
-TEST(FunctionLibraryDefinitionOverlayTest, Contains) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  EXPECT_FALSE(lib_def.Contains("XTimes16"));
-  EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
-  EXPECT_FALSE(lib_def.Contains("XTimesFour"));
-
-  EXPECT_FALSE(overlay.Contains("XTimes16"));
-  EXPECT_TRUE(overlay.Contains("XTimesTwo"));
-  EXPECT_TRUE(overlay.Contains("XTimesFour"));
-}
-
 TEST(FunctionLibraryDefinitionTest, Find) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
@@ -998,22 +983,6 @@ TEST(FunctionLibraryDefinitionTest, Find) {
   auto found = lib_def.Find("XTimesTwo");
   ASSERT_NE(found, nullptr);
   EXPECT_EQ(test::function::XTimesTwo().DebugString(), found->DebugString());
-}
-
-TEST(FunctionLibraryDefinitionOverlayTest, Find) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  EXPECT_EQ(lib_def.Find("XTimes16"), nullptr);
-
-  for (auto fdef :
-       {test::function::XTimesTwo(), test::function::XTimesFour()}) {
-    auto found = overlay.Find(fdef.signature().name());
-    ASSERT_NE(found, nullptr);
-    EXPECT_EQ(fdef.DebugString(), found->DebugString());
-  }
 }
 
 TEST(FunctionLibraryDefinitionTest, LookUp) {
@@ -1033,29 +1002,6 @@ TEST(FunctionLibraryDefinitionTest, LookUp) {
   ASSERT_NE(op_reg_data, nullptr);
   // Shape inference function is initialized to UnknownShape.
   ASSERT_NE(op_reg_data->shape_inference_fn, nullptr);
-}
-
-TEST(FunctionLibraryDefinitionOverlayTest, LookUp) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  const OpDef* op_def;
-  EXPECT_FALSE(overlay.LookUpOpDef("XTimes16", &op_def).ok());
-
-  for (auto fdef :
-       {test::function::XTimesTwo(), test::function::XTimesFour()}) {
-    TF_EXPECT_OK(overlay.LookUpOpDef(fdef.signature().name(), &op_def));
-    ASSERT_NE(op_def, nullptr);
-    EXPECT_EQ(op_def->DebugString(), fdef.signature().DebugString());
-
-    const OpRegistrationData* op_reg_data;
-    TF_EXPECT_OK(overlay.LookUp("XTimesTwo", &op_reg_data));
-    ASSERT_NE(op_reg_data, nullptr);
-    // Shape inference function is initialized to UnknownShape.
-    ASSERT_NE(op_reg_data->shape_inference_fn, nullptr);
-  }
 }
 
 TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
@@ -1080,39 +1026,6 @@ TEST(FunctionLibraryDefinitionTest, AddFunctionDef) {
 
   // Test that adding the same functions again does not produce an error.
   TF_EXPECT_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-}
-
-TEST(FunctionLibraryDefinitionOverlayTest, AddFunctionDef) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  // Test lookup of existing functions.
-  for (auto fdef :
-       {test::function::XTimesTwo(), test::function::XTimesFour()}) {
-    const OpDef* op_def;
-    TF_EXPECT_OK(overlay.LookUpOpDef(fdef.signature().name(), &op_def));
-    ASSERT_NE(op_def, nullptr);
-    EXPECT_EQ(op_def->DebugString(), fdef.signature().DebugString());
-  }
-
-  // Test that adding a function with same name as existing op fails.
-  for (auto fdef :
-       {test::function::XTimesTwo(), test::function::XTimesFour()}) {
-    fdef.mutable_signature()->set_name("Add");
-    Status s = overlay.AddFunctionDef(fdef);
-    EXPECT_FALSE(s.ok());
-    EXPECT_EQ(s.error_message(),
-              "Cannot add function 'Add' because an op with the same name "
-              "already exists.");
-  }
-
-  // Test that adding the same functions again does not produce an error.
-  for (auto fdef :
-       {test::function::XTimesTwo(), test::function::XTimesFour()}) {
-    TF_EXPECT_OK(overlay.AddFunctionDef(fdef));
-  }
 }
 
 TEST(FunctionLibraryDefinitionTest, AddGradientDef) {
@@ -1150,32 +1063,6 @@ TEST(FunctionLibraryDefinitionTest, RemoveFunction) {
   EXPECT_TRUE(lib_def.Contains("XTimesTwo"));
   TF_EXPECT_OK(lib_def.RemoveFunction("XTimesTwo"));
   EXPECT_FALSE(lib_def.Contains("XTimesTwo"));
-}
-
-TEST(FunctionLibraryDefinitionOverlayTest, RemoveFunction) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  {
-    Status s = overlay.RemoveFunction("XTimes16");
-    EXPECT_FALSE(s.ok());
-    EXPECT_EQ(s.error_message(),
-              "Tried to remove non-existent function 'XTimes16'.");
-  }
-
-  {
-    Status s = overlay.RemoveFunction("XTimesTwo");
-    EXPECT_FALSE(s.ok());
-    EXPECT_EQ(s.error_message(),
-              "Cannot remove function 'XTimesTwo' because it is part of the "
-              "immutable base of an overlay.");
-  }
-
-  EXPECT_TRUE(overlay.Contains("XTimesFour"));
-  TF_EXPECT_OK(overlay.RemoveFunction("XTimesFour"));
-  EXPECT_FALSE(overlay.Contains("XTimesFour"));
 }
 
 TEST(FunctionLibraryDefinitionTest, AddLibrary) {
@@ -1363,28 +1250,6 @@ TEST(FunctionLibraryDefinitionTest, ToProto) {
   }
 }
 
-TEST(FunctionLibraryDefinitionOverlayTest, ToProto) {
-  FunctionLibraryDefinition lib_def1(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::XTimesTwo()));
-  TF_CHECK_OK(lib_def1.AddFunctionDef(test::function::WXPlusB()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def1);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  FunctionDefLibrary proto = overlay.ToProto();
-  EXPECT_EQ(proto.function_size(), 3);
-
-  // Initialize 'lib_def2' with proto returned by 'ToProto' call.
-  FunctionLibraryDefinition lib_def2(OpRegistry::Global(), proto);
-
-  // Test that the functions exists in both libraries.
-  for (auto name : {"XTimesTwo", "WXPlusB", "XTimesFour"}) {
-    const OpDef *f1, *f2;
-    TF_EXPECT_OK(overlay.LookUpOpDef(name, &f1));
-    TF_EXPECT_OK(lib_def2.LookUpOpDef(name, &f2));
-    EXPECT_EQ(f1->DebugString(), f2->DebugString());
-  }
-}
-
 TEST(FunctionLibraryDefinitionTest, ListFunctionNames) {
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
   TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
@@ -1392,18 +1257,6 @@ TEST(FunctionLibraryDefinitionTest, ListFunctionNames) {
 
   const std::vector<string> function_names = lib_def.ListFunctionNames();
   const std::vector<string> expected = {"XTimesTwo", "WXPlusB"};
-  EXPECT_EQ(function_names, expected);
-}
-
-TEST(FunctionLibraryDefinitionOverlayTest, ListFunctionNames) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), {});
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::XTimesTwo()));
-  TF_CHECK_OK(lib_def.AddFunctionDef(test::function::WXPlusB()));
-  FunctionLibraryDefinitionOverlay overlay(&lib_def);
-  TF_CHECK_OK(overlay.AddFunctionDef(test::function::XTimesFour()));
-
-  const std::vector<string> function_names = overlay.ListFunctionNames();
-  const std::vector<string> expected = {"XTimesTwo", "WXPlusB", "XTimesFour"};
   EXPECT_EQ(function_names, expected);
 }
 
