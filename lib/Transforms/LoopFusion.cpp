@@ -123,26 +123,26 @@ namespace {
 // operations, and whether or not an IfInst was encountered in the loop nest.
 struct LoopNestStateCollector {
   SmallVector<AffineForOp, 4> forOps;
-  SmallVector<Instruction *, 4> loadOpInsts;
-  SmallVector<Instruction *, 4> storeOpInsts;
+  SmallVector<Operation *, 4> loadOpInsts;
+  SmallVector<Operation *, 4> storeOpInsts;
   bool hasNonForRegion = false;
 
-  void collect(Instruction *instToWalk) {
-    instToWalk->walk([&](Instruction *opInst) {
-      if (opInst->isa<AffineForOp>())
-        forOps.push_back(opInst->cast<AffineForOp>());
-      else if (opInst->getNumRegions() != 0)
+  void collect(Operation *opToWalk) {
+    opToWalk->walk([&](Operation *op) {
+      if (op->isa<AffineForOp>())
+        forOps.push_back(op->cast<AffineForOp>());
+      else if (op->getNumRegions() != 0)
         hasNonForRegion = true;
-      else if (opInst->isa<LoadOp>())
-        loadOpInsts.push_back(opInst);
-      else if (opInst->isa<StoreOp>())
-        storeOpInsts.push_back(opInst);
+      else if (op->isa<LoadOp>())
+        loadOpInsts.push_back(op);
+      else if (op->isa<StoreOp>())
+        storeOpInsts.push_back(op);
     });
   }
 };
 
 // TODO(b/117228571) Replace when this is modeled through side-effects/op traits
-static bool isMemRefDereferencingOp(Instruction &op) {
+static bool isMemRefDereferencingOp(Operation &op) {
   if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
       op.isa<DmaWaitOp>())
     return true;
@@ -150,7 +150,7 @@ static bool isMemRefDereferencingOp(Instruction &op) {
 }
 
 // MemRefDependenceGraph is a graph data structure where graph nodes are
-// top-level instructions in a Function which contain load/store ops, and edges
+// top-level operations in a Function which contain load/store ops, and edges
 // are memref dependences between the nodes.
 // TODO(andydavis) Add a more flexible dependece graph representation.
 // TODO(andydavis) Add a depth parameter to dependence graph construction.
@@ -163,12 +163,12 @@ public:
     // The unique identifier of this node in the graph.
     unsigned id;
     // The top-level statment which is (or contains) loads/stores.
-    Instruction *inst;
+    Operation *op;
     // List of load operations.
-    SmallVector<Instruction *, 4> loads;
+    SmallVector<Operation *, 4> loads;
     // List of store op insts.
-    SmallVector<Instruction *, 4> stores;
-    Node(unsigned id, Instruction *inst) : id(id), inst(inst) {}
+    SmallVector<Operation *, 4> stores;
+    Node(unsigned id, Operation *op) : id(id), op(op) {}
 
     // Returns the load op count for 'memref'.
     unsigned getLoadOpCount(Value *memref) {
@@ -192,7 +192,7 @@ public:
 
     // Returns all store ops in 'storeOps' which access 'memref'.
     void getStoreOpsForMemref(Value *memref,
-                              SmallVectorImpl<Instruction *> *storeOps) {
+                              SmallVectorImpl<Operation *> *storeOps) {
       for (auto *storeOpInst : stores) {
         if (memref == storeOpInst->cast<StoreOp>().getMemRef())
           storeOps->push_back(storeOpInst);
@@ -201,7 +201,7 @@ public:
 
     // Returns all load ops in 'loadOps' which access 'memref'.
     void getLoadOpsForMemref(Value *memref,
-                             SmallVectorImpl<Instruction *> *loadOps) {
+                             SmallVectorImpl<Operation *> *loadOps) {
       for (auto *loadOpInst : loads) {
         if (memref == loadOpInst->cast<LoadOp>().getMemRef())
           loadOps->push_back(loadOpInst);
@@ -236,7 +236,7 @@ public:
     // which contain accesses to the same memref 'value'. If the value is a
     // non-memref value, then the dependence is between a graph node which
     // defines an SSA value and another graph node which uses the SSA value
-    // (e.g. a constant instruction defining a value which is used inside a loop
+    // (e.g. a constant operation defining a value which is used inside a loop
     // nest).
     Value *value;
   };
@@ -266,9 +266,9 @@ public:
     return &it->second;
   }
 
-  // Adds a node with 'inst' to the graph and returns its unique identifier.
-  unsigned addNode(Instruction *inst) {
-    Node node(nextNodeId++, inst);
+  // Adds a node with 'op' to the graph and returns its unique identifier.
+  unsigned addNode(Operation *op) {
+    Node node(nextNodeId++, op);
     nodes.insert({node.id, node});
     return node.id;
   }
@@ -301,9 +301,9 @@ public:
     Node *node = getNode(id);
     for (auto *storeOpInst : node->stores) {
       auto *memref = storeOpInst->cast<StoreOp>().getMemRef();
-      auto *inst = memref->getDefiningOp();
+      auto *op = memref->getDefiningOp();
       // Return true if 'memref' is a block argument.
-      if (!inst)
+      if (!op)
         return true;
       // Return true if any use of 'memref' escapes the function.
       for (auto &use : memref->getUses())
@@ -436,50 +436,50 @@ public:
     return outEdgeCount;
   }
 
-  // Computes and returns an insertion point instruction, before which the
+  // Computes and returns an insertion point operation, before which the
   // the fused <srcId, dstId> loop nest can be inserted while preserving
   // dependences. Returns nullptr if no such insertion point is found.
-  Instruction *getFusedLoopNestInsertionPoint(unsigned srcId, unsigned dstId) {
+  Operation *getFusedLoopNestInsertionPoint(unsigned srcId, unsigned dstId) {
     if (outEdges.count(srcId) == 0)
-      return getNode(dstId)->inst;
+      return getNode(dstId)->op;
 
     // Build set of insts in range (srcId, dstId) which depend on 'srcId'.
-    SmallPtrSet<Instruction *, 2> srcDepInsts;
+    SmallPtrSet<Operation *, 2> srcDepInsts;
     for (auto &outEdge : outEdges[srcId])
       if (outEdge.id != dstId)
-        srcDepInsts.insert(getNode(outEdge.id)->inst);
+        srcDepInsts.insert(getNode(outEdge.id)->op);
 
     // Build set of insts in range (srcId, dstId) on which 'dstId' depends.
-    SmallPtrSet<Instruction *, 2> dstDepInsts;
+    SmallPtrSet<Operation *, 2> dstDepInsts;
     for (auto &inEdge : inEdges[dstId])
       if (inEdge.id != srcId)
-        dstDepInsts.insert(getNode(inEdge.id)->inst);
+        dstDepInsts.insert(getNode(inEdge.id)->op);
 
-    Instruction *srcNodeInst = getNode(srcId)->inst;
-    Instruction *dstNodeInst = getNode(dstId)->inst;
+    Operation *srcNodeInst = getNode(srcId)->op;
+    Operation *dstNodeInst = getNode(dstId)->op;
 
     // Computing insertion point:
-    // *) Walk all instruction positions in Block instruction list in the
-    //    range (src, dst). For each instruction 'inst' visited in this search:
-    //   *) Store in 'firstSrcDepPos' the first position where 'inst' has a
+    // *) Walk all operation positions in Block operation list in the
+    //    range (src, dst). For each operation 'op' visited in this search:
+    //   *) Store in 'firstSrcDepPos' the first position where 'op' has a
     //      dependence edge from 'srcNode'.
-    //   *) Store in 'lastDstDepPost' the last position where 'inst' has a
+    //   *) Store in 'lastDstDepPost' the last position where 'op' has a
     //      dependence edge to 'dstNode'.
     // *) Compare 'firstSrcDepPos' and 'lastDstDepPost' to determine the
-    //    instruction insertion point (or return null pointer if no such
+    //    operation insertion point (or return null pointer if no such
     //    insertion point exists: 'firstSrcDepPos' <= 'lastDstDepPos').
-    SmallVector<Instruction *, 2> depInsts;
+    SmallVector<Operation *, 2> depInsts;
     Optional<unsigned> firstSrcDepPos;
     Optional<unsigned> lastDstDepPos;
     unsigned pos = 0;
     for (Block::iterator it = std::next(Block::iterator(srcNodeInst));
          it != Block::iterator(dstNodeInst); ++it) {
-      Instruction *inst = &(*it);
-      if (srcDepInsts.count(inst) > 0 && firstSrcDepPos == None)
+      Operation *op = &(*it);
+      if (srcDepInsts.count(op) > 0 && firstSrcDepPos == None)
         firstSrcDepPos = pos;
-      if (dstDepInsts.count(inst) > 0)
+      if (dstDepInsts.count(op) > 0)
         lastDstDepPos = pos;
-      depInsts.push_back(inst);
+      depInsts.push_back(op);
       ++pos;
     }
 
@@ -557,8 +557,8 @@ public:
   }
 
   // Adds ops in 'loads' and 'stores' to node at 'id'.
-  void addToNode(unsigned id, const SmallVectorImpl<Instruction *> &loads,
-                 const SmallVectorImpl<Instruction *> &stores) {
+  void addToNode(unsigned id, const SmallVectorImpl<Operation *> &loads,
+                 const SmallVectorImpl<Operation *> &stores) {
     Node *node = getNode(id);
     for (auto *loadOpInst : loads)
       node->loads.push_back(loadOpInst);
@@ -596,7 +596,7 @@ public:
         continue;
       assert(nodes.count(edge.id) > 0);
       // Skip if 'edge.id' is not a loop nest.
-      if (!getNode(edge.id)->inst->isa<AffineForOp>())
+      if (!getNode(edge.id)->op->isa<AffineForOp>())
         continue;
       // Visit current input edge 'edge'.
       callback(edge);
@@ -623,7 +623,7 @@ public:
   void dump() const { print(llvm::errs()); }
 };
 
-// Intializes the data dependence graph by walking instructions in 'f'.
+// Intializes the data dependence graph by walking operations in 'f'.
 // Assigns each node in the graph a node id based on program order in 'f'.
 // TODO(andydavis) Add support for taking a Block arg to construct the
 // dependence graph at a different depth.
@@ -634,18 +634,18 @@ bool MemRefDependenceGraph::init(Function &f) {
   if (f.getBlocks().size() != 1)
     return false;
 
-  DenseMap<Instruction *, unsigned> forToNodeMap;
-  for (auto &inst : f.front()) {
-    if (auto forOp = inst.dyn_cast<AffineForOp>()) {
+  DenseMap<Operation *, unsigned> forToNodeMap;
+  for (auto &op : f.front()) {
+    if (auto forOp = op.dyn_cast<AffineForOp>()) {
       // Create graph node 'id' to represent top-level 'forOp' and record
       // all loads and store accesses it contains.
       LoopNestStateCollector collector;
-      collector.collect(&inst);
+      collector.collect(&op);
       // Return false if a non 'affine.for' region was found (not currently
       // supported).
       if (collector.hasNonForRegion)
         return false;
-      Node node(nextNodeId++, &inst);
+      Node node(nextNodeId++, &op);
       for (auto *opInst : collector.loadOpInsts) {
         node.loads.push_back(opInst);
         auto *memref = opInst->cast<LoadOp>().getMemRef();
@@ -656,29 +656,29 @@ bool MemRefDependenceGraph::init(Function &f) {
         auto *memref = opInst->cast<StoreOp>().getMemRef();
         memrefAccesses[memref].insert(node.id);
       }
-      forToNodeMap[&inst] = node.id;
+      forToNodeMap[&op] = node.id;
       nodes.insert({node.id, node});
-    } else if (auto loadOp = inst.dyn_cast<LoadOp>()) {
+    } else if (auto loadOp = op.dyn_cast<LoadOp>()) {
       // Create graph node for top-level load op.
-      Node node(nextNodeId++, &inst);
-      node.loads.push_back(&inst);
-      auto *memref = inst.cast<LoadOp>().getMemRef();
+      Node node(nextNodeId++, &op);
+      node.loads.push_back(&op);
+      auto *memref = op.cast<LoadOp>().getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
-    } else if (auto storeOp = inst.dyn_cast<StoreOp>()) {
+    } else if (auto storeOp = op.dyn_cast<StoreOp>()) {
       // Create graph node for top-level store op.
-      Node node(nextNodeId++, &inst);
-      node.stores.push_back(&inst);
-      auto *memref = inst.cast<StoreOp>().getMemRef();
+      Node node(nextNodeId++, &op);
+      node.stores.push_back(&op);
+      auto *memref = op.cast<StoreOp>().getMemRef();
       memrefAccesses[memref].insert(node.id);
       nodes.insert({node.id, node});
-    } else if (inst.getNumRegions() != 0) {
+    } else if (op.getNumRegions() != 0) {
       // Return false if another region is found (not currently supported).
       return false;
-    } else if (inst.getNumResults() > 0 && !inst.use_empty()) {
+    } else if (op.getNumResults() > 0 && !op.use_empty()) {
       // Create graph node for top-level producer of SSA values, which
       // could be used by loop nest nodes.
-      Node node(nextNodeId++, &inst);
+      Node node(nextNodeId++, &op);
       nodes.insert({node.id, node});
     }
   }
@@ -689,7 +689,7 @@ bool MemRefDependenceGraph::init(Function &f) {
     const Node &node = idAndNode.second;
     if (!node.loads.empty() || !node.stores.empty())
       continue;
-    auto *opInst = node.inst;
+    auto *opInst = node.op;
     for (auto *value : opInst->getResults()) {
       for (auto &use : value->getUses()) {
         SmallVector<AffineForOp, 4> loops;
@@ -728,11 +728,11 @@ namespace {
 // and operation count) for a loop nest up until the innermost loop body.
 struct LoopNestStats {
   // Map from AffineForOp to immediate child AffineForOps in its loop body.
-  DenseMap<Instruction *, SmallVector<AffineForOp, 2>> loopMap;
+  DenseMap<Operation *, SmallVector<AffineForOp, 2>> loopMap;
   // Map from AffineForOp to count of operations in its loop body.
-  DenseMap<Instruction *, uint64_t> opCountMap;
+  DenseMap<Operation *, uint64_t> opCountMap;
   // Map from AffineForOp to its constant trip count.
-  DenseMap<Instruction *, uint64_t> tripCountMap;
+  DenseMap<Operation *, uint64_t> tripCountMap;
 };
 
 // LoopNestStatsCollector walks a single loop nest and gathers per-loop
@@ -743,8 +743,8 @@ struct LoopNestStatsCollector {
 
   LoopNestStatsCollector(LoopNestStats *stats) : stats(stats) {}
 
-  void collect(Instruction *inst) {
-    inst->walk<AffineForOp>([&](AffineForOp forOp) {
+  void collect(Operation *op) {
+    op->walk<AffineForOp>([&](AffineForOp forOp) {
       auto *forInst = forOp.getOperation();
       auto *parentInst = forOp.getOperation()->getParentOp();
       if (parentInst != nullptr) {
@@ -753,11 +753,11 @@ struct LoopNestStatsCollector {
         stats->loopMap[parentInst].push_back(forOp);
       }
 
-      // Record the number of op instructions in the body of 'forOp'.
+      // Record the number of op operations in the body of 'forOp'.
       unsigned count = 0;
       stats->opCountMap[forInst] = 0;
-      for (auto &inst : *forOp.getBody()) {
-        if (!inst.isa<AffineForOp>() && !inst.isa<AffineIfOp>())
+      for (auto &op : *forOp.getBody()) {
+        if (!op.isa<AffineForOp>() && !op.isa<AffineIfOp>())
           ++count;
       }
       stats->opCountMap[forInst] = count;
@@ -789,9 +789,9 @@ struct LoopNestStatsCollector {
 // NOTE: this is used to compute the cost of fusing a slice of some loop nest
 // within another loop.
 static int64_t getComputeCost(
-    Instruction *forInst, LoopNestStats *stats,
-    llvm::SmallDenseMap<Instruction *, uint64_t, 8> *tripCountOverrideMap,
-    DenseMap<Instruction *, int64_t> *computeCostMap) {
+    Operation *forInst, LoopNestStats *stats,
+    llvm::SmallDenseMap<Operation *, uint64_t, 8> *tripCountOverrideMap,
+    DenseMap<Operation *, int64_t> *computeCostMap) {
   // 'opCount' is the total number operations in one iteration of 'forOp' body
   int64_t opCount = stats->opCountMap[forInst];
   if (stats->loopMap.count(forInst) > 0) {
@@ -843,8 +843,8 @@ static Optional<uint64_t> getConstDifference(AffineMap lbMap, AffineMap ubMap) {
 // was encountered).
 // TODO(andydavis) Make this work with non-unit step loops.
 static bool buildSliceTripCountMap(
-    Instruction *srcOpInst, ComputationSliceState *sliceState,
-    llvm::SmallDenseMap<Instruction *, uint64_t, 8> *tripCountMap) {
+    Operation *srcOpInst, ComputationSliceState *sliceState,
+    llvm::SmallDenseMap<Operation *, uint64_t, 8> *tripCountMap) {
   SmallVector<AffineForOp, 4> srcLoopIVs;
   getLoopIVs(*srcOpInst, &srcLoopIVs);
   unsigned numSrcLoopIVs = srcLoopIVs.size();
@@ -873,12 +873,11 @@ static bool buildSliceTripCountMap(
 
 // Removes load operations from 'srcLoads' which operate on 'memref', and
 // adds them to 'dstLoads'.
-static void
-moveLoadsAccessingMemrefTo(Value *memref,
-                           SmallVectorImpl<Instruction *> *srcLoads,
-                           SmallVectorImpl<Instruction *> *dstLoads) {
+static void moveLoadsAccessingMemrefTo(Value *memref,
+                                       SmallVectorImpl<Operation *> *srcLoads,
+                                       SmallVectorImpl<Operation *> *dstLoads) {
   dstLoads->clear();
-  SmallVector<Instruction *, 4> srcLoadsToKeep;
+  SmallVector<Operation *, 4> srcLoadsToKeep;
   for (auto *load : *srcLoads) {
     if (load->cast<LoadOp>().getMemRef() == memref)
       dstLoads->push_back(load);
@@ -889,7 +888,7 @@ moveLoadsAccessingMemrefTo(Value *memref,
 }
 
 // Returns the innermost common loop depth for the set of operations in 'ops'.
-static unsigned getInnermostCommonLoopDepth(ArrayRef<Instruction *> ops) {
+static unsigned getInnermostCommonLoopDepth(ArrayRef<Operation *> ops) {
   unsigned numOps = ops.size();
   assert(numOps > 0);
 
@@ -917,10 +916,10 @@ static unsigned getInnermostCommonLoopDepth(ArrayRef<Instruction *> ops) {
 
 // Returns the maximum loop depth at which no dependences between 'loadOpInsts'
 // and 'storeOpInsts' are satisfied.
-static unsigned getMaxLoopDepth(ArrayRef<Instruction *> loadOpInsts,
-                                ArrayRef<Instruction *> storeOpInsts) {
+static unsigned getMaxLoopDepth(ArrayRef<Operation *> loadOpInsts,
+                                ArrayRef<Operation *> storeOpInsts) {
   // Merge loads and stores into the same array.
-  SmallVector<Instruction *, 2> ops(loadOpInsts.begin(), loadOpInsts.end());
+  SmallVector<Operation *, 2> ops(loadOpInsts.begin(), loadOpInsts.end());
   ops.append(storeOpInsts.begin(), storeOpInsts.end());
 
   // Compute the innermost common loop depth for loads and stores.
@@ -970,7 +969,7 @@ static unsigned getMaxLoopDepth(ArrayRef<Instruction *> loadOpInsts,
 //    dependence componenent lexicographically negative.
 // TODO(andydavis) Move this function to LoopUtils.
 static bool
-computeLoopInterchangePermutation(ArrayRef<Instruction *> ops,
+computeLoopInterchangePermutation(ArrayRef<Operation *> ops,
                                   unsigned maxLoopDepth,
                                   SmallVectorImpl<unsigned> *loopPermMap) {
   // Gather dependence components for dependences between all ops in 'ops'
@@ -1054,12 +1053,12 @@ computeLoopInterchangePermutation(ArrayRef<Instruction *> ops,
 // This can increase the loop depth at which we can fuse a slice, since we are
 // pushing loop carried dependence to a greater depth in the loop nest.
 static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
-  assert(node->inst->isa<AffineForOp>());
+  assert(node->op->isa<AffineForOp>());
   // Get perfectly nested sequence of loops starting at root of loop nest
   // (the first op being another AffineFor, and the second op - a terminator).
   // TODO(andydavis,bondhugula) Share this with similar code in loop tiling.
   SmallVector<AffineForOp, 4> loops;
-  AffineForOp curr = node->inst->cast<AffineForOp>();
+  AffineForOp curr = node->op->cast<AffineForOp>();
   loops.push_back(curr);
   auto *currBody = curr.getBody();
   while (currBody->begin() == std::prev(currBody->end(), 2) &&
@@ -1071,7 +1070,7 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
     return;
 
   // Merge loads and stores into the same array.
-  SmallVector<Instruction *, 2> memOps(node->loads.begin(), node->loads.end());
+  SmallVector<Operation *, 2> memOps(node->loads.begin(), node->loads.end());
   memOps.append(node->stores.begin(), node->stores.end());
 
   // Compute loop permutation in 'loopPermMap'.
@@ -1091,7 +1090,7 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
     }
   }
   assert(loopNestRootIndex != -1 && "invalid root index");
-  node->inst = loops[loopNestRootIndex].getOperation();
+  node->op = loops[loopNestRootIndex].getOperation();
 }
 
 //  TODO(mlir-team): improve/complete this when we have target data.
@@ -1114,8 +1113,7 @@ unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
 // MemRefRegion written to by 'srcStoreOpInst' at depth 'dstLoopDepth'.
 // TODO(bondhugula): consider refactoring the common code from generateDma and
 // this one.
-static Value *createPrivateMemRef(AffineForOp forOp,
-                                  Instruction *srcStoreOpInst,
+static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
                                   unsigned dstLoopDepth,
                                   Optional<unsigned> fastMemorySpace,
                                   uint64_t localBufSizeThreshold) {
@@ -1228,7 +1226,7 @@ static Value *createPrivateMemRef(AffineForOp forOp,
 
 // Does the slice have a single iteration?
 static uint64_t getSliceIterationCount(
-    const llvm::SmallDenseMap<Instruction *, uint64_t, 8> &sliceTripCountMap) {
+    const llvm::SmallDenseMap<Operation *, uint64_t, 8> &sliceTripCountMap) {
   uint64_t iterCount = 1;
   for (const auto &count : sliceTripCountMap) {
     iterCount *= count.second;
@@ -1275,7 +1273,7 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
     return false;
 
   // Compute MemRefRegion 'dstWriteRegion' for 'dstStoreOpInst' on 'memref'.
-  SmallVector<Instruction *, 2> dstStoreOps;
+  SmallVector<Operation *, 2> dstStoreOps;
   dstNode->getStoreOpsForMemref(memref, &dstStoreOps);
   assert(dstStoreOps.size() == 1);
   auto *dstStoreOpInst = dstStoreOps[0];
@@ -1305,8 +1303,8 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
 // and each load op in 'dstLoadOpInsts' at 'dstLoopDepth', and returns
 // the union in 'sliceState'. Returns true on success, false otherwise.
 // TODO(andydavis) Move this to a loop fusion utility function.
-static bool getSliceUnion(Instruction *srcOpInst,
-                          ArrayRef<Instruction *> dstLoadOpInsts,
+static bool getSliceUnion(Operation *srcOpInst,
+                          ArrayRef<Operation *> dstLoadOpInsts,
                           unsigned numSrcLoopIVs, unsigned dstLoopDepth,
                           ComputationSliceState *sliceState) {
   MemRefAccess srcAccess(srcOpInst);
@@ -1415,10 +1413,9 @@ static bool getSliceUnion(Instruction *srcOpInst,
 // *) Compares the total cost of the unfused loop nests to the min cost fused
 //    loop nest computed in the previous step, and returns true if the latter
 //    is lower.
-static bool isFusionProfitable(Instruction *srcOpInst,
-                               Instruction *srcStoreOpInst,
-                               ArrayRef<Instruction *> dstLoadOpInsts,
-                               ArrayRef<Instruction *> dstStoreOpInsts,
+static bool isFusionProfitable(Operation *srcOpInst, Operation *srcStoreOpInst,
+                               ArrayRef<Operation *> dstLoadOpInsts,
+                               ArrayRef<Operation *> dstStoreOpInsts,
                                ComputationSliceState *sliceState,
                                unsigned *dstLoopDepth, bool maximalFusion) {
   LLVM_DEBUG({
@@ -1492,7 +1489,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   MemRefRegion srcWriteRegion(srcStoreOpInst->getLoc());
   if (failed(srcWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0))) {
     LLVM_DEBUG(llvm::dbgs()
-               << "Unable to compute MemRefRegion for source instruction\n.");
+               << "Unable to compute MemRefRegion for source operation\n.");
     return false;
   }
 
@@ -1510,8 +1507,8 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 
   // Evaluate all depth choices for materializing the slice in the destination
   // loop nest.
-  llvm::SmallDenseMap<Instruction *, uint64_t, 8> sliceTripCountMap;
-  DenseMap<Instruction *, int64_t> computeCostMap;
+  llvm::SmallDenseMap<Operation *, uint64_t, 8> sliceTripCountMap;
+  DenseMap<Operation *, int64_t> computeCostMap;
   for (unsigned i = maxDstLoopDepth; i >= 1; --i) {
     // Compute the union of slice bounds of all ops in 'dstLoadOpInsts'.
     if (!getSliceUnion(srcOpInst, dstLoadOpInsts, numSrcLoopIVs, i,
@@ -1754,7 +1751,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 //         bounds to be functions of 'dstLoopNest' IVs and symbols.
 //      *) Fuse the 'srcLoopNest' computation slice into the 'dstLoopNest',
 //         at a loop depth determined by the cost model in 'isFusionProfitable'.
-//      *) Add the newly fused load/store operation instructions to the state,
+//      *) Add the newly fused load/store operations to the state,
 //         and also add newly fuse load ops to 'dstLoopOps' to be considered
 //         as fusion dst load ops in another iteration.
 //      *) Remove old src loop nest and its associated state.
@@ -1773,7 +1770,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
 //      is preserved in the fused loop nest.
 //   *) Update graph state to reflect the fusion of 'sibNode' into 'dstNode'.
 //
-// Given a graph where top-level instructions are vertices in the set 'V' and
+// Given a graph where top-level operations are vertices in the set 'V' and
 // edges in the set 'E' are dependences between vertices, this algorithm
 // takes O(V) time for initialization, and has runtime O(V + E).
 //
@@ -1844,7 +1841,7 @@ public:
       // Get 'dstNode' into which to attempt fusion.
       auto *dstNode = mdg->getNode(dstId);
       // Skip if 'dstNode' is not a loop nest.
-      if (!dstNode->inst->isa<AffineForOp>())
+      if (!dstNode->op->isa<AffineForOp>())
         continue;
       // Sink sequential loops in 'dstNode' (and thus raise parallel loops)
       // while preserving relative order. This can increase the maximum loop
@@ -1852,8 +1849,8 @@ public:
       // consumer loop nest.
       sinkSequentialLoops(dstNode);
 
-      SmallVector<Instruction *, 4> loads = dstNode->loads;
-      SmallVector<Instruction *, 4> dstLoadOpInsts;
+      SmallVector<Operation *, 4> loads = dstNode->loads;
+      SmallVector<Operation *, 4> dstLoadOpInsts;
       DenseSet<Value *> visitedMemrefs;
       while (!loads.empty()) {
         // Get memref of load on top of the stack.
@@ -1882,7 +1879,7 @@ public:
           // Get 'srcNode' from which to attempt fusion into 'dstNode'.
           auto *srcNode = mdg->getNode(srcId);
           // Skip if 'srcNode' is not a loop nest.
-          if (!srcNode->inst->isa<AffineForOp>())
+          if (!srcNode->op->isa<AffineForOp>())
             continue;
           // Skip if 'srcNode' has more than one store to any memref.
           // TODO(andydavis) Support fusing multi-output src loop nests.
@@ -1908,9 +1905,9 @@ public:
           if (mdg->getOutEdgeCount(srcNode->id, memref) > maxSrcUserCount)
             continue;
 
-          // Compute an instruction list insertion point for the fused loop
+          // Compute an operation list insertion point for the fused loop
           // nest which preserves dependences.
-          Instruction *insertPointInst =
+          Operation *insertPointInst =
               mdg->getFusedLoopNestInsertionPoint(srcNode->id, dstNode->id);
           if (insertPointInst == nullptr)
             continue;
@@ -1918,7 +1915,7 @@ public:
           // Get unique 'srcNode' store op.
           auto *srcStoreOpInst = srcNode->stores.front();
           // Gather 'dstNode' store ops to 'memref'.
-          SmallVector<Instruction *, 2> dstStoreOpInsts;
+          SmallVector<Operation *, 2> dstStoreOpInsts;
           for (auto *storeOpInst : dstNode->stores)
             if (storeOpInst->cast<StoreOp>().getMemRef() == memref)
               dstStoreOpInsts.push_back(storeOpInst);
@@ -1938,7 +1935,7 @@ public:
             LLVM_DEBUG(llvm::dbgs() << "\tslice loop nest:\n"
                                     << *sliceLoopNest.getOperation() << "\n");
             // Move 'dstAffineForOp' before 'insertPointInst' if needed.
-            auto dstAffineForOp = dstNode->inst->cast<AffineForOp>();
+            auto dstAffineForOp = dstNode->op->cast<AffineForOp>();
             if (insertPointInst != dstAffineForOp.getOperation()) {
               dstAffineForOp.getOperation()->moveBefore(insertPointInst);
             }
@@ -1954,7 +1951,7 @@ public:
             }
             if (!writesToLiveInOrOut) {
               // Create private memref for 'memref' in 'dstAffineForOp'.
-              SmallVector<Instruction *, 4> storesForMemref;
+              SmallVector<Operation *, 4> storesForMemref;
               for (auto *storeOpInst : sliceCollector.storeOpInsts) {
                 if (storeOpInst->cast<StoreOp>().getMemRef() == memref)
                   storesForMemref.push_back(storeOpInst);
@@ -1995,7 +1992,7 @@ public:
             // so it is safe to remove.
             if (writesToLiveInOrOut || mdg->canRemoveNode(srcNode->id)) {
               mdg->removeNode(srcNode->id);
-              srcNode->inst->erase();
+              srcNode->op->erase();
             } else {
               // Add remaining users of 'oldMemRef' back on the worklist (if not
               // already there), as its replacement with a local/private memref
@@ -2034,7 +2031,7 @@ public:
       // Get 'dstNode' into which to attempt fusion.
       auto *dstNode = mdg->getNode(dstId);
       // Skip if 'dstNode' is not a loop nest.
-      if (!dstNode->inst->isa<AffineForOp>())
+      if (!dstNode->op->isa<AffineForOp>())
         continue;
       // Attempt to fuse 'dstNode' with its sibling nodes in the graph.
       fuseWithSiblingNodes(dstNode);
@@ -2051,11 +2048,11 @@ public:
       // TODO(andydavis) Check that 'sibStoreOpInst' post-dominates all other
       // stores to the same memref in 'sibNode' loop nest.
       auto *sibNode = mdg->getNode(sibId);
-      // Compute an instruction list insertion point for the fused loop
+      // Compute an operation list insertion point for the fused loop
       // nest which preserves dependences.
-      assert(sibNode->inst->getBlock() == dstNode->inst->getBlock());
-      Instruction *insertPointInst =
-          sibNode->inst->isBeforeInBlock(dstNode->inst)
+      assert(sibNode->op->getBlock() == dstNode->op->getBlock());
+      Operation *insertPointInst =
+          sibNode->op->isBeforeInBlock(dstNode->op)
               ? mdg->getFusedLoopNestInsertionPoint(sibNode->id, dstNode->id)
               : mdg->getFusedLoopNestInsertionPoint(dstNode->id, sibNode->id);
       if (insertPointInst == nullptr)
@@ -2064,21 +2061,21 @@ public:
       // Check if fusion would be profitable and at what depth.
 
       // Get unique 'sibNode' load op to 'memref'.
-      SmallVector<Instruction *, 2> sibLoadOpInsts;
+      SmallVector<Operation *, 2> sibLoadOpInsts;
       sibNode->getLoadOpsForMemref(memref, &sibLoadOpInsts);
       // Currently findSiblingNodeToFuse searches for siblings with one load.
       assert(sibLoadOpInsts.size() == 1);
-      Instruction *sibLoadOpInst = sibLoadOpInsts[0];
+      Operation *sibLoadOpInst = sibLoadOpInsts[0];
       assert(!sibNode->stores.empty());
       // TODO(andydavis) Choose the store which postdominates all other stores.
       auto *sibStoreOpInst = sibNode->stores.back();
 
       // Gather 'dstNode' load ops to 'memref'.
-      SmallVector<Instruction *, 2> dstLoadOpInsts;
+      SmallVector<Operation *, 2> dstLoadOpInsts;
       dstNode->getLoadOpsForMemref(memref, &dstLoadOpInsts);
 
       // Gather 'dstNode' store ops to 'memref'.
-      SmallVector<Instruction *, 2> dstStoreOpInsts;
+      SmallVector<Operation *, 2> dstStoreOpInsts;
       dstNode->getStoreOpsForMemref(memref, &dstStoreOpInsts);
 
       unsigned bestDstLoopDepth;
@@ -2094,8 +2091,8 @@ public:
       auto sliceLoopNest = mlir::insertBackwardComputationSlice(
           sibLoadOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
       if (sliceLoopNest != nullptr) {
-        auto dstForInst = dstNode->inst->cast<AffineForOp>();
-        // Update instruction position of fused loop nest (if needed).
+        auto dstForInst = dstNode->op->cast<AffineForOp>();
+        // Update operation position of fused loop nest (if needed).
         if (insertPointInst != dstForInst.getOperation()) {
           dstForInst.getOperation()->moveBefore(insertPointInst);
         }
@@ -2140,7 +2137,7 @@ public:
             if (outEdge.id == dstNode->id || outEdge.value != inEdge.value)
               return;
             auto *sibNode = mdg->getNode(sibNodeId);
-            if (!sibNode->inst->isa<AffineForOp>())
+            if (!sibNode->op->isa<AffineForOp>())
               return;
             // Skip if 'outEdge' is not a read-after-write dependence.
             // TODO(andydavis) Remove restrict to single load op restriction.
@@ -2196,7 +2193,7 @@ public:
     }
 
     // Collect dst loop stats after memref privatizaton transformation.
-    auto dstForInst = dstNode->inst->cast<AffineForOp>();
+    auto dstForInst = dstNode->op->cast<AffineForOp>();
     LoopNestStateCollector dstLoopCollector;
     dstLoopCollector.collect(dstForInst.getOperation());
     // Clear and add back loads and stores
@@ -2208,7 +2205,7 @@ public:
     // function.
     if (mdg->getOutEdgeCount(sibNode->id) == 0) {
       mdg->removeNode(sibNode->id);
-      sibNode->inst->cast<AffineForOp>().erase();
+      sibNode->op->cast<AffineForOp>().erase();
     }
   }
 
@@ -2218,13 +2215,13 @@ public:
       if (pair.second > 0)
         continue;
       auto *memref = pair.first;
-      // Skip if there exist other uses (return instruction or function calls).
+      // Skip if there exist other uses (return operation or function calls).
       if (!memref->use_empty())
         continue;
       // Use list expected to match the dep graph info.
-      auto *inst = memref->getDefiningOp();
-      if (inst && inst->isa<AllocOp>())
-        inst->erase();
+      auto *op = memref->getDefiningOp();
+      if (op && op->isa<AllocOp>())
+        op->erase();
     }
   }
 };

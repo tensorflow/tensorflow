@@ -82,7 +82,7 @@ FunctionPassBase *createLoopFusionPass(unsigned fastMemorySpace = 0,
 /// memory hierarchy.
 FunctionPassBase *createPipelineDataTransferPass();
 
-/// Lowers affine control flow instructions (ForStmt, IfStmt and AffineApplyOp)
+/// Lowers affine control flow operations (ForStmt, IfStmt and AffineApplyOp)
 /// to equivalent lower-level constructs (flow of basic blocks and arithmetic
 /// primitives).
 FunctionPassBase *createLowerAffinePass();

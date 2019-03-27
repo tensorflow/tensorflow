@@ -34,10 +34,10 @@ class Function;
 class FuncBuilder;
 class Value;
 
-/// Unrolls this for instruction completely if the trip count is known to be
+/// Unrolls this for operation completely if the trip count is known to be
 /// constant. Returns failure otherwise.
 LogicalResult loopUnrollFull(AffineForOp forOp);
-/// Unrolls this for instruction by the specified unroll factor. Returns failure
+/// Unrolls this for operation by the specified unroll factor. Returns failure
 /// if the loop cannot be unrolled either due to restrictions or due to invalid
 /// unroll factors.
 LogicalResult loopUnrollByFactor(AffineForOp forOp, uint64_t unrollFactor);
@@ -73,8 +73,8 @@ void getCleanupLoopLowerBound(AffineForOp forOp, unsigned unrollFactor,
                               SmallVectorImpl<Value *> *operands,
                               FuncBuilder *builder);
 
-/// Skew the instructions in the body of a 'affine.for' instruction with the
-/// specified instruction-wise shifts. The shifts are with respect to the
+/// Skew the operations in the body of a 'affine.for' operation with the
+/// specified operation-wise shifts. The shifts are with respect to the
 /// original execution order, and are multiplied by the loop 'step' before being
 /// applied.
 LLVM_NODISCARD

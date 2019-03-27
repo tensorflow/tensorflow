@@ -73,8 +73,8 @@ bool replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                               ArrayRef<Value *> extraIndices = {},
                               AffineMap indexRemap = AffineMap(),
                               ArrayRef<Value *> extraOperands = {},
-                              Instruction *domInstFilter = nullptr,
-                              Instruction *postDomInstFilter = nullptr);
+                              Operation *domInstFilter = nullptr,
+                              Operation *postDomInstFilter = nullptr);
 
 /// Creates and inserts into 'builder' a new AffineApplyOp, with the number of
 /// its results equal to the number of operands, as a composition
@@ -83,13 +83,13 @@ bool replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 /// these will also be collected into a single (multi-result) affine apply op.
 /// The final results of the composed AffineApplyOp are returned in output
 /// parameter 'results'. Returns the affine apply op created.
-Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
-                                         ArrayRef<Value *> operands,
-                                         ArrayRef<Instruction *> affineApplyOps,
-                                         SmallVectorImpl<Value *> *results);
+Operation *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
+                                       ArrayRef<Value *> operands,
+                                       ArrayRef<Operation *> affineApplyOps,
+                                       SmallVectorImpl<Value *> *results);
 
-/// Given an instruction, inserts one or more single result affine apply
-/// operations, results of which are exclusively used by this instruction.
+/// Given an operation, inserts one or more single result affine apply
+/// operations, results of which are exclusively used by this operation.
 /// The operands of these newly created affine apply ops are
 /// guaranteed to be loop iterators or terminal symbols of a function.
 ///
@@ -117,13 +117,13 @@ Instruction *createComposedAffineApplyOp(FuncBuilder *builder, Location loc,
 ///      (i.e., there was no affine computation slice to create).
 ///   2. If all the affine.apply op's supplying operands to this opInst did not
 ///      have any uses other than those in this opInst.
-void createAffineComputationSlice(Instruction *opInst,
+void createAffineComputationSlice(Operation *opInst,
                                   SmallVectorImpl<AffineApplyOp> *sliceOps);
 
 /// Replaces (potentially nested) function attributes in the operation "op"
 /// with those specified in "remappingTable".
 void remapFunctionAttrs(
-    Instruction &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
+    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable);
 
 /// Replaces (potentially nested) function attributes all operations of the
 /// Function "fn" with those specified in "remappingTable".

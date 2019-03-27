@@ -123,10 +123,10 @@ LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
 
   // Replaces all IV uses to its single iteration value.
   auto *iv = forOp.getInductionVar();
-  Instruction *forInst = forOp.getOperation();
+  Operation *op = forOp.getOperation();
   if (!iv->use_empty()) {
     if (forOp.hasConstantLowerBound()) {
-      auto *mlFunc = forInst->getFunction();
+      auto *mlFunc = op->getFunction();
       FuncBuilder topBuilder(mlFunc);
       auto constOp = topBuilder.create<ConstantIndexOp>(
           forOp.getLoc(), forOp.getConstantLowerBound());
@@ -134,28 +134,28 @@ LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
     } else {
       AffineBound lb = forOp.getLowerBound();
       SmallVector<Value *, 4> lbOperands(lb.operand_begin(), lb.operand_end());
-      FuncBuilder builder(forInst->getBlock(), Block::iterator(forInst));
+      FuncBuilder builder(op->getBlock(), Block::iterator(op));
       if (lb.getMap() == builder.getDimIdentityMap()) {
         // No need of generating an affine.apply.
         iv->replaceAllUsesWith(lbOperands[0]);
       } else {
         auto affineApplyOp = builder.create<AffineApplyOp>(
-            forInst->getLoc(), lb.getMap(), lbOperands);
+            op->getLoc(), lb.getMap(), lbOperands);
         iv->replaceAllUsesWith(affineApplyOp);
       }
     }
   }
-  // Move the loop body instructions, except for terminator, to the loop's
+  // Move the loop body operations, except for terminator, to the loop's
   // containing block.
-  auto *block = forInst->getBlock();
+  auto *block = op->getBlock();
   forOp.getBody()->getOperations().back().erase();
-  block->getOperations().splice(Block::iterator(forInst),
+  block->getOperations().splice(Block::iterator(op),
                                 forOp.getBody()->getOperations());
   forOp.erase();
   return success();
 }
 
-/// Promotes all single iteration for inst's in the Function, i.e., moves
+/// Promotes all single iteration for op's in the Function, i.e., moves
 /// their body into the containing Block.
 void mlir::promoteSingleIterationLoops(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.
@@ -163,16 +163,16 @@ void mlir::promoteSingleIterationLoops(Function *f) {
       [](AffineForOp forOp) { promoteIfSingleIteration(forOp); });
 }
 
-/// Generates a 'affine.for' inst with the specified lower and upper bounds
-/// while generating the right IV remappings for the shifted instructions. The
-/// instruction blocks that go into the loop are specified in instGroupQueue
+/// Generates a 'affine.for' op with the specified lower and upper bounds
+/// while generating the right IV remappings for the shifted operations. The
+/// operation blocks that go into the loop are specified in instGroupQueue
 /// starting from the specified offset, and in that order; the first element of
-/// the pair specifies the shift applied to that group of instructions; note
+/// the pair specifies the shift applied to that group of operations; note
 /// that the shift is multiplied by the loop step before being applied. Returns
 /// nullptr if the generated loop simplifies to a single iteration one.
 static AffineForOp
 generateLoop(AffineMap lbMap, AffineMap ubMap,
-             const std::vector<std::pair<uint64_t, ArrayRef<Instruction *>>>
+             const std::vector<std::pair<uint64_t, ArrayRef<Operation *>>>
                  &instGroupQueue,
              unsigned offset, AffineForOp srcForInst, FuncBuilder *b) {
   SmallVector<Value *, 4> lbOperands(srcForInst.getLowerBoundOperands());
@@ -194,8 +194,8 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
        it != e; ++it) {
     uint64_t shift = it->first;
     auto insts = it->second;
-    // All 'same shift' instructions get added with their operands being
-    // remapped to results of cloned instructions, and their IV used remapped.
+    // All 'same shift' operations get added with their operands being
+    // remapped to results of cloned operations, and their IV used remapped.
     // Generate the remapping if the shift is not zero: remappedIV = newIV -
     // shift.
     if (!srcIV->use_empty() && shift != 0) {
@@ -208,9 +208,9 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     } else {
       operandMap.map(srcIV, loopChunkIV);
     }
-    for (auto *inst : insts) {
-      if (!inst->isa<AffineTerminatorOp>())
-        bodyBuilder.clone(*inst, operandMap);
+    for (auto *op : insts) {
+      if (!op->isa<AffineTerminatorOp>())
+        bodyBuilder.clone(*op, operandMap);
     }
   };
   if (succeeded(promoteIfSingleIteration(loopChunk)))
@@ -218,17 +218,17 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
   return loopChunk;
 }
 
-/// Skew the instructions in the body of a 'affine.for' instruction with the
-/// specified instruction-wise shifts. The shifts are with respect to the
+/// Skew the operations in the body of a 'affine.for' operation with the
+/// specified operation-wise shifts. The shifts are with respect to the
 /// original execution order, and are multiplied by the loop 'step' before being
-/// applied. A shift of zero for each instruction will lead to no change.
-// The skewing of instructions with respect to one another can be used for
+/// applied. A shift of zero for each operation will lead to no change.
+// The skewing of operations with respect to one another can be used for
 // example to allow overlap of asynchronous operations (such as DMA
-// communication) with computation, or just relative shifting of instructions
+// communication) with computation, or just relative shifting of operations
 // for better register reuse, locality or parallelism. As such, the shifts are
-// typically expected to be at most of the order of the number of instructions.
+// typically expected to be at most of the order of the number of operations.
 // This method should not be used as a substitute for loop distribution/fission.
-// This method uses an algorithm// in time linear in the number of instructions
+// This method uses an algorithm// in time linear in the number of operations
 // in the body of the for loop - (using the 'sweep line' paradigm). This method
 // asserts preservation of SSA dominance. A check for that as well as that for
 // memory-based depedence preservation check rests with the users of this
@@ -267,14 +267,14 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
     return success();
   }
 
-  // An array of instruction groups sorted by shift amount; each group has all
-  // instructions with the same shift in the order in which they appear in the
-  // body of the 'affine.for' inst.
-  std::vector<std::vector<Instruction *>> sortedInstGroups(maxShift + 1);
+  // An array of operation groups sorted by shift amount; each group has all
+  // operations with the same shift in the order in which they appear in the
+  // body of the 'affine.for' op.
+  std::vector<std::vector<Operation *>> sortedInstGroups(maxShift + 1);
   unsigned pos = 0;
-  for (auto &inst : *forOp.getBody()) {
+  for (auto &op : *forOp.getBody()) {
     auto shift = shifts[pos++];
-    sortedInstGroups[shift].push_back(&inst);
+    sortedInstGroups[shift].push_back(&op);
   }
 
   // Unless the shifts have a specific pattern (which actually would be the
@@ -287,8 +287,8 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
 
   // Do a sweep over the sorted shifts while storing open groups in a
   // vector, and generating loop portions as necessary during the sweep. A block
-  // of instructions is paired with its shift.
-  std::vector<std::pair<uint64_t, ArrayRef<Instruction *>>> instGroupQueue;
+  // of operations is paired with its shift.
+  std::vector<std::pair<uint64_t, ArrayRef<Operation *>>> instGroupQueue;
 
   auto origLbMap = forOp.getLowerBoundMap();
   uint64_t lbShift = 0;
@@ -302,14 +302,14 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
              "Queue expected to be empty when the first block is found");
       // The interval for which the loop needs to be generated here is:
       // [lbShift, min(lbShift + tripCount, d)) and the body of the
-      // loop needs to have all instructions in instQueue in that order.
+      // loop needs to have all operations in instQueue in that order.
       AffineForOp res;
       if (lbShift + tripCount * step < d * step) {
         res = generateLoop(
             b.getShiftedAffineMap(origLbMap, lbShift),
             b.getShiftedAffineMap(origLbMap, lbShift + tripCount * step),
             instGroupQueue, 0, forOp, &b);
-        // Entire loop for the queued inst groups generated, empty it.
+        // Entire loop for the queued op groups generated, empty it.
         instGroupQueue.clear();
         lbShift += tripCount * step;
       } else {
@@ -325,11 +325,11 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
       // Start of first interval.
       lbShift = d * step;
     }
-    // Augment the list of instructions that get into the current open interval.
+    // Augment the list of operations that get into the current open interval.
     instGroupQueue.push_back({d, sortedInstGroups[d]});
   }
 
-  // Those instructions groups left in the queue now need to be processed (FIFO)
+  // Those operations groups left in the queue now need to be processed (FIFO)
   // and their loops completed.
   for (unsigned i = 0, e = instGroupQueue.size(); i < e; ++i) {
     uint64_t ubShift = (instGroupQueue[i].first + tripCount) * step;
@@ -341,7 +341,7 @@ LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
       prologue = epilogue;
   }
 
-  // Erase the original for inst.
+  // Erase the original for op.
   forOp.erase();
 
   if (unrollPrologueEpilogue && prologue)
@@ -407,10 +407,10 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
     return failure();
 
   // Generate the cleanup loop if trip count isn't a multiple of unrollFactor.
-  Instruction *forInst = forOp.getOperation();
+  Operation *op = forOp.getOperation();
   if (getLargestDivisorOfTripCount(forOp) % unrollFactor != 0) {
-    FuncBuilder builder(forInst->getBlock(), ++Block::iterator(forInst));
-    auto cleanupForInst = builder.clone(*forInst)->cast<AffineForOp>();
+    FuncBuilder builder(op->getBlock(), ++Block::iterator(op));
+    auto cleanupForInst = builder.clone(*op)->cast<AffineForOp>();
     AffineMap cleanupMap;
     SmallVector<Value *, 4> cleanupOperands;
     getCleanupLoopLowerBound(forOp, unrollFactor, &cleanupMap, &cleanupOperands,
@@ -435,7 +435,7 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
   // 'forOp'.
   FuncBuilder builder = forOp.getBodyBuilder();
 
-  // Keep a pointer to the last non-terminator instruction in the original block
+  // Keep a pointer to the last non-terminator operation in the original block
   // so that we know what to clone (since we are doing this in-place).
   Block::iterator srcBlockEnd = std::prev(forOp.getBody()->end(), 2);
 
@@ -530,17 +530,17 @@ static void cloneLoopBodyInto(AffineForOp forOp, Value *oldIv,
   BlockAndValueMapping map;
   map.map(oldIv, newForOp.getInductionVar());
   FuncBuilder b = newForOp.getBodyBuilder();
-  for (auto &inst : *forOp.getBody()) {
+  for (auto &op : *forOp.getBody()) {
     // Step over newForOp in case it is nested under forOp.
-    if (&inst == newForOp.getOperation()) {
+    if (&op == newForOp.getOperation()) {
       continue;
     }
-    if (inst.isa<AffineTerminatorOp>()) {
+    if (op.isa<AffineTerminatorOp>()) {
       continue;
     }
-    auto *instClone = b.clone(inst, map);
+    auto *instClone = b.clone(op, map);
     unsigned idx = 0;
-    for (auto r : inst.getResults()) {
+    for (auto r : op.getResults()) {
       // Since we do a forward pass over the body, we iteratively augment
       // the `map` with everything we clone.
       map.map(r, instClone->getResult(idx++));
@@ -567,8 +567,8 @@ stripmineSink(AffineForOp forOp, uint64_t factor,
   auto scaledStep = originalStep * factor;
   forOp.setStep(scaledStep);
 
-  auto *forInst = forOp.getOperation();
-  FuncBuilder b(forInst->getBlock(), ++Block::iterator(forInst));
+  auto *op = forOp.getOperation();
+  FuncBuilder b(op->getBlock(), ++Block::iterator(op));
 
   // Lower-bound map creation.
   auto lbMap = forOp.getLowerBoundMap();
@@ -588,11 +588,11 @@ stripmineSink(AffineForOp forOp, uint64_t factor,
     auto newForOp = b.create<AffineForOp>(t.getLoc(), lbOperands, lbMap,
                                           ubOperands, ubMap, originalStep);
     cloneLoopBodyInto(t, forOp.getInductionVar(), newForOp);
-    // Remove all instructions from `t` except `newForOp`.
+    // Remove all operations from `t` except `newForOp`.
     auto rit = ++newForOp.getOperation()->getReverseIterator();
     auto re = t.getBody()->rend();
-    for (auto &inst : llvm::make_early_inc_range(llvm::make_range(rit, re))) {
-      inst.erase();
+    for (auto &op : llvm::make_early_inc_range(llvm::make_range(rit, re))) {
+      op.erase();
     }
     innerLoops.push_back(newForOp);
   }

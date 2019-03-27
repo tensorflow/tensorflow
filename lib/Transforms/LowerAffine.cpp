@@ -32,7 +32,7 @@
 using namespace mlir;
 
 namespace {
-// Visit affine expressions recursively and build the sequence of instructions
+// Visit affine expressions recursively and build the sequence of operations
 // that correspond to it.  Visitation functions return an Value of the
 // expression subtree they visited or `nullptr` on error.
 class AffineApplyExpander
@@ -102,7 +102,7 @@ public:
   // Floor division operation (rounds towards negative infinity).
   //
   // For positive divisors, it can be implemented without branching and with a
-  // single division instruction as
+  // single division operation as
   //
   //        a floordiv b =
   //            let negative = a < 0 in
@@ -144,7 +144,7 @@ public:
   // Ceiling division operation (rounds towards positive infinity).
   //
   // For positive divisors, it can be implemented without branching and with a
-  // single division instruction as
+  // single division operation as
   //
   //     a ceildiv b =
   //         let negative = a <= 0 in
@@ -213,7 +213,7 @@ private:
 };
 } // namespace
 
-// Create a sequence of instructions that implement the `expr` applied to the
+// Create a sequence of operations that implement the `expr` applied to the
 // given dimension and symbol values.
 static mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
                                      AffineExpr expr,
@@ -222,7 +222,7 @@ static mlir::Value *expandAffineExpr(FuncBuilder *builder, Location loc,
   return AffineApplyExpander(builder, dimValues, symbolValues, loc).visit(expr);
 }
 
-// Create a sequence of instructions that implement the `affineMap` applied to
+// Create a sequence of operations that implement the `affineMap` applied to
 // the given `operands` (as it it were an AffineApplyOp).
 Optional<SmallVector<Value *, 8>> static expandAffineMap(
     FuncBuilder *builder, Location loc, AffineMap affineMap,
@@ -395,16 +395,16 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   return false;
 }
 
-// Convert an "if" instruction into a flow of basic blocks.
+// Convert an "if" operation into a flow of basic blocks.
 //
-// Create an SESE region for the if instruction (including its "then" and
-// optional "else" instruction blocks) and append it to the end of the current
+// Create an SESE region for the if operation (including its "then" and
+// optional "else" operation blocks) and append it to the end of the current
 // region.  The conditional region consists of a sequence of condition-checking
 // blocks that implement the short-circuit scheme, followed by a "then" SESE
 // region and an "else" SESE region, and the continuation block that
-// post-dominates all blocks of the "if" instruction.  The flow of blocks that
+// post-dominates all blocks of the "if" operation.  The flow of blocks that
 // correspond to the "then" and "else" clauses are constructed recursively,
-// enabling easy nesting of "if" instructions and if-then-else-if chains.
+// enabling easy nesting of "if" operations and if-then-else-if chains.
 //
 //      +--------------------------------+
 //      | <code before the AffineIfOp>   |
@@ -465,12 +465,12 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   auto *continueBlock = condBlock->splitBlock(ifInst);
 
   // Create a block for the 'then' code, inserting it between the cond and
-  // continue blocks.  Move the instructions over from the AffineIfOp and add a
+  // continue blocks.  Move the operations over from the AffineIfOp and add a
   // branch to the continuation point.
   Block *thenBlock = new Block();
   thenBlock->insertBefore(continueBlock);
 
-  // If the 'then' block is not empty, then splice the instructions except for
+  // If the 'then' block is not empty, then splice the operations except for
   // the terminator.
   auto &oldThenBlocks = ifOp.getThenBlocks();
   if (!oldThenBlocks.empty()) {
@@ -570,7 +570,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
 }
 
 // Convert an "affine.apply" operation into a sequence of arithmetic
-// instructions using the StandardOps dialect.  Return true on error.
+// operations using the StandardOps dialect.  Return true on error.
 bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
   FuncBuilder builder(op.getOperation());
   auto maybeExpandedMap =
@@ -590,12 +590,12 @@ bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
 
 // Entry point of the function convertor.
 //
-// Conversion is performed by recursively visiting instructions of a Function.
+// Conversion is performed by recursively visiting operations of a Function.
 // It reasons in terms of single-entry single-exit (SESE) regions that are not
 // materialized in the code.  Instead, the pointer to the last block of the
 // region is maintained throughout the conversion as the insertion point of the
 // IR builder since we never change the first block after its creation.  "Block"
-// instructions such as loops and branches create new SESE regions for their
+// operations such as loops and branches create new SESE regions for their
 // bodies, and surround them with additional basic blocks for the control flow.
 // Individual operations are simply appended to the end of the last basic block
 // of the current region.  The SESE invariant allows us to easily handle nested
@@ -607,32 +607,32 @@ bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
 // corresponding Value that has been defined previously.  The value flow
 // starts with function arguments converted to basic block arguments.
 void LowerAffinePass::runOnFunction() {
-  SmallVector<Instruction *, 8> instsToRewrite;
+  SmallVector<Operation *, 8> instsToRewrite;
 
-  // Collect all the For instructions as well as AffineIfOps and AffineApplyOps.
+  // Collect all the For operations as well as AffineIfOps and AffineApplyOps.
   // We do this as a prepass to avoid invalidating the walker with our rewrite.
-  getFunction().walk([&](Instruction *inst) {
-    if (inst->isa<AffineApplyOp>() || inst->isa<AffineForOp>() ||
-        inst->isa<AffineIfOp>())
-      instsToRewrite.push_back(inst);
+  getFunction().walk([&](Operation *op) {
+    if (op->isa<AffineApplyOp>() || op->isa<AffineForOp>() ||
+        op->isa<AffineIfOp>())
+      instsToRewrite.push_back(op);
   });
 
-  // Rewrite all of the ifs and fors.  We walked the instructions in preorder,
+  // Rewrite all of the ifs and fors.  We walked the operations in preorder,
   // so we know that we will rewrite them in the same order.
-  for (auto *inst : instsToRewrite) {
-    if (auto ifOp = inst->dyn_cast<AffineIfOp>()) {
+  for (auto *op : instsToRewrite) {
+    if (auto ifOp = op->dyn_cast<AffineIfOp>()) {
       if (lowerAffineIf(ifOp))
         return signalPassFailure();
-    } else if (auto forOp = inst->dyn_cast<AffineForOp>()) {
+    } else if (auto forOp = op->dyn_cast<AffineForOp>()) {
       if (lowerAffineFor(forOp))
         return signalPassFailure();
-    } else if (lowerAffineApply(inst->cast<AffineApplyOp>())) {
+    } else if (lowerAffineApply(op->cast<AffineApplyOp>())) {
       return signalPassFailure();
     }
   }
 }
 
-/// Lowers If and For instructions within a function into their lower level CFG
+/// Lowers If and For operations within a function into their lower level CFG
 /// equivalent blocks.
 FunctionPassBase *mlir::createLowerAffinePass() {
   return new LowerAffinePass();
@@ -640,4 +640,4 @@ FunctionPassBase *mlir::createLowerAffinePass() {
 
 static PassRegistration<LowerAffinePass>
     pass("lower-affine",
-         "Lower If, For, AffineApply instructions to primitive equivalents");
+         "Lower If, For, AffineApply operations to primitive equivalents");

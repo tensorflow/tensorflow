@@ -77,7 +77,7 @@ static llvm::cl::opt<bool> clTestNormalizeMaps(
     llvm::cl::desc(
         "Enable testing the normalization of AffineAffineApplyOp "
         "where each AffineAffineApplyOp in the composition is a single output "
-        "instruction."),
+        "operation."),
     llvm::cl::cat(clOptionsCategory));
 
 namespace {
@@ -104,16 +104,16 @@ void VectorizerTestPass::testVectorShapeRatio() {
                                 clTestVectorShapeRatio.end());
   auto subVectorType =
       VectorType::get(shape, FloatType::getF32(f->getContext()));
-  // Only filter instructions that operate on a strict super-vector and have one
+  // Only filter operations that operate on a strict super-vector and have one
   // return. This makes testing easier.
-  auto filter = [subVectorType](Instruction &inst) {
+  auto filter = [subVectorType](Operation &op) {
     assert(subVectorType.getElementType() ==
                FloatType::getF32(subVectorType.getContext()) &&
            "Only f32 supported for now");
-    if (!matcher::operatesOnSuperVectors(inst, subVectorType)) {
+    if (!matcher::operatesOnSuperVectors(op, subVectorType)) {
       return false;
     }
-    if (inst.getNumResults() != 1) {
+    if (op.getNumResults() != 1) {
       return false;
     }
     return true;
@@ -138,10 +138,10 @@ void VectorizerTestPass::testVectorShapeRatio() {
   }
 }
 
-static std::string toString(Instruction *inst) {
+static std::string toString(Operation *op) {
   std::string res;
   llvm::raw_string_ostream os(res);
-  inst->print(os);
+  op->print(os);
   return res;
 }
 
@@ -150,9 +150,9 @@ static NestedPattern patternTestSlicingOps() {
   constexpr auto kTestSlicingOpName = "slicing-test-op";
   using functional::map;
   using matcher::Op;
-  // Match all OpInstructions with the kTestSlicingOpName name.
-  auto filter = [](Instruction &inst) {
-    return inst.getName().getStringRef() == kTestSlicingOpName;
+  // Match all operations with the kTestSlicingOpName name.
+  auto filter = [](Operation &op) {
+    return op.getName().getStringRef() == kTestSlicingOpName;
   };
   return Op(filter);
 }
@@ -163,7 +163,7 @@ void VectorizerTestPass::testBackwardSlicing() {
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
-    SetVector<Instruction *> backwardSlice;
+    SetVector<Operation *> backwardSlice;
     getBackwardSlice(m.getMatchedOperation(), &backwardSlice);
     auto strs = map(toString, backwardSlice);
     outs() << "\nmatched: " << *m.getMatchedOperation()
@@ -179,7 +179,7 @@ void VectorizerTestPass::testForwardSlicing() {
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
-    SetVector<Instruction *> forwardSlice;
+    SetVector<Operation *> forwardSlice;
     getForwardSlice(m.getMatchedOperation(), &forwardSlice);
     auto strs = map(toString, forwardSlice);
     outs() << "\nmatched: " << *m.getMatchedOperation()
@@ -196,7 +196,7 @@ void VectorizerTestPass::testSlicing() {
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
-    SetVector<Instruction *> staticSlice = getSlice(m.getMatchedOperation());
+    SetVector<Operation *> staticSlice = getSlice(m.getMatchedOperation());
     auto strs = map(toString, staticSlice);
     outs() << "\nmatched: " << *m.getMatchedOperation() << " static slice: ";
     for (const auto &s : strs) {
@@ -205,8 +205,8 @@ void VectorizerTestPass::testSlicing() {
   }
 }
 
-static bool customOpWithAffineMapAttribute(Instruction &inst) {
-  return inst.getName().getStringRef() ==
+static bool customOpWithAffineMapAttribute(Operation &op) {
+  return op.getName().getStringRef() ==
          VectorizerTestPass::kTestAffineMapOpName;
 }
 
@@ -233,12 +233,10 @@ void VectorizerTestPass::testComposeMaps() {
   simplifyAffineMap(res).print(outs() << "\nComposed map: ");
 }
 
-static bool affineApplyOp(Instruction &inst) {
-  return inst.isa<AffineApplyOp>();
-}
+static bool affineApplyOp(Operation &op) { return op.isa<AffineApplyOp>(); }
 
-static bool singleResultAffineApplyOpWithoutUses(Instruction &inst) {
-  auto app = inst.dyn_cast<AffineApplyOp>();
+static bool singleResultAffineApplyOpWithoutUses(Operation &op) {
+  auto app = op.dyn_cast<AffineApplyOp>();
   return app && app.use_empty();
 }
 

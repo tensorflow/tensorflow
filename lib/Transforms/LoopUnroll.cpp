@@ -79,7 +79,7 @@ struct LoopUnroll : public FunctionPass<LoopUnroll> {
 
   void runOnFunction() override;
 
-  /// Unroll this for inst. Returns failure if nothing was done.
+  /// Unroll this for op. Returns failure if nothing was done.
   LogicalResult runOnAffineForOp(AffineForOp forOp);
 
   static const unsigned kDefaultUnrollFactor = 4;
@@ -106,7 +106,7 @@ void LoopUnroll::runOnFunction() {
         hasInnerLoops |= walkPostOrder(&(*Start++));
       return hasInnerLoops;
     }
-    bool walkPostOrder(Instruction *opInst) {
+    bool walkPostOrder(Operation *opInst) {
       bool hasInnerLoops = false;
       for (auto &region : opInst->getRegions())
         for (auto &block : region)
@@ -158,7 +158,7 @@ void LoopUnroll::runOnFunction() {
   }
 }
 
-/// Unrolls a 'affine.for' inst. Returns success if the loop was unrolled,
+/// Unrolls a 'affine.for' op. Returns success if the loop was unrolled,
 /// failure otherwise. The default unroll factor is 4.
 LogicalResult LoopUnroll::runOnAffineForOp(AffineForOp forOp) {
   // Use the function callback if one was provided.

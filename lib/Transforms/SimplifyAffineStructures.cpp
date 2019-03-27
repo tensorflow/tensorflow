@@ -32,7 +32,7 @@ using namespace mlir;
 
 namespace {
 
-/// Simplifies all affine expressions appearing in the operation instructions of
+/// Simplifies all affine expressions appearing in the operations of
 /// the Function. This is mainly to test the simplifyAffineExpr method.
 /// TODO(someone): This should just be defined as a canonicalization pattern
 /// on AffineMap and driven from the existing canonicalization pass.
@@ -41,9 +41,9 @@ struct SimplifyAffineStructures
   void runOnFunction() override;
 
   /// Utility to simplify an affine attribute and update its entry in the parent
-  /// instruction if necessary.
+  /// operation if necessary.
   template <typename AttributeT>
-  void simplifyAndUpdateAttribute(Instruction *inst, Identifier name,
+  void simplifyAndUpdateAttribute(Operation *op, Identifier name,
                                   AttributeT attr) {
     auto &simplified = simplifiedAttributes[attr];
     if (simplified == attr)
@@ -62,7 +62,7 @@ struct SimplifyAffineStructures
     }
 
     // Simplification was successful, so update the attribute.
-    inst->setAttr(name, simplified);
+    op->setAttr(name, simplified);
   }
 
   /// Performs basic integer set simplifications. Checks if it's empty, and
@@ -93,7 +93,7 @@ FunctionPassBase *mlir::createSimplifyAffineStructuresPass() {
 
 void SimplifyAffineStructures::runOnFunction() {
   simplifiedAttributes.clear();
-  getFunction().walk([&](Instruction *opInst) {
+  getFunction().walk([&](Operation *opInst) {
     for (auto attr : opInst->getAttrs()) {
       if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>())
         simplifyAndUpdateAttribute(opInst, attr.first, mapAttr);

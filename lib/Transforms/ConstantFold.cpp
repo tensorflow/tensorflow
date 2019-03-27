@@ -31,9 +31,9 @@ struct ConstantFold : public FunctionPass<ConstantFold> {
   // All constants in the function post folding.
   SmallVector<Value *, 8> existingConstants;
   // Operations that were folded and that need to be erased.
-  std::vector<Instruction *> opInstsToErase;
+  std::vector<Operation *> opInstsToErase;
 
-  void foldInstruction(Instruction *op);
+  void foldOperation(Operation *op);
   void runOnFunction() override;
 };
 } // end anonymous namespace
@@ -41,7 +41,7 @@ struct ConstantFold : public FunctionPass<ConstantFold> {
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.
 ///
-void ConstantFold::foldInstruction(Instruction *op) {
+void ConstantFold::foldOperation(Operation *op) {
   // If this operation is already a constant, just remember it for cleanup
   // later, and don't try to fold it.
   if (auto constant = op->dyn_cast<ConstantOp>()) {
@@ -97,15 +97,15 @@ void ConstantFold::runOnFunction() {
   existingConstants.clear();
   opInstsToErase.clear();
 
-  getFunction().walk([&](Instruction *inst) { foldInstruction(inst); });
+  getFunction().walk([&](Operation *op) { foldOperation(op); });
 
   // At this point, these operations are dead, remove them.
   // TODO: This is assuming that all constant foldable operations have no
   // side effects.  When we have side effect modeling, we should verify that
   // the operation is effect-free before we remove it.  Until then this is
   // close enough.
-  for (auto *inst : opInstsToErase) {
-    inst->erase();
+  for (auto *op : opInstsToErase) {
+    op->erase();
   }
 
   // By the time we are done, we may have simplified a bunch of code, leaving

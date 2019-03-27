@@ -38,11 +38,11 @@ using namespace mlir;
 
 namespace {
 // TODO(riverriddle) Handle commutative operations.
-struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
-  static unsigned getHashValue(const Instruction *opC) {
-    auto *op = const_cast<Instruction *>(opC);
+struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
+  static unsigned getHashValue(const Operation *opC) {
+    auto *op = const_cast<Operation *>(opC);
     // Hash the operations based upon their:
-    //   - Instruction Name
+    //   - Operation Name
     //   - Attributes
     //   - Result Types
     //   - Operands
@@ -51,9 +51,9 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
         hash_combine_range(op->result_type_begin(), op->result_type_end()),
         hash_combine_range(op->operand_begin(), op->operand_end()));
   }
-  static bool isEqual(const Instruction *lhsC, const Instruction *rhsC) {
-    auto *lhs = const_cast<Instruction *>(lhsC);
-    auto *rhs = const_cast<Instruction *>(rhsC);
+  static bool isEqual(const Operation *lhsC, const Operation *rhsC) {
+    auto *lhs = const_cast<Operation *>(lhsC);
+    auto *rhs = const_cast<Operation *>(rhsC);
     if (lhs == rhs)
       return true;
     if (lhs == getTombstoneKey() || lhs == getEmptyKey() ||
@@ -90,8 +90,8 @@ struct CSE : public FunctionPass<CSE> {
   /// Shared implementation of operation elimination and scoped map definitions.
   using AllocatorTy = llvm::RecyclingAllocator<
       llvm::BumpPtrAllocator,
-      llvm::ScopedHashTableVal<Instruction *, Instruction *>>;
-  using ScopedMapTy = llvm::ScopedHashTable<Instruction *, Instruction *,
+      llvm::ScopedHashTableVal<Operation *, Operation *>>;
+  using ScopedMapTy = llvm::ScopedHashTable<Operation *, Operation *,
                                             SimpleOperationInfo, AllocatorTy>;
 
   /// Represents a single entry in the depth first traversal of a CFG.
@@ -112,7 +112,7 @@ struct CSE : public FunctionPass<CSE> {
 
   /// Attempt to eliminate a redundant operation. Returns true if the operation
   /// was marked for removal, false otherwise.
-  bool simplifyOperation(Instruction *op);
+  bool simplifyOperation(Operation *op);
 
   void simplifyBlock(DominanceInfo &domInfo, Block *bb);
   void simplifyRegion(DominanceInfo &domInfo, Region &region);
@@ -124,12 +124,12 @@ private:
   ScopedMapTy knownValues;
 
   /// Operations marked as dead and to be erased.
-  std::vector<Instruction *> opsToErase;
+  std::vector<Operation *> opsToErase;
 };
 } // end anonymous namespace
 
 /// Attempt to eliminate a redundant operation.
-bool CSE::simplifyOperation(Instruction *op) {
+bool CSE::simplifyOperation(Operation *op) {
   // Don't simplify operations with nested blocks. We don't currently model
   // equality comparisons correctly among other things. It is also unclear
   // whether we would want to CSE such operations.

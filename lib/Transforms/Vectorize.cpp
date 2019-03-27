@@ -166,7 +166,7 @@ using namespace mlir;
 /// references along fastest varying dimensions and loops with recursive nested
 /// patterns capturing imperfectly-nested loop nests; the SLP vectorizer, on
 /// the other hand, performs flat pattern matching inside a single unrolled loop
-/// body and stitches together pieces of load and store instructions into full
+/// body and stitches together pieces of load and store operations into full
 /// 1-D vectors. We envision that the SLP vectorizer is a good way to capture
 /// innermost loop, control-flow dependent patterns that super-vectorization may
 /// not be able to capture easily. In other words, super-vectorization does not
@@ -662,13 +662,12 @@ namespace {
 
 struct VectorizationStrategy {
   SmallVector<int64_t, 8> vectorSizes;
-  DenseMap<Instruction *, unsigned> loopToVectorDim;
+  DenseMap<Operation *, unsigned> loopToVectorDim;
 };
 
 } // end anonymous namespace
 
-static void vectorizeLoopIfProfitable(Instruction *loop,
-                                      unsigned depthInPattern,
+static void vectorizeLoopIfProfitable(Operation *loop, unsigned depthInPattern,
                                       unsigned patternDepth,
                                       VectorizationStrategy *strategy) {
   assert(patternDepth > depthInPattern &&
@@ -716,23 +715,23 @@ static LogicalResult analyzeProfitability(ArrayRef<NestedMatch> matches,
 namespace {
 
 struct VectorizationState {
-  /// Adds an entry of pre/post vectorization instructions in the state.
-  void registerReplacement(Instruction *key, Instruction *value);
+  /// Adds an entry of pre/post vectorization operations in the state.
+  void registerReplacement(Operation *key, Operation *value);
   /// When the current vectorization pattern is successful, this erases the
-  /// instructions that were marked for erasure in the proper order and resets
+  /// operations that were marked for erasure in the proper order and resets
   /// the internal state for the next pattern.
   void finishVectorizationPattern();
 
-  // In-order tracking of original Instruction that have been vectorized.
+  // In-order tracking of original Operation that have been vectorized.
   // Erase in reverse order.
-  SmallVector<Instruction *, 16> toErase;
-  // Set of Instruction that have been vectorized (the values in the
+  SmallVector<Operation *, 16> toErase;
+  // Set of Operation that have been vectorized (the values in the
   // vectorizationMap for hashed access). The vectorizedSet is used in
-  // particular to filter the instructions that have already been vectorized by
+  // particular to filter the operations that have already been vectorized by
   // this pattern, when iterating over nested loops in this pattern.
-  DenseSet<Instruction *> vectorizedSet;
-  // Map of old scalar Instruction to new vectorized Instruction.
-  DenseMap<Instruction *, Instruction *> vectorizationMap;
+  DenseSet<Operation *> vectorizedSet;
+  // Map of old scalar Operation to new vectorized Operation.
+  DenseMap<Operation *, Operation *> vectorizationMap;
   // Map of old scalar Value to new vectorized Value.
   DenseMap<Value *, Value *> replacementMap;
   // The strategy drives which loop to vectorize by which amount.
@@ -742,17 +741,16 @@ struct VectorizationState {
   // operations that have been vectorized. They can be retrieved from
   // `vectorizationMap` but it is convenient to keep track of them in a separate
   // data structure.
-  DenseSet<Instruction *> roots;
-  // Terminal instructions for the worklist in the vectorizeNonTerminals
+  DenseSet<Operation *> roots;
+  // Terminal operations for the worklist in the vectorizeNonTerminals
   // function. They consist of the subset of store operations that have been
   // vectorized. They can be retrieved from `vectorizationMap` but it is
   // convenient to keep track of them in a separate data structure. Since they
   // do not necessarily belong to use-def chains starting from loads (e.g
   // storing a constant), we need to handle them in a post-pass.
-  DenseSet<Instruction *> terminals;
-  // Checks that the type of `inst` is StoreOp and adds it to the terminals
-  // set.
-  void registerTerminal(Instruction *inst);
+  DenseSet<Operation *> terminals;
+  // Checks that the type of `op` is StoreOp and adds it to the terminals set.
+  void registerTerminal(Operation *op);
 
 private:
   void registerReplacement(Value *key, Value *value);
@@ -760,8 +758,7 @@ private:
 
 } // end namespace
 
-void VectorizationState::registerReplacement(Instruction *key,
-                                             Instruction *value) {
+void VectorizationState::registerReplacement(Operation *key, Operation *value) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ commit vectorized op: ");
   LLVM_DEBUG(key->print(dbgs()));
   LLVM_DEBUG(dbgs() << "  into  ");
@@ -780,19 +777,19 @@ void VectorizationState::registerReplacement(Instruction *key,
   }
 }
 
-void VectorizationState::registerTerminal(Instruction *inst) {
-  assert(inst->isa<StoreOp>() && "terminal must be a StoreOp");
-  assert(terminals.count(inst) == 0 &&
+void VectorizationState::registerTerminal(Operation *op) {
+  assert(op->isa<StoreOp>() && "terminal must be a StoreOp");
+  assert(terminals.count(op) == 0 &&
          "terminal was already inserted previously");
-  terminals.insert(inst);
+  terminals.insert(op);
 }
 
 void VectorizationState::finishVectorizationPattern() {
   while (!toErase.empty()) {
-    auto *inst = toErase.pop_back_val();
+    auto *op = toErase.pop_back_val();
     LLVM_DEBUG(dbgs() << "\n[early-vect] finishVectorizationPattern erase: ");
-    LLVM_DEBUG(inst->print(dbgs()));
-    inst->erase();
+    LLVM_DEBUG(op->print(dbgs()));
+    op->erase();
   }
 }
 
@@ -857,13 +854,13 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
   using namespace functional;
   loop.setStep(step);
 
-  FilterFunctionType notVectorizedThisPattern = [state](Instruction &inst) {
-    if (!matcher::isLoadOrStore(inst)) {
+  FilterFunctionType notVectorizedThisPattern = [state](Operation &op) {
+    if (!matcher::isLoadOrStore(op)) {
       return false;
     }
-    return state->vectorizationMap.count(&inst) == 0 &&
-           state->vectorizedSet.count(&inst) == 0 &&
-           state->roots.count(&inst) == 0 && state->terminals.count(&inst) == 0;
+    return state->vectorizationMap.count(&op) == 0 &&
+           state->vectorizedSet.count(&op) == 0 &&
+           state->roots.count(&op) == 0 && state->terminals.count(&op) == 0;
   };
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   SmallVector<NestedMatch, 8> loadAndStoresMatches;
@@ -891,8 +888,8 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
 /// we can build a cost model and a search procedure.
 static FilterFunctionType
 isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
-  return [fastestVaryingMemRefDimension](Instruction &forInst) {
-    auto loop = forInst.cast<AffineForOp>();
+  return [fastestVaryingMemRefDimension](Operation &forOp) {
+    auto loop = forOp.cast<AffineForOp>();
     return isVectorizableLoopAlongFastestVaryingMemRefDim(
         loop, fastestVaryingMemRefDimension);
   };
@@ -943,14 +940,13 @@ vectorizeLoopsAndLoadsRecursively(NestedMatch oneMatch,
 /// element type.
 /// If `type` is not a valid vector type or if the scalar constant is not a
 /// valid vector element type, returns nullptr.
-static Value *vectorizeConstant(Instruction *inst, ConstantOp constant,
-                                Type type) {
+static Value *vectorizeConstant(Operation *op, ConstantOp constant, Type type) {
   if (!type || !type.isa<VectorType>() ||
       !VectorType::isValidElementType(constant.getType())) {
     return nullptr;
   }
-  FuncBuilder b(inst);
-  Location loc = inst->getLoc();
+  FuncBuilder b(op);
+  Location loc = op->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
   auto *constantOpInst = constant.getOperation();
@@ -962,10 +958,10 @@ static Value *vectorizeConstant(Instruction *inst, ConstantOp constant,
   return b.createOperation(state)->getResult(0);
 }
 
-/// Tries to vectorize a given operand `op` of Instruction `inst` during
+/// Tries to vectorize a given operand `op` of Operation `op` during
 /// def-chain propagation or during terminal vectorization, by applying the
 /// following logic:
-/// 1. if the defining instruction is part of the vectorizedSet (i.e. vectorized
+/// 1. if the defining operation is part of the vectorizedSet (i.e. vectorized
 ///    useby -def propagation), `op` is already in the proper vector form;
 /// 2. otherwise, the `op` may be in some other vector form that fails to
 ///    vectorize atm (i.e. broadcasting required), returns nullptr to indicate
@@ -983,7 +979,7 @@ static Value *vectorizeConstant(Instruction *inst, ConstantOp constant,
 /// vectorization is possible with the above logic. Returns nullptr otherwise.
 ///
 /// TODO(ntv): handle more complex cases.
-static Value *vectorizeOperand(Value *operand, Instruction *inst,
+static Value *vectorizeOperand(Value *operand, Operation *op,
                                VectorizationState *state) {
   LLVM_DEBUG(dbgs() << "\n[early-vect]vectorize operand: ");
   LLVM_DEBUG(operand->print(dbgs()));
@@ -1011,7 +1007,7 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
   // 3. vectorize constant.
   if (auto constant = operand->getDefiningOp()->dyn_cast<ConstantOp>()) {
     return vectorizeConstant(
-        inst, constant,
+        op, constant,
         VectorType::get(state->strategy->vectorSizes, operand->getType()));
   }
   // 4. currently non-vectorizable.
@@ -1020,7 +1016,7 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
   return nullptr;
 };
 
-/// Encodes Instruction-specific behavior for vectorization. In general we
+/// Encodes Operation-specific behavior for vectorization. In general we
 /// assume that all operands of an op must be vectorized but this is not always
 /// true. In the future, it would be nice to have a trait that describes how a
 /// particular operation vectorizes. For now we implement the case distinction
@@ -1029,8 +1025,8 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
 /// TODO(ntv): consider adding a trait to Op to describe how it gets vectorized.
 /// Maybe some Ops are not vectorizable or require some tricky logic, we cannot
 /// do one-off logic here; ideally it would be TableGen'd.
-static Instruction *vectorizeOneInstruction(Instruction *opInst,
-                                            VectorizationState *state) {
+static Operation *vectorizeOneOperation(Operation *opInst,
+                                        VectorizationState *state) {
   // Sanity checks.
   assert(!opInst->isa<LoadOp>() &&
          "all loads must have already been fully vectorized independently");
@@ -1079,9 +1075,8 @@ static Instruction *vectorizeOneInstruction(Instruction *opInst,
   // Create a clone of the op with the proper operands and return types.
   // TODO(ntv): The following assumes there is always an op with a fixed
   // name that works both in scalar mode and vector mode.
-  // TODO(ntv): Is it worth considering an Instruction.clone operation
-  // which changes the type so we can promote an Instruction with less
-  // boilerplate?
+  // TODO(ntv): Is it worth considering an Operation.clone operation which
+  // changes the type so we can promote an Operation with less boilerplate?
   FuncBuilder b(opInst);
   OperationState newOp(b.getContext(), opInst->getLoc(),
                        opInst->getName().getStringRef(), vectorOperands,
@@ -1100,31 +1095,31 @@ static Instruction *vectorizeOneInstruction(Instruction *opInst,
 ///   replacementMap. If any such replacement is missing, vectorization fails.
 static LogicalResult vectorizeNonTerminals(VectorizationState *state) {
   // 1. create initial worklist with the uses of the roots.
-  SetVector<Instruction *> worklist;
+  SetVector<Operation *> worklist;
   // Note: state->roots have already been vectorized and must not be vectorized
-  // again. This fits `getForwardSlice` which does not insert `inst` in the
+  // again. This fits `getForwardSlice` which does not insert `op` in the
   // result.
   // Note: we have to exclude terminals because some of their defs may not be
   // nested under the vectorization pattern (e.g. constants defined in an
   // encompassing scope).
   // TODO(ntv): Use a backward slice for terminals, avoid special casing and
   // merge implementations.
-  for (auto *inst : state->roots) {
-    getForwardSlice(inst, &worklist, [state](Instruction *inst) {
-      return state->terminals.count(inst) == 0; // propagate if not terminal
+  for (auto *op : state->roots) {
+    getForwardSlice(op, &worklist, [state](Operation *op) {
+      return state->terminals.count(op) == 0; // propagate if not terminal
     });
   }
   // We merged multiple slices, topological order may not hold anymore.
   worklist = topologicalSort(worklist);
 
   for (unsigned i = 0; i < worklist.size(); ++i) {
-    auto *inst = worklist[i];
+    auto *op = worklist[i];
     LLVM_DEBUG(dbgs() << "\n[early-vect] vectorize use: ");
-    LLVM_DEBUG(inst->print(dbgs()));
+    LLVM_DEBUG(op->print(dbgs()));
 
-    // Create vector form of the instruction.
-    // Insert it just before inst, on success register inst as replaced.
-    auto *vectorizedInst = vectorizeOneInstruction(inst, state);
+    // Create vector form of the operation.
+    // Insert it just before op, on success register op as replaced.
+    auto *vectorizedInst = vectorizeOneOperation(op, state);
     if (!vectorizedInst) {
       return failure();
     }
@@ -1133,7 +1128,7 @@ static LogicalResult vectorizeNonTerminals(VectorizationState *state) {
     //    Note that we cannot just call replaceAllUsesWith because it may
     //    result in ops with mixed types, for ops whose operands have not all
     //    yet been vectorized. This would be invalid IR.
-    state->registerReplacement(inst, vectorizedInst);
+    state->registerReplacement(op, vectorizedInst);
   }
   return success();
 }
@@ -1193,9 +1188,8 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
     return guard.failure();
   }
 
-  // 2. Vectorize operations reached by use-def chains from root
-  // except the terminals (store instructions) that need to be
-  // post-processed separately.
+  // 2. Vectorize operations reached by use-def chains from root except the
+  // terminals (store operations) that need to be post-processed separately.
   // TODO(ntv): add more as we expand.
   if (failed(vectorizeNonTerminals(&state))) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed vectorizeNonTerminals");
@@ -1208,8 +1202,8 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   // encompassing scope).
   // TODO(ntv): Use a backward slice for terminals, avoid special casing and
   // merge implementations.
-  for (auto *inst : state.terminals) {
-    if (!vectorizeOneInstruction(inst, &state)) { // nullptr == failure
+  for (auto *op : state.terminals) {
+    if (!vectorizeOneOperation(op, &state)) { // nullptr == failure
       LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ failed to vectorize terminals");
       return guard.failure();
     }

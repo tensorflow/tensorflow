@@ -180,7 +180,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   assert(!band.empty());
   assert(band.size() == tileSizes.size() && "Incorrect number of tile sizes");
 
-  // Check if the supplied for inst's are all successively nested.
+  // Check if the supplied for op's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
     assert(band[i].getOperation()->getParentOp() == band[i - 1].getOperation());
   }
@@ -269,8 +269,8 @@ static void getTileableBands(Function &f,
   };
 
   for (auto &block : f)
-    for (auto &inst : block)
-      if (auto forOp = inst.dyn_cast<AffineForOp>())
+    for (auto &op : block)
+      if (auto forOp = op.dyn_cast<AffineForOp>())
         getMaximalPerfectLoopNest(forOp);
 }
 

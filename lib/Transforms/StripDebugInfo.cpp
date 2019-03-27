@@ -32,9 +32,9 @@ void StripDebugInfo::runOnFunction() {
   Function &func = getFunction();
   UnknownLoc unknownLoc = UnknownLoc::get(&getContext());
 
-  // Strip the debug info from the function and its instructions.
+  // Strip the debug info from the function and its operations.
   func.setLoc(unknownLoc);
-  func.walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
+  func.walk([&](Operation *op) { op->setLoc(unknownLoc); });
 }
 
 /// Creates a pass to strip debug information from a function.
@@ -43,4 +43,4 @@ FunctionPassBase *mlir::createStripDebugInfoPass() {
 }
 
 static PassRegistration<StripDebugInfo>
-    pass("strip-debuginfo", "Strip debug info from functions and instructions");
+    pass("strip-debuginfo", "Strip debug info from functions and operations");

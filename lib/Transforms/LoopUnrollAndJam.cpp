@@ -17,7 +17,7 @@
 //
 // This file implements loop unroll and jam. Unroll and jam is a transformation
 // that improves locality, in particular, register reuse, while also improving
-// instruction level parallelism. The example below shows what it does in nearly
+// operation level parallelism. The example below shows what it does in nearly
 // the general case. Loop unroll and jam currently works if the bounds of the
 // loops inner to the loop being unroll-jammed do not depend on the latter.
 //
@@ -39,7 +39,7 @@
 //               S6(i+1);
 //
 // Note: 'if/else' blocks are not jammed. So, if there are loops inside if
-// inst's, bodies of those loops will not be jammed.
+// op's, bodies of those loops will not be jammed.
 //===----------------------------------------------------------------------===//
 #include "mlir/Transforms/Passes.h"
 
@@ -96,7 +96,7 @@ void LoopUnrollAndJam::runOnFunction() {
     runOnAffineForOp(forOp);
 }
 
-/// Unroll and jam a 'affine.for' inst. Default unroll jam factor is
+/// Unroll and jam a 'affine.for' op. Default unroll jam factor is
 /// kDefaultUnrollJamFactor. Return failure if nothing was done.
 LogicalResult LoopUnrollAndJam::runOnAffineForOp(AffineForOp forOp) {
   // Unroll and jam by the factor that was passed if any.
@@ -123,16 +123,16 @@ LogicalResult mlir::loopUnrollJamUpToFactor(AffineForOp forOp,
 /// Unrolls and jams this loop by the specified factor.
 LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
                                           uint64_t unrollJamFactor) {
-  // Gathers all maximal sub-blocks of instructions that do not themselves
-  // include a for inst (a instruction could have a descendant for inst though
+  // Gathers all maximal sub-blocks of operations that do not themselves
+  // include a for op (a operation could have a descendant for op though
   // in its tree).  Ignore the block terminators.
   struct JamBlockGatherer {
-    // Store iterators to the first and last inst of each sub-block found.
+    // Store iterators to the first and last op of each sub-block found.
     std::vector<std::pair<Block::iterator, Block::iterator>> subBlocks;
 
     // This is a linear time walk.
-    void walk(Instruction *inst) {
-      for (auto &region : inst->getRegions())
+    void walk(Operation *op) {
+      for (auto &region : op->getRegions())
         for (auto &block : region)
           walk(block);
     }

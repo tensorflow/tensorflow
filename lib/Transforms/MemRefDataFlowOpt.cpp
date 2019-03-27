@@ -54,8 +54,8 @@ namespace {
 // iteration of the innermost loop enclosing both the store op and the load op.
 //
 // (* A dependence being satisfied at a block: a dependence that is satisfied by
-// virtue of the destination instruction appearing textually / lexically after
-// the source instruction within the body of a 'affine.for' instruction; thus, a
+// virtue of the destination operation appearing textually / lexically after
+// the source operation within the body of a 'affine.for' operation; thus, a
 // dependence is always either satisfied by a loop or by a block).
 //
 // The above conditions are simple to check, sufficient, and powerful for most
@@ -77,7 +77,7 @@ struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
   // A list of memref's that are potentially dead / could be eliminated.
   SmallPtrSet<Value *, 4> memrefsToErase;
   // Load op's whose results were replaced by those forwarded from stores.
-  std::vector<Instruction *> loadOpsToErase;
+  std::vector<Operation *> loadOpsToErase;
 
   DominanceInfo *domInfo = nullptr;
   PostDominanceInfo *postDomInfo = nullptr;
@@ -94,13 +94,13 @@ FunctionPassBase *mlir::createMemRefDataFlowOptPass() {
 // This is a straightforward implementation not optimized for speed. Optimize
 // this in the future if needed.
 void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
-  Instruction *lastWriteStoreOp = nullptr;
-  Instruction *loadOpInst = loadOp.getOperation();
+  Operation *lastWriteStoreOp = nullptr;
+  Operation *loadOpInst = loadOp.getOperation();
 
   // First pass over the use list to get minimum number of surrounding
   // loops common between the load op and the store op, with min taken across
   // all store ops.
-  SmallVector<Instruction *, 8> storeOps;
+  SmallVector<Operation *, 8> storeOps;
   unsigned minSurroundingLoops = getNestingDepth(*loadOpInst);
   for (InstOperand &use : loadOp.getMemRef()->getUses()) {
     auto storeOp = use.getOwner()->dyn_cast<StoreOp>();
@@ -119,11 +119,11 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   // and loadOp.
   // The list of store op candidates for forwarding - need to satisfy the
   // conditions listed at the top.
-  SmallVector<Instruction *, 8> fwdingCandidates;
+  SmallVector<Operation *, 8> fwdingCandidates;
   // Store ops that have a dependence into the load (even if they aren't
   // forwarding candidates). Each forwarding candidate will be checked for a
   // post-dominance on these. 'fwdingCandidates' are a subset of depSrcStores.
-  SmallVector<Instruction *, 8> depSrcStores;
+  SmallVector<Operation *, 8> depSrcStores;
   for (auto *storeOpInst : storeOps) {
     MemRefAccess srcAccess(storeOpInst);
     MemRefAccess destAccess(loadOpInst);
@@ -186,7 +186,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
     // that postdominates all 'depSrcStores' (if such a store exists) is the
     // unique store providing the value to the load, i.e., provably the last
     // writer to that memref loc.
-    if (llvm::all_of(depSrcStores, [&](Instruction *depStore) {
+    if (llvm::all_of(depSrcStores, [&](Operation *depStore) {
           return postDomInfo->postDominates(storeOpInst, depStore);
         })) {
       lastWriteStoreOp = storeOpInst;
@@ -236,9 +236,9 @@ void MemRefDataFlowOpt::runOnFunction() {
   // to do this as well, but we'll do it here since we collected these anyway.
   for (auto *memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
-    Instruction *defInst = memref->getDefiningOp();
+    Operation *defInst = memref->getDefiningOp();
     if (!defInst || !defInst->isa<AllocOp>())
-      // TODO(mlir-team): if the memref was returned by a 'call' instruction, we
+      // TODO(mlir-team): if the memref was returned by a 'call' operation, we
       // could still erase it if the call had no side-effects.
       continue;
     if (std::any_of(memref->use_begin(), memref->use_end(),

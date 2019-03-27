@@ -170,7 +170,7 @@ static void getMultiLevelStrides(const MemRefRegion &region,
 /// dynamic shaped memref's for now. `numParamLoopIVs` is the number of
 /// enclosing loop IVs of opInst (starting from the outermost) that the region
 /// is parametric on.
-static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
+static bool getFullMemRefAsRegion(Operation *opInst, unsigned numParamLoopIVs,
                                   MemRefRegion *region) {
   unsigned rank;
   if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
@@ -212,11 +212,11 @@ static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
 }
 
 static void emitNoteForBlock(Block &block, const Twine &message) {
-  auto *inst = block.getContainingOp();
-  if (!inst) {
+  auto *op = block.getContainingOp();
+  if (!op) {
     block.getFunction()->emitNote(message);
   } else {
-    inst->emitNote(message);
+    op->emitNote(message);
   }
 }
 
@@ -350,7 +350,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
         fastBufferShape, memRefType.getElementType(), {}, fastMemorySpace);
 
     // Create the fast memory space buffer just before the 'affine.for'
-    // instruction.
+    // operation.
     fastMemRef = prologue.create<AllocOp>(loc, fastMemRefType).getResult();
     // Record it.
     fastBufferMap[memref] = fastMemRef;
@@ -391,7 +391,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
         top.create<ConstantIndexOp>(loc, strideInfos[0].numEltPerStride);
   }
 
-  // Record the last instruction just before the point where we insert the
+  // Record the last operation just before the point where we insert the
   // outgoing DMAs. We later do the memref replacement later only in [begin,
   // postDomFilter] so that the original memref's in the DMA ops themselves
   // don't get replaced.
@@ -464,7 +464,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
 }
 
 /// Generate DMAs for this block. The block is partitioned into separate
-/// `regions`; each region is either a sequence of one or more instructions
+/// `regions`; each region is either a sequence of one or more operations
 /// starting and ending with a load or store op, or just a loop (which could
 /// have other loops nested within). Returns false on an error, true otherwise.
 bool DmaGeneration::runOnBlock(Block *block) {
@@ -472,20 +472,19 @@ bool DmaGeneration::runOnBlock(Block *block) {
     return true;
 
   // Every loop in the block starts and ends a region. A contiguous sequence of
-  // operation instructions starting and ending with a load/store op is also
+  // operations starting and ending with a load/store op is also
   // identified as a region. Straightline code (contiguous chunks of operation
-  // instructions) are always assumed to not exhaust memory. As a result, this
+  // operations) are always assumed to not exhaust memory. As a result, this
   // approach is conservative in some cases at the moment, we do a check later
   // and report an error with location info.
-  // TODO(bondhugula): An 'affine.if' instruction is being treated similar to an
-  // operation instruction. 'affine.if''s could have 'affine.for's in them;
+  // TODO(bondhugula): An 'affine.if' operation is being treated similar to an
+  // operation. 'affine.if''s could have 'affine.for's in them;
   // treat them separately.
 
   // Get to the first load, store, or for op.
   auto curBegin =
-      std::find_if(block->begin(), block->end(), [&](Instruction &inst) {
-        return inst.isa<LoadOp>() || inst.isa<StoreOp>() ||
-               inst.isa<AffineForOp>();
+      std::find_if(block->begin(), block->end(), [&](Operation &op) {
+        return op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<AffineForOp>();
       });
 
   for (auto it = curBegin; it != block->end(); ++it) {
@@ -513,7 +512,7 @@ bool DmaGeneration::runOnBlock(Block *block) {
         runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
         runOnBlock(forOp.getBody());
-        // The next region starts right after the 'affine.for' instruction.
+        // The next region starts right after the 'affine.for' operation.
         curBegin = std::next(it);
       } else {
         // We have enough capacity, i.e., DMAs will be computed for the portion
@@ -583,10 +582,10 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
   }
 }
 
-/// Generates DMAs for a contiguous sequence of instructions in `block` in the
+/// Generates DMAs for a contiguous sequence of operations in `block` in the
 /// iterator range [begin, end). Returns the total size of the DMA buffers used.
 //  Since we generate alloc's and dealloc's for all DMA buffers (before and
-//  after the range of instructions resp), all of the fast memory capacity is
+//  after the range of operations resp), all of the fast memory capacity is
 //  assumed to be available.
 uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   if (begin == end)
@@ -610,8 +609,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   // To check for errors when walking the block.
   bool error = false;
 
-  // Walk this range of instructions  to gather all memory regions.
-  block->walk(begin, end, [&](Instruction *opInst) {
+  // Walk this range of operations  to gather all memory regions.
+  block->walk(begin, end, [&](Operation *opInst) {
     // Gather regions to allocate to buffers in faster memory space.
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
       if (loadOp.getMemRefType().getMemorySpace() != slowMemorySpace)
@@ -738,8 +737,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
     return totalDmaBuffersSizeInBytes;
   }
 
-  // For a range of operation instructions, a note will be emitted at the
-  // caller.
+  // For a range of operations, a note will be emitted at the caller.
   AffineForOp forOp;
   uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
@@ -750,8 +748,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {
     StringRef str = "Total size of all DMA buffers' for this block "
                     "exceeds fast memory capacity\n";
-    if (auto *inst = block->getContainingOp())
-      inst->emitError(str);
+    if (auto *op = block->getContainingOp())
+      op->emitError(str);
     else
       block->getFunction()->emitError(str);
   }

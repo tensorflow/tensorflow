@@ -53,23 +53,23 @@ FunctionPassBase *mlir::createPipelineDataTransferPass() {
   return new PipelineDataTransfer();
 }
 
-// Returns the position of the tag memref operand given a DMA instruction.
+// Returns the position of the tag memref operand given a DMA operation.
 // Temporary utility: will be replaced when DmaStart/DmaFinish abstract op's are
 // added.  TODO(b/117228571)
-static unsigned getTagMemRefPos(Instruction &dmaInst) {
+static unsigned getTagMemRefPos(Operation &dmaInst) {
   assert(dmaInst.isa<DmaStartOp>() || dmaInst.isa<DmaWaitOp>());
   if (dmaInst.isa<DmaStartOp>()) {
     // Second to last operand.
     return dmaInst.getNumOperands() - 2;
   }
-  // First operand for a dma finish instruction.
+  // First operand for a dma finish operation.
   return 0;
 }
 
 /// Doubles the buffer of the supplied memref on the specified 'affine.for'
-/// instruction by adding a leading dimension of size two to the memref.
+/// operation by adding a leading dimension of size two to the memref.
 /// Replaces all uses of the old memref by the new one while indexing the newly
-/// added dimension by the loop IV of the specified 'affine.for' instruction
+/// added dimension by the loop IV of the specified 'affine.for' operation
 /// modulo 2. Returns false if such a replacement cannot be performed.
 static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto *forBody = forOp.getBody();
@@ -104,7 +104,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
                                                    dynamicDimCount++));
   }
 
-  // Create and place the alloc right before the 'affine.for' instruction.
+  // Create and place the alloc right before the 'affine.for' operation.
   Value *newMemRef =
       bOuter.create<AllocOp>(forInst->getLoc(), newMemRefType, allocOperands);
 
@@ -139,7 +139,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
 /// Returns success if the IR is in a valid state.
 void PipelineDataTransfer::runOnFunction() {
   // Do a post order walk so that inner loop DMAs are processed first. This is
-  // necessary since 'affine.for' instructions nested within would otherwise
+  // necessary since 'affine.for' operations nested within would otherwise
   // become invalid (erased) when the outer loop is pipelined (the pipelined one
   // gets deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
@@ -173,27 +173,27 @@ static bool checkTagMatch(DmaStartOp startOp, DmaWaitOp waitOp) {
   return true;
 }
 
-// Identify matching DMA start/finish instructions to overlap computation with.
+// Identify matching DMA start/finish operations to overlap computation with.
 static void findMatchingStartFinishInsts(
     AffineForOp forOp,
-    SmallVectorImpl<std::pair<Instruction *, Instruction *>> &startWaitPairs) {
+    SmallVectorImpl<std::pair<Operation *, Operation *>> &startWaitPairs) {
 
-  // Collect outgoing DMA instructions - needed to check for dependences below.
+  // Collect outgoing DMA operations - needed to check for dependences below.
   SmallVector<DmaStartOp, 4> outgoingDmaOps;
-  for (auto &inst : *forOp.getBody()) {
-    auto dmaStartOp = inst.dyn_cast<DmaStartOp>();
+  for (auto &op : *forOp.getBody()) {
+    auto dmaStartOp = op.dyn_cast<DmaStartOp>();
     if (dmaStartOp && dmaStartOp.isSrcMemorySpaceFaster())
       outgoingDmaOps.push_back(dmaStartOp);
   }
 
-  SmallVector<Instruction *, 4> dmaStartInsts, dmaFinishInsts;
-  for (auto &inst : *forOp.getBody()) {
-    // Collect DMA finish instructions.
-    if (inst.isa<DmaWaitOp>()) {
-      dmaFinishInsts.push_back(&inst);
+  SmallVector<Operation *, 4> dmaStartInsts, dmaFinishInsts;
+  for (auto &op : *forOp.getBody()) {
+    // Collect DMA finish operations.
+    if (op.isa<DmaWaitOp>()) {
+      dmaFinishInsts.push_back(&op);
       continue;
     }
-    auto dmaStartOp = inst.dyn_cast<DmaStartOp>();
+    auto dmaStartOp = op.dyn_cast<DmaStartOp>();
     if (!dmaStartOp)
       continue;
 
@@ -228,10 +228,10 @@ static void findMatchingStartFinishInsts(
       }
     }
     if (!escapingUses)
-      dmaStartInsts.push_back(&inst);
+      dmaStartInsts.push_back(&op);
   }
 
-  // For each start instruction, we look for a matching finish instruction.
+  // For each start operation, we look for a matching finish operation.
   for (auto *dmaStartInst : dmaStartInsts) {
     for (auto *dmaFinishInst : dmaFinishInsts) {
       if (checkTagMatch(dmaStartInst->cast<DmaStartOp>(),
@@ -253,7 +253,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     return;
   }
 
-  SmallVector<std::pair<Instruction *, Instruction *>, 4> startWaitPairs;
+  SmallVector<std::pair<Operation *, Operation *>, 4> startWaitPairs;
   findMatchingStartFinishInsts(forOp, startWaitPairs);
 
   if (startWaitPairs.empty()) {
@@ -263,7 +263,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
 
   // Double the buffers for the higher memory space memref's.
   // Identify memref's to replace by scanning through all DMA start
-  // instructions. A DMA start instruction has two memref's - the one from the
+  // operations. A DMA start operation has two memref's - the one from the
   // higher level of memory hierarchy is the one to double buffer.
   // TODO(bondhugula): check whether double-buffering is even necessary.
   // TODO(bondhugula): make this work with different layouts: assuming here that
@@ -320,13 +320,13 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   startWaitPairs.clear();
   findMatchingStartFinishInsts(forOp, startWaitPairs);
 
-  // Store shift for instruction for later lookup for AffineApplyOp's.
-  DenseMap<Instruction *, unsigned> instShiftMap;
+  // Store shift for operation for later lookup for AffineApplyOp's.
+  DenseMap<Operation *, unsigned> instShiftMap;
   for (auto &pair : startWaitPairs) {
     auto *dmaStartInst = pair.first;
     assert(dmaStartInst->isa<DmaStartOp>());
     instShiftMap[dmaStartInst] = 0;
-    // Set shifts for DMA start inst's affine operand computation slices to 0.
+    // Set shifts for DMA start op's affine operand computation slices to 0.
     SmallVector<AffineApplyOp, 4> sliceOps;
     mlir::createAffineComputationSlice(dmaStartInst, &sliceOps);
     if (!sliceOps.empty()) {
@@ -336,32 +336,32 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     } else {
       // If a slice wasn't created, the reachable affine.apply op's from its
       // operands are the ones that go with it.
-      SmallVector<Instruction *, 4> affineApplyInsts;
+      SmallVector<Operation *, 4> affineApplyInsts;
       SmallVector<Value *, 4> operands(dmaStartInst->getOperands());
       getReachableAffineApplyOps(operands, affineApplyInsts);
-      for (auto *inst : affineApplyInsts) {
-        instShiftMap[inst] = 0;
+      for (auto *op : affineApplyInsts) {
+        instShiftMap[op] = 0;
       }
     }
   }
   // Everything else (including compute ops and dma finish) are shifted by one.
-  for (auto &inst : *forOp.getBody()) {
-    if (instShiftMap.find(&inst) == instShiftMap.end()) {
-      instShiftMap[&inst] = 1;
+  for (auto &op : *forOp.getBody()) {
+    if (instShiftMap.find(&op) == instShiftMap.end()) {
+      instShiftMap[&op] = 1;
     }
   }
 
   // Get shifts stored in map.
   std::vector<uint64_t> shifts(forOp.getBody()->getOperations().size());
   unsigned s = 0;
-  for (auto &inst : *forOp.getBody()) {
-    assert(instShiftMap.find(&inst) != instShiftMap.end());
-    shifts[s++] = instShiftMap[&inst];
+  for (auto &op : *forOp.getBody()) {
+    assert(instShiftMap.find(&op) != instShiftMap.end());
+    shifts[s++] = instShiftMap[&op];
 
-    // Tagging instructions with shifts for debugging purposes.
+    // Tagging operations with shifts for debugging purposes.
     LLVM_DEBUG({
-      FuncBuilder b(&inst);
-      inst.setAttr("shift", b.getI64IntegerAttr(shifts[s - 1]));
+      FuncBuilder b(&op);
+      op.setAttr("shift", b.getI64IntegerAttr(shifts[s - 1]));
     });
   }
 
@@ -372,7 +372,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   }
 
   if (failed(instBodySkew(forOp, shifts))) {
-    LLVM_DEBUG(llvm::dbgs() << "inst body skewing failed - unexpected\n";);
+    LLVM_DEBUG(llvm::dbgs() << "op body skewing failed - unexpected\n";);
     return;
   }
 }

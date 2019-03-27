@@ -37,7 +37,7 @@ using namespace mlir;
 /// Return true if this operation dereferences one or more memref's.
 // Temporary utility: will be replaced when this is modeled through
 // side-effects/op traits. TODO(b/117228571)
-static bool isMemRefDereferencingOp(Instruction &op) {
+static bool isMemRefDereferencingOp(Operation &op) {
   if (op.isa<LoadOp>() || op.isa<StoreOp>() || op.isa<DmaStartOp>() ||
       op.isa<DmaWaitOp>())
     return true;
@@ -48,8 +48,8 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
                                     ArrayRef<Value *> extraIndices,
                                     AffineMap indexRemap,
                                     ArrayRef<Value *> extraOperands,
-                                    Instruction *domInstFilter,
-                                    Instruction *postDomInstFilter) {
+                                    Operation *domInstFilter,
+                                    Operation *postDomInstFilter) {
   unsigned newMemRefRank = newMemRef->getType().cast<MemRefType>().getRank();
   (void)newMemRefRank; // unused in opt mode
   unsigned oldMemRefRank = oldMemRef->getType().cast<MemRefType>().getRank();
@@ -76,7 +76,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
         llvm::make_unique<PostDominanceInfo>(postDomInstFilter->getFunction());
 
   // The ops where memref replacement succeeds are replaced with new ones.
-  SmallVector<Instruction *, 8> opsToErase;
+  SmallVector<Operation *, 8> opsToErase;
 
   // Walk all uses of old memref. Operation using the memref gets replaced.
   for (auto &use : llvm::make_early_inc_range(oldMemRef->getUses())) {
@@ -115,7 +115,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
     };
     unsigned memRefOperandPos = getMemRefOperandPos();
 
-    // Construct the new operation instruction using this memref.
+    // Construct the new operation using this memref.
     OperationState state(opInst->getContext(), opInst->getLoc(),
                          opInst->getName());
     state.setOperandListToResizable(opInst->hasResizableOperandsList());
@@ -192,9 +192,9 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
   return true;
 }
 
-/// Given an operation instruction, inserts one or more single result affine
+/// Given an operation, inserts one or more single result affine
 /// apply operations, results of which are exclusively used by this operation
-/// instruction. The operands of these newly created affine apply ops are
+/// operation. The operands of these newly created affine apply ops are
 /// guaranteed to be loop iterators or terminal symbols of a function.
 ///
 /// Before
@@ -221,7 +221,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 /// uses besides this opInst; otherwise returns the list of affine.apply
 /// operations created in output argument `sliceOps`.
 void mlir::createAffineComputationSlice(
-    Instruction *opInst, SmallVectorImpl<AffineApplyOp> *sliceOps) {
+    Operation *opInst, SmallVectorImpl<AffineApplyOp> *sliceOps) {
   // Collect all operands that are results of affine apply ops.
   SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
@@ -233,13 +233,13 @@ void mlir::createAffineComputationSlice(
   }
 
   // Gather sequence of AffineApplyOps reachable from 'subOperands'.
-  SmallVector<Instruction *, 4> affineApplyOps;
+  SmallVector<Operation *, 4> affineApplyOps;
   getReachableAffineApplyOps(subOperands, affineApplyOps);
   // Skip transforming if there are no affine maps to compose.
   if (affineApplyOps.empty())
     return;
 
-  // Check if all uses of the affine apply op's lie only in this op inst, in
+  // Check if all uses of the affine apply op's lie only in this op op, in
   // which case there would be nothing to do.
   bool localized = true;
   for (auto *op : affineApplyOps) {
@@ -291,7 +291,7 @@ void mlir::createAffineComputationSlice(
 }
 
 void mlir::remapFunctionAttrs(
-    Instruction &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
+    Operation &op, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
   for (auto attr : op.getAttrs()) {
     // Do the remapping, if we got the same thing back, then it must contain
     // functions that aren't getting remapped.
@@ -310,9 +310,8 @@ void mlir::remapFunctionAttrs(
 void mlir::remapFunctionAttrs(
     Function &fn, const DenseMap<Attribute, FunctionAttr> &remappingTable) {
 
-  // Look at all instructions in a Function.
-  fn.walk(
-      [&](Instruction *inst) { remapFunctionAttrs(*inst, remappingTable); });
+  // Look at all operations in a Function.
+  fn.walk([&](Operation *op) { remapFunctionAttrs(*op, remappingTable); });
 }
 
 void mlir::remapFunctionAttrs(

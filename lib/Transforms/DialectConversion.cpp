@@ -50,7 +50,7 @@ private:
   // Utility that looks up a list of value in the value remapping table. Returns
   // an empty vector if one of the values is not mapped yet.
   SmallVector<Value *, 4> lookupValues(
-      const llvm::iterator_range<Instruction::operand_iterator> &operands);
+      const llvm::iterator_range<Operation::operand_iterator> &operands);
 
   // Converts the given function to the dialect using hooks defined in
   // `dialectConversion`.  Returns the converted function or `nullptr` on error.
@@ -61,16 +61,16 @@ private:
   // passes them to `converter->rewriteTerminator` function defined in the
   // pattern, together with `builder`.
   LogicalResult convertOpWithSuccessors(DialectOpConversion *converter,
-                                        Instruction *op, FuncBuilder &builder);
+                                        Operation *op, FuncBuilder &builder);
 
   // Converts an operation without successors.  Extracts the converted operands
   // from `valueRemapping` and passes them to the `converter->rewrite` function
   // defined in the pattern, together with `builder`.
-  LogicalResult convertOp(DialectOpConversion *converter, Instruction *op,
+  LogicalResult convertOp(DialectOpConversion *converter, Operation *op,
                           FuncBuilder &builder);
 
-  // Converts a block by traversing its instructions sequentially, looking for
-  // the first pattern match and dispatching the instruction conversion to
+  // Converts a block by traversing its operations sequentially, looking for
+  // the first pattern match and dispatching the operation conversion to
   // either `convertOp` or `convertOpWithSuccessors` depending on the presence
   // of successors.  If there is no match, clones the operation.
   //
@@ -101,7 +101,7 @@ private:
 } // end namespace mlir
 
 SmallVector<Value *, 4> impl::FunctionConversion::lookupValues(
-    const llvm::iterator_range<Instruction::operand_iterator> &operands) {
+    const llvm::iterator_range<Operation::operand_iterator> &operands) {
   SmallVector<Value *, 4> remapped;
   remapped.reserve(llvm::size(operands));
   for (Value *operand : operands) {
@@ -114,7 +114,7 @@ SmallVector<Value *, 4> impl::FunctionConversion::lookupValues(
 }
 
 LogicalResult impl::FunctionConversion::convertOpWithSuccessors(
-    DialectOpConversion *converter, Instruction *op, FuncBuilder &builder) {
+    DialectOpConversion *converter, Operation *op, FuncBuilder &builder) {
   SmallVector<Block *, 2> destinations;
   destinations.reserve(op->getNumSuccessors());
   SmallVector<Value *, 4> operands = lookupValues(op->getOperands());
@@ -146,7 +146,7 @@ LogicalResult impl::FunctionConversion::convertOpWithSuccessors(
 
 LogicalResult
 impl::FunctionConversion::convertOp(DialectOpConversion *converter,
-                                    Instruction *op, FuncBuilder &builder) {
+                                    Operation *op, FuncBuilder &builder) {
   auto operands = lookupValues(op->getOperands());
   assert((!operands.empty() || op->getNumOperands() == 0) &&
          "converting op before ops defining its operands");
@@ -170,22 +170,22 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
   builder.setInsertionPointToStart(mapping.lookupOrNull(block));
 
   // Iterate over ops and convert them.
-  for (Instruction &inst : *block) {
-    if (inst.getNumRegions() != 0) {
-      inst.emitError("unsupported region instruction");
+  for (Operation &op : *block) {
+    if (op.getNumRegions() != 0) {
+      op.emitError("unsupported region operation");
       return failure();
     }
 
     // Find the first matching conversion and apply it.
     bool converted = false;
     for (auto *conversion : conversions) {
-      if (!conversion->match(&inst))
+      if (!conversion->match(&op))
         continue;
 
-      if (inst.getNumSuccessors() != 0) {
-        if (failed(convertOpWithSuccessors(conversion, &inst, builder)))
+      if (op.getNumSuccessors() != 0) {
+        if (failed(convertOpWithSuccessors(conversion, &op, builder)))
           return failure();
-      } else if (failed(convertOp(conversion, &inst, builder))) {
+      } else if (failed(convertOp(conversion, &op, builder))) {
         return failure();
       }
       converted = true;
@@ -193,7 +193,7 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
     }
     // If there is no conversion provided for the op, clone the op as is.
     if (!converted)
-      builder.clone(inst, mapping);
+      builder.clone(op, mapping);
   }
 
   // Recurse to children unless they have been already visited.

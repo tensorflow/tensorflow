@@ -39,13 +39,13 @@ public:
     worklist.reserve(64);
 
     // Add all operations to the worklist.
-    fn.walk([&](Instruction *inst) { addToWorklist(inst); });
+    fn.walk([&](Operation *op) { addToWorklist(op); });
   }
 
   /// Perform the rewrites.
   void simplifyFunction();
 
-  void addToWorklist(Instruction *op) {
+  void addToWorklist(Operation *op) {
     // Check to see if the worklist already contains this op.
     if (worklistMap.count(op))
       return;
@@ -54,7 +54,7 @@ public:
     worklist.push_back(op);
   }
 
-  Instruction *popFromWorklist() {
+  Operation *popFromWorklist() {
     auto *op = worklist.back();
     worklist.pop_back();
 
@@ -66,7 +66,7 @@ public:
 
   /// If the specified operation is in the worklist, remove it.  If not, this is
   /// a no-op.
-  void removeFromWorklist(Instruction *op) {
+  void removeFromWorklist(Operation *op) {
     auto it = worklistMap.find(op);
     if (it != worklistMap.end()) {
       assert(worklist[it->second] == op && "malformed worklist data structure");
@@ -78,7 +78,7 @@ public:
 protected:
   // Implement the hook for creating operations, and make sure that newly
   // created ops are added to the worklist for processing.
-  Instruction *createOperation(const OperationState &state) override {
+  Operation *createOperation(const OperationState &state) override {
     auto *result = builder.createOperation(state);
     addToWorklist(result);
     return result;
@@ -86,7 +86,7 @@ protected:
 
   // If an operation is about to be removed, make sure it is not in our
   // worklist anymore because we'd get dangling references to it.
-  void notifyOperationRemoved(Instruction *op) override {
+  void notifyOperationRemoved(Operation *op) override {
     addToWorklist(op->getOperands());
     removeFromWorklist(op);
   }
@@ -94,7 +94,7 @@ protected:
   // When the root of a pattern is about to be replaced, it can trigger
   // simplifications to its users - make sure to add them to the worklist
   // before the root is changed.
-  void notifyRootReplaced(Instruction *op) override {
+  void notifyRootReplaced(Operation *op) override {
     for (auto *result : op->getResults())
       // TODO: Add a result->getUsers() iterator.
       for (auto &user : result->getUses())
@@ -102,15 +102,15 @@ protected:
   }
 
 private:
-  // Look over the provided operands for any defining instructions that should
+  // Look over the provided operands for any defining operations that should
   // be re-added to the worklist. This function should be called when an
   // operation is modified or removed, as it may trigger further
   // simplifications.
   template <typename Operands> void addToWorklist(Operands &&operands) {
     for (Value *operand : operands) {
       // If the use count of this operand is now < 2, we re-add the defining
-      // instruction to the worklist.
-      // TODO(riverriddle) This is based on the fact that zero use instructions
+      // operation to the worklist.
+      // TODO(riverriddle) This is based on the fact that zero use operations
       // may be deleted, and that single use values often have more
       // canonicalization opportunities.
       if (!operand->use_empty() &&
@@ -131,13 +131,13 @@ private:
   /// need to be revisited, plus their index in the worklist.  This allows us to
   /// efficiently remove operations from the worklist when they are erased from
   /// the function, even if they aren't the root of a pattern.
-  std::vector<Instruction *> worklist;
-  DenseMap<Instruction *, unsigned> worklistMap;
+  std::vector<Operation *> worklist;
+  DenseMap<Operation *, unsigned> worklistMap;
 
   /// As part of canonicalization, we move constants to the top of the entry
   /// block of the current function and de-duplicate them.  This keeps track of
   /// constants we have done this for.
-  DenseMap<std::pair<Attribute, Type>, Instruction *> uniquedConstants;
+  DenseMap<std::pair<Attribute, Type>, Operation *> uniquedConstants;
 };
 }; // end anonymous namespace
 
@@ -199,7 +199,7 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
       continue;
     }
 
-    // Check to see if any operands to the instruction is constant and whether
+    // Check to see if any operands to the operation is constant and whether
     // the operation knows how to constant fold itself.
     operandConstants.assign(op->getNumOperands(), Attribute());
     for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)

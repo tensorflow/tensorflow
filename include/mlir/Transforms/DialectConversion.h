@@ -33,7 +33,6 @@ class Block;
 class FuncBuilder;
 class MLIRContext;
 class Operation;
-using Instruction = Operation;
 class Type;
 class Value;
 
@@ -43,7 +42,7 @@ class FunctionConversion;
 }
 
 /// Base class for the dialect op conversion patterns.  Specific conversions
-/// must derive this class and implement `PatternMatch match(Instruction *)`
+/// must derive this class and implement `PatternMatch match(Operation *)`
 /// defined in `Pattern` and at least one of `rewrite` and `rewriteTerminator`.
 //
 // TODO(zinenko): this should eventually converge with RewritePattern.  So far,
@@ -67,7 +66,7 @@ public:
   /// DialectOpConversion ever needs to replace an operation that does not have
   /// successors.  This function should not fail.  If some specific cases of the
   /// operation are not supported, these cases should not be matched.
-  virtual SmallVector<Value *, 4> rewrite(Instruction *op,
+  virtual SmallVector<Value *, 4> rewrite(Operation *op,
                                           ArrayRef<Value *> operands,
                                           FuncBuilder &rewriter) const {
     llvm_unreachable("unimplemented rewrite, did you mean rewriteTerminator?");
@@ -85,7 +84,7 @@ public:
   /// successors.  This function should not fail the pass.  If some specific
   /// cases of the operation are not supported, these cases should not be
   /// matched.
-  virtual void rewriteTerminator(Instruction *op,
+  virtual void rewriteTerminator(Operation *op,
                                  ArrayRef<Value *> properOperands,
                                  ArrayRef<Block *> destinations,
                                  ArrayRef<ArrayRef<Value *>> operands,
