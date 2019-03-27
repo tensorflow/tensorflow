@@ -49,15 +49,14 @@ def tf_java_op_gen_srcjar(
 
     # Generate a source archive containing generated code for these ops.
     gen_srcjar = out_dir + name + ".srcjar"
-    gen_cmds += ["$(location @local_jdk//:jar) cMf $(location :" + gen_srcjar + ") -C $(@D) src"]
+    gen_cmds += ["$(location @bazel_tools//tools/jdk:current_java_runtime) cMf $(location :" + gen_srcjar + ") -C $(@D) src"]
 
     native.genrule(
         name = name,
         srcs = srcs,
         outs = [gen_srcjar],
         tools = [
-            "@local_jdk//:jar",
-            "@local_jdk//:jdk",
+            "@bazel_tools//tools/jdk:current_java_runtime",
             gen_tool,
         ] + tf_binary_additional_srcs(),
         cmd = " && ".join(gen_cmds),
