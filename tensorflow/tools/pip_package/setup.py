@@ -271,6 +271,13 @@ setup(
         'install_headers': InstallHeaders,
         'install': InstallCommand,
     },
+    # Make setup aware this is an extension that cannot go into purelib.
+    ext_modules=[
+        Extension(
+            name='tensorflow',
+            sources=[],
+        )
+    ],
     # PyPI package information.
     classifiers=[
         'Development Status :: 5 - Production/Stable',
