@@ -160,7 +160,7 @@ def automatic_sharding(num_shards,
 
   for op in op_list:
     op_name = str(op.name.lower())
-    if op.type == "NextIteration":
+    if op.type == "NextIteration" or op.type == "PopDatastreamInfeedDequeue":
       continue
     if 'gradient' in op_name:
       bwd_ops.append(op)
