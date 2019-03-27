@@ -580,7 +580,7 @@ class Flatten(Layer):
         inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
                  array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
-      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
+      outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
 
   def compute_output_shape(self, input_shape):
@@ -1024,7 +1024,7 @@ class Dense(Layer):
       outputs = standard_ops.tensordot(inputs, self.kernel, [[rank - 1], [0]])
       # Reshape the output back to the original ndim of the input.
       if not context.executing_eagerly():
-        shape = inputs.get_shape().as_list()
+        shape = inputs.shape.as_list()
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
