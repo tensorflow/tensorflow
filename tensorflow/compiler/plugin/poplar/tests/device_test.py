@@ -28,7 +28,6 @@ from tensorflow.python.platform import googletest
 
 
 class IpuXlaDeviceLibTest(test_util.TensorFlowTestCase):
-
   def testLoadDevice(self):
     devices = device_lib.list_local_devices()
 

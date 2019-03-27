@@ -23,8 +23,10 @@ from tensorflow.python.training import gradient_descent
 
 datatype = np.float16
 
+
 def _get_variable(name, shape, init):
   return vs.get_variable(name, shape, initializer=init, dtype=datatype)
+
 
 def inference(x):
 
@@ -36,7 +38,8 @@ def inference(x):
     x = block("b2", 128, 2, 2, x)
     x = block("b3", 256, 2, 2, x)
     x = block("b4", 512, 2, 2, x)
-    x = nn_ops.max_pool(x, [1, x.shape[1], x.shape[2], 1], [1,1,1,1], 'VALID')
+    x = nn_ops.max_pool(x, [1, x.shape[1], x.shape[2], 1], [1, 1, 1, 1],
+                        'VALID')
     x = array_ops.reshape(x, [x.shape[0], x.shape[3]])
     x = fc("fc1", x, 1000)
 
@@ -48,7 +51,7 @@ def block(name, out_filters, first_stride, count, x):
   for i in range(count):
     sc = x
     shape_in = x.shape
-    stride = (first_stride if (i==0) else 1)
+    stride = (first_stride if (i == 0) else 1)
 
     with vs.variable_scope(name + "/" + str(i) + "/1"):
       x = conv(x, 3, stride, out_filters)
@@ -59,11 +62,11 @@ def block(name, out_filters, first_stride, count, x):
 
       # shortcut
       if (stride != 1):
-        sc = array_ops.strided_slice(sc, [0,0,0,0], sc.shape,
-                                     strides=[1, stride, stride, 1])
+        sc = array_ops.strided_slice(
+            sc, [0, 0, 0, 0], sc.shape, strides=[1, stride, stride, 1])
       pad = int(x.shape[3] - shape_in[3])
       if (pad != 0):
-        sc = array_ops.pad(sc, paddings=[[0,0],[0,0],[0,0],[0,pad]])
+        sc = array_ops.pad(sc, paddings=[[0, 0], [0, 0], [0, 0], [0, pad]])
 
       x = nn_ops.relu(x + sc)
 
@@ -75,14 +78,19 @@ def fc(name, x, num_units_out):
   weights_initializer = init_ops.truncated_normal_initializer(stddev=0.01)
 
   with vs.variable_scope(name):
-    weights = _get_variable('weights', shape=[num_units_in, num_units_out],
-                            init=weights_initializer)
-    biases = _get_variable('biases', shape=[num_units_out],
-                           init=init_ops.constant_initializer(0.0))
+    weights = _get_variable(
+        'weights',
+        shape=[num_units_in, num_units_out],
+        init=weights_initializer)
+    biases = _get_variable(
+        'biases',
+        shape=[num_units_out],
+        init=init_ops.constant_initializer(0.0))
 
     x = nn_ops.xw_plus_b(x, weights, biases)
 
   return x
+
 
 def conv(x, ksize, stride, filters_out):
 
@@ -100,14 +108,14 @@ def conv(x, ksize, stride, filters_out):
 
 
 def max_pool(x, ksize=3, stride=2):
-  return nn_ops.max_pool(x,
-                         ksize=[1, ksize, ksize, 1],
-                         strides=[1, stride, stride, 1],
-                         padding='SAME')
+  return nn_ops.max_pool(
+      x,
+      ksize=[1, ksize, ksize, 1],
+      strides=[1, stride, stride, 1],
+      padding='SAME')
 
 
 class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
-
   def testInference(self):
     x = array_ops.placeholder(datatype, shape=[1, 224, 224, 4])
     y_ = array_ops.placeholder(datatype, shape=[1, 1000])
@@ -116,7 +124,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
       logits = inference(x)
 
       loss = math_ops.reduce_mean(
-        nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
+          nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
 
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
@@ -128,8 +136,8 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
     sess.run(variables.global_variables_initializer())
     sess.run(report)
 
-    data = np.zeros([1, 224, 224, 4]);
-    labels = np.zeros([1,1000])
+    data = np.zeros([1, 224, 224, 4])
+    labels = np.zeros([1, 1000])
 
     sess.run(loss, feed_dict={x: data, y_: labels})
     out = sess.run(report)
@@ -148,7 +156,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
       logits = inference(x)
 
       loss = math_ops.reduce_mean(
-        nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
+          nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
 
       train = gradient_descent.GradientDescentOptimizer(0.01).minimize(loss)
 
@@ -163,8 +171,8 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
     sess.run(variables.global_variables_initializer())
     sess.run(report)
 
-    data = np.zeros([1, 224, 224, 4]);
-    labels = np.zeros([1,1000])
+    data = np.zeros([1, 224, 224, 4])
+    labels = np.zeros([1, 1000])
 
     sess.run(train, feed_dict={x: data, y_: labels})
     out = sess.run(report)
@@ -175,5 +183,6 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
     size = utils.get_memory_size_from_events(evts)
     self.assertTrue(size < 243000000)
 
+
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

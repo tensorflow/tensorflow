@@ -31,8 +31,8 @@ POPNN_LSTM = "lstm"
 
 POPNN_LSTM_NUM_GATES = 4
 
-
 __all__ = ["PopnnLSTM"]
+
 
 class PopnnLSTM(base_layer.Layer):
   # pylint:disable=line-too-long
@@ -50,6 +50,7 @@ class PopnnLSTM(base_layer.Layer):
   # pylint:enable=line-too-long
   _rnn_mode = POPNN_LSTM
   _num_gates_per_layer = POPNN_LSTM_NUM_GATES
+
   # _saveable_cls = popnn_rnn_ops.PopnnLSTMSaveable
 
   def __init__(self,
@@ -77,8 +78,7 @@ class PopnnLSTM(base_layer.Layer):
     super(PopnnLSTM, self).__init__(dtype=dtype, name=name)
 
     if dtype not in [dtypes.float16, dtypes.float32]:
-      raise ValueError(
-          "Only support float16, float32, provided %s" % dtype)
+      raise ValueError("Only support float16, float32, provided %s" % dtype)
     # Layer self.dtype is type name, the original DType object is kept here.
     self._plain_dtype = dtype
     self._partials_dtype = partials_dtype
@@ -142,8 +142,8 @@ class PopnnLSTM(base_layer.Layer):
 
     input_shape = tensor_shape.TensorShape(input_shape)
     if input_shape.ndims != 3:
-      raise ValueError("Expecting input_shape with 3 dims, got %d" %
-                       input_shape.ndims)
+      raise ValueError(
+          "Expecting input_shape with 3 dims, got %d" % input_shape.ndims)
     if input_shape[-1].value is None:
       raise ValueError("The last dimension of the inputs to `PopnnLSTM` "
                        "should be defined. Found `None`.")
@@ -159,13 +159,15 @@ class PopnnLSTM(base_layer.Layer):
         self._bias_initializer = init_ops.constant_initializer(
             0.0, dtype=self._plain_dtype)
       self.kernel = vs.get_variable(
-        "kernel", dtype=self._plain_dtype,
-        initializer=self._weights_initializer,
-        shape=self.canonical_weight_shape)
+          "kernel",
+          dtype=self._plain_dtype,
+          initializer=self._weights_initializer,
+          shape=self.canonical_weight_shape)
       self.biases = vs.get_variable(
-        "biases", dtype=self._plain_dtype,
-        initializer=self._bias_initializer,
-        shape=self.canonical_bias_shapes)
+          "biases",
+          dtype=self._plain_dtype,
+          initializer=self._bias_initializer,
+          shape=self.canonical_bias_shapes)
 
     self.built = True
 
@@ -197,7 +199,7 @@ class PopnnLSTM(base_layer.Layer):
     h = ops.convert_to_tensor(h, dtype=dtype)
     c = ops.convert_to_tensor(c, dtype=dtype)
     outputs, state = self._forward(inputs, h, c, self.kernel, self.biases,
-      training)
+                                   training)
     return outputs, state
 
   def state_shape(self, batch_size):
@@ -222,7 +224,7 @@ class PopnnLSTM(base_layer.Layer):
     """Shapes of Popnn canonical weight tensors for given layer."""
     if layer < 0 or layer >= self._num_layers:
       raise ValueError("\'layer\' is not valid, got %s, expecting [%d, %d]" %
-                       (layer, 0, self._num_layers-1))
+                       (layer, 0, self._num_layers - 1))
     if not self._input_size:
       raise RuntimeError(
           "%s._canonical_weight_shape invoked before input shape is known" %
@@ -246,13 +248,13 @@ class PopnnLSTM(base_layer.Layer):
 
   def _forward(self, inputs, h, c, kernel, biases, training):
     output, output_h, output_c, _ = gen_popnn_ops.popnn_lstm_layer(
-       inputs=inputs,
-       num_channels=self._num_units,
-       kernel=kernel,
-       biases=biases,
-       input_h_state=h,
-       input_c_state=c,
-       is_training=training,
-       partials_dtype=self._partials_dtype,
-       name=self._name)
+        inputs=inputs,
+        num_channels=self._num_units,
+        kernel=kernel,
+        biases=biases,
+        input_h_state=h,
+        input_c_state=c,
+        is_training=training,
+        partials_dtype=self._partials_dtype,
+        name=self._name)
     return output, (output_h, output_c)

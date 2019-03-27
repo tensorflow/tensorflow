@@ -17,7 +17,6 @@ from tensorflow.python.ops import tensor_array_ops
 
 
 class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
-
   def testTensorArrayWriteRead(self):
     with ops.device("/device:IPU:0"):
       with session_lib.Session() as session:
@@ -27,9 +26,7 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
         in3 = array_ops.placeholder(np.float32, [1, 2])
 
         ta = tensor_array_ops.TensorArray(
-            dtype=np.float32,
-            tensor_array_name="foo",
-            size=3)
+            dtype=np.float32, tensor_array_name="foo", size=3)
 
         w0 = ta.write(0, in1)
         w1 = w0.write(1, in2)
@@ -41,13 +38,13 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
 
         d0, d1, d2 = session.run([r0, r1, r2],
                                  feed_dict={
-                                   in1: [[4.0, 5.0]],
-                                   in2: [[1.0, 3.0]],
-                                   in3: [[7.0, -8.5]]})
+                                     in1: [[4.0, 5.0]],
+                                     in2: [[1.0, 3.0]],
+                                     in3: [[7.0, -8.5]]
+                                 })
         self.assertAllEqual([[4.0, 5.0]], d0)
         self.assertAllEqual([[1.0, 3.0]], d1)
         self.assertAllEqual([[7.0, -8.5]], d2)
-
 
   def testTensorArrayScatterGather(self):
     with ops.device("/device:IPU:0"):
@@ -57,14 +54,10 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
         in2 = array_ops.placeholder(np.float32, [2])
 
         ta = tensor_array_ops.TensorArray(
-          dtype=np.float32,
-          tensor_array_name="ta",
-          size=5)
+            dtype=np.float32, tensor_array_name="ta", size=5)
 
         tb = tensor_array_ops.TensorArray(
-          dtype=np.float32,
-          tensor_array_name="tb",
-          size=5)
+            dtype=np.float32, tensor_array_name="tb", size=5)
 
         ta = ta.unstack(in1)
         tb = tb.write(0, ta.read(0) + in2)
@@ -74,10 +67,15 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
         tb = tb.write(4, ta.read(4) + in2)
         out = tb.gather(list(range(4)))
 
-        v = session.run(out, feed_dict={in1: [[1,1],[2,2],[3,3],[4,4],[5,5]],
-                                        in2: [1,1]})
+        v = session.run(
+            out,
+            feed_dict={
+                in1: [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]],
+                in2: [1, 1]
+            })
 
-        self.assertAllEqual([[2,2],[3,3],[4,4],[5,5]], v)
+        self.assertAllEqual([[2, 2], [3, 3], [4, 4], [5, 5]], v)
+
 
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -14,8 +13,8 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
-class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
+class IpuFuseOpsTest(test_util.TensorFlowTestCase):
   def testReductionSumVectorF16NoConverts(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float16, [4096], name="a")
@@ -28,9 +27,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with tu.ipu_session() as sess:
       sess.run(report)
-      fd = {
-        pa: np.ones([4096])
-      }
+      fd = {pa: np.ones([4096])}
       result = sess.run(output, fd)
       self.assertAllClose(result, 4096)
 
@@ -42,12 +39,12 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       # Check that there are no casts to float at the beginning
       # Note that intermidiates are still floats, so there is a final cast
       ok = [
-        '__seed*',
-        'host-exchange-local-copy-',
-        'Sum/reduce*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
-        'Sum/reduce*/ReduceStage*/IntermediateToIntermediate/Reduce',
-        'Sum/reduce*/ReduceFinalStage/IntermediateToOutput/Reduce',
-        'Sum/reduce*/ReduceFinalStage/Cast']
+          '__seed*', 'host-exchange-local-copy-',
+          'Sum/reduce*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
+          'Sum/reduce*/ReduceStage*/IntermediateToIntermediate/Reduce',
+          'Sum/reduce*/ReduceFinalStage/IntermediateToOutput/Reduce',
+          'Sum/reduce*/ReduceFinalStage/Cast'
+      ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -63,9 +60,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
-      fd = {
-        pa: [2.0, 0.5, 1.0]
-      }
+      fd = {pa: [2.0, 0.5, 1.0]}
       result = sess.run(c, fd)
       self.assertAllClose(result, [2.0, 0.5, 1.0])
 
@@ -94,10 +89,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
-      fd = {
-        pa: [2.0, 0.5, 1.0],
-        pb: [1.0, 1.0, 2.0]
-      }
+      fd = {pa: [2.0, 0.5, 1.0], pb: [1.0, 1.0, 2.0]}
       result = sess.run(c, fd)
       self.assertAllClose(result, 7.5)
 
@@ -107,11 +99,9 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = [
-        '__seed*',
-        'host-exchange-local-copy-',
-        'Sum/reduce*/Reduce',
-        'Sum_1/reduce*/Reduce',
-        'add/add*/AddTo']
+          '__seed*', 'host-exchange-local-copy-', 'Sum/reduce*/Reduce',
+          'Sum_1/reduce*/Reduce', 'add/add*/AddTo'
+      ]
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -128,9 +118,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
     with tu.ipu_session() as sess:
       sess.run(report)
-      fd = {
-        pa: [2.0, 0.5, 1.0]
-      }
+      fd = {pa: [2.0, 0.5, 1.0]}
       result = sess.run(c, fd)
       self.assertAllClose(result, [2.0, 0.5, 1.0])
 
@@ -155,9 +143,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     tu.configure_ipu_system()
 
     with tu.ipu_session() as sess:
-      fd = {
-        pa: [2.0, 0.5, 1.0]
-      }
+      fd = {pa: [2.0, 0.5, 1.0]}
       result = sess.run(c, fd)
       self.assertAllClose(result, [3.0, 1.5, 2.0])
 
@@ -168,12 +154,11 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       cs_list = tu.get_compute_sets_from_report(s)
 
       ok = [
-        '__seed*',
-        'host-exchange-local-copy-',
-        'Cast/convert.*/Cast',
-        'add/add.*/AddTo',
-        'Cast_1/convert.*/Cast']
+          '__seed*', 'host-exchange-local-copy-', 'Cast/convert.*/Cast',
+          'add/add.*/AddTo', 'Cast_1/convert.*/Cast'
+      ]
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
+
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

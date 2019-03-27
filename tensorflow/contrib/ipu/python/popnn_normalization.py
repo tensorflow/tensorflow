@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 from tensorflow.compiler.plugin.poplar.ops import gen_popnn_ops
 from tensorflow.contrib.framework.python.ops import add_arg_scope
 from tensorflow.contrib.framework.python.ops import variables
@@ -135,8 +134,8 @@ def group_norm(inputs,
                      '(channel axis 1) and NHWC (channel axis -1).')
 
   if channels is None:
-    raise ValueError('Inputs %s has undefined channel dimension: %d.' % (
-        inputs.name, channels_axis))
+    raise ValueError('Inputs %s has undefined channel dimension: %d.' %
+                     (inputs.name, channels_axis))
 
   # Standardize the reduction_axes to be positive.
   reduction_axes = list(reduction_axes)
@@ -148,16 +147,16 @@ def group_norm(inputs,
     if a > inputs.shape.ndims:
       raise ValueError('Axis is out of bounds.')
     if inputs.shape[a].value is None:
-      raise ValueError('Inputs %s has undefined dimensions %d.' % (
-          inputs.name, a))
+      raise ValueError(
+          'Inputs %s has undefined dimensions %d.' % (inputs.name, a))
     if channels_axis == a:
       raise ValueError('reduction_axis must be mutually exclusive '
                        'with channels_axis')
   if groups > channels:
     raise ValueError('Invalid groups %d for %d channels.' % (groups, channels))
   if channels % groups != 0:
-    raise ValueError('%d channels is not commensurate with %d groups.' %
-                     (channels, groups))
+    raise ValueError(
+        '%d channels is not commensurate with %d groups.' % (channels, groups))
 
   with variable_scope.variable_scope(
       scope, 'GroupNorm', [inputs], reuse=reuse) as sc:
@@ -172,56 +171,58 @@ def group_norm(inputs,
     if center:
       beta_collections = utils.get_variable_collections(
           variables_collections, 'beta')
-      beta_initializer = param_initializers.get(
-          'beta', init_ops.zeros_initializer())
-      beta = variables.model_variable('beta',
-                                      shape=params_shape,
-                                      dtype=dtype,
-                                      initializer=beta_initializer,
-                                      collections=beta_collections,
-                                      trainable=trainable)
+      beta_initializer = param_initializers.get('beta',
+                                                init_ops.zeros_initializer())
+      beta = variables.model_variable(
+          'beta',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=beta_initializer,
+          collections=beta_collections,
+          trainable=trainable)
     else:
       beta = array_ops.constant(0.0, dtype=dtype, shape=params_shape)
 
     if scale:
       gamma_collections = utils.get_variable_collections(
           variables_collections, 'gamma')
-      gamma_initializer = param_initializers.get(
-          'gamma', init_ops.ones_initializer())
-      gamma = variables.model_variable('gamma',
-                                       shape=params_shape,
-                                       dtype=dtype,
-                                       initializer=gamma_initializer,
-                                       collections=gamma_collections,
-                                       trainable=trainable)
+      gamma_initializer = param_initializers.get('gamma',
+                                                 init_ops.ones_initializer())
+      gamma = variables.model_variable(
+          'gamma',
+          shape=params_shape,
+          dtype=dtype,
+          initializer=gamma_initializer,
+          collections=gamma_collections,
+          trainable=trainable)
     else:
       gamma = array_ops.constant(1.0, dtype=dtype, shape=params_shape)
 
-
     if training:
       outputs, _, _ = gen_popnn_ops.popnn_group_norm_training(
-                                                        inputs=inputs,
-                                                        gamma=gamma,
-                                                        beta=beta,
-                                                        data_format=data_format,
-                                                        epsilon=epsilon,
-                                                        num_groups=groups)
+          inputs=inputs,
+          gamma=gamma,
+          beta=beta,
+          data_format=data_format,
+          epsilon=epsilon,
+          num_groups=groups)
 
     else:
       # Calculate the moments.
       mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_statistics(
-                                                        inputs=inputs,
-                                                        data_format=data_format,
-                                                        epsilon=epsilon,
-                                                        num_groups=groups)
+          inputs=inputs,
+          data_format=data_format,
+          epsilon=epsilon,
+          num_groups=groups)
 
-      outputs = gen_popnn_ops.popnn_group_norm_inference(inputs=inputs,
-                                                         gamma=gamma,
-                                                         beta=beta,
-                                                         mean=mean,
-                                                         inv_std_dev=inv_std_dev,
-                                                         data_format=data_format,
-                                                         epsilon=epsilon,
-                                                         num_groups=groups)
+      outputs = gen_popnn_ops.popnn_group_norm_inference(
+          inputs=inputs,
+          gamma=gamma,
+          beta=beta,
+          mean=mean,
+          inv_std_dev=inv_std_dev,
+          data_format=data_format,
+          epsilon=epsilon,
+          num_groups=groups)
 
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)

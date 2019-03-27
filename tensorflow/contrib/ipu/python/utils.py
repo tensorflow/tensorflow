@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Utility functions related to the Graphcore IPU."""
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
@@ -27,6 +26,7 @@ import json
 import re
 import time
 
+
 def configure_ipu_system(config, device="cpu"):
   """Configure an IPU system.  Passing an IpuOptions protobuf created by the
   `create_ipu_config` function.
@@ -35,9 +35,8 @@ def configure_ipu_system(config, device="cpu"):
     :param config: An IpuOptions configuration protobuf
     :param device: The CPU device which is local to the IPU hardware
   """
-  if not(isinstance(config, IpuOptions)):
-    raise Exception(
-      "`config` must be an IpuOptions instance")
+  if not (isinstance(config, IpuOptions)):
+    raise Exception("`config` must be an IpuOptions instance")
 
   g = ops.Graph()
   with g.as_default():
@@ -48,7 +47,8 @@ def configure_ipu_system(config, device="cpu"):
     sess.run(cfg_op)
 
 
-def create_ipu_config(profiling=False, enable_ipu_events=False,
+def create_ipu_config(profiling=False,
+                      enable_ipu_events=False,
                       use_poplar_text_report=False,
                       report_every_nth_execution=0,
                       always_rearrange_copies_on_the_host=False,
@@ -98,7 +98,7 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
   """
   if profiling and enable_ipu_events:
     raise Exception(
-      "`profiling` and `enable_ipu_events` are mutually exclusive")
+        "`profiling` and `enable_ipu_events` are mutually exclusive")
 
   opts = IpuOptions()
   opts.ipu_model_config.enable_ipu_model = True
@@ -118,6 +118,7 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
   opts.retain_control_dependencies = retain_control_dependencies
 
   return opts
+
 
 def set_compilation_options(opts, compilation_options=None):
   """Set the IPU compilation options for the session..
@@ -142,9 +143,8 @@ def set_compilation_options(opts, compilation_options=None):
     :return: The IpuOptions configuration protobuf, with engine compilation
              options set.
   """
-  if not(isinstance(compilation_options, dict)):
-    raise Exception(
-      "`compilation_options` must be a dictionary")
+  if not (isinstance(compilation_options, dict)):
+    raise Exception("`compilation_options` must be a dictionary")
 
   if (compilation_options is not None):
     for (option_name, value) in compilation_options.items():
@@ -153,6 +153,7 @@ def set_compilation_options(opts, compilation_options=None):
       compilation_option.value = value
 
   return opts
+
 
 def set_convolution_options(opts, convolution_options=None):
   """Set the IPU convolution compilation options for the session.
@@ -176,9 +177,8 @@ def set_convolution_options(opts, convolution_options=None):
     :return: The IpuOptions configuration protobuf, with convolution options
              set.
   """
-  if not(isinstance(convolution_options, dict)):
-    raise Exception(
-      "`convolution_options` must be a dictionary")
+  if not (isinstance(convolution_options, dict)):
+    raise Exception("`convolution_options` must be a dictionary")
 
   if (convolution_options is not None):
     for (option_name, value) in convolution_options.items():
@@ -187,6 +187,7 @@ def set_convolution_options(opts, convolution_options=None):
       opt.value = value
 
   return opts
+
 
 def set_pooling_options(opts, pooling_options=None):
   """Set the IPU pooling compilation options for the session.
@@ -210,9 +211,8 @@ def set_pooling_options(opts, pooling_options=None):
     :return: The IpuOptions configuration protobuf, with pooling options
              set.
   """
-  if not(isinstance(pooling_options, dict)):
-    raise Exception(
-      "`pooling_options` must be a dictionary")
+  if not (isinstance(pooling_options, dict)):
+    raise Exception("`pooling_options` must be a dictionary")
 
   if (pooling_options is not None):
     for (option_name, value) in pooling_options.items():
@@ -221,6 +221,7 @@ def set_pooling_options(opts, pooling_options=None):
       opt.value = value
 
   return opts
+
 
 def set_report_options(opts, report_options=None):
   """Set the options used to influence Poplar report generation.
@@ -245,9 +246,8 @@ def set_report_options(opts, report_options=None):
     :return: The IpuOptions configuration protobuf, with convolution options
              set.
   """
-  if not(isinstance(report_options, dict)):
-    raise Exception(
-      "`report_options` must be a dictionary")
+  if not (isinstance(report_options, dict)):
+    raise Exception("`report_options` must be a dictionary")
 
   if (report_options is not None):
     for (option_name, value) in report_options.items():
@@ -256,6 +256,7 @@ def set_report_options(opts, report_options=None):
       opt.value = value
 
   return opts
+
 
 def set_ipu_model_options(opts, compile_ipu_code=True):
   """Set the IPU Model options.
@@ -272,6 +273,7 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   return opts
+
 
 def set_recomputation_options(opts, recompute_norm_inputs=True):
   """Set re-computation options.
@@ -290,6 +292,7 @@ def set_recomputation_options(opts, recompute_norm_inputs=True):
   opts.speed_size_config.has_recompute_norm_inputs = True
 
   return opts
+
 
 def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
   """Configure the IPUs to be used by the session.
@@ -370,6 +373,7 @@ def auto_select_ipus(opts, num_ipus, sharded=False, number_of_replicas=None):
         dev.num_replicas = number_of_replicas[i]
 
   return opts
+
 
 def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
   """Configure the IPUs to be used by the session.
@@ -572,6 +576,7 @@ def select_ipus(opts, indices, sharded=False, number_of_replicas=None):
 
   return opts
 
+
 def extract_all_strings_from_event_trace(events):
   """Extract a concatenation of all data strings from an IPU event trace.
 
@@ -617,6 +622,7 @@ def extract_all_strings_from_event_trace(events):
 
   return result
 
+
 def extract_all_types_from_event_trace(events):
   """Return a list of the types of each event in an event trace tensor
 
@@ -629,6 +635,7 @@ def extract_all_types_from_event_trace(events):
     result += [evt.type]
   return result
 
+
 def extract_all_events(events):
   """Extract a list containing each event as an event object
   :param events: A tensor containing a list of IPU events as protobuf strings
@@ -640,6 +647,7 @@ def extract_all_events(events):
     result += [evt]
   return result
 
+
 def extract_all_io_events(events):
   """Extract a list of all of the IO events from an IPU event trace tensor
   :param events: A tensor containing a list of IPU events as protobuf strings
@@ -648,8 +656,10 @@ def extract_all_io_events(events):
   result = []
   for e in events:
     evt = IpuTraceEvent.FromString(e)
-    if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
-                    IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
+    if evt.type in [
+        IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
+        IpuTraceEvent.DEVICE_TO_HOST_TRANSFER
+    ]:
       try:
         payload = json.loads(evt.data_transfer.data_transfer.decode('utf-8'))
         for t in payload["tensors"]:
@@ -657,6 +667,7 @@ def extract_all_io_events(events):
       except UnicodeDecodeError:
         pass
   return result
+
 
 def extract_compile_reports(events):
   """Get a list of all compiler reports in the event list.
@@ -674,6 +685,7 @@ def extract_compile_reports(events):
         pass
   return result
 
+
 def extract_execute_reports(events):
   """Get a list of all compiler reports in the event list.
   :param events: A list of trace event serialized protobufs
@@ -690,15 +702,16 @@ def extract_execute_reports(events):
         pass
   return result
 
+
 def extract_graphviz_from_compilation_event(evt):
   """Return the final optimized XLA graph from a COMPILE_BEGIN event.
   :param evt: An IpuTraceEvent which is of type COMPILE_BEGIN.
   :return: A DOT file string of the main XLA computation.
   """
   if evt.type != IpuTraceEvent.COMPILE_BEGIN:
-    raise Exception(
-      "`evt` must be a COMPILE_BEGIN event")
+    raise Exception("`evt` must be a COMPILE_BEGIN event")
   return evt.compile_begin.xla_graph
+
 
 def get_memory_size_from_events(events):
   """Get the total memory consumption for the first compilation in the list
@@ -709,16 +722,17 @@ def get_memory_size_from_events(events):
   size = None
   for evt in events:
     if evt.type == IpuTraceEvent.COMPILE_END:
-      in_memory_usage_section=False
+      in_memory_usage_section = False
       try:
-        for l in evt.compile_end.compilation_report.decode('utf-8').split("\n"):
+        for l in evt.compile_end.compilation_report.decode('utf-8').split(
+            "\n"):
           l = l.strip()
           if l.startswith('Memory Usage'):
-            in_memory_usage_section=True
+            in_memory_usage_section = True
           if l.startswith('Including Gaps') and in_memory_usage_section:
-              m = re.match(r'.+:\s+([\d,]+) B', l)
-              if m:
-                return int(m.group(1).replace(',', ''))
+            m = re.match(r'.+:\s+([\d,]+) B', l)
+            if m:
+              return int(m.group(1).replace(',', ''))
       except UnicodeDecodeError:
         pass
   return None
@@ -736,16 +750,17 @@ def move_variable_initialization_to_cpu(graph=None):
     graph = ops.get_default_graph()
 
   init_ops = []
-  dep_ops = list(map(lambda x:x.initializer.inputs[1].op,
-                     graph.get_collection('variables')))
-  visited  = set()
+  dep_ops = list(
+      map(lambda x: x.initializer.inputs[1].op,
+          graph.get_collection('variables')))
+  visited = set()
 
   while len(dep_ops) > 0:
     op = dep_ops.pop()
     if not op in visited:
       visited.add(op)
       init_ops += [op]
-      dep_ops += map(lambda x:x.op, op.inputs)
+      dep_ops += map(lambda x: x.op, op.inputs)
 
   for op in init_ops:
     op._set_device('/device:CPU:0')

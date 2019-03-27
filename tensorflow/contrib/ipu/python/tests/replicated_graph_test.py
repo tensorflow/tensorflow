@@ -48,16 +48,17 @@ from tensorflow.contrib.ipu import ipu_infeed_queue
 from tensorflow.contrib.ipu import ipu_outfeed_queue
 from tensorflow.contrib.ipu import loops
 
-def create_increasing_dataset(value, shape=[4,4], dtype=np.float32):
+
+def create_increasing_dataset(value, shape=[4, 4], dtype=np.float32):
   def _get_one_input(data):
     return math_ops.cast(
-            gen_array_ops.broadcast_to(data, shape=shape), dtype=dtype)
+        gen_array_ops.broadcast_to(data, shape=shape), dtype=dtype)
 
   dataset = Dataset.range(value).repeat().map(_get_one_input)
   return dataset
 
-class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
+class ReplicatedGraphTest(test_util.TensorFlowTestCase):
   def testCreateSimpleReplicatedGraph(self):
     def my_graph(inp):
       with ops.device("/device:IPU:0"):
@@ -90,8 +91,11 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     def my_graph():
       with ops.device("/device:IPU:0"):
         with variable_scope.variable_scope("", use_resource=True):
-          x = variable_scope.get_variable("x", dtype=np.float32, shape=[4],
-            initializer=init_ops.constant_initializer(10.0))
+          x = variable_scope.get_variable(
+              "x",
+              dtype=np.float32,
+              shape=[4],
+              initializer=init_ops.constant_initializer(10.0))
         x = x + x
         return [popops_cross_replica_sum.cross_replica_sum(x)]
 
@@ -114,7 +118,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     shape = [2]
     dataset = create_increasing_dataset(3, shape=shape)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, replication_factor=2)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
+        dataset, replication_factor=2)
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
 
     def body(v, x):
@@ -163,7 +168,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     shape = [2]
     dataset = create_increasing_dataset(3, shape=shape)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, replication_factor=2)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
+        dataset, replication_factor=2)
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
 
     def body(v, x):
@@ -223,7 +229,8 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
     shape = [2]
     dataset = create_increasing_dataset(3, shape=shape)
 
-    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset, replication_factor=2)
+    infeed_queue = ipu_infeed_queue.IPUInfeedQueue(
+        dataset, replication_factor=2)
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
 
     def body(v, x):
@@ -254,30 +261,51 @@ class ReplicatedGraphTest(test_util.TensorFlowTestCase):
 
       self.assertTrue(outfed_result["last"].shape[0], 2)
       self.assertTrue(outfed_result["this"].shape[0], 2)
-      self.assertAllClose(outfed_result["last"][0][0], outfed_result["last"][0][1])
-      self.assertAllClose(outfed_result["last"][0][0], np.broadcast_to(0, shape))
-      self.assertAllClose(outfed_result["this"][0][0], outfed_result["this"][0][1])
-      self.assertAllClose(outfed_result["this"][0][0], np.broadcast_to(1, shape))
+      self.assertAllClose(outfed_result["last"][0][0],
+                          outfed_result["last"][0][1])
+      self.assertAllClose(outfed_result["last"][0][0], np.broadcast_to(
+          0, shape))
+      self.assertAllClose(outfed_result["this"][0][0],
+                          outfed_result["this"][0][1])
+      self.assertAllClose(outfed_result["this"][0][0], np.broadcast_to(
+          1, shape))
 
-      self.assertAllClose(outfed_result["last"][1][0], outfed_result["last"][1][1])
-      self.assertAllClose(outfed_result["last"][1][0], np.broadcast_to(1, shape))
-      self.assertAllClose(outfed_result["this"][1][0], outfed_result["this"][1][1])
-      self.assertAllClose(outfed_result["this"][1][0], np.broadcast_to(4, shape))
+      self.assertAllClose(outfed_result["last"][1][0],
+                          outfed_result["last"][1][1])
+      self.assertAllClose(outfed_result["last"][1][0], np.broadcast_to(
+          1, shape))
+      self.assertAllClose(outfed_result["this"][1][0],
+                          outfed_result["this"][1][1])
+      self.assertAllClose(outfed_result["this"][1][0], np.broadcast_to(
+          4, shape))
 
-      self.assertAllClose(outfed_result["last"][2][0], outfed_result["last"][2][1])
-      self.assertAllClose(outfed_result["last"][2][0], np.broadcast_to(4, shape))
-      self.assertAllClose(outfed_result["this"][2][0], outfed_result["this"][2][1])
-      self.assertAllClose(outfed_result["this"][2][0], np.broadcast_to(11, shape))
+      self.assertAllClose(outfed_result["last"][2][0],
+                          outfed_result["last"][2][1])
+      self.assertAllClose(outfed_result["last"][2][0], np.broadcast_to(
+          4, shape))
+      self.assertAllClose(outfed_result["this"][2][0],
+                          outfed_result["this"][2][1])
+      self.assertAllClose(outfed_result["this"][2][0],
+                          np.broadcast_to(11, shape))
 
-      self.assertAllClose(outfed_result["last"][3][0], outfed_result["last"][3][1])
-      self.assertAllClose(outfed_result["last"][3][0], np.broadcast_to(11, shape))
-      self.assertAllClose(outfed_result["this"][3][0], outfed_result["this"][3][1])
-      self.assertAllClose(outfed_result["this"][3][0], np.broadcast_to(23, shape))
+      self.assertAllClose(outfed_result["last"][3][0],
+                          outfed_result["last"][3][1])
+      self.assertAllClose(outfed_result["last"][3][0],
+                          np.broadcast_to(11, shape))
+      self.assertAllClose(outfed_result["this"][3][0],
+                          outfed_result["this"][3][1])
+      self.assertAllClose(outfed_result["this"][3][0],
+                          np.broadcast_to(23, shape))
 
-      self.assertAllClose(outfed_result["last"][4][0], outfed_result["last"][4][1])
-      self.assertAllClose(outfed_result["last"][4][0], np.broadcast_to(23, shape))
-      self.assertAllClose(outfed_result["this"][4][0], outfed_result["this"][4][1])
-      self.assertAllClose(outfed_result["this"][4][0], np.broadcast_to(48, shape))
+      self.assertAllClose(outfed_result["last"][4][0],
+                          outfed_result["last"][4][1])
+      self.assertAllClose(outfed_result["last"][4][0],
+                          np.broadcast_to(23, shape))
+      self.assertAllClose(outfed_result["this"][4][0],
+                          outfed_result["this"][4][1])
+      self.assertAllClose(outfed_result["this"][4][0],
+                          np.broadcast_to(48, shape))
+
 
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

@@ -34,19 +34,23 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent as gd
 
-def create_increasing_dataset(value, data_shape=[1, 32, 32, 4],
-                              label_shape=[1, 8], dtype=np.float32):
+
+def create_increasing_dataset(value,
+                              data_shape=[1, 32, 32, 4],
+                              label_shape=[1, 8],
+                              dtype=np.float32):
   def _get_one_input(data):
-    return (
-      math_ops.cast(gen_array_ops.broadcast_to(data, shape=data_shape), dtype=dtype),
-      math_ops.cast(gen_array_ops.broadcast_to(data, shape=label_shape), dtype=dtype)
-    )
+    return (math_ops.cast(
+        gen_array_ops.broadcast_to(data, shape=data_shape), dtype=dtype),
+            math_ops.cast(
+                gen_array_ops.broadcast_to(data, shape=label_shape),
+                dtype=dtype))
 
   dataset = Dataset.range(value).repeat().map(_get_one_input)
   return dataset
 
-class WhileLoopShardedTest(test_util.TensorFlowTestCase):
 
+class WhileLoopShardedTest(test_util.TensorFlowTestCase):
   def testSimpleXlaCompileTrainingInLoopWithParam(self):
     dataset = create_increasing_dataset(3)
 
@@ -57,11 +61,12 @@ class WhileLoopShardedTest(test_util.TensorFlowTestCase):
         with ipu.ops.ipu_scope("/device:IPU:0"):
           inp = x
 
-          x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
-                                   use_bias=False)
-          x = math_ops.reduce_max(x,  axis=[1, 2])
+          x = convolutional.conv2d(
+              x, 8, 3, padding='same', name="conv1", use_bias=False)
+          x = math_ops.reduce_max(x, axis=[1, 2])
 
-          cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+          cross_entropy = nn.softmax_cross_entropy_with_logits(
+              logits=x, labels=y)
           loss = math_ops.reduce_mean(cross_entropy)
 
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
@@ -88,6 +93,5 @@ class WhileLoopShardedTest(test_util.TensorFlowTestCase):
       sess.run(out[0], {lr: 0.1})
 
 
-
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

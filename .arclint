@@ -3,6 +3,15 @@
         "clang-format": {
             "type": "clang-format",
             "include": "(^tensorflow/compiler/plugin/poplar/.*\\.(c|cpp|C|cc|c\\+\\+|cxx|h|hpp)$)"
+        },
+        "yapf": {
+            "type": "yapf",
+            "yapf.style": "{based_on_style: pep8, indent_width: 2}",
+            "include": [
+            	"(^tensorflow/compiler/plugin/poplar/.*\\.py$)",
+            	"(^tensorflow/contrib/ipu/.*\\.py$)",
+            	"(^tensorflow/python/ops/poplar/.*\\.py$)"
+        	]
         }
     }
 }

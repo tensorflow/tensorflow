@@ -45,22 +45,26 @@ num_hidden = 64
 num_training_steps = 100
 lr = 10
 
+
 def _PopnnLSTM(x, h, c, y):
-  lstm_cell = popnn_rnn.PopnnLSTM(num_hidden,
-    dtype=dataType,
-    weights_initializer=init_ops.zeros_initializer(dtype=dataType),
-    bias_initializer=init_ops.zeros_initializer(dtype=dataType))
+  lstm_cell = popnn_rnn.PopnnLSTM(
+      num_hidden,
+      dtype=dataType,
+      weights_initializer=init_ops.zeros_initializer(dtype=dataType),
+      bias_initializer=init_ops.zeros_initializer(dtype=dataType))
   outputs, _ = lstm_cell(x, initial_state=(h, c), training=True)
   softmax = nn.softmax_cross_entropy_with_logits(logits=outputs[-1], labels=y)
   loss = math_ops.reduce_mean(softmax)
   train = gradient_descent.GradientDescentOptimizer(lr).minimize(loss)
   return [loss, train]
 
+
 def _tfLSTM(x, h, c, y):
-  lstm_cell = rnn_cell.LSTMCell(num_hidden,
-    name='basic_lstm_cell',
-    forget_bias=0.,
-    initializer=init_ops.zeros_initializer(dtype=dataType))
+  lstm_cell = rnn_cell.LSTMCell(
+      num_hidden,
+      name='basic_lstm_cell',
+      forget_bias=0.,
+      initializer=init_ops.zeros_initializer(dtype=dataType))
   state = rnn_cell.LSTMStateTuple(c, h)
   outputs, states = rnn.dynamic_rnn(
       lstm_cell, x, dtype=dataType, initial_state=state, time_major=True)
@@ -68,6 +72,7 @@ def _tfLSTM(x, h, c, y):
   loss = math_ops.reduce_mean(softmax)
   train = gradient_descent.GradientDescentOptimizer(lr).minimize(loss)
   return [loss, train]
+
 
 def _RunLayer(layer_func, x, y):
   with ops.device('cpu'):
@@ -84,17 +89,17 @@ def _RunLayer(layer_func, x, y):
 
   with sl.Session() as sess:
     sess.run(variables.global_variables_initializer())
-    fd = {px: x,
-          ph: np.ones(ph.shape),
-          pc: np.ones(pc.shape),
-          py: y}
+    fd = {px: x, ph: np.ones(ph.shape), pc: np.ones(pc.shape), py: y}
     losses = []
     for _ in range(0, num_training_steps):
       loss = sess.run(r, fd)
       losses.append(loss)
   return losses
+
+
 def get_one_hot(a, num_classes):
   return np.squeeze(np.eye(num_classes)[a.reshape(-1)])
+
 
 class LstmSizeTest(test_util.TensorFlowTestCase):
   # Check that the loss goes down (and is identical to reference version).
@@ -115,7 +120,7 @@ class LstmSizeTest(test_util.TensorFlowTestCase):
     # one hot encode the output variable
     y = get_one_hot(nums[seq_len:], nums.size)
     labels = np.zeros([batch_size, num_hidden], dtype=dataType)
-    labels[:y.shape[0],:y.shape[1]] = y
+    labels[:y.shape[0], :y.shape[1]] = y
 
     custom_losses = _RunLayer(_PopnnLSTM, X, labels)
     # Check the loss goes down
@@ -124,5 +129,6 @@ class LstmSizeTest(test_util.TensorFlowTestCase):
     ref_losses = _RunLayer(_tfLSTM, X, labels)
     self.assertAllClose(custom_losses, ref_losses, atol=0.01)
 
+
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

@@ -19,18 +19,17 @@ from __future__ import print_function
 
 from tensorflow.python.framework import ops
 from tensorflow.compiler.plugin.poplar.ops import gen_popnn_ops
-
 """
     These gradient function should *never* be called directly.
 """
+
 
 @ops.RegisterGradient("PopnnLstmLayer")
 def _popnn_lstm_layer_backward(op, *grads):
   """Gradients for the PopnnLstmLayer op."""
   if not op.get_attr("is_training"):
     raise ValueError(
-        "To use PopnnLstmLayer in gradients, is_training must be set to True."
-    )
+        "To use PopnnLstmLayer in gradients, is_training must be set to True.")
   return gen_popnn_ops.popnn_lstm_layer_backprop(
       inputs=op.inputs[0],
       input_h_state=op.inputs[1],

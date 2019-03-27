@@ -19,6 +19,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
 from tensorflow.contrib.ipu.python import popops_cross_replica_sum
 
+
 #TODO Test with a replicated graph
 class ContribIpuOpsTest(test_util.TensorFlowTestCase):
   def testCrossReplicaSumOp(self):
@@ -29,5 +30,6 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
         h1, h2 = session.run([t1, t2])
         self.assertEqual(list(h1), list(h2))
 
+
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

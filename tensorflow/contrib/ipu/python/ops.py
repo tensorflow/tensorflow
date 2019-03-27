@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Ops related to the Graphcore IPU."""
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
@@ -23,6 +22,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops.variable_scope import variable_scope
 from tensorflow.python.summary.summary import tensor_summary
 from tensorflow.python.util import tf_contextlib
+
 
 def ipu_compile_summary(name, op, collections=None):
   """Create an IPU compiler summary operation.
@@ -42,12 +42,15 @@ def ipu_compile_summary(name, op, collections=None):
       reports = gen_ipu_ops.ipu_event_trace()
 
       summary_metadata = summary_pb2.SummaryMetadata(
-        plugin_data=summary_pb2.SummaryMetadata.PluginData(
-          plugin_name="ipu"))
+          plugin_data=summary_pb2.SummaryMetadata.PluginData(
+              plugin_name="ipu"))
 
-      t_summary = tensor_summary(name='ipu_trace', tensor=reports,
-                                 summary_metadata=summary_metadata,
-                                 collections=collections, display_name=name)
+      t_summary = tensor_summary(
+          name='ipu_trace',
+          tensor=reports,
+          summary_metadata=summary_metadata,
+          collections=collections,
+          display_name=name)
 
   return t_summary
 
@@ -56,9 +59,9 @@ def ipu_compile_summary(name, op, collections=None):
 def ipu_jit_scope(ipu_scope):
   scope = "jit_scope_ipu_" + str(ipu_scope)
   attrs = {
-    "_XlaCompile": attr_value_pb2.AttrValue(b=True),
-    "_XlaSeparateCompiledGradients": attr_value_pb2.AttrValue(b=False),
-    "_XlaScope": attr_value_pb2.AttrValue(s=scope.encode())
+      "_XlaCompile": attr_value_pb2.AttrValue(b=True),
+      "_XlaSeparateCompiledGradients": attr_value_pb2.AttrValue(b=False),
+      "_XlaScope": attr_value_pb2.AttrValue(s=scope.encode())
   }
 
   # pylint: disable=protected-access
@@ -74,6 +77,7 @@ def ipu_scope(device):
       with ipu_jit_scope(0) as scope:
         yield scope
 
+
 @tf_contextlib.contextmanager
 def ipu_shard(index):
 
@@ -84,7 +88,7 @@ def ipu_shard(index):
     ipus = [index]
 
   proto = xla_data_pb2.OpSharding(
-    type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=ipus)
+      type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=ipus)
 
   attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
   attrs = {"_XlaSharding": attr_value}

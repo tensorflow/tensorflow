@@ -15,6 +15,7 @@
 """Popops CrossReplicaSum operator."""
 from tensorflow.compiler.plugin.poplar.ops import gen_popops_ops
 
+
 def cross_replica_sum(x, name=None):
   """Sum the input tensor across replicas.
 

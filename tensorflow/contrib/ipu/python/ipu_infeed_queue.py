@@ -22,6 +22,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.python.framework import ops
 
+
 class IPUInfeedQueue:
   """Wraps a tf.Dataset object with infeed operations specific to the IPU.
 
@@ -80,6 +81,7 @@ class IPUInfeedQueue:
     result = sess.run(res)
   ```
   """
+
   def __init__(self, dataset, device_ordinal=0, replication_factor=1):
     """Creates an IPUInfeedQueue object.
 
@@ -121,8 +123,10 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
       # Dataset iterator creator.
       self._initializer = gen_pop_datastream_ops.ipu_consume_dataset(
-        input_dataset=ds_variant, id=self._id, device_ordinal=device_ordinal,
-        **dataset_ops.flat_structure(self._dataset))
+          input_dataset=ds_variant,
+          id=self._id,
+          device_ordinal=device_ordinal,
+          **dataset_ops.flat_structure(self._dataset))
 
     self._dequeued = False
 
@@ -137,7 +141,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       A nested structure of `tf.Tensor` objects.
     """
     flat_ret = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
-      infeed_id=self._id, **self._flat_structure)
+        infeed_id=self._id, **self._flat_structure)
     self._dequeued = True
     return self._structure._from_tensor_list(flat_ret)
 
@@ -168,4 +172,3 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
     """Obsolete function."""
     raise ValueError("""`get_next()` is now obsolete as the IPUInfeedQueue is \
 now automatically dequeued by the loop.""")
-
