@@ -28,20 +28,31 @@ poplar::Graph& GetReplicatedGraph(CompilerResources& res) {
   return GetMasterGraph(res);
 }
 
+uint64 GetShardForOutputIndex(const HloInstruction* inst,
+                              int flattened_output_tuple_index) {
+  if (inst->has_sharding()) {
+    const auto& sharding = GetShardingDeviceIdVector(inst->sharding());
+    if (flattened_output_tuple_index >= sharding.size()) {
+      LOG(FATAL) << "Sharding index out of range on " << inst->ToString();
+    }
+
+    return sharding[flattened_output_tuple_index];
+  }
+
+  return 0;
+}
+
 poplar::Graph& GetGraphWithOutputIndex(CompilerResources& res,
                                        const HloInstruction* inst,
                                        int flattened_output_tuple_index) {
   if (inst->has_sharding()) {
-    const auto& sharding = GetShardingDeviceIdVector(inst->sharding());
-    if (flattened_output_tuple_index >= sharding.size()) {
-      flattened_output_tuple_index = 0;
+    int device_id = GetShardForOutputIndex(inst, flattened_output_tuple_index);
+
+    if (device_id >= res.shard_graphs.size()) {
+      LOG(FATAL) << "Graph index out of range on " << inst->ToString();
     }
 
-    int device_id = sharding[flattened_output_tuple_index];
-
-    if (flattened_output_tuple_index < res.shard_graphs.size()) {
-      return res.shard_graphs[device_id];
-    }
+    return res.shard_graphs[device_id];
   }
 
   return GetReplicatedGraph(res);

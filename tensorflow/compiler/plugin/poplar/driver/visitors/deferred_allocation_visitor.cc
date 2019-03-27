@@ -33,7 +33,11 @@ Status DeferredAllocationVisitor::AllocateInput(const HloInstruction* inst,
       GetGraphWithOutputIndex(resources_, inst, flat_tuple_index);
 
   auto source = std::make_pair(inst, flat_tuple_index);
-  // Do the allocation.
+
+  // Do the allocation
+  VLOG(2) << "Allocating input tensor for " << inst->name() << ":"
+          << flat_tuple_index << " shape " << shape.ToString() << " on shard "
+          << GetShardForOutputIndex(inst, flat_tuple_index);
   TF_ASSIGN_OR_RETURN(poplar::Tensor out,
                       AddTensor(graph, source, shape, resources_, tensor_map));
 
