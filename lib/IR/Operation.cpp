@@ -23,6 +23,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include <numeric>
 using namespace mlir;
 
 /// Form the OperationName for an op with the specified string.  This either is
