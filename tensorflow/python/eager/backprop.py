@@ -929,7 +929,7 @@ class GradientTape(object):
     for v in target:
       if not is_floating(v):
         raise ValueError("GradientTape.gradient can only be called when "
-                       "data type is float.")
+                         "data type is float.")
     
     if self._recording:
       if not self._persistent:
