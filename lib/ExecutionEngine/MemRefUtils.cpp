@@ -26,6 +26,7 @@
 #include "mlir/Support/LLVM.h"
 
 #include "llvm/Support/Error.h"
+#include <numeric>
 
 using namespace mlir;
 

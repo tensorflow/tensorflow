@@ -39,6 +39,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include <numeric>
 
 using namespace mlir;
 using llvm::Error;
