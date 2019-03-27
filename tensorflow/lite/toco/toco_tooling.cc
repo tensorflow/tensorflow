@@ -115,6 +115,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveReduceAttributes);
+  transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
   transformations->Add(new UnpartitionEmbeddingLookup);
   transformations->Add(new ResolveGatherAttributes);
@@ -263,12 +264,6 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
 
   GraphTransformationsSet transformations;
   MakeGeneralGraphTransformationsSet(&transformations);
-
-  if (output_format == TFLITE) {
-    transformations.Add(new ResolveConstantShapeOrRankOnlyForConstantInput);
-  } else {
-    transformations.Add(new ResolveConstantShapeOrRank);
-  }
   auto* remove_trivial_reshape = new RemoveTrivialReshape;
   transformations.Add(remove_trivial_reshape);
   auto* resolve_constant_fake_quant = new ResolveConstantFakeQuant;
