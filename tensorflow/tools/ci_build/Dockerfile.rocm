@@ -1,5 +1,5 @@
-# This Dockerfile provides a starting point for a ROCm installation of 
-# MIOpen and tensorflow.  
+# This Dockerfile provides a starting point for a ROCm installation of
+# MIOpen and tensorflow.
 FROM ubuntu:xenial
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
@@ -9,7 +9,7 @@ ARG ROCM_PATH=/opt/rocm
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
 ENV HOME /root/
-RUN apt update && apt install -y wget software-properties-common 
+RUN apt update && apt install -y wget software-properties-common
 
 # Add rocm repository
 RUN apt-get clean all
@@ -95,8 +95,8 @@ RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 #  - rocfft-0.8.9.0-Linux.deb
 #  - rocrand-1.8.2-Linux.deb
 # Grab deb packages with pr318 and shfl implementation used by xla
-RUN cd $HOME && wget https://www.dropbox.com/s/z8b4ek3z0k7ir8v/tf-pr318-shfl-deb-pkgs.tar.gz && \
-    tar xzf tf-pr318-shfl-deb-pkgs.tar.gz && dpkg -i ./tf-pr318-shfl-deb-pkgs/*.deb
+RUN cd $HOME && wget https://www.dropbox.com/s/frfjh6y0v2itqt8/tf-pr381-3dconv-deb-pkgs.tar.gz && \
+    tar xzf tf-pr381-3dconv-deb-pkgs.tar.gz && dpkg -i ./tf-pr381-3dconv-deb-pkgs/*.deb
 
 # Build rocBLAS from source
 #RUN cd $HOME && git clone -b master-rocm-2.1 https://github.com/ROCmSoftwarePlatform/rocBLAS.git && cd rocBLAS && ./install.sh -id
