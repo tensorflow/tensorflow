@@ -81,7 +81,7 @@ py_library(
         ":generate_examples_report",
         ":string_util_wrapper",
         "//tensorflow:tensorflow_py",
-        "//tensorflow/python:graph_util",
+        "//tensorflow/python:framework",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
