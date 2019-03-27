@@ -49,7 +49,7 @@ namespace tensorflow {
   opt_options.session_options = &session_options;
   opt_options.flib_def = flib_def;
   MarkForCompilationPass pass;
-  return pass.RunImpl(opt_options);
+  return pass.RunForTest(opt_options);
 }
 
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
