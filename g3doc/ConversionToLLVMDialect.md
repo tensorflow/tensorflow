@@ -54,8 +54,9 @@ pointer types if they are fully statically shaped; or to LLVM IR structure types
 if they contain dynamic sizes. In the latter case, the first element of the
 structure is a pointer to the converted (using these rules) memref element type,
 followed by as many elements as the memref has dynamic sizes. The type of each
-of these size arguments will be the LLVM type that results from converting 
-the MLIR `index` type.
+of these size arguments will be the LLVM type that results from converting the
+MLIR `index` type. Zero-dimensional memrefs are treated as pointers to the
+elemental type.
 
 Examples:
 
@@ -294,7 +295,23 @@ address is emitted as arithmetic instructions in the LLVM IR dialect. Static
 sizes are introduced as constants. Dynamic sizes are extracted from the memref
 descriptor.
 
+Accesses to zero-dimensional memref (that are interpreted as pointers to the
+elemental type) are directly converted into `llvm.load` or `llvm.store` without
+any pointer manipulations.
+
 Examples:
+
+An access to a zero-dimensional memref is converted into a plain load:
+
+```mlir {.mlir}
+// before
+%0 = load %m[] : memref<f32>
+
+// after
+%0 = "llvm.load"(%m) : (!llvm.type<"float*">) -> (!llvm.type<"float">)
+```
+
+An access to a memref with indices:
 
 ```mlir {.mlir}
 %0 = load %m[1,2,3,4] : memref<10x?x13x?xf32>

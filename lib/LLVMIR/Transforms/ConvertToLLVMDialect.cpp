@@ -558,7 +558,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     MemRefType type = allocOp.getType();
 
     // Get actual sizes of the memref as values: static sizes are constant
-    // values and dynamic sizes are passed to 'alloc' as operands.
+    // values and dynamic sizes are passed to 'alloc' as operands.  In case of
+    // zero-dimensional memref, assume a scalar (size 1).
     SmallVector<Value *, 4> sizes;
     auto numOperands = allocOp.getNumOperands();
     sizes.reserve(numOperands);
@@ -566,7 +567,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     for (int64_t s : type.getShape())
       sizes.push_back(s == -1 ? operands[i++]
                               : createIndexConstant(rewriter, op->getLoc(), s));
-    assert(!sizes.empty() && "zero-dimensional allocation");
+    if (sizes.empty())
+      sizes.push_back(createIndexConstant(rewriter, op->getLoc(), 1));
 
     // Compute the total number of memref elements.
     Value *cumulativeSize = sizes.front();
@@ -882,11 +884,18 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
                                         ArrayRef<Value *>{dataPtr, subscript},
                                         ArrayRef<NamedAttribute>{});
   }
-  // This is a getElementPtr variant, where the value is a direct raw pointer
+  // This is a getElementPtr variant, where the value is a direct raw pointer.
+  // If a shape is empty, we are dealing with a zero-dimensional memref. Return
+  // the pointer unmodified in this case.  Otherwise, linearize subscripts to
+  // obtain the offset with respect to the base pointer.  Use this offset to
+  // compute and return the element pointer.
   Value *getRawElementPtr(Location loc, Type elementTypePtr,
                           ArrayRef<int64_t> shape, Value *rawDataPtr,
                           ArrayRef<Value *> indices,
                           FuncBuilder &rewriter) const {
+    if (shape.empty())
+      return rawDataPtr;
+
     SmallVector<Value *, 4> sizes;
     for (int64_t s : shape) {
       sizes.push_back(this->createIndexConstant(rewriter, loc, s));

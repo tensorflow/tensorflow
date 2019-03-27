@@ -12,6 +12,24 @@ func @check_static_return(%static : memref<32x18xf32>) -> memref<32x18xf32> {
   return %static : memref<32x18xf32>
 }
 
+// CHECK-LABEL: func @zero_d_alloc() -> !llvm<"float*"> {
+func @zero_d_alloc() -> memref<f32> {
+// CHECK-NEXT:   %0 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
+// CHECK-NEXT:   %1 = "llvm.constant"() {value: 4 : index} : () -> !llvm<"i64">
+// CHECK-NEXT:   %2 = "llvm.mul"(%0, %1) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
+// CHECK-NEXT:   %3 = "llvm.call"(%2) {callee: @malloc : (!llvm<"i64">) -> !llvm<"i8*">} : (!llvm<"i64">) -> !llvm<"i8*">
+// CHECK-NEXT:   %4 = "llvm.bitcast"(%3) : (!llvm<"i8*">) -> !llvm<"float*">
+  %0 = alloc() : memref<f32>
+  return %0 : memref<f32>
+}
+
+// CHECK-LABEL: func @zero_d_dealloc(%arg0: !llvm<"float*">) {
+func @zero_d_dealloc(%arg0: memref<f32>) {
+// CHECK-NEXT:   %0 = "llvm.bitcast"(%arg0) : (!llvm<"float*">) -> !llvm<"i8*">
+// CHECK-NEXT:   "llvm.call"(%0) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
+  dealloc %arg0 : memref<f32>
+  return
+}
 
 // CHECK-LABEL: func @mixed_alloc(%arg0: !llvm<"i64">, %arg1: !llvm<"i64">) -> !llvm<"{ float*, i64, i64 }"> {
 func @mixed_alloc(%arg0: index, %arg1: index) -> memref<?x42x?xf32> {
@@ -85,6 +103,13 @@ func @static_dealloc(%static: memref<10x8xf32>) {
   return
 }
 
+// CHECK-LABEL: func @zero_d_load(%arg0: !llvm<"float*">) -> !llvm<"float"> {
+func @zero_d_load(%arg0: memref<f32>) -> f32 {
+// CHECK-NEXT:   %0 = "llvm.load"(%arg0) : (!llvm<"float*">) -> !llvm<"float">
+  %0 = load %arg0[] : memref<f32>
+  return %0 : f32
+}
+
 // CHECK-LABEL: func @static_load
 func @static_load(%static : memref<10x42xf32>, %i : index, %j : index) {
 // CHECK-NEXT: %0 = "llvm.constant"() {value: 10 : index} : () -> !llvm<"i64">
@@ -120,6 +145,13 @@ func @dynamic_load(%dynamic : memref<?x?xf32>, %i : index, %j : index) {
 // CHECK-NEXT: %5 = "llvm.getelementptr"(%4, %3) : (!llvm<"float*">, !llvm<"i64">) -> !llvm<"float*">
 // CHECK-NEXT: %6 = "llvm.load"(%5) : (!llvm<"float*">) -> !llvm<"float">
   %0 = load %dynamic[%i, %j] : memref<?x?xf32>
+  return
+}
+
+// CHECK-LABEL: func @zero_d_store(%arg0: !llvm<"float*">, %arg1: !llvm<"float">) {
+func @zero_d_store(%arg0: memref<f32>, %arg1: f32) {
+// CHECK-NEXT:   "llvm.store"(%arg1, %arg0) : (!llvm<"float">, !llvm<"float*">) -> ()
+  store %arg1, %arg0[] : memref<f32>
   return
 }
 
