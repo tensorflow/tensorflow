@@ -260,7 +260,7 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
 }
 
 StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
-    const Literal& literal, int device_ordinal,
+    const LiteralSlice& literal, int device_ordinal,
     DeviceMemoryAllocator* allocator) {
   if (allocator == nullptr) {
     allocator = backend().memory_allocator();
@@ -288,7 +288,7 @@ StatusOr<const ShapedBuffer*> LocalClient::GlobalDataToShapedBuffer(
   return local_service_->GlobalDataToShapedBuffer(data, replica_number);
 }
 
-Status LocalClient::TransferToInfeedLocal(const Literal& literal,
+Status LocalClient::TransferToInfeedLocal(const LiteralSlice& literal,
                                           int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
