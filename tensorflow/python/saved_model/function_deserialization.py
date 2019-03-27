@@ -92,7 +92,11 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
   try:
     # Verify that no input elements were dropped during flattening.
     repacked = nest.pack_sequence_as(expected_structure, flatten_inputs)
-    nest.assert_same_structure(inputs, repacked)
+    # TODO(b/129422719): Namedtuple subclasses re-created through
+    # saved_model.load don't compare equal in type to the original in
+    # assert_same_structure. Fix that and we can take out check_types=False
+    # here.
+    nest.assert_same_structure(inputs, repacked, check_types=False)
   except (TypeError, ValueError):
     return False
 
