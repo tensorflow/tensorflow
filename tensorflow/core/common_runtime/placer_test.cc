@@ -762,6 +762,23 @@ TEST_F(PlacerTest, TestPartialSpecGpuToCpu) {
   EXPECT_DEVICE_CONTAINS(g, "var", "/device:FakeGPU:0");
 }
 
+// Test that a resource with requested device will be moved to another
+// device if it is processed by an op that is not supported on requested device.
+TEST_F(PlacerTest, TestResourceMove) {
+  Graph g(OpRegistry::Global());
+  {
+    GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+    Node* ds =
+        ops::SourceOp("CreateDatasetSP",
+                      b.opts().WithName("ds").WithDevice("/device:FakeCPU:0"));
+    ops::UnaryOp("IteratorGPU", ops::NodeOut(ds, 0), b.opts().WithName("it"));
+    TF_EXPECT_OK(BuildGraph(b, &g));
+  }
+  TF_EXPECT_OK(Place(&g));
+  EXPECT_DEVICE_TYPE(g, "ds", "FakeGPU");
+  EXPECT_DEVICE_TYPE(g, "it", "FakeGPU");
+}
+
 // Test that a node with an assigned GPU device but has not registered
 // OpKernel will fail.
 TEST_F(PlacerTest, TestAssignedGpuDeviceToCpuDevice) {
@@ -932,13 +949,25 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
 
     Status s = Place(&g, allow_soft_placement, true);
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
-    EXPECT_TRUE(str_util::StrContains(
-        s.error_message(),
-        "Cannot place the graph because a reference or resource edge "
-        "connects "
-        "colocation groups with incompatible assigned devices: "
-        "/job:a/replica:0/task:0/device:FakeGPU:0 vs "
-        "/job:a/replica:0/task:0/device:FakeCPU:0"));
+    if (set_assigned) {
+      EXPECT_TRUE(str_util::StrContains(
+          s.error_message(),
+          "Cannot place the graph because a reference or resource edge "
+          "connects "
+          "colocation groups with incompatible assigned devices: "
+          "/job:a/replica:0/task:0/device:FakeGPU:0 vs "
+          "/job:a/replica:0/task:0/device:FakeCPU:0"))
+          << s.ToString();
+    } else {
+      EXPECT_TRUE(str_util::StrContains(
+          s.error_message(),
+          "Cannot place the graph because a reference or resource edge "
+          "connects "
+          "colocation groups with incompatible resource devices: "
+          "/job:a/replica:0/task:0/device:FakeGPU:0 vs "
+          "/job:a/replica:0/task:0/device:FakeCPU:0"))
+          << s.ToString();
+    }
 
     return Status::OK();
   };
@@ -1539,8 +1568,8 @@ TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
-    ops::SourceOp("VariableGPU",
-                  b.opts().WithName("var").WithDevice("/device:FakeCPU:0"));
+    ops::SourceOp("TestInput",  // has only CPU kernel
+                  b.opts().WithName("a").WithDevice("/device:FakeGPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
@@ -1765,6 +1794,31 @@ TEST_F(PlacerTest, RequestedDeviceCanBeOverridden) {
   EXPECT_COLOCATED(g, "a", "id1");
 }
 
+TEST_F(PlacerTest, AssignedDeviceOfColocatedNodeIsRespected) {
+  /*
+   *     a:float (assigned to CPU)
+   *       |
+   *       v
+   *     iter (has only GPU kernel)
+   */
+  GraphDef graph = GDef({
+      NDef("a", "_Arg", {}, {{"T", DT_RESOURCE}}),
+      NDef("iter", "IteratorGPU", {"a"}),
+  });
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(BuildGraph(graph, &g));
+  GetNodeByName(g, "a")->set_assigned_device_name(kFullCPU);
+  Status s = Place(&g);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_TRUE(
+      str_util::StrContains(s.error_message(),
+                            "{{colocation_node iter}} was colocated with a "
+                            "group of nodes that required incompatible device "
+                            "'/job:a/replica:0/task:0/device:FakeCPU:0'"))
+      << s.ToString();
+}
+
 TEST_P(SoftPlacementPlacerTest,
        AssignedDevicesAreNotOverriddenDueToResourcesAndColocation) {
   /*
@@ -1793,7 +1847,6 @@ TEST_P(SoftPlacementPlacerTest,
 
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(BuildGraph(graph, &g));
-  std::unordered_map<string, Node*> nodes = g.BuildNodeNameIndex();
   GetNodeByName(g, "id_a")->set_assigned_device_name(kFullGPU);
   GetNodeByName(g, "id_b")->set_assigned_device_name(kFullCPU);
 

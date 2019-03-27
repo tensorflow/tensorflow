@@ -86,6 +86,14 @@ class DeviceNameUtils {
     int id = 0;
   };
   // Parses "fullname" into "*parsed". Returns true iff succeeds.
+  // Legacy names like "/cpu:0" that don't contain "device",
+  // are parsed to mean their current counterparts "/device:CPU:0". More
+  // specifically, the lower case "cpu" and "gpu" is capitalized and "device"
+  // is added. "/tpu:0" is not treated the same way - it has use the current
+  // full syntax.
+  // Also, note that lower case "cpu" and "gpu" device types in current syntax
+  // are not capitalized. For example, "/device:CPU:0" is different from
+  // "/device:cpu:0"
   static bool ParseFullName(StringPiece fullname, ParsedName* parsed);
 
   // Canonicalizes "fullname" into "*canonical_name". Uses a fully specified
@@ -135,6 +143,10 @@ class DeviceNameUtils {
   }
   static Status MergeDevNames(ParsedName* target, const ParsedName& other,
                               bool allow_soft_placement);
+  // Same as MergeDevNames with allow_soft_placement=true, but instead of
+  // clearing conflicting fields, overrides them with `other`'s values.
+  static Status MergeOverrideDevNames(ParsedName* target,
+                                      const ParsedName& other);
 
   // Returns true iff devices identified by 'src' and 'dst' are in the
   // same address space.
