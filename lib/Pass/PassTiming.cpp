@@ -22,6 +22,7 @@
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/Threading.h"
 #include <chrono>
 
 using namespace mlir;
@@ -31,6 +32,28 @@ constexpr llvm::StringLiteral kPassTimingDescription =
     "... Pass execution timing report ...";
 
 namespace {
+/// Simple record class to record timing information.
+struct TimeRecord {
+  TimeRecord(double wall = 0.0, double user = 0.0) : wall(wall), user(user) {}
+
+  TimeRecord &operator+=(const TimeRecord &other) {
+    wall += other.wall;
+    user += other.user;
+    return *this;
+  }
+
+  /// Print the current time record to 'os', with a breakdown showing
+  /// contributions to the give 'total' time record.
+  void print(raw_ostream &os, const TimeRecord &total) {
+    if (total.user != total.wall)
+      os << llvm::format("  %7.4f (%5.1f%%)  ", user,
+                         100.0 * user / total.user);
+    os << llvm::format("  %7.4f (%5.1f%%)  ", wall, 100.0 * wall / total.wall);
+  }
+
+  double wall, user;
+};
+
 struct Timer {
   explicit Timer(std::string &&name) : name(std::move(name)) {}
 
@@ -38,7 +61,11 @@ struct Timer {
   void start() { startTime = std::chrono::system_clock::now(); }
 
   /// Stop the timer.
-  void stop() { total += (std::chrono::system_clock::now() - startTime); }
+  void stop() {
+    auto newTime = std::chrono::system_clock::now() - startTime;
+    wallTime += newTime;
+    userTime += newTime;
+  }
 
   /// Get or create a child timer with the provided name and id.
   Timer *getChildTimer(const void *id,
@@ -50,26 +77,73 @@ struct Timer {
   }
 
   /// Returns the total time for this timer in seconds.
-  double getTotalTime() {
-    // If the total has a count, then we directly compute the seconds.
-    if (total.count()) {
-      return std::chrono::duration_cast<std::chrono::duration<double>>(total)
-          .count();
+  TimeRecord getTotalTime() {
+    // If we have a valid wall time, then we directly compute the seconds.
+    if (wallTime.count()) {
+      return TimeRecord(
+          std::chrono::duration_cast<std::chrono::duration<double>>(wallTime)
+              .count(),
+          std::chrono::duration_cast<std::chrono::duration<double>>(userTime)
+              .count());
     }
 
     // Otheriwse, accumulate the timing from each of the children.
-    double totalTime = 0.0;
+    TimeRecord totalTime;
     for (auto &child : children)
       totalTime += child.second->getTotalTime();
     return totalTime;
   }
 
+  /// A map of unique identifiers to child timers.
+  using ChildrenMap = llvm::MapVector<const void *, std::unique_ptr<Timer>>;
+
+  /// Merge the timing data from 'other' into this timer.
+  void merge(Timer &&other) {
+    if (wallTime < other.wallTime)
+      wallTime = other.wallTime;
+    userTime += other.userTime;
+    mergeChildren(std::move(other.children), /*isStructural=*/false);
+  }
+
+  /// Merge the timer chilren in 'otherChildren' with the children of this
+  /// timer. If 'isStructural' is true, the children are merged lexographically
+  /// and 'otherChildren' must have the same number of elements as the children
+  /// of this timer. Otherwise, the timer children are merged based upon the
+  /// given timer key.
+  void mergeChildren(ChildrenMap &&otherChildren, bool isStructural) {
+    // Check for an empty children list.
+    if (children.empty()) {
+      children = std::move(otherChildren);
+      return;
+    }
+
+    if (isStructural) {
+      // If this is a structural merge, the number of children must be the same.
+      assert(children.size() == otherChildren.size() &&
+             "structural merge requires the same number of children");
+      auto it = children.begin(), otherIt = otherChildren.begin();
+      for (auto e = children.end(); it != e; ++it, ++otherIt)
+        it->second->merge(std::move(*otherIt->second));
+      return;
+    }
+
+    // Otherwise, we merge based upon the child timers key.
+    for (auto &otherChild : otherChildren) {
+      auto &child = children[otherChild.first];
+      if (!child)
+        child = std::move(otherChild.second);
+      else
+        child->merge(std::move(*otherChild.second));
+    }
+  }
+
   /// Raw timing information.
   std::chrono::time_point<std::chrono::high_resolution_clock> startTime;
-  std::chrono::nanoseconds total = std::chrono::nanoseconds(0);
+  std::chrono::nanoseconds wallTime = std::chrono::nanoseconds(0);
+  std::chrono::nanoseconds userTime = std::chrono::nanoseconds(0);
 
   /// A map of unique identifiers to child timers.
-  llvm::MapVector<const void *, std::unique_ptr<Timer>> children;
+  ChildrenMap children;
 
   /// A descriptive name for this timer.
   std::string name;
@@ -110,23 +184,38 @@ struct PassTiming : public PassInstrumentation {
   void stopTimer();
 
   /// Print the timing result in list mode.
-  void printResultsAsList(llvm::raw_ostream &os, double totalTime);
+  void printResultsAsList(raw_ostream &os, Timer *root, TimeRecord totalTime);
 
   /// Print the timing result in pipeline mode.
-  void printResultsAsPipeline(llvm::raw_ostream &os, double totalTime);
+  void printResultsAsPipeline(raw_ostream &os, Timer *root,
+                              TimeRecord totalTime);
 
   /// Returns a timer for the provided identifier and name.
   Timer *getTimer(const void *id, std::function<std::string()> &&nameBuilder) {
-    if (activeTimers.empty())
-      return rootTimer.getChildTimer(id, std::move(nameBuilder));
-    return activeTimers.back()->getChildTimer(id, std::move(nameBuilder));
+    auto tid = llvm::get_threadid();
+
+    // If there is no active timer then add to the root timer.
+    auto &activeTimers = activeThreadTimers[tid];
+    if (activeTimers.empty()) {
+      auto &rootTimer = rootTimers[tid];
+      if (!rootTimer)
+        rootTimer.reset(new Timer("root"));
+      auto *timer = rootTimer->getChildTimer(id, std::move(nameBuilder));
+      activeTimers.push_back(timer);
+      return timer;
+    }
+
+    // Otherwise, add this to the active timer.
+    auto timer = activeTimers.back()->getChildTimer(id, std::move(nameBuilder));
+    activeTimers.push_back(timer);
+    return timer;
   }
 
-  /// The root top level timer.
-  Timer rootTimer = Timer("root");
+  /// The root top level timers for each thread.
+  DenseMap<uint64_t, std::unique_ptr<Timer>> rootTimers;
 
-  /// A stack of the currently active pass timers.
-  SmallVector<Timer *, 4> activeTimers;
+  /// A stack of the currently active pass timers per thread.
+  DenseMap<uint64_t, SmallVector<Timer *, 4>> activeThreadTimers;
 
   /// The display mode to use when printing the timing results.
   PassTimingDisplayMode displayMode;
@@ -140,7 +229,6 @@ void PassTiming::startPassTimer(Pass *pass) {
       return StringRef("Function Pipeline");
     return pass->getName();
   });
-  activeTimers.push_back(timer);
 
   // We don't actually want to time the adaptor passes, they gather their total
   // from their held passes.
@@ -151,14 +239,37 @@ void PassTiming::startPassTimer(Pass *pass) {
 /// Start a new timer for the given analysis.
 void PassTiming::startAnalysisTimer(llvm::StringRef name, AnalysisID *id) {
   Timer *timer = getTimer(id, [name] { return "(A) " + name.str(); });
-  activeTimers.push_back(timer);
   timer->start();
 }
 
 /// Stop a pass timer.
 void PassTiming::runAfterPass(Pass *pass, const llvm::Any &) {
+  auto tid = llvm::get_threadid();
+  auto &activeTimers = activeThreadTimers[tid];
   assert(!activeTimers.empty() && "expected active timer");
   Timer *timer = activeTimers.pop_back_val();
+
+  // If this is an ModuleToFunctionPassAdaptorParallel, then we need to merge in
+  // the timing data for the other threads.
+  if (auto *asyncMTFPass =
+          dyn_cast<ModuleToFunctionPassAdaptorParallel>(pass)) {
+    // The asychronous pipeline timers should exist as children of root timers
+    // for other threads.
+    for (auto &rootTimer : llvm::make_early_inc_range(rootTimers)) {
+      // Skip the current thread.
+      if (rootTimer.first == tid)
+        continue;
+      // Check that this thread has no active timers.
+      assert(activeThreadTimers[tid].empty() && "expected no active timers");
+
+      // Structurally merge this timers children into the parallel
+      // module-to-function pass timer.
+      timer->mergeChildren(std::move(rootTimer.second->children),
+                           /*isStructural=*/true);
+      rootTimers.erase(rootTimer.first);
+    }
+    return;
+  }
 
   // Adapator passes aren't timed directly, so we don't need to stop their
   // timers.
@@ -169,13 +280,14 @@ void PassTiming::runAfterPass(Pass *pass, const llvm::Any &) {
 /// Stop a timer.
 void PassTiming::runAfterAnalysis(llvm::StringRef, AnalysisID *,
                                   const llvm::Any &) {
+  auto &activeTimers = activeThreadTimers[llvm::get_threadid()];
   assert(!activeTimers.empty() && "expected active timer");
   Timer *timer = activeTimers.pop_back_val();
   timer->stop();
 }
 
 /// Utility to print the timer heading information.
-static void printTimerHeader(llvm::raw_ostream &os, double total) {
+static void printTimerHeader(llvm::raw_ostream &os, TimeRecord total) {
   os << "===" << std::string(73, '-') << "===\n";
   // Figure out how many spaces to description name.
   unsigned Padding = (80 - kPassTimingDescription.size()) / 2;
@@ -183,69 +295,76 @@ static void printTimerHeader(llvm::raw_ostream &os, double total) {
   os << "===" << std::string(73, '-') << "===\n";
 
   // Print the total time followed by the section headers.
-  os << llvm::format("  Total Execution Time: %5.4f seconds\n\n", total);
+  os << llvm::format("  Total Execution Time: %5.4f seconds\n\n", total.wall);
+  if (total.user != total.wall)
+    os << "   ---User Time---";
   os << "   ---Wall Time---  --- Name ---\n";
 }
 
 /// Utility to print a single line entry in the timer output.
 static void printTimeEntry(raw_ostream &os, unsigned indent, StringRef name,
-                           double time, double totalTime) {
-  os << llvm::format("  %7.4f (%5.1f%%)  ", time, 100.0 * time / totalTime);
+                           TimeRecord time, TimeRecord totalTime) {
+  time.print(os, totalTime);
   os.indent(indent) << name << "\n";
 }
 
 /// Print out the current timing information.
 void PassTiming::print() {
   // Don't print anything if there is no timing data.
-  if (rootTimer.children.empty())
+  if (rootTimers.empty())
     return;
+
+  assert(rootTimers.size() == 1 && "expected one remaining root timer");
+  auto &rootTimer = rootTimers.begin()->second;
   auto os = llvm::CreateInfoOutputFile();
 
   // Print the timer header.
-  double totalTime = rootTimer.getTotalTime();
+  TimeRecord totalTime = rootTimer->getTotalTime();
   printTimerHeader(*os, totalTime);
 
   // Defer to a specialized printer for each display mode.
   switch (displayMode) {
   case PassTimingDisplayMode::List:
-    printResultsAsList(*os, totalTime);
+    printResultsAsList(*os, rootTimer.get(), totalTime);
     break;
   case PassTimingDisplayMode::Pipeline:
-    printResultsAsPipeline(*os, totalTime);
+    printResultsAsPipeline(*os, rootTimer.get(), totalTime);
     break;
   }
   printTimeEntry(*os, 0, "Total", totalTime, totalTime);
   os->flush();
 
-  // Reset root timer.
-  rootTimer.children.clear();
+  // Reset root timers.
+  rootTimers.clear();
+  activeThreadTimers.clear();
 }
 
 /// Print the timing result in list mode.
-void PassTiming::printResultsAsList(llvm::raw_ostream &os, double totalTime) {
-  llvm::StringMap<double> mergedTimings;
+void PassTiming::printResultsAsList(raw_ostream &os, Timer *root,
+                                    TimeRecord totalTime) {
+  llvm::StringMap<TimeRecord> mergedTimings;
 
   std::function<void(Timer *)> addTimer = [&](Timer *timer) {
     // Check for timing information.
-    if (timer->total.count())
+    if (timer->wallTime.count())
       mergedTimings[timer->name] += timer->getTotalTime();
     for (auto &children : timer->children)
       addTimer(children.second.get());
   };
 
   // Add each of the top level timers.
-  for (auto &topLevelTimer : rootTimer.children)
+  for (auto &topLevelTimer : root->children)
     addTimer(topLevelTimer.second.get());
 
-  // Sort the timing information.
-  std::vector<std::pair<StringRef, double>> timerNameAndTime;
+  // Sort the timing information by wall time.
+  std::vector<std::pair<StringRef, TimeRecord>> timerNameAndTime;
   for (auto &it : mergedTimings)
     timerNameAndTime.emplace_back(it.first(), it.second);
   llvm::array_pod_sort(timerNameAndTime.begin(), timerNameAndTime.end(),
-                       [](const std::pair<StringRef, double> *lhs,
-                          const std::pair<StringRef, double> *rhs) {
+                       [](const std::pair<StringRef, TimeRecord> *lhs,
+                          const std::pair<StringRef, TimeRecord> *rhs) {
                          return llvm::array_pod_sort_comparator<double>(
-                             &rhs->second, &lhs->second);
+                             &rhs->second.wall, &lhs->second.wall);
                        });
 
   // Print the timing information sequentially.
@@ -254,18 +373,17 @@ void PassTiming::printResultsAsList(llvm::raw_ostream &os, double totalTime) {
 }
 
 /// Print the timing result in pipeline mode.
-void PassTiming::printResultsAsPipeline(llvm::raw_ostream &os,
-                                        double totalTime) {
+void PassTiming::printResultsAsPipeline(raw_ostream &os, Timer *root,
+                                        TimeRecord totalTime) {
   std::function<void(unsigned, Timer *)> printTimer = [&](unsigned indent,
                                                           Timer *timer) {
-    // Check for timing information.
     printTimeEntry(os, indent, timer->name, timer->getTotalTime(), totalTime);
     for (auto &children : timer->children)
       printTimer(indent + 2, children.second.get());
   };
 
   // Print each of the top level timers.
-  for (auto &topLevelTimer : rootTimer.children)
+  for (auto &topLevelTimer : root->children)
     printTimer(0, topLevelTimer.second.get());
 }
 

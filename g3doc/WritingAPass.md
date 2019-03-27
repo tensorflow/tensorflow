@@ -463,6 +463,37 @@ $ mlir-opt foo.mlir -cse -canonicalize -convert-to-llvmir -pass-timing
    0.0249 (100.0%)  Total
 ```
 
+##### Multi-threaded Pass Timing
+
+When multi-threading is enabled in the pass manager the meaning of the display
+slightly changes. First, a new timing column is added, `User Time`, that
+displays the total time spent across all threads. Secondly, the `Wall Time`
+column displays the longest individual time spent amongst all of the threads.
+This means that the `Wall Time` column will continue to give an indicator on the
+perceived time, or clock time, whereas the `User Time` will display the total
+cpu time.
+
+```shell
+$ mlir-opt foo.mlir -experimental-mt-pm -cse -canonicalize -convert-to-llvmir -pass-timing
+
+===-------------------------------------------------------------------------===
+                      ... Pass execution timing report ...
+===-------------------------------------------------------------------------===
+  Total Execution Time: 0.0078 seconds
+
+   ---User Time---   ---Wall Time---  --- Name ---
+   0.0175 ( 88.3%)     0.0055 ( 70.4%)  Function Pipeline
+   0.0018 (  9.3%)     0.0006 (  8.1%)    CSE
+   0.0013 (  6.3%)     0.0004 (  5.8%)      (A) DominanceInfo
+   0.0017 (  8.7%)     0.0006 (  7.1%)    FunctionVerifier
+   0.0128 ( 64.6%)     0.0039 ( 50.5%)    Canonicalizer
+   0.0011 (  5.7%)     0.0004 (  4.7%)    FunctionVerifier
+   0.0004 (  2.1%)     0.0004 (  5.2%)  ModuleVerifier
+   0.0010 (  5.3%)     0.0010 ( 13.4%)  LLVMLowering
+   0.0009 (  4.3%)     0.0009 ( 11.0%)  ModuleVerifier
+   0.0198 (100.0%)     0.0078 (100.0%)  Total
+```
+
 #### IR Printing
 
 When debugging it is often useful to dump the IR at various stages of a pass
