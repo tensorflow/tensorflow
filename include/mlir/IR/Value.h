@@ -52,6 +52,14 @@ public:
 
   Type getType() { return typeAndKind.getPointer(); }
 
+  /// Mutate the type of this Value to be of the specified type.
+  ///
+  /// Note that this is an extremely dangerous operation which can create
+  /// completely invalid IR very easily.  It is strongly recommended that you
+  /// recreate IR objects with the right types instead of mutating them in
+  /// place.
+  void setType(Type newType) { typeAndKind.setPointer(newType); }
+
   /// Replace all uses of 'this' value with the new value, updating anything in
   /// the IR that uses 'this' to use the other value instead.  When this returns
   /// there are zero uses of 'this'.
@@ -82,7 +90,7 @@ protected:
   Value(Kind kind, Type type) : typeAndKind(type, kind) {}
 
 private:
-  const llvm::PointerIntPair<Type, 1, Kind> typeAndKind;
+  llvm::PointerIntPair<Type, 1, Kind> typeAndKind;
 };
 
 inline raw_ostream &operator<<(raw_ostream &os, Value &value) {
