@@ -2355,7 +2355,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ISliceLayer* layer = params->converter->network()->addSlice(
-      input.tensor(), begin_dims, size_dims, stride_dims);
+      *input.tensor(), begin_dims, size_dims, stride_dims);
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 #else
