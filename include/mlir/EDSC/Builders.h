@@ -112,9 +112,12 @@ protected:
   /// scoping itself, we use enter/exit pairs of instructions.
   /// As a consequence we must allocate a new FuncBuilder + ScopedContext and
   /// let the escape.
-  void enter(mlir::Block *block) {
-    bodyScope = new ScopedContext(FuncBuilder(block, block->end()),
-                                  ScopedContext::getLocation());
+  /// Step back "prev" times from the end of the block to set up the insertion
+  /// point, which is useful for non-empty blocks.
+  void enter(mlir::Block *block, int prev = 0) {
+    bodyScope =
+        new ScopedContext(FuncBuilder(block, std::prev(block->end(), prev)),
+                          ScopedContext::getLocation());
     bodyScope->nestedBuilder = this;
   }
 
@@ -326,6 +329,12 @@ public:
   bool hasType() const { return t != Type(); }
   Type getType() const { return t; }
 
+  Instruction *getOperation() const {
+    if (!v)
+      return nullptr;
+    return v->getDefiningOp();
+  }
+
 protected:
   ValueHandle() : t(), v(nullptr) {}
 
@@ -359,7 +368,7 @@ struct InstructionHandle : public CapturableHandle {
                                   ArrayRef<NamedAttribute> attributes = {});
 
   operator Instruction *() { return inst; }
-  Instruction *getOperation() { return inst; }
+  Instruction *getOperation() const { return inst; }
 
 private:
   Instruction *inst;
@@ -433,7 +442,6 @@ ValueHandle ValueHandle::create(Args... args) {
     return ValueHandle(inst->getResult(0));
   } else if (inst->getNumResults() == 0) {
     if (auto f = inst->dyn_cast<AffineForOp>()) {
-      f.createBody();
       return ValueHandle(f.getInductionVar());
     }
   }

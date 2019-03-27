@@ -175,7 +175,6 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
         forOp = builder->create<AffineForOp>(
             location, lbs, builder->getMultiDimIdentityMap(lbs.size()), ubs,
             builder->getMultiDimIdentityMap(ubs.size()), step);
-      forOp.createBody();
       res = forOp.getInductionVar();
     }
   }

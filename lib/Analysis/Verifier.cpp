@@ -220,15 +220,6 @@ bool FuncVerifier::verify() {
   return false;
 }
 
-// Returns if the given block is allowed to have no terminator.
-static bool canBlockHaveNoTerminator(Block &block) {
-  // Allow the first block of an operation region to have no terminator if it is
-  // the only block in the region.
-  auto *parentList = block.getParent();
-  return parentList->getContainingOp() &&
-         std::next(parentList->begin()) == parentList->end();
-}
-
 bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
   for (auto *arg : block.getArguments()) {
     if (arg->getOwner() != &block)
@@ -237,8 +228,6 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
 
   // Verify that this block has a terminator.
   if (block.empty()) {
-    if (canBlockHaveNoTerminator(block))
-      return false;
     return failure("block with no terminator", block);
   }
 
@@ -257,7 +246,7 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
   // Verify the terminator.
   if (verifyOperation(block.back()))
     return true;
-  if (block.back().isKnownNonTerminator() && !canBlockHaveNoTerminator(block))
+  if (block.back().isKnownNonTerminator())
     return failure("block with no terminator", block);
 
   // Verify that this block is not branching to a block of a different

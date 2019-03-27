@@ -88,15 +88,18 @@ public:
                                           MLIRContext *context);
 };
 
-/// The "affine.for" instruction represents an affine loop nest, defining an SSA
-/// value for its induction variable. The induction variable is represented as a
-/// BlockArgument to the entry block of the body. The body and induction
-/// variable can be created automatically for new "affine.for" ops with
-/// 'createBody'. This SSA value always has type index, which is the size of the
-/// machine word. The stride, represented by step, is a positive constant
-/// integer which defaults to "1" if not present. The lower and upper bounds
-/// specify a half-open range: the range includes the lower bound but does not
-/// include the upper bound.
+/// The "affine.for" operation represents an affine loop nest, defining an SSA
+/// value for its induction variable. It has one region capturing the loop body.
+/// The induction variable is represented as a argument of this region. This SSA
+/// value always has type index, which is the size of the machine word. The
+/// stride, represented by step, is a positive constant integer which defaults
+/// to "1" if not present. The lower and upper bounds specify a half-open range:
+/// the range includes the lower bound but does not include the upper bound.
+///
+/// The body region must contain exactly one block that terminates with
+/// "affine.terminator".  Calling AffineForOp::build will create such region
+/// and insert the terminator, so will the parsing even in cases if it is absent
+/// from the custom format.
 ///
 /// The lower and upper bounds of a for operation are represented as an
 /// application of an affine mapping to a list of SSA values passed to the map.
@@ -136,9 +139,9 @@ public:
   static StringRef getLowerBoundAttrName() { return "lower_bound"; }
   static StringRef getUpperBoundAttrName() { return "upper_bound"; }
 
-  /// Generate a body block for this AffineForOp. The operation must not already
-  /// have a body. The operation must contain a parent function.
-  Block *createBody();
+  /// Return a Builder set up to insert operations immediately before the
+  /// terminator.
+  FuncBuilder getBodyBuilder();
 
   /// Get the body of the AffineForOp.
   Block *getBody() { return &getRegion().front(); }
@@ -320,6 +323,26 @@ public:
   bool verify();
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p);
+};
+
+/// Affine terminator is a special terminator operation for blocks inside affine
+/// loops and branches. It unconditionally transmits the control flow to the
+/// successor of the operation enclosing the region.
+///
+/// This operation does _not_ have a custom syntax. However, affine control
+/// operations omit the terminator in their custom syntax for brevity.
+class AffineTerminatorOp
+    : public Op<AffineTerminatorOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
+                OpTrait::IsTerminator> {
+public:
+  using Op::Op;
+
+  static void build(Builder *, OperationState *) {}
+
+  static StringRef getOperationName() { return "affine.terminator"; }
+
+private:
+  friend Instruction;
 };
 
 /// Returns true if the given Value can be used as a dimension id.

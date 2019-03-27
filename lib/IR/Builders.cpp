@@ -320,16 +320,7 @@ Block *FuncBuilder::createBlock(Block *insertBefore) {
 /// Create an operation given the fields represented as an OperationState.
 Operation *FuncBuilder::createOperation(const OperationState &state) {
   assert(block && "createOperation() called without setting builder's block");
-
-  unsigned numRegions = state.regions.size();
-  auto *op = Operation::create(state.location, state.name, state.operands,
-                               state.types, state.attributes, state.successors,
-                               numRegions, state.resizableOperandList, context);
-
-  for (unsigned i = 0; i < numRegions; ++i)
-    if (state.regions[i])
-      op->getRegion(i).takeBody(*state.regions[i]);
-
+  auto *op = Operation::create(state);
   block->getOperations().insert(insertPoint, op);
   return op;
 }

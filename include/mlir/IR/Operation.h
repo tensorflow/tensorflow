@@ -34,6 +34,7 @@ class BlockAndValueMapping;
 class Location;
 class MLIRContext;
 class OperandIterator;
+class OperationState;
 class ResultIterator;
 class ResultTypeIterator;
 
@@ -65,6 +66,9 @@ public:
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList, MLIRContext *context);
+
+  /// Create a new Operation from the fields stored in `state`.
+  static Operation *create(const OperationState &state);
 
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }

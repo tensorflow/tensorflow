@@ -791,10 +791,12 @@ func @verbose_if(%N: index) {
   "affine.if"(%c, %N, %c) { condition: #set0 } : (index, index, index) -> () {
     // CHECK-NEXT: "add"
     %y = "add"(%c, %N) : (index, index) -> index
+    "affine.terminator"() : () -> ()
     // CHECK-NEXT: } else {
   } { // The else region.
     // CHECK-NEXT: "add"
     %z = "add"(%c, %c) : (index, index) -> index
+    "affine.terminator"() : () -> ()
   }
   return
 }

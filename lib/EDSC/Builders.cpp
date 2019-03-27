@@ -101,9 +101,6 @@ ValueHandle ValueHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
     return ValueHandle(inst->getResult(0));
   }
   if (auto f = inst->dyn_cast<AffineForOp>()) {
-    // Immediately create the loop body so we can just insert instructions right
-    // away.
-    f.createBody();
     return ValueHandle(f.getInductionVar());
   }
   llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
@@ -174,7 +171,7 @@ mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
         step);
   }
   auto *body = getForInductionVarOwner(iv->getValue()).getBody();
-  enter(body);
+  enter(body, /*prev=*/1);
 }
 
 ValueHandle

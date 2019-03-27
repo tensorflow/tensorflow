@@ -125,7 +125,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
                                           uint64_t unrollJamFactor) {
   // Gathers all maximal sub-blocks of instructions that do not themselves
   // include a for inst (a instruction could have a descendant for inst though
-  // in its tree).
+  // in its tree).  Ignore the block terminators.
   struct JamBlockGatherer {
     // Store iterators to the first and last inst of each sub-block found.
     std::vector<std::pair<Block::iterator, Block::iterator>> subBlocks;
@@ -137,7 +137,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
           walk(block);
     }
     void walk(Block &block) {
-      for (auto it = block.begin(), e = block.end(); it != e;) {
+      for (auto it = block.begin(), e = std::prev(block.end()); it != e;) {
         auto subBlockStart = it;
         while (it != e && !it->isa<AffineForOp>())
           ++it;
@@ -155,7 +155,8 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
   if (unrollJamFactor == 1)
     return promoteIfSingleIteration(forOp);
 
-  if (forOp.getBody()->empty())
+  if (forOp.getBody()->empty() ||
+      forOp.getBody()->begin() == std::prev(forOp.getBody()->end()))
     return failure();
 
   // Loops where both lower and upper bounds are multi-result maps won't be

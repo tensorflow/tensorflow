@@ -60,9 +60,12 @@ upper-bound ::= `min`? affine-map dim-and-symbol-use-list | shorthand-bound
 shorthand-bound ::= ssa-id | `-`? integer-literal
 ```
 
-The `affine.for` operation represents an affine loop nest, defining an SSA value
-for its induction variable. This SSA value always has type
-[`index`](LangRef.md#index-type), which is the size of the machine word.
+The `affine.for` operation represents an affine loop nest. It has one region
+containing its body. This region must contain one block that terminates with
+[`affine.terminator`](#'affine.terminator"-operation). *Note:* when `affine.for`
+is printed in custom format, the terminator is omitted. The block has one
+argument of [`index`](LangRef.md#index-type) type that represents the induction
+variable of the loop.
 
 The `affine.for` operation executes its body a number of times iterating from a
 lower bound to an upper bound by a stride. The stride, represented by `step`, is
@@ -124,6 +127,13 @@ and the SSA values bound to the dimensions and symbols in the integer set. The
 [same restrictions](#restrictions-on-dimensions-and-symbols) hold for these SSA
 values as for all bindings of SSA values to dimensions and symbols.
 
+The `if` operation contains two regions for the "then" and "else" clauses. The
+latter may be empty (i.e. contain no blocks), meaning the absence of the else
+clause. When non-empty, both regions must contain exactly one block terminating
+with [`affine.terminator`](#'affine.terminator'-operation). *Note:* when `if` is
+printed in custom format, the terminator is omitted. These blocks must not have
+any arguments.
+
 Example:
 
 ```mlir {.mlir}
@@ -143,3 +153,23 @@ func @reduced_domain_example(%A, %X, %N) : (memref<10xi32>, i32, i32) {
   return
 }
 ```
+
+#### `affine.terminator` operation {#'affine.terminator'-operation}
+
+Syntax:
+
+``` {.ebnf}
+operation ::= `"affine.terminator"() : () -> ()`
+```
+
+Affine terminator is a special terminator operation for blocks inside affine
+loops ([`for`](#'for'-operation)) and branches ([`if`](#'if'-operation)). It
+unconditionally transmits the control flow to the successor of the operation
+enclosing the region.
+
+*Rationale*: bodies of affine operations are [blocks](LangRef.md#block) that
+must have terminators. Loops and branches represent structured control flow and
+should not accept arbitrary branches as terminators.
+
+This operation does _not_ have a custom syntax. However, affine control
+operations omit the terminator in their custom syntax for brevity.

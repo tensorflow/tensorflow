@@ -145,8 +145,10 @@ LogicalResult mlir::promoteIfSingleIteration(AffineForOp forOp) {
       }
     }
   }
-  // Move the loop body instructions to the loop's containing block.
+  // Move the loop body instructions, except for terminator, to the loop's
+  // containing block.
   auto *block = forInst->getBlock();
+  forOp.getBody()->getOperations().back().erase();
   block->getOperations().splice(Block::iterator(forInst),
                                 forOp.getBody()->getOperations());
   forOp.erase();
@@ -182,12 +184,12 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
   auto loopChunk =
       b->create<AffineForOp>(srcForInst.getLoc(), lbOperands, lbMap, ubOperands,
                              ubMap, srcForInst.getStep());
-  loopChunk.createBody();
   auto *loopChunkIV = loopChunk.getInductionVar();
   auto *srcIV = srcForInst.getInductionVar();
 
   BlockAndValueMapping operandMap;
 
+  FuncBuilder bodyBuilder = loopChunk.getBodyBuilder();
   for (auto it = instGroupQueue.begin() + offset, e = instGroupQueue.end();
        it != e; ++it) {
     uint64_t shift = it->first;
@@ -197,10 +199,9 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
     // Generate the remapping if the shift is not zero: remappedIV = newIV -
     // shift.
     if (!srcIV->use_empty() && shift != 0) {
-      FuncBuilder b(loopChunk.getBody());
-      auto ivRemap = b.create<AffineApplyOp>(
+      auto ivRemap = bodyBuilder.create<AffineApplyOp>(
           srcForInst.getLoc(),
-          b.getSingleDimShiftAffineMap(
+          bodyBuilder.getSingleDimShiftAffineMap(
               -static_cast<int64_t>(srcForInst.getStep() * shift)),
           loopChunkIV);
       operandMap.map(srcIV, ivRemap);
@@ -208,9 +209,10 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
       operandMap.map(srcIV, loopChunkIV);
     }
     for (auto *inst : insts) {
-      loopChunk.getBody()->push_back(inst->clone(operandMap, b->getContext()));
+      if (!inst->isa<AffineTerminatorOp>())
+        bodyBuilder.clone(*inst, operandMap);
     }
-  }
+  };
   if (succeeded(promoteIfSingleIteration(loopChunk)))
     return AffineForOp();
   return loopChunk;
@@ -233,7 +235,7 @@ generateLoop(AffineMap lbMap, AffineMap ubMap,
 // method.
 LogicalResult mlir::instBodySkew(AffineForOp forOp, ArrayRef<uint64_t> shifts,
                                  bool unrollPrologueEpilogue) {
-  if (forOp.getBody()->empty())
+  if (forOp.getBody()->begin() == std::prev(forOp.getBody()->end()))
     return success();
 
   // If the trip counts aren't constant, we would need versioning and
@@ -385,7 +387,8 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
   if (unrollFactor == 1)
     return promoteIfSingleIteration(forOp);
 
-  if (forOp.getBody()->empty())
+  if (forOp.getBody()->empty() ||
+      forOp.getBody()->begin() == std::prev(forOp.getBody()->end()))
     return failure();
 
   // Loops where the lower bound is a max expression isn't supported for
@@ -428,13 +431,13 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
   int64_t step = forOp.getStep();
   forOp.setStep(step * unrollFactor);
 
-  // Builder to insert unrolled bodies right after the last instruction in the
-  // body of 'forOp'.
-  FuncBuilder builder(forOp.getBody(), forOp.getBody()->end());
+  // Builder to insert unrolled bodies just before the terminator of the body of
+  // 'forOp'.
+  FuncBuilder builder = forOp.getBodyBuilder();
 
-  // Keep a pointer to the last instruction in the original block so that we
-  // know what to clone (since we are doing this in-place).
-  Block::iterator srcBlockEnd = std::prev(forOp.getBody()->end());
+  // Keep a pointer to the last non-terminator instruction in the original block
+  // so that we know what to clone (since we are doing this in-place).
+  Block::iterator srcBlockEnd = std::prev(forOp.getBody()->end(), 2);
 
   // Unroll the contents of 'forOp' (append unrollFactor-1 additional copies).
   auto *forOpIV = forOp.getInductionVar();
@@ -465,23 +468,27 @@ LogicalResult mlir::loopUnrollByFactor(AffineForOp forOp,
 }
 
 /// Performs loop interchange on 'forOpA' and 'forOpB', where 'forOpB' is
-/// nested within 'forOpA' as the only instruction in its block.
+/// nested within 'forOpA' as the only non-terminator operation in its block.
 void mlir::interchangeLoops(AffineForOp forOpA, AffineForOp forOpB) {
   auto *forOpAInst = forOpA.getOperation();
-  // 1) Slice forOpA's instruction list (which is just forOpB) just before
-  // forOpA (in forOpA's parent's block) this should leave 'forOpA's
-  // instruction list empty (because its perfectly nested).
+
   assert(&*forOpA.getBody()->begin() == forOpB.getOperation());
-  forOpAInst->getBlock()->getOperations().splice(
-      Block::iterator(forOpAInst), forOpA.getBody()->getOperations());
-  // 2) Slice forOpB's instruction list into forOpA's instruction list (this
-  // leaves forOpB's instruction list empty).
-  forOpA.getBody()->getOperations().splice(forOpA.getBody()->begin(),
-                                           forOpB.getBody()->getOperations());
-  // 3) Slice forOpA into forOpB's instruction list.
-  forOpB.getBody()->getOperations().splice(
-      forOpB.getBody()->begin(), forOpAInst->getBlock()->getOperations(),
-      Block::iterator(forOpAInst));
+  auto &forOpABody = forOpA.getBody()->getOperations();
+  auto &forOpBBody = forOpB.getBody()->getOperations();
+
+  // 1) Splice forOpA's non-terminator operations (which is just forOpB) just
+  // before forOpA (in ForOpA's parent's block) this should leave 'forOpA's
+  // body containing only the terminator.
+  forOpAInst->getBlock()->getOperations().splice(Block::iterator(forOpAInst),
+                                                 forOpABody, forOpABody.begin(),
+                                                 std::prev(forOpABody.end()));
+  // 2) Splice forOpB's non-terminator operations into the beginning of forOpA's
+  // body (this leaves forOpB's body containing only the terminator).
+  forOpABody.splice(forOpABody.begin(), forOpBBody, forOpBBody.begin(),
+                    std::prev(forOpBBody.end()));
+  // 3) Splice forOpA into the beginning of forOpB's body.
+  forOpBBody.splice(forOpBBody.begin(), forOpAInst->getBlock()->getOperations(),
+                    Block::iterator(forOpAInst));
 }
 
 /// Performs a series of loop interchanges to sink 'forOp' 'loopDepth' levels
@@ -516,25 +523,27 @@ static void augmentMapAndBounds(FuncBuilder *b, Value *iv, AffineMap *map,
 
 // Clone the original body of `forOp` into the body of `newForOp` while
 // substituting `oldIv` in place of
-// `forOp.getInductionVariable()`.
+// `forOp.getInductionVariable()` and ignoring the terminator.
 // Note: `newForOp` may be nested under `forOp`.
 static void cloneLoopBodyInto(AffineForOp forOp, Value *oldIv,
                               AffineForOp newForOp) {
   BlockAndValueMapping map;
   map.map(oldIv, newForOp.getInductionVar());
-  FuncBuilder b(newForOp.getBody(), newForOp.getBody()->end());
-  for (auto it = forOp.getBody()->begin(), end = forOp.getBody()->end();
-       it != end; ++it) {
+  FuncBuilder b = newForOp.getBodyBuilder();
+  for (auto &inst : *forOp.getBody()) {
     // Step over newForOp in case it is nested under forOp.
-    if (&*it == newForOp.getOperation()) {
+    if (&inst == newForOp.getOperation()) {
       continue;
     }
-    auto *inst = b.clone(*it, map);
+    if (inst.isa<AffineTerminatorOp>()) {
+      continue;
+    }
+    auto *instClone = b.clone(inst, map);
     unsigned idx = 0;
-    for (auto r : it->getResults()) {
+    for (auto r : inst.getResults()) {
       // Since we do a forward pass over the body, we iteratively augment
       // the `map` with everything we clone.
-      map.map(r, inst->getResult(idx++));
+      map.map(r, instClone->getResult(idx++));
     }
   }
 }
@@ -574,11 +583,10 @@ stripmineSink(AffineForOp forOp, uint64_t factor,
 
   SmallVector<AffineForOp, 8> innerLoops;
   for (auto t : targets) {
-    // Insert newForOp at the end of `t`.
-    FuncBuilder b(t.getBody(), t.getBody()->end());
+    // Insert newForOp before the terminator of `t`.
+    FuncBuilder b = t.getBodyBuilder();
     auto newForOp = b.create<AffineForOp>(t.getLoc(), lbOperands, lbMap,
                                           ubOperands, ubMap, originalStep);
-    newForOp.createBody();
     cloneLoopBodyInto(t, forOp.getInductionVar(), newForOp);
     // Remove all instructions from `t` except `newForOp`.
     auto rit = ++newForOp.getOperation()->getReverseIterator();

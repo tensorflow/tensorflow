@@ -37,7 +37,7 @@ using llvm::dbgs;
 
 AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
     : Dialect(/*namePrefix=*/"affine", context) {
-  addOperations<AffineApplyOp, AffineForOp, AffineIfOp>();
+  addOperations<AffineApplyOp, AffineForOp, AffineIfOp, AffineTerminatorOp>();
 }
 
 /// A utility function to check if a value is defined at the top level of a
@@ -690,6 +690,37 @@ void AffineApplyOp::getCanonicalizationPatterns(
 // AffineForOp
 //===----------------------------------------------------------------------===//
 
+// Check that if a "block" has a terminator, it is an `AffineTerminatorOp`.
+// Return true on success, report errors and return true on failure.
+static bool checkHasAffineTerminator(OpState &op, Block &block) {
+  if (block.empty() || block.back().isa<AffineTerminatorOp>())
+    return false;
+
+  op.emitOpError("expects regions to end with '" +
+                 AffineTerminatorOp::getOperationName() + "'");
+  op.emitNote("in custom textual format, the absence of terminator implies '" +
+              AffineTerminatorOp::getOperationName() + "'");
+  return true;
+}
+
+// Insert `affine.terminator` at the end of the region's only block if it does
+// not have a terminator already.  If the region is empty, insert a new block
+// first.
+static void ensureAffineTerminator(Region &region, Builder &builder,
+                                   Location loc) {
+  if (region.empty())
+    region.push_back(new Block);
+
+  Block &block = region.back();
+  if (!block.empty() && block.back().isKnownTerminator())
+    return;
+
+  OperationState terminatorState(builder.getContext(), loc,
+                                 AffineTerminatorOp::getOperationName());
+  AffineTerminatorOp::build(&builder, &terminatorState);
+  block.push_back(Operation::create(terminatorState));
+}
+
 void AffineForOp::build(Builder *builder, OperationState *result,
                         ArrayRef<Value *> lbOperands, AffineMap lbMap,
                         ArrayRef<Value *> ubOperands, AffineMap ubMap,
@@ -716,8 +747,13 @@ void AffineForOp::build(Builder *builder, OperationState *result,
                        builder->getAffineMapAttr(ubMap));
   result->addOperands(ubOperands);
 
-  // Create a region for the body.
-  result->addRegion();
+  // Create a region and a block for the body.  The argument of the region is
+  // the loop induction variable.
+  Region *bodyRegion = result->addRegion();
+  Block *body = new Block();
+  body->addArgument(IndexType::get(builder->getContext()));
+  bodyRegion->push_back(body);
+  ensureAffineTerminator(*bodyRegion, *builder, result->location);
 
   // Set the operands list as resizable so that we can freely modify the bounds.
   result->setOperandListToResizable();
@@ -745,9 +781,8 @@ bool AffineForOp::verify() {
     return emitOpError("expected body to have a single index argument for the "
                        "induction variable");
 
-  // Check that the body has no terminator.
-  if (!body->empty() && body->back().isKnownTerminator())
-    return emitOpError("expects body block to not have a terminator");
+  if (checkHasAffineTerminator(*this, *body))
+    return true;
 
   // Verify that there are enough operands for the bounds.
   AffineMap lowerBoundMap = getLowerBoundMap(),
@@ -897,6 +932,8 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   if (parser->parseRegion(*body))
     return true;
 
+  ensureAffineTerminator(*body, builder, result->location);
+
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
     return true;
@@ -955,8 +992,9 @@ void AffineForOp::print(OpAsmPrinter *p) {
 
   if (getStep() != 1)
     *p << " step " << getStep();
-  p->printRegion(getOperation()->getRegion(0),
-                 /*printEntryBlockArgs=*/false);
+  p->printRegion(getRegion(),
+                 /*printEntryBlockArgs=*/false,
+                 /*printBlockTerminators=*/false);
   p->printOptionalAttrDict(getAttrs(),
                            /*elidedAttrs=*/{getLowerBoundAttrName(),
                                             getUpperBoundAttrName(),
@@ -1030,16 +1068,9 @@ void AffineForOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.push_back(llvm::make_unique<AffineForLoopBoundFolder>(context));
 }
 
-Block *AffineForOp::createBody() {
-  auto &bodyRegion = getRegion();
-  assert(bodyRegion.empty() && "expected no existing body blocks");
-
-  // Create a new block for the body, and add an argument for the induction
-  // variable.
-  Block *body = new Block();
-  body->addArgument(IndexType::get(getContext()));
-  bodyRegion.push_back(body);
-  return body;
+FuncBuilder AffineForOp::getBodyBuilder() {
+  Block *body = getBody();
+  return FuncBuilder(body, std::prev(body->end()));
 }
 
 AffineBound AffineForOp::getLowerBound() {
@@ -1215,8 +1246,7 @@ bool AffineIfOp::verify() {
     // regions.
     if (std::next(region.begin()) != region.end())
       return emitOpError("expects only one block per 'then' or 'else' regions");
-    if (region.front().back().isKnownTerminator())
-      return emitOpError("expects region block to not have a terminator");
+    checkHasAffineTerminator(*this, region.front());
 
     for (auto &b : region)
       if (b.getNumArguments() != 0)
@@ -1255,11 +1285,14 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   // Parse the 'then' region.
   if (parser->parseRegion(*thenRegion))
     return true;
+  ensureAffineTerminator(*thenRegion, parser->getBuilder(), result->location);
 
   // If we find an 'else' keyword then parse the 'else' region.
-  if (!parser->parseOptionalKeyword("else"))
+  if (!parser->parseOptionalKeyword("else")) {
     if (parser->parseRegion(*elseRegion))
       return true;
+    ensureAffineTerminator(*elseRegion, parser->getBuilder(), result->location);
+  }
 
   // Parse the optional attribute list.
   if (parser->parseOptionalAttributeDict(result->attributes))
@@ -1273,13 +1306,17 @@ void AffineIfOp::print(OpAsmPrinter *p) {
   *p << "affine.if " << conditionAttr;
   printDimAndSymbolList(operand_begin(), operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
-  p->printRegion(getOperation()->getRegion(0));
+  p->printRegion(getOperation()->getRegion(0),
+                 /*printEntryBlockArgs=*/false,
+                 /*printBlockTerminators=*/false);
 
   // Print the 'else' regions if it has any blocks.
   auto &elseRegion = getOperation()->getRegion(1);
   if (!elseRegion.empty()) {
     *p << " else";
-    p->printRegion(elseRegion);
+    p->printRegion(elseRegion,
+                   /*printEntryBlockArgs=*/false,
+                   /*printBlockTerminators=*/false);
   }
 
   // Print the attribute list.

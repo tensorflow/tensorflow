@@ -89,10 +89,12 @@ FunctionPassBase *mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified
-// location in destination's body.
+// location in destination's body, ignoring the terminator.
 static inline void moveLoopBody(AffineForOp src, AffineForOp dest,
                                 Block::iterator loc) {
-  dest.getBody()->getOperations().splice(loc, src.getBody()->getOperations());
+  auto &insts = src.getBody()->getOperations();
+  dest.getBody()->getOperations().splice(loc, insts, insts.begin(),
+                                         std::prev(insts.end()));
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' to the start of dest's
@@ -202,7 +204,6 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
     FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto pointLoop = b.create<AffineForOp>(loc, 0, 0);
-    pointLoop.createBody();
     pointLoop.getBody()->getOperations().splice(
         pointLoop.getBody()->begin(), topLoop->getBlock()->getOperations(),
         topLoop);
@@ -217,7 +218,6 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
     FuncBuilder b(topLoop);
     // Loop bounds will be set later.
     auto tileSpaceLoop = b.create<AffineForOp>(loc, 0, 0);
-    tileSpaceLoop.createBody();
     tileSpaceLoop.getBody()->getOperations().splice(
         tileSpaceLoop.getBody()->begin(), topLoop->getBlock()->getOperations(),
         topLoop);
@@ -264,7 +264,7 @@ static void getTileableBands(Function &f,
     AffineForOp currInst = root;
     do {
       band.push_back(currInst);
-    } while (currInst.getBody()->getOperations().size() == 1 &&
+    } while (currInst.getBody()->getOperations().size() == 2 &&
              (currInst = currInst.getBody()->front().dyn_cast<AffineForOp>()));
     bands->push_back(band);
   };

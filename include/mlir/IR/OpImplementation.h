@@ -89,7 +89,8 @@ public:
   virtual void printGenericOp(Operation *op) = 0;
 
   /// Prints a region.
-  virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true) = 0;
+  virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
+                           bool printBlockTerminators = true) = 0;
 
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;

@@ -335,14 +335,15 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   conditionBlock->insertBefore(endBlock);
   auto *iv = conditionBlock->addArgument(IndexType::get(forInst->getContext()));
 
-  // Create the body block, moving the body of the forOp over to it.
+  // Create the body block, moving the body of the forOp over to it and dropping
+  // the affine terminator.
   auto *bodyBlock = new Block();
   bodyBlock->insertBefore(endBlock);
 
   auto *oldBody = forOp.getBody();
   bodyBlock->getOperations().splice(bodyBlock->begin(),
                                     oldBody->getOperations(), oldBody->begin(),
-                                    oldBody->end());
+                                    std::prev(oldBody->end()));
 
   // The code in the body of the forOp now uses 'iv' as its indvar.
   forOp.getInductionVar()->replaceAllUsesWith(iv);
@@ -406,7 +407,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
 // enabling easy nesting of "if" instructions and if-then-else-if chains.
 //
 //      +--------------------------------+
-//      | <code before the AffineIfOp>       |
+//      | <code before the AffineIfOp>   |
 //      | %zero = constant 0 : index     |
 //      | %v = affine.apply #expr1(%ops) |
 //      | %c = cmpi "sge" %v, %zero      |
@@ -450,7 +451,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
 //         v   v
 //      +--------------------------------+
 //      | continue:                      |
-//      |   <code after the AffineIfOp>      |
+//      |   <code after the AffineIfOp>  |
 //      +--------------------------------+
 //
 bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
@@ -469,7 +470,8 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
   Block *thenBlock = new Block();
   thenBlock->insertBefore(continueBlock);
 
-  // If the 'then' block is not empty, then splice the instructions.
+  // If the 'then' block is not empty, then splice the instructions except for
+  // the terminator.
   auto &oldThenBlocks = ifOp.getThenBlocks();
   if (!oldThenBlocks.empty()) {
     // We currently only handle one 'then' block.
@@ -478,9 +480,9 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
 
     Block *oldThen = &oldThenBlocks.front();
 
-    thenBlock->getOperations().splice(thenBlock->begin(),
-                                      oldThen->getOperations(),
-                                      oldThen->begin(), oldThen->end());
+    thenBlock->getOperations().splice(
+        thenBlock->begin(), oldThen->getOperations(), oldThen->begin(),
+        std::prev(oldThen->end()));
   }
 
   FuncBuilder builder(thenBlock);
@@ -499,9 +501,9 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
     elseBlock = new Block();
     elseBlock->insertBefore(continueBlock);
 
-    elseBlock->getOperations().splice(elseBlock->begin(),
-                                      oldElse->getOperations(),
-                                      oldElse->begin(), oldElse->end());
+    elseBlock->getOperations().splice(
+        elseBlock->begin(), oldElse->getOperations(), oldElse->begin(),
+        std::prev(oldElse->end()));
     builder.setInsertionPointToEnd(elseBlock);
     builder.create<BranchOp>(loc, continueBlock);
   }

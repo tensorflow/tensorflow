@@ -1060,7 +1060,8 @@ public:
 
   // Methods to print instructions.
   void print(Operation *inst);
-  void print(Block *block, bool printBlockArgs = true);
+  void print(Block *block, bool printBlockArgs = true,
+             bool printBlockTerminator = true);
 
   void printOperation(Operation *op);
   void printGenericOp(Operation *op);
@@ -1109,12 +1110,14 @@ public:
   void printSuccessorAndUseList(Operation *term, unsigned index) override;
 
   /// Print a region.
-  void printRegion(Region &blocks, bool printEntryBlockArgs) override {
+  void printRegion(Region &blocks, bool printEntryBlockArgs,
+                   bool printBlockTerminators) override {
     os << " {\n";
     if (!blocks.empty()) {
       auto *entryBlock = &blocks.front();
       print(entryBlock,
-            printEntryBlockArgs && entryBlock->getNumArguments() != 0);
+            printEntryBlockArgs && entryBlock->getNumArguments() != 0,
+            printBlockTerminators);
       for (auto &b : llvm::drop_begin(blocks.getBlocks(), 1))
         print(&b);
     }
@@ -1284,7 +1287,8 @@ void FunctionPrinter::print() {
   printTrailingLocation(function->getLoc());
 
   if (!function->empty()) {
-    printRegion(function->getBody(), /*printEntryBlockArgs=*/false);
+    printRegion(function->getBody(), /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/true);
     os << "\n";
   }
   os << '\n';
@@ -1335,7 +1339,8 @@ void FunctionPrinter::printFunctionSignature() {
   }
 }
 
-void FunctionPrinter::print(Block *block, bool printBlockArgs) {
+void FunctionPrinter::print(Block *block, bool printBlockArgs,
+                            bool printBlockTerminator) {
   // Print the block label and argument list if requested.
   if (printBlockArgs) {
     os.indent(currentIndent);
@@ -1379,8 +1384,10 @@ void FunctionPrinter::print(Block *block, bool printBlockArgs) {
   }
 
   currentIndent += indentWidth;
-
-  for (auto &inst : block->getOperations()) {
+  auto range = llvm::make_range(
+      block->getOperations().begin(),
+      std::prev(block->getOperations().end(), printBlockTerminator ? 0 : 1));
+  for (auto &inst : range) {
     print(&inst);
     os << '\n';
   }
@@ -1501,7 +1508,8 @@ void FunctionPrinter::printGenericOp(Operation *op) {
 
   // Print any trailing regions.
   for (auto &region : op->getRegions())
-    printRegion(region, /*printEntryBlockArgs=*/true);
+    printRegion(region, /*printEntryBlockArgs=*/true,
+                /*printBlockTerminators=*/true);
 }
 
 void FunctionPrinter::printSuccessorAndUseList(Operation *term,

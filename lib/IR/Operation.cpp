@@ -98,6 +98,18 @@ Operation *Operation::create(Location location, OperationName name,
                 resizableOperandList, context);
 }
 
+/// Create a new Operation from operation state.
+Operation *Operation::create(const OperationState &state) {
+  unsigned numRegions = state.regions.size();
+  Operation *inst = create(
+      state.location, state.name, state.operands, state.types, state.attributes,
+      state.successors, numRegions, state.resizableOperandList, state.context);
+  for (unsigned i = 0; i < numRegions; ++i)
+    if (state.regions[i])
+      inst->getRegion(i).takeBody(*state.regions[i]);
+  return inst;
+}
+
 /// Overload of create that takes an existing NamedAttributeList to avoid
 /// unnecessarily uniquing a list of attributes.
 Operation *Operation::create(Location location, OperationName name,
