@@ -449,8 +449,8 @@ class MarkForCompilationPassImpl {
   // Nodes that XLA can compile are put in `candidates`.  Nodes put in
   // `isolated_nodes` must either be unclustered or be put in trivial
   // single-node clusters.
-  Status FindCompilationCandidates(OrderedNodeSet* candidates,
-                                   absl::flat_hash_set<Node*>* isolated_nodes);
+  StatusOr<std::pair<OrderedNodeSet, absl::flat_hash_set<Node*>>>
+  FindCompilationCandidates();
 
   bool CompilationDisallowedByXlaCompileAttr(Node* node,
                                              const DeviceType& jit_device_type);
@@ -459,11 +459,9 @@ class MarkForCompilationPassImpl {
                               std::vector<UnionFind<Cluster>>* clusters,
                               std::deque<UnionFind<Cluster>*>* worklist);
 
-  Status ShouldCompileClusterImpl(const Cluster& cluster, bool* should_compile,
-                                  string* device);
+  StatusOr<bool> ShouldCompileClusterImpl(const Cluster& cluster);
 
-  Status ShouldCompileCluster(const Cluster& cluster, bool* should_compile,
-                              string* device);
+  StatusOr<bool> ShouldCompileCluster(const Cluster& cluster);
 
   bool HasMismatchingXlaScope(Node* node_from, Node* node_to);
 
@@ -474,8 +472,8 @@ class MarkForCompilationPassImpl {
   // Returns true if the devices in `cluster_a` and `cluster_b` are compatible
   // and therefore not a hindrance for combining the two clusters into a larger
   // cluster.
-  Status AreDevicesCompatible(const Cluster& cluster_a,
-                              const Cluster& cluster_b, bool* result);
+  StatusOr<bool> AreDevicesCompatible(const Cluster& cluster_a,
+                                      const Cluster& cluster_b);
 
   void DumpPostClusteringGraphs();
   void VLogClusteringSummary();
@@ -485,8 +483,7 @@ class MarkForCompilationPassImpl {
   FunctionLibraryDefinition* flib_def_;
   Env* env_;
   OptimizerOptions::GlobalJitLevel global_jit_level_;
-  absl::flat_hash_map<int, std::pair<bool, string>>
-      should_compile_cluster_cache_;
+  absl::flat_hash_map<int, bool> should_compile_cluster_cache_;
 };
 
 StatusOr<bool>
@@ -513,9 +510,8 @@ MarkForCompilationPassImpl::ClusteringWillIntroduceInterDeviceDependency(
     Node* in = graph_->FindNodeId(in_id);
     const Cluster& cluster_in = clusters[in_id].Get();
     if (compilation_candidates.find(in) != compilation_candidates.cend()) {
-      bool devices_compatible;
-      TF_RETURN_IF_ERROR(
-          AreDevicesCompatible(cluster_to, cluster_in, &devices_compatible));
+      TF_ASSIGN_OR_RETURN(bool devices_compatible,
+                          AreDevicesCompatible(cluster_to, cluster_in));
       if (!devices_compatible) {
         return true;
       }
@@ -575,8 +571,11 @@ void MarkForCompilationPassImpl::BuildInitialClusterSet(
   }
 }
 
-Status MarkForCompilationPassImpl::FindCompilationCandidates(
-    OrderedNodeSet* candidates, absl::flat_hash_set<Node*>* isolated_nodes) {
+StatusOr<std::pair<OrderedNodeSet, absl::flat_hash_set<Node*>>>
+MarkForCompilationPassImpl::FindCompilationCandidates() {
+  OrderedNodeSet candidates;
+  absl::flat_hash_set<Node*> isolated_nodes;
+
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(nullptr, env_, TF_GRAPH_DEF_VERSION,
@@ -706,17 +705,17 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates(
         if (!is_tensor_array_or_stack_op) {
           VLOG(2) << "Isolating " << node->name()
                   << ": must-be-constant stateful op";
-          isolated_nodes->insert(node);
+          isolated_nodes.insert(node);
         }
       }
     }
 
-    candidates->insert(node);
+    candidates.insert(node);
     --(*debug_options_.fuel);
   }
 
-  VLOG(2) << "candidates->size() = " << candidates->size();
-  return Status::OK();
+  VLOG(2) << "candidates->size() = " << candidates.size();
+  return {{candidates, isolated_nodes}};
 }
 
 bool MarkForCompilationPassImpl::CompilationDisallowedByXlaCompileAttr(
@@ -806,8 +805,8 @@ Status MarkForCompilationPassImpl::Run() {
 
   OrderedNodeSet compilation_candidates;
   absl::flat_hash_set<Node*> isolated_nodes;
-  TF_RETURN_IF_ERROR(
-      FindCompilationCandidates(&compilation_candidates, &isolated_nodes));
+  TF_ASSIGN_OR_RETURN(std::tie(compilation_candidates, isolated_nodes),
+                      FindCompilationCandidates());
 
   if (compilation_candidates.empty()) {
     VLOG(2) << "No compilable candidates";
@@ -868,9 +867,8 @@ Status MarkForCompilationPassImpl::Run() {
         continue;
       }
 
-      bool devices_compatible;
-      TF_RETURN_IF_ERROR(
-          AreDevicesCompatible(*cluster_from, cluster_to, &devices_compatible));
+      TF_ASSIGN_OR_RETURN(bool devices_compatible,
+                          AreDevicesCompatible(*cluster_from, cluster_to));
       if (!devices_compatible) {
         continue;
       }
@@ -965,10 +963,9 @@ Status MarkForCompilationPassImpl::Run() {
   //   candidates).
   for (Node* n : compilation_candidates) {
     const Cluster& cluster = clusters[n->id()].Get();
-    bool should_compile;
-    string device;
-    TF_RETURN_IF_ERROR(ShouldCompileCluster(cluster, &should_compile, &device));
-    if (!should_compile) {
+    TF_ASSIGN_OR_RETURN(bool should_compile_cluster,
+                        ShouldCompileCluster(cluster));
+    if (!should_compile_cluster) {
       continue;
     }
 
@@ -1170,16 +1167,15 @@ void MarkForCompilationPassImpl::VLogClusteringSummary() {
   }
 }
 
-Status MarkForCompilationPassImpl::AreDevicesCompatible(
-    const Cluster& cluster_a, const Cluster& cluster_b, bool* result) {
+StatusOr<bool> MarkForCompilationPassImpl::AreDevicesCompatible(
+    const Cluster& cluster_a, const Cluster& cluster_b) {
   std::vector<string> devices;
   absl::c_remove_copy(cluster_a.devices, std::back_inserter(devices), "");
   absl::c_remove_copy(cluster_b.devices, std::back_inserter(devices), "");
   absl::c_sort(devices);
 
   if (devices.empty()) {
-    *result = false;
-    return Status::OK();
+    return false;
   }
 
   // First check if we will even be able to pick a device for the larger
@@ -1188,8 +1184,7 @@ Status MarkForCompilationPassImpl::AreDevicesCompatible(
   TF_RETURN_IF_ERROR(CanPickDeviceForXla(
       devices, /*allow_mixing_unknown_and_cpu=*/false, &can_pick_device));
   if (!can_pick_device) {
-    *result = false;
-    return Status::OK();
+    return false;
   }
 
   string chosen_device;
@@ -1206,10 +1201,9 @@ Status MarkForCompilationPassImpl::AreDevicesCompatible(
     return resource_op_device.empty() || resource_op_device == chosen_device;
   };
 
-  *result = resource_op_device_ok(cluster_a.resource_op_device) &&
-            resource_op_device_ok(cluster_b.resource_op_device);
-  if (!*result) {
-    return Status::OK();
+  if (!resource_op_device_ok(cluster_a.resource_op_device) ||
+      !resource_op_device_ok(cluster_b.resource_op_device)) {
+    return false;
   }
 
   // We will check this again later, but here we prune out clusters that would
@@ -1229,19 +1223,17 @@ Status MarkForCompilationPassImpl::AreDevicesCompatible(
       << "; device type = " << device_type.type() << "; devices ("
       << devices.size() << ") = " << absl::StrJoin(devices, ", ");
 
-  *result = cluster_a.has_xla_compile_attr || cluster_b.has_xla_compile_attr ||
-            registration->autoclustering_policy ==
-                XlaOpRegistry::AutoclusteringPolicy::kAlways ||
-            (registration->autoclustering_policy ==
-                 XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
-             global_jit_level_ != OptimizerOptions::OFF);
-
-  return Status::OK();
+  return cluster_a.has_xla_compile_attr || cluster_b.has_xla_compile_attr ||
+         registration->autoclustering_policy ==
+             XlaOpRegistry::AutoclusteringPolicy::kAlways ||
+         (registration->autoclustering_policy ==
+              XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
+          global_jit_level_ != OptimizerOptions::OFF);
 }
 
 // Returns `true` iff we should compile `cluster`.
-Status MarkForCompilationPassImpl::ShouldCompileClusterImpl(
-    const Cluster& cluster, bool* should_compile, string* device) {
+StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileClusterImpl(
+    const Cluster& cluster) {
   std::vector<string> devices;
   absl::c_remove_copy(cluster.devices, std::back_inserter(devices), "");
   absl::c_sort(devices);
@@ -1259,7 +1251,7 @@ Status MarkForCompilationPassImpl::ShouldCompileClusterImpl(
       << "; device type = " << device_type.type() << "; devices ("
       << devices.size() << ") = " << absl::StrJoin(devices, ", ");
 
-  *should_compile =
+  bool should_compile =
       cluster.has_xla_compile_attr ||
       registration->autoclustering_policy ==
           XlaOpRegistry::AutoclusteringPolicy::kAlways ||
@@ -1267,7 +1259,7 @@ Status MarkForCompilationPassImpl::ShouldCompileClusterImpl(
            XlaOpRegistry::AutoclusteringPolicy::kIfEnabledGlobally &&
        global_jit_level_ != OptimizerOptions::OFF);
 
-  if (!*should_compile &&
+  if (!should_compile &&
       registration->autoclustering_policy ==
           XlaOpRegistry::AutoclusteringPolicy::kIfExplicitlyRequested &&
       device_type.type_string() == DEVICE_CPU) {
@@ -1290,30 +1282,23 @@ Status MarkForCompilationPassImpl::ShouldCompileClusterImpl(
     });
   }
 
-  VLOG(3) << (*should_compile ? "Compiling" : "Not compiling")
+  VLOG(3) << (should_compile ? "Compiling" : "Not compiling")
           << " cluster with device " << chosen_device;
 
-  *device = std::move(chosen_device);
-  return Status::OK();
+  return should_compile;
 }
 
-Status MarkForCompilationPassImpl::ShouldCompileCluster(const Cluster& cluster,
-                                                        bool* should_compile,
-                                                        string* device) {
+StatusOr<bool> MarkForCompilationPassImpl::ShouldCompileCluster(
+    const Cluster& cluster) {
   auto it = should_compile_cluster_cache_.find(cluster.representative);
   if (it != should_compile_cluster_cache_.end()) {
-    *should_compile = it->second.first;
-    *device = it->second.second;
-    return Status::OK();
+    return it->second;
   }
 
-  string device_s;
-  TF_RETURN_IF_ERROR(
-      ShouldCompileClusterImpl(cluster, should_compile, &device_s));
+  TF_ASSIGN_OR_RETURN(bool should_compile, ShouldCompileClusterImpl(cluster));
   should_compile_cluster_cache_.insert(
-      {cluster.representative, {*should_compile, device_s}});
-  *device = std::move(device_s);
-  return Status::OK();
+      {cluster.representative, should_compile});
+  return should_compile;
 }
 
 Status MarkForCompilation(
