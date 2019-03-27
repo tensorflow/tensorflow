@@ -650,6 +650,7 @@ class HloSliceInstruction : public HloInstruction {
 class HloConstantInstruction : public HloInstruction {
  public:
   explicit HloConstantInstruction(Literal literal);
+  explicit HloConstantInstruction(Literal literal, const Shape& shape);
   // Used when the literal is too large and dropped.
   explicit HloConstantInstruction(const Shape& shape);
   // Returns the literal associated with this instruction.

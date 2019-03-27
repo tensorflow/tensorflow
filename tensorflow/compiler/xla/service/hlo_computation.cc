@@ -716,7 +716,8 @@ ProgramShape HloComputation::ComputeProgramShape() const {
   return program_shape;
 }
 
-bool HloComputation::operator==(const HloComputation& other) const {
+bool HloComputation::Equal(const HloComputation& other,
+                           bool is_layout_sensitive) const {
   if (this == &other) {
     return true;
   }
@@ -741,7 +742,8 @@ bool HloComputation::operator==(const HloComputation& other) const {
         [](const HloInstruction*, const HloInstruction*) { return true; },
         [](const HloComputation* a, const HloComputation* b) {
           return *a == *b;
-        });
+        },
+        is_layout_sensitive);
     if (!identical_ignoring_operands) {
       return false;
     }

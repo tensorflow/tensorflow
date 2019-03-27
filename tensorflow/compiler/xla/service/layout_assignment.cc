@@ -173,7 +173,7 @@ Status LayoutConstraints::SetBufferLayout(const Layout& layout,
   auto iter = buffer_constraints_.find(&buffer);
   if (iter != buffer_constraints_.end()) {
     const BufferLayoutConstraint& curr_constraint = iter->second;
-    if (LayoutUtil::Equal(curr_constraint.layout(), layout)) {
+    if (Layout::Equal().MinorToMajorOnly()(curr_constraint.layout(), layout)) {
       // New constraint matches existing constraint. Nothing to do.
       return Status::OK();
     }
@@ -210,7 +210,7 @@ Status LayoutConstraints::SetOperandLayout(const Shape& shape_with_layout,
       GetOperandLayoutConstraint(instruction, operand_no);
   if (curr_shape_layout != nullptr) {
     if (curr_shape_layout->shape_layout().MatchesLayoutInShape(
-            shape_with_layout)) {
+            shape_with_layout, /*minor_to_major_only=*/true)) {
       // New constraint matches existing constraint. Nothing to do.
       return Status::OK();
     }
@@ -269,7 +269,8 @@ Status LayoutConstraints::SetResultLayout(const Shape& shape_with_layout,
 
   const ShapeLayout* curr_shape_layout = ResultLayout();
   if (curr_shape_layout != nullptr) {
-    if (!curr_shape_layout->MatchesLayoutInShape(shape_with_layout)) {
+    if (!curr_shape_layout->MatchesLayoutInShape(
+            shape_with_layout, /*minor_to_major_only=*/true)) {
       return FailedPrecondition(
           "Result of computation %s already has the layout constraint %s, "
           "cannot add incompatible constraint %s",
@@ -647,6 +648,10 @@ Status LayoutAssignment::AddMandatoryConstraints(
 
 namespace {
 
+bool LayoutsInShapesEqual(const Shape& lhs, const Shape& rhs) {
+  return Layout::Equal().MinorToMajorOnly()(lhs.layout(), rhs.layout());
+}
+
 // The operands of a call must match the layouts of parameters in the
 // ComputationLayout, and the call instruction itself must match the result
 // layout in the ComputationLayout.
@@ -656,10 +661,10 @@ Status CheckCallLayout(HloInstruction* call,
   TF_RET_CHECK(computation->num_parameters() == call->operand_count());
   for (int64 i = 0; i < computation->num_parameters(); ++i) {
     TF_RET_CHECK(computation_layout.parameter_layout(i).MatchesLayoutInShape(
-        call->operand(i)->shape()));
+        call->operand(i)->shape(), /*minor_to_major_only=*/true));
   }
-  TF_RET_CHECK(
-      computation_layout.result_layout().MatchesLayoutInShape(call->shape()));
+  TF_RET_CHECK(computation_layout.result_layout().MatchesLayoutInShape(
+      call->shape(), /*minor_to_major_only=*/true));
   return Status::OK();
 }
 
@@ -670,9 +675,9 @@ Status CheckCustomCallLayout(HloInstruction* instruction) {
     const HloCustomCallInstruction* custom_call =
         DynCast<HloCustomCallInstruction>(instruction);
     for (int64 i = 0; i < custom_call->operand_count(); ++i) {
-      TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-          custom_call->operand(i)->shape(),
-          custom_call->operand_shapes_with_layout()[i]));
+      TF_RET_CHECK(
+          LayoutsInShapesEqual(custom_call->operand(i)->shape(),
+                               custom_call->operand_shapes_with_layout()[i]));
     }
   }
   return Status::OK();
@@ -690,13 +695,12 @@ Status CheckWhileLayout(HloInstruction* while_inst,
   auto init_shape = while_inst->operand(0)->shape();
   TF_RET_CHECK(
       condition_computation_layout.parameter_layout(0).MatchesLayoutInShape(
-          init_shape));
+          init_shape, /*minor_to_major_only=*/true));
   TF_RET_CHECK(body_computation_layout.parameter_layout(0).MatchesLayoutInShape(
-      init_shape));
-  TF_RET_CHECK(
-      body_computation_layout.result_layout().MatchesLayoutInShape(init_shape));
-  TF_RET_CHECK(
-      LayoutUtil::LayoutsInShapesEqual(init_shape, while_inst->shape()));
+      init_shape, /*minor_to_major_only=*/true));
+  TF_RET_CHECK(body_computation_layout.result_layout().MatchesLayoutInShape(
+      init_shape, /*minor_to_major_only=*/true));
+  TF_RET_CHECK(LayoutsInShapesEqual(init_shape, while_inst->shape()));
   return Status::OK();
 }
 
@@ -709,13 +713,14 @@ Status CheckConditionalLayout(
                  branch_computation_layouts[j].result_layout());
     TF_RET_CHECK(
         branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
-            instruction->shape()));
+            instruction->shape(), /*minor_to_major_only=*/true));
     TF_RET_CHECK(
         branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
-            instruction->branch_computation(j)->root_instruction()->shape()));
+            instruction->branch_computation(j)->root_instruction()->shape(),
+            /*minor_to_major_only=*/true));
     TF_RET_CHECK(
         branch_computation_layouts[j].parameter_layout(0).MatchesLayoutInShape(
-            branch_operand->shape()));
+            branch_operand->shape(), /*minor_to_major_only=*/true));
   }
   return Status::OK();
 }
@@ -726,11 +731,11 @@ Status CheckConditionalLayout(
 Status CheckFusionLayout(HloInstruction* fusion) {
   TF_RET_CHECK(HloOpcode::kFusion == fusion->opcode());
 
-  TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-      fusion->shape(), fusion->fused_expression_root()->shape()));
+  TF_RET_CHECK(LayoutsInShapesEqual(fusion->shape(),
+                                    fusion->fused_expression_root()->shape()));
   for (int64 i = 0; i < fusion->operand_count(); ++i) {
-    TF_RET_CHECK(LayoutUtil::LayoutsInShapesEqual(
-        fusion->fused_parameter(i)->shape(), fusion->operand(i)->shape()));
+    TF_RET_CHECK(LayoutsInShapesEqual(fusion->fused_parameter(i)->shape(),
+                                      fusion->operand(i)->shape()));
   }
   return Status::OK();
 }
@@ -742,7 +747,8 @@ Status CheckParameterLayout(HloInstruction* parameter,
   const ShapeLayout& parameter_layout =
       computation_layout.parameter_layout(parameter->parameter_number());
   if (parameter_layout.LayoutIsSet() &&
-      !parameter_layout.MatchesLayoutInShape(parameter->shape())) {
+      !parameter_layout.MatchesLayoutInShape(parameter->shape(),
+                                             /*minor_to_major_only=*/true)) {
     return InternalError(
         "parameter instruction %s does not match layout of computation "
         "shape: %s",
@@ -753,8 +759,7 @@ Status CheckParameterLayout(HloInstruction* parameter,
 
 // The layout of a constant instruction must match the layout of its literal.
 Status CheckConstantLayout(HloInstruction* constant) {
-  if (!LayoutUtil::LayoutsInShapesEqual(constant->literal().shape(),
-                                        constant->shape())) {
+  if (!LayoutsInShapesEqual(constant->literal().shape(), constant->shape())) {
     return InternalError(
         "constant instruction %s does not match the layout of its literal %s",
         constant->ToString(),
@@ -785,7 +790,8 @@ StatusOr<HloInstruction*> LayoutAssignment::CreateCopyWithNewLayout(
       HloInstruction* gte = instruction->parent()->AddInstruction(
           HloInstruction::CreateGetTupleElement(instr_shape, instruction, i));
 
-      if (ShapeUtil::Equal(target_shape, instr_shape)) {
+      if (Shape::Equal().MinorToMajorOnlyInLayout()(target_shape,
+                                                    instr_shape)) {
         // Shapes and layouts are equal, no need to copy.
         element_copies.push_back(gte);
       } else {
@@ -831,7 +837,8 @@ Status LayoutAssignment::CopyOperandIfLayoutsDiffer(
   TF_RET_CHECK(operand_layout.LayoutIsSet());
   TF_RET_CHECK(LayoutUtil::HasLayout(operand->shape()));
 
-  if (ShapeUtil::Equal(operand_layout.shape(), operand->shape())) {
+  if (Shape::Equal().MinorToMajorOnlyInLayout()(operand_layout.shape(),
+                                                operand->shape())) {
     VLOG(5) << "Operand " << operand->ToString() << " layout matches in "
             << instruction->ToString();
     // Operand layout already matches our constraint. Nothing to do.
@@ -892,7 +899,8 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               const Shape& instruction_subshape =
                   ShapeUtil::GetSubshape(instruction->shape(), index);
               for (const LogicalBuffer* buffer : buffers) {
-                if (!ShapeUtil::Equal(instruction_subshape, buffer->shape())) {
+                if (!Shape::Equal().MinorToMajorOnlyInLayout()(
+                        instruction_subshape, buffer->shape())) {
                   return InternalError(
                       "Layout of instruction %s at index {%s} does not match "
                       "source LogicalBuffer %s: %s vs %s",
@@ -954,8 +962,8 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
       FindOrDie(computation_layouts_, module->entry_computation())
           .result_layout();
   if (result_layout.LayoutIsSet()) {
-    TF_RET_CHECK(
-        ShapeUtil::Equal(module->result_shape(), result_layout.shape()));
+    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+        module->result_shape(), result_layout.shape()));
   }
   return Status::OK();
 }
@@ -1510,8 +1518,8 @@ StatusOr<Layout> InferArrayLayout(
 
     if (first_buffer_layout == nullptr) {
       first_buffer_layout = &source_buffer->shape().layout();
-    } else if (!LayoutUtil::Equal(source_buffer->shape().layout(),
-                                  *first_buffer_layout)) {
+    } else if (!Layout::Equal().MinorToMajorOnly()(
+                   source_buffer->shape().layout(), *first_buffer_layout)) {
       // The points-to set is ambiguous for this index and the different source
       // buffers have different layouts. This case is possible in valid XLA
       // computations because we do not propagate BufferLayoutConstraints to all
@@ -1789,7 +1797,8 @@ Status LayoutAssignment::RunOnComputation(
   // layout constraint.
   if (constraints.ResultLayout() != nullptr &&
       !constraints.ResultLayout()->MatchesLayoutInShape(
-          computation->root_instruction()->shape())) {
+          computation->root_instruction()->shape(),
+          /*minor_to_major_only=*/true)) {
     if (conditional_mismatch_.count(computation) > 0) {
       *FindOrDie(computation_layouts_, computation).mutable_result_layout() =
           FindOrDie(conditional_mismatch_, computation).result_layout();
@@ -1907,7 +1916,9 @@ Status LayoutAssignment::PropagateComputationLayouts(
             << ": " << computed_computation_layout.result_layout().ToString();
     *result_layout = computed_computation_layout.result_layout();
   } else {
-    TF_RET_CHECK(computed_computation_layout.result_layout() == *result_layout);
+    TF_RET_CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(
+        computed_computation_layout.result_layout().shape(),
+        result_layout->shape()));
   }
   return Status::OK();
 }

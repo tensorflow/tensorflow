@@ -102,6 +102,11 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   }
   TF_ASSIGN_OR_RETURN(Shape shape,
                       ShapeUtil::MakeValidatedShape(element_type, dimensions));
+  if (element_size_in_bits ==
+      ShapeUtil::ByteSizeOfPrimitiveType(element_type) * 8) {
+    // Only set element_size_in_bits if it's different from the default value.
+    element_size_in_bits = 0;
+  }
   *shape.mutable_layout() =
       LayoutUtil::MakeLayout(minor_to_major, tiles, element_size_in_bits);
   if (!shape.has_layout()) {
@@ -219,7 +224,13 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   for (int i = 0; i < shape.dimensions_size(); ++i) {
     dims[i] = shape.dimensions(LayoutUtil::Major(shape.layout(), i));
   }
-  return MakeShapeWithDescendingLayout(shape.element_type(), dims);
+  Shape new_shape = MakeShapeWithDescendingLayout(shape.element_type(), dims);
+  // Since the physical layout is kept the same, the tiles and element size are
+  // the same also.
+  *new_shape.mutable_layout()->mutable_tiles() = shape.layout().tiles();
+  new_shape.mutable_layout()->set_element_size_in_bits(
+      shape.layout().element_size_in_bits());
+  return new_shape;
 }
 
 /* static */ Status ShapeUtil::PopulateShape(PrimitiveType element_type,
