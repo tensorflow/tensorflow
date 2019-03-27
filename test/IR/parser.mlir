@@ -591,20 +591,6 @@ func @splattensorattr() -> () {
   return
 }
 
-// CHECK-LABEL: func @opaquetensorattr
-func @opaquetensorattr() -> () {
-^bb0:
-// CHECK: "opaqueIntTensor"() {bar: opaque<"tf", tensor<2x1x4xi32>, "0x68656C6C6F">} : () -> ()
-  "opaqueIntTensor"(){bar: opaque<"tf", tensor<2x1x4xi32>, "0x68656C6C6F">} : () -> ()
-// CHECK: "opaqueFloatTensor"() {bar: opaque<"tf", tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
-  "opaqueFloatTensor"(){bar: opaque<"tf", tensor<2x1x4xf32>, "0x68656C6C6F">} : () -> ()
-// CHECK: "opaqueStringTensor"() {bar: opaque<"tf", tensor<2x1x4x!tf<"string">>, "0x68656C6C6F">} : () -> ()
-  "opaqueStringTensor"(){bar: opaque<"tf", tensor<2x1x4x!tf<"string">>, "0x68656C6C6F">} : () -> ()
-// CHECK: "opaqueResourceTensor"() {bar: opaque<"tf", tensor<2x1x4x!tf<"resource">>, "0x68656C6C6F">} : () -> ()
-  "opaqueResourceTensor"(){bar: opaque<"tf", tensor<2x1x4x!tf<"resource">>, "0x68656C6C6F">} : () -> ()
-  return
-}
-
 // CHECK-LABEL: func @densetensorattr
 func @densetensorattr() -> () {
 ^bb0:
