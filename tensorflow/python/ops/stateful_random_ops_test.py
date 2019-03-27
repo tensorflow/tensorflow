@@ -99,9 +99,7 @@ class StatefulRandomOpsTest(test.TestCase):
       check_results(expected_normal1, *f())
       check_results(expected_normal2, *f())
 
-  @test_util.run_v1_only(
-      ("This test is specifically for checking TF1 compatibility. "
-       "It cannot run under TF2."))
+  @test_util.run_v1_only
   def testTF1(self):
     seed = 1234
     shape = [2, 3]
