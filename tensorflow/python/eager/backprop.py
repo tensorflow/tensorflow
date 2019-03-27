@@ -1123,7 +1123,7 @@ class GradientTape(object):
     """
     target_shape = target.shape
     if target_shape.rank is None:
-      dim = Dimension(None)
+      dim = tensor_shape.Dimension(None)
     else:
       dim = target_shape.dims[0]
     if not (target_shape.with_rank_at_least(2) and
