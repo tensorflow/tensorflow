@@ -38,8 +38,8 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   APInt attr1();
 // CHECK:   Optional< APFloat > attr2();
 // CHECK:   static void build(Value *val);
-// CHECK:   static void build(Builder *builder, OperationState *result, Type r, ArrayRef<Type> s, Value *a, ArrayRef<Value *> b, IntegerAttr attr1, /*optional*/FloatAttr attr2);
-// CHECK:   static void build(Builder *builder, OperationState *result, ArrayRef<Type> resultTypes, ArrayRef<Value *> args, ArrayRef<NamedAttribute> attributes);
+// CHECK:   static void build(Builder *, OperationState *tblgen_state, Type r, ArrayRef<Type> s, Value *a, ArrayRef<Value *> b, IntegerAttr attr1, /*optional*/FloatAttr attr2);
+// CHECK:   static void build(Builder *, OperationState *tblgen_state, ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes);
 // CHECK:   static bool parse(OpAsmParser *parser, OperationState *result);
 // CHECK:   void print(OpAsmPrinter *p);
 // CHECK:   bool verify();

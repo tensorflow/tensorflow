@@ -36,6 +36,7 @@ using namespace mlir;
 
 using mlir::tblgen::Operator;
 
+static const char *const builderOpState = "tblgen_state";
 static const char *const generatedArgName = "_arg";
 
 static const char *const opCommentHeader = R"(
@@ -515,7 +516,8 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   llvm::SmallVector<std::string, 4> resultNames;
   resultNames.reserve(numResults);
 
-  std::string paramList = "Builder *builder, OperationState *result";
+  std::string paramList = "Builder *, OperationState *";
+  paramList.append(builderOpState);
 
   // Emit parameters for all return types
   if (!useOperandType && !useAttrType) {
@@ -571,7 +573,8 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
           numResults - static_cast<int>(hasVariadicResult);
 
       if (numNonVariadicResults > 0) {
-        method.body() << "  result->addTypes({" << resultNames.front();
+        method.body() << "  " << builderOpState << "->addTypes({"
+                      << resultNames.front();
         for (int i = 1; i < numNonVariadicResults; ++i) {
           method.body() << ", " << resultNames[i];
         }
@@ -579,7 +582,8 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
       }
 
       if (hasVariadicResult) {
-        method.body() << "  result->addTypes(" << resultNames.back() << ");\n";
+        method.body() << "  " << builderOpState << "->addTypes("
+                      << resultNames.back() << ");\n";
       }
     } else {
       std::string resultType;
@@ -593,7 +597,7 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
       } else {
         resultType = formatv("{0}->getType()", getArgumentName(op, 0)).str();
       }
-      method.body() << "  result->addTypes({" << resultType;
+      method.body() << "  " << builderOpState << "->addTypes({" << resultType;
       for (unsigned i = 1; i != numResults; ++i)
         method.body() << ", " << resultType;
       method.body() << "});\n\n";
@@ -605,14 +609,15 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
   int numNonVariadicOperands =
       numOperands - static_cast<int>(hasVariadicOperand);
   if (numNonVariadicOperands > 0) {
-    method.body() << "  result->addOperands({" << getArgumentName(op, 0);
+    method.body() << "  " << builderOpState << "->addOperands({"
+                  << getArgumentName(op, 0);
     for (int i = 1; i < numNonVariadicOperands; ++i) {
       method.body() << ", " << getArgumentName(op, i);
     }
     method.body() << "});\n";
   }
   if (hasVariadicOperand) {
-    method.body() << "  result->addOperands("
+    method.body() << "  " << builderOpState << "->addOperands("
                   << getArgumentName(op, numOperands - 1) << ");\n";
   }
 
@@ -623,8 +628,9 @@ void OpEmitter::genStandaloneParamBuilder(bool useOperandType,
       if (emitNotNullCheck) {
         method.body() << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      method.body() << formatv("  result->addAttribute(\"{0}\", {1});\n",
-                               namedAttr.getName(), namedAttr.name);
+      method.body() << formatv("  {0}->addAttribute(\"{1}\", {2});\n",
+                               builderOpState, namedAttr.getName(),
+                               namedAttr.name);
       if (emitNotNullCheck) {
         method.body() << "  }\n";
       }
@@ -681,9 +687,10 @@ void OpEmitter::genBuilder() {
   // 2. Aggregated parameters
 
   // Signature
-  const char *const params =
-      "Builder *builder, OperationState *result, ArrayRef<Type> resultTypes, "
-      "ArrayRef<Value *> args, ArrayRef<NamedAttribute> attributes";
+  std::string params =
+      std::string("Builder *, OperationState *") + builderOpState +
+      ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
+      "ArrayRef<NamedAttribute> attributes";
   auto &method =
       opClass.newMethod("void", "build", params, OpMethod::MP_Static);
 
@@ -692,14 +699,14 @@ void OpEmitter::genBuilder() {
                 << (hasVariadicResult ? " >= " : " == ")
                 << numNonVariadicResults
                 << "u && \"mismatched number of return types\");\n"
-                << "    result->addTypes(resultTypes);\n";
+                << "  " << builderOpState << "->addTypes(resultTypes);\n";
 
   // Operands
-  method.body() << "  assert(args.size()"
+  method.body() << "  assert(operands.size()"
                 << (hasVariadicOperand ? " >= " : " == ")
                 << numNonVariadicOperands
                 << "u && \"mismatched number of parameters\");\n"
-                << "    result->addOperands(args);\n\n";
+                << "  " << builderOpState << "->addOperands(operands);\n\n";
 
   // Attributes
   if (op.getNumAttributes() > 0) {
@@ -708,8 +715,9 @@ void OpEmitter::genBuilder() {
   } else {
     method.body() << "  assert(attributes.size() >= " << op.getNumAttributes()
                   << "u && \"not enough attributes\");\n"
-                  << "    for (const auto& pair : attributes)\n"
-                  << "      result->addAttribute(pair.first, pair.second);\n";
+                  << "  for (const auto& pair : attributes)\n"
+                  << "    " << builderOpState
+                  << "->addAttribute(pair.first, pair.second);\n";
   }
 
   // 3. Deduced result types
