@@ -27,8 +27,10 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopUtils.h"
+#include "mlir/Transforms/Passes.h"
 
 #include "Test.h"
 
@@ -526,6 +528,56 @@ TEST_FUNC(tile_2d) {
   //  CHECK-NEXT:             store {{.*}}, {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
   // clang-format on
   f->print(llvm::outs());
+}
+
+// Inject an EDSC-constructed computation to exercise 2-d vectorization.
+TEST_FUNC(vectorize_2d) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto memrefType =
+      MemRefType::get({-1, -1, -1}, FloatType::getF32(&globalContext()), {}, 0);
+  auto owningF =
+      makeFunction("vectorize_2d", {}, {memrefType, memrefType, memrefType});
+
+  mlir::Function *f = owningF.release();
+  mlir::Module module(&globalContext());
+  module.getFunctions().push_back(f);
+
+  ScopedContext scope(f);
+  ValueHandle zero = constant_index(0);
+  MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)),
+      vC(f->getArgument(2));
+  IndexedValue A(f->getArgument(0)), B(f->getArgument(1)), C(f->getArgument(2));
+  IndexHandle M(vA.ub(0)), N(vA.ub(1)), P(vA.ub(2));
+
+  // clang-format off
+  IndexHandle i, j, k;
+  LoopNestBuilder({&i, &j, &k}, {zero, zero, zero}, {M, N, P}, {1, 1, 1})({
+    C(i, j, k) = A(i, j, k) + B(i, j, k)
+  });
+  ret();
+
+  // CHECK-LABEL: func @vectorize_2d
+  //  CHECK-NEXT: %[[M:.*]] = dim %arg0, 0 : memref<?x?x?xf32>
+  //  CHECK-NEXT: %[[N:.*]] = dim %arg0, 1 : memref<?x?x?xf32>
+  //  CHECK-NEXT: %[[P:.*]] = dim %arg0, 2 : memref<?x?x?xf32>
+  //  CHECK-NEXT: affine.for %i0 = 0 to (d0) -> (d0)(%[[M]]) {
+  //  CHECK-NEXT:   affine.for %i1 = 0 to (d0) -> (d0)(%[[N]]) step 4 {
+  //  CHECK-NEXT:     affine.for %i2 = 0 to (d0) -> (d0)(%[[P]]) step 4 {
+  //  CHECK-NEXT:       %[[vA:.*]] = "vector_transfer_read"(%arg1, %i0, %i1, %i2) {permutation_map: (d0, d1, d2) -> (d1, d2)} : (memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
+  //  CHECK-NEXT:       %[[vB:.*]] =  "vector_transfer_read"(%arg0, %i0, %i1, %i2) {permutation_map: (d0, d1,  d2) -> (d1, d2)} : (memref<?x?x?xf32>, index, index, index) -> vector<4x4xf32>
+  //  CHECK-NEXT:       %[[vRES:.*]] = addf %[[vB]], %[[vA]] : vector<4x4xf32>
+  //  CHECK-NEXT:       "vector_transfer_write"(%[[vRES:.*]], %arg2, %i0, %i1, %i2) {permutation_map: (d0, d1, d2) -> (d1, d2)} : (vector<4x4xf32>, memref<?x?x?xf32>, index, index, index) -> ()
+  // clang-format on
+
+  mlir::PassManager pm;
+  pm.addPass(mlir::createCanonicalizerPass());
+  SmallVector<int64_t, 2> vectorSizes{4, 4};
+  pm.addPass(mlir::createVectorizePass(vectorSizes));
+  auto result = pm.run(f->getModule());
+  if (succeeded(result))
+    f->print(llvm::outs());
 }
 
 int main() {

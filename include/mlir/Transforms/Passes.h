@@ -44,7 +44,8 @@ FunctionPassBase *createCSEPass();
 
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
-FunctionPassBase *createVectorizePass();
+FunctionPassBase *
+createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize);
 
 /// Creates a pass to allow independent testing of vectorizer functionality with
 /// FileCheck.

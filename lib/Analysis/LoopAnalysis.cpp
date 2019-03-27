@@ -236,10 +236,8 @@ static bool isContiguousAccess(Value &iv, LoadOrStoreOp memoryOp,
                     std::is_same<LoadOrStoreOp, StoreOp>::value,
                 "Must be called on either const LoadOp & or const StoreOp &");
   auto memRefType = memoryOp.getMemRefType();
-  if (fastestVaryingDim >= memRefType.getRank()) {
-    memoryOp.emitError("fastest varying dim out of bounds");
+  if (fastestVaryingDim >= memRefType.getRank())
     return false;
-  }
 
   auto layoutMap = memRefType.getAffineMaps();
   // TODO(ntv): remove dependence on Builder once we support non-identity
@@ -335,15 +333,14 @@ static bool isVectorizableLoopWithCond(AffineForOp loop,
 
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
     AffineForOp loop, unsigned fastestVaryingDim) {
-  VectorizableInstFun fun(
-      [fastestVaryingDim](AffineForOp loop, Operation &op) {
-        auto load = op.dyn_cast<LoadOp>();
-        auto store = op.dyn_cast<StoreOp>();
-        return load ? isContiguousAccess(*loop.getInductionVar(), load,
-                                         fastestVaryingDim)
-                    : isContiguousAccess(*loop.getInductionVar(), store,
-                                         fastestVaryingDim);
-      });
+  VectorizableInstFun fun([fastestVaryingDim](AffineForOp loop, Operation &op) {
+    auto load = op.dyn_cast<LoadOp>();
+    auto store = op.dyn_cast<StoreOp>();
+    return load ? isContiguousAccess(*loop.getInductionVar(), load,
+                                     fastestVaryingDim)
+                : isContiguousAccess(*loop.getInductionVar(), store,
+                                     fastestVaryingDim);
+  });
   return isVectorizableLoopWithCond(loop, fun);
 }
 

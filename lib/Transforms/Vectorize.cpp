@@ -552,7 +552,7 @@ static llvm::cl::OptionCategory clOptionsCategory("vectorize options");
 
 static llvm::cl::list<int> clVirtualVectorSize(
     "virtual-vector-size",
-    llvm::cl::desc("Specify n-D virtual vector size for early vectorization"),
+    llvm::cl::desc("Specify n-D virtual vector size for vectorization"),
     llvm::cl::ZeroOrMore, llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::list<int> clFastestVaryingPattern(
@@ -652,7 +652,25 @@ static std::vector<NestedPattern> makePatterns() {
 namespace {
 
 struct Vectorize : public FunctionPass<Vectorize> {
+  Vectorize() {
+    if (!clVirtualVectorSize.empty()) {
+      vectorSizes.reserve(clVirtualVectorSize.size());
+      this->vectorSizes.assign(clVirtualVectorSize.begin(),
+                               clVirtualVectorSize.end());
+    }
+  }
+  Vectorize(ArrayRef<int64_t> virtualVectorSize) {
+    if (clVirtualVectorSize.empty()) {
+      this->vectorSizes.assign(virtualVectorSize.begin(),
+                               virtualVectorSize.end());
+    } else {
+      vectorSizes.reserve(clVirtualVectorSize.size());
+      this->vectorSizes.assign(clVirtualVectorSize.begin(),
+                               clVirtualVectorSize.end());
+    }
+  }
   void runOnFunction() override;
+  SmallVector<int64_t, 4> vectorSizes;
 };
 
 } // end anonymous namespace
@@ -1236,8 +1254,7 @@ void Vectorize::runOnFunction() {
     for (auto m : matches) {
       VectorizationStrategy strategy;
       // TODO(ntv): depending on profitability, elect to reduce the vector size.
-      strategy.vectorSizes.assign(clVirtualVectorSize.begin(),
-                                  clVirtualVectorSize.end());
+      strategy.vectorSizes.assign(vectorSizes.begin(), vectorSizes.end());
       if (failed(analyzeProfitability(m.getMatchedChildren(), 1, patternDepth,
                                       &strategy))) {
         continue;
@@ -1253,7 +1270,10 @@ void Vectorize::runOnFunction() {
   LLVM_DEBUG(dbgs() << "\n");
 }
 
-FunctionPassBase *mlir::createVectorizePass() { return new Vectorize(); }
+FunctionPassBase *
+mlir::createVectorizePass(llvm::ArrayRef<int64_t> virtualVectorSize) {
+  return new Vectorize(virtualVectorSize);
+}
 
 static PassRegistration<Vectorize>
     pass("vectorize",
