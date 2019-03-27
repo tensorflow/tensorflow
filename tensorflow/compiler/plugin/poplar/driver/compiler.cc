@@ -285,7 +285,7 @@ HloPrintOptions GetPrintOptions() {
 }
 
 std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
-    poplar::Graph& master_graph, poplar::Graph& graph, int replica_count,
+    poplar::Graph& master_graph, poplar::Graph& graph, int replication_factor,
     poplar::program::Program& prog) {
   const std::string seed_prefix = "__seed";
 
@@ -295,10 +295,10 @@ std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
 
   auto data_stream = master_graph.addHostToDeviceFIFO(
       seed_prefix + "/stream", seed.elementType(),
-      seed.numElements() * std::max(replica_count, 1));
+      seed.numElements() * std::max(replication_factor, 1));
 
   poplar::program::Sequence seq;
-  if (replica_count > 1) {
+  if (replication_factor > 1) {
     seq.add(poplar::program::Copy(data_stream,
                                   master_graph.getNonReplicatedTensor(seed)));
   } else {
@@ -312,16 +312,16 @@ std::pair<poplar::program::Program, poplar::DataStream> InitializeSeed(
   return {seq, data_stream};
 }
 
-void ConnectSeedCallback(poplar::Engine& engine, int replica_count,
+void ConnectSeedCallback(poplar::Engine& engine, int replication_factor,
                          poplar::DataStream stream) {
   std::random_device rd;
   std::mt19937 gen(rd());
 
-  auto callback = [gen, replica_count](void* ptr) mutable {
+  auto callback = [gen, replication_factor](void* ptr) mutable {
     std::uniform_int_distribution<uint64_t> dis;
     uint64_t* seedValue = reinterpret_cast<uint64_t*>(ptr);
 
-    for (int i = 0; i < replica_count; ++i) {
+    for (int i = 0; i < replication_factor; ++i) {
       seedValue[i] = dis(gen);
     }
   };
@@ -560,7 +560,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
 
     auto seed_setup = InitializeSeed(resources.main_graph, *sharding_main_graph,
-                                     replication_count, visitor.sequence);
+                                     replication_factor, visitor.sequence);
 
     // =======================================================================
     // DO NOT CHANGE THE ORDER OF THESE WITHOUT UPDATING PoplarProgramType IN
@@ -604,7 +604,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         engine.reset(new poplar::Engine(resources.main_graph, progs, opts,
                                         progress_logging));
 
-        ConnectSeedCallback(*engine, replication_count, seed_setup.second);
+        ConnectSeedCallback(*engine, replication_factor, seed_setup.second);
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compile engine] ", e);
       }
