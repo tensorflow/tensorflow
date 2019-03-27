@@ -20,6 +20,7 @@ import numpy as np
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.contrib.ipu.python import sharding
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python.platform import tf_logging as logging
 
 
 def tensor_memory_use(t):
@@ -203,6 +204,8 @@ def automatic_sharding(num_shards,
   if edge_filter and callable(edge_filter):
     splitting_edges = list(
         filter(lambda e: not edge_filter(e), splitting_edges))
+
+  logging.debug('Possible splitting edges ' + str(splitting_edges))
 
   # given the splitting edges found find all of the subgraphs created and order
   # them
