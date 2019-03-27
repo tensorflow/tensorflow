@@ -214,8 +214,8 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
   return trt_dims;
 }
 
-Status TensorShapeArrayToTrtDims(const std::vector<int>& shape,
-                                 nvinfer1::Dims* out,
+template <typename Container>
+Status TensorShapeArrayToTrtDims(const Container& shape, nvinfer1::Dims* out,
                                  bool ignore_first_dim = false) {
   PartialTensorShape tensor_shape;
   TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(shape, &tensor_shape));
@@ -2354,7 +2354,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ISliceLayer* layer = params->converter->network()->addSlice(
-      input.tensor(), begin_dims, size_dims, stride_dims);
+      *input.tensor(), begin_dims, size_dims, stride_dims);
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
   return Status::OK();
 #else
