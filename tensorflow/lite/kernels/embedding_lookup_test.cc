@@ -98,8 +98,6 @@ class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
   }
 };
 
-// TODO(ahentz): write more tests that exercise the details of the op, such as
-// lookup errors and variable input shapes.
 TEST(EmbeddingLookupOpTest, SimpleTest) {
   EmbeddingLookupOpModel m({3}, {3, 2, 4});
   m.SetInput({1, 0, 2});
@@ -114,6 +112,33 @@ TEST(EmbeddingLookupOpTest, SimpleTest) {
                   0.00, 0.01, 0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                   2.00, 2.01, 2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
               })));
+}
+
+TEST(EmbeddingLookupOpTest, IndexTooHighTest) {
+  EmbeddingLookupOpModel m({3}, {3, 2, 4});
+  m.SetInput({3, 0, 2});
+  m.Set3DWeightMatrix<float>(
+      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
+}
+
+TEST(EmbeddingLookupOpTest, NegativeIndexTest) {
+  EmbeddingLookupOpModel m({3}, {3, 2, 4});
+  m.SetInput({-3, 0, 2});
+  m.Set3DWeightMatrix<float>(
+      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
+}
+
+TEST(EmbeddingLookupOpTest, SingleIndexTest) {
+  EmbeddingLookupOpModel m({1}, {3, 2, 4});
+  m.SetInput({3});
+  m.Set3DWeightMatrix<float>(
+      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
 }
 
 TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestUint8) {
@@ -135,6 +160,42 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestUint8) {
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
                   kTestTolerance)));
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, IndexTooHighUint8) {
+  HybridEmbeddingLookupOpModel m({2}, {3, 8}, TensorType_UINT8);
+  m.SetInput({3, 1});
+  m.SetWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, NegativeIndexUint8) {
+  HybridEmbeddingLookupOpModel m({2}, {3, 8}, TensorType_UINT8);
+  m.SetInput({-3, 1});
+  m.SetWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, SingleIndexUint8) {
+  HybridEmbeddingLookupOpModel m({1}, {3, 8}, TensorType_UINT8);
+  m.SetInput({3});
+  m.SetWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
 }
 
 TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTestUint8) {
@@ -198,6 +259,42 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestInt8) {
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
                   kTestTolerance)));
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, IndexTooHighInt8) {
+  HybridEmbeddingLookupOpModel m({2}, {3, 8}, TensorType_INT8);
+  m.SetInput({3, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, NegativeIndexInt8) {
+  HybridEmbeddingLookupOpModel m({2}, {3, 8}, TensorType_INT8);
+  m.SetInput({-3, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, SingleIndexInt8) {
+  HybridEmbeddingLookupOpModel m({1}, {3, 8}, TensorType_INT8);
+  m.SetInput({3});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  EXPECT_DEATH(m.Invoke(), "Embedding Lookup: index out of bounds.");
 }
 
 TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTestInt8) {
