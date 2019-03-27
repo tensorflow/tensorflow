@@ -697,7 +697,7 @@ tensor<17 x 4 x 13 x 4 x f32>
 // Tensor with rank zero. Represents a scalar.
 tensor<f32>
 
-// Zero dimensions.
+// Zero-element dimensions are allowed.
 tensor<0 x 42 x f32>
 
 // Zero-element tensor of f32 type (hexadecimal literals not allowed here).
