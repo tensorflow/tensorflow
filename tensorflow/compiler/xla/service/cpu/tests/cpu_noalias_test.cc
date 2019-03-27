@@ -53,6 +53,8 @@ TEST_F(CpuNoAliasTest, Concat) {
   HloInstruction* concat2 =
       builder.AddInstruction(HloInstruction::CreateConcatenate(
           ShapeUtil::MakeShape(F32, {2, 6}), {concat1, param_x}, 1));
+  HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
+      ShapeUtil::MakeShape(F32, {2, 6}), HloOpcode::kAdd, concat2, concat2));
 
   std::unique_ptr<HloComputation> computation = builder.Build();
 
@@ -117,11 +119,21 @@ TEST_F(CpuNoAliasTest, Concat) {
         ->setName("read_concat2_array");
   }
 
+  {
+    llvm::Value* concat2_val = ir_module.getOrInsertGlobal("add", array2d_type);
+    auto shape = ShapeUtil::MakeShape(F32, {2, 6});
+    llvm_ir::IrArray add_array(concat2_val, shape);
+    aa.AddAliasingInformationToIrArray(*add, &add_array);
+    llvm_ir::IrArray::Index zero_2d({zero, zero}, shape, zero->getType());
+    add_array.EmitReadArrayElement(zero_2d, &b)->setName("read_add_array");
+  }
+
   // Check the AA info in the loads.
   const char* filecheck_pattern = R"(
     CHECK: %read_param_x_array = load {{.*}} !noalias [[param_x_noalias:![0-9]+]]
     CHECK: %read_concat1_array = load {{.*}} !alias.scope [[concat1_scope:![0-9]+]], !noalias [[concat1_noalias:![0-9]+]]
     CHECK: %read_concat2_array = load {{.*}} !alias.scope [[concat1_noalias]], !noalias [[concat1_scope]]
+    CHECK: %read_add_array = load {{.*}} !alias.scope [[concat1_noalias]]{{$}}
     CHECK-DAG: [[buf_size32:![0-9]+]] = !{!"buffer:{{.*}} size:32
     CHECK-DAG: [[buf_size48:![0-9]+]] = !{!"buffer:{{.*}} size:48
     CHECK-DAG: [[param_x_noalias]] = !{[[buf_size48]], [[buf_size32]]}
