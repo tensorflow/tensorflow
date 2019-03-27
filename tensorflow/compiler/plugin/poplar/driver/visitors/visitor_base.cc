@@ -259,13 +259,13 @@ Status BaseVisitor::HandleConstant(HloInstruction* inst) {
 Status BaseVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   TF_ASSIGN_OR_RETURN(
-      ArgVectors inputs,
+      ArgVectors output_tensors,
       GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
-  CHECK_EQ(inputs.size(), 1);
-  CHECK_EQ(inputs[0].size(), CountShapes(inst->shape()));
-  for (int64 i = 0; i < inputs[0].size(); i++) {
+  CHECK_EQ(output_tensors.size(), 1);
+  CHECK_EQ(output_tensors[0].size(), CountShapes(inst->shape()));
+  for (int64 i = 0; i < output_tensors[0].size(); i++) {
     poplar::Tensor out;
-    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, inputs[0][i]));
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, output_tensors[0][i]));
   }
   return Status::OK();
 }
