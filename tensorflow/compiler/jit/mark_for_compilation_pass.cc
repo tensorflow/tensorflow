@@ -803,6 +803,10 @@ Status MarkForCompilationPassImpl::Run() {
   // Make sure that kernels have been registered on the JIT device.
   XlaOpRegistry::RegisterCompilationKernels();
 
+  // Start the timer after XlaOpRegistry::RegisterCompilationKernels which does
+  // some one-time work.
+  XLA_SCOPED_LOGGING_TIMER_LEVEL("MarkForCompilationPassImpl::Run", 1);
+
   OrderedNodeSet compilation_candidates;
   absl::flat_hash_set<Node*> isolated_nodes;
   TF_ASSIGN_OR_RETURN(std::tie(compilation_candidates, isolated_nodes),
