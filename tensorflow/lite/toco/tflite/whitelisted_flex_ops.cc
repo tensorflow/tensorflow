@@ -177,6 +177,8 @@ bool IsWhitelistedFlexOp(const std::string& tensorflow_op_name) {
           "LoopCond",
           "LRN",
           "MatMul",
+          "MatrixDiag",
+          "MatrixSetDiag",
           "Max",
           "Maximum",
           "MaxPool",

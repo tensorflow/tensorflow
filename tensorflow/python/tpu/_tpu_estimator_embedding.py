@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import collections
 
+import six
+
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.feature_column import feature_column as core_fc
 from tensorflow.python.feature_column import feature_column_lib as core_fc_lib
@@ -288,5 +290,14 @@ def split_inputs(ctx, features, labels):
     tpu_embedding_ = ctx.embedding_config.tpu_embedding
     for feature_key in tpu_embedding_.feature_to_table_dict:
       sparse_features[feature_key] = features.pop(feature_key)
+
+  for v in six.itervalues(sparse_features):
+    if not v.dtype.is_integer:
+      raise ValueError('SparseTensor with string as values are not supported. '
+                       'If you are using vocabulary_file_categorical_column or '
+                       'vocabulary_list_categorical_column, please call '
+                       'your_column.categorical_column._transform_feature({'
+                       'your_column.key: features[your_column.key]}) in'
+                       'your input_fn() to convert string to int.')
 
   return features, labels, sparse_features

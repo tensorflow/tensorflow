@@ -80,6 +80,9 @@ TEST(LowerWhileOpTest, Simple) {
           .Attr("parallel_iterations", 100)
           .Attr(LowerFunctionalOpsPass::kLowerUsingSwitchMergeAttr, true)
           .Finalize(root.graph(), &while_node));
+  auto c = ops::Identity(
+      root.WithOpName("C").WithControlDependencies(Output(while_node)),
+      Output(while_node));
   TF_ASSERT_OK(root.DoShapeInference(while_node));
   TF_ASSERT_OK(root.ToGraph(graph.get()));
 
@@ -134,6 +137,9 @@ TEST(LowerWhileOpTest, Simple) {
     }
     if (op->type_string() == "XTimesTwo") {
       x_times_two_count++;
+    }
+    if (op->name() == "C") {
+      ASSERT_EQ(op->in_edges().size(), 2);
     }
     ASSERT_NE(op->type_string(), "While");
   }

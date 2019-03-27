@@ -65,6 +65,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/autograph/core:test_lib",
     "//tensorflow/python/autograph/pyct/testing:test_modules",
     "//tensorflow/python/autograph/pyct/common_transformers:common_transformers",
+    "//tensorflow/python/compiler:compiler",
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python:meta_graph_testdata",
