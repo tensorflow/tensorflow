@@ -926,8 +926,9 @@ class GradientTape(object):
     if self._tape is None:
       raise RuntimeError("GradientTape.gradient can only be called once on "
                          "non-persistent tapes.")
-    if not is_floating(self._tape):
-      raise ValueError("GradientTape.gradient can only be called when "
+    for v in target:
+      if not is_floating(v):
+        raise ValueError("GradientTape.gradient can only be called when "
                        "data type is float.")
     
     if self._recording:
