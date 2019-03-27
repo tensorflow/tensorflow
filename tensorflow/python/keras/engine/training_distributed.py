@@ -567,10 +567,13 @@ def experimental_tpu_test_loop(model,
 
     batch_logs = cbks.make_logs(model, batch_logs, outs, mode)
     callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
-    if verbose >= 1:
+    if verbose == 1:
       progbar.update(current_step + 1)
     current_step += 1
 
+  if verbose >= 1:
+    # Progress bar finishes at the end.
+    progbar.update(target_steps)
   callbacks._call_end_hook(mode)
 
   scope.__exit__(None, None, None)
@@ -660,7 +663,7 @@ def experimental_tpu_predict_loop(model,
   output_tensors = distributed_training_utils.flatten_perdevice_values(
       current_strategy, per_replica_outputs)
 
-  if verbose == 1:
+  if verbose >= 1:
     progbar = Progbar(target=steps)
 
   if model._compile_distribution:
@@ -718,9 +721,13 @@ def experimental_tpu_predict_loop(model,
 
     batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
     callbacks._call_batch_hook(mode, 'end', current_step, batch_logs)
-    if verbose >= 1:
+    if verbose == 1:
       progbar.update(current_step + 1)
     current_step += 1
+
+  if verbose >= 1:
+    # Progress bar finishes at the end.
+    progbar.update(current_step)
 
   callbacks._call_end_hook(mode)
 
