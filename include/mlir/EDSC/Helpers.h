@@ -157,7 +157,7 @@ template <typename Load, typename Store> struct TemplatedIndexedValue {
   }
 
   /// Emits a `load` when converting to a Value*.
-  operator Value *() const {
+  Value *operator*(void)const {
     return Load(getBase(), {indices.begin(), indices.end()}).getValue();
   }
 

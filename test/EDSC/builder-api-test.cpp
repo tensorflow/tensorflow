@@ -444,7 +444,7 @@ TEST_FUNC(select_op) {
     // Without it, one must force conversion to ValueHandle as such:
     //   edsc::intrinsics::select(
     //      i == zero, ValueHandle(A(zero, zero)), ValueHandle(ValueA(i, j)))
-    edsc::intrinsics::select(i == zero, A(zero, zero), A(i, j))
+    edsc::intrinsics::select(i == zero, *A(zero, zero), *A(i, j))
   });
 
   // CHECK-LABEL: @select_op
