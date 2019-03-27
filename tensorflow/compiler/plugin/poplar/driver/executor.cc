@@ -258,22 +258,33 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
   }
 }
 
+namespace {
+Shape GetOutfeedShape(const Shape& output_shape,
+                      const uint32 replication_factor) {
+  if (replication_factor > 1) {
+    // When the graph is replicated, we expect an extra dimension at the front
+    // of the output.
+    std::vector<int64> dimensions = {replication_factor};
+    absl::c_copy(output_shape.dimensions(), std::back_inserter(dimensions));
+    return ShapeUtil::MakeShape(output_shape.element_type(), dimensions);
+  } else {
+    return output_shape;
+  }
+}
+}  // namespace
+
 void PoplarExecutor::ConnectOutfeedToStreamCallback(
-    se::StreamExecutor* executor, const OutfeedInfos& outfeed_infos) {
+    se::StreamExecutor* executor, const OutfeedInfos& outfeed_infos,
+    const uint32 replication_factor) {
   for (const auto& outfeed_info : outfeed_infos) {
     const auto& operand_shape = outfeed_info->operands()[0]->shape();
+    auto flat_shapes = FlattenedXlaShape(operand_shape);
 
     std::vector<std::pair<Shape, size_t>> shapes_sizes;
-    if (operand_shape.IsTuple()) {
-      for (int64 j = 0; j < operand_shape.tuple_shapes_size(); ++j) {
-        const Shape& tuple_element_shape =
-            ShapeUtil::GetTupleElementShape(operand_shape, j);
-        int64 size = ShapeUtil::ByteSizeOf(tuple_element_shape, sizeof(void*));
-        shapes_sizes.emplace_back(std::make_pair(tuple_element_shape, size));
-      }
-    } else {
-      int64 size = ShapeUtil::ByteSizeOf(operand_shape);
-      shapes_sizes.emplace_back(std::make_pair(operand_shape, size));
+    for (Shape shape : flat_shapes) {
+      Shape output_shape = GetOutfeedShape(shape, replication_factor);
+      int64 size = ShapeUtil::ByteSizeOf(output_shape);
+      shapes_sizes.emplace_back(std::make_pair(output_shape, size));
     }
 
     const bool clear_if_full = outfeed_info->outfeed_config() == "get_last";
@@ -1495,7 +1506,9 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
 
       const auto& outfeed_infos = executable.GetOutfeedInfos();
       if (!outfeed_infos.empty()) {
-        ConnectOutfeedToStreamCallback(executor, outfeed_infos);
+        const auto replication_factor = executable.GetReplicationFactor();
+        ConnectOutfeedToStreamCallback(executor, outfeed_infos,
+                                       replication_factor);
       }
 
       // Run the main engine

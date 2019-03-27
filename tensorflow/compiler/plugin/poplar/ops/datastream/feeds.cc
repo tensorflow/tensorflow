@@ -59,7 +59,7 @@ REGISTER_OP("IPUConsumeDataset")
 
 REGISTER_OP("PopDatastreamOutfeedEnqueue")
     .Input("inputs: output_types")
-    .Attr("output_types: list(type)")
+    .Attr("output_types: list(type) >= 1")
     .Attr("outfeed_mode: string='all'")
     .Attr("device_ordinal: int = 0")
     .SetIsStateful()
@@ -70,15 +70,17 @@ An op which emits multiple Tensor values from an XLA computation.
 inputs: A list of tensors that will be inserted into the outfeed queue as an
 XLA tuple.
 output_types: The element types of each element in `outputs`.
-outfeed_mode: 'all' or 'get_last', default is 'all'. In 'all'-mode all outfed values are enqueued for reading on the host. In 'get_last'-mode a single value is queued to be passed to the host.
+outfeed_mode: 'all' or 'get_last', default is 'all'. In 'all'-mode all outfed
+  values are enqueued for reading on the host. In 'get_last'-mode a single value
+  is queued to be passed to the host.
 device_ordinal: The IPU device to use.
 
 )doc");
 
 REGISTER_OP("PopDatastreamOutfeedDequeue")
     .Output("outputs: output_types")
-    .Attr("output_types: list(type)")
-    .Attr("output_shapes: list(shape)")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .Attr("device_ordinal: int = 0")
     .SetIsStateful()
     .SetShapeFn(shape_inference::UnknownShape)
@@ -89,7 +91,9 @@ Output `i` corresponds to XLA tuple element `i`.
 
 outputs: A list of tensors that will be read from the outfeed.
 output_types: The element types of each element in `outputs`.
-output_shapes: The output_shapes of each tensor in `outputs`. If the first dimension is None, then the dequeue operation will output all outfed elements available.
+output_shapes: The output_shapes of each tensor in `outputs`. If the first
+  dimension is None, then the dequeue operation will output all outfed elements
+  available.
 device_ordinal: The IPU device to use.
 )doc");
 }  // namespace tensorflow

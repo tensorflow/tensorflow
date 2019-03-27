@@ -50,8 +50,8 @@ class PoplarExecutable : public Executable {
                    const bool is_constant_graph,
                    std::vector<std::vector<Literal>> literal_output,
                    const bool is_remap_graph,
-                   std::vector<uint64> remaped_output, int replication_factor_,
-                   const InfeedInfos& infeed_infos,
+                   std::vector<uint64> remaped_output,
+                   uint32 replication_factor_, const InfeedInfos& infeed_infos,
                    const OutfeedInfos& outfeed_infos);
 
   ~PoplarExecutable() override;
@@ -85,6 +85,8 @@ class PoplarExecutable : public Executable {
 
   const OutfeedInfos& GetOutfeedInfos() const { return outfeed_infos_; }
 
+  const uint32 GetReplicationFactor() const { return replication_factor_; }
+
   const bool IsConstantGraph() const { return is_constant_graph_; }
 
   const std::vector<uint64>& RemapMap() const { return remaped_output_; }
@@ -110,7 +112,7 @@ class PoplarExecutable : public Executable {
   std::vector<uint64> remaped_output_;
   const bool is_remap_graph_;
   int64 execution_count_;
-  int replication_factor_;
+  uint32 replication_factor_;
   InfeedInfos infeed_infos_;
   OutfeedInfos outfeed_infos_;
 

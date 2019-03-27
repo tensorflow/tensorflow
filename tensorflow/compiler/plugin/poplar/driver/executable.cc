@@ -32,7 +32,7 @@ PoplarExecutable::PoplarExecutable(
     const InputOutputAliasingMap& input_output_aliasing_map,
     const bool is_constant_graph,
     std::vector<std::vector<Literal>> literal_output, const bool is_remap_graph,
-    std::vector<uint64> remaped_output, int replication_factor,
+    std::vector<uint64> remaped_output, uint32 replication_factor,
     const InfeedInfos& infeed_infos, const OutfeedInfos& outfeed_infos)
     : Executable(std::move(hlo_module), std::move(profile_printer),
                  std::move(profile_index_map)),

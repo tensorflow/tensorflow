@@ -80,7 +80,7 @@ class IPUInfeedQueue:
     result = sess.run(res)
   ```
   """
-  def __init__(self, dataset, device_ordinal=0):
+  def __init__(self, dataset, device_ordinal=0, replication_factor=1):
     """Creates an IPUInfeedQueue object.
 
     Args:
@@ -88,6 +88,8 @@ class IPUInfeedQueue:
         `repeat`, `batch` must be applied prior to passing in to this function.
         This dataset can no longer be used after creating this queue.
        device_ordinal: ordinal of the device on which this queue will be used.
+       replication_factor: the number of replicated graphs this infeed will be
+         used in.
 
     Raises:
       ValueError: if all dimensions of shapes of dataset.output_shapes are not
@@ -95,6 +97,7 @@ class IPUInfeedQueue:
         `drop_remainder=True` to ensure that batch size is constant.
 
     """
+
     for output_shape in dataset_ops.flat_structure(dataset)["output_shapes"]:
       if isinstance(output_shape, list) or isinstance(output_shape, tuple):
         raise ValueError("Nested list/tuple input shapes are not supported")
@@ -104,8 +107,11 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
     with ops.device('/device:CPU:0'):
       # Apply the dataset and take ownership.
-      self._dataset = dataset._apply_options()
+      dataset = dataset._apply_options()
       self._structure = dataset._element_structure
+      self._flat_structure = dataset_ops.flat_structure(dataset)
+      # Batch the dataset to take replication into account.
+      self._dataset = dataset.batch(replication_factor, drop_remainder=True)
       try:
         ds_variant = self._dataset._variant_tensor
       except TypeError:
@@ -131,7 +137,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       A nested structure of `tf.Tensor` objects.
     """
     flat_ret = gen_pop_datastream_ops.pop_datastream_infeed_dequeue(
-      infeed_id=self._id, **dataset_ops.flat_structure(self._dataset))
+      infeed_id=self._id, **self._flat_structure)
     self._dequeued = True
     return self._structure._from_tensor_list(flat_ret)
 
