@@ -212,10 +212,12 @@ class Generator(tracking.AutoTrackable):
 
   @property
   def state(self):
+    """The internal state of the RNG."""
     return self._state_var
 
   @property
   def algorithm(self):
+    """The RNG algorithm."""
     return self._alg_var
 
   def _standard_normal(self, shape, dtype):
@@ -226,6 +228,21 @@ class Generator(tracking.AutoTrackable):
   # self._state_var.
   def normal(self, shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
              name=None):
+    """Outputs random values from a normal distribution.
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      mean: A 0-D Tensor or Python value of type `dtype`. The mean of the normal
+        distribution.
+      stddev: A 0-D Tensor or Python value of type `dtype`. The standard
+        deviation of the normal distribution.
+      dtype: The type of the output.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random normal values.
+    """
     with ops.name_scope(name, "stateful_normal", [shape, mean, stddev]) as name:
       shape = _shape_tensor(shape)
       mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
@@ -233,8 +250,83 @@ class Generator(tracking.AutoTrackable):
       rnd = self._standard_normal(shape, dtype=dtype)
       return math_ops.add(rnd * stddev, mean, name=name)
 
+  def _truncated_normal(self, shape, dtype):
+    return gen_stateful_random_ops.stateful_truncated_normal(
+        self.state.handle, self.algorithm, shape, dtype=dtype)
+
+  def truncated_normal(self, shape,
+                       mean=0.0,
+                       stddev=1.0,
+                       dtype=dtypes.float32,
+                       name=None):
+    """Outputs random values from a truncated normal distribution.
+
+    The generated values follow a normal distribution with specified mean and
+    standard deviation, except that values whose magnitude is more than
+    2 standard deviations from the mean are dropped and re-picked.
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      mean: A 0-D Tensor or Python value of type `dtype`. The mean of the
+        truncated normal distribution.
+      stddev: A 0-D Tensor or Python value of type `dtype`. The standard
+        deviation of the normal distribution, before truncation.
+      dtype: The type of the output.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random truncated normal
+        values.
+    """
+    with ops.name_scope(
+        name, "truncated_normal", [shape, mean, stddev]) as name:
+      shape_tensor = _shape_tensor(shape)
+      mean_tensor = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
+      stddev_tensor = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
+      rnd = self._truncated_normal(shape_tensor, dtype=dtype)
+      mul = rnd * stddev_tensor
+      return math_ops.add(mul, mean_tensor, name=name)
+
+  def _uniform(self, shape, dtype):
+    return gen_stateful_random_ops.stateful_uniform(
+        self.state.handle, self.algorithm, shape=shape, dtype=dtype)
+
   def uniform(self, shape, minval=0, maxval=None,
               dtype=dtypes.float32, name=None):
+    """Outputs random values from a uniform distribution.
+
+    The generated values follow a uniform distribution in the range
+    `[minval, maxval)`. The lower bound `minval` is included in the range, while
+    the upper bound `maxval` is excluded. (For float numbers especially
+    low-precision types like bfloat16, because of
+    rounding, the result may sometimes include `maxval`.)
+
+    For floats, the default range is `[0, 1)`.  For ints, at least `maxval` must
+    be specified explicitly.
+
+    In the integer case, the random integers are slightly biased unless
+    `maxval - minval` is an exact power of two.  The bias is small for values of
+    `maxval - minval` significantly smaller than the range of the output (either
+    `2**32` or `2**64`).
+
+    Args:
+      shape: A 1-D integer Tensor or Python array. The shape of the output
+        tensor.
+      minval: A 0-D Tensor or Python value of type `dtype`. The lower bound on
+        the range of random values to generate.  Defaults to 0.
+      maxval: A 0-D Tensor or Python value of type `dtype`. The upper bound on
+        the range of random values to generate.  Defaults to 1 if `dtype` is
+        floating point.
+      dtype: The type of the output.
+      name: A name for the operation (optional).
+
+    Returns:
+      A tensor of the specified shape filled with random uniform values.
+
+    Raises:
+      ValueError: If `dtype` is integral and `maxval` is not specified.
+    """
     dtype = dtypes.as_dtype(dtype)
     if maxval is None:
       if dtype.is_integer:
@@ -250,8 +342,8 @@ class Generator(tracking.AutoTrackable):
             self.state.handle, self.algorithm, shape=shape,
             minval=minval, maxval=maxval, name=name)
       else:
-        # TODO(wangpeng): implement uniform for floats
-        raise ValueError("uniform for floats not implemented yet")
+        rnd = self._uniform(shape=shape, dtype=dtype)
+        return math_ops.add(rnd * (maxval - minval), minval, name=name)
 
   def uniform_full_int(self, shape, dtype=dtypes.uint64, name=None):
     """Uniform distribution on an integer type's entire range.
@@ -275,8 +367,7 @@ class Generator(tracking.AutoTrackable):
           self.state.handle, self.algorithm, shape=shape,
           dtype=dtype, name=name)
 
-  # TODO(wangpeng): implement other distributions (
-  #   `truncated_normal`, etc.)
+  # TODO(wangpeng): implement other distributions
   # TODO(wangpeng): implement `make_seeds`
   # TODO(wangpeng): implement `make_generators`
 

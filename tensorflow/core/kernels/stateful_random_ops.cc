@@ -246,35 +246,55 @@ class NonDeterministicIntsOp : public OpKernel {
 
 // So far the 'Distribution' type parameter is only used when the algorithm is
 // philox, so 'NormalDistribution<PhiloxRandom, ...>' is fine for now.
-#define REGISTER(DEVICE, TYPE)            \
-  REGISTER_KERNEL_BUILDER(                \
-      Name("StatefulStandardNormalV2")    \
-          .Device(DEVICE_##DEVICE)        \
-          .HostMemory("resource")         \
-          .HostMemory("algorithm")        \
-          .HostMemory("shape")            \
-          .TypeConstraint<TYPE>("dtype"), \
-      StatefulRandomOpV2<DEVICE##Device,  \
-                         random::NormalDistribution<PhiloxRandom, TYPE> >);
+#define REGISTER_FloatOps(DEVICE, TYPE)                                      \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("StatefulStandardNormalV2")                                       \
+          .Device(DEVICE_##DEVICE)                                           \
+          .HostMemory("resource")                                            \
+          .HostMemory("algorithm")                                           \
+          .HostMemory("shape")                                               \
+          .TypeConstraint<TYPE>("dtype"),                                    \
+      StatefulRandomOpV2<DEVICE##Device,                                     \
+                         random::NormalDistribution<PhiloxRandom, TYPE> >);  \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("StatefulUniform")                                                \
+          .Device(DEVICE_##DEVICE)                                           \
+          .HostMemory("resource")                                            \
+          .HostMemory("algorithm")                                           \
+          .HostMemory("shape")                                               \
+          .TypeConstraint<TYPE>("dtype"),                                    \
+      StatefulRandomOpV2<DEVICE##Device,                                     \
+                         random::UniformDistribution<PhiloxRandom, TYPE> >); \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("StatefulTruncatedNormal")                                        \
+          .Device(DEVICE_##DEVICE)                                           \
+          .HostMemory("resource")                                            \
+          .HostMemory("algorithm")                                           \
+          .HostMemory("shape")                                               \
+          .TypeConstraint<TYPE>("dtype"),                                    \
+      StatefulRandomOpV2<                                                    \
+          DEVICE##Device,                                                    \
+          random::TruncatedNormalDistribution<                               \
+              random::SingleSampleAdapter<PhiloxRandom>, TYPE> >);
 
-// CPU also has the old 'StatefulStandardNormal' op for backward compatibility.
-#define REGISTER_CPU(TYPE)                \
-  REGISTER(CPU, TYPE)                     \
-  REGISTER_KERNEL_BUILDER(                \
-      Name("StatefulStandardNormal")      \
-          .Device(DEVICE_CPU)             \
-          .HostMemory("resource")         \
-          .HostMemory("shape")            \
-          .TypeConstraint<TYPE>("dtype"), \
-      StatefulRandomOp<CPUDevice,         \
+// CPU also has the deprecated 'StatefulStandardNormal' op for backward
+// compatibility.
+#define REGISTER_FloatOps_CPU(TYPE)                     \
+  REGISTER_FloatOps(CPU, TYPE) REGISTER_KERNEL_BUILDER( \
+      Name("StatefulStandardNormal")                    \
+          .Device(DEVICE_CPU)                           \
+          .HostMemory("resource")                       \
+          .HostMemory("shape")                          \
+          .TypeConstraint<TYPE>("dtype"),               \
+      StatefulRandomOp<CPUDevice,                       \
                        random::NormalDistribution<PhiloxRandom, TYPE> >);
 
-#define REGISTER_GPU(TYPE) REGISTER(GPU, TYPE)
+#define REGISTER_FloatOps_GPU(TYPE) REGISTER_FloatOps(GPU, TYPE)
 
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_bfloat16(REGISTER_CPU);
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
+TF_CALL_half(REGISTER_FloatOps_CPU);
+TF_CALL_bfloat16(REGISTER_FloatOps_CPU);
+TF_CALL_float(REGISTER_FloatOps_CPU);
+TF_CALL_double(REGISTER_FloatOps_CPU);
 
 #define REGISTER_StatefulUniformInt(DEVICE, TYPE)             \
   REGISTER_KERNEL_BUILDER(Name("StatefulUniformInt")          \
@@ -316,10 +336,9 @@ TF_CALL_uint64(REGISTER_StatefulUniformFullInt_CPU);
 
 #if GOOGLE_CUDA
 
-TF_CALL_half(REGISTER_GPU);
-TF_CALL_bfloat16(REGISTER_GPU);
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
+TF_CALL_half(REGISTER_FloatOps_GPU);
+TF_CALL_float(REGISTER_FloatOps_GPU);
+TF_CALL_double(REGISTER_FloatOps_GPU);
 TF_CALL_int32(REGISTER_StatefulUniformInt_GPU);
 TF_CALL_int64(REGISTER_StatefulUniformInt_GPU);
 TF_CALL_int32(REGISTER_StatefulUniformFullInt_GPU);
@@ -335,9 +354,9 @@ TF_CALL_uint64(REGISTER_StatefulUniformFullInt_GPU);
 #undef REGISTER_StatefulUniformInt_GPU
 #undef REGISTER_StatefulUniformInt_CPU
 #undef REGISTER_StatefulUniformInt
-#undef REGISTER_GPU
-#undef REGISTER_CPU
-#undef REGISTER
+#undef REGISTER_FloatOps_GPU
+#undef REGISTER_FloatOps_CPU
+#undef REGISTER_FloatOps
 
 #define REGISTER_NonDeterministicInts(TYPE)                   \
   REGISTER_KERNEL_BUILDER(Name("NonDeterministicInts")        \
