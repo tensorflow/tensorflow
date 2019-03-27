@@ -94,7 +94,7 @@ run them manually. For example, here's how to run the depthwise convolution
 test, and its output:
 
 ```
-tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test
+tensorflow/lite/experimental/micro/tools/make/gen/linux_x86_64/bin/depthwise_conv_test
 
 Testing SimpleTest
 Testing SimpleTestQuantized
@@ -165,7 +165,7 @@ test, but through the emulated device test harness, with the following command:
 
 ```
 tensorflow/lite/experimental/micro/testing/test_bluepill_binary.sh \
-tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test \
+tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/depthwise_conv_test \
 '~~~ALL TESTS PASSED~~~'
 
 ```
@@ -192,7 +192,7 @@ LOGS:
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+41µs host +0s virt 0s virt from start]   ~~~ALL TESTS PASSED~~~
 03:27:32.4839 [DEBUG] cpu.uartSemihosting: [+5µs host +0s virt 0s virt from start]
 ...
-tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/tensorflow/lite/experimental/micro/kernels/depthwise_conv_test: PASS
+tensorflow/lite/experimental/micro/tools/make/gen/bluepill_cortex-m3/bin/depthwise_conv_test: PASS
 ```
 
 There's a lot of output here, but you should be able to see that the same tests
