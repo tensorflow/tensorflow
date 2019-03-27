@@ -43,6 +43,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import script_ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.ops import gen_array_ops
+from tensorflow.contrib.distributions.python.ops import sample_stats
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_math_ops
 
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
@@ -3558,8 +3562,8 @@ def combined_non_max_suppression(boxes,
     return gen_image_ops.combined_non_max_suppression(
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class)
+
   
- 
 @tf_export('image.median_filter_2D')
 def median_filter_2D(input,filter_shape=(3,3)):
     """This method performs Median Filtering on image.Filter shape can be user given.
@@ -3597,38 +3601,40 @@ def median_filter_2D(input,filter_shape=(3,3)):
                          "(%sx" % filter_shape[0]+"%s)."%filter_shape[1] +" Image Shape (%s)"% input.shape)
     if filter_shapex % 2 == 0 or filter_shapey % 2 == 0:
         raise ValueError("Filter size should be odd. Got filter_shape (%sx" % filter_shape[0]+"%s)"%filter_shape[1] )
-    input = math_ops.cast(input,dtypes.float64)
-    def my_func (input2):
-        input2 = input2.numpy()
-        tf_i = input2.reshape(m*no*ch)
-        maxi = max(tf_i)
-        if maxi == 1:
-            input2 /= 1
-        else :
-            input2 /= 255
-        #k and l is the Zero-padding size
-        res = np.empty((m,no,ch))
-        for a in range(ch):
-            img = input2[:,:,a:a+1]
-            img = img.reshape(m,no)
-            k = filter_shapex - 1
-            l = filter_shapey - 1
-            img  = np.pad(img,((k / 2, k / 2), (l / 2,l / 2)),'constant', constant_values=(0, 0))
-            res1 = np.empty((m,no))
-            for i in range(img.shape[0] - k) :
-                for j in range(img.shape[1] - l) :
-                    li = []
-                    for b in range(i, i + filter_shapex):
-                        for d in range(j, j + filter_shapey):
-                            li.append(img[b][d])
-                    li.sort()
-                    res1[i][j] = li[len(li) / 2]
-            res1 = res1.reshape(m,no,1)
-            res[:,:,a:a+1] = res1
-        res *= 255
-        res = res.astype('int32')
-        return res
+    input = math_ops.cast(input,dtypes.float32)
+    tf_i = array_ops.reshape(input,[m*no*ch])
+    ma = math_ops.reduce_max(tf_i)
 
-    y = script_ops.eager_py_func(my_func, [input], dtypes.int32)
-    y = array_ops.reshape(array_ops.concat(y,1),[m,no,ch])
+    def normalize(li):
+        one = ops.convert_to_tensor(1.0)
+        two = ops.convert_to_tensor(255.0)
+
+        def func1():
+            return li
+
+        def func2():
+            return math_ops.truediv(li, two)
+
+        return control_flow_ops.cond(gen_math_ops.greater(ma, one), func2, func1)
+
+    input = normalize(input)
+    listi = []
+    for a in range(ch):
+        img = input[:,:,a:a+1]
+        img = array_ops.reshape(img,[1,m,no,1])
+        slic = gen_array_ops.extract_image_patches(img,[1, filter_shapex, filter_shapey, 1],
+                                                   [1, 1, 1, 1],[1, 1, 1, 1],padding='SAME')
+        mid = (filter_shapex * filter_shapey) / 2 + 1
+        li = nn_ops.top_k(slic, mid, sorted=True)
+        li = sample_stats.percentile(li[0], 50, axis=3)
+        li = array_ops.reshape(li, [m, no, 1])
+        listi.append(li)
+    y = array_ops.concat(listi[0], 2)
+
+    for i in range(len(listi) - 1):
+        y = array_ops.concat([y, listi[i + 1]], 2)
+
+    y *= 255
+    y = math_ops.cast(y, dtypes.int32)
+
     return y
