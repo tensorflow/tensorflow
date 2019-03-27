@@ -71,7 +71,7 @@ struct SimplifyAffineStructures
     FlatAffineConstraints fac(set);
     if (fac.isEmpty())
       return IntegerSet::getEmptySet(set.getNumDims(), set.getNumSymbols(),
-                                     set.getContext());
+                                     &getContext());
     return set;
   }
 

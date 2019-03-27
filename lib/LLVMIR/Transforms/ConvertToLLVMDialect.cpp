@@ -159,7 +159,6 @@ Type TypeConverter::convertIntegerType(IntegerType type) {
 }
 
 Type TypeConverter::convertFloatType(FloatType type) {
-  MLIRContext *context = type.getContext();
   switch (type.getKind()) {
   case mlir::StandardTypes::F32:
     return wrap(builder.getFloatTy());
@@ -168,8 +167,8 @@ Type TypeConverter::convertFloatType(FloatType type) {
   case mlir::StandardTypes::F16:
     return wrap(builder.getHalfTy());
   case mlir::StandardTypes::BF16:
-    return context->emitError(UnknownLoc::get(context),
-                              "unsupported type: BF16"),
+    return mlirContext->emitError(UnknownLoc::get(mlirContext),
+                                  "unsupported type: BF16"),
            Type();
   default:
     llvm_unreachable("non-float type in convertFloatType");
@@ -236,11 +235,11 @@ FunctionType TypeConverter::convertFunctionSignatureType(FunctionType type) {
 
   // If function does not return anything, return immediately.
   if (type.getNumResults() == 0)
-    return FunctionType::get(argTypes, {}, type.getContext());
+    return FunctionType::get(argTypes, {}, mlirContext);
 
   // Otherwise pack the result types into a struct.
   if (auto result = getPackedResultType(type.getResults()))
-    return FunctionType::get(argTypes, {result}, type.getContext());
+    return FunctionType::get(argTypes, {result}, mlirContext);
 
   return {};
 }
@@ -271,9 +270,8 @@ Type TypeConverter::convertMemRefType(MemRefType type) {
 // Convert a 1D vector type to an LLVM vector type.
 Type TypeConverter::convertVectorType(VectorType type) {
   if (type.getRank() != 1) {
-    MLIRContext *context = type.getContext();
-    context->emitError(UnknownLoc::get(context),
-                       "only 1D vectors are supported");
+    mlirContext->emitError(UnknownLoc::get(mlirContext),
+                           "only 1D vectors are supported");
     return {};
   }
 
@@ -300,12 +298,11 @@ Type TypeConverter::convertType(Type type) {
   if (auto llvmType = type.dyn_cast<LLVM::LLVMType>())
     return llvmType;
 
-  MLIRContext *context = type.getContext();
   std::string message;
   llvm::raw_string_ostream os(message);
   os << "unsupported type: ";
   type.print(os);
-  context->emitError(UnknownLoc::get(context), os.str());
+  mlirContext->emitError(UnknownLoc::get(mlirContext), os.str());
   return {};
 }
 

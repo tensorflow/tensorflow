@@ -745,7 +745,7 @@ void MaterializeVectorsPass::runOnFunction() {
   // Get the hardware vector type.
   // TODO(ntv): get elemental type from super-vector type rather than force f32.
   auto subVectorType =
-      VectorType::get(state.hwVectorSize, FloatType::getF32(f->getContext()));
+      VectorType::get(state.hwVectorSize, FloatType::getF32(&getContext()));
 
   // Capture terminators; i.e. vector_transfer_write ops involving a strict
   // super-vector of subVectorType.
