@@ -1224,6 +1224,12 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   This is used to get all the output nodes those are ophinted, it is important
   for operation like convert_variables_to_constants keep all ophints structure.
   Note: only one of session or graph_def should be used, not both.
+  Why this can be useful? Some TensorFlow ops (e.g. bidirectional rnn), can
+  generate multiple outputs for unfused subgraph. If not all output nodes are
+  consumed, graph optimization can potentially drop the unused nodes and cause
+  ophints in an invalid states (due to missing ophinted output nodes). So it's
+  important for us to find all those hinted output nodes and make sure they're
+  not discarded away.
 
   Args:
     session: A TensorFlow session that contains the graph to convert.
@@ -1242,8 +1248,8 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   elif graph_def is not None:
     hints = _find_all_hints_in_nodes(graph_def.node)
   for hint in _six.itervalues(hints):
-    _, ouput_nodes = hint.flattened_inputs_and_outputs()
-    hinted_outputs_nodes.extend(ouput_nodes)
+    _, output_nodes = hint.flattened_inputs_and_outputs()
+    hinted_outputs_nodes.extend(output_nodes)
   return hinted_outputs_nodes
 
 
