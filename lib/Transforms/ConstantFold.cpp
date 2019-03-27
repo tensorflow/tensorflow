@@ -54,7 +54,7 @@ void ConstantFold::foldInstruction(Instruction *op) {
   SmallVector<Attribute, 8> operandConstants;
   for (auto *operand : op->getOperands()) {
     Attribute operandCst = nullptr;
-    if (auto *operandOp = operand->getDefiningInst()) {
+    if (auto *operandOp = operand->getDefiningOp()) {
       if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
         operandCst = operandConstantOp.getValue();
     }
@@ -112,7 +112,7 @@ void ConstantFold::runOnFunction() {
   // around dead constants.  Check for them now and remove them.
   for (auto *cst : existingConstants) {
     if (cst->use_empty())
-      cst->getDefiningInst()->erase();
+      cst->getDefiningOp()->erase();
   }
 }
 

@@ -321,7 +321,7 @@ static Value *buildMinMaxReductionSeq(Location loc, CmpIPredicate predicate,
 //
 bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   auto loc = forOp.getLoc();
-  auto *forInst = forOp.getInstruction();
+  auto *forInst = forOp.getOperation();
 
   // Start by splitting the block containing the 'affine.for' into two parts.
   // The part before will get the init code, the part after will be the end
@@ -340,9 +340,9 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
   bodyBlock->insertBefore(endBlock);
 
   auto *oldBody = forOp.getBody();
-  bodyBlock->getInstructions().splice(bodyBlock->begin(),
-                                      oldBody->getInstructions(),
-                                      oldBody->begin(), oldBody->end());
+  bodyBlock->getOperations().splice(bodyBlock->begin(),
+                                    oldBody->getOperations(), oldBody->begin(),
+                                    oldBody->end());
 
   // The code in the body of the forOp now uses 'iv' as its indvar.
   forOp.getInductionVar()->replaceAllUsesWith(iv);
@@ -454,7 +454,7 @@ bool LowerAffinePass::lowerAffineFor(AffineForOp forOp) {
 //      +--------------------------------+
 //
 bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
-  auto *ifInst = ifOp.getInstruction();
+  auto *ifInst = ifOp.getOperation();
   auto loc = ifInst->getLoc();
 
   // Start by splitting the block containing the 'affine.if' into two parts. The
@@ -478,9 +478,9 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
 
     Block *oldThen = &oldThenBlocks.front();
 
-    thenBlock->getInstructions().splice(thenBlock->begin(),
-                                        oldThen->getInstructions(),
-                                        oldThen->begin(), oldThen->end());
+    thenBlock->getOperations().splice(thenBlock->begin(),
+                                      oldThen->getOperations(),
+                                      oldThen->begin(), oldThen->end());
   }
 
   FuncBuilder builder(thenBlock);
@@ -499,9 +499,9 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
     elseBlock = new Block();
     elseBlock->insertBefore(continueBlock);
 
-    elseBlock->getInstructions().splice(elseBlock->begin(),
-                                        oldElse->getInstructions(),
-                                        oldElse->begin(), oldElse->end());
+    elseBlock->getOperations().splice(elseBlock->begin(),
+                                      oldElse->getOperations(),
+                                      oldElse->begin(), oldElse->end());
     builder.setInsertionPointToEnd(elseBlock);
     builder.create<BranchOp>(loc, continueBlock);
   }
@@ -570,7 +570,7 @@ bool LowerAffinePass::lowerAffineIf(AffineIfOp ifOp) {
 // Convert an "affine.apply" operation into a sequence of arithmetic
 // instructions using the StandardOps dialect.  Return true on error.
 bool LowerAffinePass::lowerAffineApply(AffineApplyOp op) {
-  FuncBuilder builder(op.getInstruction());
+  FuncBuilder builder(op.getOperation());
   auto maybeExpandedMap =
       expandAffineMap(&builder, op.getLoc(), op.getAffineMap(),
                       llvm::to_vector<8>(op.getOperands()));

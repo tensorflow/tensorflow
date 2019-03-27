@@ -30,7 +30,6 @@ namespace mlir {
 class Block;
 class Function;
 class Operation;
-using Instruction = Operation;
 class Value;
 
 /// Operands contain a Value.
@@ -44,7 +43,7 @@ public:
   /// This enumerates all of the SSA value kinds in the MLIR system.
   enum class Kind {
     BlockArgument, // block argument
-    InstResult,    // operation instruction result
+    OpResult,      // operation result
   };
 
   ~Value() {}
@@ -63,9 +62,9 @@ public:
   /// Return the function that this Value is defined in.
   Function *getFunction();
 
-  /// If this value is the result of an operation, return the instruction
-  /// that defines it.
-  Instruction *getDefiningInst();
+  /// If this value is the result of an operation, return the operation that
+  /// defines it.
+  Operation *getDefiningOp();
 
   using use_iterator = ValueUseIterator<InstOperand>;
   using use_range = llvm::iterator_range<use_iterator>;
@@ -131,17 +130,17 @@ private:
   Block *const owner;
 };
 
-/// This is a value defined by a result of an operation instruction.
-class InstResult : public Value {
+/// This is a value defined by a result of an operation.
+class OpResult : public Value {
 public:
-  InstResult(Type type, Instruction *owner)
-      : Value(Value::Kind::InstResult, type), owner(owner) {}
+  OpResult(Type type, Operation *owner)
+      : Value(Value::Kind::OpResult, type), owner(owner) {}
 
   static bool classof(const Value *value) {
-    return const_cast<Value *>(value)->getKind() == Kind::InstResult;
+    return const_cast<Value *>(value)->getKind() == Kind::OpResult;
   }
 
-  Instruction *getOwner() { return owner; }
+  Operation *getOwner() { return owner; }
 
   /// Returns the number of this result.
   unsigned getResultNumber();
@@ -150,7 +149,7 @@ private:
   /// The owner of this operand.
   /// TODO: can encode this more efficiently to avoid the space hit of this
   /// through bitpacking shenanigans.
-  Instruction *const owner;
+  Operation *const owner;
 };
 
 /// This is a helper template used to implement an iterator that contains a

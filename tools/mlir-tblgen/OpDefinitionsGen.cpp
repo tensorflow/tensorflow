@@ -478,12 +478,12 @@ void OpEmitter::genNamedOperandGetters() {
 
     if (!operand.constraint.isVariadic()) {
       auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << "  return this->getInstruction()->getOperand(" << i << ");\n";
+      m.body() << "  return this->getOperation()->getOperand(" << i << ");\n";
     } else {
       assert(i + 1 == e && "only the last operand can be variadic");
 
       const char *const code = R"(
-        assert(getInstruction()->getNumOperands() >= {0});
+        assert(getOperation()->getNumOperands() >= {0});
         return {std::next(operand_begin(), {0}), operand_end()};
       )";
       auto &m = opClass.newMethod("Instruction::operand_range", operand.name);
@@ -499,7 +499,7 @@ void OpEmitter::genNamedResultGetters() {
       continue;
 
     auto &m = opClass.newMethod("Value *", result.name);
-    m.body() << "  return this->getInstruction()->getResult(" << i << ");\n";
+    m.body() << "  return this->getOperation()->getResult(" << i << ");\n";
   }
 }
 
@@ -846,7 +846,7 @@ void OpEmitter::genVerifier() {
       auto description = value.constraint.getDescription();
       body << "  if (!("
            << formatv(value.constraint.getConditionTemplate(),
-                      "this->getInstruction()->get" +
+                      "this->getOperation()->get" +
                           Twine(isOperand ? "Operand" : "Result") + "(" +
                           Twine(index) + ")->getType()")
            << "))\n";
@@ -869,7 +869,7 @@ void OpEmitter::genVerifier() {
   for (auto &trait : op.getTraits()) {
     if (auto t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
       body << "  if (!("
-           << formatv(t->getPredTemplate().c_str(), "(*this->getInstruction())")
+           << formatv(t->getPredTemplate().c_str(), "(*this->getOperation())")
            << "))\n";
       body << "    return emitOpError(\"failed to verify that "
            << t->getDescription() << "\");\n";

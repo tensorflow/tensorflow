@@ -69,7 +69,7 @@ struct constant_op_binder {
   /// bind_value if match succeeds.
   constant_op_binder(Attribute *bind_value) : bind_value(bind_value) {}
 
-  bool match(Instruction *op) {
+  bool match(Operation *op) {
     if (op->getNumOperands() > 0 || op->getNumResults() != 1)
       return false;
     SmallVector<Attribute, 1> foldedAttr;
@@ -89,7 +89,7 @@ struct constant_int_op_binder {
   /// Creates a matcher instance that binds the value to bv if match succeeds.
   constant_int_op_binder(IntegerAttr::ValueType *bv) : bind_value(bv) {}
 
-  bool match(Instruction *op) {
+  bool match(Operation *op) {
     Attribute attr;
     if (!constant_op_binder(&attr).match(op))
       return false;
@@ -111,7 +111,7 @@ struct constant_int_op_binder {
 // The matcher that matches a given target constant scalar / vector splat /
 // tensor splat integer value.
 template <int64_t TargetValue> struct constant_int_value_matcher {
-  bool match(Instruction *op) {
+  bool match(Operation *op) {
     APInt value;
 
     return constant_int_op_binder(&value).match(op) && TargetValue == value;
@@ -120,7 +120,7 @@ template <int64_t TargetValue> struct constant_int_value_matcher {
 
 /// The matcher that matches a certain kind of op.
 template <typename OpClass> struct op_matcher {
-  bool match(Instruction *op) { return op->isa<OpClass>(); }
+  bool match(Operation *op) { return op->isa<OpClass>(); }
 };
 
 } // end namespace detail
@@ -129,7 +129,7 @@ template <typename OpClass> struct op_matcher {
 template <typename Pattern>
 inline bool matchPattern(Value *value, const Pattern &pattern) {
   // TODO: handle other cases
-  if (auto *op = value->getDefiningInst())
+  if (auto *op = value->getDefiningOp())
     return const_cast<Pattern &>(pattern).match(op);
   return false;
 }

@@ -256,7 +256,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
                          DenseMap<Value *, Value *> *substitutionsMap) {
   auto it = substitutionsMap->find(v);
   if (it == substitutionsMap->end()) {
-    auto *opInst = v->getDefiningInst();
+    auto *opInst = v->getDefiningOp();
     if (opInst->isa<ConstantOp>()) {
       FuncBuilder b(opInst);
       auto *inst = instantiate(&b, opInst, hwVectorType, substitutionsMap);
@@ -265,7 +265,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
       assert(res.second && "Insertion failed");
       return res.first->second;
     }
-    v->getDefiningInst()->emitError("Missing substitution");
+    v->getDefiningOp()->emitError("Missing substitution");
     return nullptr;
   }
   return it->second;
@@ -496,7 +496,7 @@ static Instruction *instantiate(FuncBuilder *b, VectorTransferReadOp read,
   auto cloned = b->create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
                                                 read.getMemRef(), affineIndices,
                                                 map, read.getPaddingValue());
-  return cloned.getInstruction();
+  return cloned.getOperation();
 }
 
 /// Creates an instantiated version of `write` for the instance of
@@ -518,7 +518,7 @@ static Instruction *instantiate(FuncBuilder *b, VectorTransferWriteOp write,
       substitute(write.getVector(), hwVectorType, substitutionsMap),
       write.getMemRef(), affineIndices,
       projectedPermutationMap(write, hwVectorType));
-  return cloned.getInstruction();
+  return cloned.getOperation();
 }
 
 /// Returns `true` if inst instance is properly cloned and inserted, false

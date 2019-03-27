@@ -30,7 +30,6 @@ namespace mlir {
 
 class IROperand;
 class Operation;
-using Instruction = Operation;
 template <typename OperandType> class ValueUseIterator;
 
 class IRObjectWithUseList {
@@ -75,11 +74,11 @@ private:
   IROperand *firstUse = nullptr;
 };
 
-/// A reference to a value, suitable for use as an operand of an instruction.
+/// A reference to a value, suitable for use as an operand of an operation.
 class IROperand {
 public:
-  IROperand(Instruction *owner) : owner(owner) {}
-  IROperand(Instruction *owner, IRObjectWithUseList *value)
+  IROperand(Operation *owner) : owner(owner) {}
+  IROperand(Operation *owner, IRObjectWithUseList *value)
       : value(value), owner(owner) {
     insertIntoCurrent();
   }
@@ -97,8 +96,8 @@ public:
   }
 
   /// Return the owner of this operand.
-  Instruction *getOwner() { return owner; }
-  Instruction *getOwner() const { return owner; }
+  Operation *getOwner() { return owner; }
+  Operation *getOwner() const { return owner; }
 
   /// \brief Remove this use of the operand.
   void drop() {
@@ -143,8 +142,8 @@ private:
   /// This points to the previous link in the use-chain.
   IROperand **back = nullptr;
 
-  /// The instruction owner of this operand.
-  Instruction *const owner;
+  /// The operation owner of this operand.
+  Operation *const owner;
 
   /// Operands are not copyable or assignable.
   IROperand(const IROperand &use) = delete;
@@ -167,14 +166,13 @@ private:
   }
 };
 
-/// A reference to a value, suitable for use as an operand of an instruction,
-/// instruction, etc.  IRValueTy is the root type to use for values this tracks,
+/// A reference to a value, suitable for use as an operand of an operation,
+/// operation, etc.  IRValueTy is the root type to use for values this tracks,
 /// and SSAUserTy is the type that will contain operands.
 template <typename IRValueTy> class IROperandImpl : public IROperand {
 public:
-  IROperandImpl(Instruction *owner) : IROperand(owner) {}
-  IROperandImpl(Instruction *owner, IRValueTy *value)
-      : IROperand(owner, value) {}
+  IROperandImpl(Operation *owner) : IROperand(owner) {}
+  IROperandImpl(Operation *owner, IRValueTy *value) : IROperand(owner, value) {}
 
   /// Return the current value being used by this operand.
   IRValueTy *get() { return (IRValueTy *)IROperand::get(); }
@@ -196,7 +194,7 @@ public:
   OperandType *operator->() const { return current; }
   OperandType &operator*() const { return *current; }
 
-  Instruction *getUser() const { return current->getOwner(); }
+  Operation *getUser() const { return current->getOwner(); }
 
   ValueUseIterator &operator++() {
     assert(current && "incrementing past end()!");

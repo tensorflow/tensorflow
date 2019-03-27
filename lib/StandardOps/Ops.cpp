@@ -133,7 +133,7 @@ struct MemRefCastFolder : public RewritePattern {
 
   void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
     for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
-      if (auto *memref = op->getOperand(i)->getDefiningInst())
+      if (auto *memref = op->getOperand(i)->getDefiningOp())
         if (auto cast = memref->dyn_cast<MemRefCastOp>())
           op->setOperand(i, cast.getOperand());
     rewriter.updatedRootInPlace(op);
@@ -270,7 +270,7 @@ bool AllocOp::verify() {
   // Check that the total number of operands matches the number of symbols in
   // the affine map, plus the number of dynamic dimensions specified in the
   // memref type.
-  if (getInstruction()->getNumOperands() != numDynamicDims + numSymbols) {
+  if (getOperation()->getNumOperands() != numDynamicDims + numSymbols) {
     return emitOpError(
         "operand count does not equal dimension plus symbol operand count");
   }
@@ -318,7 +318,7 @@ struct SimplifyAllocConst : public RewritePattern {
         newShapeConstants.push_back(dimSize);
         continue;
       }
-      auto *defOp = allocOp.getOperand(dynamicDimPos)->getDefiningInst();
+      auto *defOp = allocOp.getOperand(dynamicDimPos)->getDefiningOp();
       ConstantIndexOp constantIndexOp;
       if (defOp && (constantIndexOp = defOp->dyn_cast<ConstantIndexOp>())) {
         // Dynamic shape dimension will be folded.
@@ -396,17 +396,17 @@ bool BranchOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void BranchOp::print(OpAsmPrinter *p) {
   *p << "br ";
-  p->printSuccessorAndUseList(getInstruction(), 0);
+  p->printSuccessorAndUseList(getOperation(), 0);
 }
 
-Block *BranchOp::getDest() { return getInstruction()->getSuccessor(0); }
+Block *BranchOp::getDest() { return getOperation()->getSuccessor(0); }
 
 void BranchOp::setDest(Block *block) {
-  return getInstruction()->setSuccessor(block, 0);
+  return getOperation()->setSuccessor(block, 0);
 }
 
 void BranchOp::eraseOperand(unsigned index) {
-  getInstruction()->eraseSuccessorOperand(0, index);
+  getOperation()->eraseSuccessorOperand(0, index);
 }
 
 //===----------------------------------------------------------------------===//
@@ -869,9 +869,9 @@ void CondBranchOp::print(OpAsmPrinter *p) {
   *p << "cond_br ";
   p->printOperand(getCondition());
   *p << ", ";
-  p->printSuccessorAndUseList(getInstruction(), trueIndex);
+  p->printSuccessorAndUseList(getOperation(), trueIndex);
   *p << ", ";
-  p->printSuccessorAndUseList(getInstruction(), falseIndex);
+  p->printSuccessorAndUseList(getOperation(), falseIndex);
 }
 
 bool CondBranchOp::verify() {
@@ -886,27 +886,27 @@ void CondBranchOp::getCanonicalizationPatterns(
 }
 
 Block *CondBranchOp::getTrueDest() {
-  return getInstruction()->getSuccessor(trueIndex);
+  return getOperation()->getSuccessor(trueIndex);
 }
 
 Block *CondBranchOp::getFalseDest() {
-  return getInstruction()->getSuccessor(falseIndex);
+  return getOperation()->getSuccessor(falseIndex);
 }
 
 unsigned CondBranchOp::getNumTrueOperands() {
-  return getInstruction()->getNumSuccessorOperands(trueIndex);
+  return getOperation()->getNumSuccessorOperands(trueIndex);
 }
 
 void CondBranchOp::eraseTrueOperand(unsigned index) {
-  getInstruction()->eraseSuccessorOperand(trueIndex, index);
+  getOperation()->eraseSuccessorOperand(trueIndex, index);
 }
 
 unsigned CondBranchOp::getNumFalseOperands() {
-  return getInstruction()->getNumSuccessorOperands(falseIndex);
+  return getOperation()->getNumSuccessorOperands(falseIndex);
 }
 
 void CondBranchOp::eraseFalseOperand(unsigned index) {
-  getInstruction()->eraseSuccessorOperand(falseIndex, index);
+  getOperation()->eraseSuccessorOperand(falseIndex, index);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1095,7 +1095,7 @@ struct SimplifyDeadDealloc : public RewritePattern {
 
     // Check that the memref operand's defining instruction is an AllocOp.
     Value *memref = dealloc.getMemRef();
-    Instruction *defOp = memref->getDefiningInst();
+    Instruction *defOp = memref->getDefiningOp();
     if (!defOp || !defOp->isa<AllocOp>())
       return matchFailure();
 
@@ -1802,7 +1802,7 @@ void ReturnOp::print(OpAsmPrinter *p) {
 }
 
 bool ReturnOp::verify() {
-  auto *function = getInstruction()->getFunction();
+  auto *function = getOperation()->getFunction();
 
   // The operand number and types must match the function signature.
   const auto &results = function->getType().getResults();
@@ -1852,7 +1852,7 @@ bool SelectOp::parse(OpAsmParser *parser, OperationState *result) {
 
 void SelectOp::print(OpAsmPrinter *p) {
   *p << "select ";
-  p->printOperands(getInstruction()->getOperands());
+  p->printOperands(getOperation()->getOperands());
   *p << " : " << getTrueValue()->getType();
   p->printOptionalAttrDict(getAttrs());
 }

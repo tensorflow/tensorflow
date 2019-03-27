@@ -46,18 +46,17 @@ void Pattern::anchor() {}
 // RewritePattern and PatternRewriter implementation
 //===----------------------------------------------------------------------===//
 
-void RewritePattern::rewrite(Instruction *op,
-                             std::unique_ptr<PatternState> state,
+void RewritePattern::rewrite(Operation *op, std::unique_ptr<PatternState> state,
                              PatternRewriter &rewriter) const {
   rewrite(op, rewriter);
 }
 
-void RewritePattern::rewrite(Instruction *op, PatternRewriter &rewriter) const {
+void RewritePattern::rewrite(Operation *op, PatternRewriter &rewriter) const {
   llvm_unreachable("need to implement either matchAndRewrite or one of the "
                    "rewrite functions!");
 }
 
-PatternMatchResult RewritePattern::match(Instruction *op) const {
+PatternMatchResult RewritePattern::match(Operation *op) const {
   llvm_unreachable("need to implement either match or matchAndRewrite!");
 }
 
@@ -71,7 +70,7 @@ PatternRewriter::~PatternRewriter() {
 /// clients can specify a list of other nodes that this replacement may make
 /// (perhaps transitively) dead.  If any of those ops are dead, this will
 /// remove them as well.
-void PatternRewriter::replaceOp(Instruction *op, ArrayRef<Value *> newValues,
+void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
                                 ArrayRef<Value *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootReplaced(op);
@@ -91,8 +90,7 @@ void PatternRewriter::replaceOp(Instruction *op, ArrayRef<Value *> newValues,
 /// op and newOp are known to have the same number of results, replace the
 /// uses of op with uses of newOp
 void PatternRewriter::replaceOpWithResultsOfAnotherOp(
-    Instruction *op, Instruction *newOp,
-    ArrayRef<Value *> valuesToRemoveIfDead) {
+    Operation *op, Operation *newOp, ArrayRef<Value *> valuesToRemoveIfDead) {
   assert(op->getNumResults() == newOp->getNumResults() &&
          "replacement op doesn't match results of original op");
   if (op->getNumResults() == 1)
@@ -105,14 +103,14 @@ void PatternRewriter::replaceOpWithResultsOfAnotherOp(
 
 /// This method is used as the final notification hook for patterns that end
 /// up modifying the pattern root in place, by changing its operands.  This is
-/// a minor efficiency win (it avoids creating a new instruction and removing
+/// a minor efficiency win (it avoids creating a new operation and removing
 /// the old one) but also often allows simpler code in the client.
 ///
 /// The opsToRemoveIfDead list is an optional list of nodes that the rewriter
 /// should remove if they are dead at this point.
 ///
 void PatternRewriter::updatedRootInPlace(
-    Instruction *op, ArrayRef<Value *> valuesToRemoveIfDead) {
+    Operation *op, ArrayRef<Value *> valuesToRemoveIfDead) {
   // Notify the rewriter subclass that we're about to replace this root.
   notifyRootUpdated(op);
 
@@ -136,7 +134,7 @@ RewritePatternMatcher::RewritePatternMatcher(
 }
 
 /// Try to match the given operation to a pattern and rewrite it.
-void RewritePatternMatcher::matchAndRewrite(Instruction *op) {
+void RewritePatternMatcher::matchAndRewrite(Operation *op) {
   for (auto &pattern : patterns) {
     // Ignore patterns that are for the wrong root or are impossible to match.
     if (pattern->getRootKind() != op->getName() ||

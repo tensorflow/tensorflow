@@ -104,7 +104,7 @@ static void getBackwardSliceImpl(Instruction *inst,
   }
 
   for (auto *operand : inst->getOperands()) {
-    auto *inst = operand->getDefiningInst();
+    auto *inst = operand->getDefiningOp();
     if (backwardSlice->count(inst) == 0) {
       getBackwardSliceImpl(inst, backwardSlice, filter);
     }

@@ -46,13 +46,13 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::detail;
 
 static void printDefininingStatement(llvm::raw_ostream &os, Value &v) {
-  auto *inst = v.getDefiningInst();
+  auto *inst = v.getDefiningOp();
   if (inst) {
     inst->print(os);
     return;
   }
   if (auto forInst = getForInductionVarOwner(&v)) {
-    forInst.getInstruction()->print(os);
+    forInst.getOperation()->print(os);
   } else if (auto *bbArg = dyn_cast<BlockArgument>(&v)) {
     os << "block_argument";
   } else {
@@ -84,7 +84,7 @@ MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
 
 static void checkAffineProvenance(ArrayRef<Value *> values) {
   for (Value *v : values) {
-    auto *def = v->getDefiningInst();
+    auto *def = v->getDefiningOp();
     (void)def;
     // There may be no defining instruction if the value is a function
     // argument.  We accept such values.
@@ -100,8 +100,8 @@ static AffineForOp emitStaticFor(FuncBuilder &builder, Location loc,
   if (lbs.size() != 1 || ubs.size() != 1)
     return AffineForOp();
 
-  auto *lbDef = lbs.front()->getDefiningInst();
-  auto *ubDef = ubs.front()->getDefiningInst();
+  auto *lbDef = lbs.front()->getDefiningOp();
+  auto *ubDef = ubs.front()->getDefiningOp();
   if (!lbDef || !ubDef)
     return AffineForOp();
 
@@ -165,8 +165,7 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
       checkAffineProvenance(ubs);
 
       // Step must be a static constant.
-      auto step =
-          stepExpr->getDefiningInst()->cast<ConstantIndexOp>().getValue();
+      auto step = stepExpr->getDefiningOp()->cast<ConstantIndexOp>().getValue();
 
       // Special case with more concise emitted code for static bounds.
       AffineForOp forOp = emitStaticFor(*builder, location, lbs, ubs, step);

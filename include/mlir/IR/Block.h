@@ -28,20 +28,20 @@
 #include "llvm/ADT/ilist_node.h"
 
 //===----------------------------------------------------------------------===//
-// ilist_traits for Instruction
+// ilist_traits for Operation
 //===----------------------------------------------------------------------===//
 
 namespace llvm {
 namespace ilist_detail {
-// Explicitly define the node access for the instruction list so that we can
-// break the dependence on the Instruction class in this header. This allows for
-// instructions to have trailing Regions without a circular include
+// Explicitly define the node access for the operation list so that we can
+// break the dependence on the Operation class in this header. This allows for
+// operations to have trailing Regions without a circular include
 // dependence.
 template <>
 struct SpecificNodeAccess<
-    typename compute_node_options<::mlir::Instruction>::type> : NodeAccess {
+    typename compute_node_options<::mlir::Operation>::type> : NodeAccess {
 protected:
-  using OptionsT = typename compute_node_options<mlir::Instruction>::type;
+  using OptionsT = typename compute_node_options<mlir::Operation>::type;
   using pointer = typename OptionsT::pointer;
   using const_pointer = typename OptionsT::const_pointer;
   using node_type = ilist_node_impl<OptionsT>;
@@ -54,15 +54,15 @@ protected:
 };
 } // end namespace ilist_detail
 
-template <> struct ilist_traits<::mlir::Instruction> {
-  using Instruction = ::mlir::Instruction;
-  using inst_iterator = simple_ilist<Instruction>::iterator;
+template <> struct ilist_traits<::mlir::Operation> {
+  using Operation = ::mlir::Operation;
+  using op_iterator = simple_ilist<Operation>::iterator;
 
-  static void deleteNode(Instruction *inst);
-  void addNodeToList(Instruction *inst);
-  void removeNodeFromList(Instruction *inst);
-  void transferNodesFromList(ilist_traits<Instruction> &otherList,
-                             inst_iterator first, inst_iterator last);
+  static void deleteNode(Operation *op);
+  void addNodeToList(Operation *op);
+  void removeNodeFromList(Operation *op);
+  void transferNodesFromList(ilist_traits<Operation> &otherList,
+                             op_iterator first, op_iterator last);
 
 private:
   mlir::Block *getContainingBlock();
@@ -79,7 +79,7 @@ using BlockOperand = IROperandImpl<Block>;
 class PredecessorIterator;
 class SuccessorIterator;
 
-/// `Block` represents an ordered list of `Instruction`s.
+/// `Block` represents an ordered list of `Operation`s.
 class Block : public IRObjectWithUseList,
               public llvm::ilist_node_with_parent<Block, Region> {
 public:
@@ -90,18 +90,18 @@ public:
     // Drop all references from within this block.
     dropAllReferences();
 
-    // Clear instructions in the reverse order so that uses are destroyed
+    // Clear operations in the reverse order so that uses are destroyed
     // before their defs.
     while (!empty())
-      instructions.pop_back();
+      operations.pop_back();
   }
 
   /// Blocks are maintained in a Region.
   Region *getParent() { return parentValidInstOrderPair.getPointer(); }
 
-  /// Returns the closest surrounding instruction that contains this block or
+  /// Returns the closest surrounding operation that contains this block or
   /// nullptr if this is a top-level block.
-  Instruction *getContainingInst();
+  Operation *getContainingOp();
 
   /// Returns the function that this block is part of, even if the block is
   /// nested under an operation region.
@@ -145,37 +145,37 @@ public:
   BlockArgument *getArgument(unsigned i) { return arguments[i]; }
 
   //===--------------------------------------------------------------------===//
-  // Instruction list management
+  // Operation list management
   //===--------------------------------------------------------------------===//
 
-  /// This is the list of instructions in the block.
-  using InstListType = llvm::iplist<Instruction>;
-  InstListType &getInstructions() { return instructions; }
+  /// This is the list of operations in the block.
+  using InstListType = llvm::iplist<Operation>;
+  InstListType &getOperations() { return operations; }
 
-  // Iteration over the instructions in the block.
+  // Iteration over the operations in the block.
   using iterator = InstListType::iterator;
   using reverse_iterator = InstListType::reverse_iterator;
 
-  iterator begin() { return instructions.begin(); }
-  iterator end() { return instructions.end(); }
-  reverse_iterator rbegin() { return instructions.rbegin(); }
-  reverse_iterator rend() { return instructions.rend(); }
+  iterator begin() { return operations.begin(); }
+  iterator end() { return operations.end(); }
+  reverse_iterator rbegin() { return operations.rbegin(); }
+  reverse_iterator rend() { return operations.rend(); }
 
-  bool empty() { return instructions.empty(); }
-  void push_back(Instruction *inst) { instructions.push_back(inst); }
-  void push_front(Instruction *inst) { instructions.push_front(inst); }
+  bool empty() { return operations.empty(); }
+  void push_back(Operation *op) { operations.push_back(op); }
+  void push_front(Operation *op) { operations.push_front(op); }
 
-  Instruction &back() { return instructions.back(); }
-  Instruction &front() { return instructions.front(); }
+  Operation &back() { return operations.back(); }
+  Operation &front() { return operations.front(); }
 
-  /// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
-  /// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
+  /// Returns 'op' if 'op' lies in this block, or otherwise finds the
+  /// ancestor operation of 'op' that lies in this block. Returns nullptr if
   /// the latter fails.
   /// TODO: This is very specific functionality that should live somewhere else,
   /// probably in Dominance.cpp.
-  Instruction *findAncestorInstInBlock(Instruction &inst);
+  Operation *findAncestorInstInBlock(Operation &op);
 
-  /// This drops all operand uses from instructions within this block, which is
+  /// This drops all operand uses from operations within this block, which is
   /// an essential step in breaking cyclic dependences between references when
   /// they are to be deleted.
   void dropAllReferences();
@@ -184,31 +184,31 @@ public:
   /// nested regions wherever the uses are located.
   void dropAllDefinedValueUses();
 
-  /// Returns true if the ordering of the child instructions is valid, false
+  /// Returns true if the ordering of the child operations is valid, false
   /// otherwise.
   bool isInstOrderValid() { return parentValidInstOrderPair.getInt(); }
 
-  /// Invalidates the current ordering of instructions.
+  /// Invalidates the current ordering of operations.
   void invalidateInstOrder() {
     // Validate the current ordering.
     assert(!verifyInstOrder());
     parentValidInstOrderPair.setInt(false);
   }
 
-  /// Verifies the current ordering of child instructions matches the
+  /// Verifies the current ordering of child operations matches the
   /// validInstOrder flag. Returns false if the order is valid, true otherwise.
   bool verifyInstOrder();
 
-  /// Recomputes the ordering of child instructions within the block.
+  /// Recomputes the ordering of child operations within the block.
   void recomputeInstOrder();
 
   //===--------------------------------------------------------------------===//
   // Terminator management
   //===--------------------------------------------------------------------===//
 
-  /// Get the terminator instruction of this block. This function asserts that
-  /// the block has a valid terminator instruction.
-  Instruction *getTerminator();
+  /// Get the terminator operation of this block. This function asserts that
+  /// the block has a valid terminator operation.
+  Operation *getTerminator();
 
   //===--------------------------------------------------------------------===//
   // Predecessors and successors.
@@ -242,49 +242,49 @@ public:
   llvm::iterator_range<succ_iterator> getSuccessors();
 
   //===--------------------------------------------------------------------===//
-  // Instruction Walkers
+  // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk the instructions of this block in preorder, calling the callback for
+  /// Walk the operations of this block in preorder, calling the callback for
   /// each operation.
-  void walk(const std::function<void(Instruction *)> &callback);
+  void walk(const std::function<void(Operation *)> &callback);
 
-  /// Walk the instructions in the specified [begin, end) range of
+  /// Walk the operations in the specified [begin, end) range of
   /// this block, calling the callback for each operation.
   void walk(Block::iterator begin, Block::iterator end,
-            const std::function<void(Instruction *)> &callback);
+            const std::function<void(Operation *)> &callback);
 
-  /// Walk the instructions in this block in postorder, calling the callback for
+  /// Walk the operations in this block in postorder, calling the callback for
   /// each operation.
-  void walkPostOrder(const std::function<void(Instruction *)> &callback);
+  void walkPostOrder(const std::function<void(Operation *)> &callback);
 
-  /// Walk the instructions in the specified [begin, end) range of this block
+  /// Walk the operations in the specified [begin, end) range of this block
   /// in postorder, calling the callback for each operation.
   void walkPostOrder(Block::iterator begin, Block::iterator end,
-                     const std::function<void(Instruction *)> &callback);
+                     const std::function<void(Operation *)> &callback);
 
   //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
-  /// Split the block into two blocks before the specified instruction or
+  /// Split the block into two blocks before the specified operation or
   /// iterator.
   ///
-  /// Note that all instructions BEFORE the specified iterator stay as part of
-  /// the original basic block, and the rest of the instructions in the original
+  /// Note that all operations BEFORE the specified iterator stay as part of
+  /// the original basic block, and the rest of the operations in the original
   /// block are moved to the new block, including the old terminator.  The
   /// original block is left without a terminator.
   ///
   /// The newly formed Block is returned, and the specified iterator is
   /// invalidated.
   Block *splitBlock(iterator splitBefore);
-  Block *splitBlock(Instruction *splitBeforeInst) {
+  Block *splitBlock(Operation *splitBeforeInst) {
     return splitBlock(iterator(splitBeforeInst));
   }
 
-  /// Returns pointer to member of instruction list.
-  static InstListType Block::*getSublistAccess(Instruction *) {
-    return &Block::instructions;
+  /// Returns pointer to member of operation list.
+  static InstListType Block::*getSublistAccess(Operation *) {
+    return &Block::operations;
   }
 
   void print(raw_ostream &os);
@@ -297,11 +297,11 @@ public:
 
 private:
   /// Pair of the parent object that owns this block and a bit that signifies if
-  /// the instructions within this block have a valid ordering.
+  /// the operations within this block have a valid ordering.
   llvm::PointerIntPair<Region *, /*IntBits=*/1, bool> parentValidInstOrderPair;
 
-  /// This is the list of instructions in the block.
-  InstListType instructions;
+  /// This is the list of operations in the block.
+  InstListType operations;
 
   /// This is the list of arguments to the block.
   std::vector<BlockArgument *> arguments;
@@ -342,7 +342,7 @@ namespace mlir {
 class Region {
 public:
   explicit Region(Function *container = nullptr);
-  explicit Region(Instruction *container);
+  explicit Region(Operation *container);
   ~Region();
 
   using RegionType = llvm::iplist<Block>;
@@ -371,7 +371,7 @@ public:
 
   /// A Region is either a function body or a part of an operation.  If it is
   /// part of an operation, then return the operation, otherwise return null.
-  Instruction *getContainingInst();
+  Operation *getContainingOp();
 
   /// A Region is either a function body or a part of an operation.  If it is
   /// a Function body, then return this function, otherwise return null.
@@ -395,7 +395,7 @@ private:
   RegionType blocks;
 
   /// This is the object we are part of.
-  llvm::PointerUnion<Function *, Instruction *> container;
+  llvm::PointerUnion<Function *, Operation *> container;
 };
 
 //===----------------------------------------------------------------------===//
@@ -404,7 +404,7 @@ private:
 
 /// Implement a predecessor iterator as a forward iterator.  This works by
 /// walking the use lists of the blocks.  The entries on this list are the
-/// BlockOperands that are embedded into terminator instructions.  From the
+/// BlockOperands that are embedded into terminator operations.  From the
 /// operand, we can get the terminator that contains it, and it's parent block
 /// is the predecessor.
 class PredecessorIterator

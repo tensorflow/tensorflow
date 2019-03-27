@@ -92,8 +92,7 @@ FunctionPassBase *mlir::createLoopTilingPass(uint64_t cacheSizeBytes) {
 // location in destination's body.
 static inline void moveLoopBody(AffineForOp src, AffineForOp dest,
                                 Block::iterator loc) {
-  dest.getBody()->getInstructions().splice(loc,
-                                           src.getBody()->getInstructions());
+  dest.getBody()->getOperations().splice(loc, src.getBody()->getOperations());
 }
 
 // Move the loop body of AffineForOp 'src' from 'src' to the start of dest's
@@ -114,7 +113,7 @@ constructTiledIndexSetHyperRect(MutableArrayRef<AffineForOp> origLoops,
   assert(!origLoops.empty());
   assert(origLoops.size() == tileSizes.size());
 
-  FuncBuilder b(origLoops[0].getInstruction());
+  FuncBuilder b(origLoops[0].getOperation());
   unsigned width = origLoops.size();
 
   // Bounds for tile space loops.
@@ -181,8 +180,8 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Check if the supplied for inst's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
-    assert(band[i].getInstruction()->getParentInst() ==
-           band[i - 1].getInstruction());
+    assert(band[i].getOperation()->getParentInst() ==
+           band[i - 1].getOperation());
   }
 
   auto origLoops = band;
@@ -196,7 +195,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
   AffineForOp innermostPointLoop;
 
   // The outermost among the loops as we add more..
-  auto *topLoop = rootAffineForOp.getInstruction();
+  auto *topLoop = rootAffineForOp.getOperation();
 
   // Add intra-tile (or point) loops.
   for (unsigned i = 0; i < width; i++) {
@@ -204,11 +203,11 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
     // Loop bounds will be set later.
     auto pointLoop = b.create<AffineForOp>(loc, 0, 0);
     pointLoop.createBody();
-    pointLoop.getBody()->getInstructions().splice(
-        pointLoop.getBody()->begin(), topLoop->getBlock()->getInstructions(),
+    pointLoop.getBody()->getOperations().splice(
+        pointLoop.getBody()->begin(), topLoop->getBlock()->getOperations(),
         topLoop);
     newLoops[2 * width - 1 - i] = pointLoop;
-    topLoop = pointLoop.getInstruction();
+    topLoop = pointLoop.getOperation();
     if (i == 0)
       innermostPointLoop = pointLoop;
   }
@@ -219,11 +218,11 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
     // Loop bounds will be set later.
     auto tileSpaceLoop = b.create<AffineForOp>(loc, 0, 0);
     tileSpaceLoop.createBody();
-    tileSpaceLoop.getBody()->getInstructions().splice(
-        tileSpaceLoop.getBody()->begin(),
-        topLoop->getBlock()->getInstructions(), topLoop);
+    tileSpaceLoop.getBody()->getOperations().splice(
+        tileSpaceLoop.getBody()->begin(), topLoop->getBlock()->getOperations(),
+        topLoop);
     newLoops[2 * width - i - 1] = tileSpaceLoop;
-    topLoop = tileSpaceLoop.getInstruction();
+    topLoop = tileSpaceLoop.getOperation();
   }
 
   // Move the loop body of the original nest to the new one.
@@ -265,7 +264,7 @@ static void getTileableBands(Function &f,
     AffineForOp currInst = root;
     do {
       band.push_back(currInst);
-    } while (currInst.getBody()->getInstructions().size() == 1 &&
+    } while (currInst.getBody()->getOperations().size() == 1 &&
              (currInst = currInst.getBody()->front().dyn_cast<AffineForOp>()));
     bands->push_back(band);
   };

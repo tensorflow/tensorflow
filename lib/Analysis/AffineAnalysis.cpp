@@ -62,8 +62,8 @@ void mlir::getReachableAffineApplyOps(
 
   while (!worklist.empty()) {
     State &state = worklist.back();
-    auto *opInst = state.value->getDefiningInst();
-    // Note: getDefiningInst will return nullptr if the operand is not an
+    auto *opInst = state.value->getDefiningOp();
+    // Note: getDefiningOp will return nullptr if the operand is not an
     // Instruction (i.e. AffineForOp), which is a terminator for the search.
     if (opInst == nullptr || !opInst->isa<AffineApplyOp>()) {
       worklist.pop_back();
@@ -458,7 +458,7 @@ addMemRefAccessConstraints(const AffineValueMap &srcAccessMap,
       auto *symbol = operands[i];
       assert(isValidSymbol(symbol));
       // Check if the symbol is a constant.
-      if (auto *opInst = symbol->getDefiningInst()) {
+      if (auto *opInst = symbol->getDefiningOp()) {
         if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
           dependenceDomain->setIdToConstant(valuePosMap.getSymPos(symbol),
                                             constOp.getValue());
@@ -538,8 +538,8 @@ static Block *getCommonBlock(const MemRefAccess &srcAccess,
                              unsigned numCommonLoops) {
   if (numCommonLoops == 0) {
     auto *block = srcAccess.opInst->getBlock();
-    while (block->getContainingInst()) {
-      block = block->getContainingInst()->getBlock();
+    while (block->getContainingOp()) {
+      block = block->getContainingOp()->getBlock();
     }
     return block;
   }

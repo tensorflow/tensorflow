@@ -91,7 +91,7 @@ void llvm::ilist_traits<Function>::removeNodeFromList(Function *function) {
   function->module = nullptr;
 }
 
-/// This is a trait method invoked when an instruction is moved from one block
+/// This is a trait method invoked when an operation is moved from one block
 /// to another.  We keep the block pointer up to date.
 void llvm::ilist_traits<Function>::transferNodesFromList(
     ilist_traits<Function> &otherList, function_iterator first,
@@ -115,7 +115,7 @@ void Function::erase() {
   getModule()->getFunctions().erase(this);
 }
 
-/// Emit a note about this instruction, reporting up to any diagnostic
+/// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void Function::emitNote(const Twine &message) {
   getContext()->emitDiagnostic(getLoc(), message,
@@ -209,14 +209,13 @@ void Function::addEntryBlock() {
   entry->addArguments(type.getInputs());
 }
 
-void Function::walk(const std::function<void(Instruction *)> &callback) {
+void Function::walk(const std::function<void(Operation *)> &callback) {
   // Walk each of the blocks within the function.
   for (auto &block : getBlocks())
     block.walk(callback);
 }
 
-void Function::walkPostOrder(
-    const std::function<void(Instruction *)> &callback) {
+void Function::walkPostOrder(const std::function<void(Operation *)> &callback) {
   // Walk each of the blocks within the function.
   for (auto &block : llvm::reverse(getBlocks()))
     block.walkPostOrder(callback);

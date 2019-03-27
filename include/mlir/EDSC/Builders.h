@@ -359,7 +359,7 @@ struct InstructionHandle : public CapturableHandle {
                                   ArrayRef<NamedAttribute> attributes = {});
 
   operator Instruction *() { return inst; }
-  Instruction *getInstruction() { return inst; }
+  Instruction *getOperation() { return inst; }
 
 private:
   Instruction *inst;
@@ -421,14 +421,14 @@ InstructionHandle InstructionHandle::create(Args... args) {
   return InstructionHandle(
       ScopedContext::getBuilder()
           ->create<Op>(ScopedContext::getLocation(), args...)
-          .getInstruction());
+          .getOperation());
 }
 
 template <typename Op, typename... Args>
 ValueHandle ValueHandle::create(Args... args) {
   Instruction *inst = ScopedContext::getBuilder()
                           ->create<Op>(ScopedContext::getLocation(), args...)
-                          .getInstruction();
+                          .getOperation();
   if (inst->getNumResults() == 1) {
     return ValueHandle(inst->getResult(0));
   } else if (inst->getNumResults() == 0) {

@@ -87,7 +87,7 @@ mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
   Instruction *inst =
       makeComposedAffineApply(ScopedContext::getBuilder(),
                               ScopedContext::getLocation(), map, operands)
-          .getInstruction();
+          .getOperation();
   assert(inst->getNumResults() == 1 && "Not a single result AffineApply");
   return ValueHandle(inst->getResult(0));
 }
@@ -145,8 +145,8 @@ static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
   if (lbs.size() != 1 || ubs.size() != 1)
     return llvm::Optional<ValueHandle>();
 
-  auto *lbDef = lbs.front().getValue()->getDefiningInst();
-  auto *ubDef = ubs.front().getValue()->getDefiningInst();
+  auto *lbDef = lbs.front().getValue()->getDefiningOp();
+  auto *ubDef = ubs.front().getValue()->getDefiningOp();
   if (!lbDef || !ubDef)
     return llvm::Optional<ValueHandle>();
 
@@ -267,7 +267,7 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
                             unsigned &numSymbols) {
   AffineExpr d;
   Value *resultVal = nullptr;
-  auto *inst = val->getDefiningInst();
+  auto *inst = val->getDefiningOp();
   auto constant = inst ? inst->dyn_cast<ConstantIndexOp>() : ConstantIndexOp();
   if (constant) {
     d = getAffineConstantExpr(constant.getValue(), context);

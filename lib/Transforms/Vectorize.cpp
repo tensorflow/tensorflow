@@ -828,7 +828,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
   auto vectorType = VectorType::get(state->strategy->vectorSizes, elementType);
 
   // Materialize a MemRef with 1 vector.
-  auto *opInst = memoryOp.getInstruction();
+  auto *opInst = memoryOp.getOperation();
   // For now, vector_transfers must be aligned, operate only on indices with an
   // identity subset of AffineMap and do not change layout.
   // TODO(ntv): increase the expressiveness power of vector_transfer operations
@@ -842,7 +842,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
     auto transfer = b.create<VectorTransferReadOp>(
         opInst->getLoc(), vectorType, memoryOp.getMemRef(),
         map(makePtrDynCaster<Value>(), memoryOp.getIndices()), permutationMap);
-    state->registerReplacement(opInst, transfer.getInstruction());
+    state->registerReplacement(opInst, transfer.getOperation());
   } else {
     state->registerTerminal(opInst);
   }
@@ -867,7 +867,7 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
   };
   auto loadAndStores = matcher::Op(notVectorizedThisPattern);
   SmallVector<NestedMatch, 8> loadAndStoresMatches;
-  loadAndStores.match(loop.getInstruction(), &loadAndStoresMatches);
+  loadAndStores.match(loop.getOperation(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
     auto *opInst = ls.getMatchedInstruction();
     auto load = opInst->dyn_cast<LoadOp>();
@@ -953,7 +953,7 @@ static Value *vectorizeConstant(Instruction *inst, ConstantOp constant,
   Location loc = inst->getLoc();
   auto vectorType = type.cast<VectorType>();
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
-  auto *constantOpInst = constant.getInstruction();
+  auto *constantOpInst = constant.getOperation();
 
   OperationState state(b.getContext(), loc,
                        constantOpInst->getName().getStringRef(), {},
@@ -988,7 +988,7 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
   LLVM_DEBUG(dbgs() << "\n[early-vect]vectorize operand: ");
   LLVM_DEBUG(operand->print(dbgs()));
   // 1. If this value has already been vectorized this round, we are done.
-  if (state->vectorizedSet.count(operand->getDefiningInst()) > 0) {
+  if (state->vectorizedSet.count(operand->getDefiningOp()) > 0) {
     LLVM_DEBUG(dbgs() << " -> already vector operand");
     return operand;
   }
@@ -1009,7 +1009,7 @@ static Value *vectorizeOperand(Value *operand, Instruction *inst,
     return nullptr;
   }
   // 3. vectorize constant.
-  if (auto constant = operand->getDefiningInst()->dyn_cast<ConstantOp>()) {
+  if (auto constant = operand->getDefiningOp()->dyn_cast<ConstantOp>()) {
     return vectorizeConstant(
         inst, constant,
         VectorType::get(state->strategy->vectorSizes, operand->getType()));
@@ -1051,7 +1051,7 @@ static Instruction *vectorizeOneInstruction(Instruction *opInst,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<VectorTransferWriteOp>(
         opInst->getLoc(), vectorValue, memRef, indices, permutationMap);
-    auto *res = transfer.getInstruction();
+    auto *res = transfer.getOperation();
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
     // "Terminals" (i.e. StoreOps) are erased on the spot.
     opInst->erase();
@@ -1163,7 +1163,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   /// Sets up error handling for this root loop. This is how the root match
   /// maintains a clone for handling failure and restores the proper state via
   /// RAII.
-  auto *loopInst = loop.getInstruction();
+  auto *loopInst = loop.getOperation();
   FuncBuilder builder(loopInst);
   auto clonedLoop = builder.clone(*loopInst)->cast<AffineForOp>();
   struct Guard {

@@ -266,8 +266,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   using namespace mlir::edsc::intrinsics;
 
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(transfer.getInstruction()),
-                      transfer.getLoc());
+  ScopedContext scope(FuncBuilder(transfer.getOperation()), transfer.getLoc());
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   VectorView vectorView(transfer.getVector());
@@ -321,8 +320,7 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   using namespace mlir::edsc::intrinsics;
 
   // 1. Setup all the captures.
-  ScopedContext scope(FuncBuilder(transfer.getInstruction()),
-                      transfer.getLoc());
+  ScopedContext scope(FuncBuilder(transfer.getOperation()), transfer.getLoc());
   IndexedValue remote(transfer.getMemRef());
   MemRefView view(transfer.getMemRef());
   ValueHandle vectorValue(transfer.getVector());

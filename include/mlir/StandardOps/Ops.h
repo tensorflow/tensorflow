@@ -558,8 +558,8 @@ public:
   }
   // Returns the source memerf indices for this DMA operation.
   llvm::iterator_range<Instruction::operand_iterator> getSrcIndices() {
-    return {getInstruction()->operand_begin() + 1,
-            getInstruction()->operand_begin() + 1 + getSrcMemRefRank()};
+    return {getOperation()->operand_begin() + 1,
+            getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
   }
 
   // Returns the destination MemRefType for this DMA operations.
@@ -577,8 +577,8 @@ public:
 
   // Returns the destination memref indices for this DMA operation.
   llvm::iterator_range<Instruction::operand_iterator> getDstIndices() {
-    return {getInstruction()->operand_begin() + 1 + getSrcMemRefRank() + 1,
-            getInstruction()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
+    return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1,
+            getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
                 getDstMemRefRank()};
   }
 
@@ -600,8 +600,8 @@ public:
   llvm::iterator_range<Instruction::operand_iterator> getTagIndices() {
     unsigned tagIndexStartPos =
         1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
-    return {getInstruction()->operand_begin() + tagIndexStartPos,
-            getInstruction()->operand_begin() + tagIndexStartPos +
+    return {getOperation()->operand_begin() + tagIndexStartPos,
+            getOperation()->operand_begin() + tagIndexStartPos +
                 getTagMemRefRank()};
   }
 
@@ -678,8 +678,8 @@ public:
 
   // Returns the tag memref index for this DMA operation.
   llvm::iterator_range<Instruction::operand_iterator> getTagIndices() {
-    return {getInstruction()->operand_begin() + 1,
-            getInstruction()->operand_begin() + 1 + getTagMemRefRank()};
+    return {getOperation()->operand_begin() + 1,
+            getOperation()->operand_begin() + 1 + getTagMemRefRank()};
   }
 
   // Returns the rank (number of indices) of the tag memref.
@@ -719,8 +719,7 @@ public:
   Value *getAggregate() { return getOperand(0); }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
-    return {getInstruction()->operand_begin() + 1,
-            getInstruction()->operand_end()};
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
   static StringRef getOperationName() { return "std.extract_element"; }
@@ -756,8 +755,7 @@ public:
   }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
-    return {getInstruction()->operand_begin() + 1,
-            getInstruction()->operand_end()};
+    return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
   static StringRef getOperationName() { return "std.load"; }
@@ -881,8 +879,7 @@ public:
   }
 
   llvm::iterator_range<Instruction::operand_iterator> getIndices() {
-    return {getInstruction()->operand_begin() + 2,
-            getInstruction()->operand_end()};
+    return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
   }
 
   static StringRef getOperationName() { return "std.store"; }

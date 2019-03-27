@@ -184,9 +184,9 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
     // Handle nested DAG construct first
     if (DagNode argTree = tree.getArgAsNestedDag(i)) {
       os.indent(indent) << "{\n";
-      os.indent(indent + 2) << formatv(
-          "auto op{0} = op{1}->getOperand({2})->getDefiningInst();\n",
-          depth + 1, depth, i);
+      os.indent(indent + 2)
+          << formatv("auto op{0} = op{1}->getOperand({2})->getDefiningOp();\n",
+                     depth + 1, depth, i);
       emitOpMatch(argTree, depth + 1);
       os.indent(indent) << "}\n";
       continue;

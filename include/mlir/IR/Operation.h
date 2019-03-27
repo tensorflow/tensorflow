@@ -46,8 +46,8 @@ using BlockOperand = IROperandImpl<Block>;
 /// class.
 class Operation final
     : public llvm::ilist_node_with_parent<Operation, Block>,
-      private llvm::TrailingObjects<Operation, InstResult, BlockOperand,
-                                    unsigned, Region, detail::OperandStorage> {
+      private llvm::TrailingObjects<Operation, OpResult, BlockOperand, unsigned,
+                                    Region, detail::OperandStorage> {
 public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
@@ -188,7 +188,7 @@ public:
 
   unsigned getNumResults() { return numResults; }
 
-  Value *getResult(unsigned idx) { return &getInstResult(idx); }
+  Value *getResult(unsigned idx) { return &getOpResult(idx); }
 
   // Support result iteration.
   using result_iterator = ResultIterator;
@@ -196,11 +196,11 @@ public:
   result_iterator result_end();
   llvm::iterator_range<result_iterator> getResults();
 
-  MutableArrayRef<InstResult> getInstResults() {
-    return {getTrailingObjects<InstResult>(), numResults};
+  MutableArrayRef<OpResult> getOpResults() {
+    return {getTrailingObjects<OpResult>(), numResults};
   }
 
-  InstResult &getInstResult(unsigned idx) { return getInstResults()[idx]; }
+  OpResult &getOpResult(unsigned idx) { return getOpResults()[idx]; }
 
   // Support result type iteration.
   using result_type_iterator = ResultTypeIterator;
@@ -486,9 +486,9 @@ private:
   friend class llvm::ilist_node_with_parent<Operation, Block>;
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<Operation, InstResult, BlockOperand, unsigned,
+  friend llvm::TrailingObjects<Operation, OpResult, BlockOperand, unsigned,
                                Region, detail::OperandStorage>;
-  size_t numTrailingObjects(OverloadToken<InstResult>) const {
+  size_t numTrailingObjects(OverloadToken<OpResult>) const {
     return numResults;
   }
   size_t numTrailingObjects(OverloadToken<BlockOperand>) const {

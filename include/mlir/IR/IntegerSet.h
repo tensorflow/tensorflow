@@ -17,8 +17,8 @@
 //
 // Integer sets are sets of points from the integer lattice constrained by
 // affine equality/inequality constraints. This class is meant to represent
-// integer sets in the IR - for 'affine.if' instructions and as attributes of
-// other instructions. It is typically expected to contain only a handful of
+// integer sets in the IR - for 'affine.if' operations and as attributes of
+// other operations. It is typically expected to contain only a handful of
 // affine constraints, and is immutable like an affine map. Integer sets are not
 // unique'd - although affine expressions that make up its equalities and
 // inequalites are themselves unique.

@@ -173,7 +173,7 @@ LogicalResult mlir::loopUnrollJamByFactor(AffineForOp forOp,
       mayBeConstantTripCount.getValue() < unrollJamFactor)
     return failure();
 
-  auto *forInst = forOp.getInstruction();
+  auto *forInst = forOp.getOperation();
 
   // Gather all sub-blocks to jam upon the loop being unrolled.
   JamBlockGatherer jbg;

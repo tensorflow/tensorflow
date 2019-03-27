@@ -2534,7 +2534,7 @@ FunctionParser::~FunctionParser() {
     // Drop all uses of undefined forward declared reference and destroy
     // defining instruction.
     fwd.first->dropAllUses();
-    fwd.first->getDefiningInst()->destroy();
+    fwd.first->getDefiningOp()->destroy();
   }
 }
 
@@ -2560,7 +2560,7 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
     // the actual definition instead, delete the forward ref, and remove it
     // from our set of forward references we track.
     existing->replaceAllUsesWith(value);
-    existing->getDefiningInst()->destroy();
+    existing->getDefiningOp()->destroy();
     forwardReferencePlaceholders.erase(existing);
   }
 

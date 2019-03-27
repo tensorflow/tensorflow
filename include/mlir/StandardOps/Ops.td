@@ -42,7 +42,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 
   let printer = [{
-    return detail::printStandardBinaryOp(this->getInstruction(), p);
+    return detail::printStandardBinaryOp(this->getOperation(), p);
   }];
 }
 

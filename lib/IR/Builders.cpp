@@ -296,7 +296,7 @@ AffineMap Builder::getShiftedAffineMap(AffineMap map, int64_t shift) {
 }
 
 //===----------------------------------------------------------------------===//
-// Instructions.
+// Operations.
 //===----------------------------------------------------------------------===//
 
 /// Add new block and set the insertion point to the end of it.  If an
@@ -318,18 +318,18 @@ Block *FuncBuilder::createBlock(Block *insertBefore) {
 }
 
 /// Create an operation given the fields represented as an OperationState.
-Instruction *FuncBuilder::createOperation(const OperationState &state) {
+Operation *FuncBuilder::createOperation(const OperationState &state) {
   assert(block && "createOperation() called without setting builder's block");
 
   unsigned numRegions = state.regions.size();
-  auto *op = Instruction::create(
-      state.location, state.name, state.operands, state.types, state.attributes,
-      state.successors, numRegions, state.resizableOperandList, context);
+  auto *op = Operation::create(state.location, state.name, state.operands,
+                               state.types, state.attributes, state.successors,
+                               numRegions, state.resizableOperandList, context);
 
   for (unsigned i = 0; i < numRegions; ++i)
     if (state.regions[i])
       op->getRegion(i).takeBody(*state.regions[i]);
 
-  block->getInstructions().insert(insertPoint, op);
+  block->getOperations().insert(insertPoint, op);
   return op;
 }

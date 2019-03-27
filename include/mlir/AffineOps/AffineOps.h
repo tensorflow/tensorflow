@@ -144,7 +144,7 @@ public:
   Block *getBody() { return &getRegion().front(); }
 
   /// Get the body region of the AffineForOp.
-  Region &getRegion() { return getInstruction()->getRegion(0); }
+  Region &getRegion() { return getOperation()->getRegion(0); }
 
   /// Returns the induction variable for this loop.
   Value *getInductionVar();
@@ -253,7 +253,7 @@ public:
 
   unsigned getNumOperands() { return opEnd - opStart; }
   Value *getOperand(unsigned idx) {
-    return inst.getInstruction()->getOperand(opStart + idx);
+    return inst.getOperation()->getOperand(opStart + idx);
   }
 
   using operand_iterator = AffineForOp::operand_iterator;

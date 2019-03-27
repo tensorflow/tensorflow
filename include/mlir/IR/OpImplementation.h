@@ -76,7 +76,7 @@ public:
 
   /// Print a successor, and use list, of a terminator operation given the
   /// terminator and the successor index.
-  virtual void printSuccessorAndUseList(Instruction *term, unsigned index) = 0;
+  virtual void printSuccessorAndUseList(Operation *term, unsigned index) = 0;
 
   /// If the specified operation has attributes, print out an attribute
   /// dictionary with their values.  elidedAttrs allows the client to ignore
@@ -86,7 +86,7 @@ public:
                                      ArrayRef<StringRef> elidedAttrs = {}) = 0;
 
   /// Print the entire operation with the default generic assembly form.
-  virtual void printGenericOp(Instruction *op) = 0;
+  virtual void printGenericOp(Operation *op) = 0;
 
   /// Prints a region.
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true) = 0;

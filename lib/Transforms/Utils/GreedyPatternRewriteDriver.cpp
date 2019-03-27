@@ -116,7 +116,7 @@ private:
       if (!operand->use_empty() &&
           std::next(operand->use_begin()) != operand->use_end())
         continue;
-      if (auto *defInst = operand->getDefiningInst())
+      if (auto *defInst = operand->getDefiningOp())
         addToWorklist(defInst);
     }
   }

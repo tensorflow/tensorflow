@@ -78,7 +78,7 @@ public:
 
   /// Return true if instruction A dominates instruction B.
   bool dominates(Value *a, Instruction *b) {
-    return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
+    return (Instruction *)a->getDefiningOp() == b || properlyDominates(a, b);
   }
 
   /// Return true if the specified block A dominates block B.

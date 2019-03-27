@@ -450,7 +450,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
     if (numResults == 0)
       return {};
     if (numResults == 1)
-      return {newOp.getInstruction()->getResult(0)};
+      return {newOp.getOperation()->getResult(0)};
 
     // Otherwise, it had been converted to an operation producing a structure.
     // Extract individual results from the structure and return them as list.
@@ -460,7 +460,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
       auto type = TypeConverter::convert(op->getResult(i)->getType(),
                                          this->dialect.getLLVMModule());
       results.push_back(rewriter.create<LLVM::ExtractValueOp>(
-          op->getLoc(), type, newOp.getInstruction()->getResult(0),
+          op->getLoc(), type, newOp.getOperation()->getResult(0),
           this->getIntegerArrayAttr(rewriter, i)));
     }
     return results;

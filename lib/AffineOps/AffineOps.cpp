@@ -45,7 +45,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 bool mlir::isTopLevelSymbol(Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
     return arg->getOwner()->getParent()->getContainingFunction();
-  return value->getDefiningInst()->getParentInst() == nullptr;
+  return value->getDefiningOp()->getParentInst() == nullptr;
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -56,7 +56,7 @@ bool mlir::isValidDim(Value *value) {
   if (!value->getType().isIndex())
     return false;
 
-  if (auto *inst = value->getDefiningInst()) {
+  if (auto *inst = value->getDefiningOp()) {
     // Top level instruction or constant operation is ok.
     if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
       return true;
@@ -81,7 +81,7 @@ bool mlir::isValidSymbol(Value *value) {
   if (!value->getType().isIndex())
     return false;
 
-  if (auto *inst = value->getDefiningInst()) {
+  if (auto *inst = value->getDefiningOp()) {
     // Top level instruction or constant operation is ok.
     if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
       return true;
@@ -317,7 +317,7 @@ indicesFromAffineApplyOp(ArrayRef<Value *> operands) {
   llvm::SetVector<unsigned> res;
   for (auto en : llvm::enumerate(operands)) {
     auto *t = en.value();
-    if (t->getDefiningInst() && t->getDefiningInst()->isa<AffineApplyOp>()) {
+    if (t->getDefiningOp() && t->getDefiningOp()->isa<AffineApplyOp>()) {
       res.insert(en.index());
     }
   }
@@ -458,12 +458,12 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
     // 2. Compose AffineApplyOps and dispatch dims or symbols.
     for (unsigned i = 0, e = operands.size(); i < e; ++i) {
       auto *t = operands[i];
-      auto affineApply = t->getDefiningInst()
-                             ? t->getDefiningInst()->dyn_cast<AffineApplyOp>()
+      auto affineApply = t->getDefiningOp()
+                             ? t->getDefiningOp()->dyn_cast<AffineApplyOp>()
                              : AffineApplyOp();
       if (affineApply) {
         // a. Compose affine.apply instructions.
-        LLVM_DEBUG(affineApply.getInstruction()->print(
+        LLVM_DEBUG(affineApply.getOperation()->print(
             dbgs() << "\nCompose AffineApplyOp recursively: "));
         AffineMap affineApplyMap = affineApply.getAffineMap();
         SmallVector<Value *, 8> affineApplyOperands(
@@ -535,7 +535,7 @@ static void composeAffineMapAndOperands(AffineMap *map,
 void mlir::fullyComposeAffineMapAndOperands(
     AffineMap *map, SmallVectorImpl<Value *> *operands) {
   while (llvm::any_of(*operands, [](Value *v) {
-    return v->getDefiningInst() && v->getDefiningInst()->isa<AffineApplyOp>();
+    return v->getDefiningOp() && v->getDefiningOp()->isa<AffineApplyOp>();
   })) {
     composeAffineMapAndOperands(map, operands);
   }
@@ -731,7 +731,7 @@ void AffineForOp::build(Builder *builder, OperationState *result, int64_t lb,
 }
 
 bool AffineForOp::verify() {
-  auto &bodyRegion = getInstruction()->getRegion(0);
+  auto &bodyRegion = getOperation()->getRegion(0);
 
   // The body region must contain a single basic block.
   if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
@@ -955,7 +955,7 @@ void AffineForOp::print(OpAsmPrinter *p) {
 
   if (getStep() != 1)
     *p << " step " << getStep();
-  p->printRegion(getInstruction()->getRegion(0),
+  p->printRegion(getOperation()->getRegion(0),
                  /*printEntryBlockArgs=*/false);
   p->printOptionalAttrDict(getAttrs(),
                            /*elidedAttrs=*/{getLowerBoundAttrName(),
@@ -1062,7 +1062,7 @@ void AffineForOp::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
 
   auto ubOperands = getUpperBoundOperands();
   newOperands.append(ubOperands.begin(), ubOperands.end());
-  getInstruction()->setOperands(newOperands);
+  getOperation()->setOperands(newOperands);
 
   setAttr(getLowerBoundAttrName(), AffineMapAttr::get(map));
 }
@@ -1073,7 +1073,7 @@ void AffineForOp::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
 
   SmallVector<Value *, 4> newOperands(getLowerBoundOperands());
   newOperands.append(ubOperands.begin(), ubOperands.end());
-  getInstruction()->setOperands(newOperands);
+  getOperation()->setOperands(newOperands);
 
   setAttr(getUpperBoundAttrName(), AffineMapAttr::get(map));
 }
@@ -1158,7 +1158,7 @@ AffineForOp mlir::getForInductionVarOwner(Value *val) {
   auto *ivArg = dyn_cast<BlockArgument>(val);
   if (!ivArg || !ivArg->getOwner())
     return AffineForOp();
-  auto *containingInst = ivArg->getOwner()->getParent()->getContainingInst();
+  auto *containingInst = ivArg->getOwner()->getParent()->getContainingOp();
   if (!containingInst)
     return AffineForOp();
   return containingInst->dyn_cast<AffineForOp>();
@@ -1207,7 +1207,7 @@ bool AffineIfOp::verify() {
     return true;
 
   // Verify that the entry of each child region does not have arguments.
-  for (auto &region : getInstruction()->getRegions()) {
+  for (auto &region : getOperation()->getRegions()) {
     if (region.empty())
       continue;
 
@@ -1273,10 +1273,10 @@ void AffineIfOp::print(OpAsmPrinter *p) {
   *p << "affine.if " << conditionAttr;
   printDimAndSymbolList(operand_begin(), operand_end(),
                         conditionAttr.getValue().getNumDims(), p);
-  p->printRegion(getInstruction()->getRegion(0));
+  p->printRegion(getOperation()->getRegion(0));
 
   // Print the 'else' regions if it has any blocks.
-  auto &elseRegion = getInstruction()->getRegion(1);
+  auto &elseRegion = getOperation()->getRegion(1);
   if (!elseRegion.empty()) {
     *p << " else";
     p->printRegion(elseRegion);
@@ -1295,7 +1295,7 @@ void AffineIfOp::setIntegerSet(IntegerSet newSet) {
 }
 
 /// Returns the list of 'then' blocks.
-Region &AffineIfOp::getThenBlocks() { return getInstruction()->getRegion(0); }
+Region &AffineIfOp::getThenBlocks() { return getOperation()->getRegion(0); }
 
 /// Returns the list of 'else' blocks.
-Region &AffineIfOp::getElseBlocks() { return getInstruction()->getRegion(1); }
+Region &AffineIfOp::getElseBlocks() { return getOperation()->getRegion(1); }

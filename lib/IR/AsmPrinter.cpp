@@ -138,7 +138,7 @@ private:
   void recordTypeReference(Type ty) { usedTypes.insert(ty); }
 
   // Visit functions.
-  void visitInstruction(Instruction *inst);
+  void visitOperation(Operation *inst);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
 
@@ -189,7 +189,7 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitInstruction(Instruction *inst) {
+void ModuleState::visitOperation(Operation *inst) {
   // Visit all the types used in the operation.
   for (auto *operand : inst->getOperands())
     visitType(operand->getType());
@@ -270,7 +270,7 @@ void ModuleState::initialize(Module *module) {
   for (auto &fn : *module) {
     visitType(fn.getType());
 
-    fn.walk([&](Instruction *op) { ModuleState::visitInstruction(op); });
+    fn.walk([&](Operation *op) { ModuleState::visitOperation(op); });
   }
 
   // Initialize the symbol aliases.
@@ -1059,11 +1059,11 @@ public:
   void printFunctionSignature();
 
   // Methods to print instructions.
-  void print(Instruction *inst);
+  void print(Operation *inst);
   void print(Block *block, bool printBlockArgs = true);
 
-  void printOperation(Instruction *op);
-  void printGenericOp(Instruction *op);
+  void printOperation(Operation *op);
+  void printGenericOp(Operation *op);
 
   // Implement OpAsmPrinter.
   raw_ostream &getStream() const { return os; }
@@ -1106,7 +1106,7 @@ public:
     return it != blockIDs.end() ? it->second : ~0U;
   }
 
-  void printSuccessorAndUseList(Instruction *term, unsigned index) override;
+  void printSuccessorAndUseList(Operation *term, unsigned index) override;
 
   /// Print a region.
   void printRegion(Region &blocks, bool printEntryBlockArgs) override {
@@ -1196,7 +1196,7 @@ void FunctionPrinter::numberValueID(Value *value) {
   llvm::raw_svector_ostream specialName(specialNameBuffer);
 
   // Give constant integers special names.
-  if (auto *op = value->getDefiningInst()) {
+  if (auto *op = value->getDefiningOp()) {
     Attribute cst;
     if (m_Constant(&cst).match(op)) {
       Type type = op->getResult(0)->getType();
@@ -1236,7 +1236,7 @@ void FunctionPrinter::numberValueID(Value *value) {
       // Otherwise number it normally.
       valueIDs[value] = nextValueID++;
       return;
-    case Value::Kind::InstResult:
+    case Value::Kind::OpResult:
       // This is an uninteresting result, give it a boring number and be
       // done with it.
       valueIDs[value] = nextValueID++;
@@ -1380,14 +1380,14 @@ void FunctionPrinter::print(Block *block, bool printBlockArgs) {
 
   currentIndent += indentWidth;
 
-  for (auto &inst : block->getInstructions()) {
+  for (auto &inst : block->getOperations()) {
     print(&inst);
     os << '\n';
   }
   currentIndent -= indentWidth;
 }
 
-void FunctionPrinter::print(Instruction *inst) {
+void FunctionPrinter::print(Operation *inst) {
   os.indent(currentIndent);
   printOperation(inst);
   printTrailingLocation(inst->getLoc());
@@ -1400,12 +1400,12 @@ void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
   // If this is a reference to the result of a multi-result instruction or
   // instruction, print out the # identifier and make sure to map our lookup
   // to the first result of the instruction.
-  if (auto *result = dyn_cast<InstResult>(value)) {
+  if (auto *result = dyn_cast<OpResult>(value)) {
     if (result->getOwner()->getNumResults() != 1) {
       resultNo = result->getResultNumber();
       lookupValue = result->getOwner()->getResult(0);
     }
-  } else if (auto *result = dyn_cast<InstResult>(value)) {
+  } else if (auto *result = dyn_cast<OpResult>(value)) {
     if (result->getOwner()->getNumResults() != 1) {
       resultNo = result->getResultNumber();
       lookupValue = result->getOwner()->getResult(0);
@@ -1431,7 +1431,7 @@ void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
     os << '#' << resultNo;
 }
 
-void FunctionPrinter::printOperation(Instruction *op) {
+void FunctionPrinter::printOperation(Operation *op) {
   if (op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
     os << " = ";
@@ -1451,7 +1451,7 @@ void FunctionPrinter::printOperation(Instruction *op) {
   printGenericOp(op);
 }
 
-void FunctionPrinter::printGenericOp(Instruction *op) {
+void FunctionPrinter::printGenericOp(Operation *op) {
   os << '"';
   printEscapedString(op->getName().getStringRef(), os);
   os << "\"(";
@@ -1504,7 +1504,7 @@ void FunctionPrinter::printGenericOp(Instruction *op) {
     printRegion(region, /*printEntryBlockArgs=*/true);
 }
 
-void FunctionPrinter::printSuccessorAndUseList(Instruction *term,
+void FunctionPrinter::printSuccessorAndUseList(Operation *term,
                                                unsigned index) {
   printBlockName(term->getSuccessor(index));
 
@@ -1586,14 +1586,14 @@ void Value::print(raw_ostream &os) {
     // TODO: Improve this.
     os << "<block argument>\n";
     return;
-  case Value::Kind::InstResult:
-    return getDefiningInst()->print(os);
+  case Value::Kind::OpResult:
+    return getDefiningOp()->print(os);
   }
 }
 
 void Value::dump() { print(llvm::errs()); }
 
-void Instruction::print(raw_ostream &os) {
+void Operation::print(raw_ostream &os) {
   auto *function = getFunction();
   if (!function) {
     os << "<<UNLINKED INSTRUCTION>>\n";
@@ -1605,7 +1605,7 @@ void Instruction::print(raw_ostream &os) {
   FunctionPrinter(function, modulePrinter).print(this);
 }
 
-void Instruction::dump() {
+void Operation::dump() {
   print(llvm::errs());
   llvm::errs() << "\n";
 }

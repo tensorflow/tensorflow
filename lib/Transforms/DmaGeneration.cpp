@@ -206,7 +206,7 @@ static bool getFullMemRefAsRegion(Instruction *opInst, unsigned numParamLoopIVs,
 }
 
 static void emitNoteForBlock(Block &block, const Twine &message) {
-  auto *inst = block.getContainingInst();
+  auto *inst = block.getContainingOp();
   if (!inst) {
     block.getFunction()->emitNote(message);
   } else {
@@ -403,7 +403,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
                                     zeroIndex, stride, numEltPerStride);
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
-    *nEnd = Block::iterator(op.getInstruction());
+    *nEnd = Block::iterator(op.getOperation());
   }
 
   // Matching DMA wait to block on completion; tag always has a 0 index.
@@ -414,7 +414,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   if (*nEnd == end)
     // Since new ops are being appended (for outgoing DMAs), adjust the end to
     // mark end of range of the original.
-    *nEnd = Block::iterator(tagDeallocOp.getInstruction());
+    *nEnd = Block::iterator(tagDeallocOp.getOperation());
 
   // Generate dealloc for the DMA buffer.
   if (!existingBuf)
@@ -567,9 +567,9 @@ findHighestBlockForPlacement(const MemRefRegion &region, Block &block,
 
   if (it != enclosingFors.rbegin()) {
     auto lastInvariantIV = *std::prev(it);
-    *dmaPlacementReadStart = Block::iterator(lastInvariantIV.getInstruction());
+    *dmaPlacementReadStart = Block::iterator(lastInvariantIV.getOperation());
     *dmaPlacementWriteStart = std::next(*dmaPlacementReadStart);
-    *dmaPlacementBlock = lastInvariantIV.getInstruction()->getBlock();
+    *dmaPlacementBlock = lastInvariantIV.getOperation()->getBlock();
   } else {
     *dmaPlacementReadStart = begin;
     *dmaPlacementWriteStart = end;
@@ -744,7 +744,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {
     StringRef str = "Total size of all DMA buffers' for this block "
                     "exceeds fast memory capacity\n";
-    if (auto *inst = block->getContainingInst())
+    if (auto *inst = block->getContainingOp())
       inst->emitError(str);
     else
       block->getFunction()->emitError(str);

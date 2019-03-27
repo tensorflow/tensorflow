@@ -37,22 +37,22 @@ unsigned BlockArgument::getArgNumber() {
 //===----------------------------------------------------------------------===//
 
 Block::~Block() {
-  assert(!verifyInstOrder() && "Expected valid instruction ordering.");
+  assert(!verifyInstOrder() && "Expected valid operation ordering.");
   clear();
 
   llvm::DeleteContainerPointers(arguments);
 }
 
-/// Returns the closest surrounding instruction that contains this block or
-/// nullptr if this is a top-level instruction block.
-Instruction *Block::getContainingInst() {
-  return getParent() ? getParent()->getContainingInst() : nullptr;
+/// Returns the closest surrounding operation that contains this block or
+/// nullptr if this is a top-level operation block.
+Operation *Block::getContainingOp() {
+  return getParent() ? getParent()->getContainingOp() : nullptr;
 }
 
 Function *Block::getFunction() {
   Block *block = this;
-  while (auto *inst = block->getContainingInst()) {
-    block = inst->getBlock();
+  while (auto *op = block->getContainingOp()) {
+    block = op->getBlock();
     if (!block)
       return nullptr;
   }
@@ -75,13 +75,13 @@ void Block::eraseFromFunction() {
   getFunction()->getBlocks().erase(this);
 }
 
-/// Returns 'inst' if 'inst' lies in this block, or otherwise finds the
-/// ancestor instruction of 'inst' that lies in this block. Returns nullptr if
+/// Returns 'op' if 'op' lies in this block, or otherwise finds the
+/// ancestor operation of 'op' that lies in this block. Returns nullptr if
 /// the latter fails.
-Instruction *Block::findAncestorInstInBlock(Instruction &inst) {
-  // Traverse up the instruction hierarchy starting from the owner of operand to
-  // find the ancestor instruction that resides in the block of 'forInst'.
-  auto *currInst = &inst;
+Operation *Block::findAncestorInstInBlock(Operation &op) {
+  // Traverse up the operation hierarchy starting from the owner of operand to
+  // find the ancestor operation that resides in the block of 'forInst'.
+  auto *currInst = &op;
   while (currInst->getBlock() != this) {
     currInst = currInst->getParentInst();
     if (!currInst)
@@ -90,36 +90,35 @@ Instruction *Block::findAncestorInstInBlock(Instruction &inst) {
   return currInst;
 }
 
-/// This drops all operand uses from instructions within this block, which is
+/// This drops all operand uses from operations within this block, which is
 /// an essential step in breaking cyclic dependences between references when
 /// they are to be deleted.
 void Block::dropAllReferences() {
-  for (Instruction &i : *this)
+  for (Operation &i : *this)
     i.dropAllReferences();
 }
 
 void Block::dropAllDefinedValueUses() {
   for (auto *arg : getArguments())
     arg->dropAllUses();
-  for (auto &inst : *this)
-    inst.dropAllDefinedValueUses();
+  for (auto &op : *this)
+    op.dropAllDefinedValueUses();
   dropAllUses();
 }
 
-/// Verifies the current ordering of child instructions. Returns false if the
+/// Verifies the current ordering of child operations. Returns false if the
 /// order is valid, true otherwise.
 bool Block::verifyInstOrder() {
   // The order is already known to be invalid.
   if (!isInstOrderValid())
     return false;
-  // The order is valid if there are less than 2 instructions.
-  if (instructions.empty() ||
-      std::next(instructions.begin()) == instructions.end())
+  // The order is valid if there are less than 2 operations.
+  if (operations.empty() || std::next(operations.begin()) == operations.end())
     return false;
 
-  Instruction *prev = nullptr;
+  Operation *prev = nullptr;
   for (auto &i : *this) {
-    // The previous instruction must have a smaller order index than the next as
+    // The previous operation must have a smaller order index than the next as
     // it appears earlier in the list.
     if (prev && prev->orderIndex >= i.orderIndex)
       return true;
@@ -128,15 +127,15 @@ bool Block::verifyInstOrder() {
   return false;
 }
 
-/// Recomputes the ordering of child instructions within the block.
+/// Recomputes the ordering of child operations within the block.
 void Block::recomputeInstOrder() {
   parentValidInstOrderPair.setInt(true);
 
   // TODO(riverriddle) Have non-congruent indices to reduce the number of times
   // an insert invalidates the list.
   unsigned orderIndex = 0;
-  for (auto &inst : *this)
-    inst.orderIndex = orderIndex++;
+  for (auto &op : *this)
+    op.orderIndex = orderIndex++;
 }
 
 Block *PredecessorIterator::operator*() const {
@@ -190,9 +189,9 @@ void Block::eraseArgument(unsigned index) {
 // Terminator management
 //===----------------------------------------------------------------------===//
 
-/// Get the terminator instruction of this block. This function asserts that
-/// the block has a valid terminator instruction.
-Instruction *Block::getTerminator() {
+/// Get the terminator operation of this block. This function asserts that
+/// the block has a valid terminator operation.
+Operation *Block::getTerminator() {
   assert(!empty() && !back().isKnownNonTerminator());
   return &back();
 }
@@ -226,42 +225,42 @@ Block *Block::getSinglePredecessor() {
 }
 
 //===----------------------------------------------------------------------===//
-// Instruction Walkers
+// Operation Walkers
 //===----------------------------------------------------------------------===//
 
-void Block::walk(const std::function<void(Instruction *)> &callback) {
+void Block::walk(const std::function<void(Operation *)> &callback) {
   walk(begin(), end(), callback);
 }
 
 void Block::walk(Block::iterator begin, Block::iterator end,
-                 const std::function<void(Instruction *)> &callback) {
-  // Walk the instructions within this block.
-  for (auto &inst : llvm::make_early_inc_range(llvm::make_range(begin, end)))
-    inst.walk(callback);
+                 const std::function<void(Operation *)> &callback) {
+  // Walk the operations within this block.
+  for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
+    op.walk(callback);
 }
 
-void Block::walkPostOrder(const std::function<void(Instruction *)> &callback) {
+void Block::walkPostOrder(const std::function<void(Operation *)> &callback) {
   walkPostOrder(begin(), end(), callback);
 }
 
-/// Walk the instructions in the specified [begin, end) range of this block
+/// Walk the operations in the specified [begin, end) range of this block
 /// in postorder, calling the callback for each operation.
 void Block::walkPostOrder(Block::iterator begin, Block::iterator end,
-                          const std::function<void(Instruction *)> &callback) {
-  // Walk the instructions within this block.
-  for (auto &inst : llvm::make_early_inc_range(llvm::make_range(begin, end)))
-    inst.walkPostOrder(callback);
+                          const std::function<void(Operation *)> &callback) {
+  // Walk the operations within this block.
+  for (auto &op : llvm::make_early_inc_range(llvm::make_range(begin, end)))
+    op.walkPostOrder(callback);
 }
 
 //===----------------------------------------------------------------------===//
 // Other
 //===----------------------------------------------------------------------===//
 
-/// Split the block into two blocks before the specified instruction or
+/// Split the block into two blocks before the specified operation or
 /// iterator.
 ///
-/// Note that all instructions BEFORE the specified iterator stay as part of
-/// the original basic block, and the rest of the instructions in the original
+/// Note that all operations BEFORE the specified iterator stay as part of
+/// the original basic block, and the rest of the operations in the original
 /// block are moved to the new block, including the old terminator.  The
 /// original block is left without a terminator.
 ///
@@ -275,8 +274,8 @@ Block *Block::splitBlock(iterator splitBefore) {
 
   // Move all of the operations from the split point to the end of the function
   // into the new block.
-  newBB->getInstructions().splice(newBB->end(), getInstructions(), splitBefore,
-                                  end());
+  newBB->getOperations().splice(newBB->end(), getOperations(), splitBefore,
+                                end());
   return newBB;
 }
 
@@ -286,18 +285,18 @@ Block *Block::splitBlock(iterator splitBefore) {
 
 Region::Region(Function *container) : container(container) {}
 
-Region::Region(Instruction *container) : container(container) {}
+Region::Region(Operation *container) : container(container) {}
 
 Region::~Region() {
-  // Instructions may have cyclic references, which need to be dropped before we
+  // Operations may have cyclic references, which need to be dropped before we
   // can start deleting them.
   for (auto &bb : *this)
     bb.dropAllReferences();
 }
 
-Instruction *Region::getContainingInst() {
+Operation *Region::getContainingOp() {
   assert(!container.isNull() && "no container");
-  return container.dyn_cast<Instruction *>();
+  return container.dyn_cast<Operation *>();
 }
 
 Function *Region::getContainingFunction() {
@@ -327,20 +326,20 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
       if (!mapper.contains(arg))
         mapper.map(arg, newBlock->addArgument(arg->getType()));
 
-    // Clone and remap the instructions within this block.
-    for (auto &inst : block)
-      newBlock->push_back(inst.clone(mapper, context));
+    // Clone and remap the operations within this block.
+    for (auto &op : block)
+      newBlock->push_back(op.clone(mapper, context));
 
     dest->push_back(newBlock);
   }
 
   // Now that each of the blocks have been cloned, go through and remap the
-  // operands of each of the instructions.
-  auto remapOperands = [&](Instruction *inst) {
-    for (auto &instOp : inst->getInstOperands())
+  // operands of each of the operations.
+  auto remapOperands = [&](Operation *op) {
+    for (auto &instOp : op->getInstOperands())
       if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
         instOp.set(mappedOp);
-    for (auto &succOp : inst->getBlockOperands())
+    for (auto &succOp : op->getBlockOperands())
       if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
         succOp.set(mappedOp);
   };
@@ -363,18 +362,18 @@ void llvm::ilist_traits<::mlir::Block>::addNodeToList(Block *block) {
   block->parentValidInstOrderPair.setPointer(getContainingRegion());
 }
 
-/// This is a trait method invoked when an instruction is removed from a
+/// This is a trait method invoked when an operation is removed from a
 /// region.  We keep the region pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::removeNodeFromList(Block *block) {
   assert(block->getParent() && "not already in a region!");
   block->parentValidInstOrderPair.setPointer(nullptr);
 }
 
-/// This is a trait method invoked when an instruction is moved from one block
+/// This is a trait method invoked when an operation is moved from one block
 /// to another.  We keep the block pointer up to date.
 void llvm::ilist_traits<::mlir::Block>::transferNodesFromList(
     ilist_traits<Block> &otherList, block_iterator first, block_iterator last) {
-  // If we are transferring instructions within the same function, the parent
+  // If we are transferring operations within the same function, the parent
   // pointer doesn't need to be updated.
   auto *curParent = getContainingRegion();
   if (curParent == otherList.getContainingRegion())

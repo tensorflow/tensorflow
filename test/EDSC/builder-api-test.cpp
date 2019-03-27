@@ -386,8 +386,8 @@ TEST_FUNC(custom_ops) {
     ih0 = MY_CUSTOM_INST_0({m, m + n}, {}),
     ih2 = MY_CUSTOM_INST_2({m, m + n}, {indexType, indexType}),
     // These captures are verbose for now, can improve when used in practice.
-    vh20 = ValueHandle(ih2.getInstruction()->getResult(0)),
-    vh21 = ValueHandle(ih2.getInstruction()->getResult(1)),
+    vh20 = ValueHandle(ih2.getOperation()->getResult(0)),
+    vh21 = ValueHandle(ih2.getOperation()->getResult(1)),
     MY_CUSTOM_OP({vh20, vh21}, {indexType}, {}),
   });
 

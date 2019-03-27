@@ -20,10 +20,10 @@
 #include "mlir/IR/Operation.h"
 using namespace mlir;
 
-/// If this value is the result of an Instruction, return the instruction
-/// that defines it.
-Instruction *Value::getDefiningInst() {
-  if (auto *result = dyn_cast<InstResult>(this))
+/// If this value is the result of an Operation, return the operation that
+/// defines it.
+Operation *Value::getDefiningOp() {
+  if (auto *result = dyn_cast<OpResult>(this))
     return result->getOwner();
   return nullptr;
 }
@@ -33,8 +33,8 @@ Function *Value::getFunction() {
   switch (getKind()) {
   case Value::Kind::BlockArgument:
     return cast<BlockArgument>(this)->getFunction();
-  case Value::Kind::InstResult:
-    return getDefiningInst()->getFunction();
+  case Value::Kind::OpResult:
+    return getDefiningOp()->getFunction();
   }
 }
 

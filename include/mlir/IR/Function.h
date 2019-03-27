@@ -101,29 +101,29 @@ public:
   Block &front() { return body.front(); }
 
   //===--------------------------------------------------------------------===//
-  // Instruction Walkers
+  // Operation Walkers
   //===--------------------------------------------------------------------===//
 
-  /// Walk the instructions in the function in preorder, calling the callback
-  /// for each instruction.
-  void walk(const std::function<void(Instruction *)> &callback);
+  /// Walk the operations in the function in preorder, calling the callback
+  /// for each operation.
+  void walk(const std::function<void(Operation *)> &callback);
 
   /// Specialization of walk to only visit operations of 'OpTy'.
   template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
-    walk([&](Instruction *inst) {
+    walk([&](Operation *inst) {
       if (auto op = inst->dyn_cast<OpTy>())
         callback(op);
     });
   }
 
-  /// Walk the instructions in the function in postorder, calling the callback
-  /// for each instruction.
-  void walkPostOrder(const std::function<void(Instruction *)> &callback);
+  /// Walk the operations in the function in postorder, calling the callback
+  /// for each operation.
+  void walkPostOrder(const std::function<void(Operation *)> &callback);
 
   /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
   template <typename OpTy>
   void walkPostOrder(std::function<void(OpTy)> callback) {
-    walkPostOrder([&](Instruction *inst) {
+    walkPostOrder([&](Operation *inst) {
       if (auto op = inst->dyn_cast<OpTy>())
         callback(op);
     });

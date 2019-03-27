@@ -171,7 +171,7 @@ protected:
   MLIRContext *context;
 };
 
-/// This class helps build a Function.  Instructions that are created are
+/// This class helps build a Function.  Operations that are created are
 /// automatically inserted at an insertion point.  The builder is copyable.
 class FuncBuilder : public Builder {
 public:
@@ -188,9 +188,9 @@ public:
   explicit FuncBuilder(Function &func) : FuncBuilder(&func) {}
 
   /// Create a function builder and set insertion point to the given
-  /// instruction, which will cause subsequent insertions to go right before it.
-  FuncBuilder(Instruction *inst) : FuncBuilder(inst->getFunction()) {
-    setInsertionPoint(inst);
+  /// operation, which will cause subsequent insertions to go right before it.
+  FuncBuilder(Operation *op) : FuncBuilder(op->getFunction()) {
+    setInsertionPoint(op);
   }
 
   FuncBuilder(Block *block) : FuncBuilder(block->getFunction()) {
@@ -222,8 +222,8 @@ public:
 
   /// Sets the insertion point to the specified operation, which will cause
   /// subsequent insertions to go right before it.
-  void setInsertionPoint(Instruction *inst) {
-    setInsertionPoint(inst->getBlock(), Block::iterator(inst));
+  void setInsertionPoint(Operation *op) {
+    setInsertionPoint(op->getBlock(), Block::iterator(op));
   }
 
   /// Sets the insertion point to the start of the specified block.
@@ -253,33 +253,33 @@ public:
   Block *getBlock() const { return block; }
 
   /// Creates an operation given the fields represented as an OperationState.
-  Instruction *createOperation(const OperationState &state);
+  Operation *createOperation(const OperationState &state);
 
   /// Create operation of specific op type at the current insertion point.
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
     OperationState state(getContext(), location, OpTy::getOperationName());
     OpTy::build(this, &state, args...);
-    auto *inst = createOperation(state);
-    auto result = inst->dyn_cast<OpTy>();
+    auto *op = createOperation(state);
+    auto result = op->dyn_cast<OpTy>();
     assert(result && "Builder didn't return the right type");
     return result;
   }
 
-  /// Creates a deep copy of the specified instruction, remapping any operands
-  /// that use values outside of the instruction using the map that is provided
+  /// Creates a deep copy of the specified operation, remapping any operands
+  /// that use values outside of the operation using the map that is provided
   /// ( leaving them alone if no entry is present).  Replaces references to
-  /// cloned sub-instructions to the corresponding instruction that is copied,
+  /// cloned sub-operations to the corresponding operation that is copied,
   /// and adds those mappings to the map.
-  Instruction *clone(Instruction &inst, BlockAndValueMapping &mapper) {
-    Instruction *cloneInst = inst.clone(mapper, getContext());
-    block->getInstructions().insert(insertPoint, cloneInst);
-    return cloneInst;
+  Operation *clone(Operation &op, BlockAndValueMapping &mapper) {
+    Operation *cloneOp = op.clone(mapper, getContext());
+    block->getOperations().insert(insertPoint, cloneOp);
+    return cloneOp;
   }
-  Instruction *clone(Instruction &inst) {
-    Instruction *cloneInst = inst.clone(getContext());
-    block->getInstructions().insert(insertPoint, cloneInst);
-    return cloneInst;
+  Operation *clone(Operation &op) {
+    Operation *cloneOp = op.clone(getContext());
+    block->getOperations().insert(insertPoint, cloneOp);
+    return cloneOp;
   }
 
 private:

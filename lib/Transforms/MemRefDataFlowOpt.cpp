@@ -95,7 +95,7 @@ FunctionPassBase *mlir::createMemRefDataFlowOptPass() {
 // this in the future if needed.
 void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   Instruction *lastWriteStoreOp = nullptr;
-  Instruction *loadOpInst = loadOp.getInstruction();
+  Instruction *loadOpInst = loadOp.getOperation();
 
   // First pass over the use list to get minimum number of surrounding
   // loops common between the load op and the store op, with min taken across
@@ -106,7 +106,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
     auto storeOp = use.getOwner()->dyn_cast<StoreOp>();
     if (!storeOp)
       continue;
-    auto *storeOpInst = storeOp.getInstruction();
+    auto *storeOpInst = storeOp.getOperation();
     unsigned nsLoops = getNumCommonSurroundingLoops(*loadOpInst, *storeOpInst);
     minSurroundingLoops = std::min(nsLoops, minSurroundingLoops);
     storeOps.push_back(storeOpInst);
@@ -236,7 +236,7 @@ void MemRefDataFlowOpt::runOnFunction() {
   // to do this as well, but we'll do it here since we collected these anyway.
   for (auto *memref : memrefsToErase) {
     // If the memref hasn't been alloc'ed in this function, skip.
-    Instruction *defInst = memref->getDefiningInst();
+    Instruction *defInst = memref->getDefiningOp();
     if (!defInst || !defInst->isa<AllocOp>())
       // TODO(mlir-team): if the memref was returned by a 'call' instruction, we
       // could still erase it if the call had no side-effects.

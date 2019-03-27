@@ -53,14 +53,14 @@ OperationName OperationName::getFromOpaquePointer(void *pointer) {
 OpAsmParser::~OpAsmParser() {}
 
 //===----------------------------------------------------------------------===//
-// InstResult
+// OpResult
 //===----------------------------------------------------------------------===//
 
 /// Return the result number of this result.
-unsigned InstResult::getResultNumber() {
+unsigned OpResult::getResultNumber() {
   // Results are always stored consecutively, so use pointer subtraction to
   // figure out what number this is.
-  return this - &getOwner()->getInstResults()[0];
+  return this - &getOwner()->getOpResults()[0];
 }
 
 //===----------------------------------------------------------------------===//
@@ -112,7 +112,7 @@ Operation *Operation::create(Location location, OperationName name,
   unsigned numOperands = operands.size() - numSuccessors;
 
   // Compute the byte size for the operation and the operand storage.
-  auto byteSize = totalSizeToAlloc<InstResult, BlockOperand, unsigned, Region,
+  auto byteSize = totalSizeToAlloc<OpResult, BlockOperand, unsigned, Region,
                                    detail::OperandStorage>(
       resultTypes.size(), numSuccessors, numSuccessors, numRegions,
       /*detail::OperandStorage*/ 1);
@@ -137,9 +137,9 @@ Operation *Operation::create(Location location, OperationName name,
   new (&op->getOperandStorage())
       detail::OperandStorage(numOperands, resizableOperandList);
 
-  auto instResults = op->getInstResults();
+  auto instResults = op->getOpResults();
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
-    new (&instResults[i]) InstResult(resultTypes[i], op);
+    new (&instResults[i]) OpResult(resultTypes[i], op);
 
   auto InstOperands = op->getInstOperands();
 
@@ -215,8 +215,8 @@ Operation::~Operation() {
   // Explicitly run the destructors for the operands and results.
   getOperandStorage().~OperandStorage();
 
-  for (auto &result : getInstResults())
-    result.~InstResult();
+  for (auto &result : getOpResults())
+    result.~OpResult();
 
   // Explicitly run the destructors for the successors.
   for (auto &successor : getBlockOperands())
@@ -261,7 +261,7 @@ Dialect *Operation::getDialect() {
 }
 
 Operation *Operation::getParentInst() {
-  return block ? block->getContainingInst() : nullptr;
+  return block ? block->getContainingOp() : nullptr;
 }
 
 Function *Operation::getFunction() {
@@ -394,8 +394,7 @@ void llvm::ilist_traits<::mlir::Operation>::removeNodeFromList(Operation *op) {
 /// This is a trait method invoked when a operation is moved from one block
 /// to another.  We keep the block pointer up to date.
 void llvm::ilist_traits<::mlir::Operation>::transferNodesFromList(
-    ilist_traits<Operation> &otherList, inst_iterator first,
-    inst_iterator last) {
+    ilist_traits<Operation> &otherList, op_iterator first, op_iterator last) {
   Block *curParent = getContainingBlock();
 
   // Invalidate the ordering of the parent block.
@@ -415,7 +414,7 @@ void llvm::ilist_traits<::mlir::Operation>::transferNodesFromList(
 /// all of them.
 void Operation::erase() {
   assert(getBlock() && "Operation has no block");
-  getBlock()->getInstructions().erase(this);
+  getBlock()->getOperations().erase(this);
 }
 
 /// Unlink this operation from its current block and insert it right before
@@ -429,8 +428,8 @@ void Operation::moveBefore(Operation *existingInst) {
 /// it right before `iterator` in the specified basic block.
 void Operation::moveBefore(Block *block,
                            llvm::iplist<Operation>::iterator iterator) {
-  block->getInstructions().splice(iterator, getBlock()->getInstructions(),
-                                  getIterator());
+  block->getOperations().splice(iterator, getBlock()->getOperations(),
+                                getIterator());
 }
 
 /// This drops all operand uses from this operation, which is an essential
@@ -451,7 +450,7 @@ void Operation::dropAllReferences() {
 /// This drops all uses of any values defined by this operation or its nested
 /// regions, wherever they are located.
 void Operation::dropAllDefinedValueUses() {
-  for (auto &val : getInstResults())
+  for (auto &val : getOpResults())
     val.dropAllUses();
 
   for (auto &region : getRegions())
@@ -620,32 +619,32 @@ bool OpState::parse(OpAsmParser *parser, OperationState *result) {
 }
 
 // The fallback for the printer is to print in the generic assembly form.
-void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getInstruction()); }
+void OpState::print(OpAsmPrinter *p) { p->printGenericOp(getOperation()); }
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.  NOTE: This may terminate
 /// the containing application, only use when the IR is in an inconsistent
 /// state.
 bool OpState::emitError(const Twine &message) {
-  return getInstruction()->emitError(message);
+  return getOperation()->emitError(message);
 }
 
 /// Emit an error with the op name prefixed, like "'dim' op " which is
 /// convenient for verifiers.
 bool OpState::emitOpError(const Twine &message) {
-  return getInstruction()->emitOpError(message);
+  return getOperation()->emitOpError(message);
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void OpState::emitWarning(const Twine &message) {
-  getInstruction()->emitWarning(message);
+  getOperation()->emitWarning(message);
 }
 
 /// Emit a note about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 void OpState::emitNote(const Twine &message) {
-  getInstruction()->emitNote(message);
+  getOperation()->emitNote(message);
 }
 
 //===----------------------------------------------------------------------===//

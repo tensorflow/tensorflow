@@ -127,7 +127,7 @@ bool mlir::replaceAllMemRefUsesWith(Value *oldMemRef, Value *newMemRef,
 
     FuncBuilder builder(opInst);
     for (auto *extraIndex : extraIndices) {
-      assert(extraIndex->getDefiningInst()->getNumResults() == 1 &&
+      assert(extraIndex->getDefiningOp()->getNumResults() == 1 &&
              "single result op's expected to generate these indices");
       assert((isValidDim(extraIndex) || isValidSymbol(extraIndex)) &&
              "invalid memory op index");
@@ -226,7 +226,7 @@ void mlir::createAffineComputationSlice(
   SmallVector<Value *, 4> subOperands;
   subOperands.reserve(opInst->getNumOperands());
   for (auto *operand : opInst->getOperands()) {
-    auto *defInst = operand->getDefiningInst();
+    auto *defInst = operand->getDefiningOp();
     if (defInst && defInst->isa<AffineApplyOp>()) {
       subOperands.push_back(operand);
     }

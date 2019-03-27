@@ -54,7 +54,7 @@ void mlir::buildTripCountMapAndOperands(
   int64_t loopSpan;
 
   int64_t step = forOp.getStep();
-  FuncBuilder b(forOp.getInstruction());
+  FuncBuilder b(forOp.getOperation());
 
   if (forOp.hasConstantBounds()) {
     int64_t lb = forOp.getConstantLowerBound();
@@ -101,7 +101,7 @@ void mlir::buildTripCountMapAndOperands(
   // simplification, and canonicalization above.
   for (auto *v : ubs)
     if (v->use_empty())
-      v->getDefiningInst()->erase();
+      v->getDefiningOp()->erase();
   if (lb.use_empty())
     lb.erase();
 }
@@ -280,7 +280,7 @@ using VectorizableInstFun = std::function<bool(AffineForOp, Instruction &)>;
 
 static bool isVectorizableLoopWithCond(AffineForOp loop,
                                        VectorizableInstFun isVectorizableInst) {
-  auto *forInst = loop.getInstruction();
+  auto *forInst = loop.getOperation();
   if (!matcher::isParallelLoop(*forInst) &&
       !matcher::isReductionLoop(*forInst)) {
     return false;
@@ -361,12 +361,12 @@ bool mlir::isVectorizableLoop(AffineForOp loop) {
 // violation when we have the support.
 bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
   auto *forBody = forOp.getBody();
-  assert(shifts.size() == forBody->getInstructions().size());
+  assert(shifts.size() == forBody->getOperations().size());
 
   // Work backwards over the body of the block so that the shift of a use's
   // ancestor instruction in the block gets recorded before it's looked up.
   DenseMap<Instruction *, uint64_t> forBodyShift;
-  for (auto it : llvm::enumerate(llvm::reverse(forBody->getInstructions()))) {
+  for (auto it : llvm::enumerate(llvm::reverse(forBody->getOperations()))) {
     auto &inst = it.value();
 
     // Get the index of the current instruction, note that we are iterating in

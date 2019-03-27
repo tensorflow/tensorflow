@@ -32,7 +32,7 @@ class Type;
 using DialectConstantDecodeHook =
     std::function<bool(const OpaqueElementsAttr, ElementsAttr &)>;
 using DialectConstantFoldHook = std::function<LogicalResult(
-    Instruction *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
+    Operation *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
 using DialectExtractElementHook =
     std::function<Attribute(const OpaqueElementsAttr, ArrayRef<uint64_t>)>;
 
@@ -57,7 +57,7 @@ public:
   /// `results` vector.  If not, this returns failure and `results` is
   /// unspecified.
   DialectConstantFoldHook constantFoldHook =
-      [](Instruction *op, ArrayRef<Attribute> operands,
+      [](Operation *op, ArrayRef<Attribute> operands,
          SmallVectorImpl<Attribute> &results) { return failure(); };
 
   /// Registered hook to decode opaque constants associated with this
@@ -115,9 +115,9 @@ public:
     return false;
   }
 
-  /// Verify an attribute from this dialect on the given instruction. Returns
+  /// Verify an attribute from this dialect on the given operation. Returns
   /// true if the verification failed, false otherwise.
-  virtual bool verifyInstructionAttribute(Instruction *, NamedAttribute) {
+  virtual bool verifyOperationAttribute(Operation *, NamedAttribute) {
     return false;
   }
 

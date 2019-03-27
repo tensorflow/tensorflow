@@ -225,7 +225,7 @@ static bool canBlockHaveNoTerminator(Block &block) {
   // Allow the first block of an operation region to have no terminator if it is
   // the only block in the region.
   auto *parentList = block.getParent();
-  return parentList->getContainingInst() &&
+  return parentList->getContainingOp() &&
          std::next(parentList->begin()) == parentList->end();
 }
 
@@ -295,7 +295,7 @@ bool FuncVerifier::verifyOperation(Instruction &op) {
     if (!attr.first.strref().contains('.'))
       continue;
     if (auto *dialect = getDialectForAttribute(attr, op))
-      if (dialect->verifyInstructionAttribute(&op, attr))
+      if (dialect->verifyOperationAttribute(&op, attr))
         return true;
   }
 
@@ -332,7 +332,7 @@ bool FuncVerifier::verifyInstDominance(Instruction &inst) {
 
     inst.emitError("operand #" + Twine(operandNo) +
                    " does not dominate this use");
-    if (auto *useInst = op->getDefiningInst())
+    if (auto *useInst = op->getDefiningOp())
       useInst->emitNote("operand defined here");
     return true;
   }

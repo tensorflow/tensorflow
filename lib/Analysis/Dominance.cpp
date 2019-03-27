@@ -72,7 +72,7 @@ bool DominanceInfoBase<IsPostDom>::properlyDominates(Block *a, Block *b) {
   if (regionA != regionB) {
     Instruction *bAncestor;
     do {
-      bAncestor = regionB->getContainingInst();
+      bAncestor = regionB->getContainingOp();
       // If 'bAncestor' is the top level function, then 'a' is a block
       // that post dominates 'b'.
       if (!bAncestor)
@@ -122,7 +122,7 @@ bool DominanceInfo::properlyDominates(Instruction *a, Instruction *b) {
 
 /// Return true if value A properly dominates instruction B.
 bool DominanceInfo::properlyDominates(Value *a, Instruction *b) {
-  if (auto *aInst = a->getDefiningInst())
+  if (auto *aInst = a->getDefiningOp())
     return properlyDominates(aInst, b);
 
   // block arguments properly dominate all instructions in their own block, so

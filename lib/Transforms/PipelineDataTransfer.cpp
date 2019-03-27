@@ -93,7 +93,7 @@ static bool doubleBuffer(Value *oldMemRef, AffineForOp forOp) {
   auto newMemRefType = doubleShape(oldMemRefType);
 
   // The double buffer is allocated right before 'forInst'.
-  auto *forInst = forOp.getInstruction();
+  auto *forInst = forOp.getOperation();
   FuncBuilder bOuter(forInst);
   // Put together alloc operands for any dynamic dimensions of the memref.
   SmallVector<Value *, 4> allocOperands;
@@ -287,14 +287,14 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     // order to create the double buffer above.)
     // '-canonicalize' does this in a more general way, but we'll anyway do the
     // simple/common case so that the output / test cases looks clear.
-    if (auto *allocInst = oldMemRef->getDefiningInst()) {
+    if (auto *allocInst = oldMemRef->getDefiningOp()) {
       if (oldMemRef->use_empty()) {
         allocInst->erase();
       } else if (oldMemRef->hasOneUse()) {
         auto *singleUse = oldMemRef->use_begin()->getOwner();
         if (singleUse->isa<DeallocOp>()) {
           singleUse->erase();
-          oldMemRef->getDefiningInst()->erase();
+          oldMemRef->getDefiningOp()->erase();
         }
       }
     }
@@ -312,7 +312,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     // If the old tag has no more uses, remove its 'dead' alloc if it was
     // alloc'ed.
     if (oldTagMemRef->use_empty())
-      if (auto *allocInst = oldTagMemRef->getDefiningInst())
+      if (auto *allocInst = oldTagMemRef->getDefiningOp())
         allocInst->erase();
   }
 
@@ -331,7 +331,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
     mlir::createAffineComputationSlice(dmaStartInst, &sliceOps);
     if (!sliceOps.empty()) {
       for (auto sliceOp : sliceOps) {
-        instShiftMap[sliceOp.getInstruction()] = 0;
+        instShiftMap[sliceOp.getOperation()] = 0;
       }
     } else {
       // If a slice wasn't created, the reachable affine.apply op's from its
@@ -352,7 +352,7 @@ void PipelineDataTransfer::runOnAffineForOp(AffineForOp forOp) {
   }
 
   // Get shifts stored in map.
-  std::vector<uint64_t> shifts(forOp.getBody()->getInstructions().size());
+  std::vector<uint64_t> shifts(forOp.getBody()->getOperations().size());
   unsigned s = 0;
   for (auto &inst : *forOp.getBody()) {
     assert(instShiftMap.find(&inst) != instShiftMap.end());
