@@ -71,7 +71,7 @@ enum DepthwiseConv2dDirection { DIRECTION_FORWARD, DIRECTION_BACKWARD };
 // A Cuda kernel to compute the depthwise convolution forward pass
 // in NHWC format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kKnownDepthMultiplier>
+          int kKnownDepthMultiplier, typename S>
 __global__ void __launch_bounds__(1024, 2)
     DepthwiseConv2dGPUKernelNHWC(const DepthwiseArgs args, const T* input,
                                  const T* filter, T* output, int num_outputs) {
@@ -108,7 +108,7 @@ __global__ void __launch_bounds__(1024, 2)
     const int input_row_end = input_row_start + filter_height;
     const int input_col_end = input_col_start + filter_width;
 
-    T sum = static_cast<T>(0);
+    S sum = static_cast<S>(0);
 
     const int input_offset_temp = in_height * batch;
     if (input_row_start >= 0 && input_col_start >= 0 &&
@@ -128,7 +128,8 @@ __global__ void __launch_bounds__(1024, 2)
               multiplier +
               depth_multiplier *
                   (in_channel + in_depth * (filter_col + filter_offset_temp));
-          sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+          sum += static_cast<S>(ldg(input + input_offset)) *
+                 static_cast<S>(ldg(filter + filter_offset));
         }
       }
     } else {
@@ -150,12 +151,13 @@ __global__ void __launch_bounds__(1024, 2)
                 multiplier +
                 depth_multiplier *
                     (in_channel + in_depth * (filter_col + filter_offset_temp));
-            sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+            sum += static_cast<S>(ldg(input + input_offset)) *
+                   static_cast<S>(ldg(filter + filter_offset));
           }
         }
       }
     }
-    output[thread_id] = sum;
+    output[thread_id] = static_cast<T>(sum);
   }
 }
 
@@ -311,7 +313,7 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
 // A Cuda kernel to compute the depthwise convolution forward pass
 // in NCHW format.
 template <typename T, int kKnownFilterWidth, int kKnownFilterHeight,
-          int kKnownDepthMultiplier>
+          int kKnownDepthMultiplier, typename S>
 __global__ void __launch_bounds__(1024, 2)
     DepthwiseConv2dGPUKernelNCHW(const DepthwiseArgs args, const T* input,
                                  const T* filter, T* output, int num_outputs) {
@@ -388,7 +390,7 @@ __global__ void __launch_bounds__(1024, 2)
     const int input_row_end = input_row_start + filter_height;
     const int input_col_end = input_col_start + filter_width;
 
-    T sum = static_cast<T>(0);
+    S sum = static_cast<S>(0);
     if (input_row_start >= 0 && input_col_start >= 0 &&
         input_row_end < in_height && input_col_end < in_width) {
       // Loop that doesn't need to check for boundary conditions.
@@ -406,7 +408,8 @@ __global__ void __launch_bounds__(1024, 2)
               multiplier +
               depth_multiplier *
                   (in_channel + in_depth * (filter_col + filter_offset_temp));
-          sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+          sum += static_cast<S>(ldg(input + input_offset)) *
+                 static_cast<S>(ldg(filter + filter_offset));
         }
       }
     } else {
@@ -433,13 +436,14 @@ __global__ void __launch_bounds__(1024, 2)
                 multiplier +
                 depth_multiplier *
                     (in_channel + in_depth * (filter_col + filter_offset_temp));
-            sum += ldg(input + input_offset) * ldg(filter + filter_offset);
+            sum += static_cast<S>(ldg(input + input_offset)) *
+                   static_cast<S>(ldg(filter + filter_offset));
           }
         }
       }
     }
 
-    output[thread_id] = sum;
+    output[thread_id] = static_cast<T>(sum);
   }
 }
 
@@ -679,14 +683,6 @@ Status LaunchDepthwiseConv2dGPUSmall(OpKernelContext* ctx,
                                      const DepthwiseArgs& args, const T* input,
                                      const T* filter, T* output,
                                      TensorFormat data_format) {
-#if !defined __CUDA_ARCH__ || __CUDA_ARCH__ >= 530
-  if (HasFastHalfMath(ctx)) {
-    return LaunchDepthwiseConv2dGPUSmall<T, kDirection, kKnownFilterWidth,
-                                         kKnownFilterHeight, kBlockDepth,
-                                         kKnownEvenHeight, T>(
-        ctx, args, input, filter, output, data_format);
-  }
-#endif
   return LaunchDepthwiseConv2dGPUSmall<T, kDirection, kKnownFilterWidth,
                                        kKnownFilterHeight, kBlockDepth,
                                        kKnownEvenHeight, PseudoHalfType<T>>(
@@ -745,12 +741,14 @@ Status LaunchDepthwiseConv2dGPU(OpKernelContext* ctx, const DepthwiseArgs& args,
     case FORMAT_NHWC:
       kernel =
           DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
-                                       kKnownDepthMultiplier>;
+                                       kKnownDepthMultiplier,
+                                       PseudoHalfType<T>>;
       break;
     case FORMAT_NCHW:
       kernel =
           DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
-                                       kKnownDepthMultiplier>;
+                                       kKnownDepthMultiplier,
+                                       PseudoHalfType<T>>;
       break;
     default:
       return errors::InvalidArgument("FORMAT_", ToString(data_format),
