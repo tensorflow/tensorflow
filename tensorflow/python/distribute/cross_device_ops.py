@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import enum
 import six
 
 from tensorflow.python.client import device_lib
@@ -116,6 +117,9 @@ def _make_tensor_into_per_replica(input_tensor):
 def _normalize_value_destination_pairs(value_destination_pairs):
   """Converts each tensor into a PerReplica object in the input list."""
   result = []
+
+  value_destination_pairs = list(value_destination_pairs)
+
   if not isinstance(value_destination_pairs, (list, tuple)):
     raise ValueError("`value_destination_pairs` should be a list or tuple")
   for pair in value_destination_pairs:
@@ -206,7 +210,7 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
   count = len(all_values)
 
   with ops.device(reduce_to_device):
-    with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+    with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
           all_values, accumulation_fn)
       if reduce_op == reduce_util.ReduceOp.MEAN:
@@ -919,6 +923,21 @@ class MultiWorkerAllReduce(AllReduceCrossDeviceOps):
 
     return _ungroup_and_make_mirrored(aggregated_grads, per_replica_values[0],
                                       reduce_op)
+
+
+@tf_export("distribute.experimental.CollectiveCommunication")
+class CollectiveCommunication(enum.Enum):
+  """Communication choices for CollectiveOps.
+
+  * `AUTO`: Default to runtime's automatic choices.
+  * `RING`: TensorFlow's ring algorithms for all-reduce and
+    all-gather.
+  * `NCCL`: Use ncclAllReduce for all-reduce, and ring algorithms for
+    all-gather.  TODO(ayushd): add ncclAllGather implementation.
+  """
+  AUTO = "AUTO"
+  RING = "RING"
+  NCCL = "NCCL"
 
 
 # TODO(yuefengz): support in-graph collective all-reduce.

@@ -1314,6 +1314,28 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     int noutputs, const TF_Output* outputs, const char* const* output_names,
     const TF_FunctionOptions* opts, const char* description, TF_Status* status);
 
+// Similar to TF_GraphToFunction but allows specifying control outputs of the
+// function.
+//
+//  The arguments of TF_GraphToFunction have the same meaning, but the new
+//  arguments are as follows:
+//
+//    ncontrol_outputs: Number of control outputs of the function.
+//    control_outputs: vector of TF_Operation objects to be marked as control
+//      outputs of the function. Operations marked as control outputs are
+//      guaranteed to execute.
+//    control_output_names: Optional. If not nullptr, vector of strings, one
+//      per control output, with their names to be added to the function's
+//      OpDef.
+TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunctionWithControlOutputs(
+    const TF_Graph* fn_body, const char* fn_name,
+    unsigned char append_hash_to_fn_name, int num_opers,
+    const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
+    int noutputs, const TF_Output* outputs, const char* const* output_names,
+    int ncontrol_outputs, const TF_Operation* const* control_outputs,
+    const char* const* control_output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* status);
+
 // Returns the name of the graph function.
 // The return value points to memory that is only usable until the next
 // mutation to *func.

@@ -68,7 +68,7 @@ class BoostedTreesEnsembleResource : public StampedResource {
       const int32 tree_id, const int32 node_id, const int32 index_in_batch,
       const std::vector<TTypes<int32>::ConstVec>& bucketized_features) const;
 
-  float node_value(const int32 tree_id, const int32 node_id) const;
+  std::vector<float> node_value(const int32 tree_id, const int32 node_id) const;
 
   void set_node_value(const int32 tree_id, const int32 node_id,
                       const float logits);

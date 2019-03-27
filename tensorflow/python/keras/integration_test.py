@@ -49,10 +49,11 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
          keras.layers.Dropout(0.1),
          keras.layers.Dense(y_train.shape[-1], activation='softmax')],
         input_shape=x_train.shape[1:])
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
-                  metrics=['accuracy'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizer_v2.adam.Adam(0.005),
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -84,10 +85,11 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
     y = base_model(x)
     y = keras.layers.Dense(y_train.shape[-1], activation='softmax')(y)
     model = keras.models.Model(x, y)
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
-                  metrics=['accuracy'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizer_v2.adam.Adam(0.005),
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
     if not testing_utils.should_run_eagerly():
       self.assertEqual(len(model.losses), 2)
       self.assertEqual(len(model.updates), 2)
@@ -121,10 +123,11 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
     ]
     model = testing_utils.get_model_from_layers(
         layers, input_shape=x_train.shape[1:])
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
-                  metrics=['accuracy'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizer_v2.adam.Adam(0.005),
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -149,10 +152,11 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
     model.add(keras.layers.RNN(rnn_cell.GRUCell(y_train.shape[-1],
                                                 activation='softmax',
                                                 dtype=dtypes.float32)))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
-                  metrics=['accuracy'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizer_v2.adam.Adam(0.005),
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -186,10 +190,11 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
     ]
     model = testing_utils.get_model_from_layers(
         layers, input_shape=x_train.shape[1:])
-    model.compile(loss='categorical_crossentropy',
-                  optimizer=keras.optimizer_v2.adam.Adam(0.005),
-                  metrics=['accuracy'],
-                  run_eagerly=testing_utils.should_run_eagerly())
+    model.compile(
+        loss='categorical_crossentropy',
+        optimizer=keras.optimizer_v2.adam.Adam(0.005),
+        metrics=['acc'],
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -237,8 +242,8 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
               validation_data=(x_train, y_train),
               verbose=2)
 
-    output_path = keras.saving.saved_model.export(
-        model, os.path.join(self.get_temp_dir(), 'tf_keras_saved_model'))
+    output_path = os.path.join(self.get_temp_dir(), 'tf_keras_saved_model')
+    keras.saving.saved_model.export_saved_model(model, output_path)
     loaded_model = keras.saving.saved_model.load_from_saved_model(output_path)
     self.assertEqual(model.summary(), loaded_model.summary())
 

@@ -242,11 +242,16 @@ def _hipcc_env(repository_ctx):
         A string containing environment variables for hipcc.
     """
     hipcc_env = ""
-    for name in ["HIP_CLANG_PATH", "DEVICE_LIB_PATH", "HIP_VDI_HOME",\
-                 "HIPCC_VERBOSE", "HIPCC_COMPILE_FLAGS_APPEND"]:
+    for name in [
+        "HIP_CLANG_PATH",
+        "DEVICE_LIB_PATH",
+        "HIP_VDI_HOME",
+        "HIPCC_VERBOSE",
+        "HIPCC_COMPILE_FLAGS_APPEND",
+    ]:
         if name in repository_ctx.os.environ:
-            hipcc_env = hipcc_env + " " + name + "=\"" + \
-                    repository_ctx.os.environ[name].strip() + "\";"
+            hipcc_env = (hipcc_env + " " + name + "=\"" +
+                         repository_ctx.os.environ[name].strip() + "\";")
     return hipcc_env.strip()
 
 def _crosstool_verbose(repository_ctx):
@@ -635,7 +640,6 @@ def _create_local_rocm_repository(repository_ctx):
         srcs = rocm_lib_srcs,
         outs = rocm_lib_outs,
     ))
-
 
     # Set up BUILD file for rocm/
     _tpl(

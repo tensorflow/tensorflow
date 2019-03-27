@@ -313,8 +313,8 @@ def _in_place_subclassed_model_reset(model):
       continue
     if isinstance(value, Layer):
       attributes_cache[name] = value
-      assert value in model._layers
-      if hasattr(value, '_layers') and value._layers:
+      assert value in model.layers
+      if hasattr(value, 'layers') and value.layers:
         raise ValueError('We do not support the use of nested layers '
                          'in `model_to_estimator` at this time. Found nested '
                          'layer: %s' % value)

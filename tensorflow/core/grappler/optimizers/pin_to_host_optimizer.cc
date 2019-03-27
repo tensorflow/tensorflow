@@ -46,8 +46,12 @@ bool IsBlacklisted(const NodeDef& node) {
       IsNoOp(node);
 }
 
-// Check if Tensor is integer and small size.
-bool IsTensorIntegerAndSmall(const OpInfo::TensorProperties& prop) {
+// Check if Tensor is either a string or is integer and small size
+bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
+  if (prop.dtype() == DataType::DT_STRING) {
+    return true;
+  }
+
   // Check type to be int32 or int64.
   if (prop.dtype() != DataType::DT_INT32 &&
       prop.dtype() != DataType::DT_INT64) {
@@ -107,7 +111,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
                  << node.DebugString();
     return Status::OK();
   }
-  if (!IsTensorIntegerAndSmall(output_properties[port_id])) {
+  if (!IsTensorSmall(output_properties[port_id])) {
     return Status::OK();
   }
 
@@ -250,7 +254,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
         /*assume_valid_feeds=*/false));
   }
   for (const auto& prop : properties->GetOutputProperties(node.name())) {
-    if (!IsTensorIntegerAndSmall(prop)) {
+    if (!IsTensorSmall(prop)) {
       return Status::OK();
     }
   }

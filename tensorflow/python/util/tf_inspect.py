@@ -216,7 +216,8 @@ def _get_argspec_for_partial(obj):
 
   # Checks if all arguments have default value set after first one.
   invalid_default_values = [
-      args[i] for i, j in enumerate(all_defaults) if not j and i > first_default
+      args[i] for i, j in enumerate(all_defaults)
+      if j is None and i > first_default
   ]
 
   if invalid_default_values:

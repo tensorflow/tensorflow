@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./load_prgram to load the executable tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/micro_speech_test into SRAM
+#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./load_prgram executable_name to load an executable from the directory tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
 #
 #
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -18,6 +18,7 @@
 #==============================================================================
 
 
+import sys, getopt
 import os
 import telnetlib
 
@@ -34,7 +35,8 @@ get_ocd_response() # clean it out
 
 # git path to project elf file
 cur_dir = os.getcwd()
-elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'micro_speech_test'
+#elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'preprocessor_test'
+elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + sys.argv[1]
 print("elf_file = ",elf_file)
 
 

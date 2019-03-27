@@ -45,19 +45,34 @@ namespace internal {
 // Returns `true` iff we can use custom contraction kernels. This is a runtime
 // check, that uses environment variables.
 bool UseCustomContractionKernels();
-#endif  // TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL
 
-// Enabled by build option: "--define tensorflow_mkldnn_contraction_kernel=1"
-#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-
+// Pack a 2D block of a Tensor expression into contiguous block of memory with
+// col-major storage order. We do not have access to the underlying Tensor
+// expression, we only have a DataMapper (TensorContractionInputMapper for
+// tensor contractions, or blas_data_mapper for plain tensors), that provides a
+// two-dimensional view into the Tensor expression.
+//
+// Default Eigen gemm_pack_rhs and gemm_pack_lhs pack blocks of tensor
+// expressions into the packed format described in "Anatomy of High-Performance
+// Matrix Multiplication" paper (1). Eigen::internal::gebp_kernel relies on this
+// packing format for efficient micro-panel multiplication.
+//
+// This simple packing can be used with any '?gemm' function from BLAS
+// libraries, that work with col-major matrices.
+//
+// (1) http://www.cs.utexas.edu/~flame/pubs/GotoTOMS_revision.pdf
+//
+// IMPORTANT: `gemm_pack_colmajor_block` always packs the block in column major
+// order, DataMapperStorageOrder specifies the storage order of the underlying
+// Tensor expression.
 template <typename Scalar, typename IndexType, typename DataMapper,
-          int StorageOrder>
-struct mkldnn_gemm_pack;
+          int DataMapperStorageOrder>
+struct gemm_pack_colmajor_block;
 
-// mkl_gemm_pack for ColMajor storage order.
+// gemm_pack_colmajor_block for ColMajor storage order.
 template <typename Scalar, typename IndexType, typename DataMapper>
-struct mkldnn_gemm_pack<Scalar, IndexType, DataMapper,
-                        /*StorageOrder*/ ColMajor> {
+struct gemm_pack_colmajor_block<Scalar, IndexType, DataMapper,
+                                /*DataMapperStorageOrder*/ ColMajor> {
   typedef typename internal::packet_traits<Scalar>::type Packet;
   typedef typename DataMapper::LinearMapper LinearMapper;
 
@@ -66,37 +81,40 @@ struct mkldnn_gemm_pack<Scalar, IndexType, DataMapper,
   EIGEN_DONT_INLINE
   void operator()(Scalar* block, const DataMapper& data_mapper, IndexType rows,
                   IndexType cols) {
-    const IndexType unrolled_rows =
-        (rows / (4 * PacketSize)) * (4 * PacketSize);
-    const IndexType vectorized_rows = (rows / PacketSize) * PacketSize;
+    const IndexType unrolled_rows = rows - 4 * PacketSize;
+    const IndexType vectorized_rows = rows - PacketSize;
 
     for (IndexType col = 0; col < cols; ++col) {
       LinearMapper lm = data_mapper.getLinearMapper(0, col);
 
+      IndexType row = 0;
       // Give compiler a strong possibility to unroll the loop.
-      for (IndexType i = 0; i < unrolled_rows; i += 4 * PacketSize) {
+      for (; row <= unrolled_rows; row += 4 * PacketSize) {
         for (IndexType j = 0; j < 4; ++j) {
-          const Packet p = lm.template loadPacket<Packet>(i + j * PacketSize);
+          const Packet p = lm.template loadPacket<Packet>(row + j * PacketSize);
           internal::pstoreu(block + j * PacketSize, p);
         }
         block += 4 * PacketSize;
       }
-
       // Process remaining rows with packets.
-      for (IndexType i = unrolled_rows; i < vectorized_rows; i += PacketSize) {
-        const Packet p = lm.template loadPacket<Packet>(i);
+      for (; row <= vectorized_rows; row += PacketSize) {
+        const Packet p = lm.template loadPacket<Packet>(row);
         internal::pstoreu(block, p);
         block += PacketSize;
       }
-
       // Finalize with coefficients.
-      for (IndexType i = vectorized_rows; i < rows; ++i) {
-        *block = lm(i);
+      for (; row < rows; ++row) {
+        *block = lm(row);
         ++block;
       }
     }
   }
 };
+
+#endif  // TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL
+
+// Enabled by build option: "--define tensorflow_mkldnn_contraction_kernel=1"
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
 
 template <typename Scalar, typename IndexType, typename OutputMapper,
           bool ConjugateLhs = false, bool ConjugateRhs = false>
@@ -107,6 +125,9 @@ template <typename IndexType, typename OutputMapper, bool ConjugateLhs,
           bool ConjugateRhs>
 struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
                           ConjugateLhs, ConjugateRhs> {
+  static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
+  static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
+
   EIGEN_DONT_INLINE
   void operator()(const OutputMapper& output, const float* blockA,
                   const float* blockB, const IndexType rows,
@@ -122,11 +143,11 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     const int n = static_cast<int>(cols);
     const int k = static_cast<int>(depth);
 
-    const char transposeA = ConjugateLhs ? 'Y' : 'N';
-    const char transposeB = ConjugateRhs ? 'Y' : 'N';
+    const char transposeA = 'N';
+    const char transposeB = 'N';
 
-    const int ldA = ConjugateLhs ? k : m;
-    const int ldB = ConjugateRhs ? n : k;
+    const int ldA = m;
+    const int ldB = k;
     const int ldC = static_cast<int>(output.stride());
 
     const float beta = 1.0;
@@ -222,10 +243,12 @@ struct TensorContractionKernel<float, float, float, StorageIndex, OutputMapper,
   using Scalar = float;
   using Traits = typename internal::gebp_traits<Scalar, Scalar>;
 
-  using LhsPacker = mkldnn_gemm_pack<Scalar, StorageIndex,
-                                     typename LhsMapper::SubMapper, ColMajor>;
-  using RhsPacker = mkldnn_gemm_pack<Scalar, StorageIndex,
-                                     typename RhsMapper::SubMapper, ColMajor>;
+  using LhsPacker =
+      gemm_pack_colmajor_block<Scalar, StorageIndex,
+                               typename LhsMapper::SubMapper, ColMajor>;
+  using RhsPacker =
+      gemm_pack_colmajor_block<Scalar, StorageIndex,
+                               typename RhsMapper::SubMapper, ColMajor>;
   using GemmKernel = mkldnn_gemm_kernel<Scalar, StorageIndex, OutputMapper>;
 
   // Fallback on default Eigen pack and GEBP kernel if custom contraction

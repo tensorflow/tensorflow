@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 
@@ -30,6 +31,8 @@ namespace {
 
 using absl::StrCat;
 using ::testing::HasSubstr;
+
+using HloGraphDumperTest = HloTestBase;
 
 string TestName() {
   return ::testing::UnitTest::GetInstance()->current_test_info()->name();
@@ -48,7 +51,7 @@ class DotRenderer : public hlo_graph_dumper::GraphRendererInterface {
 
 XLA_REGISTER_GRAPH_RENDERER(DotRenderer);
 
-TEST(HloGraphDumperTest, NestedFusion) {
+TEST_F(HloGraphDumperTest, NestedFusion) {
   HloComputation::Builder b("b");
 
   // Build param0 + param1 + param2 + param3 + param4.
@@ -118,7 +121,7 @@ TEST(HloGraphDumperTest, NestedFusion) {
       HasSubstr(inner_sum->name()));
 }
 
-TEST(HloGraphDumperTest, Constant) {
+TEST_F(HloGraphDumperTest, Constant) {
   HloComputation::Builder b("b");
   auto instruction = b.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(-42)));
@@ -132,7 +135,7 @@ TEST(HloGraphDumperTest, Constant) {
   EXPECT_THAT(graph, Not(HasSubstr("i_am_a_constant_root_instruction")));
 }
 
-TEST(HloGraphDumperTest, TupleConstant) {
+TEST_F(HloGraphDumperTest, TupleConstant) {
   Shape tuple_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {3, 2}), ShapeUtil::MakeShape(S32, {4, 5})});
   HloComputation::Builder b("b");
@@ -148,6 +151,22 @@ TEST(HloGraphDumperTest, TupleConstant) {
       *root_computation, /*label=*/"tuple_constant", DebugOptions());
   EXPECT_THAT(graph, HasSubstr("tuple_constant"));
   EXPECT_THAT(graph, HasSubstr("constant (f32[3,2], s32[4,5])"));
+}
+
+TEST_F(HloGraphDumperTest, Compare) {
+  const char* hlo_string = R"(
+    HloModule comp
+
+    ENTRY comp {
+      param.0 = f32[10] parameter(0)
+      param.1 = f32[10] parameter(1)
+      ROOT lt = pred[10] compare(param.0, param.1), direction=LT
+    })";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  string graph = hlo_graph_dumper::DumpGraph(*module->entry_computation(),
+                                             /*label=*/"comp", DebugOptions());
+  EXPECT_THAT(graph, HasSubstr("direction=LT"));
 }
 
 }  // anonymous namespace

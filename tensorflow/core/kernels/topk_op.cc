@@ -82,8 +82,8 @@ class TopK : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(1, output_shape, &indices_out));
 
-    // Nothing to do for top-nothing.
-    if (k == 0) return;
+    // Nothing to do for top-nothing or over nothing.
+    if (k == 0 || num_rows == 0) return;
 
     auto values = values_out->flat_inner_dims<T>();
     auto indices = indices_out->flat_inner_dims<int32>();

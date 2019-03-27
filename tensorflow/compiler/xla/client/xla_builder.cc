@@ -267,8 +267,8 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
       for (int64 index : target_param_index) {
         param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
       }
-      param_shape_ptr->set_dynamic_dimension(target_dim_num,
-                                             /*is_dynamic=*/true);
+      // TODO(b/121223198): Set `is_dynamic` to the parameter shape when XLA
+      // backend can handle dynamic dimensions.
       *instr.mutable_shape() = param_shape.ToProto();
     }
   }
@@ -299,12 +299,17 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return build_status.ConsumeValueOrDie();
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
+Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
+  return Status::OK();
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
   return Build(instructions_.back().id(), remove_dynamic_dimensions);
 }
 
@@ -318,11 +323,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root,
 
 StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
                                            bool remove_dynamic_dimensions) {
-  if (!first_error_.ok()) {
-    string backtrace;
-    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
-    return AppendStatus(first_error_, backtrace);
-  }
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
 
   // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
   // all dynamic dimensions before building xla program until we have support in
@@ -479,7 +480,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, const XlaOp& operand) {
 }
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                           absl::Span<const int64> broadcast_dimensions) {
+                           absl::Span<const int64> broadcast_dimensions,
+                           absl::optional<ComparisonDirection> direction) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -488,6 +490,17 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
                         ShapeInference::InferBinaryOpShape(
                             binop, lhs_shape, rhs_shape, broadcast_dimensions));
     *instr.mutable_shape() = shape.ToProto();
+    if (binop == HloOpcode::kCompare) {
+      if (!direction.has_value()) {
+        return InvalidArgument(
+            "kCompare expects a ComparisonDirection, but none provided.");
+      }
+      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
+    } else if (direction.has_value()) {
+      return InvalidArgument(
+          "A comparison direction is provided for a non-compare opcode: %s.",
+          HloOpcodeString(binop));
+    }
 
     const int64 lhs_rank = lhs_shape.rank();
     const int64 rhs_rank = rhs_shape.rank();
@@ -1879,32 +1892,46 @@ XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaComputation& true_computation,
                               const XlaOp& false_operand,
                               const XlaComputation& false_computation) {
+  // The index of true_computation must be 0 and that of false computation
+  // must be 1.
+  return Conditional(predicate, {&true_computation, &false_computation},
+                     {true_operand, false_operand});
+}
+
+XlaOp XlaBuilder::Conditional(
+    const XlaOp& branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
+    absl::Span<const XlaOp> branch_operands) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
-    TF_ASSIGN_OR_RETURN(const Shape& predicate_shape, GetShape(predicate));
-    TF_ASSIGN_OR_RETURN(const Shape& true_operand_shape,
-                        GetShape(true_operand));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& true_computation_shape,
-                        true_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(const Shape& false_operand_shape,
-                        GetShape(false_operand));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& false_computation_shape,
-                        false_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
-        Shape shape,
-        ShapeInference::InferConditionalShape(
-            predicate_shape, true_operand_shape, false_operand_shape,
-            true_computation_shape, false_computation_shape));
+    TF_ASSIGN_OR_RETURN(const Shape& branch_index_shape,
+                        GetShape(branch_index));
+    std::vector<Shape> branch_operand_shapes(branch_operands.size());
+    std::vector<ProgramShape> branch_computation_shapes(
+        branch_computations.size());
+    for (int j = 0; j < branch_operands.size(); ++j) {
+      TF_ASSIGN_OR_RETURN(branch_operand_shapes[j],
+                          GetShape(branch_operands[j]));
+      TF_ASSIGN_OR_RETURN(branch_computation_shapes[j],
+                          branch_computations[j]->GetProgramShape());
+    }
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferConditionalShape(
+                            branch_index_shape, branch_computation_shapes,
+                            branch_operand_shapes));
     *instr.mutable_shape() = shape.ToProto();
 
-    // The index of true_computation must be 0 and that of false computation
-    // must be 1.
-    AddCalledComputation(true_computation, &instr);
-    AddCalledComputation(false_computation, &instr);
+    for (const XlaComputation* branch_computation : branch_computations) {
+      AddCalledComputation(*branch_computation, &instr);
+    }
 
+    std::vector<XlaOp> operands(1, branch_index);
+    for (const XlaOp branch_operand : branch_operands) {
+      operands.emplace_back(branch_operand);
+    }
     return AddInstruction(std::move(instr), HloOpcode::kConditional,
-                          {predicate, true_operand, false_operand});
+                          absl::MakeSpan(operands));
   });
 }
 
@@ -2893,38 +2920,39 @@ XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index) {
 
 XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kEq, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
 XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kNe, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe);
 }
 
 XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kGe, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe);
 }
 
 XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kGt, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt);
 }
 
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kLe, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe);
 }
 
 XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kLt, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
+}
+
+XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction) {
+  return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
+                                 broadcast_dimensions, direction);
 }
 
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
@@ -3018,6 +3046,21 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
 
     return builder->AddInstruction(std::move(instr),
                                    HloOpcode::kTriangularSolve, {a, b});
+  });
+}
+
+XlaOp Cholesky(XlaOp a, bool lower) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& a_shape, builder->GetShape(a));
+    xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+    options.set_lower(lower);
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferCholeskyShape(a_shape));
+    *instr.mutable_shape() = shape.ToProto();
+
+    return builder->AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
   });
 }
 
@@ -3286,6 +3329,12 @@ XlaOp Real(const XlaOp& operand) {
 XlaOp Imag(const XlaOp& operand) {
   return operand.builder()->UnaryOp(HloOpcode::kImag, operand);
 }
+XlaOp Sqrt(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
+}
+XlaOp Rsqrt(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);
+}
 
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions) {
@@ -3357,6 +3406,13 @@ XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
   return predicate.builder()->Conditional(predicate, true_operand,
                                           true_computation, false_operand,
                                           false_computation);
+}
+
+XlaOp Conditional(const XlaOp& branch_index,
+                  absl::Span<const XlaComputation* const> branch_computations,
+                  absl::Span<const XlaOp> branch_operands) {
+  return branch_index.builder()->Conditional(branch_index, branch_computations,
+                                             branch_operands);
 }
 
 XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,

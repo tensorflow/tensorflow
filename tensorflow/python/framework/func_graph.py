@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as py_collections
+import itertools
 import weakref
 
 from tensorflow.core.framework import attr_value_pb2
@@ -77,10 +78,22 @@ def convert_structure_to_signature(structure, arg_names=None):
     Identical structure that has TensorSpec objects instead of Tensors and
     UknownArgument instead of any unsupported types.
   """
-
-  def encode_arg(arg, name=None):
+  def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
+      user_specified_name = None
+      try:
+        user_specified_name = compat.as_str(
+            arg.op.get_attr("_user_specified_name"))
+      except ValueError:
+        pass
+
+      if path and user_specified_name and user_specified_name != path[0]:
+        # The user has explicitly named the argument differently than the name
+        # of the function argument.
+        name = user_specified_name
+      else:
+        name = "/".join([str(p) for p in path])
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,
@@ -106,10 +119,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         ((arg_names[path[0]],) + path[1:], arg) for path, arg in flattened
     ]
 
-  mapped = [
-      encode_arg(arg, "/".join([str(p) for p in path]))
-      for path, arg in flattened
-  ]
+  mapped = [encode_arg(arg, path) for path, arg in flattened]
   return nest.pack_sequence_as(structure, mapped)
 
 
@@ -124,6 +134,8 @@ class FuncGraph(ops.Graph):
       inputs coming first.
     outputs: Tensors that will be returned by this function. The tensors are in
       this FuncGraph.
+    control_outputs: Operations that must be executed before the function
+      represented by this graph can be said to have been executed.
     structured_input_signature: A tuple of (args, kwargs), which are both
       possibly-nested python objects that were received by this function. Note
       that these structures might contain Python `None`s.
@@ -135,6 +147,8 @@ class FuncGraph(ops.Graph):
       or the global default Graph.
     captures: Maps external tensor -> internal tensor (i.e. input placeholder).
       The entries are in the order they were captured.
+    control_captures: Set of external ops on which this graph has a control
+      dependency.
     seed: The graph-level random seed.
     capture_by_value: If True, the func graph will capture Variables by value
       instead of reference.
@@ -164,6 +178,8 @@ class FuncGraph(ops.Graph):
     self.name = name
     self.inputs = []
     self.outputs = []
+    self.control_outputs = []
+    self.control_captures = set()
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
@@ -188,11 +204,16 @@ class FuncGraph(ops.Graph):
 
     if context.executing_eagerly():
       self.seed = context.global_seed()
+      # [for tf-data user migration from TF1.0 to 2.0] seed_used keep track of
+      # any None op_seed for random_op in the function, in which case we end up
+      # using function seed, which could be unintended behavior for the op.
+      self._seed_used = False
       device_type = context.context().device_spec.device_type
       self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
                            or device_type == "XLA_CPU")
     else:
       self.seed = graph.seed
+      self._seed_used = False
       self._xla_compile = getattr(graph, "_xla_compile", False)
       # TODO(allenl): Figure out if we can remove colocation stack
       # specialization (currently used in cond_v2), here and in the cache key.
@@ -211,6 +232,47 @@ class FuncGraph(ops.Graph):
 
   def __str__(self):
     return "FuncGraph(name=%s, id=%s)" % (self.name, id(self))
+
+  def control_dependencies(self, control_inputs):
+    """Handles control dependencies.
+
+    FuncGraph wraps Graph's control_dependencies logic by first filtering out
+    any external tensors / operations and storing them in the graph's
+    control_captures member. Any consumers of this function graph must then
+    decide how to handle the control captures.
+
+    Args:
+      control_inputs: A list of `Operation` or `Tensor` objects which
+        must be executed or computed before running the operations
+        defined in the context.  Can also be `None` to clear the control
+        dependencies.
+
+    Returns:
+     A context manager that specifies control dependencies for all
+     operations constructed within the context.
+
+    Raises:
+      TypeError: If `control_inputs` is not a list of `Operation` or
+        `Tensor` objects.
+    """
+    if control_inputs is None:
+      return super(FuncGraph, self).control_dependencies(control_inputs)
+
+    filtered_control_inputs = []
+    for c in control_inputs:
+      # Check for _UnreadVariable
+      if (isinstance(c, ops.IndexedSlices) or
+          (hasattr(c, "_handle") and hasattr(c, "op"))):
+        c = c.op
+      graph_element = ops._as_graph_element(c)  # pylint: disable=protected-access
+      if graph_element is None:
+        graph_element = c
+      if graph_element is not None and getattr(
+          graph_element, "graph", None) is not self:
+        self.control_captures.add(graph_element)
+      else:
+        filtered_control_inputs.append(graph_element)
+    return super(FuncGraph, self).control_dependencies(filtered_control_inputs)
 
   def as_default(self):
     outer_cm = super(FuncGraph, self).as_default()
@@ -467,7 +529,8 @@ def func_graph_from_py_func(name,
                             arg_names=None,
                             op_return_value=None,
                             collections=None,
-                            capture_by_value=None):
+                            capture_by_value=None,
+                            override_flat_arg_shapes=None):
   """Returns a `FuncGraph` generated from `python_func`.
 
   Args:
@@ -506,6 +569,12 @@ def func_graph_from_py_func(name,
     capture_by_value: An optional boolean. If True, the func graph will capture
       Variables by value instead of reference. By default inherit from outer
       graphs, and failing that will default to False.
+    override_flat_arg_shapes: An optional list of instances that are either
+      `None` or `TensorShape`.  The length must match that of
+      `nest.flatten((args, kwargs))`.  The entries containing value `None`
+      must match entries in flattened arguments containing non-tensors, while
+      entries containing a `TensorShape` must match entries in the flattened
+      arguments containing tensors.
 
   Returns:
     A FuncGraph.
@@ -513,6 +582,8 @@ def func_graph_from_py_func(name,
   Raises:
     TypeError: If any of `python_func`'s return values is neither `None` nor a
       `Tensor`.
+    ValueError: If both `signature` and `override_flat_arg_shapes` are
+      passed in.
   """
   if op_return_value is not None:
     assert isinstance(op_return_value, ops.Tensor), op_return_value
@@ -521,21 +592,35 @@ def func_graph_from_py_func(name,
                            capture_by_value=capture_by_value)
   assert isinstance(func_graph, FuncGraph)
   if add_control_dependencies:
-    control_manager = AutomaticControlDependencies
+    control_manager = AutomaticControlDependencies()
   else:
-    control_manager = ops.NullContextmanager
-  with func_graph.as_default(), control_manager() as a:
+    control_manager = ops.NullContextmanager()
+  with func_graph.as_default(), control_manager as a:
     current_scope = variable_scope.get_variable_scope()
     default_use_recource = current_scope.use_resource
     current_scope.set_use_resource(True)
+
+    if signature is not None and override_flat_arg_shapes is not None:
+      raise ValueError(
+          "Passed both signature and override_flat_arg_shapes: %s and %s."
+          % (signature, override_flat_arg_shapes))
 
     if signature is not None:
       args = signature
       kwargs = {}
 
     # Creates and names placeholders for all arguments.
-    func_args = _get_defun_inputs_from_args(args, arg_names)
-    func_kwargs = _get_defun_inputs_from_kwargs(kwargs)
+    if override_flat_arg_shapes is not None:
+      flat_args = nest.flatten(args)
+      arg_shapes = override_flat_arg_shapes[:len(flat_args)]
+      kwarg_shapes = override_flat_arg_shapes[len(flat_args):]
+    else:
+      arg_shapes = None
+      kwarg_shapes = None
+    func_args = _get_defun_inputs_from_args(
+        args, arg_names, flat_shapes=arg_shapes)
+    func_kwargs = _get_defun_inputs_from_kwargs(
+        kwargs, flat_shapes=kwarg_shapes)
 
     # Convert all Tensors into TensorSpecs before saving the structured inputs.
     # If storing pure concrete functions that are not called through polymorphic
@@ -608,7 +693,8 @@ def func_graph_from_py_func(name,
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
         converted_func = tf_decorator.make_decorator(original_func, wrapper)
-        tf_decorator.rewrap(python_func, original_func, converted_func)
+        python_func = tf_decorator.rewrap(python_func, original_func,
+                                          converted_func)
 
       func_outputs = python_func(*func_args, **func_kwargs)
 
@@ -651,7 +737,10 @@ def func_graph_from_py_func(name,
 
     func_graph.variables = variables
 
-  # Register any other functions defined in the graph.
+  if add_control_dependencies:
+    func_graph.control_outputs.extend(control_manager.ops_which_must_run)
+
+# Register any other functions defined in the graph.
   with ops.init_scope():
     if context.executing_eagerly():
       for f in func_graph._functions.values():  # pylint: disable=protected-access
@@ -757,37 +846,82 @@ def _create_substitute_placeholder(value, name=None, dtype=None):
   return placeholder
 
 
-def _get_defun_inputs_from_args(args, names):
+def _get_defun_inputs_from_args(args, names, flat_shapes=None):
   """Maps Python function positional args to graph-construction inputs."""
-  return _get_defun_inputs(args, names, structure=args)
+  return _get_defun_inputs(
+      args, names, structure=args, flat_shapes=flat_shapes)
 
 
-def _get_defun_inputs(flat_args, names, structure):
+def _get_defun_inputs(args, names, structure, flat_shapes=None):
   """Maps python function args to graph-construction inputs.
 
   Args:
-    flat_args: A flat list of user-specified arguments.
+    args: A flat list of user-specified arguments.
     names: A list of strings with user-specified argument names, same length as
-      `flat_args`. May be `None`, in which case a generic name is used.
+      `args`. May be `None`, in which case a generic name is used.
     structure: The original argument list or dictionary.
+    flat_shapes: A flat list of values that are either `None` or
+      instances of `TensorShape`.  If provided, then length must match
+      that of `nest.flatten(args)`; and locations where `args` are
+      instances of `Tensor` must have a corresponding `TensorShape` in
+      `flat_shapes`.  May be `None`, in which case exact shapes are read
+      directly from the args.
 
   Returns:
     Placeholders with the same structure as `structure`.
+
+  Raises:
+    RuntimeError: if `flat_shapes` is provided, but
+     `len(flat_shapes) != len(nest.flatten(args))`.
+    RuntimeError: if a shape from `flat_shapes` is not None
+     for an argument that is not a `Tensor`, `TensorSpec`,
+     or `ResourceVariable`.
   """
   func_graph = ops.get_default_graph()
   function_inputs = []
   if names is None:
-    names = [None] * len(flat_args)
-  for arg_value, name in zip(flat_args, names):
-    for arg in nest.flatten(arg_value):
+    names = [None] * len(args)
+  if flat_shapes is None:
+    shapes_iter = itertools.repeat(None)
+  else:
+    len_flat_args = len(nest.flatten(args))
+    if len_flat_args != len(flat_shapes):
+      raise RuntimeError(
+          "Length of fully flat shapes (%d) must match that of "
+          "flatten(args) (%d).  args: %s, flat_shapes: %s"
+          % (len(flat_shapes),
+             len_flat_args,
+             args,
+             flat_shapes))
+    shapes_iter = iter(flat_shapes)
+  for arg_value, name in zip(args, names):
+    flattened = nest.flatten(arg_value)
+    tensor_specs = [
+        arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)
+    ]
+    specified_names = [arg.name for arg in tensor_specs if arg.name]
+    if specified_names and len(specified_names) < len(tensor_specs):
+      raise ValueError("If specifying TensorSpec names for nested structures, "
+                       "either zero or all names have to be specified.")
+
+    for arg in flattened:
+      # We have a shape entry for each arg, regadless of whether it's a real
+      # Tensor or not.  For non-tensor entries it should be None.
+      shape = next(shapes_iter)
       if isinstance(arg, (ops.Tensor, tensor_spec.TensorSpec)):
         if isinstance(arg, tensor_spec.TensorSpec) and arg.name:
           requested_name = arg.name
         else:
           requested_name = name
-        placeholder = graph_placeholder(
-            arg.dtype, arg.shape,
-            name=requested_name)
+        placeholder_shape = shape if shape is not None else arg.shape
+        try:
+          placeholder = graph_placeholder(
+              arg.dtype, placeholder_shape,
+              name=requested_name)
+        except ValueError:
+          # Sometimes parameter names are not valid op names, so fall back to
+          # unnamed placeholders.
+          placeholder = graph_placeholder(arg.dtype, placeholder_shape)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.
@@ -806,18 +940,24 @@ def _get_defun_inputs(flat_args, names, structure):
             attr_value_pb2.AttrValue(s=compat.as_bytes(name)))
         function_inputs.append(arg)
       else:
+        if shape is not None:
+          raise RuntimeError(
+              "Expected provided shape override to be None for arg that isn't "
+              "a Tensor, but saw arg: '%s', shape: '%s'.  args: %s"
+              % (arg, shape, args))
         function_inputs.append(arg)
   return nest.pack_sequence_as(structure, function_inputs)
 
 
-def _get_defun_inputs_from_kwargs(kwargs):
+def _get_defun_inputs_from_kwargs(kwargs, flat_shapes):
   """Maps Python function keyword args to graph-construction inputs."""
   if kwargs:
-    names, flat_args = zip(*sorted(kwargs.items()))
+    names, args = zip(*sorted(kwargs.items()))
   else:
     names = []
-    flat_args = []
-  return _get_defun_inputs(flat_args, names, structure=kwargs)
+    args = []
+  return _get_defun_inputs(
+      args, names, structure=kwargs, flat_shapes=flat_shapes)
 
 
 def dismantle_func_graph(func_graph):

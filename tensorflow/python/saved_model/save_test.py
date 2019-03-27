@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for checkpointable object SavedModel save."""
+"""Tests for trackable object SavedModel save."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -41,8 +41,8 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
 
 
@@ -87,7 +87,7 @@ def _import_and_infer(
 class SaveTest(test.TestCase):
 
   def test_method_save_signature(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])
@@ -99,7 +99,7 @@ class SaveTest(test.TestCase):
         _import_and_infer(save_dir, {"x": 1.}))
 
   def test_method_save_concrete(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda z: {"out": 2. * z})
     root.f(constant_op.constant(1.))
@@ -115,7 +115,7 @@ class SaveTest(test.TestCase):
             save_dir, {"z": 1.}, signature_key="non_default_key"))
 
   def test_non_concrete_error(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: 2. * x)
     root.f(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -124,7 +124,7 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, root.f)
 
   def test_captures_unreachable_variable(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     unreachable_variable = variables.Variable([5.0, 2.0])
     root.reachable_variable = variables.Variable([1.0, 3.0])
 
@@ -143,7 +143,7 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir)
 
   def test_nested_inputs(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x[0],
         input_signature=([tensor_spec.TensorSpec(None, dtypes.float32),
@@ -156,7 +156,7 @@ class SaveTest(test.TestCase):
       root.f.get_concrete_function()
 
   def test_nested_outputs(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(lambda x: (2. * x, (3. * x, 4. * x)))
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
@@ -177,7 +177,7 @@ class SaveTest(test.TestCase):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.v1 = variables.Variable(3.)
     root.v2 = variables.Variable(2.)
     root.f = def_function.function(
@@ -214,7 +214,7 @@ class SaveTest(test.TestCase):
                                     {"x": [[3., 4.]], "y": [2.]}))
 
   def test_single_function_default_signature(self):
-    model = tracking.AutoCheckpointable()
+    model = tracking.AutoTrackable()
     model.f = def_function.function(lambda: 3., input_signature=())
     model.f()
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
@@ -223,7 +223,7 @@ class SaveTest(test.TestCase):
                         _import_and_infer(save_dir, {}))
 
   def test_single_function_no_signature(self):
-    model = tracking.AutoCheckpointable()
+    model = tracking.AutoTrackable()
     model.f = def_function.function(lambda: 3.)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     save.save(model, save_dir)
@@ -322,7 +322,7 @@ class AssetTests(test.TestCase):
       f.write("alpha\nbeta\ngamma\n")
 
   def test_asset_path_returned(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.path = tracking.TrackableAsset(self._vocab_path)
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
     root.get_asset = def_function.function(lambda: root.path.asset_path)
@@ -362,7 +362,7 @@ class AssetTests(test.TestCase):
         _import_and_infer(second_dir, {"keys": ["gamma", "beta"]}))
 
   def test_unused_asset(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.f = def_function.function(
         lambda x: 2. * x,
         input_signature=[tensor_spec.TensorSpec(None, dtypes.float32)])

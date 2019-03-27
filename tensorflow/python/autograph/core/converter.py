@@ -233,8 +233,7 @@ class ConversionOptions(object):
     """
 
     def as_qualified_name(o):
-      name = inspect_utils.getqualifiedname(
-          ctx.info.namespace, o, max_depth=1)
+      name = inspect_utils.getqualifiedname(ctx.info.namespace, o, max_depth=1)
       if not name:
         if isinstance(o, weakref.ref):
           # `o` might already be a weak reference, if this object was
@@ -252,9 +251,7 @@ class ConversionOptions(object):
 
     def list_of_features(values):
       return parser.parse_expression('({})'.format(', '.join(
-          'ag__.{}'.format(v)
-          for v in Feature.__members__.values()
-          if v in values)))
+          'ag__.{}'.format(str(v)) for v in values)))
 
     if internal_convert_user_code is None:
       internal_convert_user_code = self.internal_convert_user_code

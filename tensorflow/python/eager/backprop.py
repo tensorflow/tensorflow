@@ -973,13 +973,15 @@ class GradientTape(object):
     definition of a Jacobian.
 
     Example usage:
-
+    
+    ```python
     with tf.GradientTape() as g:
       x  = tf.constant([1.0, 2.0])
       g.watch(x)
       y = x * x
     jacobian = g.jacobian(y, x)
     # jacobian value is [[2., 0.], [0., 4.]]
+    ```
 
     Args:
       target: Tensor to be differentiated.
@@ -1082,12 +1084,14 @@ class GradientTape(object):
     result in the jacobian computation given the independence assumption.
 
     Example usage:
+    ```python
     with tf.GradientTape() as g:
       x = tf.constant([[1, 2], [3, 4]], dtype=tf.float32)
       g.watch(x)
       y = x * x
     batch_jacobian = g.batch_jacobian(y, x)
     # batch_jacobian is [[[2,  0], [0,  4]], [[6,  0], [0,  8]]]
+    ```
 
     Args:
       target: A tensor with rank 2 or higher and with shape [b, y1, ..., y_n].

@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -14,7 +14,8 @@
 # =============================================================================
 """Python front-end supports for functions.
 
-NOTE: functions are currently experimental and subject to change!
+NOTE: At this time, functions are experimental and subject to change!. Proceed
+with caution.
 """
 
 from __future__ import absolute_import
@@ -59,8 +60,8 @@ class Defun(object):
       def foo(x, y):
         ...
 
-  When you call the decorated function it will add `call` ops to the
-  default graph and adds the definition of the function into the
+  When you call the decorated function, it adds the `call` ops to the
+  default graph. In addition, it adds the definition of the function into the
   default graph. Because the addition of the function into the graph
   is deferred, the decorator can be used anywhere in the program.
 
@@ -129,13 +130,15 @@ class Defun(object):
   def __call__(self, func):
     # Various sanity checks on the callable func.
     if not callable(func):
-      raise ValueError("func %s must be callable" % func)
+      raise ValueError("function %s must be callable" % func)
 
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
     if argspec.keywords or argspec.defaults:
-      raise ValueError("Functions with argument defaults or keywords "
-                       "arguments are not supported.")
+      raise ValueError(
+          "function with argument defaults or keywords arguments are not"
+          " supported. {} has defaults {} and keywords {}.".format(
+              func, argspec.defaults, argspec.keywords))
 
     # Computes how many arguments 'func' has.
     min_args = len(argspec.args)
@@ -310,7 +313,7 @@ class _DefinedFunction(object):
 
   @property
   def grad_func_name(self):
-    """Its gradient function's name."""
+    """Returns the name of the gradient function."""
     return self._grad_func.name if self._grad_func else None
 
   @property
@@ -412,6 +415,8 @@ class _DefinedFunction(object):
           [t._as_tf_output() for t in temp_graph.inputs],
           [t._as_tf_output() for t in temp_graph.outputs],
           output_names,
+          [], # control_outputs
+          [], # control_output_names
           None,  # opts
           description)
       self._c_func = c_api_util.ScopedTFFunction(c_func)

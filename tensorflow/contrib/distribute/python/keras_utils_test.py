@@ -34,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 
@@ -318,6 +319,99 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             verbose=0,
             callbacks=[keras.callbacks.ReduceLROnPlateau()])
 
+  @combinations.generate(
+      combinations.combine(
+          distribution=[combinations.one_device_strategy], mode=['graph']))
+  def test_distribution_strategy_with_add_metric_add_loss(self, distribution):
+    with distribution.scope():
+      x = keras.layers.Input(shape=(1,))
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+
+      err_msg = (
+          'We currently do not support compiling the model with distribution '
+          r'strategy if `model.add_loss\(tensor\)` or '
+          r'`model.add_metric\(tensor\)` has been called.')
+
+      # Test with add_metric.
+      model = keras.models.Model(x, y)
+      model.add_metric(
+          math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.compile('sgd',)
+
+      # Test with add_loss.
+      model = keras.models.Model(x, y)
+      model.add_loss(math_ops.reduce_mean(y))
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.compile('sgd',)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[combinations.one_device_strategy], mode=['eager']))
+  def test_distribution_strategy_with_run_eagerly(self, distribution):
+    with distribution.scope():
+      x = keras.layers.Input(shape=(1,))
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+      model = keras.models.Model(x, y)
+
+      err_msg = ('We currently do not support enabling `run_eagerly` with '
+                 'distribution strategy.')
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.compile('sgd', run_eagerly=True)
+
+  # TODO(b/124377929): Remove error assertions once subclassed models
+  # are supported in DistributedStrategy.
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
+  def test_distribution_strategy_on_subclassed_model(self, distribution):
+    with distribution.scope():
+
+      class _SimpleMLP(keras.Model):
+
+        def __init__(self, num_labels):
+          super(_SimpleMLP, self).__init__()
+          self.dense = keras.layers.Dense(num_labels)
+
+        def call(self, inputs):
+          return self.dense(inputs)
+
+      model = _SimpleMLP(3)
+
+      with self.assertRaisesRegexp(
+          ValueError,
+          'We currently do not support distribution strategy with a '
+          '`Sequential` model that is created without '
+          '`input_shape`/`input_dim` set in its first layer or '
+          'a subclassed model.'):
+        model.compile('sgd')
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
+  def test_distribution_strategy_on_deferred_sequential_model(
+      self, distribution):
+    with distribution.scope():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(16, activation='relu'))
+      model.add(keras.layers.Dense(3, activation='softmax'))
+
+      with self.assertRaisesRegexp(
+          ValueError,
+          'We currently do not support distribution strategy with a '
+          '`Sequential` model that is created without '
+          '`input_shape`/`input_dim` set in its first layer or '
+          'a subclassed model.'):
+        model.compile('sgd')
+
 
 class TestDistributionStrategyWithLossMasking(test.TestCase,
                                               parameterized.TestCase):
@@ -414,8 +508,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
   @combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
-  def test_save_load_checkpointable(self, distribution):
-    # TODO(sourabhbajaj): Test fails with optimizer v2 without h5
+  def test_save_load_trackable_optimizer_v1(self, distribution):
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)
       with distribution.scope():
@@ -428,6 +521,27 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
         model_2 = keras_test_lib.get_model()
         model_2.compile(gradient_descent.GradientDescentOptimizer(0.01), 'mse')
+        model_2.load_weights(weights_file)
+        model_2.predict(
+            keras_test_lib.get_predict_dataset(distribution), steps=2)
+        model_2.fit(dataset, epochs=1, steps_per_epoch=1)
+
+  @combinations.generate(
+      keras_test_lib.all_strategy_minus_default_and_tpu_combinations())
+  def test_save_load_trackable_optimizer_v2(self, distribution):
+    # TODO(b/123533246): Enable the test for TPU once bug is fixed
+    with self.cached_session():
+      dataset = keras_test_lib.get_dataset(distribution)
+      with distribution.scope():
+        model = keras_test_lib.get_model()
+        model.compile(gradient_descent_keras.SGD(0.01), 'mse')
+        model.fit(dataset, epochs=1, steps_per_epoch=1)
+
+        weights_file = tempfile.mktemp()
+        model.save_weights(weights_file)
+
+        model_2 = keras_test_lib.get_model()
+        model_2.compile(gradient_descent_keras.SGD(0.01), 'mse')
         model_2.load_weights(weights_file)
         model_2.predict(
             keras_test_lib.get_predict_dataset(distribution), steps=2)

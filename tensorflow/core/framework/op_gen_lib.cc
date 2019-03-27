@@ -228,7 +228,6 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
     // Add every line to unescaped until we see the "END" string.
     string unescaped;
     bool first = true;
-    string suffix;
     while (!multiline_pbtxt.empty()) {
       SplitAt('\n', &multiline_pbtxt, &line);
       if (str_util::ConsumePrefix(&line, end)) break;

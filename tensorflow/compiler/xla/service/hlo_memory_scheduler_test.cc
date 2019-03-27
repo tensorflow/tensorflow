@@ -254,8 +254,9 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   HloInstruction* zero_vector =
       cond_builder.AddInstruction(HloInstruction::CreateConstant(
           LiteralUtil::CreateR1<float>({0, 0, 0, 0})));
-  cond_builder.AddInstruction(HloInstruction::CreateBinary(
-      ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
+  cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_param,
+                                    zero_vector, ComparisonDirection::kNe));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
 
   // param - 1

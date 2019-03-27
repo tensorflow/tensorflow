@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Exports a SavedModel from a Checkpointable Python object."""
+"""Exports a SavedModel from a Trackable Python object."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,6 +24,7 @@ import os
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -40,18 +41,17 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils_impl
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import graph_view
-from tensorflow.python.training.checkpointable import object_identity
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
 from tensorflow.python.training.saving import functional_saver
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
 
@@ -97,13 +97,13 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
     for name, dep in super(_AugmentedGraphView, self).list_dependencies(obj):
       used_names.add(name)
       if name in extra_dependencies:
-        yield base.CheckpointableReference(name, extra_dependencies[name])
+        yield base.TrackableReference(name, extra_dependencies[name])
       else:
-        yield base.CheckpointableReference(name, dep)
+        yield base.TrackableReference(name, dep)
     for name, dep in extra_dependencies.items():
       if name in used_names:
         continue
-      yield base.CheckpointableReference(name, dep)
+      yield base.TrackableReference(name, dep)
 
   def list_functions(self, obj):
     obj_functions = self._functions.get(obj, None)
@@ -114,12 +114,12 @@ class _AugmentedGraphView(graph_view.ObjectGraphView):
 
 
 class _SaveableView(object):
-  """Provides a frozen view over a checkpointable root.
+  """Provides a frozen view over a trackable root.
 
   This class helps creating a single stable view over an object to save. The
   saving code should access properties and functions via this class and not via
   the original object as there are cases where an object construct their
-  checkpointable attributes and functions dynamically per call and will yield
+  trackable attributes and functions dynamically per call and will yield
   different objects if invoked more than once.
 
   Changes to the graph, for example adding objects, must happen in
@@ -130,9 +130,9 @@ class _SaveableView(object):
 
   def __init__(self, checkpoint_view):
     self.checkpoint_view = checkpoint_view
-    checkpointable_objects, node_ids, slot_variables = (
+    trackable_objects, node_ids, slot_variables = (
         self.checkpoint_view.objects_ids_and_slot_variables())
-    self.nodes = checkpointable_objects
+    self.nodes = trackable_objects
     self.node_ids = node_ids
     self.captured_tensor_node_ids = object_identity.ObjectIdentityDictionary()
     self.slot_variables = slot_variables
@@ -214,7 +214,7 @@ class _SaveableView(object):
         asset_index={})
     for node_id, obj in enumerate(self.nodes):
       if isinstance(obj, tracking.TrackableResource):
-        new_resource = obj.create_resource()
+        new_resource = obj._create_resource()  # pylint: disable=protected-access
         resource_map[obj.resource_handle] = new_resource
         self.captured_tensor_node_ids[obj.resource_handle] = node_id
       elif resource_variable_ops.is_resource_variable(obj):
@@ -417,7 +417,7 @@ def _trace_resource_initializers(accessible_objects):
   resource_initializers = []
 
   def _wrap_initializer(obj):
-    obj.initialize()
+    obj._initialize()  # pylint: disable=protected-access
     return constant_op.constant(1.)  # Dummy control output
 
   def _wrap_obj_initializer(obj):
@@ -542,9 +542,9 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
   return asset_info, exported_graph
 
 
-def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
+def _serialize_object_graph(saveable_view, asset_file_def_index):
   """Save a SavedObjectGraph proto for `root`."""
-  # SavedObjectGraph is similar to the CheckpointableObjectGraph proto in the
+  # SavedObjectGraph is similar to the TrackableObjectGraph proto in the
   # checkpoint. It will eventually go into the SavedModel.
   proto = saved_object_graph_pb2.SavedObjectGraph()
   saveable_view.fill_object_graph_proto(proto)
@@ -559,14 +559,7 @@ def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
 
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
     _write_object_proto(obj, obj_proto, asset_file_def_index)
-
-  extra_asset_dir = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY))
-  file_io.recursive_create_dir(extra_asset_dir)
-  object_graph_filename = os.path.join(
-      extra_asset_dir, compat.as_bytes("object_graph.pb"))
-  file_io.write_string_to_file(object_graph_filename, proto.SerializeToString())
+  return proto
 
 
 def _write_object_proto(obj, proto, asset_file_def_index):
@@ -600,10 +593,11 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.user_object.CopyFrom(registered_type_proto)
 
 
-@tf_export("saved_model.save", v1=["saved_model.experimental.save"])
+@tf_export("saved_model.save",
+           v1=["saved_model.save", "saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
-  """Exports the Checkpointable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
+  """Exports the Trackable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
 
   Example usage:
 
@@ -651,7 +645,7 @@ def save(obj, export_dir, signatures=None):
   `.signatures` attribute. This is a reserved attribute: `tf.saved_model.save`
   on an object with a custom `.signatures` attribute will raise an exception.
 
-  Since `tf.keras.Model` objects are also Checkpointable, this function can be
+  Since `tf.keras.Model` objects are also Trackable, this function can be
   used to export Keras models. For example, exporting with a signature
   specified:
 
@@ -737,7 +731,7 @@ def save(obj, export_dir, signatures=None):
   prior to the TensorFlow 2.0 release.
 
   Args:
-    obj: A checkpointable object to export.
+    obj: A trackable object to export.
     export_dir: A directory in which to write the SavedModel.
     signatures: Optional, either a `tf.function` with an input signature
       specified or the result of `f.get_concrete_function` on a
@@ -750,7 +744,7 @@ def save(obj, export_dir, signatures=None):
       `tf.saved_model.signature_constants` module.
 
   Raises:
-    ValueError: If `obj` is not checkpointable.
+    ValueError: If `obj` is not trackable.
 
   @compatibility(eager)
   Not supported when graph building. From TensorFlow 1.x,
@@ -771,9 +765,9 @@ def save(obj, export_dir, signatures=None):
             "tf.enable_eager_execution() must run first when calling it from "
             "TensorFlow 1.x.")
   # pylint: enable=line-too-long
-  if not isinstance(obj, base.Checkpointable):
+  if not isinstance(obj, base.Trackable):
     raise ValueError(
-        "Expected a Checkpointable object for export, got {}.".format(obj))
+        "Expected a Trackable object for export, got {}.".format(obj))
 
   checkpoint_graph_view = _AugmentedGraphView(obj)
   if signatures is None:
@@ -799,7 +793,7 @@ def save(obj, export_dir, signatures=None):
   # making a SavedModel proto and writing it directly.
   saved_model = saved_model_pb2.SavedModel()
   meta_graph_def = saved_model.meta_graphs.add()
-  object_saver = util.CheckpointableSaver(checkpoint_graph_view)
+  object_saver = util.TrackableSaver(checkpoint_graph_view)
   asset_info, exported_graph = _fill_meta_graph_def(
       meta_graph_def, saveable_view, signatures)
   saved_model.saved_model_schema_version = (
@@ -814,8 +808,10 @@ def save(obj, export_dir, signatures=None):
   path = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+  object_graph_proto = _serialize_object_graph(
+      saveable_view, asset_info.asset_index)
+  meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
   file_io.write_string_to_file(path, saved_model.SerializeToString())
-  _write_object_graph(saveable_view, export_dir, asset_info.asset_index)
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured
   # constants in the saved graph.

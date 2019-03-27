@@ -92,6 +92,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
+        "tf.image.resize": {
+            "align_corners": None,
+        },
+        "tf.image.resize_images": {
+            "align_corners": None,
+        },
         "tf.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -223,6 +229,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "Targmax": "output_dtype",
         },
         "tf.nn.max_pool": {
+            "value": "input"
+        },
+        "tf.nn.avg_pool": {
+            "value": "input"
+        },
+        "tf.nn.avg_pool2d": {
             "value": "input"
         },
         "tf.multinomial": {
@@ -411,17 +423,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "filter": "filters",
         },
         "tf.contrib.summary.audio": {
+            "tensor": "data",
             "family": None,
         },
         "tf.contrib.summary.histogram": {
+            "tensor": "data",
             "family": None,
         },
         "tf.contrib.summary.image": {
+            "tensor": "data",
             "bad_color": None,
             "max_images": "max_outputs",
             "family": None,
         },
         "tf.contrib.summary.scalar": {
+            "tensor": "data",
             "family": None,
         },
     }
@@ -556,6 +572,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.estimator.make_early_stopping_hook":
+            "tf.estimator.experimental.make_early_stopping_hook",
+        "tf.contrib.estimator.stop_if_higher_hook":
+            "tf.estimator.experimental.stop_if_higher_hook",
+        "tf.contrib.estimator.stop_if_lower_hook":
+            "tf.estimator.experimental.stop_if_lower_hook",
+        "tf.contrib.estimator.stop_if_no_decrease_hook":
+            "tf.estimator.experimental.stop_if_no_decrease_hook",
+        "tf.contrib.estimator.stop_if_no_increase_hook":
+            "tf.estimator.experimental.stop_if_no_increase_hook",
         "tf.contrib.framework.CriticalSection":
             "tf.CriticalSection",
         "tf.contrib.framework.is_tensor":
@@ -575,11 +601,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.saved_model.load_keras_model":
             "tf.keras.experimental.load_from_saved_model",
         "tf.contrib.saved_model.save_keras_model":
-            "tf.keras.experimental.export",
+            "tf.keras.experimental.export_saved_model",
         "tf.contrib.rnn.RNNCell":
-            "tf.nn.rnn_cell.RNNCell",
+            "tf.compat.v1.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
             "tf.nn.rnn_cell.LSTMStateTuple",
+        "tf.contrib.rnn.BasicLSTMCell":
+            "tf.compat.v1.nn.rnn_cell.BasicLSTMCell",
+        "tf.contrib.rnn.BasicRNNCell":
+            "tf.compat.v1.nn.rnn_cell.BasicRNNCell",
+        "tf.contrib.rnn.GRUCell":
+            "tf.compat.v1.nn.rnn_cell.GRUCell",
+        "tf.contrib.rnn.LSTMCell":
+            "tf.compat.v1.nn.rnn_cell.LSTMCell",
+        "tf.contrib.rnn.MultiRNNCell":
+            "tf.compat.v1.nn.rnn_cell.MultiRNNCell",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":
@@ -648,6 +684,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.nn.fused_batch_norm",
         "tf.nn.softmax_cross_entropy_with_logits_v2":
             "tf.nn.softmax_cross_entropy_with_logits",
+        "tf.nn.sigmoid_cross_entropy_with_logits":
+            "tf.nn.sigmoid_cross_entropy_with_logits",
         "tf.losses.Reduction.MEAN":
             "tf.compat.v1.losses.Reduction.MEAN",
         "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
@@ -672,6 +710,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # changed significantly.
         "tf.nn.ctc_loss":
             "tf.compat.v1.nn.ctc_loss",
+        # tf.saved_model.load in 1.x has no equivalent in 2.x, but there is a
+        # symbol with the same name.
+        "tf.saved_model.load":
+            "tf.compat.v1.saved_model.load",
+        "tf.saved_model.load_v2":
+            "tf.compat.v2.saved_model.load",
         "tf.zeros_initializer":
             "tf.compat.v1.initializers.zeros",
         "tf.ones_initializer":
@@ -732,6 +776,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.assert_rank",
         "tf.nn.max_pool":
             "tf.nn.max_pool2d",
+        "tf.nn.avg_pool":
+            "tf.nn.avg_pool2d",
         "tf.keras.initializers.zeros":
             "tf.compat.v1.keras.initializers.zeros",
         "tf.keras.initializers.ones":
@@ -741,7 +787,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.data.experimental.map_and_batch_with_legacy_function":
             "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
         "tf.nn.conv2d_backprop_input":
-            "tf.nn.conv2d_transpose"
+            "tf.nn.conv2d_transpose",
+        "tf.test.compute_gradient":
+            "tf.compat.v1.test.compute_gradient",
     }
     # pylint: enable=line-too-long
 
@@ -854,6 +902,17 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.gradients",
         "tf.hessians",
         "tf.nn.max_pool",
+        "tf.nn.avg_pool",
+        "tf.estimator.LinearClassifier",
+        "tf.estimator.LinearRegressor",
+        "tf.estimator.DNNLinearCombinedClassifier",
+        "tf.estimator.DNNLinearCombinedRegressor",
+        "tf.estimator.DNNRegressor",
+        "tf.estimator.DNNClassifier",
+        "tf.estimator.BaselineClassifier",
+        "tf.estimator.BaselineRegressor",
+        "tf.initializers.uniform_unit_scaling",
+        "tf.uniform_unit_scaling_initializer",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -937,13 +996,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "`partition_strategy` has been removed from <function name>. "
         " The 'div' strategy will be used by default.")
 
-    # TODO(b/118888586): add default value change to update script.
-    default_loss_reduction_changed = (
-        ast_edits.WARNING,
-        "default value of loss_reduction has been changed to "
-        "SUM_OVER_BATCH_SIZE.\n"
-    )
-
     # make change instead
     uniform_unit_scaling_initializer_comment = (
         ast_edits.ERROR,
@@ -961,6 +1013,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "please switch to tf.compat.v1.estimator.Estimator.\n\t(2) This change "
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
+
+    # TODO(b/124529441): if possible eliminate need for manual checking.
+    contrib_summary_comment = (
+        ast_edits.WARNING,
+        "(Manual check required) tf.contrib.summary.* functions have been "
+        "migrated best-effort to tf.compat.v2.summary.* equivalents where "
+        "possible, but the resulting code may not always work. Please check "
+        "manually; you can report migration failures on b/124529441.")
 
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
@@ -1003,6 +1063,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.assert_rank_in":
             assert_rank_comment,
+        "tf.contrib.summary.audio":
+            contrib_summary_comment,
+        "tf.contrib.summary.histogram":
+            contrib_summary_comment,
+        "tf.contrib.summary.image":
+            contrib_summary_comment,
+        "tf.contrib.summary.scalar":
+            contrib_summary_comment,
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -1055,22 +1123,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             decay_function_comment,
         "tf.train.noisy_linear_cosine_decay":
             decay_function_comment,
-        "tf.estimator.LinearClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.LinearRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNLinearCombinedClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNLinearCombinedRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.BaselineClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.BaselineRegressor":
-            default_loss_reduction_changed,
+        "tf.nn.embedding_lookup":
+            deprecate_partition_strategy_comment,
+        "tf.nn.embedding_lookup_sparse":
+            deprecate_partition_strategy_comment,
         "tf.nn.nce_loss":
             deprecate_partition_strategy_comment,
         "tf.nn.safe_embedding_lookup_sparse":
@@ -1145,10 +1201,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             initializers_no_dtype_comment,
         "tf.initializers.glorot_normal":
             initializers_no_dtype_comment,
-        "tf.initializers.uniform_unit_scaling":
-            uniform_unit_scaling_initializer_comment,
-        "tf.uniform_unit_scaling_initializer":
-            uniform_unit_scaling_initializer_comment,
         "tf.losses.absolute_difference":
             losses_comment,
         "tf.losses.add_loss":
@@ -1247,6 +1299,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             metrics_comment,
         "tf.metrics.true_positives_at_thresholds":
             metrics_comment,
+        "tf.get_variable":
+            (ast_edits.WARNING,
+             "<function name> returns ResourceVariables by default in 2.0, "
+             "which have well-defined semantics and are stricter about shapes. "
+             "You can disable this behavior by passing use_resource=False, or "
+             "by calling tf.compat.v1.disable_resource_variables().")
     }
 
     # Warnings that are emitted only if a specific arg is found.
@@ -1336,11 +1394,51 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "argument; instead name scoping should be used. This call site "
                 "specifies a family argument so it cannot be converted safely.")
         },
+        "tf.image.resize": {
+            ("align_corners",
+             3): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize."),
+        },
+        "tf.image.resize_bilinear": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bilinear."),
+        },
+        "tf.image.resize_area": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_area."),
+        },
+        "tf.image.resize_bicubic": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bicubic."),
+        },
+        "tf.image.resize_nearest_neighbor": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_nearest_neighbor."),
+        },
     }
 
     # Specially handled functions
     # Each transformer is a callable which will be called with the arguments
-    #   transformer(parent, node, full_name, name, logs, errors)
+    #   transformer(parent, node, full_name, name, logs)
     # Where logs is a list to which (level, line, col, msg) tuples can be
     # appended, full_name is the FQN of the function called (or None if that is
     # unknown), name is the name of the function called (or None is that is
@@ -1373,6 +1471,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.resize_nearest_neighbor": _image_resize_transformer,
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
+        "tf.name_scope": _name_scope_transformer,
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -1411,6 +1510,24 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _add_argument_transformer,
             arg_name="data_format",
             arg_value_ast=ast.Str("NHWC")),
+        "tf.contrib.summary.audio": _add_summary_step_transformer,
+        "tf.contrib.summary.histogram": _add_summary_step_transformer,
+        "tf.contrib.summary.image": _add_summary_step_transformer,
+        "tf.contrib.summary.scalar": _add_summary_step_transformer,
+        "tf.estimator.LinearClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.LinearRegressor": _add_loss_reduction_transformer,
+        "tf.estimator.DNNLinearCombinedClassifier":
+            _add_loss_reduction_transformer,
+        "tf.estimator.DNNLinearCombinedRegressor":
+            _add_loss_reduction_transformer,
+        "tf.estimator.DNNRegressor": _add_loss_reduction_transformer,
+        "tf.estimator.DNNClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
+        "tf.initializers.uniform_unit_scaling":
+            _add_uniform_scaling_initializer_transformer,
+        "tf.uniform_unit_scaling_initializer":
+            _add_uniform_scaling_initializer_transformer,
     }
 
     self.module_deprecations = {
@@ -1522,7 +1639,7 @@ def _add_argument_transformer(parent, node, full_name, name, logs,
                               arg_name, arg_value_ast):
   """Adds an argument (as a final kwarg arg_name=arg_value_ast)."""
   node.keywords.append(ast.keyword(arg=arg_name, value=arg_value_ast))
-  logs.add((
+  logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
       "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1],
                                                           full_name or name))
@@ -1697,7 +1814,12 @@ def _image_resize_transformer(parent, node, full_name, name, logs):
     pos_arg = ast.keyword(arg="align_corners",
                           value=node.args[-1])
     node.args = node.args[:-1]
-    node.keywords.append(pos_arg)
+
+  new_keywords = []
+  for kw in node.keywords:
+    if kw.arg != "align_corners":
+      new_keywords.append(kw)
+  node.keywords = new_keywords
 
   # Python3 ast requires the args for the Attribute, but codegen will mess up
   # the arg order if we just set them to 0.
@@ -1804,3 +1926,117 @@ def _extract_glimpse_transformer(parent, node, full_name, name, logs):
                  "Changing uniform_noise arg of tf.image.extract_glimpse to "
                  "noise, and recomputing value.\n"))
     return node
+
+
+def _add_summary_step_transformer(parent, node, full_name, name, logs):
+  """Adds a step argument to the summary API call if not specified.
+
+  The inserted argument value is tf.compat.v1.train.get_or_create_global_step().
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "step":
+      return node
+  default_value = "tf.compat.v1.train.get_or_create_global_step()"
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(default_value)
+  node.keywords.append(ast.keyword(arg="step", value=ast_value))
+  logs.append((
+      ast_edits.WARNING, node.lineno, node.col_offset,
+      "Summary API writing function %s now requires a 'step' argument; "
+      "inserting default of %s." % (full_name or name, default_value)))
+  return node
+
+
+def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
+  """Adds a loss_reduction argument if not specified.
+
+  Default value for tf.estimator.*Classifier and tf.estimator.*Regressor
+  loss_reduction argument changed to SUM_OVER_BATCH_SIZE. So, we update
+  existing calls to use the old default value `tf.losses.Reduction.SUM`.
+
+  Note: to apply this transformation, symbol must be added
+  to reordered_function_names above.
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "loss_reduction":
+      return node
+  # TODO(annarev): this should be updated to tf.keras.losses.Reduction.SUM
+  # once b/125525822 is fixed.
+  default_value = "tf.compat.v1.losses.Reduction.SUM"
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(default_value)
+  node.keywords.append(ast.keyword(arg="loss_reduction", value=ast_value))
+  logs.append((
+      ast_edits.INFO, node.lineno, node.col_offset,
+      "%s: Default value of loss_reduction has been changed to "
+      "SUM_OVER_BATCH_SIZE; inserting old default value %s.\n"
+      % (full_name or name, default_value)))
+  return node
+
+
+def _add_uniform_scaling_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to uniform_unit_scaling_initializer.
+
+  Transforms:
+  tf.uniform_unit_scaling_initializer(factor, seed, dtype) to
+  tf.keras.initializers.VarianceScaling(
+      scale=factor, distribution="uniform", seed=seed)
+
+  Note: to apply this transformation, symbol must be added
+  to reordered_function_names above.
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "factor":
+      keyword_arg.arg = "scale"
+
+  distribution_value = "\"uniform\""
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(distribution_value)
+  node.keywords.append(ast.keyword(arg="distribution", value=ast_value))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+  return node
+
+
+def _name_scope_transformer(parent, node, full_name, name, logs):
+  """Fix name scope invocation to use 'default_name' and omit 'values' args."""
+
+  name_found, name = ast_edits.get_arg_value(node, "name", 0)
+  default_found, default_name = ast_edits.get_arg_value(node, "default_name", 1)
+
+  # If an actual name was given...
+  if name_found and pasta.dump(name) != "None":
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "`name` passed to `name_scope`. Because you may be re-entering"
+                 " an existing scope, it is not safe to convert automatically, "
+                 " the v2 name_scope does not support re-entering scopes by"
+                 " name.\n"))
+    # Rename to compat.v1
+    new_name = "tf.compat.v1.name_scope"
+    logs.append((ast_edits.INFO, node.func.lineno, node.func.col_offset,
+                 "Renamed %r to %r" % (full_name, new_name)))
+    new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
+    ast.copy_location(new_name_node, node.func)
+    pasta.ast_utils.replace_child(node, node.func, new_name_node)
+    return node
+
+  if default_found:
+    # New name scope doesn't have name, but it has a default name. We use
+    # name=default_name, and values can be dropped (it's only for
+    # error reporting and useless outside of graph mode).
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Using default_name as name in call to name_scope.\n"))
+    # Remove all args other than name
+    node.args = []
+    node.keywords = [ast.keyword(arg="name", value=default_name)]
+    return node
+
+  logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
+               "name_scope call with neither name nor default_name cannot be "
+               "converted properly."))

@@ -79,11 +79,13 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
+    "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/kernel_tests:filter_test_base",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/eager:eager_pip",
+    "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
@@ -93,7 +95,6 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/tools/api/generator:create_python_api",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
-    "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
 ]
 
 COMMON_PIP_DEPS_V1 = COMMON_PIP_DEPS + [
@@ -171,6 +172,7 @@ filegroup(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",

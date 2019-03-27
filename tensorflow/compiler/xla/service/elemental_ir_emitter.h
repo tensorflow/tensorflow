@@ -119,6 +119,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                          llvm::Value* value);
 
+  virtual StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                          llvm::Value* value);
+
+  virtual StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
+                                           llvm::Value* value);
+
   virtual StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
                                            llvm::Value* value);
 
@@ -140,6 +146,9 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitTanh(PrimitiveType prim_type,
                                           llvm::Value* value);
 
+  virtual StatusOr<llvm::Value*> EmitRoundNearestAfz(PrimitiveType prim_type,
+                                                     llvm::Value* value);
+
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x);
 
@@ -149,15 +158,6 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   // Composes a complex struct. imag may be nullptr for simple cast operations.
   llvm::Value* EmitComposeComplex(const HloInstruction* op, llvm::Value* real,
                                   llvm::Value* imag);
-
-  // A helper method for MakeElementGenerator. Given an elementwise op `hlo` and
-  // the target array index, computes the source array index of its
-  // `operand_no`-th operand.
-  //
-  // Precondition: `hlo` is an elementwise op.
-  llvm_ir::IrArray::Index ElementwiseSourceIndex(
-      const llvm_ir::IrArray::Index& target_index, const HloInstruction& hlo,
-      int64 operand_no);
 
   // Identifier of the thread unique among all threads on the device
   virtual llvm::Value* EmitThreadId() { return b_->getIntN(128, 0); }
@@ -211,6 +211,11 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   const HloModuleConfig& hlo_module_config_;
 
  private:
+  // Computes the complex power function, returns (a + i*b)^(c + i*d).
+  StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
+                                          llvm::Value* a, llvm::Value* b,
+                                          llvm::Value* c, llvm::Value* d);
+
   // Returns a ElementGenerator for an RNG HloInstruction using the Philox
   // random number generation algorithm.
   llvm_ir::ElementGenerator MakePhiloxRngElementGenerator(

@@ -31,7 +31,7 @@ from tensorflow.python.platform import test
 @test_util.run_all_in_graph_and_eager_modes
 class LossTest(test.TestCase):
 
-  def setUp(self):
+  def config_default_values(self):
     self.batch_size = 2
     self.sequence_length = 3
     self.number_of_classes = 5
@@ -56,7 +56,8 @@ class LossTest(test.TestCase):
     self.expected_loss = 1.60944
 
   def testSequenceLoss(self):
-    with self.test_session(use_gpu=True):
+    self.config_default_values()
+    with self.cached_session(use_gpu=True):
       average_loss_per_example = loss.sequence_loss(
           self.logits, self.targets, self.weights,
           average_across_timesteps=True,
@@ -90,7 +91,8 @@ class LossTest(test.TestCase):
       self.assertAllClose(compare_total, res)
 
   def testSequenceLossClass(self):
-    with self.test_session(use_gpu=True):
+    self.config_default_values()
+    with self.cached_session(use_gpu=True):
       seq_loss = loss.SequenceLoss(average_across_timesteps=True,
                                    average_across_batch=True,
                                    sum_over_timesteps=False,
@@ -132,7 +134,8 @@ class LossTest(test.TestCase):
       self.assertAllClose(compare_total, res)
 
   def testSumReduction(self):
-    with self.test_session(use_gpu=True):
+    self.config_default_values()
+    with self.cached_session(use_gpu=True):
       seq_loss = loss.SequenceLoss(average_across_timesteps=False,
                                    average_across_batch=False,
                                    sum_over_timesteps=True,
@@ -174,6 +177,7 @@ class LossTest(test.TestCase):
       self.assertAllClose(compare_total, res)
 
   def testWeightedSumReduction(self):
+    self.config_default_values()
     weights = [
         constant_op.constant(1.0, shape=[self.batch_size])
         for _ in range(self.sequence_length)
@@ -181,7 +185,7 @@ class LossTest(test.TestCase):
     # Make the last element in the sequence to have zero weights.
     weights[-1] = constant_op.constant(0.0, shape=[self.batch_size])
     self.weights = array_ops.stack(weights, axis=1)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       seq_loss = loss.SequenceLoss(average_across_timesteps=False,
                                    average_across_batch=False,
                                    sum_over_timesteps=True,
@@ -225,12 +229,13 @@ class LossTest(test.TestCase):
       self.assertAllClose(compare_total, res)
 
   def testZeroWeights(self):
+    self.config_default_values()
     weights = [
         constant_op.constant(0.0, shape=[self.batch_size])
         for _ in range(self.sequence_length)
     ]
     weights = array_ops.stack(weights, axis=1)
-    with self.test_session(use_gpu=True):
+    with self.cached_session(use_gpu=True):
       average_loss_per_example = loss.sequence_loss(
           self.logits, self.targets, weights,
           average_across_timesteps=True,

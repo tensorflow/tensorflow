@@ -46,8 +46,8 @@ def ast_to_source(node, indentation='  '):
   """
   if not isinstance(node, (list, tuple)):
     node = (node,)
-  generator = astor.codegen.SourceGenerator(indentation, False,
-                                            astor.string_repr.pretty_string)
+  generator = astor.code_gen.SourceGenerator(indentation, False,
+                                             astor.string_repr.pretty_string)
 
   for n in node:
     if isinstance(n, gast.AST):
