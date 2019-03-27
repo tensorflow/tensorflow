@@ -15,6 +15,7 @@ py_library(
         ":xla",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -56,6 +57,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/distribute:summary_op_util",
+        "//tensorflow/python/eager:context",
     ],
 )
 
