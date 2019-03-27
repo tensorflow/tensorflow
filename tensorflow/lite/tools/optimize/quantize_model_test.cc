@@ -172,7 +172,9 @@ TEST_F(QuantizeModelTest, FloatInputAndOutput) {
     EXPECT_EQ(dequant_op->outputs[0], output_idx);
     // The input and output types should be float.
     EXPECT_EQ(subgraph->tensors[input_idx]->type, TensorType_FLOAT32);
+    EXPECT_EQ(subgraph->tensors[input_idx]->name, "input_quantize");
     EXPECT_EQ(subgraph->tensors[output_idx]->type, TensorType_FLOAT32);
+    EXPECT_EQ(subgraph->tensors[output_idx]->name, "output_dequantize");
     for (int tensor_idx = 0; tensor_idx < subgraph->tensors.size();
          ++tensor_idx) {
       const auto& tensor = subgraph->tensors[tensor_idx];
