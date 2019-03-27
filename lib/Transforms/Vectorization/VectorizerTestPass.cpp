@@ -30,8 +30,8 @@
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/Passes.h"
-#include "third_party/llvm/llvm/include/llvm/ADT/STLExtras.h"
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 
