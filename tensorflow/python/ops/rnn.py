@@ -486,7 +486,7 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
 
 @deprecation.deprecated(
     None,
-    "Please use `keras.layers.RNN(cell)`, which is equivalent to this API")
+    "Please use `tf.keras.layers.RNN(cell)`, which is equivalent to this API")
 @tf_export(v1=["nn.dynamic_rnn"])
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 dtype=None, parallel_iterations=None, swap_memory=False,
