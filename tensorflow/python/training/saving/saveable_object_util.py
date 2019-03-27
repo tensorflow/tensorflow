@@ -101,7 +101,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
           "Saveable is neither a resource variable nor a read operation."
           " Got: %s" % repr(var))
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
-                                    dtype=var.dtype)
+                                    dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
