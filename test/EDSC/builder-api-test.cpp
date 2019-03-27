@@ -458,6 +458,76 @@ TEST_FUNC(select_op) {
   f->print(llvm::outs());
 }
 
+// Inject an EDSC-constructed computation to exercise imperfectly nested 2-d
+// tiling.
+TEST_FUNC(tile_2d) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto memrefType =
+      MemRefType::get({-1, -1, -1}, FloatType::getF32(&globalContext()), {}, 0);
+  auto f = makeFunction("tile_2d", {}, {memrefType, memrefType, memrefType});
+  FuncBuilder builder(f.get());
+
+  ScopedContext scope(f.get());
+  ValueHandle zero = constant_index(0);
+  MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)),
+      vC(f->getArgument(2));
+  IndexedValue A(f->getArgument(0)), B(f->getArgument(1)), C(f->getArgument(2));
+  IndexHandle i, j, k1, k2, M(vC.ub(0)), N(vC.ub(1)), O(vC.ub(2));
+
+  // clang-format off
+  LoopNestBuilder({&i, &j}, {zero, zero}, {M, N}, {1, 1})({
+    LoopNestBuilder(&k1, zero, O, 1)({
+      C(i, j, k1) = A(i, j, k1) + B(i, j, k1)
+    }),
+    LoopNestBuilder(&k2, zero, O, 1)({
+      C(i, j, k2) = A(i, j, k2) + B(i, j, k2)
+    }),
+  });
+  // clang-format on
+
+  auto li = getForInductionVarOwner(i.getValue()),
+       lj = getForInductionVarOwner(j.getValue()),
+       lk1 = getForInductionVarOwner(k1.getValue()),
+       lk2 = getForInductionVarOwner(k2.getValue());
+  auto indicesL1 = mlir::tile({li, lj}, {512, 1024}, {lk1, lk2});
+  auto lii1 = indicesL1[0][0], ljj1 = indicesL1[1][0];
+  mlir::tile({ljj1, lii1}, {32, 16}, ljj1);
+
+  // clang-format off
+  // CHECK-LABEL: func @tile_2d
+  //       CHECK: %[[ZERO:.*]] = constant 0 : index
+  //       CHECK: %[[M:[0-9]+]] = dim %arg2, 0 : memref<?x?x?xf32>
+  //  CHECK-NEXT: %[[N:[0-9]+]] = dim %arg2, 1 : memref<?x?x?xf32>
+  //  CHECK-NEXT: %[[P:[0-9]+]] = dim %arg2, 2 : memref<?x?x?xf32>
+  //       CHECK:   affine.for %i0 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[M]]) step 512 {
+  //  CHECK-NEXT:     affine.for %i1 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[N]]) step 1024 {
+  //  CHECK-NEXT:       affine.for %i2 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
+  //  CHECK-NEXT:         affine.for %i3 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] step 16 {
+  //  CHECK-NEXT:           affine.for %i4 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] step 32 {
+  //  CHECK-NEXT:             affine.for %i5 = max (d0, d1)[s0] -> (s0, d0, d1)(%i1, %i4)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 1024, d1 + 32)(%i1, %i4)[%[[N]]] {
+  //  CHECK-NEXT:               affine.for %i6 = max (d0, d1)[s0] -> (s0, d0, d1)(%i0, %i3)[%[[ZERO]]] to min (d0, d1)[s0] -> (s0, d0 + 512, d1 + 16)(%i0, %i3)[%[[M]]] {
+  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 {{.*}} = load {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  //  CHECK-NEXT:                 {{.*}} = addf {{.*}}, {{.*}} : f32
+  //  CHECK-NEXT:                 store {{.*}}, {{.*}}[%i6, %i5, %i2] : memref<?x?x?xf32>
+  //       CHECK:               }
+  //  CHECK-NEXT:             }
+  //  CHECK-NEXT:           }
+  //  CHECK-NEXT:         }
+  //  CHECK-NEXT:       }
+  //  CHECK-NEXT:       affine.for %i7 = (d0) -> (d0)(%[[ZERO]]) to (d0) -> (d0)(%[[P]]) {
+  //  CHECK-NEXT:         affine.for %i8 = max (d0)[s0] -> (s0, d0)(%i0)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 512)(%i0)[%[[M]]] {
+  //  CHECK-NEXT:           affine.for %i9 = max (d0)[s0] -> (s0, d0)(%i1)[%[[ZERO]]] to min (d0)[s0] -> (s0, d0 + 1024)(%i1)[%[[N]]] {
+  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             {{.*}} = load {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  //  CHECK-NEXT:             {{.*}}= addf {{.*}}, {{.*}} : f32
+  //  CHECK-NEXT:             store {{.*}}, {{.*}}[%i8, %i9, %i7] : memref<?x?x?xf32>
+  // clang-format on
+  f->print(llvm::outs());
+}
+
 int main() {
   RUN_TESTS();
   return 0;
