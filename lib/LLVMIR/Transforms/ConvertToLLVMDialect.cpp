@@ -297,6 +297,8 @@ Type TypeConverter::convertType(Type type) {
     return convertMemRefType(memRefType);
   if (auto vectorType = type.dyn_cast<VectorType>())
     return convertVectorType(vectorType);
+  if (auto llvmType = type.dyn_cast<LLVM::LLVMType>())
+    return llvmType;
 
   MLIRContext *context = type.getContext();
   std::string message;

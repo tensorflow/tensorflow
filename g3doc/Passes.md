@@ -51,9 +51,9 @@ already present before the pass.
     they do not depend on the loop iterator value or on the result of
     `affine.apply`.
 
-## Conversion from Standard+Builtin to LLVM IR dialect (`-convert-to-llvmir`) {#convert-to-llvmir}
+## Conversion from Standard to LLVM IR dialect (`-convert-to-llvmir`) {#convert-to-llvmir}
 
-Convert standard and builtin operations into the LLVM IR dialect operations.
+Convert standard operations into the LLVM IR dialect operations.
 
 ### Input invariant
 
@@ -65,7 +65,8 @@ Convert standard and builtin operations into the LLVM IR dialect operations.
     block;
 
 If other operations are present and their results are required by the LLVM IR
-dialect operations, the pass will fail.
+dialect operations, the pass will fail.  Any LLVM IR operations or types already
+present in the IR will be kept as is.
 
 ### Output IR
 
