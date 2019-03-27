@@ -215,8 +215,7 @@ inline nvinfer1::Dims TensorShapeToTrtDims(const TensorShapeType& shape,
 }
 
 template <typename Container>
-Status TensorShapeArrayToTrtDims(const Container& shape,
-                                 nvinfer1::Dims* out,
+Status TensorShapeArrayToTrtDims(const Container& shape, nvinfer1::Dims* out,
                                  bool ignore_first_dim = false) {
   PartialTensorShape tensor_shape;
   TF_RETURN_IF_ERROR(TensorShapeUtils::MakeShape(shape, &tensor_shape));
