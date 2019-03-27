@@ -1000,6 +1000,8 @@ class FunctionSpec(object):
 
     if self._is_method:
       # Remove `self`: default arguments shouldn't be matched to it.
+      # TODO(b/127938157): Should this error out if there is no arg to
+      # be removed?
       args = fullargspec.args[1:]
     else:
       args = fullargspec.args

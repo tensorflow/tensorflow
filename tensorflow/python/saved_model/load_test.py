@@ -1218,6 +1218,24 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual([2], root.f([2]).numpy())
 
+  def test_extra_args(self, cycles):
+
+    @def_function.function
+    def f(x):
+      return math_ops.add(x["a"], 1.)
+    # Trigger a trace.
+    f({"a": constant_op.constant(2.0)})
+
+    obj = tracking.AutoTrackable()
+    obj.__call__ = f
+    imported = self.cycle(obj)
+
+    self.assertEqual(4.0, imported({"a": 3.0}).numpy())
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function to call"):
+      imported({"a": 2.0, "b": 3.0})
+
   def test_shapes_available(self, cycles):
 
     @def_function.function(input_signature=[
