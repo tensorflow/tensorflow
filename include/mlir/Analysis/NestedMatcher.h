@@ -25,7 +25,6 @@ namespace mlir {
 
 struct NestedPattern;
 class Operation;
-using Instruction = Operation;
 
 /// An NestedPattern captures nested patterns in the IR.
 /// It is used in conjunction with a scoped NestedPatternContext which is an
@@ -47,20 +46,20 @@ using Instruction = Operation;
 ///
 ///
 /// Nested abstraction for matching results.
-/// Provides access to the nested Instruction* captured by a Matcher.
+/// Provides access to the nested Operation* captured by a Matcher.
 ///
-/// A NestedMatch contains an Instruction* and the children NestedMatch and is
+/// A NestedMatch contains an Operation* and the children NestedMatch and is
 /// thus cheap to copy. NestedMatch is stored in a scoped bumper allocator whose
 /// lifetime is managed by an RAII NestedPatternContext.
 struct NestedMatch {
-  static NestedMatch build(Instruction *instruction,
+  static NestedMatch build(Operation *operation,
                            ArrayRef<NestedMatch> nestedMatches);
   NestedMatch(const NestedMatch &) = default;
   NestedMatch &operator=(const NestedMatch &) = default;
 
-  explicit operator bool() { return matchedInstruction != nullptr; }
+  explicit operator bool() { return matchedOperation != nullptr; }
 
-  Instruction *getMatchedInstruction() { return matchedInstruction; }
+  Operation *getMatchedOperation() { return matchedOperation; }
   ArrayRef<NestedMatch> getMatchedChildren() { return matchedChildren; }
 
 private:
@@ -73,11 +72,11 @@ private:
   NestedMatch() = default;
 
   /// Payload, holds a NestedMatch and all its children along this branch.
-  Instruction *matchedInstruction;
+  Operation *matchedOperation;
   ArrayRef<NestedMatch> matchedChildren;
 };
 
-/// A NestedPattern is a nested instruction walker that:
+/// A NestedPattern is a nested operation walker that:
 ///   1. recursively matches a substructure in the tree;
 ///   2. uses a filter function to refine matches with extra semantic
 ///      constraints (passed via a lambda of type FilterFunctionType);
@@ -93,10 +92,10 @@ private:
 ///
 /// The NestedMatches captured in the IR can grow large, especially after
 /// aggressive unrolling. As experience has shown, it is generally better to use
-/// a plain walk over instructions to match flat patterns but the current
+/// a plain walk over operations to match flat patterns but the current
 /// implementation is competitive nonetheless.
-using FilterFunctionType = std::function<bool(Instruction &)>;
-static bool defaultFilterFunction(Instruction &) { return true; };
+using FilterFunctionType = std::function<bool(Operation &)>;
+static bool defaultFilterFunction(Operation &) { return true; };
 struct NestedPattern {
   NestedPattern(ArrayRef<NestedPattern> nested,
                 FilterFunctionType filter = defaultFilterFunction);
@@ -105,12 +104,12 @@ struct NestedPattern {
 
   /// Returns all the top-level matches in `func`.
   void match(Function *func, SmallVectorImpl<NestedMatch> *matches) {
-    func->walkPostOrder([&](Instruction *inst) { matchOne(inst, matches); });
+    func->walkPostOrder([&](Operation *op) { matchOne(op, matches); });
   }
 
-  /// Returns all the top-level matches in `inst`.
-  void match(Instruction *inst, SmallVectorImpl<NestedMatch> *matches) {
-    inst->walkPostOrder([&](Instruction *child) { matchOne(child, matches); });
+  /// Returns all the top-level matches in `op`.
+  void match(Operation *op, SmallVectorImpl<NestedMatch> *matches) {
+    op->walkPostOrder([&](Operation *child) { matchOne(child, matches); });
   }
 
   /// Returns the depth of the pattern.
@@ -124,9 +123,9 @@ private:
   /// Underlying global bump allocator managed by a NestedPatternContext.
   static llvm::BumpPtrAllocator *&allocator();
 
-  /// Matches this pattern against a single `inst` and fills matches with the
+  /// Matches this pattern against a single `op` and fills matches with the
   /// result.
-  void matchOne(Instruction *inst, SmallVectorImpl<NestedMatch> *matches);
+  void matchOne(Operation *op, SmallVectorImpl<NestedMatch> *matches);
 
   /// Nested patterns to be matched.
   ArrayRef<NestedPattern> nestedPatterns;
@@ -135,19 +134,19 @@ private:
   FilterFunctionType filter;
 
   /// skip is an implementation detail needed so that we can implement match
-  /// without switching on the type of the Instruction. The idea is that a
+  /// without switching on the type of the Operation. The idea is that a
   /// NestedPattern first checks if it matches locally and then recursively
   /// applies its nested matchers to its elem->nested. Since we want to rely on
-  /// the existing instruction walking functionality rather than duplicate
+  /// the existing operation walking functionality rather than duplicate
   /// it, we allow an off-by-one traversal to account for the fact that we
   /// write:
   ///
-  ///  void match(Instruction *elem) {
+  ///  void match(Operation *elem) {
   ///    for (auto &c : getNestedPatterns()) {
   ///      NestedPattern childPattern(...);
   ///                                  ^~~~ Needs off-by-one skip.
   ///
-  Instruction *skip;
+  Operation *skip;
 };
 
 /// RAII structure to transparently manage the bump allocator for
@@ -183,9 +182,9 @@ NestedPattern For(ArrayRef<NestedPattern> nested = {});
 NestedPattern For(FilterFunctionType filter,
                   ArrayRef<NestedPattern> nested = {});
 
-bool isParallelLoop(Instruction &inst);
-bool isReductionLoop(Instruction &inst);
-bool isLoadOrStore(Instruction &inst);
+bool isParallelLoop(Operation &op);
+bool isReductionLoop(Operation &op);
+bool isLoadOrStore(Operation &op);
 
 } // end namespace matcher
 } // end namespace mlir

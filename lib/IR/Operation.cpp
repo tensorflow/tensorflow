@@ -273,7 +273,7 @@ Dialect *Operation::getDialect() {
   return getContext()->getRegisteredDialect(dialectPrefix);
 }
 
-Operation *Operation::getParentInst() {
+Operation *Operation::getParentOp() {
   return block ? block->getContainingOp() : nullptr;
 }
 
@@ -437,8 +437,8 @@ void Operation::moveBefore(Operation *existingInst) {
   moveBefore(existingInst->getBlock(), existingInst->getIterator());
 }
 
-/// Unlink this operation operation from its current basic block and insert
-/// it right before `iterator` in the specified basic block.
+/// Unlink this operation from its current basic block and insert it right
+/// before `iterator` in the specified basic block.
 void Operation::moveBefore(Block *block,
                            llvm::iplist<Operation>::iterator iterator) {
   block->getOperations().splice(iterator, getBlock()->getOperations(),

@@ -687,7 +687,7 @@ static bool materialize(Function *f,
     // current enclosing scope of the terminator. See the top of the function
     // Note for the justification of this restriction.
     // TODO(ntv): relax scoping constraints.
-    auto *enclosingScope = term->getParentInst();
+    auto *enclosingScope = term->getParentOp();
     auto keepIfInSameScope = [enclosingScope, &domInfo](Instruction *inst) {
       assert(inst && "NULL inst");
       if (!enclosingScope) {
@@ -760,7 +760,7 @@ void MaterializeVectorsPass::runOnFunction() {
   pat.match(f, &matches);
   SetVector<Instruction *> terminators;
   for (auto m : matches) {
-    terminators.insert(m.getMatchedInstruction());
+    terminators.insert(m.getMatchedOperation());
   }
 
   if (materialize(f, terminators, &state))

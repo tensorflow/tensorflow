@@ -36,15 +36,14 @@ class AffineForOp;
 class AffineValueMap;
 class FlatAffineConstraints;
 class Operation;
-using Instruction = Operation;
 class Value;
 
 /// Returns in `affineApplyOps`, the sequence of those AffineApplyOp
-/// Instructions that are reachable via a search starting from `operands` and
+/// Operations that are reachable via a search starting from `operands` and
 /// ending at those operands that are not the result of an AffineApplyOp.
 void getReachableAffineApplyOps(
     llvm::ArrayRef<Value *> operands,
-    llvm::SmallVectorImpl<Instruction *> &affineApplyOps);
+    llvm::SmallVectorImpl<Operation *> &affineApplyOps);
 
 /// Builds a system of constraints with dimensional identifiers corresponding to
 /// the loop IVs of the forOps appearing in that order. Bounds of the loop are
@@ -58,13 +57,13 @@ LogicalResult getIndexSet(llvm::MutableArrayRef<AffineForOp> forOps,
 /// Encapsulates a memref load or store access information.
 struct MemRefAccess {
   Value *memref;
-  Instruction *opInst;
+  Operation *opInst;
   llvm::SmallVector<Value *, 4> indices;
 
-  /// Constructs a MemRefAccess from a load or store operation instruction.
+  /// Constructs a MemRefAccess from a load or store operation.
   // TODO(b/119949820): add accessors to standard op's load, store, DMA op's to
   // return MemRefAccess, i.e., loadOp->getAccess(), dmaOp->getRead/WriteAccess.
-  explicit MemRefAccess(Instruction *opInst);
+  explicit MemRefAccess(Operation *opInst);
 
   // Returns the rank of the memref associated with this access.
   unsigned getRank() const;
@@ -92,11 +91,11 @@ struct DependenceComponent {
 
 /// Checks whether two accesses to the same memref access the same element.
 /// Each access is specified using the MemRefAccess structure, which contains
-/// the operation instruction, indices and memref associated with the access.
-/// Returns 'success' if it can be determined conclusively that the accesses do
-/// not access the same memref element.
-/// If 'allowRAR' is true, will consider read-after-read dependences (typically
-/// used by applications trying to optimize input reuse).
+/// the operation, indices and memref associated with the access. Returns
+/// 'false' if it can be determined conclusively that the accesses do not
+/// access the same memref element. If 'allowRAR' is true, will consider
+/// read-after-read dependences (typically used by applications trying to
+/// optimize input reuse).
 // TODO(andydavis) Wrap 'dependenceConstraints' and 'dependenceComponents' into
 // a single struct.
 // TODO(andydavis) Make 'dependenceConstraints' optional arg.

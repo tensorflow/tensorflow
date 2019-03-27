@@ -105,8 +105,8 @@ Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
 /// header file.
 static AffineMap makePermutationMap(
     MLIRContext *context,
-    llvm::iterator_range<Instruction::operand_iterator> indices,
-    const DenseMap<Instruction *, unsigned> &enclosingLoopToVectorDim) {
+    llvm::iterator_range<Operation::operand_iterator> indices,
+    const DenseMap<Operation *, unsigned> &enclosingLoopToVectorDim) {
   using functional::makePtrDynCaster;
   using functional::map;
   auto unwrappedIndices = map(makePtrDynCaster<Value, Value>(), indices);
@@ -140,10 +140,10 @@ static AffineMap makePermutationMap(
 /// TODO(ntv): could also be implemented as a collect parents followed by a
 /// filter and made available outside this file.
 template <typename T>
-static SetVector<Instruction *> getParentsOfType(Instruction *inst) {
-  SetVector<Instruction *> res;
-  auto *current = inst;
-  while (auto *parent = current->getParentInst()) {
+static SetVector<Operation *> getParentsOfType(Operation *op) {
+  SetVector<Operation *> res;
+  auto *current = op;
+  while (auto *parent = current->getParentOp()) {
     if (auto typedParent = parent->template dyn_cast<T>()) {
       assert(res.count(parent) == 0 && "Already inserted");
       res.insert(parent);
@@ -154,15 +154,14 @@ static SetVector<Instruction *> getParentsOfType(Instruction *inst) {
 }
 
 /// Returns the enclosing AffineForOp, from closest to farthest.
-static SetVector<Instruction *> getEnclosingforOps(Instruction *inst) {
-  return getParentsOfType<AffineForOp>(inst);
+static SetVector<Operation *> getEnclosingforOps(Operation *op) {
+  return getParentsOfType<AffineForOp>(op);
 }
 
 AffineMap mlir::makePermutationMap(
-    Instruction *opInst,
-    const DenseMap<Instruction *, unsigned> &loopToVectorDim) {
-  DenseMap<Instruction *, unsigned> enclosingLoopToVectorDim;
-  auto enclosingLoops = getEnclosingforOps(opInst);
+    Operation *op, const DenseMap<Operation *, unsigned> &loopToVectorDim) {
+  DenseMap<Operation *, unsigned> enclosingLoopToVectorDim;
+  auto enclosingLoops = getEnclosingforOps(op);
   for (auto *forInst : enclosingLoops) {
     auto it = loopToVectorDim.find(forInst);
     if (it != loopToVectorDim.end()) {
@@ -170,17 +169,17 @@ AffineMap mlir::makePermutationMap(
     }
   }
 
-  if (auto load = opInst->dyn_cast<LoadOp>()) {
-    return ::makePermutationMap(opInst->getContext(), load.getIndices(),
+  if (auto load = op->dyn_cast<LoadOp>()) {
+    return ::makePermutationMap(op->getContext(), load.getIndices(),
                                 enclosingLoopToVectorDim);
   }
 
-  auto store = opInst->cast<StoreOp>();
-  return ::makePermutationMap(opInst->getContext(), store.getIndices(),
+  auto store = op->cast<StoreOp>();
+  return ::makePermutationMap(op->getContext(), store.getIndices(),
                               enclosingLoopToVectorDim);
 }
 
-bool mlir::matcher::operatesOnSuperVectors(Instruction &opInst,
+bool mlir::matcher::operatesOnSuperVectors(Operation &op,
                                            VectorType subVectorType) {
   // First, extract the vector type and ditinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector_transfer_read,
@@ -193,20 +192,20 @@ bool mlir::matcher::operatesOnSuperVectors(Instruction &opInst,
   /// do not have to special case. Maybe a trait, or just a method, unclear atm.
   bool mustDivide = false;
   VectorType superVectorType;
-  if (auto read = opInst.dyn_cast<VectorTransferReadOp>()) {
+  if (auto read = op.dyn_cast<VectorTransferReadOp>()) {
     superVectorType = read.getResultType();
     mustDivide = true;
-  } else if (auto write = opInst.dyn_cast<VectorTransferWriteOp>()) {
+  } else if (auto write = op.dyn_cast<VectorTransferWriteOp>()) {
     superVectorType = write.getVectorType();
     mustDivide = true;
-  } else if (opInst.getNumResults() == 0) {
-    if (!opInst.isa<ReturnOp>()) {
-      opInst.emitError("NYI: assuming only return instructions can have 0 "
-                       " results at this point");
+  } else if (op.getNumResults() == 0) {
+    if (!op.isa<ReturnOp>()) {
+      op.emitError("NYI: assuming only return operations can have 0 "
+                   " results at this point");
     }
     return false;
-  } else if (opInst.getNumResults() == 1) {
-    if (auto v = opInst.getResult(0)->getType().dyn_cast<VectorType>()) {
+  } else if (op.getNumResults() == 1) {
+    if (auto v = op.getResult(0)->getType().dyn_cast<VectorType>()) {
       superVectorType = v;
     } else {
       // Not a vector type.
@@ -215,7 +214,7 @@ bool mlir::matcher::operatesOnSuperVectors(Instruction &opInst,
   } else {
     // Not a vector_transfer and has more than 1 result, fail hard for now to
     // wake us up when something changes.
-    opInst.emitError("NYI: instruction has more than 1 result");
+    op.emitError("NYI: operation has more than 1 result");
     return false;
   }
 
@@ -224,7 +223,7 @@ bool mlir::matcher::operatesOnSuperVectors(Instruction &opInst,
 
   // Sanity check.
   assert((ratio.hasValue() || !mustDivide) &&
-         "vector_transfer instruction in which super-vector size is not an"
+         "vector_transfer operation in which super-vector size is not an"
          " integer multiple of sub-vector size");
 
   // This catches cases that are not strictly necessary to have multiplicity but

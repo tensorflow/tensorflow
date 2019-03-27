@@ -705,7 +705,7 @@ static LogicalResult analyzeProfitability(ArrayRef<NestedMatch> matches,
                                     patternDepth, strategy))) {
       return failure();
     }
-    vectorizeLoopIfProfitable(m.getMatchedInstruction(), depthInPattern,
+    vectorizeLoopIfProfitable(m.getMatchedOperation(), depthInPattern,
                               patternDepth, strategy);
   }
   return success();
@@ -869,7 +869,7 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
   SmallVector<NestedMatch, 8> loadAndStoresMatches;
   loadAndStores.match(loop.getOperation(), &loadAndStoresMatches);
   for (auto ls : loadAndStoresMatches) {
-    auto *opInst = ls.getMatchedInstruction();
+    auto *opInst = ls.getMatchedOperation();
     auto load = opInst->dyn_cast<LoadOp>();
     auto store = opInst->dyn_cast<StoreOp>();
     LLVM_DEBUG(opInst->print(dbgs()));
@@ -904,7 +904,7 @@ isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
 static LogicalResult
 vectorizeLoopsAndLoadsRecursively(NestedMatch oneMatch,
                                   VectorizationState *state) {
-  auto *loopInst = oneMatch.getMatchedInstruction();
+  auto *loopInst = oneMatch.getMatchedOperation();
   auto loop = loopInst->cast<AffineForOp>();
   auto childrenMatches = oneMatch.getMatchedChildren();
 
@@ -1144,7 +1144,7 @@ static LogicalResult vectorizeNonTerminals(VectorizationState *state) {
 /// anything below it fails.
 static LogicalResult vectorizeRootMatch(NestedMatch m,
                                         VectorizationStrategy *strategy) {
-  auto loop = m.getMatchedInstruction()->cast<AffineForOp>();
+  auto loop = m.getMatchedOperation()->cast<AffineForOp>();
   VectorizationState state;
   state.strategy = strategy;
 
@@ -1248,7 +1248,7 @@ void Vectorize::runOnFunction() {
                                       &strategy))) {
         continue;
       }
-      vectorizeLoopIfProfitable(m.getMatchedInstruction(), 0, patternDepth,
+      vectorizeLoopIfProfitable(m.getMatchedOperation(), 0, patternDepth,
                                 &strategy);
       // TODO(ntv): if pattern does not apply, report it; alter the
       // cost/benefit.

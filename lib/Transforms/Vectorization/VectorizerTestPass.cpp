@@ -122,7 +122,7 @@ void VectorizerTestPass::testVectorShapeRatio() {
   SmallVector<NestedMatch, 8> matches;
   pat.match(f, &matches);
   for (auto m : matches) {
-    auto *opInst = m.getMatchedInstruction();
+    auto *opInst = m.getMatchedOperation();
     // This is a unit test that only checks and prints shape ratio.
     // As a consequence we write only Ops with a single return type for the
     // purpose of this test. If we need to test more intricate behavior in the
@@ -164,9 +164,9 @@ void VectorizerTestPass::testBackwardSlicing() {
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
     SetVector<Instruction *> backwardSlice;
-    getBackwardSlice(m.getMatchedInstruction(), &backwardSlice);
+    getBackwardSlice(m.getMatchedOperation(), &backwardSlice);
     auto strs = map(toString, backwardSlice);
-    outs() << "\nmatched: " << *m.getMatchedInstruction()
+    outs() << "\nmatched: " << *m.getMatchedOperation()
            << " backward static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
@@ -180,9 +180,9 @@ void VectorizerTestPass::testForwardSlicing() {
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
     SetVector<Instruction *> forwardSlice;
-    getForwardSlice(m.getMatchedInstruction(), &forwardSlice);
+    getForwardSlice(m.getMatchedOperation(), &forwardSlice);
     auto strs = map(toString, forwardSlice);
-    outs() << "\nmatched: " << *m.getMatchedInstruction()
+    outs() << "\nmatched: " << *m.getMatchedOperation()
            << " forward static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
@@ -196,9 +196,9 @@ void VectorizerTestPass::testSlicing() {
   SmallVector<NestedMatch, 8> matches;
   patternTestSlicingOps().match(f, &matches);
   for (auto m : matches) {
-    SetVector<Instruction *> staticSlice = getSlice(m.getMatchedInstruction());
+    SetVector<Instruction *> staticSlice = getSlice(m.getMatchedOperation());
     auto strs = map(toString, staticSlice);
-    outs() << "\nmatched: " << *m.getMatchedInstruction() << " static slice: ";
+    outs() << "\nmatched: " << *m.getMatchedOperation() << " static slice: ";
     for (const auto &s : strs) {
       outs() << "\n" << s;
     }
@@ -220,7 +220,7 @@ void VectorizerTestPass::testComposeMaps() {
   SmallVector<AffineMap, 4> maps;
   maps.reserve(matches.size());
   for (auto m : llvm::reverse(matches)) {
-    auto *opInst = m.getMatchedInstruction();
+    auto *opInst = m.getMatchedOperation();
     auto map = opInst->getAttr(VectorizerTestPass::kTestAffineMapAttrName)
                    .cast<AffineMapAttr>()
                    .getValue();
@@ -257,15 +257,15 @@ void VectorizerTestPass::testNormalizeMaps() {
     SmallVector<NestedMatch, 8> matches;
     pattern.match(f, &matches);
     for (auto m : matches) {
-      auto app = m.getMatchedInstruction()->cast<AffineApplyOp>();
-      FuncBuilder b(m.getMatchedInstruction());
+      auto app = m.getMatchedOperation()->cast<AffineApplyOp>();
+      FuncBuilder b(m.getMatchedOperation());
       SmallVector<Value *, 8> operands(app.getOperands());
       makeComposedAffineApply(&b, app.getLoc(), app.getAffineMap(), operands);
     }
   }
   // We should now be able to erase everything in reverse order in this test.
   for (auto m : llvm::reverse(toErase)) {
-    m.getMatchedInstruction()->erase();
+    m.getMatchedOperation()->erase();
   }
 }
 

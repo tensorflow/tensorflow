@@ -45,7 +45,7 @@ AffineOpsDialect::AffineOpsDialect(MLIRContext *context)
 bool mlir::isTopLevelSymbol(Value *value) {
   if (auto *arg = dyn_cast<BlockArgument>(value))
     return arg->getOwner()->getParent()->getContainingFunction();
-  return value->getDefiningOp()->getParentInst() == nullptr;
+  return value->getDefiningOp()->getParentOp() == nullptr;
 }
 
 // Value can be used as a dimension id if it is valid as a symbol, or
@@ -56,16 +56,16 @@ bool mlir::isValidDim(Value *value) {
   if (!value->getType().isIndex())
     return false;
 
-  if (auto *inst = value->getDefiningOp()) {
+  if (auto *op = value->getDefiningOp()) {
     // Top level instruction or constant operation is ok.
-    if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
+    if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = inst->dyn_cast<AffineApplyOp>())
-      return op.isValidDim();
+    if (auto applyOp = op->dyn_cast<AffineApplyOp>())
+      return applyOp.isValidDim();
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
-    if (auto dimOp = inst->dyn_cast<DimOp>())
+    if (auto dimOp = op->dyn_cast<DimOp>())
       return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }
@@ -81,16 +81,16 @@ bool mlir::isValidSymbol(Value *value) {
   if (!value->getType().isIndex())
     return false;
 
-  if (auto *inst = value->getDefiningOp()) {
+  if (auto *op = value->getDefiningOp()) {
     // Top level instruction or constant operation is ok.
-    if (inst->getParentInst() == nullptr || inst->isa<ConstantOp>())
+    if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
-    if (auto op = inst->dyn_cast<AffineApplyOp>())
-      return op.isValidSymbol();
+    if (auto applyOp = op->dyn_cast<AffineApplyOp>())
+      return applyOp.isValidSymbol();
     // The dim op is okay if its operand memref/tensor is defined at the top
     // level.
-    if (auto dimOp = inst->dyn_cast<DimOp>())
+    if (auto dimOp = op->dyn_cast<DimOp>())
       return isTopLevelSymbol(dimOp.getOperand());
     return false;
   }

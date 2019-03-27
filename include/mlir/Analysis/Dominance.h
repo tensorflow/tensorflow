@@ -65,20 +65,20 @@ class DominanceInfo : public detail::DominanceInfoBase</*IsPostDom=*/false> {
 public:
   using super::super;
 
-  /// Return true if instruction A properly dominates instruction B.
-  bool properlyDominates(Instruction *a, Instruction *b);
+  /// Return true if operation A properly dominates operation B.
+  bool properlyDominates(Operation *a, Operation *b);
 
-  /// Return true if instruction A dominates instruction B.
-  bool dominates(Instruction *a, Instruction *b) {
+  /// Return true if operation A dominates operation B.
+  bool dominates(Operation *a, Operation *b) {
     return a == b || properlyDominates(a, b);
   }
 
-  /// Return true if value A properly dominates instruction B.
-  bool properlyDominates(Value *a, Instruction *b);
+  /// Return true if value A properly dominates operation B.
+  bool properlyDominates(Value *a, Operation *b);
 
-  /// Return true if instruction A dominates instruction B.
-  bool dominates(Value *a, Instruction *b) {
-    return (Instruction *)a->getDefiningOp() == b || properlyDominates(a, b);
+  /// Return true if operation A dominates operation B.
+  bool dominates(Value *a, Operation *b) {
+    return (Operation *)a->getDefiningOp() == b || properlyDominates(a, b);
   }
 
   /// Return true if the specified block A dominates block B.
@@ -97,11 +97,11 @@ class PostDominanceInfo : public detail::DominanceInfoBase</*IsPostDom=*/true> {
 public:
   using super::super;
 
-  /// Return true if instruction A properly postdominates instruction B.
-  bool properlyPostDominates(Instruction *a, Instruction *b);
+  /// Return true if operation A properly postdominates operation B.
+  bool properlyPostDominates(Operation *a, Operation *b);
 
-  /// Return true if instruction A postdominates instruction B.
-  bool postDominates(Instruction *a, Instruction *b) {
+  /// Return true if operation A postdominates operation B.
+  bool postDominates(Operation *a, Operation *b) {
     return a == b || properlyPostDominates(a, b);
   }
 

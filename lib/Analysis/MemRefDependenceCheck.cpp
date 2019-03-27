@@ -37,7 +37,7 @@ namespace {
 // TODO(andydavis) Add common surrounding loop depth-wise dependence checks.
 /// Checks dependences between all pairs of memref accesses in a Function.
 struct MemRefDependenceCheck : public FunctionPass<MemRefDependenceCheck> {
-  SmallVector<Instruction *, 4> loadsAndStores;
+  SmallVector<Operation *, 4> loadsAndStores;
   void runOnFunction() override;
 };
 
@@ -79,7 +79,7 @@ getDirectionVectorStr(bool ret, unsigned numCommonLoops, unsigned loopNestDepth,
 // "source" access and all subsequent "destination" accesses in
 // 'loadsAndStores'. Emits the result of the dependence check as a note with
 // the source access.
-static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
+static void checkDependences(ArrayRef<Operation *> loadsAndStores) {
   for (unsigned i = 0, e = loadsAndStores.size(); i < e; ++i) {
     auto *srcOpInst = loadsAndStores[i];
     MemRefAccess srcAccess(srcOpInst);
@@ -113,9 +113,9 @@ static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
 void MemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
-  getFunction().walk([&](Instruction *inst) {
-    if (inst->isa<LoadOp>() || inst->isa<StoreOp>())
-      loadsAndStores.push_back(inst);
+  getFunction().walk([&](Operation *op) {
+    if (op->isa<LoadOp>() || op->isa<StoreOp>())
+      loadsAndStores.push_back(op);
   });
 
   checkDependences(loadsAndStores);

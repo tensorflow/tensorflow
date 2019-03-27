@@ -746,7 +746,7 @@ struct LoopNestStatsCollector {
   void collect(Instruction *inst) {
     inst->walk<AffineForOp>([&](AffineForOp forOp) {
       auto *forInst = forOp.getOperation();
-      auto *parentInst = forOp.getOperation()->getParentInst();
+      auto *parentInst = forOp.getOperation()->getParentOp();
       if (parentInst != nullptr) {
         assert(parentInst->isa<AffineForOp>() && "Expected parent AffineForOp");
         // Add mapping to 'forOp' from its parent AffineForOp.
@@ -1545,7 +1545,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
       // A single store disappears: -1 for that.
       computeCostMap[srcLoopIVs[numSrcLoopIVs - 1].getOperation()] = -1;
       for (auto *loadOp : dstLoadOpInsts) {
-        auto *parentInst = loadOp->getParentInst();
+        auto *parentInst = loadOp->getParentOp();
         if (parentInst && parentInst->isa<AffineForOp>())
           computeCostMap[parentInst] = -1;
       }

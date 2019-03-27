@@ -31,7 +31,6 @@ class FuncBuilder;
 class Location;
 class MemRefType;
 class Operation;
-using Instruction = Operation;
 class Value;
 class VectorType;
 
@@ -123,8 +122,8 @@ shapeRatio(VectorType superVectorType, VectorType subVectorType);
 /// `%arg0[%c0, %c0]` into vector<128xf32> which needs a 1-D vector broadcast.
 ///
 AffineMap makePermutationMap(
-    Instruction *opInst,
-    const llvm::DenseMap<Instruction *, unsigned> &loopToVectorDim);
+    Operation *op,
+    const llvm::DenseMap<Operation *, unsigned> &loopToVectorDim);
 
 namespace matcher {
 
@@ -136,7 +135,7 @@ namespace matcher {
 /// TODO(ntv): this could all be much simpler if we added a bit that a vector
 /// type to mark that a vector is a strict super-vector but it still does not
 /// warrant adding even 1 extra bit in the IR for now.
-bool operatesOnSuperVectors(Instruction &inst, VectorType subVectorType);
+bool operatesOnSuperVectors(Operation &op, VectorType subVectorType);
 
 } // end namespace matcher
 } // end namespace mlir

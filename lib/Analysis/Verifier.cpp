@@ -23,9 +23,9 @@
 // The checks in this file are only for things that can occur as part of IR
 // transformations: e.g. violation of dominance information, malformed operation
 // attributes, etc.  MLIR supports transformations moving IR through locally
-// invalid states (e.g. unlinking an instruction from an instruction before
-// re-inserting it in a new place), but each transformation must complete with
-// the IR in a valid form.
+// invalid states (e.g. unlinking an operation from a block before re-inserting
+// it in a new place), but each transformation must complete with the IR in a
+// valid form.
 //
 // This should not check for things that are always wrong by construction (e.g.
 // affine maps or other immutable structures that are incorrect), because those
@@ -52,7 +52,7 @@ namespace {
 ///
 class FuncVerifier {
 public:
-  bool failure(const Twine &message, Instruction &value) {
+  bool failure(const Twine &message, Operation &value) {
     return value.emitError(message);
   }
 
@@ -61,7 +61,7 @@ public:
   }
 
   bool failure(const Twine &message, Block &bb) {
-    // Take the location information for the first instruction in the block.
+    // Take the location information for the first operation in the block.
     if (!bb.empty())
       return failure(message, bb.front());
 
@@ -108,9 +108,9 @@ public:
 
   bool verify();
   bool verifyBlock(Block &block, bool isTopLevel);
-  bool verifyOperation(Instruction &op);
+  bool verifyOperation(Operation &op);
   bool verifyDominance(Block &block);
-  bool verifyInstDominance(Instruction &inst);
+  bool verifyOpDominance(Operation &op);
 
   explicit FuncVerifier(Function &fn)
       : fn(fn), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
@@ -231,15 +231,15 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
     return failure("block with no terminator", block);
   }
 
-  // Verify the non-terminator instructions separately so that we can verify
+  // Verify the non-terminator operations separately so that we can verify
   // they has no successors.
-  for (auto &inst : llvm::make_range(block.begin(), std::prev(block.end()))) {
-    if (inst.getNumSuccessors() != 0)
+  for (auto &op : llvm::make_range(block.begin(), std::prev(block.end()))) {
+    if (op.getNumSuccessors() != 0)
       return failure(
-          "instruction with block successors must terminate its parent block",
-          inst);
+          "operation with block successors must terminate its parent block",
+          op);
 
-    if (verifyOperation(inst))
+    if (verifyOperation(op))
       return true;
   }
 
@@ -259,7 +259,7 @@ bool FuncVerifier::verifyBlock(Block &block, bool isTopLevel) {
 }
 
 /// Check the invariants of the specified operation.
-bool FuncVerifier::verifyOperation(Instruction &op) {
+bool FuncVerifier::verifyOperation(Operation &op) {
   if (op.getFunction() != &fn)
     return failure("operation in the wrong function", op);
 
@@ -304,30 +304,30 @@ bool FuncVerifier::verifyOperation(Instruction &op) {
 }
 
 bool FuncVerifier::verifyDominance(Block &block) {
-  // Verify the dominance of each of the held instructions.
-  for (auto &inst : block)
-    if (verifyInstDominance(inst))
+  // Verify the dominance of each of the held operations.
+  for (auto &op : block)
+    if (verifyOpDominance(op))
       return true;
   return false;
 }
 
-bool FuncVerifier::verifyInstDominance(Instruction &inst) {
+bool FuncVerifier::verifyOpDominance(Operation &op) {
   // Check that operands properly dominate this use.
-  for (unsigned operandNo = 0, e = inst.getNumOperands(); operandNo != e;
+  for (unsigned operandNo = 0, e = op.getNumOperands(); operandNo != e;
        ++operandNo) {
-    auto *op = inst.getOperand(operandNo);
-    if (domInfo->properlyDominates(op, &inst))
+    auto *operand = op.getOperand(operandNo);
+    if (domInfo->properlyDominates(operand, &op))
       continue;
 
-    inst.emitError("operand #" + Twine(operandNo) +
-                   " does not dominate this use");
-    if (auto *useInst = op->getDefiningOp())
-      useInst->emitNote("operand defined here");
+    op.emitError("operand #" + Twine(operandNo) +
+                 " does not dominate this use");
+    if (auto *useOp = operand->getDefiningOp())
+      useOp->emitNote("operand defined here");
     return true;
   }
 
-  // Verify the dominance of each of the nested blocks within this instruction.
-  for (auto &region : inst.getRegions())
+  // Verify the dominance of each of the nested blocks within this operation.
+  for (auto &region : op.getRegions())
     for (auto &block : region)
       if (verifyDominance(block))
         return true;

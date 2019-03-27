@@ -32,7 +32,6 @@ class AffineExpr;
 class AffineForOp;
 class AffineMap;
 class Operation;
-using Instruction = Operation;
 class MemRefType;
 class Value;
 
@@ -102,7 +101,7 @@ bool isVectorizableLoopAlongFastestVaryingMemRefDim(AffineForOp loop,
                                                     unsigned fastestVaryingDim);
 
 /// Checks where SSA dominance would be violated if a for inst's body
-/// instructions are shifted by the specified shifts. This method checks if a
+/// operations are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.

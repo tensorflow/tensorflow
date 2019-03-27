@@ -182,8 +182,7 @@ LogicalResult mlir::tileCodeGen(MutableArrayRef<AffineForOp> band,
 
   // Check if the supplied for inst's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
-    assert(band[i].getOperation()->getParentInst() ==
-           band[i - 1].getOperation());
+    assert(band[i].getOperation()->getParentOp() == band[i - 1].getOperation());
   }
 
   auto origLoops = band;

@@ -108,7 +108,7 @@ public:
 
   /// Returns the closest surrounding operation that contains this operation
   /// or nullptr if this is a top-level operation.
-  Operation *getParentInst();
+  Operation *getParentOp();
 
   /// Returns the function that this operation is part of.
   /// The function is determined by traversing the chain of parent operations.
@@ -131,8 +131,8 @@ public:
   /// function.
   void moveBefore(Operation *existingInst);
 
-  /// Unlink this operation operation from its current block and insert it
-  /// right before `iterator` in the specified block.
+  /// Unlink this operation from its current block and insert it right before
+  /// `iterator` in the specified block.
   void moveBefore(Block *block, llvm::iplist<Operation>::iterator iterator);
 
   /// Given an operation 'other' that is within the same parent block, return

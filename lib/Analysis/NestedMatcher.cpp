@@ -31,13 +31,13 @@ llvm::BumpPtrAllocator *&NestedMatch::allocator() {
   return allocator;
 }
 
-NestedMatch NestedMatch::build(Instruction *instruction,
+NestedMatch NestedMatch::build(Operation *operation,
                                ArrayRef<NestedMatch> nestedMatches) {
   auto *result = allocator()->Allocate<NestedMatch>();
   auto *children = allocator()->Allocate<NestedMatch>(nestedMatches.size());
   std::uninitialized_copy(nestedMatches.begin(), nestedMatches.end(), children);
   new (result) NestedMatch();
-  result->matchedInstruction = instruction;
+  result->matchedOperation = operation;
   result->matchedChildren =
       ArrayRef<NestedMatch>(children, nestedMatches.size());
   return *result;
@@ -69,29 +69,29 @@ unsigned NestedPattern::getDepth() const {
   return depth + 1;
 }
 
-/// Matches a single instruction in the following way:
-///   1. checks the kind of instruction against the matcher, if different then
+/// Matches a single operation in the following way:
+///   1. checks the kind of operation against the matcher, if different then
 ///      there is no match;
-///   2. calls the customizable filter function to refine the single instruction
+///   2. calls the customizable filter function to refine the single operation
 ///      match with extra semantic constraints;
 ///   3. if all is good, recursivey matches the nested patterns;
-///   4. if all nested match then the single instruction matches too and is
+///   4. if all nested match then the single operation matches too and is
 ///      appended to the list of matches;
 ///   5. TODO(ntv) Optionally applies actions (lambda), in which case we will
 ///      want to traverse in post-order DFS to avoid invalidating iterators.
-void NestedPattern::matchOne(Instruction *inst,
+void NestedPattern::matchOne(Operation *op,
                              SmallVectorImpl<NestedMatch> *matches) {
-  if (skip == inst) {
+  if (skip == op) {
     return;
   }
   // Local custom filter function
-  if (!filter(*inst)) {
+  if (!filter(*op)) {
     return;
   }
 
   if (nestedPatterns.empty()) {
     SmallVector<NestedMatch, 8> nestedMatches;
-    matches->push_back(NestedMatch::build(inst, nestedMatches));
+    matches->push_back(NestedMatch::build(op, nestedMatches));
     return;
   }
   // Take a copy of each nested pattern so we can match it.
@@ -99,20 +99,20 @@ void NestedPattern::matchOne(Instruction *inst,
     SmallVector<NestedMatch, 8> nestedMatches;
     // Skip elem in the walk immediately following. Without this we would
     // essentially need to reimplement walkPostOrder here.
-    nestedPattern.skip = inst;
-    nestedPattern.match(inst, &nestedMatches);
+    nestedPattern.skip = op;
+    nestedPattern.match(op, &nestedMatches);
     // If we could not match even one of the specified nestedPattern, early exit
     // as this whole branch is not a match.
     if (nestedMatches.empty()) {
       return;
     }
-    matches->push_back(NestedMatch::build(inst, nestedMatches));
+    matches->push_back(NestedMatch::build(op, nestedMatches));
   }
 }
 
-static bool isAffineForOp(Instruction &inst) { return inst.isa<AffineForOp>(); }
+static bool isAffineForOp(Operation &op) { return op.isa<AffineForOp>(); }
 
-static bool isAffineIfOp(Instruction &inst) { return inst.isa<AffineIfOp>(); }
+static bool isAffineIfOp(Operation &op) { return op.isa<AffineIfOp>(); }
 
 namespace mlir {
 namespace matcher {
@@ -125,16 +125,16 @@ NestedPattern If(NestedPattern child) {
   return NestedPattern(child, isAffineIfOp);
 }
 NestedPattern If(FilterFunctionType filter, NestedPattern child) {
-  return NestedPattern(child, [filter](Instruction &inst) {
-    return isAffineIfOp(inst) && filter(inst);
+  return NestedPattern(child, [filter](Operation &op) {
+    return isAffineIfOp(op) && filter(op);
   });
 }
 NestedPattern If(ArrayRef<NestedPattern> nested) {
   return NestedPattern(nested, isAffineIfOp);
 }
 NestedPattern If(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
-  return NestedPattern(nested, [filter](Instruction &inst) {
-    return isAffineIfOp(inst) && filter(inst);
+  return NestedPattern(nested, [filter](Operation &op) {
+    return isAffineIfOp(op) && filter(op);
   });
 }
 
@@ -142,33 +142,31 @@ NestedPattern For(NestedPattern child) {
   return NestedPattern(child, isAffineForOp);
 }
 NestedPattern For(FilterFunctionType filter, NestedPattern child) {
-  return NestedPattern(child, [=](Instruction &inst) {
-    return isAffineForOp(inst) && filter(inst);
-  });
+  return NestedPattern(
+      child, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
 }
 NestedPattern For(ArrayRef<NestedPattern> nested) {
   return NestedPattern(nested, isAffineForOp);
 }
 NestedPattern For(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
-  return NestedPattern(nested, [=](Instruction &inst) {
-    return isAffineForOp(inst) && filter(inst);
-  });
+  return NestedPattern(
+      nested, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
 }
 
 // TODO(ntv): parallel annotation on loops.
-bool isParallelLoop(Instruction &inst) {
-  auto loop = inst.cast<AffineForOp>();
+bool isParallelLoop(Operation &op) {
+  auto loop = op.cast<AffineForOp>();
   return loop || true; // loop->isParallel();
 };
 
 // TODO(ntv): reduction annotation on loops.
-bool isReductionLoop(Instruction &inst) {
-  auto loop = inst.cast<AffineForOp>();
+bool isReductionLoop(Operation &op) {
+  auto loop = op.cast<AffineForOp>();
   return loop || true; // loop->isReduction();
 };
 
-bool isLoadOrStore(Instruction &inst) {
-  return inst.isa<LoadOp>() || inst.isa<StoreOp>();
+bool isLoadOrStore(Operation &op) {
+  return op.isa<LoadOp>() || op.isa<StoreOp>();
 };
 
 } // end namespace matcher

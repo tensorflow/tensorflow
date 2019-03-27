@@ -83,7 +83,7 @@ Operation *Block::findAncestorInstInBlock(Operation &op) {
   // find the ancestor operation that resides in the block of 'forInst'.
   auto *currInst = &op;
   while (currInst->getBlock() != this) {
-    currInst = currInst->getParentInst();
+    currInst = currInst->getParentOp();
     if (!currInst)
       return nullptr;
   }

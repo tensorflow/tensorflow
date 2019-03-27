@@ -46,8 +46,7 @@ void PrintOpStatsPass::runOnModule() {
 
   // Compute the operation statistics for each function in the module.
   for (auto &fn : getModule())
-    fn.walk(
-        [&](Instruction *inst) { ++opCount[inst->getName().getStringRef()]; });
+    fn.walk([&](Operation *op) { ++opCount[op->getName().getStringRef()]; });
   printSummary();
 }
 

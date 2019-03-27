@@ -46,8 +46,8 @@ void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
                              std::move(functionDominance));
 
   /// Build the dominance for each of the operation regions.
-  function->walk([&](Instruction *inst) {
-    for (auto &region : inst->getRegions()) {
+  function->walk([&](Operation *op) {
+    for (auto &region : op->getRegions()) {
       // Don't compute dominance if the region is empty.
       if (region.empty())
         continue;
@@ -66,11 +66,11 @@ bool DominanceInfoBase<IsPostDom>::properlyDominates(Block *a, Block *b) {
     return false;
 
   // If both blocks are not in the same region, 'a' properly dominates 'b' if
-  // 'b' is defined in an instruction region that (recursively) ends up being
+  // 'b' is defined in an operation region that (recursively) ends up being
   // dominated by 'a'. Walk up the list of containers enclosing B.
   auto *regionA = a->getParent(), *regionB = b->getParent();
   if (regionA != regionB) {
-    Instruction *bAncestor;
+    Operation *bAncestor;
     do {
       bAncestor = regionB->getContainingOp();
       // If 'bAncestor' is the top level function, then 'a' is a block
@@ -100,8 +100,8 @@ template class mlir::detail::DominanceInfoBase</*IsPostDom=*/false>;
 // DominanceInfo
 //===----------------------------------------------------------------------===//
 
-/// Return true if instruction A properly dominates instruction B.
-bool DominanceInfo::properlyDominates(Instruction *a, Instruction *b) {
+/// Return true if operation A properly dominates operation B.
+bool DominanceInfo::properlyDominates(Operation *a, Operation *b) {
   auto *aBlock = a->getBlock(), *bBlock = b->getBlock();
 
   // If the blocks are the same, then check if b is before a in the block.
@@ -120,12 +120,12 @@ bool DominanceInfo::properlyDominates(Instruction *a, Instruction *b) {
   return properlyDominates(aBlock, bBlock);
 }
 
-/// Return true if value A properly dominates instruction B.
-bool DominanceInfo::properlyDominates(Value *a, Instruction *b) {
+/// Return true if value A properly dominates operation B.
+bool DominanceInfo::properlyDominates(Value *a, Operation *b) {
   if (auto *aInst = a->getDefiningOp())
     return properlyDominates(aInst, b);
 
-  // block arguments properly dominate all instructions in their own block, so
+  // block arguments properly dominate all operations in their own block, so
   // we use a dominates check here, not a properlyDominates check.
   return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
 }
@@ -135,7 +135,7 @@ bool DominanceInfo::properlyDominates(Value *a, Instruction *b) {
 //===----------------------------------------------------------------------===//
 
 /// Returns true if statement 'a' properly postdominates statement b.
-bool PostDominanceInfo::properlyPostDominates(Instruction *a, Instruction *b) {
+bool PostDominanceInfo::properlyPostDominates(Operation *a, Operation *b) {
   auto *aBlock = a->getBlock(), *bBlock = b->getBlock();
 
   // If the blocks are the same, check if b is before a in the block.

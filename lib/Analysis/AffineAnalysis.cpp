@@ -41,14 +41,13 @@ using namespace mlir;
 
 using llvm::dbgs;
 
-/// Returns the sequence of AffineApplyOp Instructions operation in
+/// Returns the sequence of AffineApplyOp Operations operation in
 /// 'affineApplyOps', which are reachable via a search starting from 'operands',
 /// and ending at operands which are not defined by AffineApplyOps.
 // TODO(andydavis) Add a method to AffineApplyOp which forward substitutes
 // the AffineApplyOp into any user AffineApplyOps.
 void mlir::getReachableAffineApplyOps(
-    ArrayRef<Value *> operands,
-    SmallVectorImpl<Instruction *> &affineApplyOps) {
+    ArrayRef<Value *> operands, SmallVectorImpl<Operation *> &affineApplyOps) {
   struct State {
     // The ssa value for this node in the DFS traversal.
     Value *value;
@@ -64,28 +63,27 @@ void mlir::getReachableAffineApplyOps(
     State &state = worklist.back();
     auto *opInst = state.value->getDefiningOp();
     // Note: getDefiningOp will return nullptr if the operand is not an
-    // Instruction (i.e. AffineForOp), which is a terminator for the search.
+    // Operation (i.e. block argument), which is a terminator for the search.
     if (opInst == nullptr || !opInst->isa<AffineApplyOp>()) {
       worklist.pop_back();
       continue;
     }
-    if (auto affineApplyOp = opInst->dyn_cast<AffineApplyOp>()) {
-      if (state.operandIndex == 0) {
-        // Pre-Visit: Add 'opInst' to reachable sequence.
-        affineApplyOps.push_back(opInst);
-      }
-      if (state.operandIndex < opInst->getNumOperands()) {
-        // Visit: Add next 'affineApplyOp' operand to worklist.
-        // Get next operand to visit at 'operandIndex'.
-        auto *nextOperand = opInst->getOperand(state.operandIndex);
-        // Increment 'operandIndex' in 'state'.
-        ++state.operandIndex;
-        // Add 'nextOperand' to worklist.
-        worklist.push_back({nextOperand, 0});
-      } else {
-        // Post-visit: done visiting operands AffineApplyOp, pop off stack.
-        worklist.pop_back();
-      }
+
+    if (state.operandIndex == 0) {
+      // Pre-Visit: Add 'opInst' to reachable sequence.
+      affineApplyOps.push_back(opInst);
+    }
+    if (state.operandIndex < opInst->getNumOperands()) {
+      // Visit: Add next 'affineApplyOp' operand to worklist.
+      // Get next operand to visit at 'operandIndex'.
+      auto *nextOperand = opInst->getOperand(state.operandIndex);
+      // Increment 'operandIndex' in 'state'.
+      ++state.operandIndex;
+      // Add 'nextOperand' to worklist.
+      worklist.push_back({nextOperand, 0});
+    } else {
+      // Post-visit: done visiting operands AffineApplyOp, pop off stack.
+      worklist.pop_back();
     }
   }
 }
@@ -115,15 +113,15 @@ LogicalResult mlir::getIndexSet(MutableArrayRef<AffineForOp> forOps,
 // Computes the iteration domain for 'opInst' and populates 'indexSet', which
 // encapsulates the constraints involving loops surrounding 'opInst' and
 // potentially involving any Function symbols. The dimensional identifiers in
-// 'indexSet' correspond to the loops surounding 'inst' from outermost to
+// 'indexSet' correspond to the loops surounding 'op' from outermost to
 // innermost.
-// TODO(andydavis) Add support to handle IfInsts surrounding 'inst'.
-static LogicalResult getInstIndexSet(Instruction *inst,
+// TODO(andydavis) Add support to handle IfInsts surrounding 'op'.
+static LogicalResult getInstIndexSet(Operation *op,
                                      FlatAffineConstraints *indexSet) {
   // TODO(andydavis) Extend this to gather enclosing IfInsts and consider
   // factoring it out into a utility function.
   SmallVector<AffineForOp, 4> loops;
-  getLoopIVs(*inst, &loops);
+  getLoopIVs(*op, &loops);
   return getIndexSet(loops, indexSet);
 }
 
@@ -549,13 +547,12 @@ static Block *getCommonBlock(const MemRefAccess &srcAccess,
   return forOp.getBody();
 }
 
-// Returns true if the ancestor operation instruction of 'srcAccess' appears
-// before the ancestor operation instruction of 'dstAccess' in the common
-// ancestral block. Returns false otherwise.
+// Returns true if the ancestor operation of 'srcAccess' appears before the
+// ancestor operation of 'dstAccess' in the common ancestral block. Returns
+// false otherwise.
 // Note that because 'srcAccess' or 'dstAccess' may be nested in conditionals,
-// the function is named 'srcAppearsBeforeDstInCommonBlock'.
-// Note that 'numCommonLoops' is the number of contiguous surrounding outer
-// loops.
+// the function is named 'srcAppearsBeforeDstInCommonBlock'. Note that
+// 'numCommonLoops' is the number of contiguous surrounding outer loops.
 static bool srcAppearsBeforeDstInAncestralBlock(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     const FlatAffineConstraints &srcDomain, unsigned numCommonLoops) {
@@ -791,19 +788,19 @@ bool mlir::checkMemrefAccessDependence(
   AffineValueMap dstAccessMap;
   dstAccess.getAccessMap(&dstAccessMap);
 
-  // Get iteration domain for the 'srcAccess' instruction.
+  // Get iteration domain for the 'srcAccess' operation.
   FlatAffineConstraints srcDomain;
   if (failed(getInstIndexSet(srcAccess.opInst, &srcDomain)))
     return false;
 
-  // Get iteration domain for 'dstAccess' instruction.
+  // Get iteration domain for 'dstAccess' operation.
   FlatAffineConstraints dstDomain;
   if (failed(getInstIndexSet(dstAccess.opInst, &dstDomain)))
     return false;
 
   // Return 'false' if loopDepth > numCommonLoops and if the ancestor operation
-  // instruction of 'srcAccess' does not properly dominate the ancestor
-  // operation instruction of 'dstAccess' in the same common instruction block.
+  // operation of 'srcAccess' does not properly dominate the ancestor
+  // operation of 'dstAccess' in the same common operation block.
   // Note: this check is skipped if 'allowRAR' is true, because because RAR
   // deps can exist irrespective of lexicographic ordering b/w src and dst.
   unsigned numCommonLoops = getNumCommonLoops(srcDomain, dstDomain);

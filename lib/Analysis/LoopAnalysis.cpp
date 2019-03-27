@@ -177,7 +177,7 @@ uint64_t mlir::getLargestDivisorOfTripCount(AffineForOp forOp) {
 bool mlir::isAccessInvariant(Value &iv, Value &index) {
   assert(isForInductionVar(&iv) && "iv must be a AffineForOp");
   assert(index.getType().isa<IndexType>() && "index must be of IndexType");
-  SmallVector<Instruction *, 4> affineApplyOps;
+  SmallVector<Operation *, 4> affineApplyOps;
   getReachableAffineApplyOps({&index}, affineApplyOps);
 
   if (affineApplyOps.empty()) {
@@ -272,11 +272,11 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
   return memRefType.getElementType().template isa<VectorType>();
 }
 
-static bool isVectorTransferReadOrWrite(Instruction &inst) {
-  return inst.isa<VectorTransferReadOp>() || inst.isa<VectorTransferWriteOp>();
+static bool isVectorTransferReadOrWrite(Operation &op) {
+  return op.isa<VectorTransferReadOp>() || op.isa<VectorTransferWriteOp>();
 }
 
-using VectorizableInstFun = std::function<bool(AffineForOp, Instruction &)>;
+using VectorizableInstFun = std::function<bool(AffineForOp, Operation &)>;
 
 static bool isVectorizableLoopWithCond(AffineForOp loop,
                                        VectorizableInstFun isVectorizableInst) {
@@ -295,9 +295,9 @@ static bool isVectorizableLoopWithCond(AffineForOp loop,
   }
 
   // No vectorization across unknown regions.
-  auto regions = matcher::Op([](Instruction &inst) -> bool {
-    return inst.getNumRegions() != 0 &&
-           !(inst.isa<AffineIfOp>() || inst.isa<AffineForOp>());
+  auto regions = matcher::Op([](Operation &op) -> bool {
+    return op.getNumRegions() != 0 &&
+           !(op.isa<AffineIfOp>() || op.isa<AffineForOp>());
   });
   SmallVector<NestedMatch, 8> regionsMatched;
   regions.match(forInst, &regionsMatched);
@@ -316,7 +316,7 @@ static bool isVectorizableLoopWithCond(AffineForOp loop,
   SmallVector<NestedMatch, 8> loadAndStoresMatched;
   loadAndStores.match(forInst, &loadAndStoresMatched);
   for (auto ls : loadAndStoresMatched) {
-    auto *op = ls.getMatchedInstruction();
+    auto *op = ls.getMatchedOperation();
     auto load = op->dyn_cast<LoadOp>();
     auto store = op->dyn_cast<StoreOp>();
     // Only scalar types are considered vectorizable, all load/store must be
@@ -336,7 +336,7 @@ static bool isVectorizableLoopWithCond(AffineForOp loop,
 bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
     AffineForOp loop, unsigned fastestVaryingDim) {
   VectorizableInstFun fun(
-      [fastestVaryingDim](AffineForOp loop, Instruction &op) {
+      [fastestVaryingDim](AffineForOp loop, Operation &op) {
         auto load = op.dyn_cast<LoadOp>();
         auto store = op.dyn_cast<StoreOp>();
         return load ? isContiguousAccess(*loop.getInductionVar(), load,
@@ -350,12 +350,12 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
 bool mlir::isVectorizableLoop(AffineForOp loop) {
   VectorizableInstFun fun(
       // TODO: implement me
-      [](AffineForOp loop, Instruction &op) { return true; });
+      [](AffineForOp loop, Operation &op) { return true; });
   return isVectorizableLoopWithCond(loop, fun);
 }
 
-/// Checks whether SSA dominance would be violated if a for inst's body
-/// instructions are shifted by the specified shifts. This method checks if a
+/// Checks whether SSA dominance would be violated if a for op's body
+/// operations are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence
 // violation when we have the support.
@@ -364,24 +364,24 @@ bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
   assert(shifts.size() == forBody->getOperations().size());
 
   // Work backwards over the body of the block so that the shift of a use's
-  // ancestor instruction in the block gets recorded before it's looked up.
-  DenseMap<Instruction *, uint64_t> forBodyShift;
+  // ancestor operation in the block gets recorded before it's looked up.
+  DenseMap<Operation *, uint64_t> forBodyShift;
   for (auto it : llvm::enumerate(llvm::reverse(forBody->getOperations()))) {
-    auto &inst = it.value();
+    auto &op = it.value();
 
-    // Get the index of the current instruction, note that we are iterating in
+    // Get the index of the current operation, note that we are iterating in
     // reverse so we need to fix it up.
     size_t index = shifts.size() - it.index() - 1;
 
-    // Remember the shift of this instruction.
+    // Remember the shift of this operation.
     uint64_t shift = shifts[index];
-    forBodyShift.try_emplace(&inst, shift);
+    forBodyShift.try_emplace(&op, shift);
 
-    // Validate the results of this instruction if it were to be shifted.
-    for (unsigned i = 0, e = inst.getNumResults(); i < e; ++i) {
-      Value *result = inst.getResult(i);
+    // Validate the results of this operation if it were to be shifted.
+    for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
+      Value *result = op.getResult(i);
       for (const InstOperand &use : result->getUses()) {
-        // If an ancestor instruction doesn't lie in the block of forOp,
+        // If an ancestor operation doesn't lie in the block of forOp,
         // there is no shift to check.
         if (auto *ancInst = forBody->findAncestorInstInBlock(*use.getOwner())) {
           assert(forBodyShift.count(ancInst) > 0 && "ancestor expected in map");

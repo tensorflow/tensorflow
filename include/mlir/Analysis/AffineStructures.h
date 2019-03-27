@@ -377,12 +377,12 @@ public:
   AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
 
   /// Adds constraints (lower and upper bounds) for the specified 'affine.for'
-  /// instruction's Value using IR information stored in its bound maps. The
+  /// operation's Value using IR information stored in its bound maps. The
   /// right identifier is first looked up using forOp's Value. Asserts if the
-  /// Value corresponding to the 'affine.for' instruction isn't found in the
+  /// Value corresponding to the 'affine.for' operation isn't found in the
   /// constraint system. Returns failure for the yet unimplemented/unsupported
   /// cases.  Any new identifiers that are found in the bound operands of the
-  /// 'affine.for' instruction are added as trailing identifiers (either
+  /// 'affine.for' operation are added as trailing identifiers (either
   /// dimensional or symbolic depending on whether the operand is a valid ML
   /// Function symbol).
   //  TODO(bondhugula): add support for non-unit strides.

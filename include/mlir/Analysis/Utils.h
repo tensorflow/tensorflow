@@ -41,17 +41,16 @@ class FlatAffineConstraints;
 class Location;
 class MemRefAccess;
 class Operation;
-using Instruction = Operation;
 class Value;
 
-/// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
-/// the outermost 'affine.for' instruction to the innermost one.
-//  TODO(bondhugula): handle 'affine.if' inst's.
-void getLoopIVs(Instruction &inst, SmallVectorImpl<AffineForOp> *loops);
+/// Populates 'loops' with IVs of the loops surrounding 'op' ordered from
+/// the outermost 'affine.for' operation to the innermost one.
+//  TODO(bondhugula): handle 'affine.if' ops.
+void getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops);
 
-/// Returns the nesting depth of this instruction, i.e., the number of loops
-/// surrounding this instruction.
-unsigned getNestingDepth(Instruction &inst);
+/// Returns the nesting depth of this operation, i.e., the number of loops
+/// surrounding this operation.
+unsigned getNestingDepth(Operation &op);
 
 /// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
 /// at 'forOp'.
@@ -96,15 +95,15 @@ LogicalResult getBackwardComputationSliceState(
 /// Creates a clone of the computation contained in the loop nest surrounding
 /// 'srcOpInst', slices the iteration space of src loop based on slice bounds
 /// in 'sliceState', and inserts the computation slice at the beginning of the
-/// instruction block of the loop at 'dstLoopDepth' in the loop nest surrounding
+/// operation block of the loop at 'dstLoopDepth' in the loop nest surrounding
 /// 'dstOpInst'. Returns the top-level loop of the computation slice on
 /// success, returns nullptr otherwise.
 // Loop depth is a crucial optimization choice that determines where to
 // materialize the results of the backward slice - presenting a trade-off b/w
 // storage and redundant computation in several cases.
 // TODO(andydavis) Support computation slices with common surrounding loops.
-AffineForOp insertBackwardComputationSlice(Instruction *srcOpInst,
-                                           Instruction *dstOpInst,
+AffineForOp insertBackwardComputationSlice(Operation *srcOpInst,
+                                           Operation *dstOpInst,
                                            unsigned dstLoopDepth,
                                            ComputationSliceState *sliceState);
 
@@ -155,7 +154,7 @@ struct MemRefRegion {
   ///   {memref = %A, write = false, {%i <= m0 <= %i + 7} }
   /// The last field is a 2-d FlatAffineConstraints symbolic in %i.
   ///
-  LogicalResult compute(Instruction *inst, unsigned loopDepth,
+  LogicalResult compute(Operation *op, unsigned loopDepth,
                         ComputationSliceState *sliceState = nullptr);
 
   FlatAffineConstraints *getConstraints() { return &cst; }
@@ -229,7 +228,7 @@ LogicalResult boundCheckLoadOrStoreOp(LoadOrStoreOpPointer loadOrStoreOp,
                                       bool emitError = true);
 
 /// Returns the number of surrounding loops common to both A and B.
-unsigned getNumCommonSurroundingLoops(Instruction &A, Instruction &B);
+unsigned getNumCommonSurroundingLoops(Operation &A, Operation &B);
 
 /// Gets the memory footprint of all data touched in the specified memory space
 /// in bytes; if the memory space is unspecified, considers all memory spaces.
