@@ -328,8 +328,21 @@ def _irfft_grad_helper(rank, rfft_fn):
 @tf_export("signal.fftshift")
 def fftshift(x, axes=None):
     """Shift the zero-frequency component to the center of the spectrum.
+
     This function swaps half-spaces for all axes listed (defaults to all).
     Note that ``y[0]`` is the Nyquist component only if ``len(x)`` is even.
+
+    @compatibility(numpy)
+    Equivalent to numpy.fft.fftshift.
+    https://docs.scipy.org/doc/numpy/reference/generated/numpy.fft.fftshift.html
+    @end_compatibility
+
+    For example:
+
+    ```python
+    x = tf.signal.fftshift([ 0.,  1.,  2.,  3.,  4., -5., -4., -3., -2., -1.])
+    x.numpy() # array([-5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.])
+    ```
 
     Args:
       x: `Tensor`, input tensor.
@@ -337,12 +350,7 @@ def fftshift(x, axes=None):
              Axes over which to shift.  Default is None, which shifts all axes.
 
     Returns:
-      `Tensor`, The shifted tensor.
-
-    Example:
-      >>> fftshift([ 0.,  1.,  2.,  3.,  4., -5., -4., -3., -2., -1.])
-      <tf.Tensor: id=3, shape=(10,), dtype=float32,numpy=array
-      ([-5., -4., -3., -2., -1.,  0.,  1.,  2.,  3.,  4.], dtype=float32)>
+      A `Tensor`, The shifted tensor.
     """
     x = _ops.convert_to_tensor_v2(x)
     if axes is None:
@@ -358,8 +366,22 @@ def fftshift(x, axes=None):
 
 @tf_export("signal.ifftshift")
 def ifftshift(x, axes=None):
-    """The inverse of fftshift. Although identical for even-length x,
+    """The inverse of fftshift.
+
+    Although identical for even-length x,
     the functions differ by one sample for odd-length x.
+
+    @compatibility(numpy)
+    Equivalent to numpy.fft.ifftshift.
+    https://docs.scipy.org/doc/numpy/reference/generated/numpy.fft.ifftshift.html
+    @end_compatibility
+
+    For example:
+
+    ```python
+    x = tf.signal.ifftshift([[ 0.,  1.,  2.],[ 3.,  4., -4.],[-3., -2., -1.]])
+    x.numpy() # array([[ 4., -4.,  3.],[-2., -1., -3.],[ 1.,  2.,  0.]])
+    ```
 
     Args:
       x: `Tensor`, input tensor.
@@ -367,12 +389,7 @@ def ifftshift(x, axes=None):
             Defaults to None, which shifts all axes.
 
     Returns:
-      `Tensor`, The shifted tensor.
-
-    Example:
-      >>> ifftshift([[ 0.,  1.,  2.],[ 3.,  4., -4.],[-3., -2., -1.]])
-      <tf.Tensor: id=13, shape=(3, 3), dtype=float32, numpy=array
-      ([[ 4., -4.,  3.],[-2., -1., -3.],[ 1.,  2.,  0.]], dtype=float32)>
+      A `Tensor`, The shifted tensor.
     """
     x = _ops.convert_to_tensor_v2(x)
     if axes is None:

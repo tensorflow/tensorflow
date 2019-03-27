@@ -158,31 +158,6 @@ class FFTOpsTest(BaseFFTOpsTest):
     else:
       raise ValueError("invalid rank")
 
-  #test cases for fftshift and ifftshift
-  def testDefinition(self):
-    x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
-    y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
-    self.assertTrue((fft_ops.fftshift(x).numpy() ==  y).all())
-    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  x).all())
-    x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
-    y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
-    self.assertTrue((fft_ops.fftshift(x).numpy() == y).all())
-    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  x).all())
-
-  def testAxesKeyword(self):
-    freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
-    shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
-    self.assertTrue((fft_ops.fftshift(freqs, axes=(0, 1)).numpy() == \
-    shifted).all())
-    self.assertTrue((fft_ops.fftshift(freqs, axes=0).numpy() == \
-    fft_ops.fftshift(freqs, axes=(0,)).numpy()).all())
-    self.assertTrue((fft_ops.ifftshift(shifted, axes=(0, 1)).numpy() == \
-    freqs).all())
-    self.assertTrue((fft_ops.ifftshift(shifted, axes=0).numpy() == \
-    fft_ops.ifftshift(shifted, axes=(0,)).numpy()).all())
-    self.assertTrue((fft_ops.fftshift(freqs).numpy() == shifted).all())
-    self.assertTrue((fft_ops.ifftshift(shifted).numpy() == freqs).all())
-
   @test_util.run_deprecated_v1
   def testEmpty(self):
     with spectral_ops_test_util.fft_kernel_label_map():
@@ -579,6 +554,31 @@ class RFFTOpsTest(BaseFFTOpsTest):
             self._checkGradComplex(
                 self._tfIFFTForRank(rank), re, im, result_is_complex=False)
 
+class FFTShiftTest(test.TestCase):
+
+  def testDefinition(self):
+    x = [0, 1, 2, 3, 4, -4, -3, -2, -1]
+    y = [-4, -3, -2, -1, 0, 1, 2, 3, 4]
+    self.assertTrue((fft_ops.fftshift(x).numpy() ==  y).all())
+    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  x).all())
+    x = [0, 1, 2, 3, 4, -5, -4, -3, -2, -1]
+    y = [-5, -4, -3, -2, -1, 0, 1, 2, 3, 4]
+    self.assertTrue((fft_ops.fftshift(x).numpy() == y).all())
+    self.assertTrue((fft_ops.ifftshift(y).numpy() ==  x).all())
+
+  def testAxesKeyword(self):
+    freqs = [[0, 1, 2], [3, 4, -4], [-3, -2, -1]]
+    shifted = [[-1, -3, -2], [2, 0, 1], [-4, 3, 4]]
+    self.assertTrue((fft_ops.fftshift(freqs, axes=(0, 1)).numpy() == \
+    shifted).all())
+    self.assertTrue((fft_ops.fftshift(freqs, axes=0).numpy() == \
+    fft_ops.fftshift(freqs, axes=(0,)).numpy()).all())
+    self.assertTrue((fft_ops.ifftshift(shifted, axes=(0, 1)).numpy() == \
+    freqs).all())
+    self.assertTrue((fft_ops.ifftshift(shifted, axes=0).numpy() == \
+    fft_ops.ifftshift(shifted, axes=(0,)).numpy()).all())
+    self.assertTrue((fft_ops.fftshift(freqs).numpy() == shifted).all())
+    self.assertTrue((fft_ops.ifftshift(shifted).numpy() == freqs).all())
 
 if __name__ == "__main__":
   test.main()
