@@ -422,9 +422,9 @@ class AdagradOptimizerTest(test.TestCase):
         ada_update2 = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
         slot0 = ada_opt.get_slot(var0, "accumulator")
-        self.assertEqual(slot0.shape, var0.get_shape())
+        self.assertEqual(slot0.shape, var0.shape)
         slot1 = ada_opt.get_slot(var1, "accumulator")
-        self.assertEqual(slot1.shape, var1.get_shape())
+        self.assertEqual(slot1.shape, var1.shape)
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values.
