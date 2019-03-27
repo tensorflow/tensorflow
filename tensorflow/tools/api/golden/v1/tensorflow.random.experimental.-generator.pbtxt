@@ -25,6 +25,10 @@ tf_class {
     argspec: "args=[\'self\', \'seed\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "truncated_normal"
+    argspec: "args=[\'self\', \'shape\', \'mean\', \'stddev\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'1.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "uniform"
     argspec: "args=[\'self\', \'shape\', \'minval\', \'maxval\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
   }

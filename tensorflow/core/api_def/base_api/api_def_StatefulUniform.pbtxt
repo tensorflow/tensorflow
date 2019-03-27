@@ -1,9 +1,16 @@
 op {
-  graph_op_name: "StatefulStandardNormal"
+  graph_op_name: "StatefulUniform"
+  visibility: HIDDEN
   in_arg {
     name: "resource"
     description: <<END
 The handle of the resource variable that stores the state of the RNG.
+END
+  }
+  in_arg {
+    name: "algorithm"
+    description: <<END
+The RNG algorithm.
 END
   }
   in_arg {
@@ -15,7 +22,7 @@ END
   out_arg {
     name: "output"
     description: <<END
-A tensor of the specified shape filled with random normal values.
+Random values with specified shape.
 END
   }
   attr {
@@ -24,8 +31,9 @@ END
 The type of the output.
 END
   }
-  summary: "Outputs random values from a normal distribution. This op is deprecated in favor of op 'StatefulStandardNormalV2'"
+  summary: "Outputs random values from a uniform distribution."
   description: <<END
-The generated values will have mean 0 and standard deviation 1.
+The generated values follow a uniform distribution in the range `[0, 1)`. The
+lower bound 0 is included in the range, while the upper bound 1 is excluded.
 END
 }
