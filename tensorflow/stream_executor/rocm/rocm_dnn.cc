@@ -185,6 +185,7 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenBatchNormalizationForwardInference)        \
   __macro(miopenBatchNormalizationForwardTraining)         \
   __macro(miopenGetConvolutionForwardOutputDim)            \
+  __macro(miopenGetConvolutionNdForwardOutputDim)          \
   __macro(miopenFindConvolutionForwardAlgorithm)           \
   __macro(miopenCreateTensorDescriptor)                    \
   __macro(miopenDestroyTensorDescriptor)                   \
@@ -206,7 +207,9 @@ static port::ThreadPool* GetROCmThreadpool() {
   __macro(miopenConvolutionBackwardBias)                   \
   __macro(miopenConvolutionForwardGetWorkSpaceSize)        \
   __macro(miopenInitConvolutionDescriptor)                 \
+  __macro(miopenInitConvolutionNdDescriptor)               \
   __macro(miopenGetConvolutionDescriptor)                  \
+  __macro(miopenGetConvolutionNdDescriptor)                \
   __macro(miopenSetConvolutionGroupCount)                  \
   __macro(miopenSet4dTensorDescriptor)                     \
   __macro(miopenGetTensorDescriptor)                       \
@@ -306,22 +309,24 @@ uint64 GetHashValue(miopenTensorDescriptor_t tensor_desc) {
 
 uint64 GetHashValue(miopenConvolutionDescriptor_t conv_desc) {
   miopenConvolutionMode_t c_mode = miopenConvolution;
-  int pad_h = 0, pad_w = 0, u = 0, v = 0, dilation_h = 0, dilation_w = 0;
-  wrap::miopenGetConvolutionDescriptor(conv_desc, &c_mode, &pad_h,
-                                                   &pad_w, &u, &v, &dilation_h,
-                                                   &dilation_w);
+  int nd = 0;
+  wrap::miopenGetConvolutionNdDescriptor(conv_desc, &c_mode, &nd,
+      nullptr, nullptr, nullptr);
+
+  std::vector<int> stride(nd);
+  std::vector<int> pad(nd);
+  std::vector<int> dilation(nd);
+
+  wrap::miopenGetConvolutionNdDescriptor(conv_desc, &c_mode, &nd,
+      pad.data(), stride.data(), dilation.data());
 
   uint64 hashValue = tensorflow::hash<int>()(c_mode);
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(pad_h));
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(pad_w));
-  hashValue = tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(u));
-  hashValue = tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(v));
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(dilation_h));
-  hashValue =
-      tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(dilation_w));
+  auto hash64Combine = [&hashValue](int element){
+      tensorflow::Hash64Combine(hashValue, tensorflow::hash<int>()(element));
+  };
+  std::for_each(pad.begin(), pad.end(), hash64Combine);
+  std::for_each(stride.begin(), stride.end(), hash64Combine);
+  std::for_each(dilation.begin(), dilation.end(), hash64Combine);
 
   return hashValue;
 }
@@ -566,9 +571,6 @@ class ScopedTensorDescriptor {
       case dnn::DataLayout::kBatchYXDepth:
       case dnn::DataLayout::kBatchDepthYX: {
         const int nd = batch_descriptor.ndims() + 2;
-        if (nd != 4) {
-          LOG(FATAL) << "miopen only supports 4D tensors, dim=" << nd << " not allowed";
-        }
 
         // MIOpen requires the strides and dims to be ordered as BDYX.
         std::vector<int64> strides64 =
@@ -583,8 +585,8 @@ class ScopedTensorDescriptor {
                        &CheckedNarrowing<int64, int>);
         std::transform(dims64.cbegin(), dims64.cend(), dims.begin(),
                        &CheckedNarrowing<int64, int>);
-        status = wrap::miopenSet4dTensorDescriptor(handle_, elem_type, dims[0],
-                                                   dims[1], dims[2], dims[3]);
+        status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
+                                                   dims.data(), strides.data());
 
         if (status != miopenStatusSuccess) {
           LOG(FATAL) << "could not convert BatchDescriptor "
@@ -631,19 +633,14 @@ class ScopedFilterDescriptor {
 
     const int nd = batch_descriptor.ndims() + 2;
 
-    if (nd != 4) {
-      LOG(FATAL) << "miopen only supports 4D filters, dim=" << nd
-                 << "not allowed" << ToString(status);
-    }
-
     std::vector<int> dims(2 + filter_descriptor.ndims());
     dims[0] = filter_descriptor.output_feature_map_count();
     dims[1] = filter_descriptor.input_feature_map_count();
     const auto& spatial_dims = filter_descriptor.input_filter_dims();
     std::copy(spatial_dims.begin(), spatial_dims.end(), dims.begin() + 2);
 
-    status = wrap::miopenSet4dTensorDescriptor(handle_, elem_type, dims[0],
-                                               dims[1], dims[2], dims[3]);
+    status = wrap::miopenSetTensorDescriptor(handle_, elem_type, nd,
+                                               dims.data(), nullptr);
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "could not set miopen filter descriptor: "
                  << ToString(status);
@@ -700,9 +697,9 @@ class ScopedConvolutionDescriptor {
     std::transform(dilations64.cbegin(), dilations64.cend(), upscale.begin(),
                    &CheckedNarrowing<int64, int>);
 
-    status = wrap::miopenInitConvolutionDescriptor(
-        handle_, miopenConvolution, padding[0], padding[1], strides[0],
-        strides[1], upscale[0], upscale[1]);
+    status = wrap::miopenInitConvolutionNdDescriptor(
+        handle_, miopenConvolution, convolution_descriptor.ndims(),
+        padding.data(), strides.data(), upscale.data());
     if (status != miopenStatusSuccess) {
       LOG(FATAL) << "could not set miopen convolution descriptor: "
                  << ToString(status);
@@ -4021,9 +4018,9 @@ bool MIOpenSupport::DeriveOutputBatchDescriptor(
 
   int dn = batch_descriptor.ndims() + 2;
   std::vector<int> dims(dn);  // in BDYX
-  auto status = wrap::miopenGetConvolutionForwardOutputDim(
-      conv.handle(), input_nd.handle(), filter.handle(), &dims[0], &dims[1],
-      &dims[2], &dims[3]);
+  auto status = wrap::miopenGetConvolutionNdForwardOutputDim(
+      conv.handle(), input_nd.handle(), filter.handle(),
+      &dn, dims.data());
   if (status != miopenStatusSuccess) {
     LOG(ERROR) << "could not get output tensor for convolution: "
                << ToString(status);
