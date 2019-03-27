@@ -830,6 +830,8 @@ Status MarkForCompilationPassImpl::Run() {
   std::deque<UnionFind<Cluster>*> worklist;
   BuildInitialClusterSet(compilation_candidates, &clusters, &worklist);
 
+  int64 iteration_count = 0;
+
   // Repeatedly contract edges between clusters that are on the same device,
   // provided the contraction would not create a cycle.
   //
@@ -854,6 +856,7 @@ Status MarkForCompilationPassImpl::Run() {
     }
 
     for (int to : cycles.Successors(from)) {
+      iteration_count++;
       if (to >= graph_->num_node_ids()) {
         // Node is a fictitious node that is present only in the cycle detection
         // graph. No clustering is possible.
@@ -925,6 +928,11 @@ Status MarkForCompilationPassImpl::Run() {
       break;
     }
   }
+
+  VLOG(1) << iteration_count << " iterations in inner loop for graph with "
+          << compilation_candidates.size()
+          << " compilation candidates.  Iterations per compilation candidate: "
+          << ((1.0 * iteration_count) / compilation_candidates.size());
 
   // Count the number of non-trivial elements in each cluster.
   std::vector<int> effective_cluster_sizes(graph_->num_node_ids());
