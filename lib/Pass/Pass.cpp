@@ -194,10 +194,10 @@ void ModuleToFunctionPassAdaptorParallel::runOnModule() {
       funcAMPairs.emplace_back(&func, mam.slice(&func));
 
   // An index for the current function/analysis manager pair.
-  std::atomic<unsigned> funcIt = 0;
+  std::atomic<unsigned> funcIt(0);
 
   // An atomic failure variable for the async executors.
-  std::atomic<bool> passFailed = false;
+  std::atomic<bool> passFailed(false);
   llvm::parallel::for_each(
       llvm::parallel::par, asyncExecutors.begin(),
       std::next(asyncExecutors.begin(),
