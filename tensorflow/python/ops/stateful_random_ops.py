@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -368,8 +369,93 @@ class Generator(tracking.AutoTrackable):
           dtype=dtype, name=name)
 
   # TODO(wangpeng): implement other distributions
-  # TODO(wangpeng): implement `make_seeds`
-  # TODO(wangpeng): implement `make_generators`
+
+  def _make_int64_keys(self, shape=()):
+    # New independent keys are generated via
+    # `new_key[i] = hash(old_key, counter+i)`, which is exactly what
+    # `uniform_full_int(dtype=int64)` does for PhiloxRandom_64_128_128 and
+    # ThreeFry_64_64_64.
+    return self.uniform_full_int(shape=shape, dtype=dtypes.int64)
+
+  def make_seeds(self, count=1):
+    """Generates seeds for stateless random ops.
+
+    For example:
+
+    ```python
+    seeds = get_global_generator().make_seeds(count=10)
+    for i in range(10):
+      seed = seeds[:, i]
+      numbers = stateless_random_normal(shape=[2, 3], seed=seed)
+      ...
+    ```
+
+    Args:
+      count: the number of seed pairs (note that stateless random ops need a
+        pair of seeds to invoke).
+
+    Returns:
+      A tensor of shape [2, count] and dtype int64.
+    """
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      keys = self._make_int64_keys(shape=[count])
+      # The two seeds for stateless random ops don't have individual semantics
+      # and are scrambled together, so setting one to zero is fine.
+      zeros = array_ops.zeros_like(keys)
+      return array_ops.stack([keys, zeros])
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
+
+  def split(self, count=1):
+    """Returns a list of independent `Generator` objects.
+
+    Two generators are independent of each other in the sense that the
+    random-number streams they generate don't have statistically detectable
+    correlations. The new generators are also independent of the old one.
+    The old generator's state will be changed (like other random-number
+    generating methods), so two calls of `split` will return different
+    new generators.
+
+    For example:
+
+    ```python
+    gens = get_global_generator().split(count=10)
+    for gen in gens:
+      numbers = gen.normal(shape=[2, 3])
+      # ...
+    gens2 = get_global_generator().split(count=10)
+    # gens2 will be different from gens
+    ```
+
+    The new generators will be put on the current device (possible different
+    from the old generator's), for example:
+
+    ```python
+    with tf.device("/device:CPU:0"):
+      gen = Generator(seed=1234)  # gen is on CPU
+    with tf.device("/device:GPU:0"):
+      gens = gen.split(count=10)  # gens are on GPU
+    ```
+
+    Args:
+      count: the number of generators to return.
+
+    Returns:
+      A list (length `count`) of `Generator` objects independent of each other.
+      The new generators have the same RNG algorithm as the old one.
+    """
+    def _key_to_state(alg, key):
+      # Padding with zeros on the left. The zeros will be the counter.
+      return [0] * (_get_state_size(alg) - 1) + [key]
+
+    alg = self.algorithm
+    if alg == RNG_ALG_PHILOX or alg == RNG_ALG_THREEFRY:
+      keys = self._make_int64_keys(shape=[count])
+      return [Generator(seed=_key_to_state(alg, key), algorithm=alg)
+              for key in keys.numpy()]
+    else:
+      raise ValueError("Unsupported algorithm id: %s" % alg)
 
 
 # It's not safe to create TF ops before `init_google` is called, so this is

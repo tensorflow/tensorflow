@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
+
 from absl.testing import parameterized
 import numpy as np
 
@@ -29,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import logging_ops
@@ -61,6 +64,16 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
                  [0] * (random.PHILOX_STATE_SIZE - 2))),
         state)
 
+  def assertAllDifferent(self, tensors):
+    """Checks that there are no duplicate elements anywhere among the tensors.
+
+    Args:
+      tensors: a list of tensors. They can have different shapes.
+    """
+    tensors = [array_ops.reshape(t, shape=[-1]) for t in tensors]
+    ls = array_ops.concat(tensors, axis=0).numpy().tolist()
+    self.assertAllEqual(len(ls), len(set(ls)))
+
   @test_util.run_v2_only
   def testNonDeterministicInts(self):
     """Tests that non_deterministic_ints returns different results every time.
@@ -68,12 +81,54 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     This test is flaky, but with very low probability of failing.
     """
     shape = [2, 3]
-    dtype = dtypes.uint64
+    dtype = dtypes.int64
     a = random.non_deterministic_ints(shape=shape, dtype=dtype)
     self.assertAllEqual(shape, a.shape)
     self.assertEqual(dtype, a.dtype)
     b = random.non_deterministic_ints(shape, dtype=dtype)
-    self.assertNotAllClose(a, b)
+    self.assertAllDifferent([a, b])
+
+  @test_util.run_v2_only
+  def testBatchSeeds(self):
+    """Test for batch seeds.
+    """
+    shape = [2, 3]
+    count = 6
+    gen = random.Generator(seed=1234)
+    keys1 = gen._make_int64_keys(shape=shape)
+    keys2 = gen._make_int64_keys(shape=shape)
+    self.assertAllDifferent([keys1, keys2])
+    seeds1 = gen.make_seeds(count=count)
+    seeds2 = gen.make_seeds(count=count)
+    self.assertAllDifferent([seeds1[0, :], seeds2[0, :]])
+    gens = gen.split(count=count)
+    self.assertAllEqual(count, len(gens))
+    randoms = [g.uniform_full_int(shape=shape, dtype=dtypes.int32)
+               for g in gens]
+    self.assertAllDifferent(randoms)
+    # Tests graph mode.
+    @def_function.function
+    def f():
+      return gen.make_seeds(count=count)
+    for _ in range(3):
+      f()
+
+  def assertRegex(self, pattern, text):
+    self.assertTrue(
+        re.search(pattern, text),
+        "Can't find pattern '%s' in text '%s'" % (pattern, text))
+
+  @test_util.run_v2_only
+  @test_util.run_cuda_only
+  def testCrossDeviceSplit(self):
+    """Tests that a CPU RNG can split into RNGs on GPU.
+    """
+    with ops.device("/device:CPU:0"):
+      gen = random.Generator(seed=1234)  # gen is on CPU
+      self.assertRegex("CPU", gen.state.device)
+    with ops.device(test_util.gpu_device_name()):
+      gens = gen.split(count=10)  # gens are on GPU
+      self.assertRegex("GPU", gens[0].state.device)
 
   @test_util.run_v2_only
   def testGeneratorCreationInDefun(self):
@@ -106,7 +161,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       check_results(expected_normal1, *f())
       check_results(expected_normal2, *f())
 
-  @test_util.run_v1_only
+  @test_util.run_v1_only(
+      ("This test is specifically for checking TF1 compatibility. "
+       "It cannot run under TF2."))
   def testTF1(self):
     seed = 1234
     shape = [2, 3]
