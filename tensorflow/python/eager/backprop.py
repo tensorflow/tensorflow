@@ -946,6 +946,7 @@ class GradientTape(object):
       flat_targets.append(t)
 
     flat_sources = nest.flatten(sources)
+    flat_sources_raw = flat_sources
     flat_sources = [_handle_or_self(x) for x in flat_sources]
 
     if output_gradients is not None:
@@ -957,6 +958,7 @@ class GradientTape(object):
         flat_targets,
         flat_sources,
         output_gradients=output_gradients,
+        sources_raw=flat_sources_raw,
         unconnected_gradients=unconnected_gradients)
 
     if not self._persistent:

@@ -1674,6 +1674,7 @@ std::vector<PyObject*> MakeTensorList(PyObject* tensors) {
 
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
                               PyObject* sources, PyObject* output_gradients,
+                              PyObject* sources_raw,
                               PyObject* unconnected_gradients,
                               TF_Status* status) {
   TFE_Py_Tape* tape_obj = reinterpret_cast<TFE_Py_Tape*>(tape);
@@ -1751,7 +1752,9 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* target,
       strcmp(TFE_GetPythonString(unconnected_gradients), "zero") == 0;
   std::vector<PyObject*> sources_obj;
   if (unconnected_gradients_zero) {
-    sources_obj = MakeTensorList(sources);
+    // Uses the "raw" sources here so it can properly make a zeros tensor even
+    // if there are resource variables as sources.
+    sources_obj = MakeTensorList(sources_raw);
   }
 
   if (!result.empty()) {
