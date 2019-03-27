@@ -45,10 +45,7 @@ class FunctionPassExecutor : public PassExecutor {
 public:
   FunctionPassExecutor() : PassExecutor(Kind::FunctionExecutor) {}
   FunctionPassExecutor(FunctionPassExecutor &&) = default;
-
-  // TODO(riverriddle) Allow copying.
-  FunctionPassExecutor(FunctionPassExecutor &) = delete;
-  FunctionPassExecutor &operator=(FunctionPassExecutor &) = delete;
+  FunctionPassExecutor(const FunctionPassExecutor &rhs);
 
   /// Run the executor on the given function.
   LogicalResult run(Function *function, FunctionAnalysisManager &fam);
@@ -56,6 +53,9 @@ public:
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
   void addPass(FunctionPassBase *pass) { passes.emplace_back(pass); }
+
+  /// Returns the number of passes held by this executor.
+  size_t size() const { return passes.size(); }
 
   static bool classof(const PassExecutor *pe) {
     return pe->getKind() == Kind::FunctionExecutor;
@@ -96,18 +96,10 @@ private:
 //===----------------------------------------------------------------------===//
 
 /// An adaptor module pass used to run function passes over all of the
-/// non-external functions of a module.
+/// non-external functions of a module synchronously on a single thread.
 class ModuleToFunctionPassAdaptor
     : public ModulePass<ModuleToFunctionPassAdaptor> {
 public:
-  ModuleToFunctionPassAdaptor() = default;
-  ModuleToFunctionPassAdaptor(ModuleToFunctionPassAdaptor &&) = default;
-
-  // TODO(riverriddle) Allow copying.
-  ModuleToFunctionPassAdaptor(const ModuleToFunctionPassAdaptor &) = delete;
-  ModuleToFunctionPassAdaptor &
-  operator=(const ModuleToFunctionPassAdaptor &) = delete;
-
   /// Run the held function pipeline over all non-external functions within the
   /// module.
   void runOnModule() override;
@@ -119,11 +111,39 @@ private:
   FunctionPassExecutor fpe;
 };
 
+/// An adaptor module pass used to run function passes over all of the
+/// non-external functions of a module asynchronously across multiple threads.
+class ModuleToFunctionPassAdaptorParallel
+    : public ModulePass<ModuleToFunctionPassAdaptorParallel> {
+public:
+  /// Run the held function pipeline over all non-external functions within the
+  /// module.
+  void runOnModule() override;
+
+  /// Returns the function pass executor for this adaptor.
+  FunctionPassExecutor &getFunctionExecutor() { return fpe; }
+
+private:
+  // The main function pass executor for this adaptor.
+  FunctionPassExecutor fpe;
+
+  // A set of executors, cloned from the main executor, that run asynchronously
+  // on different threads.
+  std::vector<FunctionPassExecutor> asyncExecutors;
+};
+
+/// Utility function to return if a pass refers to an
+/// ModuleToFunctionPassAdaptor instance.
+inline bool isModuleToFunctionAdaptorPass(Pass *pass) {
+  return isa<ModuleToFunctionPassAdaptorParallel>(pass) ||
+         isa<ModuleToFunctionPassAdaptor>(pass);
+}
+
 /// Utility function to return if a pass refers to an adaptor pass. Adaptor
 /// passes are those that internally execute a pipeline, such as the
 /// ModuleToFunctionPassAdaptor.
 inline bool isAdaptorPass(Pass *pass) {
-  return isa<ModuleToFunctionPassAdaptor>(pass);
+  return isModuleToFunctionAdaptorPass(pass);
 }
 
 } // end namespace detail

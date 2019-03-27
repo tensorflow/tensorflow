@@ -103,6 +103,9 @@ protected:
   /// The polymorphic API that runs the pass over the currently held function.
   virtual void runOnFunction() = 0;
 
+  /// A clone method to create a copy of this pass.
+  virtual FunctionPassBase *clone() const = 0;
+
   /// Return the current function being transformed.
   Function &getFunction() {
     return *getPassState().irAndPassFailed.getPointer();
@@ -196,8 +199,6 @@ public:
 protected:
   PassModel() : BasePassT(PassID::getID<PassT>()) {}
 
-  /// TODO(riverriddle) Provide additional utilities for cloning, etc.
-
   /// Signal that some invariant was broken when running. The IR is allowed to
   /// be in an invalid state.
   void signalPassFailure() {
@@ -256,6 +257,11 @@ struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
   llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedModuleAnalysis() {
     return this->getAnalysisManager()
         .template getCachedModuleAnalysis<AnalysisT>();
+  }
+
+  /// A clone method to create a copy of this pass.
+  FunctionPassBase *clone() const override {
+    return new T(*static_cast<const T *>(this));
   }
 };
 

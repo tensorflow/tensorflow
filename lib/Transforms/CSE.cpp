@@ -84,6 +84,9 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
 namespace {
 /// Simple common sub-expression elimination.
 struct CSE : public FunctionPass<CSE> {
+  CSE() = default;
+  CSE(const CSE &) {}
+
   /// Shared implementation of operation elimination and scoped map definitions.
   using AllocatorTy = llvm::RecyclingAllocator<
       llvm::BumpPtrAllocator,

@@ -23,10 +23,18 @@
 #include "PassDetail.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Pass/PassManager.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Mutex.h"
+#include "llvm/Support/Parallel.h"
+#include "llvm/Support/Threading.h"
 
 using namespace mlir;
 using namespace mlir::detail;
+
+static llvm::cl::opt<bool> enableThreads(
+    "experimental-mt-pm",
+    llvm::cl::desc("Enable experimental multithreading in the pass manager"),
+    llvm::cl::init(false));
 
 //===----------------------------------------------------------------------===//
 // Pass
@@ -99,6 +107,12 @@ LogicalResult ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
 // PassExecutor
 //===----------------------------------------------------------------------===//
 
+FunctionPassExecutor::FunctionPassExecutor(const FunctionPassExecutor &rhs)
+    : PassExecutor(Kind::FunctionExecutor) {
+  for (auto &pass : rhs.passes)
+    addPass(pass->clone());
+}
+
 /// Run all of the passes in this manager over the current function.
 LogicalResult detail::FunctionPassExecutor::run(Function *function,
                                                 FunctionAnalysisManager &fam) {
@@ -123,7 +137,23 @@ LogicalResult detail::ModulePassExecutor::run(Module *module,
 // ModuleToFunctionPassAdaptor
 //===----------------------------------------------------------------------===//
 
-/// Execute the held function pass over all non-external functions within the
+/// Utility to run the given function and analysis manager on a provided
+/// function pass executor.
+static LogicalResult runFunctionPipeline(FunctionPassExecutor &fpe,
+                                         Function *func,
+                                         FunctionAnalysisManager &fam) {
+  // Run the function pipeline over the provided function.
+  auto result = fpe.run(func, fam);
+
+  // Clear out any computed function analyses. These analyses won't be used
+  // any more in this pipeline, and this helps reduce the current working set
+  // of memory. If preserving these analyses becomes important in the future
+  // we can re-evalutate this.
+  fam.clear();
+  return result;
+}
+
+/// Run the held function pipeline over all non-external functions within the
 /// module.
 void ModuleToFunctionPassAdaptor::runOnModule() {
   ModuleAnalysisManager &mam = getAnalysisManager();
@@ -134,7 +164,7 @@ void ModuleToFunctionPassAdaptor::runOnModule() {
 
     // Run the held function pipeline over the current function.
     auto fam = mam.slice(&func);
-    if (failed(fpe.run(&func, fam)))
+    if (failed(runFunctionPipeline(fpe, &func, fam)))
       return signalPassFailure();
 
     // Clear out any computed function analyses. These analyses won't be used
@@ -143,6 +173,54 @@ void ModuleToFunctionPassAdaptor::runOnModule() {
     // we can re-evalutate this.
     fam.clear();
   }
+}
+
+// Run the held function pipeline synchronously across the functions within
+// the module.
+void ModuleToFunctionPassAdaptorParallel::runOnModule() {
+  ModuleAnalysisManager &mam = getAnalysisManager();
+
+  // Create the async executors if they haven't been created, or if the main
+  // function pipeline has changed.
+  if (asyncExecutors.empty() || asyncExecutors.front().size() != fpe.size())
+    asyncExecutors = {llvm::hardware_concurrency(), fpe};
+
+  // Run a prepass over the module to collect the functions to execute a over.
+  // This ensures that an analysis manager exists for each function, as well as
+  // providing a queue of functions to execute over.
+  std::vector<std::pair<Function *, FunctionAnalysisManager>> funcAMPairs;
+  for (auto &func : getModule())
+    if (!func.isExternal())
+      funcAMPairs.emplace_back(&func, mam.slice(&func));
+
+  // An index for the current function/analysis manager pair.
+  std::atomic<unsigned> funcIt = 0;
+
+  // An atomic failure variable for the async executors.
+  std::atomic<bool> passFailed = false;
+  llvm::parallel::for_each(
+      llvm::parallel::par, asyncExecutors.begin(),
+      std::next(asyncExecutors.begin(),
+                std::min(asyncExecutors.size(), funcAMPairs.size())),
+      [&](FunctionPassExecutor &executor) {
+        for (auto e = funcAMPairs.size(); !passFailed && funcIt < e;) {
+          // Get the next available function index.
+          unsigned nextID = funcIt++;
+          if (nextID >= e)
+            break;
+
+          // Run the executor over the current function.
+          auto &it = funcAMPairs[nextID];
+          if (failed(runFunctionPipeline(executor, it.first, it.second))) {
+            passFailed = true;
+            break;
+          }
+        }
+      });
+
+  // Signal a failure if any of the executors failed.
+  if (passFailed)
+    signalPassFailure();
 }
 
 //===----------------------------------------------------------------------===//
@@ -212,11 +290,18 @@ void PassManager::addPass(FunctionPassBase *pass) {
   detail::FunctionPassExecutor *fpe;
   if (nestedExecutorStack.empty()) {
     /// Create an executor adaptor for this pass.
-    auto *adaptor = new ModuleToFunctionPassAdaptor();
-    addPass(adaptor);
+    if (enableThreads && llvm::llvm_is_multithreaded()) {
+      // If multi-threading is enabled, then create an asynchronous adaptor.
+      auto *adaptor = new ModuleToFunctionPassAdaptorParallel();
+      addPass(adaptor);
+      fpe = &adaptor->getFunctionExecutor();
+    } else {
+      auto *adaptor = new ModuleToFunctionPassAdaptor();
+      addPass(adaptor);
+      fpe = &adaptor->getFunctionExecutor();
+    }
 
     /// Add the executor to the stack.
-    fpe = &adaptor->getFunctionExecutor();
     nestedExecutorStack.push_back(fpe);
   } else {
     fpe = cast<detail::FunctionPassExecutor>(nestedExecutorStack.back());

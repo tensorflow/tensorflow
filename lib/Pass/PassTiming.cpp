@@ -136,7 +136,7 @@ struct PassTiming : public PassInstrumentation {
 /// Start a new timer for the given pass.
 void PassTiming::startPassTimer(Pass *pass) {
   Timer *timer = getTimer(pass, [pass] {
-    if (isa<ModuleToFunctionPassAdaptor>(pass))
+    if (isModuleToFunctionAdaptorPass(pass))
       return StringRef("Function Pipeline");
     return pass->getName();
   });

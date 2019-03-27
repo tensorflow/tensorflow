@@ -82,6 +82,12 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
         minDmaTransferSize(minDmaTransferSize),
         fastMemCapacityBytes(fastMemCapacityBytes) {}
 
+  explicit DmaGeneration(const DmaGeneration &other)
+      : slowMemorySpace(other.slowMemorySpace),
+        fastMemorySpace(other.fastMemorySpace),
+        minDmaTransferSize(other.minDmaTransferSize),
+        fastMemCapacityBytes(other.fastMemCapacityBytes) {}
+
   void runOnFunction() override;
   bool runOnBlock(Block *block);
   uint64_t runOnBlock(Block::iterator begin, Block::iterator end);
