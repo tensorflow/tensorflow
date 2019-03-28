@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """An optimizer wrapper for replicating sharding information from the forward
    pass to the backward pass."""
 
@@ -20,10 +19,9 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.framework import ops
 from tensorflow.contrib.ipu.python.sharding import propagate_sharding
 
-class ShardedOptimizer(optimizer.Optimizer):
 
-  def __init__(self,
-               optimizer):
+class ShardedOptimizer(optimizer.Optimizer):
+  def __init__(self, optimizer):
     """Construct a new sharded optimizer.
 
     Args:
@@ -33,11 +31,9 @@ class ShardedOptimizer(optimizer.Optimizer):
     super(ShardedOptimizer, self).__init__(False, name="ShardedOptimizer")
     self._optimizer = optimizer
 
-
   def compute_gradients(self, loss, var_list=None, **kwargs):
     kwargs['colocate_gradients_with_ops'] = True
-    ret = self._optimizer.compute_gradients(loss, var_list=var_list,
-                                            **kwargs)
+    ret = self._optimizer.compute_gradients(loss, var_list=var_list, **kwargs)
     propagate_sharding(ops.get_default_graph())
     return ret
 

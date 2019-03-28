@@ -57,17 +57,6 @@ namespace poplarplugin {
 namespace {
 using TensorVector = std::vector<std::pair<TensorKey, poplar::Tensor>>;
 
-bool InstructionSharded(const HloInstruction* a) {
-  if (a->has_sharding()) {
-    const auto& a_sharding = a->sharding();
-    if (a_sharding.HasUniqueDevice()) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
 TensorVector GetTensorsInMap(
     const TensorMap& map, const HloInstruction* inst,
     absl::optional<int64> opt_tensors_start = absl::nullopt,
@@ -92,13 +81,14 @@ ArgVector GetTensorsMaybeExpand(
     absl::optional<int64> opt_tensors_end = absl::nullopt) {
   TensorVector tensor_vector =
       GetTensorsInMap(map, inst, opt_tensors_start, opt_tensors_end);
-  auto& graph = GetGraph(res, inst);
   ArgVector outputs;
   for (auto pair : tensor_vector) {
     const auto key = pair.first;
     poplar::Tensor tensor = pair.second;
     // Check if we need to expand the constant tensor.
     if (tensor.containsConstant() && expand_constants) {
+      auto& graph = GetGraphWithOutputIndex(res, inst, key.second);
+
       const auto& mapping = graph.getTileMapping(tensor);
       // We only expand the constant tensor if it's mapped to 1 tile and it is
       // not a tensor of scalar shape.
@@ -1411,7 +1401,6 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
   }
 
   // Go through all the inplace tensors and check if we need to add copies.
-  auto& graph = GetGraph(res, inst);
   for (uint64 i = 0; i < inplace_indexes.size(); i++) {
     for (uint64 j = 0; j < tensors[i].size(); j++) {
       poplar::Tensor t = tensors[i][j];
@@ -1422,6 +1411,7 @@ StatusOr<ArgVectors> GetInplaceOutputTensors(TensorMap& map,
           !t.isParallelWriteable() || !is_still_inplace;
       if (requires_copy_inplace) {
         VLOG(1) << "Adding a copy for inplace op " << inst->name();
+        auto& graph = GetGraphWithOutputIndex(res, inst, inplace_indexes[i]);
         poplar::Tensor copy = graph.clone(t, GetDebugName(inst) + ".clone");
         seq.add(poplar::program::Copy(t, copy));
         t = copy;

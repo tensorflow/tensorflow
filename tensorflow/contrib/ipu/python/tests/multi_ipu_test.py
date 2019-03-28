@@ -27,8 +27,8 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.framework import errors
 
-class MultiIpuTest(test_util.TensorFlowTestCase):
 
+class MultiIpuTest(test_util.TensorFlowTestCase):
   def testMultiIpu(self):
     def my_graph(pa, pb, pc):
       with ops.device("/device:IPU:0"):
@@ -58,7 +58,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
       sess.run(report)
 
-      fd = {pa: [1., 1.], pb: [0., 1.], pc:[1., 5.]}
+      fd = {pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]}
       result = sess.run(out, fd)
       self.assertAllClose(result[0], [3., 8.])
 
@@ -133,7 +133,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
     ipu.utils.configure_ipu_system(cfg)
 
     with sl.Session() as sess:
-      with self.assertRaisesRegexp(errors.ResourceExhaustedError, 'Trying to compile a graph for'):
+      with self.assertRaisesRegexp(errors.ResourceExhaustedError,
+                                   'Trying to compile a graph for'):
         sess.run(out, {pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]})
 
   def testMultiIpuVariables(self):
@@ -141,15 +142,15 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       with variable_scope.variable_scope("", use_resource=True):
         with ipu.ops.ipu_scope("/device:IPU:0"):
           with ipu.ops.ipu_shard(0):
-            init1 = init_ops.constant_initializer([1.0, 3.0]);
-            v1 = variable_scope.get_variable("v1", dtype=np.float32, shape=[2],
-                                             initializer=init1)
+            init1 = init_ops.constant_initializer([1.0, 3.0])
+            v1 = variable_scope.get_variable(
+                "v1", dtype=np.float32, shape=[2], initializer=init1)
             o1 = pa + pb + v1
 
           with ipu.ops.ipu_shard(1):
-            init2 = init_ops.constant_initializer([1.0, 2.0]);
-            v2 = variable_scope.get_variable("v2", dtype=np.float32, shape=[2],
-                                             initializer=init2)
+            init2 = init_ops.constant_initializer([1.0, 2.0])
+            v2 = variable_scope.get_variable(
+                "v2", dtype=np.float32, shape=[2], initializer=init2)
             o2 = pa + pc + v2
             out = o1 + o2
 
@@ -174,7 +175,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(report)
 
-      fd = {pa: [1., 1.], pb: [0., 1.], pc:[1., 5.]}
+      fd = {pa: [1., 1.], pb: [0., 1.], pc: [1., 5.]}
       result = sess.run(out, fd)
       self.assertAllClose(result[0], [5., 13.])
 
@@ -211,7 +212,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
           loss = math_ops.reduce_mean(loss)
 
         opt = ipu.sharded_optimizer.ShardedOptimizer(
-          gradient_descent.GradientDescentOptimizer(0.000001))
+            gradient_descent.GradientDescentOptimizer(0.000001))
         train = opt.minimize(loss)
 
       return [loss, train]
@@ -266,8 +267,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
     def my_graph(inp, bias):
       with ops.device("/device:IPU:0"):
         with ipu.ops.ipu_shard(0):
-          x = convolutional.conv2d(inp, 8, 3, padding='same', name="conv",
-                                   use_bias=False)
+          x = convolutional.conv2d(
+              inp, 8, 3, padding='same', name="conv", use_bias=False)
 
         with ipu.ops.ipu_shard(1):
           x = nn_ops.bias_add(x, bias, name='biasAdd')
@@ -311,5 +312,6 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       wl = ['progIdCopy/GlobalPreAll', '*_to_/custom-call/GlobalPreAll']
       self.assertTrue(tu.check_all_compute_sets_and_list(ge_list, wl))
 
+
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()

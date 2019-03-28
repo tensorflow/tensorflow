@@ -97,21 +97,16 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         output = math_ops.matmul(pa, pb)
 
         fd = {
-          pa: [[[[1000, 100], [10, 1]],
-                [[2000, 200], [20, 2]]],
-               [[[3000, 300], [30, 3]],
-                [[4000, 400], [40, 4]]]],
-          pb: [[[[1, 2], [3, 4]],
-                [[5, 6], [7, 8]]],
-               [[[11, 22], [33, 44]],
-                [[55, 66], [77, 88]]]]
+            pa: [[[[1000, 100], [10, 1]], [[2000, 200], [20, 2]]],
+                 [[[3000, 300], [30, 3]], [[4000, 400], [40, 4]]]],
+            pb: [[[[1, 2], [3, 4]], [[5, 6], [7, 8]]],
+                 [[[11, 22], [33, 44]], [[55, 66], [77, 88]]]]
         }
         result = sess.run(output, fd)
-        self.assertAllClose(result,
-                            [[[[1300, 2400], [13, 24]],
-                              [[11400, 13600], [114, 136]]],
-                             [[[42900, 79200], [429, 792]],
-                              [[250800, 299200], [2508, 2992]]]])
+        self.assertAllClose(
+            result,
+            [[[[1300, 2400], [13, 24]], [[11400, 13600], [114, 136]]],
+             [[[42900, 79200], [429, 792]], [[250800, 299200], [2508, 2992]]]])
 
   def testMatMulBatch2(self):
     with ops.device("/device:IPU:0"):
@@ -121,45 +116,44 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         output = math_ops.matmul(pa, pb)
 
         fd = {
-          pa: [[[1, 0], [0, 1]],
-               [[2, 0], [0, 2]],
-               [[3, 0], [0, 3]],
-               [[4, 0], [0, 4]],
-               [[5, 0], [0, 5]],
-               [[6, 0], [0, 6]]],
-          pb: [[[1, 1], [1, 1]],
-               [[2, 2], [2, 2]],
-               [[3, 3], [3, 3]],
-               [[0, 2], [0, 2]],
-               [[0, 1], [0, 1]],
-               [[1, 0], [1, 0]]],
+            pa: [[[1, 0], [0, 1]], [[2, 0], [0, 2]], [[3, 0], [0, 3]],
+                 [[4, 0], [0, 4]], [[5, 0], [0, 5]], [[6, 0], [0, 6]]],
+            pb: [[[1, 1], [1, 1]], [[2, 2], [2, 2]], [[3, 3], [3, 3]],
+                 [[0, 2], [0, 2]], [[0, 1], [0, 1]], [[1, 0], [1, 0]]],
         }
         result = sess.run(output, fd)
-        self.assertAllClose(result,
-                            [[[1, 1], [1, 1]],
-                             [[4, 4], [4, 4]],
-                             [[9, 9], [9, 9]],
-                             [[0, 8], [0, 8]],
-                             [[0, 5], [0, 5]],
-                             [[6, 0], [6, 0]]])
+        self.assertAllClose(
+            result, [[[1, 1], [1, 1]], [[4, 4], [4, 4]], [[9, 9], [9, 9]],
+                     [[0, 8], [0, 8]], [[0, 5], [0, 5]], [[6, 0], [6, 0]]])
 
   def testMatMulFwdBackwd(self):
     with ops.device("/device:IPU:0"):
       with variable_scope.variable_scope("vs", use_resource=True):
-        w1 = variable_scope.get_variable("w1", shape=[4, 3], dtype=np.float32,
-                            initializer=init_ops.constant_initializer(
-                              np.array([[1,2,1], [1,3,4], [1,5,6], [1,7,8]],
-                                       dtype=np.float32)))
-        b1 = variable_scope.get_variable("b1", shape=[3], dtype=np.float32,
-                            initializer=init_ops.constant_initializer(
-                              np.array([2, 1, 1], dtype=np.float32)))
-        w2 = variable_scope.get_variable("w2", shape=[3, 2], dtype=np.float32,
-                             initializer=init_ops.constant_initializer(
-                               np.array([[3, 4], [5, 6], [7, 8]],
-                                        dtype=np.float32)))
-        b2 = variable_scope.get_variable("b2", shape=[2], dtype=np.float32,
-                             initializer=init_ops.constant_initializer(
-                               np.array([2, 1], dtype=np.float32)))
+        w1 = variable_scope.get_variable(
+            "w1",
+            shape=[4, 3],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([[1, 2, 1], [1, 3, 4], [1, 5, 6], [1, 7, 8]],
+                         dtype=np.float32)))
+        b1 = variable_scope.get_variable(
+            "b1",
+            shape=[3],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([2, 1, 1], dtype=np.float32)))
+        w2 = variable_scope.get_variable(
+            "w2",
+            shape=[3, 2],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([[3, 4], [5, 6], [7, 8]], dtype=np.float32)))
+        b2 = variable_scope.get_variable(
+            "b2",
+            shape=[2],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([2, 1], dtype=np.float32)))
 
       x = array_ops.placeholder(np.float32, shape=[3, 4])
       y = math_ops.matmul(x, w1) + b1
@@ -172,10 +166,12 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
       train = optimizer.minimize(xent)
 
     with session_lib.Session() as sess:
-      fd = {x: np.array([[7, 3, 5, 9],
-                         [1,2,3,4],
-                         [5,6,7,8]], dtype=np.float32),
-            expected: [[1, 2],[3,4],[5,6]]}
+      fd = {
+          x:
+          np.array([[7, 3, 5, 9], [1, 2, 3, 4], [5, 6, 7, 8]],
+                   dtype=np.float32),
+          expected: [[1, 2], [3, 4], [5, 6]]
+      }
 
       sess.run(variables.global_variables_initializer())
       sess.run(train, feed_dict=fd)
@@ -183,20 +179,31 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
   def testMatMulFwdBackwdLeftHandWeights(self):
     with ops.device("/device:IPU:0"):
       with variable_scope.variable_scope("vs", use_resource=True):
-        w1 = variable_scope.get_variable("w1", shape=[3, 4], dtype=np.float32,
-                             initializer=init_ops.constant_initializer(
-                               np.array([[1,2,1,1],[3,4,1,5],[6,1,7,8]],
-                                        dtype=np.float32)))
-        b1 = variable_scope.get_variable("b1", shape=[3], dtype=np.float32,
-                             initializer=init_ops.constant_initializer(
-                               np.array([2, 1, 1], dtype=np.float32)))
-        w2 = variable_scope.get_variable("w2", shape=[2, 3], dtype=np.float32,
-                             initializer=init_ops.constant_initializer(
-                               np.array([[3,4,5],[6,7,8]],
-                                        dtype=np.float32)))
-        b2 = variable_scope.get_variable("b2", shape=[3], dtype=np.float32,
-                             initializer=init_ops.constant_initializer(
-                               np.array([2, 1, 1], dtype=np.float32)))
+        w1 = variable_scope.get_variable(
+            "w1",
+            shape=[3, 4],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([[1, 2, 1, 1], [3, 4, 1, 5], [6, 1, 7, 8]],
+                         dtype=np.float32)))
+        b1 = variable_scope.get_variable(
+            "b1",
+            shape=[3],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([2, 1, 1], dtype=np.float32)))
+        w2 = variable_scope.get_variable(
+            "w2",
+            shape=[2, 3],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([[3, 4, 5], [6, 7, 8]], dtype=np.float32)))
+        b2 = variable_scope.get_variable(
+            "b2",
+            shape=[3],
+            dtype=np.float32,
+            initializer=init_ops.constant_initializer(
+                np.array([2, 1, 1], dtype=np.float32)))
 
       x = array_ops.placeholder(np.float32, shape=[4, 3])
       y = math_ops.matmul(w1, x) + b1
@@ -209,11 +216,12 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
       train = optimizer.minimize(xent)
 
     with session_lib.Session() as sess:
-      fd = {x: np.array([[7,3,5],
-                         [1,2,3],
-                         [5,6,7],
-                         [3,5,2]], dtype=np.float32),
-            expected: [[1,2,1],[3,4,3]]}
+      fd = {
+          x:
+          np.array([[7, 3, 5], [1, 2, 3], [5, 6, 7], [3, 5, 2]],
+                   dtype=np.float32),
+          expected: [[1, 2, 1], [3, 4, 3]]
+      }
 
       sess.run(variables.global_variables_initializer())
       sess.run(train, feed_dict=fd)
@@ -225,10 +233,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         pb = array_ops.placeholder(np.float32, [2, 3], name="b")
         output = math_ops.matmul(array_ops.transpose(pa), pb)
 
-        fd = {
-          pa: [[1.],[2.]],
-          pb: [[1., 2., 3.],
-               [4., 5., 6.]]}
+        fd = {pa: [[1.], [2.]], pb: [[1., 2., 3.], [4., 5., 6.]]}
         result = sess.run(output, fd)
         self.assertAllClose(result, [[9, 12., 15.]])
 

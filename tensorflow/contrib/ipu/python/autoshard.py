@@ -13,7 +13,11 @@
 # limitations under the License.
 # =============================================================================
 
-def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
+
+def automatic_sharding(num_shards,
+                       input_ts,
+                       loss_ts,
+                       train_ops=None,
                        edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
 

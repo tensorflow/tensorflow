@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Optimizer that implements cross-replica gradient reduction for IPU.
 Based on the TPU CrossShardOptimizer.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 
 from tensorflow.python.framework import ops
 from tensorflow.python.ops.losses import losses
@@ -102,8 +100,8 @@ class CrossReplicaOptimizer(optimizer.Optimizer):
         summed_grads_and_vars.append((grad, var))
       else:
         with ops.colocate_with(grad):
-          summed_grads_and_vars.append((
-            popops_cross_replica_sum.cross_replica_sum(grad), var))
+          summed_grads_and_vars.append(
+              (popops_cross_replica_sum.cross_replica_sum(grad), var))
     return self._opt.apply_gradients(summed_grads_and_vars, global_step, name)
 
   def get_slot(self, *args, **kwargs):

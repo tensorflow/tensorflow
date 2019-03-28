@@ -15,15 +15,18 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.framework import constant_op
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
-class WideConstExpansionTest(test_util.TensorFlowTestCase):
 
+class WideConstExpansionTest(test_util.TensorFlowTestCase):
   def testCheckMaxTileSize(self):
     dtype = np.float32
-    shape = (1024,2048)
+    shape = (1024, 2048)
     with ops.device("/device:IPU:0"):
       with variable_scope.variable_scope("", use_resource=True):
-      	a = variable_scope.get_variable("a", shape=shape,
-      		    initializer=init_ops.constant_initializer(2), dtype=dtype)
+        a = variable_scope.get_variable(
+            "a",
+            shape=shape,
+            initializer=init_ops.constant_initializer(2),
+            dtype=dtype)
       pb = array_ops.placeholder(shape=shape, dtype=dtype, name="b")
       c = constant_op.constant(4, shape=shape, dtype=dtype, name="c")
       output = a + pb + c
@@ -46,6 +49,7 @@ class WideConstExpansionTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       max_tile_size = tu.get_maximum_tile_size_from_events(s)
       self.assertTrue(max_tile_size < 40000)
+
 
 if __name__ == "__main__":
   googletest.main()

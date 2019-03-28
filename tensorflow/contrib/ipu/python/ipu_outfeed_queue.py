@@ -19,11 +19,12 @@ from __future__ import print_function
 
 from tensorflow.compiler.plugin.poplar.ops import gen_pop_datastream_ops
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from copy import deepcopy
 
 
 class IPUOutfeedQueue:
-    """Generates and adds outfeed enqueue/dequeue operations to the graph.
+  """Generates and adds outfeed enqueue/dequeue operations to the graph.
 
     The queue has two modes of operation - outfeed all or outfeed last.
     In outfeed all mode every element that is enqueued will be stored
@@ -34,52 +35,55 @@ class IPUOutfeedQueue:
     operation will in this case return a single element.
     """
 
-    def __init__(self, outfeed_all=True, device_ordinal=0):
-      """Creates an IPUOutfeedQueue object.
+  def __init__(self, outfeed_all=True, device_ordinal=0, replication_factor=1):
+    """Creates an IPUOutfeedQueue object.
 
         Args:
             outfeed_all: a bool value indicating whether all enqueued
             elements should be stored or only the last one.
             device_ordinal: ordinal of the device on which this queue will be
             used.
+            replication_factor: the number of replicated graphs this Outfeed
+            will be used in.
 
         Raises:
           ValueError: if the types or values are incorrect
       """
-      if type(outfeed_all) is not bool:
-          raise ValueError("Expcted value True or False for outfeed_all")
+    if type(outfeed_all) is not bool:
+      raise ValueError("Expcted value True or False for outfeed_all")
 
-      if type(device_ordinal) is not int:
-          raise ValueError('Device ordinal must be an integer')
+    if type(device_ordinal) is not int:
+      raise ValueError('Device ordinal must be an integer')
 
-      if device_ordinal < 0:
-          raise ValueError('Device ordinal must be >= 0')
+    if device_ordinal < 0:
+      raise ValueError('Device ordinal must be >= 0')
 
-      self._outfeed_all = outfeed_all
-      self._device_ordinal = device_ordinal
-      self._outfeed_mode = 'all' if outfeed_all else 'get_last'
+    if replication_factor < 1:
+      raise ValueError('Replication factor must be >= 1')
 
-      self._enqueued = False
-      self._dtypes = []
-      self._shapes = []
-      self._device_str = '/device:IPU:{}'.format(str(device_ordinal))
+    self._outfeed_all = outfeed_all
+    self._device_ordinal = device_ordinal
+    self._outfeed_mode = 'all' if outfeed_all else 'get_last'
+    self._replication_factor = replication_factor
 
-    def _is_iterable(self, x):
-      return isinstance(x, list) or isinstance(x, tuple)
+    self._enqueued = False
+    self._structure = None
+    self._device_str = '/device:IPU:{}'.format(str(device_ordinal))
 
-    def enqueue(self, tensors):
-      """Enqueue a list or tuple of tensors for being outfed from the IPU
-         graph. This operation is placed on the IPU device. If you are using
-         the enqueue operation within a `contrib.ipu.training_loop` body then
-         the resulting operation needs to be added to the return value tuple
-         of the body otherwise the operation is not executed.
-         An example demonstrating this:
+  def enqueue(self, tensors):
+    """Enqueue a tensor, tuple or a dictionary of tensors for being outfed
+         from the IPU graph. This operation is placed on the IPU device.
+         This function returns an Operation which needs be executed (by either
+         returning it or using tf.control_dependencies(...))
+
+        Examples:
+        1. Outfeed returning a single tensor:
         ```
         outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
 
         def body(v):
-          outfeed = outfeed_queue.enqueue([v])
           v = v + 1
+          outfeed = outfeed_queue.enqueue(v)
           return (v, outfeed)
 
         def my_net(v):
@@ -91,111 +95,301 @@ class IPUOutfeedQueue:
 
         ...
         ...
+        ```
+        2. Outfeed returning a tuple of tensors:
+        ```
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+
+        def body(v):
+          v = v + 1
+          x = v * 2
+          outfeed = outfeed_queue.enqueue((v, x))
+          return (v, outfeed)
+
+        def my_net(v):
+          r = loops.repeat(20, body, (v))
+          return r
+
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+          res = ipu_compiler.compile(my_net, inputs=[v])
+
+        ...
+        ...
+        ```
+        3. Outfeed returning a dictionary of tensors:
+        ```
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+
+        def body(v):
+          v = v + 1
+          x = v * 2
+          outfeed = outfeed_queue.enqueue({"output_1": v,
+                                           "output_2": x})
+          return (v, outfeed)
+
+        def my_net(v):
+          r = loops.repeat(20, body, (v))
+          return r
+
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+          res = ipu_compiler.compile(my_net, inputs=[v])
+
+        ...
+        ...
+        ```
+      """
+    if self.enqueued:
+      raise ValueError("An outfeed can only be enqueued once.")
+
+    self._structure = _OutfeedStructure(tensors, self._replication_factor)
+    with ops.device(self._device_str):
+      outfeed_op = gen_pop_datastream_ops.pop_datastream_outfeed_enqueue(
+          self._structure.to_tensor_list(tensors),
+          outfeed_mode=self._outfeed_mode)
+
+    self._enqueued = True
+    return outfeed_op
+
+  @property
+  def enqueued(self):
+    return self._enqueued
+
+  def dequeue(self):
+    """Generate host side operation to dequeue the outfeed values. The
+      operation generated by this function will block if called prior
+      to any enqueues.
+
+      The return value of this operation depends on the enqueued tensors,
+      replication factor and the execution mode.
+      1. Outfeed returning a single tensor:
+        ```
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=2)
+
+        def body(input):
+          output = input + 1
+          outfeed = outfeed_queue.enqueue(output)
+          return (output, outfeed)
+
+        def my_net(input):
+          r = loops.repeat(20, body, (input))
+          return r
+
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+          res = ipu_compiler.compile(my_net, inputs=[v])
+
+        with ops.device('cpu'):
+          v = tf.placeholder(np.float32, [4, 4])
 
         outfeed = outfeed_queue.dequeue()
         with tf.Session() as sess:
           result = sess.run(res, {v:np.ones([4, 4], np.float32)})
           outfed = sess.run(outfeed)
         ```
+      In this example the tensor `output` is of shape [4, 4] and it's enqueued
+      into the outfeed with replication_factor = 2. If the Outfeed mode is
+      outfeed_all == True, then the shape of the resulting `outfed` tensor will
+      be [20, 2, 4, 4], where the first dimension represents the number of times
+      we have enqueued a tensor to the outfeed - in this example the loop is
+      repeated 20 times, and therefore we get 20 values back from the outfeed.
+      The second dimension is the replication_factor, which allows us to see the
+      individual values from each replicated graph. If the Outfeed mode is
+      outfeed_all == False, then the shape of the resulting `outfed` tensor will
+      be [2, 4, 4], which represents the value of the output tensor the last
+      time it was enqueued during execution for each of the replicated graphs.
+
+      2. Outfeed returning a tuple of tensors:
+        ```
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
+
+        def body(input):
+          output = input + 1
+          sum = tf.reduce_sum(output)
+          outfeed = outfeed_queue.enqueue((output, sum))
+          return (output, outfeed)
+
+        def my_net(input):
+          r = loops.repeat(20, body, (input))
+          return r
+
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+          res = ipu_compiler.compile(my_net, inputs=[v])
+
+        with ops.device('cpu'):
+          v = tf.placeholder(np.float32, [4, 4])
+
+        outfeed = outfeed_queue.dequeue()
+        with tf.Session() as sess:
+          result = sess.run(res, {v:np.ones([4, 4], np.float32)})
+          outfed = sess.run(outfeed)
+        ```
+      In this example we outfeed a tuple of tensors, `output` and `sum`, where
+      the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
+      outfeed_all == True, then the resulting outfed is a two-tuple of tensors
+      with shapes ([20, 4, 4], [20, 1]), where the first dimension in each of
+      the tensors represents the number of times we have enqueued these tensors
+      to the outfeed - in this example the loop is repeated 20 times, and
+      therefore we get 20 values back from the outfeed for each of the tensors
+      in the tuple. If the Outfeed mode is outfeed_all == False, then the
+      `outfed` is a two tuple of tensors with shapes ([4, 4], [1]), which
+      represents the values of the `output` and `sum` tensors the last time
+      they were enqueued during execution.
+      Note that `replication_factor` here is the default (=1), which means that
+      the extra replication dimension is not added.
+
+      3. Outfeed returning a dictionary of tensors:
+        ```
+        outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue(replication_factor=8)
+
+        def body(input):
+          output = input + 1
+          sum = tf.reduce_sum(output)
+          outfeed = outfeed_queue.enqueue({"x": output,
+                                           "y": sum})
+          return (output, outfeed)
+
+        def my_net(input):
+          r = loops.repeat(40, body, (input))
+          return r
+
+        with ipu.ops.ipu_scope("/device:IPU:0"):
+          res = ipu_compiler.compile(my_net, inputs=[v])
+
+        with ops.device('cpu'):
+          v = tf.placeholder(np.float32, [4, 4])
+
+        outfeed = outfeed_queue.dequeue()
+        with tf.Session() as sess:
+          result = sess.run(res, {v:np.ones([4, 4], np.float32)})
+          outfed = sess.run(outfeed)
+        ```
+      In this example we outfeed a dictionary of tensors, `output` and `sum`,
+      where the former is of shape [4, 4] and latter [1]. If the Outfeed mode is
+      outfeed_all == True, then the resulting outfed is a dictionary of tensors
+      with shapes: {"x": [40, 8, 4, 4], "y": [40, 8, 1]}, where the first
+      dimension in each of the tensors represents the number of times we have
+      enqueued these tensors to the outfeed - in this example the loop is
+      repeated 40 times, and therefore we get 40 values back from the outfeed
+      for each of the tensors in the tuple. The second dimension is the
+      replication_factor, which allows us to see the individual values from each
+      replicated graph. If the Outfeed mode is outfeed_all == False, then the
+      `outfed` is a dictionary of tensors with shapes:
+      {"x": [8, 4, 4], "y": [8, 1]}, which represents the values of
+      the `output` and `sum` tensors the last time they were enqueued during
+      execution for each of the replicated graphs.
+
       """
-      if not self._is_iterable(tensors):
-          raise ValueError("Expected tensors to be of type list or tuple")
 
-      for t in tensors:
-          if self._is_iterable(t):
-              raise ValueError("Nested inputs are not supported")
+    # None shape in beginning of list indicates that an unknown number of
+    # outfeed elements will be returned
+    outfeed_shapes = deepcopy(self._structure.flat_shapes)
+    if self._outfeed_all and self._structure.flat_shapes[0] is not None:
+      outfeed_shapes.insert(0, None)
+    with ops.device('cpu'):
+      outfeed_dequeue = \
+        gen_pop_datastream_ops.pop_datastream_outfeed_dequeue(
+          output_types=self._structure.flat_types,
+          output_shapes=outfeed_shapes)
 
-      if len(self._shapes) == 0:
-          for t in tensors:
-              self._shapes.append(t.get_shape())
-              self._dtypes.append(t.dtype)
-
-      with ops.device(self._device_str):
-          outfeed_op = gen_pop_datastream_ops.pop_datastream_outfeed_enqueue(
-              tensors, outfeed_mode=self._outfeed_mode)
-
-      self._enqueued = True
-      return outfeed_op
-
-    @property
-    def enqueued(self):
-        return self._enqueued
-
-    def dequeue(self, shapes=[], dtypes=[]):
-      """Generate host side operation to dequeue the outfed values. The
-      operation generated by this function will block if called prior
-      to any enqueues. The `shapes` and `types` argument is optional depending
-      on whether or not there is an enqueue operation in the IPU graph prior
-      to calling dequeue. If there is an enqueue operation from before then the
-      shapes and types of the enqueued tensors will be used.
-
-      If the enqueued tensors are tuples and this class was initialized with
-      `outfeed_all=True` then the return value is a list of tensors in which
-      each element of the list corresponds to all of the outfed values for
-      the same index in the tuple.
-      For example if the body in a `contrib.ipu.training_loop` looks something like:
-      ```
-      def body(v, u):
-        v = v + 1
-        u = u + 2
-        outfeed = outfeed_queue.enqueue([v, u])
-        return (v, u, outfeed)
+    return self._structure.from_tensor_list(outfeed_dequeue)
 
 
-      with ops.device('cpu'):
-        v = tf.placeholder(np.float32, [4, 4])
-        u = tf.placeholder(np.float32, [2, 2])
+class _OutfeedStructure:
+  """ An internal class used for storing the structure of the IPUOutfeedQueue.
+  """
 
-      def my_net(v, u):
-        r = loops.repeat(20, body, (v, u))
-        return r
+  def __init__(self, tensors, replication_factor):
+    self._singular = False
+    self._tuple = False
+    self._dict = False
+    self._dict_keys = []
 
+    flat_types = []
+    flat_shapes = []
+    # Create the data structure depending on the input type.
+    if isinstance(tensors, ops.Tensor):
+      self._singular = True
+      flat_types = [tensors.dtype]
+      flat_shapes = [tensors.get_shape()]
 
-      with ipu.ops.ipu_scope("/device:IPU:0"):
-        res = ipu_compiler.compile(my_net, inputs=[v, u])
+    elif isinstance(tensors, tuple):
+      self._tuple = True
+      # We require all the elements of the tuple to be tensors.
+      if not self._check_list_of_all_type(ops.Tensor, tensors):
+        raise ValueError("""\
+Expected all values in the outfeed tuple to be TensorFlow tensors.""")
+      for tensor in tensors:
+        flat_types.append(tensor.dtype)
+        flat_shapes.append(tensor.get_shape())
 
-      outfeed = outfeed_queue.dequeue()
+    elif isinstance(tensors, dict):
+      self._dict = True
+      # We require all the keys to be strings.
+      if not self._check_list_of_all_type(str, tensors.keys()):
+        raise ValueError("""\
+Expected all keys in the outfeed dictionary to be strings.""")
+      # We require all the values to be tensors.
+      if not self._check_list_of_all_type(ops.Tensor, tensors.values()):
+        raise ValueError("""\
+Expected all values in the outfeed dictionary to be TensorFlow tensors.""")
+      for key in tensors:
+        tensor = tensors[key]
+        self._dict_keys.append(key)
+        flat_types.append(tensor.dtype)
+        flat_shapes.append(tensor.get_shape())
 
-      with tf.Session() as sess:
-        result = sess.run(res, {v:np.ones([4, 4], np.float32)})
-        outfed = sess.run(outfeed)
-      ```
+    else:
+      raise ValueError("""\
+IPUOutfeedQueue Enqueue input needs to be either:
+* TensorFlow tensor
+* Tuple of TensorFlow tensors
+* Dictionary of strings to TensorFlow tensors""")
 
-      Then outfed will be a list of two tensors where the first tensor is of
-      shape (20, 4, 4) and the second tensor (20, 2, 2)
+    # We add an extra dimension when the replication factor is greater than 1.
+    if replication_factor > 1:
+      flat_shapes = [
+          tensor_shape.TensorShape([replication_factor]).concatenate(shape)
+          for shape in flat_shapes
+      ]
 
-      """
-      if not self._is_iterable(shapes) or not self._is_iterable(dtypes):
-          raise ValueError(
-              'shapes and dtypes must be either tuple or list type')
+    self._flat_structure = {
+        "output_shapes": flat_shapes,
+        "output_types": flat_types,
+    }
 
-      if len(shapes) != len(dtypes):
-          raise ValueError("Number of shapes and datatypes must be the same")
+  @staticmethod
+  def _check_list_of_all_type(type, list):
+    return all(isinstance(x, type) for x in list)
 
-      if not self._enqueued and len(shapes) == 0:
-          raise ValueError(
-              """An enqueue op has not been added to the graph and
-              no shapes or types have been provided""")
+  @property
+  def flat_structure(self):
+    return self._flat_structure
 
-      if (len(shapes) > 0 or len(dtypes) > 0) and not self._enqueued:
-          for (s, t) in zip(shapes, dtypes):
-              shape_is_nested = self._is_iterable(s)
-              dtype_is_nested = self._is_iterable(t)
-              if shape_is_nested or dtype_is_nested:
-                  raise ValueError("Nested inputs are not supported")
+  @property
+  def flat_shapes(self):
+    return self._flat_structure["output_shapes"]
 
-          self._shapes = shapes
-          self._dtypes = dtypes
+  @property
+  def flat_types(self):
+    return self._flat_structure["output_types"]
 
-      # None shape in beginning of list indicates that an unknown number of
-      # outfed elements will be returned
+  def to_tensor_list(self, tensors):
+    if self._singular:
+      return [tensors]
+    elif self._tuple:
+      return list(tensors)
+    elif self._dict:
+      return list(tensors.values())
 
-      outfeed_shapes = deepcopy(self._shapes)
-      if self._outfeed_all and self._shapes[0] is not None:
-          outfeed_shapes.insert(0, None)
-      with ops.device('cpu'):
-          outfeed_dequeue = \
-          gen_pop_datastream_ops.pop_datastream_outfeed_dequeue(
-              output_types=self._dtypes, output_shapes=outfeed_shapes)
+  def from_tensor_list(self, flat_tensors):
+    # We require the input to be a list of flat_tensors.
+    if (not isinstance(flat_tensors, list)
+        or not self._check_list_of_all_type(ops.Tensor, flat_tensors)):
+      raise ValueError("""\
+Expected flat_tensors to be a list of TensorFlow tensors.""")
 
-      return outfeed_dequeue
+    if self._singular:
+      return flat_tensors[0]
+    elif self._tuple:
+      return tuple(flat_tensors)
+    elif self._dict:
+      return dict(zip(self._dict_keys, flat_tensors))

@@ -31,43 +31,44 @@ from tensorflow.python.platform import test
 # This implementation is based on:
 # tensorflow/contrib/layers/python/layers/normalization_test.py
 
-class PopnnGroupNormTest(test.TestCase):
 
+class PopnnGroupNormTest(test.TestCase):
   def testInvalidGroupSize(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(5, 2, 10, 10))
     with self.assertRaisesRegexp(ValueError,
                                  'Invalid groups 10 for 2 channels.'):
-      popnn_normalization.group_norm(inputs, groups=10,
-                               reduction_axes=[-2, -1], channels_axis=-3)
+      popnn_normalization.group_norm(
+          inputs, groups=10, reduction_axes=[-2, -1], channels_axis=-3)
 
   def testBadCommensurateGroup(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(5, 4, 10, 10))
-    with self.assertRaisesRegexp(ValueError,
-                                 '4 channels is not commensurate with '
-                                 '3 groups.'):
-      popnn_normalization.group_norm(inputs, groups=3,
-                               reduction_axes=[-2, -1], channels_axis=-3)
+    with self.assertRaisesRegexp(
+        ValueError, '4 channels is not commensurate with '
+        '3 groups.'):
+      popnn_normalization.group_norm(
+          inputs, groups=3, reduction_axes=[-2, -1], channels_axis=-3)
 
   def testAxisIsBad(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(1, 2, 4, 5))
-    with self.assertRaisesRegexp(ValueError,
-                                 'Axis is out of bounds.'):
+    with self.assertRaisesRegexp(ValueError, 'Axis is out of bounds.'):
       popnn_normalization.group_norm(inputs, channels_axis=5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'Axis is out of bounds.'):
+    with self.assertRaisesRegexp(ValueError, 'Axis is out of bounds.'):
       popnn_normalization.group_norm(inputs, reduction_axes=[1, 5])
 
   def testNotMutuallyExclusiveAxis(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(10, 32, 32, 32))
     # Specify axis with negative values.
     with self.assertRaisesRegexp(ValueError, 'mutually exclusive'):
-      popnn_normalization.group_norm(inputs, channels_axis=-1, reduction_axes=[-1])
+      popnn_normalization.group_norm(
+          inputs, channels_axis=-1, reduction_axes=[-1])
     # Specify axis with positive values.
     with self.assertRaisesRegexp(ValueError, 'mutually exclusive'):
-      popnn_normalization.group_norm(inputs, channels_axis=1, reduction_axes=[1, 3])
+      popnn_normalization.group_norm(
+          inputs, channels_axis=1, reduction_axes=[1, 3])
     # Specify axis with mixed positive and negative values.
     with self.assertRaisesRegexp(ValueError, 'mutually exclusive'):
-      popnn_normalization.group_norm(inputs, channels_axis=-1, reduction_axes=[3])
+      popnn_normalization.group_norm(
+          inputs, channels_axis=-1, reduction_axes=[3])
 
   def testUnknownShape(self):
     inputs = array_ops.placeholder(dtypes.float32)
@@ -82,33 +83,40 @@ class PopnnGroupNormTest(test.TestCase):
   def testParamsShapeNotFullyDefinedChannelsAxis(self):
     inputs = array_ops.placeholder(dtypes.float32, shape=(1, 3, 4, None))
     with self.assertRaisesRegexp(ValueError, 'undefined channel dimension'):
-      popnn_normalization.group_norm(inputs, channels_axis=-1,
-                               reduction_axes=[-3, -2])
+      popnn_normalization.group_norm(
+          inputs, channels_axis=-1, reduction_axes=[-3, -2])
 
   def testCreateOp(self):
     height, width, groups = 3, 3, 4
-    images = random_ops.random_uniform((5, height, width, 2*groups), seed=1)
-    output = popnn_normalization.group_norm(images, groups=groups, channels_axis=-1,
-                                      reduction_axes=[-3, -2])
+    images = random_ops.random_uniform((5, height, width, 2 * groups), seed=1)
+    output = popnn_normalization.group_norm(
+        images, groups=groups, channels_axis=-1, reduction_axes=[-3, -2])
     print('name: ', output.op.name)
-    self.assertListEqual([5, height, width, 2*groups], output.shape.as_list())
+    self.assertListEqual([5, height, width, 2 * groups],
+                         output.shape.as_list())
 
   def testCreateOpNoScaleCenter(self):
     height, width, groups = 3, 3, 7
-    images = random_ops.random_uniform(
-        (5, height, width, 3*groups), dtype=dtypes.float32, seed=1)
-    output = popnn_normalization.group_norm(images, groups=groups, center=False,
-                                      scale=False)
-    self.assertListEqual([5, height, width, 3*groups], output.shape.as_list())
+    images = random_ops.random_uniform((5, height, width, 3 * groups),
+                                       dtype=dtypes.float32,
+                                       seed=1)
+    output = popnn_normalization.group_norm(
+        images, groups=groups, center=False, scale=False)
+    self.assertListEqual([5, height, width, 3 * groups],
+                         output.shape.as_list())
     self.assertEqual(0, len(contrib_variables.get_variables_by_name('beta')))
     self.assertEqual(0, len(contrib_variables.get_variables_by_name('gamma')))
 
   def testCreateVariables_NHWC(self):
     height, width = 3, 3
     images = random_ops.random_uniform((5, height, width, 8), seed=1)
-    popnn_normalization.group_norm(images, groups=4,
-                             channels_axis=-1, reduction_axes=(-3, -2),
-                             center=True, scale=True)
+    popnn_normalization.group_norm(
+        images,
+        groups=4,
+        channels_axis=-1,
+        reduction_axes=(-3, -2),
+        center=True,
+        scale=True)
     beta = contrib_variables.get_variables_by_name('beta')[0]
     gamma = contrib_variables.get_variables_by_name('gamma')[0]
     self.assertEqual('GroupNorm/beta', beta.op.name)
@@ -116,10 +124,14 @@ class PopnnGroupNormTest(test.TestCase):
 
   def testCreateVariables_NCHW(self):
     height, width, groups = 3, 3, 4
-    images = random_ops.random_uniform((5, 2*groups, height, width), seed=1)
-    popnn_normalization.group_norm(images, groups=4,
-                             channels_axis=-3, reduction_axes=(-2, -1),
-                             center=True, scale=True)
+    images = random_ops.random_uniform((5, 2 * groups, height, width), seed=1)
+    popnn_normalization.group_norm(
+        images,
+        groups=4,
+        channels_axis=-3,
+        reduction_axes=(-2, -1),
+        center=True,
+        scale=True)
     beta = contrib_variables.get_variables_by_name('beta')[0]
     gamma = contrib_variables.get_variables_by_name('gamma')[0]
     self.assertEqual('GroupNorm/beta', beta.op.name)
@@ -129,8 +141,8 @@ class PopnnGroupNormTest(test.TestCase):
     height, width = 3, 3
     images = random_ops.random_uniform((5, height, width, 4), seed=1)
     popnn_normalization.group_norm(images, groups=2, scale=True, scope='IN')
-    popnn_normalization.group_norm(images, groups=2, scale=True, scope='IN',
-                             reuse=True)
+    popnn_normalization.group_norm(
+        images, groups=2, scale=True, scope='IN', reuse=True)
     beta = contrib_variables.get_variables_by_name('beta')
     gamma = contrib_variables.get_variables_by_name('gamma')
     self.assertEqual(1, len(beta))
@@ -141,8 +153,8 @@ class PopnnGroupNormTest(test.TestCase):
     image_shape = (10, height, width, 4)
     images = random_ops.random_uniform(image_shape, seed=1)
     output_train = popnn_normalization.group_norm(images, groups=2, scope='IN')
-    output_eval = popnn_normalization.group_norm(images, groups=2, scope='IN',
-                                           reuse=True)
+    output_eval = popnn_normalization.group_norm(
+        images, groups=2, scope='IN', reuse=True)
     with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       # output_train and output_eval should be the same.
@@ -166,15 +178,15 @@ class PopnnGroupNormTest(test.TestCase):
       if a < channels_axis:
         reduced_axes.append(a)
       else:
-        reduced_axes.append(a+1)
+        reduced_axes.append(a + 1)
     reduced_axes = tuple(reduced_axes)
     channels = input_shape[channels_axis]
     group_size = channels // groups
     # Calculate the final shape for the output Tensor.
     axes_before_channels = input_shape[:channels_axis]
-    axes_after_channels = input_shape[channels_axis+1:]
-    outputs_shape = (axes_before_channels + [groups, group_size] +
-                     axes_after_channels)
+    axes_after_channels = input_shape[channels_axis + 1:]
+    outputs_shape = (
+        axes_before_channels + [groups, group_size] + axes_after_channels)
 
     # Calculate the final shape for the output statistics.
     reduced_shape = []
@@ -251,15 +263,16 @@ class PopnnGroupNormTest(test.TestCase):
     self.doOutputTest(input_shape, channels_axis=-2, reduction_axes=[-3, -1])
 
   def testOutput2D_NC(self):
-    self.doOutputTest(
-        [10, 7 * 100], channels_axis=1, reduction_axes=[], groups=7)
+    self.doOutputTest([10, 7 * 100],
+                      channels_axis=1,
+                      reduction_axes=[],
+                      groups=7)
 
   def testOutput5D_NCXXX(self):
-    self.doOutputTest(
-        [4, 4, 4, 10, 4],
-        channels_axis=1,
-        reduction_axes=[2, 3, 4],
-        groups=2)
+    self.doOutputTest([4, 4, 4, 10, 4],
+                      channels_axis=1,
+                      reduction_axes=[2, 3, 4],
+                      groups=2)
 
 
 if __name__ == '__main__':

@@ -17,11 +17,14 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
 
 _XLA_SHARDING = '_XlaSharding'
+
+
 def has_attr(o, attr_name):
   for i in o.node_def.attr.items():
     if i[0] == attr_name:
       return True
   return False
+
 
 def dependencies(roots):
   working = roots
@@ -35,6 +38,7 @@ def dependencies(roots):
     working += [t.op for t in o.inputs if t.op not in op_set]
     working += [c for c in o.control_inputs if c not in op_set]
   return op_set
+
 
 def get_shard_from_colocation(op):
   g = op.graph
@@ -53,14 +57,15 @@ def get_shard_from_colocation(op):
       return attr
   return None
 
+
 def propagate_sharding(g):
   changed = True
   while changed:
     changed = False
 
     op_list = g.get_operations()
-    op_list = filter(lambda o : has_attr(o, '_class'), op_list)
-    op_list = filter(lambda o : not has_attr(o, '_XlaSharding'), op_list)
+    op_list = filter(lambda o: has_attr(o, '_class'), op_list)
+    op_list = filter(lambda o: not has_attr(o, '_XlaSharding'), op_list)
     for o in op_list:
       attr = get_shard_from_colocation(o)
       if attr is not None:

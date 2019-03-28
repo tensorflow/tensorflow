@@ -24,7 +24,6 @@ from tensorflow.python.ops import math_ops
 
 
 class IpuIpuModelTest(test_util.TensorFlowTestCase):
-
   def testIpuModelDevice(self):
     with ops.device("/device:IPU:0"):
       pa = array_ops.placeholder(np.float32, [2, 2], name="a")
@@ -114,9 +113,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       pb = array_ops.placeholder(np.float32, [480], name="b")
       output = pa + pb
 
-    tu.configure_ipu_system(True, True, True,
-                            engine_opts={"some_option": "some_value"})
-
+    tu.configure_ipu_system(
+        True, True, True, engine_opts={"some_option": "some_value"})
 
     try:
       with session_lib.Session() as sess:
@@ -150,7 +148,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(rep)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['my_ops/my_add_op/add']
+      ok = ['__seed*', 'my_ops/my_add_op/add']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -177,7 +175,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       rep = sess.run(report, fd)
       evts = tu.extract_all_execute_events(rep)
-      self.assertEqual(len(evts), 5) # execute x 5
+      self.assertEqual(len(evts), 5)  # execute x 5
 
       for i, e in enumerate(evts):
         if i > 0:
@@ -185,7 +183,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       sess.close()
 
-    tu.configure_ipu_system(compilation_trace=False, report_every_nth_execution=2)
+    tu.configure_ipu_system(
+        compilation_trace=False, report_every_nth_execution=2)
 
     with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
@@ -199,7 +198,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       rep = sess.run(report, fd)
       evts = tu.extract_all_execute_events(rep)
-      self.assertEqual(len(evts), 5) # execute x 5
+      self.assertEqual(len(evts), 5)  # execute x 5
 
       for i, e in enumerate(evts):
         if i % 2 != 0:
@@ -207,7 +206,8 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       sess.close()
 
-    tu.configure_ipu_system(compilation_trace=False, report_every_nth_execution=1)
+    tu.configure_ipu_system(
+        compilation_trace=False, report_every_nth_execution=1)
 
     with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
@@ -221,7 +221,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       rep = sess.run(report, fd)
       evts = tu.extract_all_execute_events(rep)
-      self.assertEqual(len(evts), 5) # execute x 5
+      self.assertEqual(len(evts), 5)  # execute x 5
 
       for e in evts:
         self.assertTrue(len(e.execute.execution_report) > 0)
@@ -247,10 +247,12 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       rep = sess.run(report, fd)
       evts = tu.extract_all_events(rep)
-      self.assertEqual(len(evts), 3) # begin, end, execute
+      self.assertEqual(len(evts), 3)  # begin, end, execute
 
-      self.assertEqual(evts[1].compile_end.compilation_report.decode('utf-8')[0], '{')
-      self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0], '{')
+      self.assertEqual(
+          evts[1].compile_end.compilation_report.decode('utf-8')[0], '{')
+      self.assertEqual(evts[2].execute.execution_report.decode('utf-8')[0],
+                       '{')
 
   def testIpuEventsWithoutPoplarReporting(self):
     with ops.device("/device:IPU:0"):
@@ -261,8 +263,11 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
 
-    tu.configure_ipu_system(enable_ipu_events=True, compilation_trace=False,
-                     io_trace=False, execution_trace=False)
+    tu.configure_ipu_system(
+        enable_ipu_events=True,
+        compilation_trace=False,
+        io_trace=False,
+        execution_trace=False)
 
     with tu.ipu_session() as sess:
       fd = {pa: [[1., 1.], [2., 3.]], pb: [[0., 1.], [4., 5.]]}
@@ -272,7 +277,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
 
       rep = sess.run(report, fd)
       evts = tu.extract_all_events(rep)
-      self.assertEqual(len(evts), 3) # compile begin, compile end, execute
+      self.assertEqual(len(evts), 3)  # compile begin, compile end, execute
 
       for e in evts:
         if e.type == IpuTraceEvent.COMPILE_END:
@@ -281,6 +286,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
           self.assertTrue(len(e.execute.execution_report) == 0)
 
       sess.close()
+
 
 if __name__ == "__main__":
   googletest.main()

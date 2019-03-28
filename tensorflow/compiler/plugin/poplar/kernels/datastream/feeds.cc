@@ -164,7 +164,6 @@ class PopDatastreamOutfeedEnqueueOp : public XlaOpKernel {
       xla::Shape xla_shape;
       OP_REQUIRES_OK(ctx,
                      TensorShapeToXLAShape(dtype, input_shape, &xla_shape));
-
       xla_shapes.emplace_back(xla_shape);
     }
 

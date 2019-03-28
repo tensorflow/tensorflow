@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
-
 """Library for constructing a loop, suitable for IPUs."""
 # This implementation is based on:
 # tensorflow/python/tpu/training_loop.py
@@ -29,7 +28,11 @@ from tensorflow.python.ops import while_v2
 from tensorflow.python.tpu import xla
 from tensorflow.python.platform import tf_logging as logging
 
-def while_loop(condition, body, inputs=None, infeed_queue=None,
+
+def while_loop(condition,
+               body,
+               inputs=None,
+               infeed_queue=None,
                use_while_v1=True):
   """Builds a while loop for IPUs.
 
@@ -55,25 +58,24 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
   """
 
   # Converts inputs to Tensors.
-  inputs = [] if inputs is None else [ops.convert_to_tensor(x) for
-                                      x in inputs]
+  inputs = [] if inputs is None else [ops.convert_to_tensor(x) for x in inputs]
   input_types = [x.dtype for x in inputs]
   input_arity = len(inputs)
-  body_arg_error = xla.check_function_argument_count(
-      body, input_arity, infeed_queue)
+  body_arg_error = xla.check_function_argument_count(body, input_arity,
+                                                     infeed_queue)
   if body_arg_error is not None:
     if infeed_queue is None:
       raise TypeError(
           "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s, but the loop body needs %s." % (
-              input_arity, str(inputs), body_arg_error))
+          "inputs. You specified %d inputs: %s, but the loop body needs %s." %
+          (input_arity, str(inputs), body_arg_error))
     else:
       raise TypeError(
           "Supplied loop body function cannot be called with the specified "
           "inputs. You specified %d inputs: %s and %d additional inputs from "
-          "infeed, but the computation needs %s." % (input_arity, str(
-              inputs), infeed_queue.number_of_tuple_elements,
-                                                    body_arg_error))
+          "infeed, but the computation needs %s." %
+          (input_arity, str(inputs), infeed_queue.number_of_tuple_elements,
+           body_arg_error))
   condition_arg_error = xla.check_function_argument_count(
       condition, input_arity, None)
   if condition_arg_error is not None:
@@ -82,14 +84,13 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
           "Supplied loop condition function cannot be called with the "
           "specified inputs. You specified %d inputs: %s, but the loop "
           "condition needs %s." % (input_arity, str(inputs),
-                                  condition_arg_error))
+                                   condition_arg_error))
     else:
       raise TypeError(
           "Supplied loop condition function cannot be called with the "
           "specified inputs. You specified %d inputs: %s, but the loop "
           "condition needs %s. Note that infeed is not passed to the loop "
-          "condition." % (input_arity, str(inputs),
-                          condition_arg_error))
+          "condition." % (input_arity, str(inputs), condition_arg_error))
 
   def condition_wrapper(*inputs):
     # Discards the dummy output added for arity-0 loops.
@@ -119,7 +120,7 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
 
     # If the computation only returned one value, make it a tuple.
     if not isinstance(outputs, (list, tuple)):
-      outputs = (outputs,)
+      outputs = (outputs, )
 
     outputs = [
         o if isinstance(o, ops.Operation) else ops.convert_to_tensor(o)
@@ -128,27 +129,24 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
 
     # Separates the returned Operations and Tensors.
     output_operations = [o for o in outputs if isinstance(o, ops.Operation)]
-    output_tensors = [o for o in outputs
-                      if not isinstance(o, ops.Operation)]
+    output_tensors = [o for o in outputs if not isinstance(o, ops.Operation)]
 
     if outputs != output_tensors + output_operations:
-      raise ValueError(
-          "IPU loop body must return zero or more Tensor values "
-          "followed by zero or more Operations.")
+      raise ValueError("IPU loop body must return zero or more Tensor values "
+                       "followed by zero or more Operations.")
 
     output_types = [op.dtype for op in output_tensors]
     if input_types != output_types:
-      raise TypeError(
-          "Mismatch between input types and output types for loop "
-          "body: {} vs {}.".format(input_types, output_types))
+      raise TypeError("Mismatch between input types and output types for loop "
+                      "body: {} vs {}.".format(input_types, output_types))
 
     # Add a dummy output, if needed.
     if not output_tensors:
       output_tensors = array_ops.constant(0)
 
     if output_operations:
-      return control_flow_ops.tuple(output_tensors,
-                                    control_inputs=output_operations)
+      return control_flow_ops.tuple(
+          output_tensors, control_inputs=output_operations)
     else:
       return output_tensors
 
@@ -163,8 +161,8 @@ def while_loop(condition, body, inputs=None, infeed_queue=None,
     while_fn = while_v2.while_loop
     logging.warning("Usage of while_v2 is still experimental.")
 
-  outputs = while_fn(condition_wrapper, body_wrapper, inputs, name="",
-                     parallel_iterations=1)
+  outputs = while_fn(
+      condition_wrapper, body_wrapper, inputs, name="", parallel_iterations=1)
 
   # Check the infeed queue has been used - this is more of a courtesy to the
   # user.
@@ -196,21 +194,21 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
   """
   inputs = _convert_to_list(inputs)
   input_arity = len(inputs)
-  body_arg_error = xla.check_function_argument_count(
-      body, input_arity, infeed_queue)
+  body_arg_error = xla.check_function_argument_count(body, input_arity,
+                                                     infeed_queue)
   if body_arg_error is not None:
     if infeed_queue is None:
       raise TypeError(
           "Supplied loop body function cannot be called with the specified "
-          "inputs. You specified %d inputs: %s, but the loop body needs %s." % (
-              input_arity, str(inputs), body_arg_error))
+          "inputs. You specified %d inputs: %s, but the loop body needs %s." %
+          (input_arity, str(inputs), body_arg_error))
     else:
       raise TypeError(
           "Supplied loop body function cannot be called with the specified "
           "inputs. You specified %d inputs: %s and %d additional inputs from "
-          "infeed, but the computation needs %s." % (input_arity, str(
-              inputs), infeed_queue.number_of_tuple_elements,
-                                                    body_arg_error))
+          "infeed, but the computation needs %s." %
+          (input_arity, str(inputs), infeed_queue.number_of_tuple_elements,
+           body_arg_error))
 
   def cond(i, *args):
     del args
@@ -221,8 +219,11 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
 
   inputs = [0] if inputs is None else [0] + _convert_to_list(inputs)
   outputs = while_loop(
-    cond, body_wrapper, inputs=inputs, infeed_queue=infeed_queue,
-    use_while_v1=use_while_v1)
+      cond,
+      body_wrapper,
+      inputs=inputs,
+      infeed_queue=infeed_queue,
+      use_while_v1=use_while_v1)
   outputs = _convert_to_list(outputs)
   if len(outputs) == 1:
     # Returns the Op rather than an empty list.
@@ -231,6 +232,7 @@ def repeat(n, body, inputs=None, infeed_queue=None, use_while_v1=True):
     return outputs[1]
   else:
     return outputs[1:]
+
 
 def _convert_to_list(xs):
   if not isinstance(xs, (list, tuple)):

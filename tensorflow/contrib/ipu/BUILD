@@ -156,6 +156,22 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "while_loop_sharded_test",
+    size = "medium",
+    srcs = ["python/tests/while_loop_sharded_test.py"],
+    additional_deps = [
+        ":ipu",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/contrib/compiler:xla",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+    ],
+)
+
+tf_py_test(
     name = "multi_ipu_test",
     size = "medium",
     tags = ['exclusive'],
@@ -278,6 +294,7 @@ test_suite(
         "replicated_graph_test",
         "sort_op_test",
         "while_loop_perf_test",
+        "while_loop_sharded_test",
         "while_loop_test",
     ],
 )

@@ -21,17 +21,20 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.contrib.ipu.python import sharding
 from tensorflow.core.framework import attr_value_pb2
 
+
 def tensor_memory_use(t):
   return t.shape.num_elements() * t.dtype.size
 
+
 def children(op):
   return set(op for out in op.outputs for op in out.consumers())
+
 
 def convert_ops_to_nx(fwd_ops, bwd_ops=None):
   bwd_inputs = [t for op in bwd_ops for t in op.inputs]
   graph = nx.DiGraph()
   dictionary = dict()
-  variables_seen=[]
+  variables_seen = []
   for op in fwd_ops:
     if op.type == 'ReadVariableOp' and op.inputs[0].name not in variables_seen:
       parameter_mem = np.sum([tensor_memory_use(t) for t in op.outputs])
@@ -43,11 +46,20 @@ def convert_ops_to_nx(fwd_ops, bwd_ops=None):
       saved_mem = np.sum([tensor_memory_use(t) for t in bwd_links])
     else:
       saved_mem = 0
-    bwd_links = {t.name: {'size': tensor_memory_use(t),
-                          'shape': t.shape.as_list()} for t in bwd_links}
+    bwd_links = {
+        t.name: {
+            'size': tensor_memory_use(t),
+            'shape': t.shape.as_list()
+        }
+        for t in bwd_links
+    }
     has_bwd_links = bwd_links != {}
-    graph.add_node(op.name, bwd_links=bwd_links, saved_mem=saved_mem,
-                   has_bwd_links=has_bwd_links, parameter_mem=parameter_mem)
+    graph.add_node(
+        op.name,
+        bwd_links=bwd_links,
+        saved_mem=saved_mem,
+        has_bwd_links=has_bwd_links,
+        parameter_mem=parameter_mem)
     dictionary[op.name] = op
 
   for op in fwd_ops:
@@ -57,6 +69,7 @@ def convert_ops_to_nx(fwd_ops, bwd_ops=None):
 
   return graph, dictionary
 
+
 def calculate_memory(graph, nodes):
   total_mem = 0
   for n in nodes:
@@ -64,21 +77,24 @@ def calculate_memory(graph, nodes):
     total_mem += graph.nodes[n]['parameter_mem']
   return total_mem
 
+
 def set_ipu_shard(op, index):
   proto = xla_data_pb2.OpSharding(
-    type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=[index])
+      type=xla_data_pb2.OpSharding.MAXIMAL, tile_assignment_devices=[index])
 
   attr_value = attr_value_pb2.AttrValue(s=proto.SerializeToString())
   op._set_attr(sharding._XLA_SHARDING, attr_value)
+
 
 def is_splitting_edge(G_fwd, edge, input_node, output_node):
   G = nx.DiGraph(G_fwd)
   G.remove_edge(edge[0], edge[1])
   W = list(nx.weakly_connected_components(G))
-  if len(W)==2:
+  if len(W) == 2:
     if not any([input_node in c and output_node in c for c in W]):
       return True
   return False
+
 
 def find_all_subgraphs(graph, splitting_edges, input_node, output_node):
   graph = nx.DiGraph(graph)
@@ -89,14 +105,14 @@ def find_all_subgraphs(graph, splitting_edges, input_node, output_node):
   subgraphs = []
   edges = []
   next_node = input_node
-  while len(W)>0:
+  while len(W) > 0:
     indices = (i for i, w in enumerate(W) if next_node in w)
     index = next(indices, None)
     assert index is not None, str(next_node) + " not in any subgraph"
 
     sg = W.pop(index)
     subgraphs += [graph.subgraph(sg)]
-    if len(W)>0:
+    if len(W) > 0:
       #find edge in subgraph
       edge_generator = (e for e in splitting_edges if e[0] in sg)
       edge = next(edge_generator, None)
@@ -109,7 +125,11 @@ def find_all_subgraphs(graph, splitting_edges, input_node, output_node):
 
   return subgraphs, edges
 
-def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
+
+def automatic_sharding(num_shards,
+                       input_ts,
+                       loss_ts,
+                       train_ops=None,
                        edge_filter=None):
   """Automatically set shards for all connected nodes in graph.
 
@@ -131,7 +151,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
     roots += train_ops
 
   all_ops = loss_op.graph.get_operations()
-  op_list = list(filter(lambda o : 'IPU' in o.device, all_ops))
+  op_list = list(filter(lambda o: 'IPU' in o.device, all_ops))
 
   fwd_ops = []
   bwd_ops = []
@@ -140,7 +160,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
 
   for op in op_list:
     op_name = str(op.name.lower())
-    if op.type == "NextIteration":
+    if op.type == "NextIteration" or op.type == "PopDatastreamInfeedDequeue":
       continue
     if 'gradient' in op_name:
       bwd_ops.append(op)
@@ -162,32 +182,32 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   # check graph is a single weakly connected component
   # if not find the component with the loss op in and use that
   W = list(nx.weakly_connected_components(graph))
-  if len(W)>1:
+  if len(W) > 1:
     for g in W:
       if loss_op.name in g:
         graph = graph.subgraph(g)
 
     fwd_ops = [op for op in fwd_ops if op.name in graph.nodes]
 
-  assert nx.number_weakly_connected_components(graph)==1
+  assert nx.number_weakly_connected_components(graph) == 1
 
   graph_fwd = graph.subgraph([op.name for op in fwd_ops])
 
   # find all graph edges that split the graph into two subgraphs where the input
   # and output are not in the same subgraph
-  splitting_edges = [edge for edge in graph_fwd.edges
-                     if is_splitting_edge(graph_fwd, edge, input_name,
-                                          loss_op.name)]
+  splitting_edges = [
+      edge for edge in graph_fwd.edges
+      if is_splitting_edge(graph_fwd, edge, input_name, loss_op.name)
+  ]
 
   if edge_filter and callable(edge_filter):
-    splitting_edges = list(filter(lambda e: not edge_filter(e),
-                                  splitting_edges))
+    splitting_edges = list(
+        filter(lambda e: not edge_filter(e), splitting_edges))
 
   # given the splitting edges found find all of the subgraphs created and order
   # them
-  subgraphs, edges = find_all_subgraphs(graph_fwd, splitting_edges,
-                                        input_name, loss_op.name)
-
+  subgraphs, edges = find_all_subgraphs(graph_fwd, splitting_edges, input_name,
+                                        loss_op.name)
 
   subgraph_mem = [calculate_memory(graph_fwd, g) for g in subgraphs]
 
@@ -202,10 +222,12 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   best_ind = []
   best_mem = []
 
-  for ind in itertools.combinations(range(len(edges)), num_shards-1):
-    ind_pad = [0] + [i+1 for i in ind] + [len(subgraph_mem)]
-    mem = [np.sum(subgraph_mem[ind_pad[i]:ind_pad[i+1]])
-           for i in range(len(ind)+1)]
+  for ind in itertools.combinations(range(len(edges)), num_shards - 1):
+    ind_pad = [0] + [i + 1 for i in ind] + [len(subgraph_mem)]
+    mem = [
+        np.sum(subgraph_mem[ind_pad[i]:ind_pad[i + 1]])
+        for i in range(len(ind) + 1)
+    ]
     max_mem = np.max(mem)
     if max_mem < min_max_mem:
       best_ind = [ind]
@@ -229,11 +251,12 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
   # if still tied choose the first option in the list
   best_ind = best_ind[0]
 
-  ind_pad = [0] + [i+1 for i in best_ind] + [len(subgraph_mem)]
-  per_shard_subgraphs = [graph_fwd.subgraph([g0 for g in
-                                             subgraphs[ind_pad[i]:ind_pad[i+1]]
-                                             for g0 in g.nodes])
-                         for i in range(len(ind)+1)]
+  ind_pad = [0] + [i + 1 for i in best_ind] + [len(subgraph_mem)]
+  per_shard_subgraphs = [
+      graph_fwd.subgraph(
+          [g0 for g in subgraphs[ind_pad[i]:ind_pad[i + 1]] for g0 in g.nodes])
+      for i in range(len(ind) + 1)
+  ]
 
   for op in fwd_ops:
     shard_set = False
@@ -243,7 +266,7 @@ def automatic_sharding(num_shards, input_ts, loss_ts, train_ops=None,
         shard_set = True
     assert shard_set, "%s not in any graph split" % op.name
 
-  for op in filter(lambda o : o not in fwd_ops, op_list):
+  for op in filter(lambda o: o not in fwd_ops, op_list):
     attr = sharding.get_shard_from_colocation(op)
     if not attr:
       for child in children(op):

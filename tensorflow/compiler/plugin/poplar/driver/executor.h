@@ -512,7 +512,8 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   // Connect buffers provided by transfer manager to Poplar
   // deviceToHostFIFO()
   void ConnectOutfeedToStreamCallback(se::StreamExecutor* executor,
-                                      const OutfeedInfos& outfeed_infos);
+                                      const OutfeedInfos& outfeed_infos,
+                                      const uint32 replication_factor);
 
   // Creates and launches the thread which will fetch inputs from
   // the InfeedDatasetIterator and enqueue them in the TransferManager.

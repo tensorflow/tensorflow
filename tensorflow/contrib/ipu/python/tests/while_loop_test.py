@@ -34,19 +34,23 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent as gd
 
-def create_increasing_dataset(value, data_shape=[1, 32, 32, 4],
-                              label_shape=[1, 8], dtype=np.float32):
+
+def create_increasing_dataset(value,
+                              data_shape=[1, 32, 32, 4],
+                              label_shape=[1, 8],
+                              dtype=np.float32):
   def _get_one_input(data):
-    return (
-      math_ops.cast(gen_array_ops.broadcast_to(data, shape=data_shape), dtype=dtype),
-      math_ops.cast(gen_array_ops.broadcast_to(data, shape=label_shape), dtype=dtype)
-    )
+    return (math_ops.cast(
+        gen_array_ops.broadcast_to(data, shape=data_shape), dtype=dtype),
+            math_ops.cast(
+                gen_array_ops.broadcast_to(data, shape=label_shape),
+                dtype=dtype))
 
   dataset = Dataset.range(value).repeat().map(_get_one_input)
   return dataset
 
-class WhileLoopTest(test_util.TensorFlowTestCase):
 
+class WhileLoopTest(test_util.TensorFlowTestCase):
   def testWhileLoopTupleOfTuples(self):
     # This test makes sure that we can handle tuple of tuples for while loops
     random_seed.set_random_seed(1)
@@ -66,9 +70,11 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       # Forward pass
       logits = RNN(X)
       # Loss
-      cross_entropy = math_ops.reduce_mean(nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
+      cross_entropy = math_ops.reduce_mean(
+          nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
       # Training
-      train = gradient_descent.GradientDescentOptimizer(0.01).minimize(cross_entropy)
+      train = gradient_descent.GradientDescentOptimizer(0.01).minimize(
+          cross_entropy)
       return [cross_entropy, train]
 
     with ops.device('cpu'):
@@ -100,8 +106,8 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      result = sess.run(r, {X: [[1,3,5,7],[0,2,4,6]], Y: [1, 0]})
-      self.assertAllClose(result[0], [[0,2,4,6],[1,3,5,7]])
+      result = sess.run(r, {X: [[1, 3, 5, 7], [0, 2, 4, 6]], Y: [1, 0]})
+      self.assertAllClose(result[0], [[0, 2, 4, 6], [1, 3, 5, 7]])
 
   def testGatherTransposed(self):
     def my_net(p, i):
@@ -119,8 +125,8 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
-      result = sess.run(r, {X: [[1,3,5,7],[0,2,4,6]], Y: [1, 0]})
-      self.assertAllClose(result[0], [[3,2],[1,0]])
+      result = sess.run(r, {X: [[1, 3, 5, 7], [0, 2, 4, 6]], Y: [1, 0]})
+      self.assertAllClose(result[0], [[3, 2], [1, 0]])
 
   def testInplaceOpsInRepeats(self):
     def my_net(x):
@@ -163,11 +169,13 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       def body(i, x):
         i = i + 1
         j = 0
-        _, x = control_flow_ops.while_loop(cond1, body1, (j, x), maximum_iterations=10)
+        _, x = control_flow_ops.while_loop(
+            cond1, body1, (j, x), maximum_iterations=10)
         return (i, x)
 
       i = 0
-      a, b = control_flow_ops.while_loop(cond, body, (i, x), maximum_iterations=10)
+      a, b = control_flow_ops.while_loop(
+          cond, body, (i, x), maximum_iterations=10)
       return (a, b)
 
     with ops.device('cpu'):
@@ -189,19 +197,32 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
 
       def body(i, loss):
         i = i + 1
-        init = init_ops.random_normal_initializer(0.0, 1.0, seed=1, dtype=np.float32)
-        x = variable_scope.get_variable("v2", dtype=np.float32, shape=[1, 4, 4, 2],
-                                         initializer=init)
+        init = init_ops.random_normal_initializer(
+            0.0, 1.0, seed=1, dtype=np.float32)
+        x = variable_scope.get_variable(
+            "v2", dtype=np.float32, shape=[1, 4, 4, 2], initializer=init)
         with variable_scope.variable_scope("vs", use_resource=True):
-          y = convolutional.conv2d(x, 2, 1, use_bias=True,
-                                 kernel_initializer=init_ops.ones_initializer(),
-                                 name='conv1')
-          y = convolutional.conv2d(y, 2, 1, use_bias=True,
-                                 kernel_initializer=init_ops.ones_initializer(),
-                                 name='conv2')
-          y = convolutional.conv2d(y, 2, 1, use_bias=True,
-                                 kernel_initializer=init_ops.ones_initializer(),
-                                 name='conv3')
+          y = convolutional.conv2d(
+              x,
+              2,
+              1,
+              use_bias=True,
+              kernel_initializer=init_ops.ones_initializer(),
+              name='conv1')
+          y = convolutional.conv2d(
+              y,
+              2,
+              1,
+              use_bias=True,
+              kernel_initializer=init_ops.ones_initializer(),
+              name='conv2')
+          y = convolutional.conv2d(
+              y,
+              2,
+              1,
+              use_bias=True,
+              kernel_initializer=init_ops.ones_initializer(),
+              name='conv3')
         loss = math_ops.reduce_sum(y)
         optimizer = gradient_descent.GradientDescentOptimizer(0.1)
         train = optimizer.minimize(loss)
@@ -209,9 +230,11 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
           i = array_ops.identity(i)
           loss = array_ops.identity(loss)
           return (i, loss)
+
       i = 0
       loss = 0.0
-      return control_flow_ops.while_loop(cond, body, (i, loss), maximum_iterations=10)
+      return control_flow_ops.while_loop(
+          cond, body, (i, loss), maximum_iterations=10)
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
       r = ipu_compiler.compile(my_net, inputs=[])
@@ -221,10 +244,9 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       c, val = sess.run(r, {})
       self.assertEqual(c, 3)
 
-
   def testTfLstmInWhileV1(self):
-    dataset = create_increasing_dataset(3, data_shape=[4, 1, 8],
-                                        label_shape=[4, 1, 128])
+    dataset = create_increasing_dataset(
+        3, data_shape=[4, 1, 8], label_shape=[4, 1, 128])
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
@@ -232,10 +254,11 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       def my_model(loss, x, y):
         with ipu.ops.ipu_scope("/device:IPU:0"):
           lstm_cell = rnn_cell.LSTMCell(128)
-          x, _ = rnn.dynamic_rnn(cell=lstm_cell, inputs=x,
-                                 dtype=dtypes.float32, time_major=True)
+          x, _ = rnn.dynamic_rnn(
+              cell=lstm_cell, inputs=x, dtype=dtypes.float32, time_major=True)
 
-          cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+          cross_entropy = nn.softmax_cross_entropy_with_logits(
+              logits=x, labels=y)
           loss = math_ops.reduce_mean(cross_entropy)
 
           optim = gradient_descent.GradientDescentOptimizer(0.01)
@@ -244,7 +267,8 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
           return [loss, train]
 
       loss = 0.0
-      return loops.repeat(10, my_model, [loss], infeed_queue, use_while_v1=True)
+      return loops.repeat(
+          10, my_model, [loss], infeed_queue, use_while_v1=True)
 
     out = ipu_compiler.compile(my_net, inputs=[])
 
@@ -258,49 +282,6 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       sess.run(variables.global_variables_initializer())
       sess.run(out[0], {})
 
-  # TODO enable when feeding placeholders into while loops by capture works
-  # def testSimpleXlaCompileTrainingInLoopWithParam(self):
-  #   dataset = create_increasing_dataset(3)
-  #
-  #   infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
-  #
-  #   def my_net(lr):
-  #     def my_model(lr, loss):
-  #       with ops.device("/device:IPU:0"):
-  #         x, y = infeed_queue.get_next()
-  #         inp = x
-  #
-  #         x = convolutional.conv2d(x, 8, 3, padding='same', name="conv1",
-  #                                  use_bias=False)
-  #         x = math_ops.reduce_max(x,  axis=[1, 2])
-  #
-  #         cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
-  #         loss = math_ops.reduce_mean(cross_entropy)
-  #
-  #         optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
-  #         train = optim.minimize(cross_entropy)
-  #
-  #         autoshard.automatic_sharding(2, inp, loss, [])
-  #
-  #         return [lr, loss, train]
-  #
-  #     loss = 0.0
-  #     return loops.repeat(2, my_model, [lr, loss], infeed_queue)
-  #
-  #   lr = array_ops.placeholder(dtypes.float32, [])
-  #   out = ipu_compiler.compile(my_net, inputs=[lr])
-  #
-  #   cfg = ipu.utils.create_ipu_config(profiling=False)
-  #   cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
-  #   cfg = ipu.utils.auto_select_ipus(cfg, 2)
-  #   ipu.utils.configure_ipu_system(cfg)
-  #
-  #   with session_lib.Session() as sess:
-  #     sess.run(infeed_queue.initializer)
-  #     sess.run(variables.global_variables_initializer())
-  #     sess.run(out[0], {lr: 0.1})
-
-
 
 if __name__ == "__main__":
-    googletest.main()
+  googletest.main()
