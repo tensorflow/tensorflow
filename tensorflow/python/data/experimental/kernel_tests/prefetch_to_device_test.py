@@ -76,8 +76,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
 
-    worker_config = config_pb2.ConfigProto(device_count={"CPU": 2})
-    with self.test_session(config=worker_config):
+    with self.cached_session():
       for i in range(10):
         self.assertEqual(i, self.evaluate(next_element))
       with self.assertRaises(errors.OutOfRangeError):
