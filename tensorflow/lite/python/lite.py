@@ -597,23 +597,28 @@ class TFLiteConverter(object):
     """
     _keras.backend.clear_session()
     _keras.backend.set_learning_phase(False)
-    keras_model = _keras.models.load_model(model_file)
-    sess = _keras.backend.get_session()
+    
+    try:
+      keras_model = _keras.models.load_model(model_file)
+      sess = _keras.backend.get_session()
 
-    # Get input and output tensors.
-    if input_arrays:
-      input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
-    else:
-      input_tensors = keras_model.inputs
+      # Get input and output tensors.
+      if input_arrays:
+        input_tensors = _get_tensors_from_tensor_names(sess.graph, input_arrays)
+      else:
+        input_tensors = keras_model.inputs
 
-    if output_arrays:
-      output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
-    else:
-      output_tensors = keras_model.outputs
-    _set_tensor_shapes(input_tensors, input_shapes)
+      if output_arrays:
+        output_tensors = _get_tensors_from_tensor_names(sess.graph, output_arrays)
+      else:
+        output_tensors = keras_model.outputs
+      _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
-    return cls(graph_def, input_tensors, output_tensors)
+      graph_def = _freeze_graph(sess, output_tensors)
+
+      return cls(graph_def, input_tensors, output_tensors)
+    except Exception as e:
+      raise Exception(e, ' This model may have custom compilation parameters, you can try to load your model into a Keras Session and use TFLiteConverter.from_session instead of using TFLiteConverter.from_keras_model_file.') 
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
