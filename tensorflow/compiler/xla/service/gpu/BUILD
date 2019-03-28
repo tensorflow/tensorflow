@@ -9,12 +9,9 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-<<<<<<< HEAD
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm_is_configured")
-=======
->>>>>>> google_upstream/master
 
 licenses(["notice"])  # Apache 2.0
 

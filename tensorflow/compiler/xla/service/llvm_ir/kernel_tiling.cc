@@ -134,7 +134,8 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
   return IrArray::Index(linear, unnormalized_shape, b_);
 }
 
-IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
+  IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty,
+						     LLVMTargetIRBuilder& llvm_target_ir_builder) {
   llvm::Value* block_id = gpu::EmitCallToTargetIntrinsic(
       gpu::TargetIntrinsicID::kBlockIdx, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
