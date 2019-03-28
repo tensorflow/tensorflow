@@ -1205,7 +1205,31 @@ _OverrideBinaryOperatorHelper(pow, "pow")
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
-  """x ^ y = (x | y) & ~(x & y)."""
+  """Logical XOR function. 
+  
+  x ^ y = (x | y) & ~(x & y)
+  
+  Inputs are tensor and if the tensors contains more than one element, an element-wise logical XOR is computed.
+  
+  Usage:
+  
+  '''python
+  x = tf.constant([False, False, True, True], dtype = tf.bool)
+  y = tf.constant([False, True, False, True], dtype = tf.bool)
+  z = tf.logical_xor(x, y, name="LogicalXor")
+  with tf.Session() as sess: 
+  	print(z) 
+	print(sess.run(z))
+  
+  #  here z = [False  True  True False]
+  
+  Args:
+      x: A `Tensor` . Must be of type bool.
+      y: A `Tensor` . Must be of type bool.
+
+  Returns:
+    A `Tensor` of type bool with the same size as that of x or y.
+  """
   # TODO(alemi) Make this a cwise op if people end up relying on it.
   return gen_math_ops.logical_and(
       gen_math_ops.logical_or(x, y),
