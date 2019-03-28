@@ -57,152 +57,277 @@ TfLiteStatus ComparisonPrepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
-// TODO(ruic): optimize macros below to using template functions.
-#define TF_LITE_QUANTIZE_COMPARISON(opname)                                    \
-  template <typename input_dtype>                                              \
-  void EvalQuantized##opname(TfLiteContext* context, TfLiteNode* node,         \
-                             const TfLiteTensor* input1,                       \
-                             const TfLiteTensor* input2, TfLiteTensor* output, \
-                             bool requires_broadcast) {                        \
-    if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8) {         \
-      auto input1_offset = -input1->params.zero_point;                         \
-      auto input2_offset = -input2->params.zero_point;                         \
-      const int left_shift = 8;                                                \
-                                                                               \
-      int32 input1_multiplier;                                                 \
-      int input1_shift;                                                        \
-      QuantizeMultiplierSmallerThanOneExp(input1->params.scale,                \
-                                          &input1_multiplier, &input1_shift);  \
-      int32 input2_multiplier;                                                 \
-      int input2_shift;                                                        \
-      QuantizeMultiplierSmallerThanOneExp(input2->params.scale,                \
-                                          &input2_multiplier, &input2_shift);  \
-                                                                               \
-      ComparisonParams op_params;                                              \
-      op_params.left_shift = left_shift;                                       \
-      op_params.input1_offset = input1_offset;                                 \
-      op_params.input1_multiplier = input1_multiplier;                         \
-      op_params.input1_shift = input1_shift;                                   \
-      op_params.input2_offset = input2_offset;                                 \
-      op_params.input2_multiplier = input2_multiplier;                         \
-      op_params.input2_shift = input2_shift;                                   \
-      if (requires_broadcast) {                                                \
-        reference_ops::Broadcast4DSlow##opname##WithScaling(                   \
-            op_params, GetTensorShape(input1),                                 \
-            GetTensorData<input_dtype>(input1), GetTensorShape(input2),        \
-            GetTensorData<input_dtype>(input2), GetTensorShape(output),        \
-            GetTensorData<bool>(output));                                      \
-      } else {                                                                 \
-        reference_ops::opname##WithScaling(                                    \
-            op_params, GetTensorShape(input1),                                 \
-            GetTensorData<input_dtype>(input1), GetTensorShape(input2),        \
-            GetTensorData<input_dtype>(input2), GetTensorShape(output),        \
-            GetTensorData<bool>(output));                                      \
-      }                                                                        \
-    }                                                                          \
+template <typename input_dtype, reference_ops::ComparisonFn<int32> opname>
+void ComparisonQuantized(const TfLiteTensor* input1, const TfLiteTensor* input2,
+                         TfLiteTensor* output, bool requires_broadcast) {
+  if (input1->type == kTfLiteUInt8 || input1->type == kTfLiteInt8) {
+    auto input1_offset = -input1->params.zero_point;
+    auto input2_offset = -input2->params.zero_point;
+    const int left_shift = 8;
+
+    int32 input1_multiplier;
+    int input1_shift;
+    QuantizeMultiplierSmallerThanOneExp(input1->params.scale,
+                                        &input1_multiplier, &input1_shift);
+    int32 input2_multiplier;
+    int input2_shift;
+    QuantizeMultiplierSmallerThanOneExp(input2->params.scale,
+                                        &input2_multiplier, &input2_shift);
+
+    ComparisonParams op_params;
+    op_params.left_shift = left_shift;
+    op_params.input1_offset = input1_offset;
+    op_params.input1_multiplier = input1_multiplier;
+    op_params.input1_shift = input1_shift;
+    op_params.input2_offset = input2_offset;
+    op_params.input2_multiplier = input2_multiplier;
+    op_params.input2_shift = input2_shift;
+    if (requires_broadcast) {
+      reference_ops::BroadcastComparison4DSlowWithScaling<input_dtype, opname>(
+          op_params, GetTensorShape(input1), GetTensorData<input_dtype>(input1),
+          GetTensorShape(input2), GetTensorData<input_dtype>(input2),
+          GetTensorShape(output), GetTensorData<bool>(output));
+    } else {
+      reference_ops::ComparisonWithScaling<input_dtype, opname>(
+          op_params, GetTensorShape(input1), GetTensorData<input_dtype>(input1),
+          GetTensorShape(input2), GetTensorData<input_dtype>(input2),
+          GetTensorShape(output), GetTensorData<bool>(output));
+    }
   }
-TF_LITE_QUANTIZE_COMPARISON(Equal);
-TF_LITE_QUANTIZE_COMPARISON(NotEqual);
-TF_LITE_QUANTIZE_COMPARISON(Greater);
-TF_LITE_QUANTIZE_COMPARISON(GreaterEqual);
-TF_LITE_QUANTIZE_COMPARISON(Less);
-TF_LITE_QUANTIZE_COMPARISON(LessEqual);
-#undef TF_LITE_QUANTIZE_COMPARISON
+}
 
-#define TF_LITE_COMPARISON(type, opname, requires_broadcast)                  \
-  {                                                                           \
-    ComparisonParams op_params;                                               \
-    requires_broadcast                                                        \
-        ? reference_ops::Broadcast4DSlow##opname##NoScaling(                  \
-              op_params, GetTensorShape(input1), GetTensorData<type>(input1), \
-              GetTensorShape(input2), GetTensorData<type>(input2),            \
-              GetTensorShape(output), GetTensorData<bool>(output))            \
-        : reference_ops::opname##NoScaling(                                   \
-              op_params, GetTensorShape(input1), GetTensorData<type>(input1), \
-              GetTensorShape(input2), GetTensorData<type>(input2),            \
-              GetTensorShape(output), GetTensorData<bool>(output));           \
+template <typename T, reference_ops::ComparisonFn<T> opname>
+void Comparison(const TfLiteTensor* input1, const TfLiteTensor* input2,
+                TfLiteTensor* output, bool requires_broadcast) {
+  ComparisonParams op_params;
+  requires_broadcast
+      ? reference_ops::BroadcastComparison4DSlowImpl<T, opname>(
+            op_params, GetTensorShape(input1), GetTensorData<T>(input1),
+            GetTensorShape(input2), GetTensorData<T>(input2),
+            GetTensorShape(output), GetTensorData<bool>(output))
+      : reference_ops::ComparisonImpl<T, opname>(
+            op_params, GetTensorShape(input1), GetTensorData<T>(input1),
+            GetTensorShape(input2), GetTensorData<T>(input2),
+            GetTensorShape(output), GetTensorData<bool>(output));
+}
+
+TfLiteStatus EqualEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  switch (input1->type) {
+    case kTfLiteBool:
+      Comparison<bool, reference_ops::EqualFn>(input1, input2, output,
+                                               requires_broadcast);
+      break;
+    case kTfLiteFloat32:
+      Comparison<float, reference_ops::EqualFn>(input1, input2, output,
+                                                requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      Comparison<int32_t, reference_ops::EqualFn>(input1, input2, output,
+                                                  requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      Comparison<int64_t, reference_ops::EqualFn>(input1, input2, output,
+                                                  requires_broadcast);
+      break;
+    case kTfLiteUInt8:
+      ComparisonQuantized<uint8_t, reference_ops::EqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      ComparisonQuantized<int8_t, reference_ops::EqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    default:
+      context->ReportError(
+          context, "Does not support type %d, requires bool|float|int|uint8",
+          input1->type);
+      return kTfLiteError;
   }
+  return kTfLiteOk;
+}
 
-#define TF_LITE_COMPARISON_INVOKE_EQUAL(op_name)                              \
-  TfLiteStatus op_name##Eval(TfLiteContext* context, TfLiteNode* node) {      \
-    const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);      \
-    const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);      \
-    TfLiteTensor* output = GetOutput(context, node, kOutputTensor);           \
-    bool requires_broadcast = !HaveSameShapes(input1, input2);                \
-    switch (input1->type) {                                                   \
-      case kTfLiteBool:                                                       \
-        TF_LITE_COMPARISON(bool, op_name, requires_broadcast);                \
-        break;                                                                \
-      case kTfLiteFloat32:                                                    \
-        TF_LITE_COMPARISON(float, op_name, requires_broadcast);               \
-        break;                                                                \
-      case kTfLiteInt32:                                                      \
-        TF_LITE_COMPARISON(int32_t, op_name, requires_broadcast);             \
-        break;                                                                \
-      case kTfLiteInt64:                                                      \
-        TF_LITE_COMPARISON(int64_t, op_name, requires_broadcast);             \
-        break;                                                                \
-      case kTfLiteUInt8:                                                      \
-        EvalQuantized##op_name<uint8_t>(context, node, input1, input2, output,\
-                                        requires_broadcast);                  \
-        break;                                                                \
-      case kTfLiteInt8:                                                       \
-        EvalQuantized##op_name<int8_t>(context, node, input1, input2, output, \
-                                       requires_broadcast);                   \
-        break;                                                                \
-      default:                                                                \
-        context->ReportError(context,                                         \
-                             "Does not support type %d,"                      \
-                             " requires bool|float|int|uint8",                \
-                             input1->type);                                   \
-        return kTfLiteError;                                                  \
-    }                                                                         \
-    return kTfLiteOk;                                                         \
-  }                                                                           \
+TfLiteStatus NotEqualEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  switch (input1->type) {
+    case kTfLiteBool:
+      Comparison<bool, reference_ops::NotEqualFn>(input1, input2, output,
+                                                  requires_broadcast);
+      break;
+    case kTfLiteFloat32:
+      Comparison<float, reference_ops::NotEqualFn>(input1, input2, output,
+                                                   requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      Comparison<int32_t, reference_ops::NotEqualFn>(input1, input2, output,
+                                                     requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      Comparison<int64_t, reference_ops::NotEqualFn>(input1, input2, output,
+                                                     requires_broadcast);
+      break;
+    case kTfLiteUInt8:
+      ComparisonQuantized<uint8_t, reference_ops::NotEqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      ComparisonQuantized<int8_t, reference_ops::NotEqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    default:
+      context->ReportError(
+          context, "Does not support type %d, requires bool|float|int|uint8",
+          input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
 
-#define TF_LITE_COMPARISON_INVOKE_GL(op_name)                                 \
-  TfLiteStatus op_name##Eval(TfLiteContext* context, TfLiteNode* node) {      \
-    const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);      \
-    const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);      \
-    TfLiteTensor* output = GetOutput(context, node, kOutputTensor);           \
-    bool requires_broadcast = !HaveSameShapes(input1, input2);                \
-    switch (input1->type) {                                                   \
-      case kTfLiteFloat32:                                                    \
-        TF_LITE_COMPARISON(float, op_name, requires_broadcast);               \
-        break;                                                                \
-      case kTfLiteInt32:                                                      \
-        TF_LITE_COMPARISON(int32_t, op_name, requires_broadcast);             \
-        break;                                                                \
-      case kTfLiteInt64:                                                      \
-        TF_LITE_COMPARISON(int64_t, op_name, requires_broadcast);             \
-        break;                                                                \
-      case kTfLiteUInt8:                                                      \
-        EvalQuantized##op_name<uint8_t>(context, node, input1, input2, output,\
-                                        requires_broadcast);                  \
-        break;                                                                \
-      case kTfLiteInt8:                                                       \
-        EvalQuantized##op_name<int8_t>(context, node, input1, input2, output, \
-                                       requires_broadcast);                   \
-        break;                                                                \
-      default:                                                                \
-        context->ReportError(context,                                         \
-                             "Does not support type %d,"                      \
-                             " requires float|int|uint8",                     \
-                             input1->type);                                   \
-        return kTfLiteError;                                                  \
-    }                                                                         \
-    return kTfLiteOk;                                                         \
-  }                                                                           \
+TfLiteStatus GreaterEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  switch (input1->type) {
+    case kTfLiteFloat32:
+      Comparison<float, reference_ops::GreaterFn>(input1, input2, output,
+                                                  requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      Comparison<int32_t, reference_ops::GreaterFn>(input1, input2, output,
+                                                    requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      Comparison<int64_t, reference_ops::GreaterFn>(input1, input2, output,
+                                                    requires_broadcast);
+      break;
+    case kTfLiteUInt8:
+      ComparisonQuantized<uint8_t, reference_ops::GreaterFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      ComparisonQuantized<int8_t, reference_ops::GreaterFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    default:
+      context->ReportError(context,
+                           "Does not support type %d, requires float|int|uint8",
+                           input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
 
-TF_LITE_COMPARISON_INVOKE_EQUAL(Equal)
-TF_LITE_COMPARISON_INVOKE_EQUAL(NotEqual)
-TF_LITE_COMPARISON_INVOKE_GL(Greater)
-TF_LITE_COMPARISON_INVOKE_GL(GreaterEqual)
-TF_LITE_COMPARISON_INVOKE_GL(Less)
-TF_LITE_COMPARISON_INVOKE_GL(LessEqual)
-#undef TF_LITE_COMPARISON
-#undef TF_LITE_COMPARISON_INVOKE_EQUAL
-#undef TF_LITE_COMPARISON_INVOKE_GL
+TfLiteStatus GreaterEqualEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  switch (input1->type) {
+    case kTfLiteFloat32:
+      Comparison<float, reference_ops::GreaterEqualFn>(input1, input2, output,
+                                                       requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      Comparison<int32_t, reference_ops::GreaterEqualFn>(input1, input2, output,
+                                                         requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      Comparison<int64_t, reference_ops::GreaterEqualFn>(input1, input2, output,
+                                                         requires_broadcast);
+      break;
+    case kTfLiteUInt8:
+      ComparisonQuantized<uint8_t, reference_ops::GreaterEqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      ComparisonQuantized<int8_t, reference_ops::GreaterEqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    default:
+      context->ReportError(context,
+                           "Does not support type %d, requires float|int|uint8",
+                           input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus LessEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  switch (input1->type) {
+    case kTfLiteFloat32:
+      Comparison<float, reference_ops::LessFn>(input1, input2, output,
+                                               requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      Comparison<int32_t, reference_ops::LessFn>(input1, input2, output,
+                                                 requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      Comparison<int64_t, reference_ops::LessFn>(input1, input2, output,
+                                                 requires_broadcast);
+      break;
+    case kTfLiteUInt8:
+      ComparisonQuantized<uint8_t, reference_ops::LessFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      ComparisonQuantized<int8_t, reference_ops::LessFn>(input1, input2, output,
+                                                         requires_broadcast);
+      break;
+    default:
+      context->ReportError(context,
+                           "Does not support type %d, requires float|int|uint8",
+                           input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus LessEqualEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input1 = GetInput(context, node, kInputTensor1);
+  const TfLiteTensor* input2 = GetInput(context, node, kInputTensor2);
+  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  bool requires_broadcast = !HaveSameShapes(input1, input2);
+  switch (input1->type) {
+    case kTfLiteFloat32:
+      Comparison<float, reference_ops::LessEqualFn>(input1, input2, output,
+                                                    requires_broadcast);
+      break;
+    case kTfLiteInt32:
+      Comparison<int32_t, reference_ops::LessEqualFn>(input1, input2, output,
+                                                      requires_broadcast);
+      break;
+    case kTfLiteInt64:
+      Comparison<int64_t, reference_ops::LessEqualFn>(input1, input2, output,
+                                                      requires_broadcast);
+      break;
+    case kTfLiteUInt8:
+      ComparisonQuantized<uint8_t, reference_ops::LessEqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    case kTfLiteInt8:
+      ComparisonQuantized<int8_t, reference_ops::LessEqualFn>(
+          input1, input2, output, requires_broadcast);
+      break;
+    default:
+      context->ReportError(context,
+                           "Does not support type %d, requires float|int|uint8",
+                           input1->type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
 
 }  // namespace
 }  // namespace comparisons
