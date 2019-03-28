@@ -1213,15 +1213,12 @@ def logical_xor(x, y, name="LogicalXor"):
   
   Usage:
   
-  '''python
+  ```python
   x = tf.constant([False, False, True, True], dtype = tf.bool)
   y = tf.constant([False, True, False, True], dtype = tf.bool)
   z = tf.logical_xor(x, y, name="LogicalXor")
-  with tf.Session() as sess: 
-  	print(z) 
-	print(sess.run(z))
-  
   #  here z = [False  True  True False]
+  ```
   
   Args:
       x: A `Tensor` type bool.
