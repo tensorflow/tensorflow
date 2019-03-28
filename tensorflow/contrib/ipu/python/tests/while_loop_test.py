@@ -28,6 +28,7 @@ from tensorflow.python.ops import rnn_cell
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
 from tensorflow.python.platform import googletest
 
 
@@ -260,6 +261,36 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       sess.run(infeed_queue.initializer)
       sess.run(variables.global_variables_initializer())
       sess.run(out[0], {})
+
+    def testRepeatLoopGradient(self):
+      def model(features):
+        a = variable_scope.get_variable("a", initializer=1.0)
+
+        def body(x):
+          return a * x
+
+        logits = ipu.loops.repeat(5, body, [features])
+        loss = math_ops.reduce_sum(logits)
+        optimizer = momentum.MomentumOptimizer(
+            learning_rate=.001, momentum=0.9)
+        grads_and_vars = optimizer.compute_gradients(loss)
+        train_op = optimizer.apply_gradients(grads_and_vars)
+        return a, loss, train_op
+
+      with ops.device('cpu'):
+        features = array_ops.placeholder(dtypes.float32, shape=[10])
+
+      with ipu.ops.ipu_scope('/device:IPU:0'):
+        ret = ipu.ipu_compiler.compile(model, [features])
+
+        options = ipu.utils.create_ipu_config()
+        options = ipu.utils.auto_select_ipus(options, 1)
+        ipu.utils.configure_ipu_system(options)
+
+      with session_lib.Session() as sess:
+        sess.run(variables.global_variables_initializer())
+        x, z = sess.run(ret, feed_dict={features: np.ones([10])})
+        self.assertEqual(x, 1)
 
 
 if __name__ == "__main__":
