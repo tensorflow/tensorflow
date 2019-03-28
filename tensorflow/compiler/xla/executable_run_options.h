@@ -64,6 +64,12 @@ class ExecutableRunOptions {
   stream_executor::Stream* host_to_device_stream() const;
 
   // Sets the thread pool device on which to run Eigen subcomputations.
+  //
+  // This field must be set for XLA:CPU models that call Eigen routines, but may
+  // be null otherwise.  Routines that use this field should always CHECK (or
+  // TF_RET_CHECK) that it's not null before dereferencing it, so that users get
+  // a clean crash rather than a segfault.
+  //
   // Does not take ownership.
   ExecutableRunOptions& set_intra_op_thread_pool(
       const Eigen::ThreadPoolDevice* intra_op_thread_pool);
