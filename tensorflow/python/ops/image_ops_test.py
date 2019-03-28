@@ -4638,7 +4638,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
     ssim = image_ops.ssim(*ph, max_val=1.0, filter_size=11, filter_sigma=1.5,
-                          k1 = 0.01, k2 = 0.03)
+                          k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       scores = [ssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4654,7 +4654,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
 
     ssim = image_ops.ssim(constant_op.constant(img1),
                           constant_op.constant(img2), 1.0, filter_size=11,
-                          filter_sigma=1.5, k1 = 0.01, k2 = 0.03)
+                          filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4667,7 +4667,7 @@ class SSIMTest(test_util.TensorFlowTestCase):
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
     ssim = image_ops.ssim(img1, img2, 1.0, filter_size=11, filter_sigma=1.5,
-                          k1 = 0.01, k2 = 0.03)
+                          k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
 
@@ -4741,7 +4741,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
 
     ph = [array_ops.placeholder(dtype=dtypes.float32) for _ in range(2)]
     msssim = image_ops.ssim_multiscale(*ph, max_val=1.0,filter_size=11,
-                                       filter_sigma=1.5,k1 = 0.01, k2 = 0.03)
+                                       filter_sigma=1.5, k1=0.01, k2=0.03)
     with self.cached_session(use_gpu=True):
       scores = [msssim.eval(dict(zip(ph, t)))
                 for t in itertools.combinations_with_replacement(img, 2)]
@@ -4757,7 +4757,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     msssim = image_ops.ssim_multiscale(*scaled_ph, max_val=1.0,
                                        power_factors=(1, 1, 1, 1, 1),
                                        filter_size=11, filter_sigma=1.5,
-                                       k1 = 0.01, k2 = 0.03)
+                                       k1=0.01, k2=0.03)
     grads = gradients.gradients(msssim, scalar)
     with self.cached_session(use_gpu=True) as sess:
       np_grads = sess.run(grads, feed_dict={ph[0]: img[0], ph[1]: img[1]})
@@ -4775,7 +4775,7 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     msssim = image_ops.ssim_multiscale(constant_op.constant(img1),
                                        constant_op.constant(img2), 1.0,
                                        filter_size=11, filter_sigma=1.5,
-                                       k1 = 0.01, k2 = 0.03)
+                                       k1=0.01, k2 =0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(msssim), 1e-4)
 
@@ -4789,8 +4789,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img2 = array_ops.expand_dims(img, axis=1)  # batch dims: 2, 1.
 
     score_tensor = image_ops.ssim_multiscale(img1, img2, 1.0, filter_size=11,
-                                             filter_sigma=1.5, k1 = 0.01,
-                                             k2 = 0.03)
+                                             filter_sigma=1.5, k1=0.01,
+                                             k2=0.03)
     with self.cached_session(use_gpu=True):
       self.assertAllClose(expected, self.evaluate(score_tensor), 1e-4)
 
@@ -4825,8 +4825,8 @@ class MultiscaleSSIMTest(test_util.TensorFlowTestCase):
     img1 = constant_op.constant(img1, dtypes.uint8)
     img2 = constant_op.constant(img2, dtypes.uint8)
     ssim_uint8 = image_ops.ssim_multiscale(img1, img2, 255, filter_size=11,
-                                          filter_sigma=1.5, k1 = 0.01,
-                                          k2 = 0.03)
+                                          filter_sigma=1.5, k1=0.01,
+                                          k2=0.03)
     img1 = image_ops.convert_image_dtype(img1, dtypes.float32)
     img2 = image_ops.convert_image_dtype(img2, dtypes.float32)
     ssim_float32 = image_ops.ssim_multiscale(img1, img2, 1.0, filter_size=11,

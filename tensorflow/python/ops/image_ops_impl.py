@@ -2886,7 +2886,8 @@ def _fspecial_gauss(size, sigma):
   return array_ops.reshape(g, shape=[size, size, 1, 1])
 
 
-def _ssim_per_channel(img1, img2, max_val=1.0, **kwargs):
+def _ssim_per_channel(img1, img2, max_val=1.0, filter_size = _SSIM_FILTER_SIZE,
+    filter_sigma = _SSIM_SIGMA, k1 = _SSIM_K1, k2 = _SSIM_K2):
   """Computes SSIM index between img1 and img2 per color channel.
 
   This function matches the standard SSIM implementation from:
@@ -2905,8 +2906,6 @@ def _ssim_per_channel(img1, img2, max_val=1.0, **kwargs):
       maximum the and minimum allowed values).
     size: size of gaussian filter.
     sigma: width of gaussian filter.
-
-  Kwargs:
     filter_size: size of gaussian filter.
     filter_sigma: width of gaussian filter.
     k1: Default value 0.01
@@ -2918,16 +2917,9 @@ def _ssim_per_channel(img1, img2, max_val=1.0, **kwargs):
     A pair of tensors containing and channel-wise SSIM and contrast-structure
     values. The shape is [..., channels].
   """
-  if kwargs.get('filter_size') is None:
-      filter_size = constant_op.constant(_SSIM_FILTER_SIZE, dtype=dtypes.int32)
-  else:
-      filter_size = constant_op.constant(kwargs.get('filter_size'),
-      dtype=dtypes.int32)
-  if kwargs.get('filter_sigma') is None:
-      filter_sigma = constant_op.constant(_SSIM_FILTER_SIGMA, dtype=img1.dtype)
-  else:
-      filter_sigma = constant_op.constant(kwargs.get('filter_sigma'),
-      dtype=img1.dtype)
+  filter_size = constant_op.constant(filter_size, dtype=dtypes.int32)
+  filter_sigma = constant_op.constant(filter_sigma, dtype=img1.dtype)
+
   shape1, shape2 = array_ops.shape_n([img1, img2])
   checks = [
       control_flow_ops.Assert(math_ops.reduce_all(math_ops.greater_equal(
@@ -2958,7 +2950,7 @@ def _ssim_per_channel(img1, img2, max_val=1.0, **kwargs):
                                                   array_ops.shape(y)[1:]], 0))
 
   luminance, cs = _ssim_helper(img1, img2, reducer, max_val, compensation,
-                                kwargs.get('k1'), kwargs.get('k2'))
+                                k1, k2)
 
   # Average over the second and the third from the last: height, width.
   axes = constant_op.constant([-3, -2], dtype=dtypes.int32)
@@ -2968,7 +2960,8 @@ def _ssim_per_channel(img1, img2, max_val=1.0, **kwargs):
 
 
 @tf_export('image.ssim')
-def ssim(img1, img2, max_val, **kwargs):
+def ssim(img1, img2, max_val, filter_size = _SSIM_FILTER_SIZE,
+         filter_sigma = _SSIM_SIGMA, k1 = _SSIM_K1, k2 = _SSIM_K2):
   """Computes SSIM index between img1 and img2.
 
   This function is based on the standard SSIM implementation from:
@@ -3009,8 +3002,6 @@ def ssim(img1, img2, max_val, **kwargs):
     img2: Second image batch.
     max_val: The dynamic range of the images (i.e., the difference between the
       maximum the and minimum allowed values).
-
-  Kwargs:
     filter_size: size of gaussian filter.
     filter_sigma: width of gaussian filter.
     k1: Default value 0.01
@@ -3033,7 +3024,8 @@ def ssim(img1, img2, max_val, **kwargs):
   max_val = convert_image_dtype(max_val, dtypes.float32)
   img1 = convert_image_dtype(img1, dtypes.float32)
   img2 = convert_image_dtype(img2, dtypes.float32)
-  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, **kwargs)
+  ssim_per_channel, _ = _ssim_per_channel(img1, img2, max_val, filter_size,
+                                          filter_sigma, k1, k2 )
   # Compute average over color channels.
   return math_ops.reduce_mean(ssim_per_channel, [-1])
 
@@ -3043,7 +3035,9 @@ _MSSSIM_WEIGHTS = (0.0448, 0.2856, 0.3001, 0.2363, 0.1333)
 
 
 @tf_export('image.ssim_multiscale')
-def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS, **kwargs):
+def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS,
+    filter_size = _SSIM_FILTER_SIZE, filter_sigma = _SSIM_SIGMA,
+    k1 = _SSIM_K1, k2 = _SSIM_K2):
   """Computes the MS-SSIM between img1 and img2.
 
   This function assumes that `img1` and `img2` are image batches, i.e. the last
@@ -3067,8 +3061,6 @@ def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS, **kwargs
       resolution's weight and each increasing scale corresponds to the image
       being downsampled by 2.  Defaults to (0.0448, 0.2856, 0.3001, 0.2363,
       0.1333), which are the values obtained in the original paper.
-
-  Kwargs:
     filter_size: size of gaussian filter.
     filter_sigma: width of gaussian filter.
     k1: Default value 0.01
@@ -3143,7 +3135,9 @@ def ssim_multiscale(img1, img2, max_val, power_factors=_MSSSIM_WEIGHTS, **kwargs
           ]
 
         # Overwrite previous ssim value since we only need the last one.
-        ssim_per_channel, cs = _ssim_per_channel(*imgs, max_val=max_val,**kwargs)
+        ssim_per_channel, cs = _ssim_per_channel(*imgs, max_val=max_val,
+                               filter_size = filter_size,
+                               filter_sigma = filter_sigma, k1 = k1, k2 = k2)
         mcs.append(nn_ops.relu(cs))
 
     # Remove the cs score for the last scale. In the MS-SSIM calculation,
