@@ -286,7 +286,7 @@ class BinaryCrossentropy(Loss):
   ```python
   model = keras.models.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.BinaryCrossentropy())
-  ````
+  ```
 
   Args:
     from_logits: Whether `output` is expected to be a logits tensor. By default,
@@ -344,7 +344,7 @@ class CategoricalCrossentropy(Loss):
   ```python
   model = keras.models.Model(inputs, outputs)
   model.compile('sgd', loss=tf.keras.losses.CategoricalCrossentropy())
-  ````
+  ```
 
   Args:
     from_logits: Whether `output` is expected to be a logits tensor. By default,
