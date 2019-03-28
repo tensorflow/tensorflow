@@ -1,7 +1,8 @@
 // RUN: mlir-cpu-runner %s | FileCheck %s
 // RUN: mlir-cpu-runner -e foo -init-value 1000 %s | FileCheck -check-prefix=NOMAIN %s
-// RUN: mlir-cpu-runner %s -llvm-opts="-O3" | FileCheck %s
-// RUN: mlir-cpu-runner %s -llvm-opts="-O3 -loop-distribute -loop-vectorize" | FileCheck %s
+// RUN: mlir-cpu-runner %s -O3 | FileCheck %s
+// RUN: mlir-cpu-runner %s -O3 -loop-distribute -loop-vectorize | FileCheck %s
+// RUN: mlir-cpu-runner %s -loop-distribute -loop-vectorize | FileCheck %s
 
 func @fabsf(f32) -> f32
 

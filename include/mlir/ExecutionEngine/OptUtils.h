@@ -23,6 +23,8 @@
 #ifndef MLIR_EXECUTIONENGINE_OPTUTILS_H_
 #define MLIR_EXECUTIONENGINE_OPTUTILS_H_
 
+#include "llvm/Pass.h"
+
 #include <functional>
 #include <string>
 
@@ -44,11 +46,13 @@ std::function<llvm::Error(llvm::Module *)>
 makeOptimizingTransformer(unsigned optLevel, unsigned sizeLevel);
 
 /// Create a module transformer function for MLIR ExecutionEngine that runs
-/// LLVM IR passes specified by the configuration string that uses the same
-/// syntax as LLVM opt tool.  For example, "-loop-distribute -loop-vectorize"
-/// will run the loop distribution pass followed by the loop vectorizer.
+/// LLVM IR passes explicitly specified, plus an optional optimization level,
+/// Any optimization passes, if present, will be inserted before the pass at
+/// position optPassesInsertPos.
 std::function<llvm::Error(llvm::Module *)>
-makeLLVMPassesTransformer(std::string config);
+makeLLVMPassesTransformer(llvm::ArrayRef<const llvm::PassInfo *> llvmPasses,
+                          llvm::Optional<unsigned> mbOptLevel,
+                          unsigned optPassesInsertPos = 0);
 
 } // end namespace mlir
 

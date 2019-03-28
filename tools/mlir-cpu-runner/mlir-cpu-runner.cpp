@@ -31,12 +31,14 @@
 
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassNameParser.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileUtilities.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/StringSaver.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include <numeric>
@@ -55,9 +57,22 @@ static llvm::cl::opt<std::string>
                  llvm::cl::value_desc("<function name>"),
                  llvm::cl::init("main"));
 
-static llvm::cl::opt<std::string> llvmPasses(
-    "llvm-opts",
-    llvm::cl::desc("LLVM passes to run, syntax same as the opt tool"));
+static llvm::cl::OptionCategory optFlags("opt-like flags");
+
+// CLI list of pass information
+static llvm::cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser>
+    llvmPasses(llvm::cl::desc("LLVM optimizing passes to run"),
+               llvm::cl::cat(optFlags));
+
+// CLI variables for -On options.
+static llvm::cl::opt<bool> optO0("O0", llvm::cl::desc("Run opt O0 passes"),
+                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool> optO1("O1", llvm::cl::desc("Run opt O1 passes"),
+                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool> optO2("O2", llvm::cl::desc("Run opt O2 passes"),
+                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool> optO3("O3", llvm::cl::desc("Run opt O3 passes"),
+                                 llvm::cl::cat(optFlags));
 
 static std::unique_ptr<Module> parseMLIRInput(StringRef inputFilename,
                                               MLIRContext *context) {
@@ -156,10 +171,37 @@ int main(int argc, char **argv) {
   llvm::PrettyStackTraceProgram x(argc, argv);
   llvm::InitLLVM y(argc, argv);
 
-  llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR CPU execution driver\n");
-
   initializeLLVM();
   mlir::initializeLLVMPasses();
+
+  llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+      optO0, optO1, optO2, optO3};
+
+  llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR CPU execution driver\n");
+
+  llvm::SmallVector<const llvm::PassInfo *, 4> passes;
+  llvm::Optional<unsigned> optLevel;
+  unsigned optCLIPosition = 0;
+  // Determine if there is an optimization flag present, and its CLI position
+  // (optCLIPosition).
+  for (unsigned j = 0; j < 4; ++j) {
+    auto &flag = optFlags[j].get();
+    if (flag) {
+      optLevel = j;
+      optCLIPosition = flag.getPosition();
+      break;
+    }
+  }
+  // Generate vector of pass information, plus the index at which we should
+  // insert any optimization passes in that vector (optPosition).
+  unsigned optPosition = 0;
+  for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
+    passes.push_back(llvmPasses[i]);
+    if (optCLIPosition < llvmPasses.getPosition(i)) {
+      optPosition = i;
+      optCLIPosition = UINT_MAX; // To ensure we never insert again
+    }
+  }
 
   MLIRContext context;
   auto m = parseMLIRInput(inputFilename, &context);
@@ -168,7 +210,8 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  auto transformer = mlir::makeLLVMPassesTransformer(llvmPasses.getValue());
+  auto transformer =
+      mlir::makeLLVMPassesTransformer(passes, optLevel, optPosition);
   auto error = compileAndExecute(m.get(), mainFuncName.getValue(), transformer);
   int exitCode = EXIT_SUCCESS;
   llvm::handleAllErrors(std::move(error),
