@@ -1224,8 +1224,8 @@ def logical_xor(x, y, name="LogicalXor"):
   #  here z = [False  True  True False]
   
   Args:
-      x: A `Tensor` . Must be of type bool.
-      y: A `Tensor` . Must be of type bool.
+      x: A `Tensor` type bool.
+      y: A `Tensor` of type bool.
 
   Returns:
     A `Tensor` of type bool with the same size as that of x or y.
