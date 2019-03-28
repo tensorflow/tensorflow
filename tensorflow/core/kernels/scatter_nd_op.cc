@@ -369,11 +369,7 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_MIN_MAX(type, dev)                            \
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMin",            \
                                     scatter_nd_op::UpdateOp::MIN);        \
-  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingMin", \
-                                    scatter_nd_op::UpdateOp::MIN);        \
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdMax",            \
-                                    scatter_nd_op::UpdateOp::MAX);        \
-  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdNonAliasingMax", \
                                     scatter_nd_op::UpdateOp::MAX);        \
   REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                             \
       type, dev, "ResourceScatterNdMin", scatter_nd_op::UpdateOp::MIN);   \
