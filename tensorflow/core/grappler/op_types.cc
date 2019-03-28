@@ -44,6 +44,7 @@ bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
   return node.op() == "RealDiv" || node.op() == "Div" ||
+         node.op() == "DivNoNan" || node.op() == "Xdivy" ||
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
@@ -176,6 +177,8 @@ bool IsDequeueOp(const NodeDef& node) {
 }
 
 bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
+
+bool IsDivNoNan(const NodeDef& node) { return node.op() == "DivNoNan"; }
 
 // Returns true if node represents a unary elementwise function that is
 // monotonic. If *is_non_decreasing is true, the function is non-decreasing,
@@ -325,6 +328,8 @@ bool IsMirrorPadGrad(const NodeDef& node) {
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
+bool IsMulNoNan(const NodeDef& node) { return node.op() == "MulNoNan"; }
+bool IsAnyMul(const NodeDef& node) { return IsMul(node) || IsMulNoNan(node); }
 
 bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
 
@@ -564,6 +569,8 @@ bool IsWhile(const NodeDef& node) {
   const auto& op = node.op();
   return op == "While" || op == "StatelessWhile";
 }
+
+bool IsXdivy(const NodeDef& node) { return node.op() == "Xdivy"; }
 
 bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
 

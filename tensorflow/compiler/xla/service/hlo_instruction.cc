@@ -3391,6 +3391,11 @@ int64 HloInstruction::tuple_index() const {
   return Cast<HloGetTupleElementInstruction>(this)->tuple_index();
 }
 
+void HloInstruction::set_tuple_index(int64 new_tuple_index) {
+  return Cast<HloGetTupleElementInstruction>(this)->set_tuple_index(
+      new_tuple_index);
+}
+
 int32 HloInstruction::exponent_bits() const {
   return Cast<HloReducePrecisionInstruction>(this)->exponent_bits();
 }

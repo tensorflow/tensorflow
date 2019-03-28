@@ -938,7 +938,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
-          if (std::isnan(low) || std::isnan(high)) {
+          if (std::isnan(low) || std::isnan(high) || std::isnan(value)) {
             return static_cast<ElementwiseT>(NAN);
           }
           return static_cast<ElementwiseT>(

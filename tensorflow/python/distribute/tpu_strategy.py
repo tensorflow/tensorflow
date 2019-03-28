@@ -163,7 +163,10 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     if kwargs is None:
       kwargs = {}
 
-    result = [None]
+    # Used to re-structure flattened output tensors from `tpu.replicate()`
+    # into a structured format.
+    result = [[]]
+
     def replicated_fn(replica_id, replica_args, replica_kwargs):
       """Wraps user function to provide replica ID and `Tensor` inputs."""
       with _TPUReplicaContext(self, replica_id_in_sync_group=replica_id):
@@ -180,10 +183,17 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
     with self.scope():
       replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs)
 
+    # Remove all no ops that may have been added during 'tpu.replicate()'
+    if isinstance(result[0], list):
+      result[0] = [
+          output for output in result[0] if tensor_util.is_tensor(output)
+      ]
+
     # Workaround for `tpu.replicate` behaviour when single `Tensor` returned.
     replicate_outputs = [
-        nest.pack_sequence_as(result[0], nest.flatten(replica_outputs))
-        for replica_outputs in replicate_outputs]
+        nest.pack_sequence_as(result[0], nest.flatten(replica_output))
+        for replica_output in replicate_outputs
+    ]
 
     device_map = self.extended._device_map  # pylint: disable=protected-access
     return values.regroup(device_map, replicate_outputs)

@@ -3296,6 +3296,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
 
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
+
+  For a detailed analysis of IndyLSTMs, see https://arxiv.org/abs/1903.08023.
   """
 
   def __init__(self,

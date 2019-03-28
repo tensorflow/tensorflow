@@ -114,7 +114,7 @@ class OpHint(object):
   FUNCTION_NAME_ATTR = "_tflite_function_name"
   # UUID of the function (each OpHint gets a new uuid).
   FUNCTION_UUID_ATTR = "_tflite_function_uuid"
-  # The index index of the input (or nothing if it is an output).
+  # The input index of the input (or nothing if it is an output).
   FUNCTION_INPUT_INDEX_ATTR = "_tflite_function_input_index"
   # The output index of the output (or nothing if it is an input).
   FUNCTION_OUTPUT_INDEX_ATTR = "_tflite_function_output_index"
@@ -728,10 +728,10 @@ def _find_all_hints_in_nodes(nodes):
   for node in nodes:
     attr = node.attr
     # This is an op hint if it has a FUNCTION_UUID_ATTR, otherwise skip
-    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
     if (OpHint.FUNCTION_UUID_ATTR not in attr
         or not attr[OpHint.FUNCTION_UUID_ATTR].s):
       continue
+    uuid = attr[OpHint.FUNCTION_UUID_ATTR].s
 
     # Start building function
     call_def = func_calls[uuid]

@@ -3006,7 +3006,7 @@ class GraphExecutionFunction(object):
     # output from a fetch in `fetches`: { fetch: function(fetch_output) }
     # A Callback can use this to register a function with access to the
     # output values for a fetch it added.
-    self.fetch_callbacks = dict()
+    self.fetch_callbacks = {}
 
     if session_kwargs:
       raise ValueError('Some keys in session_kwargs are not supported at this '
@@ -3393,7 +3393,7 @@ def rnn(step_function,
   time_steps_t = array_ops.shape(flatted_inputs[0])[0]
 
   for input_ in flatted_inputs:
-    input_.get_shape().with_rank_at_least(3)
+    input_.shape.with_rank_at_least(3)
 
   if mask is not None:
     if mask.dtype != dtypes_module.bool:

@@ -87,7 +87,11 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = input_types_[i];
-      arg.shape = ctx->InputShape(i + 1);
+      // Use the xla::Shape for the input instead of ctx->InputShape. This is
+      // necessary for forwarding shapes of DT_VARIANTs, e.g. TensorLists.
+      auto shape_or = ctx->builder()->GetShape(ctx->Input(i + 1));
+      OP_REQUIRES_OK(ctx, shape_or.status());
+      arg.shape = shape_or.ValueOrDie();
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString();
     }
@@ -280,8 +284,10 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building If";
 }
 
-REGISTER_XLA_OP(Name("If").AllowResourceTypes(), XlaIfOp);
-REGISTER_XLA_OP(Name("StatelessIf").AllowResourceTypes(), XlaIfOp);
-REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
+REGISTER_XLA_OP(Name("If").AllowResourceTypes().AllowVariantTypes(), XlaIfOp);
+REGISTER_XLA_OP(Name("StatelessIf").AllowResourceTypes().AllowVariantTypes(),
+                XlaIfOp);
+REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes().AllowVariantTypes(),
+                XlaIfOp);
 
 }  // namespace tensorflow
