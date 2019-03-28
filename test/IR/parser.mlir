@@ -136,7 +136,7 @@ func @simpleCFG(%arg0: i32, %f: f32) -> i1 {
   // CHECK: %0 = "foo"() : () -> i64
   %1 = "foo"() : ()->i64
   // CHECK: "bar"(%0) : (i64) -> (i1, i1, i1)
-  %2 = "bar"(%1) : (i64) -> (i1,i1,i1)
+  %2:3 = "bar"(%1) : (i64) -> (i1,i1,i1)
   // CHECK: return %1#1
   return %2#1 : i1
 // CHECK: }
@@ -146,7 +146,7 @@ func @simpleCFG(%arg0: i32, %f: f32) -> i1 {
 func @simpleCFGUsingBBArgs(i32, i64) {
 ^bb42 (%arg0: i32, %f: i64):
   // CHECK: "bar"(%arg1) : (i64) -> (i1, i1, i1)
-  %2 = "bar"(%f) : (i64) -> (i1,i1,i1)
+  %2:3 = "bar"(%f) : (i64) -> (i1,i1,i1)
   // CHECK: return{{$}}
   return
 // CHECK: }
@@ -177,8 +177,8 @@ func @func_with_one_arg(%c : i1) -> i2 {
 
 // CHECK-LABEL: func @func_with_two_args(%arg0: f16, %arg1: i8) -> (i1, i32) {
 func @func_with_two_args(%a : f16, %b : i8) -> (i1, i32) {
-  // CHECK: %0 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
-  %c = "foo"(%a, %b) : (f16, i8)->(i1, i32)
+  // CHECK: %0:2 = "foo"(%arg0, %arg1) : (f16, i8) -> (i1, i32)
+  %c:2 = "foo"(%a, %b) : (f16, i8)->(i1, i32)
   return %c#0, %c#1 : i1, i32  // CHECK: return %0#0, %0#1 : i1, i32
 } // CHECK: }
 
@@ -381,38 +381,38 @@ func @attributes() {
 
 // CHECK-LABEL: func @ssa_values() -> (i16, i8) {
 func @ssa_values() -> (i16, i8) {
-  // CHECK: %0 = "foo"() : () -> (i1, i17)
-  %0 = "foo"() : () -> (i1, i17)
+  // CHECK: %0:2 = "foo"() : () -> (i1, i17)
+  %0:2 = "foo"() : () -> (i1, i17)
   br ^bb2
 
 ^bb1:       // CHECK: ^bb1: // pred: ^bb2
-  // CHECK: %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
-  %1 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
+  // CHECK: %1:2 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
+  %1:2 = "baz"(%2#1, %2#0, %0#1) : (f32, i11, i17) -> (i16, i8)
 
   // CHECK: return %1#0, %1#1 : i16, i8
   return %1#0, %1#1 : i16, i8
 
 ^bb2:       // CHECK: ^bb2:  // pred: ^bb0
-  // CHECK: %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
-  %2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
+  // CHECK: %2:2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
+  %2:2 = "bar"(%0#0, %0#1) : (i1, i17) -> (i11, f32)
   br ^bb1
 }
 
 // CHECK-LABEL: func @bbargs() -> (i16, i8) {
 func @bbargs() -> (i16, i8) {
-  // CHECK: %0 = "foo"() : () -> (i1, i17)
-  %0 = "foo"() : () -> (i1, i17)
+  // CHECK: %0:2 = "foo"() : () -> (i1, i17)
+  %0:2 = "foo"() : () -> (i1, i17)
   br ^bb1(%0#1, %0#0 : i17, i1)
 
 ^bb1(%x: i17, %y: i1):       // CHECK: ^bb1(%1: i17, %2: i1):
-  // CHECK: %3 = "baz"(%1, %2, %0#1) : (i17, i1, i17) -> (i16, i8)
-  %1 = "baz"(%x, %y, %0#1) : (i17, i1, i17) -> (i16, i8)
+  // CHECK: %3:2 = "baz"(%1, %2, %0#1) : (i17, i1, i17) -> (i16, i8)
+  %1:2 = "baz"(%x, %y, %0#1) : (i17, i1, i17) -> (i16, i8)
   return %1#0, %1#1 : i16, i8
 }
 
 // CHECK-LABEL: func @verbose_terminators() -> (i1, i17)
 func @verbose_terminators() -> (i1, i17) {
-  %0 = "foo"() : () -> (i1, i17)
+  %0:2 = "foo"() : () -> (i1, i17)
 // CHECK:  br ^bb1(%0#0, %0#1 : i1, i17)
   "std.br"()[^bb1(%0#0, %0#1 : i1, i17)] : () -> ()
 
@@ -825,3 +825,10 @@ func @tuple_multi_element(tuple<i32, i16, f32>)
 
 // CHECK-LABEL: func @tuple_nested(tuple<tuple<tuple<i32>>>)
 func @tuple_nested(tuple<tuple<tuple<i32>>>)
+
+// CHECK-LABEL: func @pretty_form_multi_result
+func @pretty_form_multi_result() -> (i16, i16) {
+  // CHECK: %0:2 = "foo_div"() : () -> (i16, i16)
+  %quot, %rem = "foo_div"() : () -> (i16, i16)
+  return %quot, %rem : i16, i16
+}

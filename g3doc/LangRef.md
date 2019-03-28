@@ -1250,8 +1250,9 @@ case: they become arguments to the entry block
 Syntax:
 
 ``` {.ebnf}
-instruction ::= (ssa-id `=`)? string-literal `(` ssa-use-list? `)`
+instruction ::= inst-result? string-literal `(` ssa-use-list? `)`
               (`[` successor-list `]`)? attribute-dict? `:` function-type
+inst-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
 successor-list ::= successor (`,` successor)*
 ```
 
@@ -1272,9 +1273,16 @@ used to indicate the types of the results and operands.
 Example:
 
 ```mlir {.mlir}
+// Call a function that returns two results.
+// The results of %call can be accessed via the <name> `#` <opNo> syntax.
+%call:2 = call @multi_return() : () -> (f32, i32)
+
+// Pretty form that defines a unique name for each result.
+%foo, %bar = call @multi_return() : () -> (f32, i32)
+
 // Invoke a TensorFlow function called tf.scramble with two inputs
 // and an attribute "fruit".
-%2 = "tf.scramble"(%42, %12){fruit: "banana"} : (f32, i32) -> f32
+%2 = "tf.scramble"(%call#0, %bar){fruit: "banana"} : (f32, i32) -> f32
 
 // Invoke the TPU specific add instruction that takes two vector register
 // as input and produces a vector register.
@@ -1386,8 +1394,7 @@ single function to return.
 Syntax:
 
 ``` {.ebnf}
-operation ::=
-    ssa-id `=` `call` function-id `(` ssa-use-list? `)` `:` function-type
+operation ::= `call` function-id `(` ssa-use-list? `)` `:` function-type
 ```
 
 The `call` operation represents a direct call to a function. The operands and
@@ -1406,8 +1413,7 @@ Example:
 Syntax:
 
 ``` {.ebnf}
-operation ::= ssa-id `=` `call_indirect` ssa-use
-                `(` ssa-use-list? `)` `:` function-type
+operation ::= `call_indirect` ssa-use `(` ssa-use-list? `)` `:` function-type
 ```
 
 The `call_indirect` operation represents an indirect call to a value of function
@@ -2260,7 +2266,7 @@ Example:
 
 ```mlir {.mlir}
 // LLVM: %x = call {i16, i1} @llvm.sadd.with.overflow.i16(i16 %a, i16 %b)
-%x = "llvm.sadd.with.overflow.i16"(%a, %b) : (i16, i16) -> (i16, i1)
+%x:2 = "llvm.sadd.with.overflow.i16"(%a, %b) : (i16, i16) -> (i16, i1)
 ```
 
 These operations only work when targeting LLVM as a backend (e.g. for CPUs and

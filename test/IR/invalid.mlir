@@ -373,7 +373,7 @@ func @bbargMismatch(i32, f32) {
 
 func @br_mismatch() {
 ^bb0:
-  %0 = "foo"() : () -> (i1, i17)
+  %0:2 = "foo"() : () -> (i1, i17)
   // expected-error @+1 {{branch has 2 operands, but target block has 1}}
   br ^bb1(%0#1, %0#0 : i17, i1)
 
@@ -990,5 +990,72 @@ func @invalid_region_dominance() {
     // expected-error @+1 {{expected operation name in quotes}}
     %2 = constant 1 i32  // Syntax error causes region deletion.
   }
+  return
+}
+
+// -----
+
+func @multi_result_missing_count() {
+  // expected-error@+1 {{expected integer number of results}}
+  %0: = "foo" () : () -> (i32, i32)
+  return
+}
+
+// -----
+
+func @multi_result_zero_count() {
+  // expected-error@+1 {{expected named operation to have atleast 1 result}}
+  %0:0 = "foo" () : () -> (i32, i32)
+  return
+}
+
+// -----
+
+func @multi_result_invalid_identifier() {
+  // expected-error@+1 {{expected valid ssa identifier}}
+  %0, = "foo" () : () -> (i32, i32)
+  return
+}
+
+// -----
+
+func @multi_result_mismatch_count() {
+  // expected-error@+1 {{operation defines more results than expected : 2 vs 1}}
+  %0:1 = "foo" () : () -> (i32, i32)
+  return
+}
+
+// -----
+
+func @multi_result_mismatch_count() {
+  // expected-error@+1 {{operation defines more results than expected : 2 vs 3}}
+  %0, %1, %3 = "foo" () : () -> (i32, i32)
+  return
+}
+
+// -----
+
+func @no_result_with_name() {
+  // expected-error@+1 {{cannot name an operation with no results}}
+  %0 = "foo" () : () -> ()
+  return
+}
+
+// -----
+
+func @conflicting_names() {
+  // expected-error@+1 {{previously defined here}}
+  %foo, %bar  = "foo" () : () -> (i32, i32)
+
+  // expected-error@+1 {{redefinition of SSA value '%bar'}}
+  %bar, %baz  = "foo" () : () -> (i32, i32)
+  return
+}
+
+// -----
+
+func @ssa_name_missing_eq() {
+  // expected-error@+1 {{expected '=' after SSA name}}
+  %0:2 "foo" () : () -> (i32, i32)
   return
 }

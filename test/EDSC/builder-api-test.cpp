@@ -398,7 +398,7 @@ TEST_FUNC(custom_ops) {
   // CHECK:   affine.for %i1 {{.*}}
   // CHECK:     {{.*}} = "my_custom_op"{{.*}} : (index, index) -> index
   // CHECK:     "my_custom_op_0"{{.*}} : (index, index) -> ()
-  // CHECK:     [[TWO:%[a-z0-9]+]] = "my_custom_op_2"{{.*}} : (index, index) -> (index, index)
+  // CHECK:     [[TWO:%[a-z0-9]+]]:2 = "my_custom_op_2"{{.*}} : (index, index) -> (index, index)
   // CHECK:     {{.*}} = "my_custom_op"([[TWO]]#0, [[TWO]]#1) : (index, index) -> index
   // clang-format on
   f->print(llvm::outs());

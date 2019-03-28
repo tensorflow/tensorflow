@@ -126,17 +126,17 @@ func @loop_nest_multiple_results() {
     // UNROLL-FULL: %0 = affine.apply [[MAP4]](%i0, %c0)
     // UNROLL-FULL-NEXT: %1 = "addi32"(%0, %0) : (index, index) -> index
     // UNROLL-FULL-NEXT: %2 = affine.apply #map{{.*}}(%i0, %c0)
-    // UNROLL-FULL-NEXT: %3 = "fma"(%2, %0, %0) : (index, index, index) -> (index, index)
+    // UNROLL-FULL-NEXT: %3:2 = "fma"(%2, %0, %0) : (index, index, index) -> (index, index)
     // UNROLL-FULL-NEXT: %4 = affine.apply #map{{.*}}(%c0)
     // UNROLL-FULL-NEXT: %5 = affine.apply #map{{.*}}(%i0, %4)
     // UNROLL-FULL-NEXT: %6 = "addi32"(%5, %5) : (index, index) -> index
     // UNROLL-FULL-NEXT: %7 = affine.apply #map{{.*}}(%i0, %4)
-    // UNROLL-FULL-NEXT: %8 = "fma"(%7, %5, %5) : (index, index, index) -> (index, index)
+    // UNROLL-FULL-NEXT: %8:2 = "fma"(%7, %5, %5) : (index, index, index) -> (index, index)
     affine.for %j = 0 to 2 step 1 {
       %x = affine.apply (d0, d1) -> (d0 + 1) (%i, %j)
       %y = "addi32"(%x, %x) : (index, index) -> index
       %z = affine.apply (d0, d1) -> (d0 + 3) (%i, %j)
-      %w = "fma"(%z, %x, %x) : (index, index, index) -> (index, index)
+      %w:2 = "fma"(%z, %x, %x) : (index, index, index) -> (index, index)
     }
   }       // UNROLL-FULL:  }
   return  // UNROLL-FULL:  return

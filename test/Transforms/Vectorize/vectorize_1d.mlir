@@ -46,7 +46,7 @@ func @vec1d_2(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 // CHECK-NEXT:   {{.*}} = vector_transfer_read %arg0, [[C0]], [[APP3]] {permutation_map: #[[map_proj_d0d1_d1]]} : {{.*}} -> vector<128xf32>
    affine.for %i3 = 0 to %M { // vectorized
      %r3 = affine.apply (d0) -> (d0) (%i3)
-     %a3 = load %A[%cst0, %r3#0] : memref<?x?xf32>
+     %a3 = load %A[%cst0, %r3] : memref<?x?xf32>
    }
    return
 }
@@ -161,7 +161,7 @@ func @vec_rejected_2(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 // CHECK:   affine.for %i{{[0-9]*}} = 0 to [[ARG_M]] {
    affine.for %i2 = 0 to %M { // not vectorized, would vectorize with --test-fastest-varying=1
      %r2 = affine.apply (d0) -> (d0) (%i2)
-     %a2 = load %A[%r2#0, %cst0] : memref<?x?xf32>
+     %a2 = load %A[%r2, %cst0] : memref<?x?xf32>
    }
    return
 }

@@ -1412,11 +1412,6 @@ void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
       resultNo = result->getResultNumber();
       lookupValue = result->getOwner()->getResult(0);
     }
-  } else if (auto *result = dyn_cast<OpResult>(value)) {
-    if (result->getOwner()->getNumResults() != 1) {
-      resultNo = result->getResultNumber();
-      lookupValue = result->getOwner()->getResult(0);
-    }
   }
 
   auto it = valueIDs.find(lookupValue);
@@ -1439,8 +1434,10 @@ void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
 }
 
 void FunctionPrinter::printOperation(Operation *op) {
-  if (op->getNumResults()) {
+  if (size_t numResults = op->getNumResults()) {
     printValueID(op->getResult(0), /*printResultNo=*/false);
+    if (numResults > 1)
+      os << ':' << numResults;
     os << " = ";
   }
 

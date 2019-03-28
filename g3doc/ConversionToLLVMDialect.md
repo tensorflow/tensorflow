@@ -198,7 +198,7 @@ func @foo(%arg0: i32, %arg1: i64) -> (i32, i64) {
 func @bar() {
   %0 = constant 42 : i32
   %1 = constant 17 : i64
-  %2 = call @foo(%0, %1) : (i32, i64) -> (i32, i64)
+  %2:2 = call @foo(%0, %1) : (i32, i64) -> (i32, i64)
   "use_i32"(%2#0) : (i32) -> ()
   "use_i64"(%2#1) : (i64) -> ()
 }

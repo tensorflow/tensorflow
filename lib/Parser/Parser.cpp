@@ -2789,16 +2789,50 @@ ParseResult FunctionParser::parseOptionalBlockArgList(
 /// Parse an operation.
 ///
 ///  operation ::=
-///    (ssa-id `=`)? string '(' ssa-use-list? ')' attribute-dict?
+///    operation-result? string '(' ssa-use-list? ')' attribute-dict?
 ///    `:` function-type trailing-location?
+///  operation-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
 ///
 ParseResult FunctionParser::parseOperation() {
   auto loc = getToken().getLoc();
-
-  StringRef resultID;
+  SmallVector<std::pair<StringRef, SMLoc>, 1> resultIDs;
+  size_t numExpectedResults;
   if (getToken().is(Token::percent_identifier)) {
-    resultID = getTokenSpelling();
+    // Parse the first result id.
+    resultIDs.emplace_back(getTokenSpelling(), loc);
     consumeToken(Token::percent_identifier);
+
+    // If the next token is a ':', we parse the expected result count.
+    if (consumeIf(Token::colon)) {
+      // Check that the next token is an integer.
+      if (!getToken().is(Token::integer))
+        return emitError("expected integer number of results");
+
+      // Check that number of results is > 0.
+      auto val = getToken().getUInt64IntegerValue();
+      if (!val.hasValue() || val.getValue() < 1)
+        return emitError("expected named operation to have atleast 1 result");
+      consumeToken(Token::integer);
+      numExpectedResults = *val;
+    } else {
+      // Otherwise, this is a comma separated list of result ids.
+      if (consumeIf(Token::comma)) {
+        auto parseNextResult = [&] {
+          // Parse the next result id.
+          if (!getToken().is(Token::percent_identifier))
+            return emitError("expected valid ssa identifier");
+
+          resultIDs.emplace_back(getTokenSpelling(), getToken().getLoc());
+          consumeToken(Token::percent_identifier);
+          return ParseSuccess;
+        };
+
+        if (parseCommaSeparatedList(parseNextResult))
+          return ParseFailure;
+      }
+      numExpectedResults = resultIDs.size();
+    }
+
     if (parseToken(Token::equal, "expected '=' after SSA name"))
       return ParseFailure;
   }
@@ -2816,13 +2850,28 @@ ParseResult FunctionParser::parseOperation() {
     return ParseFailure;
 
   // If the operation had a name, register it.
-  if (!resultID.empty()) {
+  if (!resultIDs.empty()) {
     if (op->getNumResults() == 0)
       return emitError(loc, "cannot name an operation with no results");
+    if (numExpectedResults != op->getNumResults())
+      return emitError(loc, "operation defines more results than expected : " +
+                                Twine(op->getNumResults()) + " vs " +
+                                Twine(numExpectedResults));
 
-    for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
-      if (addDefinition({resultID, i, loc}, op->getResult(i)))
-        return ParseFailure;
+    // If the number of result names matches the number of operation results, we
+    // can use the names directly.
+    if (resultIDs.size() == op->getNumResults()) {
+      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
+        if (addDefinition({resultIDs[i].first, 0, resultIDs[i].second},
+                          op->getResult(i)))
+          return ParseFailure;
+    } else {
+      // Otherwise, we use the first name for each result.
+      StringRef name = resultIDs.front().first;
+      for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
+        if (addDefinition({name, i, loc}, op->getResult(i)))
+          return ParseFailure;
+    }
   }
 
   // Try to parse the optional trailing location.

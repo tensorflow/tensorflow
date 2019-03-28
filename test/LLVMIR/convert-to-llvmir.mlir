@@ -345,7 +345,7 @@ func @multireturn_caller() {
 // CHECK-NEXT:   {{.*}} = "llvm.extractvalue"({{.*}}) {position: [0]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.extractvalue"({{.*}}) {position: [1]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> !llvm<"float">
 // CHECK-NEXT:   {{.*}} = "llvm.extractvalue"({{.*}}) {position: [2]} : (!llvm<"{ i64, float, { float*, i64, i64 } }">) -> !llvm<"{ float*, i64, i64 }">
-  %0 = call @multireturn() : () -> (i64, f32, memref<42x?x10x?xf32>)
+  %0:3 = call @multireturn() : () -> (i64, f32, memref<42x?x10x?xf32>)
   %1 = constant 42 : i64
 // CHECK:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   %2 = addi %0#0, %1 : i64
