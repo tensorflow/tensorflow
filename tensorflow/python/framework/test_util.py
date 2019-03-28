@@ -1188,6 +1188,8 @@ def run_v1_only(reason, func=None):
   Returns:
     Returns a decorator that will conditionally skip the decorated test method.
   """
+  if not isinstance(reason, str):
+    raise ValueError("'reason' should be string, got {}".format(type(reason)))
 
   def decorator(f):
     if tf_inspect.isclass(f):
