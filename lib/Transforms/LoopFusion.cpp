@@ -1275,7 +1275,8 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   // Compute MemRefRegion 'dstWriteRegion' for 'dstStoreOpInst' on 'memref'.
   SmallVector<Operation *, 2> dstStoreOps;
   dstNode->getStoreOpsForMemref(memref, &dstStoreOps);
-  assert(dstStoreOps.size() == 1);
+  // TODO(andydavis) Compute 'unionboundingbox' of all write regions (one for
+  // each store op in 'dstStoreOps').
   auto *dstStoreOpInst = dstStoreOps[0];
   MemRefRegion dstWriteRegion(dstStoreOpInst->getLoc());
   if (failed(dstWriteRegion.compute(dstStoreOpInst, /*loopDepth=*/0))) {
@@ -1884,13 +1885,6 @@ public:
           // Skip if 'srcNode' has more than one store to any memref.
           // TODO(andydavis) Support fusing multi-output src loop nests.
           if (srcNode->stores.size() != 1)
-            continue;
-
-          // Skip 'srcNode' if it has in edges on 'memref'.
-          // TODO(andydavis) Track dependence type with edges, and just check
-          // for WAW dependence edge here. Note that this check is overly
-          // conservative and will be removed in the future.
-          if (mdg->getIncomingMemRefAccesses(srcNode->id, memref) != 0)
             continue;
 
           // Skip if 'srcNode' writes to any live in or escaping memrefs,
