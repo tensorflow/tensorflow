@@ -354,24 +354,27 @@ std::function<void()> PoplarExecutor::CreateInfeedIOThreadFunction(
             if (end_of_sequence) {
               LOG(INFO) << "The dataset iterator has reached the end of the "
                            "dataset.";
+              infeed_thread_cancelled_ = true;
             }
             absl::c_fill(infeed_dataset_iterator->used, false);
           }
         }
 
-        for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
-          auto tensor = infeed_dataset_iterator->tensors[j];
+        if (!infeed_thread_cancelled_) {
+          for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
+            auto tensor = infeed_dataset_iterator->tensors[j];
 
-          const char* tensor_data = tensor.tensor_data().data();
-          const auto& shape = infeed_dataset_iterator->shapes[j];
+            const char* tensor_data = tensor.tensor_data().data();
+            const auto& shape = infeed_dataset_iterator->shapes[j];
 
-          auto literal = MutableBorrowingLiteral(tensor_data, shape);
-          auto status =
-              transfer_manager->TransferLiteralToInfeed(executor, literal);
+            auto literal = MutableBorrowingLiteral(tensor_data, shape);
+            auto status =
+                transfer_manager->TransferLiteralToInfeed(executor, literal);
 
-          if (false == status.ok()) {
-            infeed_thread_cancelled_ = true;
-            return;
+            if (false == status.ok()) {
+              infeed_thread_cancelled_ = true;
+              return;
+            }
           }
         }
 
