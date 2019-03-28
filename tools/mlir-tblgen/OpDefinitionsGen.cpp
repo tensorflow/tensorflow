@@ -487,7 +487,7 @@ void OpEmitter::genNamedOperandGetters() {
         assert(getOperation()->getNumOperands() >= {0});
         return {std::next(operand_begin(), {0}), operand_end()};
       )";
-      auto &m = opClass.newMethod("Instruction::operand_range", operand.name);
+      auto &m = opClass.newMethod("Operation::operand_range", operand.name);
       m.body() << formatv(code, i);
     }
   }

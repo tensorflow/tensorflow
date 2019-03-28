@@ -41,7 +41,7 @@ TEST(OperandStorageTest, NonResizable) {
                builder.getIntegerType(16));
   Value *operand = useOp->getResult(0);
 
-  // Create a non-resizable instruction with one operand.
+  // Create a non-resizable operation with one operand.
   Operation *user = createOp(&context, /*resizableOperands=*/false, operand,
                              builder.getIntegerType(16));
 
@@ -56,7 +56,7 @@ TEST(OperandStorageTest, NonResizable) {
   user->setOperands(llvm::None);
   EXPECT_EQ(user->getNumOperands(), 0);
 
-  // Destroy the instructions.
+  // Destroy the operations.
   user->destroy();
   useOp->destroy();
 }
@@ -70,14 +70,14 @@ TEST(OperandStorageDeathTest, AddToNonResizable) {
                builder.getIntegerType(16));
   Value *operand = useOp->getResult(0);
 
-  // Create a non-resizable instruction with one operand.
+  // Create a non-resizable operation with one operand.
   Operation *user = createOp(&context, /*resizableOperands=*/false, operand,
                              builder.getIntegerType(16));
 
   // Sanity check the storage.
   EXPECT_EQ(user->hasResizableOperandsList(), false);
 
-  // Adding operands to a non resizable instruction should result in a failure.
+  // Adding operands to a non resizable operation should result in a failure.
   ASSERT_DEATH(user->setOperands({operand, operand}), "");
 }
 
@@ -90,7 +90,7 @@ TEST(OperandStorageTest, Resizable) {
                builder.getIntegerType(16));
   Value *operand = useOp->getResult(0);
 
-  // Create a resizable instruction with one operand.
+  // Create a resizable operation with one operand.
   Operation *user = createOp(&context, /*resizableOperands=*/true, operand,
                              builder.getIntegerType(16));
 
@@ -109,7 +109,7 @@ TEST(OperandStorageTest, Resizable) {
   user->setOperands({operand, operand, operand});
   EXPECT_EQ(user->getNumOperands(), 3);
 
-  // Destroy the instructions.
+  // Destroy the operations.
   user->destroy();
   useOp->destroy();
 }

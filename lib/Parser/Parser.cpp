@@ -2255,10 +2255,10 @@ public:
 
   // Operations
   ParseResult parseOperation();
-  Instruction *parseGenericOperation();
-  Instruction *parseCustomOperation();
+  Operation *parseGenericOperation();
+  Operation *parseCustomOperation();
 
-  ParseResult parseInstructions(Block *block);
+  ParseResult parseOperations(Block *block);
 
 private:
   Function *function;
@@ -2397,7 +2397,7 @@ ParseResult FunctionParser::parseRegionBody(Region &region) {
 
 /// Block declaration.
 ///
-///   block ::= block-label? instruction* terminator-inst
+///   block ::= block-label? operation* terminator-op
 ///   block-label    ::= block-id block-arg-list? `:`
 ///   block-id       ::= caret-id
 ///   block-arg-list ::= `(` ssa-id-and-type-list? `)`
@@ -2456,19 +2456,19 @@ ParseResult FunctionParser::parseBlockBody(Block *block) {
 
 /// Create and remember a new placeholder for a forward reference.
 Value *FunctionParser::createForwardReferencePlaceholder(SMLoc loc, Type type) {
-  // Forward references are always created as instructions, even in ML
+  // Forward references are always created as operations, even in ML
   // functions, because we just need something with a def/use chain.
   //
   // We create these placeholders as having an empty name, which we know
   // cannot be created through normal user input, allowing us to distinguish
   // them.
   auto name = OperationName("placeholder", getContext());
-  auto *inst = Instruction::create(
+  auto *op = Operation::create(
       getEncodedSourceLocation(loc), name, /*operands=*/{}, type,
       /*attributes=*/llvm::None, /*successors=*/{}, /*numRegions=*/0,
       /*resizableOperandList=*/false, getContext());
-  forwardReferencePlaceholders[inst->getResult(0)] = loc;
-  return inst->getResult(0);
+  forwardReferencePlaceholders[op->getResult(0)] = loc;
+  return op->getResult(0);
 }
 
 /// Given an unbound reference to an SSA value and its type, return the value
@@ -2532,7 +2532,7 @@ ParseResult FunctionParser::finalizeFunction(SMLoc loc) {
 FunctionParser::~FunctionParser() {
   for (auto &fwd : forwardReferencePlaceholders) {
     // Drop all uses of undefined forward declared reference and destroy
-    // defining instruction.
+    // defining operation.
     fwd.first->dropAllUses();
     fwd.first->getDefiningOp()->destroy();
   }
@@ -2569,7 +2569,7 @@ ParseResult FunctionParser::addDefinition(SSAUseInfo useInfo, Value *value) {
   return ParseSuccess;
 }
 
-/// Parse a SSA operand for an instruction or instruction.
+/// Parse a SSA operand for an operation.
 ///
 ///   ssa-use ::= ssa-id
 ///
@@ -2803,7 +2803,7 @@ ParseResult FunctionParser::parseOperation() {
       return ParseFailure;
   }
 
-  Instruction *op;
+  Operation *op;
   if (getToken().is(Token::bare_identifier) || getToken().isKeyword())
     op = parseCustomOperation();
   else if (getToken().is(Token::string))
@@ -2815,7 +2815,7 @@ ParseResult FunctionParser::parseOperation() {
   if (!op)
     return ParseFailure;
 
-  // If the instruction had a name, register it.
+  // If the operation had a name, register it.
   if (!resultID.empty()) {
     if (op->getNumResults() == 0)
       return emitError(loc, "cannot name an operation with no results");
@@ -2850,7 +2850,7 @@ struct CleanupOpStateRegions {
 };
 } // namespace
 
-Instruction *FunctionParser::parseGenericOperation() {
+Operation *FunctionParser::parseGenericOperation() {
   // Get location information for the operation.
   auto srcLocation = getEncodedSourceLocation(getToken().getLoc());
 
@@ -2894,7 +2894,7 @@ Instruction *FunctionParser::parseGenericOperation() {
       return nullptr;
   }
 
-  if (parseToken(Token::colon, "expected ':' followed by instruction type"))
+  if (parseToken(Token::colon, "expected ':' followed by operation type"))
     return nullptr;
 
   auto typeLoc = getToken().getLoc();
@@ -3238,7 +3238,7 @@ private:
 };
 } // end anonymous namespace.
 
-Instruction *FunctionParser::parseCustomOperation() {
+Operation *FunctionParser::parseCustomOperation() {
   auto opLoc = getToken().getLoc();
   auto opName = getTokenSpelling();
   CustomOpAsmParser opAsmParser(opLoc, opName, *this);

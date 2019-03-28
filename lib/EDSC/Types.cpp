@@ -230,8 +230,8 @@ Expr::build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings,
         buildExprs(successorArgs[i], b, ssaBindings, blockBindings));
   }
 
-  Instruction *inst = b.createOperation(state);
-  return llvm::to_vector<4>(inst->getResults());
+  Operation *op = b.createOperation(state);
+  return llvm::to_vector<4>(op->getResults());
 }
 
 static AffineExpr createOperandAffineExpr(Expr e, int64_t position,

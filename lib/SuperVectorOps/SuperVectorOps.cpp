@@ -85,7 +85,7 @@ void VectorTransferReadOp::build(Builder *builder, OperationState *result,
   result->addTypes(vectorType);
 }
 
-llvm::iterator_range<Instruction::operand_iterator>
+llvm::iterator_range<Operation::operand_iterator>
 VectorTransferReadOp::getIndices() {
   auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
   auto end = begin + getMemRefType().getRank();
@@ -286,7 +286,7 @@ void VectorTransferWriteOp::build(Builder *builder, OperationState *result,
                        builder->getAffineMapAttr(permutationMap));
 }
 
-llvm::iterator_range<Instruction::operand_iterator>
+llvm::iterator_range<Operation::operand_iterator>
 VectorTransferWriteOp::getIndices() {
   auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
   auto end = begin + getMemRefType().getRank();

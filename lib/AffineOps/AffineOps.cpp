@@ -57,7 +57,7 @@ bool mlir::isValidDim(Value *value) {
     return false;
 
   if (auto *op = value->getDefiningOp()) {
-    // Top level instruction or constant operation is ok.
+    // Top level operation or constant operation is ok.
     if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
@@ -82,7 +82,7 @@ bool mlir::isValidSymbol(Value *value) {
     return false;
 
   if (auto *op = value->getDefiningOp()) {
-    // Top level instruction or constant operation is ok.
+    // Top level operation or constant operation is ok.
     if (op->getParentOp() == nullptr || op->isa<ConstantOp>())
       return true;
     // Affine apply operation is ok if all of its operands are ok.
@@ -106,7 +106,7 @@ bool mlir::isValidSymbol(Value *value) {
 /// errors.
 template <typename OpTy>
 static bool verifyDimAndSymbolIdentifiers(OpTy &op,
-                                          Instruction::operand_range operands,
+                                          Operation::operand_range operands,
                                           unsigned numDims) {
   unsigned opIt = 0;
   for (auto *operand : operands) {
@@ -462,7 +462,7 @@ AffineApplyNormalizer::AffineApplyNormalizer(AffineMap map,
                              ? t->getDefiningOp()->dyn_cast<AffineApplyOp>()
                              : AffineApplyOp();
       if (affineApply) {
-        // a. Compose affine.apply instructions.
+        // a. Compose affine.apply operations.
         LLVM_DEBUG(affineApply.getOperation()->print(
             dbgs() << "\nCompose AffineApplyOp recursively: "));
         AffineMap affineApplyMap = affineApply.getAffineMap();
@@ -663,7 +663,7 @@ struct SimplifyAffineApply : public RewritePattern {
   SimplifyAffineApply(MLIRContext *context)
       : RewritePattern(AffineApplyOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     auto apply = op->cast<AffineApplyOp>();
     auto map = apply.getAffineMap();
@@ -1008,7 +1008,7 @@ struct AffineForLoopBoundFolder : public RewritePattern {
   AffineForLoopBoundFolder(MLIRContext *context)
       : RewritePattern(AffineForOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     auto forOp = op->cast<AffineForOp>();
     auto foldLowerOrUpperBound = [&forOp](bool lower) {

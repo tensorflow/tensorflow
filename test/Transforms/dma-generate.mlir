@@ -403,7 +403,7 @@ func @dma_loop_straightline_interspersed() {
   return
 }
 // There are three regions here - the 'load' preceding the loop, the loop
-// itself, and the instructions appearing after the loop.
+// itself, and the operations appearing after the loop.
 // CHECK:       %0 = alloc() : memref<256xf32>
 // CHECK-NEXT:  %1 = alloc() : memref<1xf32, 2>
 // CHECK-NEXT:  %2 = alloc() : memref<1xi32>

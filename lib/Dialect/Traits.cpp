@@ -184,7 +184,7 @@ static bool isSameShapedVectorOrTensor(Type type1, Type type2) {
   return false;
 }
 
-bool OpTrait::impl::verifyCompatibleOperandBroadcast(Instruction *op) {
+bool OpTrait::impl::verifyCompatibleOperandBroadcast(Operation *op) {
   assert(op->getNumOperands() == 2 &&
          "only support broadcast check on two operands");
   assert(op->getNumResults() == 1 &&

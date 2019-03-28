@@ -33,7 +33,7 @@ def NS_AOp : Op<"a_op", [NoSideEffect]> {
 // CHECK:   using Op::Op;
 // CHECK:   static StringRef getOperationName();
 // CHECK:   Value *a();
-// CHECK:   Instruction::operand_range b();
+// CHECK:   Operation::operand_range b();
 // CHECK:   Value *r();
 // CHECK:   APInt attr1();
 // CHECK:   Optional< APFloat > attr2();

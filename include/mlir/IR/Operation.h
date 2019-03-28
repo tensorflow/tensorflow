@@ -507,10 +507,6 @@ inline raw_ostream &operator<<(raw_ostream &os, Operation &op) {
   return os;
 }
 
-/// Temporary typedef to Instruction to while the codebase transitions to
-/// Operation.
-using Instruction = Operation;
-
 /// This class implements the const/non-const operand iterators for the
 /// Operation class in terms of getOperand(idx).
 class OperandIterator final

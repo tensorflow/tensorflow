@@ -129,7 +129,7 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
   >];
 }
 
-// Class for arithmetic binary instructions.
+// Class for arithmetic binary operations.
 class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
                         list<OpTrait> traits = []> :
     LLVM_OneResultOp<mnemonic,
@@ -137,7 +137,7 @@ class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
     Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
     LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);">;
 
-// Integer binary instructions.
+// Integer binary operations.
 def LLVM_AddOp : LLVM_ArithmeticOp<"add", "CreateAdd", [Commutative]>;
 def LLVM_SubOp : LLVM_ArithmeticOp<"sub", "CreateSub">;
 def LLVM_MulOp : LLVM_ArithmeticOp<"mul", "CreateMul", [Commutative]>;
@@ -146,7 +146,7 @@ def LLVM_SDivOp : LLVM_ArithmeticOp<"sdiv", "CreateSDiv">;
 def LLVM_URemOp : LLVM_ArithmeticOp<"urem", "CreateURem">;
 def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 
-// Other integer instructions.
+// Other integer operations.
 def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
                   Arguments<(ins I32Attr:$predicate, LLVM_Type:$lhs,
                              LLVM_Type:$rhs)> {
@@ -156,14 +156,14 @@ def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
   }];
 }
 
-// Floating point binary instructions.
+// Floating point binary operations.
 def LLVM_FAddOp : LLVM_ArithmeticOp<"fadd", "CreateFAdd">;
 def LLVM_FSubOp : LLVM_ArithmeticOp<"fsub", "CreateFSub">;
 def LLVM_FMulOp : LLVM_ArithmeticOp<"fmul", "CreateFMul">;
 def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
 def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
 
-// Memory-related instructions.
+// Memory-related operations.
 def LLVM_AllocaOp : LLVM_OneResultOp<"alloca">,
                     Arguments<(ins LLVM_Type:$arraySize)> {
   string llvmBuilder = [{
@@ -184,11 +184,11 @@ def LLVM_BitcastOp
       LLVM_Builder<"$res = builder.CreateBitCast($arg, $_resultType);">;
 
 
-// Call-related instructions.
+// Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
                   Arguments<(ins OptionalAttr<FunctionAttr>:$callee,
                              Variadic<LLVM_Type>)>,
-                  Results<(outs Variadic<LLVM_Type>)>, 
+                  Results<(outs Variadic<LLVM_Type>)>,
                   LLVM_TwoBuilders<LLVM_OneResultOpBuilder,
                                    LLVM_ZeroResultOpBuilder> {
   let verifier = [{
@@ -213,7 +213,7 @@ def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
   }];
 }
 
-// Misc instructions.
+// Misc operations.
 def LLVM_SelectOp
     : LLVM_OneResultOp<"select", [NoSideEffect]>,
       Arguments<(ins LLVM_Type:$condition, LLVM_Type:$trueValue,

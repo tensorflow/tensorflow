@@ -374,19 +374,19 @@ TEST_FUNC(custom_ops) {
   auto f = makeFunction("custom_ops", {}, {indexType, indexType});
 
   ScopedContext scope(f.get());
-  CustomInstruction<ValueHandle> MY_CUSTOM_OP("my_custom_op");
-  CustomInstruction<InstructionHandle> MY_CUSTOM_INST_0("my_custom_inst_0");
-  CustomInstruction<InstructionHandle> MY_CUSTOM_INST_2("my_custom_inst_2");
+  CustomOperation<ValueHandle> MY_CUSTOM_OP("my_custom_op");
+  CustomOperation<OperationHandle> MY_CUSTOM_OP_0("my_custom_op_0");
+  CustomOperation<OperationHandle> MY_CUSTOM_OP_2("my_custom_op_2");
 
   // clang-format off
   ValueHandle vh(indexType), vh20(indexType), vh21(indexType);
-  InstructionHandle ih0, ih2;
+  OperationHandle ih0, ih2;
   IndexHandle m, n, M(f->getArgument(0)), N(f->getArgument(1));
   IndexHandle ten(index_t(10)), twenty(index_t(20));
   LoopNestBuilder({&m, &n}, {M, N}, {M + ten, N + twenty}, {1, 1})({
     vh = MY_CUSTOM_OP({m, m + n}, {indexType}, {}),
-    ih0 = MY_CUSTOM_INST_0({m, m + n}, {}),
-    ih2 = MY_CUSTOM_INST_2({m, m + n}, {indexType, indexType}),
+    ih0 = MY_CUSTOM_OP_0({m, m + n}, {}),
+    ih2 = MY_CUSTOM_OP_2({m, m + n}, {indexType, indexType}),
     // These captures are verbose for now, can improve when used in practice.
     vh20 = ValueHandle(ih2.getOperation()->getResult(0)),
     vh21 = ValueHandle(ih2.getOperation()->getResult(1)),
@@ -397,8 +397,8 @@ TEST_FUNC(custom_ops) {
   // CHECK: affine.for %i0 {{.*}}
   // CHECK:   affine.for %i1 {{.*}}
   // CHECK:     {{.*}} = "my_custom_op"{{.*}} : (index, index) -> index
-  // CHECK:     "my_custom_inst_0"{{.*}} : (index, index) -> ()
-  // CHECK:     [[TWO:%[a-z0-9]+]] = "my_custom_inst_2"{{.*}} : (index, index) -> (index, index)
+  // CHECK:     "my_custom_op_0"{{.*}} : (index, index) -> ()
+  // CHECK:     [[TWO:%[a-z0-9]+]] = "my_custom_op_2"{{.*}} : (index, index) -> (index, index)
   // CHECK:     {{.*}} = "my_custom_op"([[TWO]]#0, [[TWO]]#1) : (index, index) -> index
   // clang-format on
   f->print(llvm::outs());

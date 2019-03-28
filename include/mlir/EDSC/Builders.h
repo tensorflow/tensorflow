@@ -60,7 +60,7 @@ public:
   static Location getLocation();
 
 private:
-  /// Only NestedBuilder (which is used to create an instruction with a body)
+  /// Only NestedBuilder (which is used to create an operation with a body)
   /// may access private members in order to implement scoping.
   friend class NestedBuilder;
 
@@ -107,9 +107,9 @@ protected:
     return *this;
   }
 
-  /// Enter an mlir::Block and setup a ScopedContext to insert instructions at
+  /// Enter an mlir::Block and setup a ScopedContext to insert operations at
   /// the end of it. Since we cannot use c++ language-level scoping to implement
-  /// scoping itself, we use enter/exit pairs of instructions.
+  /// scoping itself, we use enter/exit pairs of operations.
   /// As a consequence we must allocate a new FuncBuilder + ScopedContext and
   /// let the escape.
   /// Step back "prev" times from the end of the block to set up the insertion
@@ -142,7 +142,7 @@ private:
   ScopedContext *bodyScope = nullptr;
 };
 
-/// A LoopBuilder is a generic NestedBuilder for loop-like MLIR instructions.
+/// A LoopBuilder is a generic NestedBuilder for loop-like MLIR operations.
 /// More specifically it is meant to be used as a temporary object for
 /// representing any nested MLIR construct that is "related to" an mlir::Value*
 /// (for now an induction variable).
@@ -237,7 +237,7 @@ private:
   BlockBuilder &operator=(BlockBuilder &other) = delete;
 };
 
-/// Base class for ValueHandle, InstructionHandle and BlockHandle.
+/// Base class for ValueHandle, OperationHandle and BlockHandle.
 /// Not meant to be used outside of these classes.
 struct CapturableHandle {
 protected:
@@ -259,7 +259,7 @@ protected:
 ///   3. constructed state,in which case it holds a Value.
 ///
 /// A ValueHandle is meant to capture a single Value* and should be used for
-/// instructions that have a single result. For convenience of use, we also
+/// operations that have a single result. For convenience of use, we also
 /// include AffineForOp in this category although it does not return a value.
 /// In the case of AffineForOp, the captured Value* is the loop induction
 /// variable.
@@ -316,7 +316,7 @@ public:
   static ValueHandle createComposedAffineApply(AffineMap map,
                                                ArrayRef<Value *> operands);
 
-  /// Generic create for a named instruction producing a single value.
+  /// Generic create for a named operation producing a single value.
   static ValueHandle create(StringRef name, ArrayRef<ValueHandle> operands,
                             ArrayRef<Type> resultTypes,
                             ArrayRef<NamedAttribute> attributes = {});
@@ -329,7 +329,7 @@ public:
   bool hasType() const { return t != Type(); }
   Type getType() const { return t; }
 
-  Instruction *getOperation() const {
+  Operation *getOperation() const {
     if (!v)
       return nullptr;
     return v->getDefiningOp();
@@ -342,45 +342,44 @@ protected:
   Value *v;
 };
 
-/// An InstructionHandle can be used in lieu of ValueHandle to capture the
-/// instruction in cases when one does not care about, or cannot extract, a
-/// unique Value* from the instruction.
-/// This can be used for capturing zero result instructions as well as
-/// multi-result instructions that are not supported by ValueHandle.
-/// We do not distinguish further between zero and multi-result instructions at
+/// An OperationHandle can be used in lieu of ValueHandle to capture the
+/// operation in cases when one does not care about, or cannot extract, a
+/// unique Value* from the operation.
+/// This can be used for capturing zero result operations as well as
+/// multi-result operations that are not supported by ValueHandle.
+/// We do not distinguish further between zero and multi-result operations at
 /// this time.
-struct InstructionHandle : public CapturableHandle {
-  InstructionHandle() : inst(nullptr) {}
-  InstructionHandle(Instruction *inst) : inst(inst) {}
+struct OperationHandle : public CapturableHandle {
+  OperationHandle() : op(nullptr) {}
+  OperationHandle(Operation *op) : op(op) {}
 
-  InstructionHandle(const InstructionHandle &) = default;
-  InstructionHandle &operator=(const InstructionHandle &) = default;
+  OperationHandle(const OperationHandle &) = default;
+  OperationHandle &operator=(const OperationHandle &) = default;
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
   /// of MLIR without duplicating the type system or the op definitions.
   template <typename Op, typename... Args>
-  static InstructionHandle create(Args... args);
+  static OperationHandle create(Args... args);
 
-  /// Generic create for a named instruction.
-  static InstructionHandle create(StringRef name,
-                                  ArrayRef<ValueHandle> operands,
-                                  ArrayRef<Type> resultTypes,
-                                  ArrayRef<NamedAttribute> attributes = {});
+  /// Generic create for a named operation.
+  static OperationHandle create(StringRef name, ArrayRef<ValueHandle> operands,
+                                ArrayRef<Type> resultTypes,
+                                ArrayRef<NamedAttribute> attributes = {});
 
-  operator Instruction *() { return inst; }
-  Instruction *getOperation() const { return inst; }
+  operator Operation *() { return op; }
+  Operation *getOperation() const { return op; }
 
 private:
-  Instruction *inst;
+  Operation *op;
 };
 
-/// Simple wrapper to build a generic instruction without successor blocks.
-template <typename HandleType> struct CustomInstruction {
-  CustomInstruction(StringRef name) : name(name) {
+/// Simple wrapper to build a generic operation without successor blocks.
+template <typename HandleType> struct CustomOperation {
+  CustomOperation(StringRef name) : name(name) {
     static_assert(std::is_same<HandleType, ValueHandle>() ||
-                      std::is_same<HandleType, InstructionHandle>(),
-                  "Only CustomInstruction<ValueHandle> or "
-                  "CustomInstruction<InstructionHandle> can be constructed.");
+                      std::is_same<HandleType, OperationHandle>(),
+                  "Only CustomOperation<ValueHandle> or "
+                  "CustomOperation<OperationHandle> can be constructed.");
   }
   HandleType operator()(ArrayRef<ValueHandle> operands = {},
                         ArrayRef<Type> resultTypes = {},
@@ -426,26 +425,25 @@ private:
 };
 
 template <typename Op, typename... Args>
-InstructionHandle InstructionHandle::create(Args... args) {
-  return InstructionHandle(
-      ScopedContext::getBuilder()
-          ->create<Op>(ScopedContext::getLocation(), args...)
-          .getOperation());
+OperationHandle OperationHandle::create(Args... args) {
+  return OperationHandle(ScopedContext::getBuilder()
+                             ->create<Op>(ScopedContext::getLocation(), args...)
+                             .getOperation());
 }
 
 template <typename Op, typename... Args>
 ValueHandle ValueHandle::create(Args... args) {
-  Instruction *inst = ScopedContext::getBuilder()
-                          ->create<Op>(ScopedContext::getLocation(), args...)
-                          .getOperation();
-  if (inst->getNumResults() == 1) {
-    return ValueHandle(inst->getResult(0));
-  } else if (inst->getNumResults() == 0) {
-    if (auto f = inst->dyn_cast<AffineForOp>()) {
+  Operation *op = ScopedContext::getBuilder()
+                      ->create<Op>(ScopedContext::getLocation(), args...)
+                      .getOperation();
+  if (op->getNumResults() == 1) {
+    return ValueHandle(op->getResult(0));
+  } else if (op->getNumResults() == 0) {
+    if (auto f = op->dyn_cast<AffineForOp>()) {
       return ValueHandle(f.getInductionVar());
     }
   }
-  llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
+  llvm_unreachable("unsupported operation, use an OperationHandle instead");
 }
 
 namespace op {

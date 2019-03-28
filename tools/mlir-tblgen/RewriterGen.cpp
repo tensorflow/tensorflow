@@ -160,7 +160,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
   int indent = 4 + 2 * depth;
   // Skip the operand matching at depth 0 as the pattern rewriter already does.
   if (depth != 0) {
-    // Skip if there is no defining instruction (e.g., arguments to function).
+    // Skip if there is no defining operation (e.g., arguments to function).
     os.indent(indent) << formatv("if (!op{0}) return matchFailure();\n", depth);
     os.indent(indent) << formatv(
         "if (!op{0}->isa<{1}>()) return matchFailure();\n", depth,
@@ -271,7 +271,7 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int index, int depth,
 void PatternEmitter::emitMatchMethod(DagNode tree) {
   // Emit the heading.
   os << R"(
-  PatternMatchResult match(Instruction *op0) const override {
+  PatternMatchResult match(Operation *op0) const override {
     auto ctx = op0->getContext(); (void)ctx;
     auto state = llvm::make_unique<MatchedState>();)"
      << "\n";
@@ -286,7 +286,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
   }
 
   for (auto &res : pattern.getSourcePatternBoundResults())
-    os.indent(4) << formatv("mlir::Instruction* {0}; (void){0};\n",
+    os.indent(4) << formatv("mlir::Operation* {0}; (void){0};\n",
                             resultName(res.first()));
 
   emitOpMatch(tree, 0);
@@ -378,7 +378,7 @@ void PatternEmitter::emitRewriteMethod() {
     PrintFatalError(loc, "must provide at least one result pattern");
 
   os << R"(
-  void rewrite(Instruction *op, std::unique_ptr<PatternState> state,
+  void rewrite(Operation *op, std::unique_ptr<PatternState> state,
                PatternRewriter &rewriter) const override {
     auto& s = *static_cast<MatchedState *>(state.get());
     auto loc = op->getLoc(); (void)loc;

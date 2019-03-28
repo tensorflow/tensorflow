@@ -122,8 +122,8 @@ public:
 
   /// Specialization of walk to only visit operations of 'OpTy'.
   template <typename OpTy> void walk(std::function<void(OpTy)> callback) {
-    walk([&](Operation *inst) {
-      if (auto op = inst->dyn_cast<OpTy>())
+    walk([&](Operation *opInst) {
+      if (auto op = opInst->dyn_cast<OpTy>())
         callback(op);
     });
   }
@@ -135,8 +135,8 @@ public:
   /// Specialization of walkPostOrder to only visit operations of 'OpTy'.
   template <typename OpTy>
   void walkPostOrder(std::function<void(OpTy)> callback) {
-    walkPostOrder([&](Operation *inst) {
-      if (auto op = inst->dyn_cast<OpTy>())
+    walkPostOrder([&](Operation *opInst) {
+      if (auto op = opInst->dyn_cast<OpTy>())
         callback(op);
     });
   }

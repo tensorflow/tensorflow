@@ -113,7 +113,7 @@ public:
   MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
-  llvm::iterator_range<Instruction::operand_iterator> getIndices();
+  llvm::iterator_range<Operation::operand_iterator> getIndices();
   Optional<Value *> getPaddingValue();
   AffineMap getPermutationMap();
 
@@ -175,7 +175,7 @@ public:
   MemRefType getMemRefType() {
     return getMemRef()->getType().cast<MemRefType>();
   }
-  llvm::iterator_range<Instruction::operand_iterator> getIndices();
+  llvm::iterator_range<Operation::operand_iterator> getIndices();
   AffineMap getPermutationMap();
 
   static bool parse(OpAsmParser *parser, OperationState *result);

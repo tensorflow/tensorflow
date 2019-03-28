@@ -46,9 +46,9 @@ using namespace mlir::edsc;
 using namespace mlir::edsc::detail;
 
 static void printDefininingStatement(llvm::raw_ostream &os, Value &v) {
-  auto *inst = v.getDefiningOp();
-  if (inst) {
-    inst->print(os);
+  auto *op = v.getDefiningOp();
+  if (op) {
+    op->print(os);
     return;
   }
   if (auto forInst = getForInductionVarOwner(&v)) {
@@ -86,7 +86,7 @@ static void checkAffineProvenance(ArrayRef<Value *> values) {
   for (Value *v : values) {
     auto *def = v->getDefiningOp();
     (void)def;
-    // There may be no defining instruction if the value is a function
+    // There may be no defining operation if the value is a function
     // argument.  We accept such values.
     assert((!def || def->isa<ConstantIndexOp>() || def->isa<AffineApplyOp>() ||
             def->isa<AffineForOp>() || def->isa<DimOp>()) &&
@@ -127,9 +127,9 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
   bool expectedEmpty = false;
   if (e.isa<UnaryExpr>() || e.isa<BinaryExpr>() || e.isa<TernaryExpr>() ||
       e.isa<VariadicExpr>()) {
-    // Emit any successors before the instruction with successors.  At this
+    // Emit any successors before the operation with successors.  At this
     // point, all values defined by the current block must have been bound, the
-    // current instruction with successors cannot define new values, so the
+    // current operation with successors cannot define new values, so the
     // successor can use those values.
     assert(e.getSuccessors().empty() || e.getResultTypes().empty() &&
                                             "an operation with successors must "

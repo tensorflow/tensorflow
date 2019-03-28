@@ -141,11 +141,11 @@ static bool emitOneBuilder(const Record &record, raw_ostream &os) {
       bs << "op.getResult()->getType().cast<LLVM::LLVMType>()."
             "getUnderlyingType()";
     } else if (name == "_hasResult") {
-      bs << "inst.getNumResults() == 1";
+      bs << "opInst.getNumResults() == 1";
     } else if (name == "_location") {
-      bs << "inst.getLoc()";
+      bs << "opInst.getLoc()";
     } else if (name == "_numOperands") {
-      bs << "inst.getNumOperands()";
+      bs << "opInst.getNumOperands()";
     } else if (name == "$") {
       bs << '$';
     } else {
@@ -157,7 +157,7 @@ static bool emitOneBuilder(const Record &record, raw_ostream &os) {
   }
 
   // Output the check and the rewritten builder string.
-  os << "if (auto op = inst.dyn_cast<" << op.getQualCppClassName()
+  os << "if (auto op = opInst.dyn_cast<" << op.getQualCppClassName()
      << ">()) {\n";
   os << bs.str() << builderStrRef << "\n";
   os << "  return false;\n";

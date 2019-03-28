@@ -36,7 +36,7 @@ using namespace mlir;
 
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
-void detail::printStandardBinaryOp(Instruction *op, OpAsmPrinter *p) {
+void detail::printStandardBinaryOp(Operation *op, OpAsmPrinter *p) {
   assert(op->getNumOperands() == 2 && "binary op should have two operands");
   assert(op->getNumResults() == 1 && "binary op should have one result");
 
@@ -68,8 +68,8 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
                 >();
 }
 
-void mlir::printDimAndSymbolList(Instruction::operand_iterator begin,
-                                 Instruction::operand_iterator end,
+void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
+                                 Operation::operand_iterator end,
                                  unsigned numDims, OpAsmPrinter *p) {
   *p << '(';
   p->printOperands(begin, begin + numDims);
@@ -123,7 +123,7 @@ struct MemRefCastFolder : public RewritePattern {
   MemRefCastFolder(StringRef rootOpName, MLIRContext *context)
       : RewritePattern(rootOpName, 1, context) {}
 
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     for (auto *operand : op->getOperands())
       if (matchPattern(operand, m_Op<MemRefCastOp>()))
         return matchSuccess();
@@ -131,7 +131,7 @@ struct MemRefCastFolder : public RewritePattern {
     return matchFailure();
   }
 
-  void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
       if (auto *memref = op->getOperand(i)->getDefiningOp())
         if (auto cast = memref->dyn_cast<MemRefCastOp>())
@@ -283,12 +283,12 @@ bool AllocOp::verify() {
 }
 
 namespace {
-/// Fold constant dimensions into an alloc instruction.
+/// Fold constant dimensions into an alloc operation.
 struct SimplifyAllocConst : public RewritePattern {
   SimplifyAllocConst(MLIRContext *context)
       : RewritePattern(AllocOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     auto alloc = op->cast<AllocOp>();
 
     // Check to see if any dimensions operands are constants.  If so, we can
@@ -299,7 +299,7 @@ struct SimplifyAllocConst : public RewritePattern {
     return matchFailure();
   }
 
-  void rewrite(Instruction *op, PatternRewriter &rewriter) const override {
+  void rewrite(Operation *op, PatternRewriter &rewriter) const override {
     auto allocOp = op->cast<AllocOp>();
     auto memrefType = allocOp.getType();
 
@@ -350,13 +350,13 @@ struct SimplifyAllocConst : public RewritePattern {
   }
 };
 
-/// Fold alloc instructions with no uses. Alloc has side effects on the heap,
+/// Fold alloc operations with no uses. Alloc has side effects on the heap,
 /// but can still be deleted if it has zero uses.
 struct SimplifyDeadAlloc : public RewritePattern {
   SimplifyDeadAlloc(MLIRContext *context)
       : RewritePattern(AllocOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     // Check if the alloc'ed value has any uses.
     auto alloc = op->cast<AllocOp>();
@@ -487,7 +487,7 @@ struct SimplifyIndirectCallWithKnownCallee : public RewritePattern {
   SimplifyIndirectCallWithKnownCallee(MLIRContext *context)
       : RewritePattern(CallIndirectOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     auto indirectCall = op->cast<CallIndirectOp>();
 
@@ -798,7 +798,7 @@ struct SimplifyConstCondBranchPred : public RewritePattern {
   SimplifyConstCondBranchPred(MLIRContext *context)
       : RewritePattern(CondBranchOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     auto condbr = op->cast<CondBranchOp>();
 
@@ -1040,13 +1040,13 @@ void ConstantFloatOp::build(Builder *builder, OperationState *result,
   ConstantOp::build(builder, result, type, builder->getFloatAttr(type, value));
 }
 
-bool ConstantFloatOp::isClassFor(Instruction *op) {
+bool ConstantFloatOp::isClassFor(Operation *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<FloatType>();
 }
 
 /// ConstantIntOp only matches values whose result type is an IntegerType.
-bool ConstantIntOp::isClassFor(Instruction *op) {
+bool ConstantIntOp::isClassFor(Operation *op) {
   return ConstantOp::isClassFor(op) &&
          op->getResult(0)->getType().isa<IntegerType>();
 }
@@ -1068,7 +1068,7 @@ void ConstantIntOp::build(Builder *builder, OperationState *result,
 }
 
 /// ConstantIndexOp only matches values whose result type is Index.
-bool ConstantIndexOp::isClassFor(Instruction *op) {
+bool ConstantIndexOp::isClassFor(Operation *op) {
   return ConstantOp::isClassFor(op) && op->getResult(0)->getType().isIndex();
 }
 
@@ -1083,19 +1083,19 @@ void ConstantIndexOp::build(Builder *builder, OperationState *result,
 // DeallocOp
 //===----------------------------------------------------------------------===//
 namespace {
-/// Fold Dealloc instructions that are deallocating an AllocOp that is only used
+/// Fold Dealloc operations that are deallocating an AllocOp that is only used
 /// by other Dealloc operations.
 struct SimplifyDeadDealloc : public RewritePattern {
   SimplifyDeadDealloc(MLIRContext *context)
       : RewritePattern(DeallocOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     auto dealloc = op->cast<DeallocOp>();
 
-    // Check that the memref operand's defining instruction is an AllocOp.
+    // Check that the memref operand's defining operation is an AllocOp.
     Value *memref = dealloc.getMemRef();
-    Instruction *defOp = memref->getDefiningOp();
+    Operation *defOp = memref->getDefiningOp();
     if (!defOp || !defOp->isa<AllocOp>())
       return matchFailure();
 
@@ -1987,7 +1987,7 @@ struct SimplifyXMinusX : public RewritePattern {
   SimplifyXMinusX(MLIRContext *context)
       : RewritePattern(SubIOp::getOperationName(), 1, context) {}
 
-  PatternMatchResult matchAndRewrite(Instruction *op,
+  PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     auto subi = op->cast<SubIOp>();
     if (subi.getOperand(0) != subi.getOperand(1))

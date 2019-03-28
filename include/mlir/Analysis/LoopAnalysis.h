@@ -100,7 +100,7 @@ bool isVectorizableLoopBody(AffineForOp loop);
 bool isVectorizableLoopBodyAlongFastestVaryingMemRefDim(
     AffineForOp loop, unsigned fastestVaryingDim);
 
-/// Checks where SSA dominance would be violated if a for inst's body
+/// Checks where SSA dominance would be violated if a for op's body
 /// operations are shifted by the specified shifts. This method checks if a
 /// 'def' and all its uses have the same shift factor.
 // TODO(mlir-team): extend this to check for memory-based dependence

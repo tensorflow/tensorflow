@@ -79,11 +79,11 @@ TEST_FUNC(blocks) {
   // assigning a block won't work well with branches, update the body instead.
   b1.set({r = arg1 + arg2, edsc::Branch(b2, {arg1, r})});
   b2.set({edsc::Branch(b1, {arg3, arg4})});
-  auto instr = edsc::Branch(b2, {c1, c2});
+  auto op = edsc::Branch(b2, {c1, c2});
 
   // Emit a branch to b2.  This should also emit blocks b2 and b1 that appear as
-  // successors to the current block after the branch instruction is insterted.
-  edsc::MLIREmitter(&builder, f->getLoc()).emitStmt(instr);
+  // successors to the current block after the branch operation is insterted.
+  edsc::MLIREmitter(&builder, f->getLoc()).emitStmt(op);
 
   // clang-format off
   // CHECK-LABEL: @blocks
@@ -101,7 +101,7 @@ TEST_FUNC(blocks) {
 }
 
 // Inject two EDSC-constructed blocks with arguments and a conditional branch
-// instruction that transfers control to these blocks.
+// operation that transfers control to these blocks.
 TEST_FUNC(cond_branch) {
   auto f =
       makeFunction("cond_branch", {}, {IntegerType::get(1, &globalContext())});

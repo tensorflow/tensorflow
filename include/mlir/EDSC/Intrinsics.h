@@ -76,11 +76,11 @@ struct IndexHandle : public ValueHandle {
 };
 
 /// Provides a set of first class intrinsics.
-/// In the future, most of intrinsics reated to Instruction that don't contain
-/// other instructions should be Tablegen'd.
+/// In the future, most of intrinsics related to Operation that don't contain
+/// other operations should be Tablegen'd.
 namespace intrinsics {
 namespace detail {
-/// Helper structure to be used with ValueBuilder / InstructionBuilder.
+/// Helper structure to be used with ValueBuilder / OperationBuilder.
 /// It serves the purpose of removing boilerplate specialization for the sole
 /// purpose of implicitly converting ArrayRef<ValueHandle> -> ArrayRef<Value*>.
 class ValueHandleArray {
@@ -139,51 +139,50 @@ template <typename Op> struct ValueBuilder : public ValueHandle {
   ValueBuilder() : ValueHandle(ValueHandle::create<Op>()) {}
 };
 
-template <typename Op> struct InstructionBuilder : public InstructionHandle {
+template <typename Op> struct OperationBuilder : public OperationHandle {
   template <typename... Args>
-  InstructionBuilder(Args... args)
-      : InstructionHandle(
-            InstructionHandle::create<Op>(detail::unpack(args)...)) {}
-  InstructionBuilder(ArrayRef<ValueHandle> vs)
-      : InstructionHandle(InstructionHandle::create<Op>(detail::unpack(vs))) {}
+  OperationBuilder(Args... args)
+      : OperationHandle(OperationHandle::create<Op>(detail::unpack(args)...)) {}
+  OperationBuilder(ArrayRef<ValueHandle> vs)
+      : OperationHandle(OperationHandle::create<Op>(detail::unpack(vs))) {}
   template <typename... Args>
-  InstructionBuilder(ArrayRef<ValueHandle> vs, Args... args)
-      : InstructionHandle(InstructionHandle::create<Op>(
-            detail::unpack(vs), detail::unpack(args)...)) {}
+  OperationBuilder(ArrayRef<ValueHandle> vs, Args... args)
+      : OperationHandle(OperationHandle::create<Op>(detail::unpack(vs),
+                                                    detail::unpack(args)...)) {}
   template <typename T, typename... Args>
-  InstructionBuilder(T t, ArrayRef<ValueHandle> vs, Args... args)
-      : InstructionHandle(InstructionHandle::create<Op>(
+  OperationBuilder(T t, ArrayRef<ValueHandle> vs, Args... args)
+      : OperationHandle(OperationHandle::create<Op>(
             detail::unpack(t), detail::unpack(vs), detail::unpack(args)...)) {}
   template <typename T1, typename T2, typename... Args>
-  InstructionBuilder(T1 t1, T2 t2, ArrayRef<ValueHandle> vs, Args... args)
-      : InstructionHandle(InstructionHandle::create<Op>(
+  OperationBuilder(T1 t1, T2 t2, ArrayRef<ValueHandle> vs, Args... args)
+      : OperationHandle(OperationHandle::create<Op>(
             detail::unpack(t1), detail::unpack(t2), detail::unpack(vs),
             detail::unpack(args)...)) {}
-  InstructionBuilder() : InstructionHandle(InstructionHandle::create<Op>()) {}
+  OperationBuilder() : OperationHandle(OperationHandle::create<Op>()) {}
 };
 
 using alloc = ValueBuilder<AllocOp>;
 using constant_float = ValueBuilder<ConstantFloatOp>;
 using constant_index = ValueBuilder<ConstantIndexOp>;
 using constant_int = ValueBuilder<ConstantIntOp>;
-using dealloc = InstructionBuilder<DeallocOp>;
+using dealloc = OperationBuilder<DeallocOp>;
 using load = ValueBuilder<LoadOp>;
-using ret = InstructionBuilder<ReturnOp>;
+using ret = OperationBuilder<ReturnOp>;
 using select = ValueBuilder<SelectOp>;
-using store = InstructionBuilder<StoreOp>;
+using store = OperationBuilder<StoreOp>;
 using vector_type_cast = ValueBuilder<VectorTypeCastOp>;
 
 /// Branches into the mlir::Block* captured by BlockHandle `b` with `operands`.
 ///
 /// Prerequisites:
 ///   All Handles have already captured previously constructed IR objects.
-InstructionHandle br(BlockHandle bh, ArrayRef<ValueHandle> operands);
+OperationHandle br(BlockHandle bh, ArrayRef<ValueHandle> operands);
 
 /// Creates a new mlir::Block* and branches to it from the current block.
 /// Argument types are specified by `operands`.
 /// Captures the new block in `bh` and the actual `operands` in `captures`. To
 /// insert the new mlir::Block*, a local ScopedContext is constructed and
-/// released to the current block. The branch instruction is then added to the
+/// released to the current block. The branch operation is then added to the
 /// new block.
 ///
 /// Prerequisites:
@@ -192,8 +191,8 @@ InstructionHandle br(BlockHandle bh, ArrayRef<ValueHandle> operands);
 ///   All `operands` have already captured an mlir::Value*
 ///   captures.size() == operands.size()
 ///   captures and operands are pairwise of the same type.
-InstructionHandle br(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
-                     ArrayRef<ValueHandle> operands);
+OperationHandle br(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
+                   ArrayRef<ValueHandle> operands);
 
 /// Branches into the mlir::Block* captured by BlockHandle `trueBranch` with
 /// `trueOperands` if `cond` evaluates to `true` (resp. `falseBranch` and
@@ -201,17 +200,17 @@ InstructionHandle br(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
 ///
 /// Prerequisites:
 ///   All Handles have captured previouly constructed IR objects.
-InstructionHandle cond_br(ValueHandle cond, BlockHandle trueBranch,
-                          ArrayRef<ValueHandle> trueOperands,
-                          BlockHandle falseBranch,
-                          ArrayRef<ValueHandle> falseOperands);
+OperationHandle cond_br(ValueHandle cond, BlockHandle trueBranch,
+                        ArrayRef<ValueHandle> trueOperands,
+                        BlockHandle falseBranch,
+                        ArrayRef<ValueHandle> falseOperands);
 
 /// Eagerly creates new mlir::Block* with argument types specified by
 /// `trueOperands`/`falseOperands`.
 /// Captures the new blocks in `trueBranch`/`falseBranch` and the arguments in
 /// `trueCaptures/falseCaptures`.
 /// To insert the new mlir::Block*, a local ScopedContext is constructed and
-/// released. The branch instruction is then added in the original location and
+/// released. The branch operation is then added in the original location and
 /// targeting the eagerly constructed blocks.
 ///
 /// Prerequisites:
@@ -222,12 +221,12 @@ InstructionHandle cond_br(ValueHandle cond, BlockHandle trueBranch,
 ///   `falseCaptures`.size() == `falseOperands`.size()
 ///   `trueCaptures` and `trueOperands` are pairwise of the same type
 ///   `falseCaptures` and `falseOperands` are pairwise of the same type.
-InstructionHandle cond_br(ValueHandle cond, BlockHandle *trueBranch,
-                          ArrayRef<ValueHandle *> trueCaptures,
-                          ArrayRef<ValueHandle> trueOperands,
-                          BlockHandle *falseBranch,
-                          ArrayRef<ValueHandle *> falseCaptures,
-                          ArrayRef<ValueHandle> falseOperands);
+OperationHandle cond_br(ValueHandle cond, BlockHandle *trueBranch,
+                        ArrayRef<ValueHandle *> trueCaptures,
+                        ArrayRef<ValueHandle> trueOperands,
+                        BlockHandle *falseBranch,
+                        ArrayRef<ValueHandle *> falseCaptures,
+                        ArrayRef<ValueHandle> falseOperands);
 } // namespace intrinsics
 } // namespace edsc
 } // namespace mlir

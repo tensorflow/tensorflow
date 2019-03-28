@@ -344,7 +344,7 @@ public:
         dialect(dialect) {}
 
   // Match by type.
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     if (op->isa<SourceOp>())
       return this->matchSuccess();
     return this->matchFailure();
@@ -428,7 +428,7 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
 
   // Convert the type of the result to an LLVM type, pass operands as is,
   // preserve attributes.
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     unsigned numResults = op->getNumResults();
     auto *mlirContext = op->getContext();
@@ -541,7 +541,7 @@ static bool isSupportedMemRefType(MemRefType type) {
 struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
   using LLVMLegalizationPattern<AllocOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<AllocOp>::match(op))
       return matchFailure();
     auto allocOp = op->cast<AllocOp>();
@@ -549,7 +549,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
   }
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto allocOp = op->cast<AllocOp>();
     MemRefType type = allocOp.getType();
@@ -650,7 +650,7 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
   using LLVMLegalizationPattern<DeallocOp>::LLVMLegalizationPattern;
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     assert(operands.size() == 1 && "dealloc takes one operand");
 
@@ -684,7 +684,7 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
 struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
   using LLVMLegalizationPattern<MemRefCastOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<MemRefCastOp>::match(op))
       return matchFailure();
     auto memRefCastOp = op->cast<MemRefCastOp>();
@@ -697,7 +697,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
                : matchFailure();
   }
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto memRefCastOp = op->cast<MemRefCastOp>();
     auto targetType = memRefCastOp.getType();
@@ -764,7 +764,7 @@ struct MemRefCastOpLowering : public LLVMLegalizationPattern<MemRefCastOp> {
 struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
   using LLVMLegalizationPattern<DimOp>::LLVMLegalizationPattern;
 
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<DimOp>::match(op))
       return this->matchFailure();
     auto dimOp = op->cast<DimOp>();
@@ -772,7 +772,7 @@ struct DimOpLowering : public LLVMLegalizationPattern<DimOp> {
     return isSupportedMemRefType(type) ? matchSuccess() : matchFailure();
   }
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     assert(operands.size() == 1 && "expected exactly one operand");
     auto dimOp = op->cast<DimOp>();
@@ -811,7 +811,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
   using LLVMLegalizationPattern<Derived>::LLVMLegalizationPattern;
   using Base = LoadStoreOpLowering<Derived>;
 
-  PatternMatchResult match(Instruction *op) const override {
+  PatternMatchResult match(Operation *op) const override {
     if (!LLVMLegalizationPattern<Derived>::match(op))
       return this->matchFailure();
     auto loadOp = op->cast<Derived>();
@@ -923,7 +923,7 @@ struct LoadStoreOpLowering : public LLVMLegalizationPattern<Derived> {
 struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
   using Base::Base;
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto loadOp = op->cast<LoadOp>();
     auto type = loadOp.getMemRefType();
@@ -945,7 +945,7 @@ struct LoadOpLowering : public LoadStoreOpLowering<LoadOp> {
 struct StoreOpLowering : public LoadStoreOpLowering<StoreOp> {
   using Base::Base;
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     auto storeOp = op->cast<StoreOp>();
     auto type = storeOp.getMemRefType();
@@ -965,7 +965,7 @@ struct OneToOneLLVMTerminatorLowering
   using LLVMLegalizationPattern<SourceOp>::LLVMLegalizationPattern;
   using Super = OneToOneLLVMTerminatorLowering<SourceOp, TargetOp>;
 
-  void rewriteTerminator(Instruction *op, ArrayRef<Value *> properOperands,
+  void rewriteTerminator(Operation *op, ArrayRef<Value *> properOperands,
                          ArrayRef<Block *> destinations,
                          ArrayRef<ArrayRef<Value *>> operands,
                          FuncBuilder &rewriter) const override {
@@ -983,7 +983,7 @@ struct OneToOneLLVMTerminatorLowering
 struct ReturnOpLowering : public LLVMLegalizationPattern<ReturnOp> {
   using LLVMLegalizationPattern<ReturnOp>::LLVMLegalizationPattern;
 
-  SmallVector<Value *, 4> rewrite(Instruction *op, ArrayRef<Value *> operands,
+  SmallVector<Value *, 4> rewrite(Operation *op, ArrayRef<Value *> operands,
                                   FuncBuilder &rewriter) const override {
     unsigned numArguments = op->getNumOperands();
 

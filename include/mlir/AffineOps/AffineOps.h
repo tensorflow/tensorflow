@@ -16,7 +16,7 @@
 // =============================================================================
 //
 // This file defines convenience types for working with Affine operations
-// in the MLIR instruction set.
+// in the MLIR operation set.
 //
 //===----------------------------------------------------------------------===//
 
@@ -242,13 +242,13 @@ AffineForOp getForInductionVarOwner(Value *val);
 void extractForInductionVars(ArrayRef<AffineForOp> forInsts,
                              SmallVectorImpl<Value *> *ivs);
 
-/// AffineBound represents a lower or upper bound in the for instruction.
+/// AffineBound represents a lower or upper bound in the for operation.
 /// This class does not own the underlying operands. Instead, it refers
 /// to the operands stored in the AffineForOp. Its life span should not exceed
-/// that of the for instruction it refers to.
+/// that of the for operation it refers to.
 class AffineBound {
 public:
-  AffineForOp getAffineForOp() { return inst; }
+  AffineForOp getAffineForOp() { return op; }
   AffineMap getMap() { return map; }
 
   /// Returns an AffineValueMap representing this bound.
@@ -256,27 +256,27 @@ public:
 
   unsigned getNumOperands() { return opEnd - opStart; }
   Value *getOperand(unsigned idx) {
-    return inst.getOperation()->getOperand(opStart + idx);
+    return op.getOperation()->getOperand(opStart + idx);
   }
 
   using operand_iterator = AffineForOp::operand_iterator;
   using operand_range = AffineForOp::operand_range;
 
-  operand_iterator operand_begin() { return inst.operand_begin() + opStart; }
-  operand_iterator operand_end() { return inst.operand_begin() + opEnd; }
+  operand_iterator operand_begin() { return op.operand_begin() + opStart; }
+  operand_iterator operand_end() { return op.operand_begin() + opEnd; }
   operand_range getOperands() { return {operand_begin(), operand_end()}; }
 
 private:
-  // 'affine.for' instruction that contains this bound.
-  AffineForOp inst;
+  // 'affine.for' operation that contains this bound.
+  AffineForOp op;
   // Start and end positions of this affine bound operands in the list of
-  // the containing 'affine.for' instruction operands.
+  // the containing 'affine.for' operation operands.
   unsigned opStart, opEnd;
   // Affine map for this bound.
   AffineMap map;
 
-  AffineBound(AffineForOp inst, unsigned opStart, unsigned opEnd, AffineMap map)
-      : inst(inst), opStart(opStart), opEnd(opEnd), map(map) {}
+  AffineBound(AffineForOp op, unsigned opStart, unsigned opEnd, AffineMap map)
+      : op(op), opStart(opStart), opEnd(opEnd), map(map) {}
 
   friend class AffineForOp;
 };
@@ -342,7 +342,7 @@ public:
   static StringRef getOperationName() { return "affine.terminator"; }
 
 private:
-  friend Instruction;
+  friend Operation;
 };
 
 /// Returns true if the given Value can be used as a dimension id.

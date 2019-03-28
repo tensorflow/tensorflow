@@ -43,8 +43,8 @@ namespace {
 // Implementation class for module translation.  Holds a reference to the module
 // being translated, and the mappings between the original and the translated
 // functions, basic blocks and values.  It is practically easier to hold these
-// mappings in one class since the conversion of control flow instructions
-// needs to look up block and function mappins.
+// mappings in one class since the conversion of control flow operations
+// needs to look up block and function mappings.
 class ModuleTranslation {
 public:
   // Translate the given MLIR module expressed in MLIR LLVM IR dialect into an
@@ -59,7 +59,7 @@ private:
   bool convertOneFunction(Function &func);
   void connectPHINodes(Function &func);
   bool convertBlock(Block &bb, bool ignoreArguments);
-  bool convertInstruction(Instruction &inst, llvm::IRBuilder<> &builder);
+  bool convertOperation(Operation &op, llvm::IRBuilder<> &builder);
 
   template <typename Range>
   SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
@@ -191,12 +191,12 @@ SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
   return remapped;
 }
 
-// Given a single MLIR instruction, create the corresponding LLVM IR instruction
+// Given a single MLIR operation, create the corresponding LLVM IR operation
 // using the `builder`.  LLVM IR Builder does not have a generic interface so
 // this has to be a long chain of `if`s calling different functions with a
 // different number of arguments.
-bool ModuleTranslation::convertInstruction(Instruction &inst,
-                                           llvm::IRBuilder<> &builder) {
+bool ModuleTranslation::convertOperation(Operation &opInst,
+                                         llvm::IRBuilder<> &builder) {
   auto extractPosition = [](ArrayAttr attr) {
     SmallVector<unsigned, 4> position;
     position.reserve(attr.size());
@@ -212,10 +212,10 @@ bool ModuleTranslation::convertInstruction(Instruction &inst,
   // itself.  Otherwise, this is an indirect call and the callee is the first
   // operand, look it up as a normal value.  Return the llvm::Value representing
   // the function result, which may be of llvm::VoidTy type.
-  auto convertCall = [this, &builder](Instruction &inst) -> llvm::Value * {
-    auto operands = lookupValues(inst.getOperands());
+  auto convertCall = [this, &builder](Operation &op) -> llvm::Value * {
+    auto operands = lookupValues(op.getOperands());
     ArrayRef<llvm::Value *> operandsRef(operands);
-    if (auto attr = inst.getAttrOfType<FunctionAttr>("callee")) {
+    if (auto attr = op.getAttrOfType<FunctionAttr>("callee")) {
       return builder.CreateCall(functionMapping.lookup(attr.getValue()),
                                 operandsRef);
     } else {
@@ -225,10 +225,10 @@ bool ModuleTranslation::convertInstruction(Instruction &inst,
 
   // Emit calls.  If the called function has a result, remap the corresponding
   // value.  Note that LLVM IR dialect CallOp has either 0 or 1 result.
-  if (auto op = inst.dyn_cast<LLVM::CallOp>()) {
-    llvm::Value *result = convertCall(inst);
-    if (inst.getNumResults() != 0) {
-      valueMapping[inst.getResult(0)] = result;
+  if (opInst.isa<LLVM::CallOp>()) {
+    llvm::Value *result = convertCall(opInst);
+    if (opInst.getNumResults() != 0) {
+      valueMapping[opInst.getResult(0)] = result;
       return false;
     }
     // Check that LLVM call returns void for 0-result functions.
@@ -237,19 +237,19 @@ bool ModuleTranslation::convertInstruction(Instruction &inst,
 
   // Emit branches.  We need to look up the remapped blocks and ignore the block
   // arguments that were transformed into PHI nodes.
-  if (auto op = inst.dyn_cast<LLVM::BrOp>()) {
-    builder.CreateBr(blockMapping[op.getSuccessor(0)]);
+  if (auto brOp = opInst.dyn_cast<LLVM::BrOp>()) {
+    builder.CreateBr(blockMapping[brOp.getSuccessor(0)]);
     return false;
   }
-  if (auto op = inst.dyn_cast<LLVM::CondBrOp>()) {
-    builder.CreateCondBr(valueMapping.lookup(op.getOperand(0)),
-                         blockMapping[op.getSuccessor(0)],
-                         blockMapping[op.getSuccessor(1)]);
+  if (auto condbrOp = opInst.dyn_cast<LLVM::CondBrOp>()) {
+    builder.CreateCondBr(valueMapping.lookup(condbrOp.getOperand(0)),
+                         blockMapping[condbrOp.getSuccessor(0)],
+                         blockMapping[condbrOp.getSuccessor(1)]);
     return false;
   }
 
-  inst.emitError("unsupported or non-LLVM operation: " +
-                 inst.getName().getStringRef());
+  opInst.emitError("unsupported or non-LLVM operation: " +
+                   opInst.getName().getStringRef());
   return true;
 }
 
@@ -259,7 +259,7 @@ bool ModuleTranslation::convertInstruction(Instruction &inst,
 bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   llvm::IRBuilder<> builder(blockMapping[&bb]);
 
-  // Before traversing instructions, make block arguments available through
+  // Before traversing operations, make block arguments available through
   // value remapping and PHI nodes, but do not add incoming edges for the PHI
   // nodes just yet: those values may be defined by this or following blocks.
   // This step is omitted if "ignoreArguments" is set.  The arguments of the
@@ -282,16 +282,16 @@ bool ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
     }
   }
 
-  // Traverse instructions.
-  for (auto &inst : bb) {
-    if (convertInstruction(inst, builder))
+  // Traverse operations.
+  for (auto &op : bb) {
+    if (convertOperation(op, builder))
       return true;
   }
 
   return false;
 }
 
-// Get the SSA value passed to the current block from the terminator instruction
+// Get the SSA value passed to the current block from the terminator operation
 // of its predecessor.
 static Value *getPHISourceValue(Block *current, Block *pred,
                                 unsigned numArguments, unsigned index) {
@@ -304,7 +304,7 @@ static Value *getPHISourceValue(Block *current, Block *pred,
   // through the "true" or the "false" branch and take the relevant operands.
   auto condBranchOp = terminator.dyn_cast<LLVM::CondBrOp>();
   assert(condBranchOp &&
-         "only branch instructions can be terminators of a block that "
+         "only branch operations can be terminators of a block that "
          "has successors");
   assert((condBranchOp.getSuccessor(0) != condBranchOp.getSuccessor(1)) &&
          "successors with arguments in LLVM conditional branches must be "

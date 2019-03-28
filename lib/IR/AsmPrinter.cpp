@@ -138,7 +138,7 @@ private:
   void recordTypeReference(Type ty) { usedTypes.insert(ty); }
 
   // Visit functions.
-  void visitOperation(Operation *inst);
+  void visitOperation(Operation *op);
   void visitType(Type type);
   void visitAttribute(Attribute attr);
 
@@ -158,7 +158,7 @@ private:
 };
 } // end anonymous namespace
 
-// TODO Support visiting other types/instructions when implemented.
+// TODO Support visiting other types/operations when implemented.
 void ModuleState::visitType(Type type) {
   recordTypeReference(type);
   if (auto funcType = type.dyn_cast<FunctionType>()) {
@@ -189,15 +189,15 @@ void ModuleState::visitAttribute(Attribute attr) {
   }
 }
 
-void ModuleState::visitOperation(Operation *inst) {
+void ModuleState::visitOperation(Operation *op) {
   // Visit all the types used in the operation.
-  for (auto *operand : inst->getOperands())
+  for (auto *operand : op->getOperands())
     visitType(operand->getType());
-  for (auto *result : inst->getResults())
+  for (auto *result : op->getResults())
     visitType(result->getType());
 
   // Visit each of the attributes.
-  for (auto elt : inst->getAttrs())
+  for (auto elt : op->getAttrs())
     visitAttribute(elt.second);
 }
 
@@ -1058,8 +1058,8 @@ public:
   // Print the function signature.
   void printFunctionSignature();
 
-  // Methods to print instructions.
-  void print(Operation *inst);
+  // Methods to print operations.
+  void print(Operation *op);
   void print(Block *block, bool printBlockArgs = true,
              bool printBlockTerminator = true);
 
@@ -1124,7 +1124,7 @@ public:
     os.indent(currentIndent) << "}";
   }
 
-  // Number of spaces used for indenting nested instructions.
+  // Number of spaces used for indenting nested operations.
   const static unsigned indentWidth = 2;
 
 protected:
@@ -1174,19 +1174,19 @@ FunctionPrinter::FunctionPrinter(Function *function, ModulePrinter &other)
 /// continuously throughout regions.  In particular, we traverse the regions
 /// held by operations and number values in depth-first pre-order.
 void FunctionPrinter::numberValuesInBlock(Block &block) {
-  // Each block gets a unique ID, and all of the instructions within it get
+  // Each block gets a unique ID, and all of the operations within it get
   // numbered as well.
   blockIDs[&block] = nextBlockID++;
 
   for (auto *arg : block.getArguments())
     numberValueID(arg);
 
-  for (auto &inst : block) {
-    // We number instruction that have results, and we only number the first
+  for (auto &op : block) {
+    // We number operation that have results, and we only number the first
     // result.
-    if (inst.getNumResults() != 0)
-      numberValueID(inst.getResult(0));
-    for (auto &region : inst.getRegions())
+    if (op.getNumResults() != 0)
+      numberValueID(op.getResult(0));
+    for (auto &region : op.getRegions())
       for (auto &block : region)
         numberValuesInBlock(block);
   }
@@ -1387,26 +1387,26 @@ void FunctionPrinter::print(Block *block, bool printBlockArgs,
   auto range = llvm::make_range(
       block->getOperations().begin(),
       std::prev(block->getOperations().end(), printBlockTerminator ? 0 : 1));
-  for (auto &inst : range) {
-    print(&inst);
+  for (auto &op : range) {
+    print(&op);
     os << '\n';
   }
   currentIndent -= indentWidth;
 }
 
-void FunctionPrinter::print(Operation *inst) {
+void FunctionPrinter::print(Operation *op) {
   os.indent(currentIndent);
-  printOperation(inst);
-  printTrailingLocation(inst->getLoc());
+  printOperation(op);
+  printTrailingLocation(op->getLoc());
 }
 
 void FunctionPrinter::printValueID(Value *value, bool printResultNo) const {
   int resultNo = -1;
   auto lookupValue = value;
 
-  // If this is a reference to the result of a multi-result instruction or
-  // instruction, print out the # identifier and make sure to map our lookup
-  // to the first result of the instruction.
+  // If this is a reference to the result of a multi-result operation or
+  // operation, print out the # identifier and make sure to map our lookup
+  // to the first result of the operation.
   if (auto *result = dyn_cast<OpResult>(value)) {
     if (result->getOwner()->getNumResults() != 1) {
       resultNo = result->getResultNumber();

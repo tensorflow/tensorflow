@@ -84,32 +84,32 @@ ValueHandle
 mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
                                                    ArrayRef<Value *> operands) {
   assert(ScopedContext::getBuilder() && "Unexpected null builder");
-  Instruction *inst =
+  Operation *op =
       makeComposedAffineApply(ScopedContext::getBuilder(),
                               ScopedContext::getLocation(), map, operands)
           .getOperation();
-  assert(inst->getNumResults() == 1 && "Not a single result AffineApply");
-  return ValueHandle(inst->getResult(0));
+  assert(op->getNumResults() == 1 && "Not a single result AffineApply");
+  return ValueHandle(op->getResult(0));
 }
 
 ValueHandle ValueHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
                                 ArrayRef<Type> resultTypes,
                                 ArrayRef<NamedAttribute> attributes) {
-  Instruction *inst =
-      InstructionHandle::create(name, operands, resultTypes, attributes);
-  if (inst->getNumResults() == 1) {
-    return ValueHandle(inst->getResult(0));
+  Operation *op =
+      OperationHandle::create(name, operands, resultTypes, attributes);
+  if (op->getNumResults() == 1) {
+    return ValueHandle(op->getResult(0));
   }
-  if (auto f = inst->dyn_cast<AffineForOp>()) {
+  if (auto f = op->dyn_cast<AffineForOp>()) {
     return ValueHandle(f.getInductionVar());
   }
-  llvm_unreachable("unsupported instruction, use an InstructionHandle instead");
+  llvm_unreachable("unsupported operation, use an OperationHandle instead");
 }
 
-InstructionHandle
-InstructionHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
-                          ArrayRef<Type> resultTypes,
-                          ArrayRef<NamedAttribute> attributes) {
+OperationHandle OperationHandle::create(StringRef name,
+                                        ArrayRef<ValueHandle> operands,
+                                        ArrayRef<Type> resultTypes,
+                                        ArrayRef<NamedAttribute> attributes) {
   OperationState state(ScopedContext::getContext(),
                        ScopedContext::getLocation(), name);
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
@@ -118,7 +118,7 @@ InstructionHandle::create(StringRef name, ArrayRef<ValueHandle> operands,
   for (const auto &attr : attributes) {
     state.addAttribute(attr.first, attr.second);
   }
-  return InstructionHandle(ScopedContext::getBuilder()->createOperation(state));
+  return OperationHandle(ScopedContext::getBuilder()->createOperation(state));
 }
 
 BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
@@ -264,8 +264,8 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
                             unsigned &numSymbols) {
   AffineExpr d;
   Value *resultVal = nullptr;
-  auto *inst = val->getDefiningOp();
-  auto constant = inst ? inst->dyn_cast<ConstantIndexOp>() : ConstantIndexOp();
+  auto *op = val->getDefiningOp();
+  auto constant = op ? op->dyn_cast<ConstantIndexOp>() : ConstantIndexOp();
   if (constant) {
     d = getAffineConstantExpr(constant.getValue(), context);
   } else if (isValidSymbol(val) && !isValidDim(val)) {

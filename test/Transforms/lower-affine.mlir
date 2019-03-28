@@ -569,7 +569,7 @@ func @args_ret_affine_apply(index, index) -> (index, index) {
 //===---------------------------------------------------------------------===//
 // Test lowering of Euclidean (floor) division, ceil division and modulo
 // operation used in affine expressions.  In addition to testing the
-// instruction-level output, check that the obtained results are correct by
+// operation-level output, check that the obtained results are correct by
 // applying constant folding transformation after affine lowering.
 //===---------------------------------------------------------------------===//
 

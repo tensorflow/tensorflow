@@ -2,7 +2,7 @@
 
 // CHECK-LABEL: func @ops(%arg0: !llvm<"i32">, %arg1: !llvm<"float">)
 func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
-// Integer artithmetics binary instructions.
+// Integer artithmetics binary operations.
 //
 // CHECK-NEXT:  %0 = "llvm.add"(%arg0, %arg0) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT:  %1 = "llvm.sub"(%arg0, %arg0) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
@@ -21,7 +21,7 @@ func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
   %6 = "llvm.srem"(%arg0, %arg0) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
   %7 = "llvm.icmp"(%arg0, %arg0) {predicate: 1} : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i1">
 
-// Floating point binary instructions.
+// Floating point binary operations.
 //
 // CHECK-NEXT:  %8 = "llvm.fadd"(%arg1, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
 // CHECK-NEXT:  %9 = "llvm.fsub"(%arg1, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
@@ -34,7 +34,7 @@ func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
   %11 = "llvm.fdiv"(%arg1, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
   %12 = "llvm.frem"(%arg1, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
 
-// Memory-related instructions.
+// Memory-related operations.
 //
 // CHECK-NEXT:  %13 = "llvm.alloca"(%arg0) : (!llvm<"i32">) -> !llvm<"double*">
 // CHECK-NEXT:  %14 = "llvm.getelementptr"(%13, %arg0, %arg0) : (!llvm<"double*">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"double*">
@@ -47,7 +47,7 @@ func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
   "llvm.store"(%15, %13) : (!llvm<"double">, !llvm<"double*">) -> ()
   %16 = "llvm.bitcast"(%13) : (!llvm<"double*">) -> !llvm<"i64*">
 
-// Function call-related instructions.
+// Function call-related operations.
 //
 // CHECK-NEXT:  %17 = "llvm.call"(%arg0) {callee: @foo : (!llvm<"i32">) -> !llvm<"{ i32, double, i32 }">} : (!llvm<"i32">) -> !llvm<"{ i32, double, i32 }">
 // CHECK-NEXT:  %18 = "llvm.extractvalue"(%17) {position: [0]} : (!llvm<"{ i32, double, i32 }">) -> !llvm<"i32">
@@ -57,7 +57,7 @@ func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
   %18 = "llvm.extractvalue"(%17) {position: [0]} : (!llvm<"{ i32, double, i32 }">) -> !llvm<"i32">
   %19 = "llvm.insertvalue"(%17, %18) {position: [2]} : (!llvm<"{ i32, double, i32 }">, !llvm<"i32">) -> !llvm<"{ i32, double, i32 }">
 
-// Terminator instructions and their successors.
+// Terminator operations and their successors.
 //
 // CHECK:       "llvm.br"()[^bb1] : () -> ()
   "llvm.br"()[^bb1] : () -> ()
@@ -72,7 +72,7 @@ func @ops(%arg0 : !llvm<"i32">, %arg1 : !llvm<"float">) {
   %20 = "llvm.pseudo.undef"() : () -> !llvm<"{ i32, double, i32 }">
   %21 = "llvm.pseudo.constant"() {value: 42} : () -> !llvm<"i47">
 
-// Misc instructions.
+// Misc operations.
 // CHECK:       %22 = "llvm.select"(%7, %0, %1) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 // CHECK-NEXT:  "llvm.return"() : () -> ()
   %22 = "llvm.select"(%7, %0, %1) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">

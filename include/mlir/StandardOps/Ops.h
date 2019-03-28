@@ -16,7 +16,7 @@
 // =============================================================================
 //
 // This file defines convenience types for working with standard operations
-// in the MLIR instruction set.
+// in the MLIR operation set.
 //
 //===----------------------------------------------------------------------===//
 
@@ -35,7 +35,7 @@ class Builder;
 namespace detail {
 /// A custom binary operation printer that omits the "std." prefix from the
 /// operation names.
-void printStandardBinaryOp(Instruction *op, OpAsmPrinter *p);
+void printStandardBinaryOp(Operation *op, OpAsmPrinter *p);
 } // namespace detail
 
 class StandardOpsDialect : public Dialect {
@@ -85,7 +85,7 @@ public:
                                           MLIRContext *context);
 };
 
-/// The "br" operation represents a branch instruction in a function.
+/// The "br" operation represents a branch operation in a function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types for each successor must match the
 /// arguments of the block successor. For example:
@@ -216,7 +216,7 @@ enum class CmpIPredicate {
 /// Since integers are signless, the predicate also explicitly indicates
 /// whether to interpret the operands as signed or unsigned integers for
 /// less/greater than comparisons.  For the sake of readability by humans,
-/// custom assembly form for the instruction uses a string-typed attribute for
+/// custom assembly form for the operation uses a string-typed attribute for
 /// the predicate.  The value of this attribute corresponds to lower-cased name
 /// of the predicate constant, e.g., "slt" means "signed less than".  The string
 /// representation of the attribute is merely a syntactic sugar and is converted
@@ -250,7 +250,7 @@ public:
   Attribute constantFold(ArrayRef<Attribute> operands, MLIRContext *context);
 };
 
-/// The "cond_br" operation represents a conditional branch instruction in a
+/// The "cond_br" operation represents a conditional branch operation in a
 /// function. The operation takes variable number of operands and produces
 /// no results. The operand number and types for each successor must match the
 //  arguments of the block successor. For example:
@@ -401,7 +401,7 @@ public:
 
   APFloat getValue() { return getAttrOfType<FloatAttr>("value").getValue(); }
 
-  static bool isClassFor(Instruction *op);
+  static bool isClassFor(Operation *op);
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -423,7 +423,7 @@ public:
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
-  static bool isClassFor(Instruction *op);
+  static bool isClassFor(Operation *op);
 };
 
 /// This is a refinement of the "constant" op for the case where it is
@@ -440,7 +440,7 @@ public:
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
-  static bool isClassFor(Instruction *op);
+  static bool isClassFor(Operation *op);
 };
 
 /// The "dealloc" operation frees the region of memory referenced by a memref
@@ -557,7 +557,7 @@ public:
     return getSrcMemRef()->getType().cast<MemRefType>().getRank();
   }
   // Returns the source memerf indices for this DMA operation.
-  llvm::iterator_range<Instruction::operand_iterator> getSrcIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getSrcIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank()};
   }
@@ -576,7 +576,7 @@ public:
   }
 
   // Returns the destination memref indices for this DMA operation.
-  llvm::iterator_range<Instruction::operand_iterator> getDstIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getDstIndices() {
     return {getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1,
             getOperation()->operand_begin() + 1 + getSrcMemRefRank() + 1 +
                 getDstMemRefRank()};
@@ -597,7 +597,7 @@ public:
   }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getTagIndices() {
     unsigned tagIndexStartPos =
         1 + getSrcMemRefRank() + 1 + getDstMemRefRank() + 1 + 1;
     return {getOperation()->operand_begin() + tagIndexStartPos,
@@ -677,7 +677,7 @@ public:
   Value *getTagMemRef() { return getOperand(0); }
 
   // Returns the tag memref index for this DMA operation.
-  llvm::iterator_range<Instruction::operand_iterator> getTagIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getTagIndices() {
     return {getOperation()->operand_begin() + 1,
             getOperation()->operand_begin() + 1 + getTagMemRefRank()};
   }
@@ -718,7 +718,7 @@ public:
 
   Value *getAggregate() { return getOperand(0); }
 
-  llvm::iterator_range<Instruction::operand_iterator> getIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
@@ -754,7 +754,7 @@ public:
     return getMemRef()->getType().cast<MemRefType>();
   }
 
-  llvm::iterator_range<Instruction::operand_iterator> getIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 1, getOperation()->operand_end()};
   }
 
@@ -795,7 +795,7 @@ public:
   bool verify();
 };
 
-/// The "return" operation represents a return instruction within a function.
+/// The "return" operation represents a return operation within a function.
 /// The operation takes variable number of operands and produces no results.
 /// The operand number and types must match the signature of the function
 /// that contains the operation. For example:
@@ -853,7 +853,7 @@ public:
 /// The "store" op writes an element to a memref specified by an index list.
 /// The arity of indices is the rank of the memref (i.e. if the memref being
 /// stored to is of rank 3, then 3 indices are required for the store following
-/// the memref identifier). The store instruction does not produce a result.
+/// the memref identifier). The store operation does not produce a result.
 ///
 /// In the following example, the ssa value '%v' is stored in memref '%A' at
 /// indices [%i, %j]:
@@ -878,7 +878,7 @@ public:
     return getMemRef()->getType().cast<MemRefType>();
   }
 
-  llvm::iterator_range<Instruction::operand_iterator> getIndices() {
+  llvm::iterator_range<Operation::operand_iterator> getIndices() {
     return {getOperation()->operand_begin() + 2, getOperation()->operand_end()};
   }
 
@@ -917,8 +917,8 @@ public:
 };
 
 /// Prints dimension and symbol list.
-void printDimAndSymbolList(Instruction::operand_iterator begin,
-                           Instruction::operand_iterator end, unsigned numDims,
+void printDimAndSymbolList(Operation::operand_iterator begin,
+                           Operation::operand_iterator end, unsigned numDims,
                            OpAsmPrinter *p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.

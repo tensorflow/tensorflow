@@ -142,12 +142,12 @@ template <typename Load, typename Store> struct TemplatedIndexedValue {
 
   /// Emits a `store`.
   // NOLINTNEXTLINE: unconventional-assign-operator
-  InstructionHandle operator=(const TemplatedIndexedValue &rhs) {
+  OperationHandle operator=(const TemplatedIndexedValue &rhs) {
     ValueHandle rrhs(rhs);
     return Store(rrhs, getBase(), {indices.begin(), indices.end()});
   }
   // NOLINTNEXTLINE: unconventional-assign-operator
-  InstructionHandle operator=(ValueHandle rhs) {
+  OperationHandle operator=(ValueHandle rhs) {
     return Store(rhs, getBase(), {indices.begin(), indices.end()});
   }
 
@@ -168,10 +168,10 @@ template <typename Load, typename Store> struct TemplatedIndexedValue {
   ValueHandle operator-(ValueHandle e);
   ValueHandle operator*(ValueHandle e);
   ValueHandle operator/(ValueHandle e);
-  InstructionHandle operator+=(ValueHandle e);
-  InstructionHandle operator-=(ValueHandle e);
-  InstructionHandle operator*=(ValueHandle e);
-  InstructionHandle operator/=(ValueHandle e);
+  OperationHandle operator+=(ValueHandle e);
+  OperationHandle operator-=(ValueHandle e);
+  OperationHandle operator*=(ValueHandle e);
+  OperationHandle operator/=(ValueHandle e);
   ValueHandle operator+(TemplatedIndexedValue e) {
     return *this + static_cast<ValueHandle>(e);
   }
@@ -184,16 +184,16 @@ template <typename Load, typename Store> struct TemplatedIndexedValue {
   ValueHandle operator/(TemplatedIndexedValue e) {
     return *this / static_cast<ValueHandle>(e);
   }
-  InstructionHandle operator+=(TemplatedIndexedValue e) {
+  OperationHandle operator+=(TemplatedIndexedValue e) {
     return this->operator+=(static_cast<ValueHandle>(e));
   }
-  InstructionHandle operator-=(TemplatedIndexedValue e) {
+  OperationHandle operator-=(TemplatedIndexedValue e) {
     return this->operator-=(static_cast<ValueHandle>(e));
   }
-  InstructionHandle operator*=(TemplatedIndexedValue e) {
+  OperationHandle operator*=(TemplatedIndexedValue e) {
     return this->operator*=(static_cast<ValueHandle>(e));
   }
-  InstructionHandle operator/=(TemplatedIndexedValue e) {
+  OperationHandle operator/=(TemplatedIndexedValue e) {
     return this->operator/=(static_cast<ValueHandle>(e));
   }
 
@@ -236,26 +236,22 @@ ValueHandle TemplatedIndexedValue<Load, Store>::operator/(ValueHandle e) {
 }
 
 template <typename Load, typename Store>
-InstructionHandle
-TemplatedIndexedValue<Load, Store>::operator+=(ValueHandle e) {
+OperationHandle TemplatedIndexedValue<Load, Store>::operator+=(ValueHandle e) {
   using op::operator+;
   return Store(*this + e, getBase(), {indices.begin(), indices.end()});
 }
 template <typename Load, typename Store>
-InstructionHandle
-TemplatedIndexedValue<Load, Store>::operator-=(ValueHandle e) {
+OperationHandle TemplatedIndexedValue<Load, Store>::operator-=(ValueHandle e) {
   using op::operator-;
   return Store(*this - e, getBase(), {indices.begin(), indices.end()});
 }
 template <typename Load, typename Store>
-InstructionHandle
-TemplatedIndexedValue<Load, Store>::operator*=(ValueHandle e) {
+OperationHandle TemplatedIndexedValue<Load, Store>::operator*=(ValueHandle e) {
   using op::operator*;
   return Store(*this * e, getBase(), {indices.begin(), indices.end()});
 }
 template <typename Load, typename Store>
-InstructionHandle
-TemplatedIndexedValue<Load, Store>::operator/=(ValueHandle e) {
+OperationHandle TemplatedIndexedValue<Load, Store>::operator/=(ValueHandle e) {
   using op::operator/;
   return Store(*this / e, getBase(), {indices.begin(), indices.end()});
 }

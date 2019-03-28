@@ -24,8 +24,8 @@ def Z_AddOp : Op<"z.add"> {
 def : Pat<(Y_AddOp $lhs, $rhs, $attr1), (Y_AddOp $lhs, $rhs, (T_Compose_Attr $attr1, T_Const_Attr:$attr2))>;
 // CHECK: struct GeneratedConvert0 : public RewritePattern
 // CHECK: RewritePattern("y.add", 1, context)
-// CHECK: PatternMatchResult match(Instruction *
-// CHECK: void rewrite(Instruction *op, std::unique_ptr<PatternState>
+// CHECK: PatternMatchResult match(Operation *
+// CHECK: void rewrite(Operation *op, std::unique_ptr<PatternState>
 // CHECK-NEXT:              PatternRewriter &rewriter)
 // CHECK:      auto vAddOp0 = rewriter.create<Y::AddOp>(loc, op->getResult(0)->getType(),
 // CHECK-NEXT:     s.lhs,
@@ -37,8 +37,8 @@ def : Pat<(Y_AddOp $lhs, $rhs, $attr1), (Y_AddOp $lhs, $rhs, (T_Compose_Attr $at
 def : Pat<(Z_AddOp $lhs, $rhs, $attr1, $attr2), (Y_AddOp $lhs, $rhs, (T_Compose_Attr $attr1, $attr2))>;
 // CHECK: struct GeneratedConvert1 : public RewritePattern
 // CHECK: RewritePattern("z.add", 1, context)
-// CHECK: PatternMatchResult match(Instruction *
-// CHECK: void rewrite(Instruction *op, std::unique_ptr<PatternState>
+// CHECK: PatternMatchResult match(Operation *
+// CHECK: void rewrite(Operation *op, std::unique_ptr<PatternState>
 // CHECK-NEXT:              PatternRewriter &rewriter)
 // CHECK:      auto vAddOp0 = rewriter.create<Y::AddOp>(loc, op->getResult(0)->getType(),
 // CHECK-NEXT:     s.lhs,

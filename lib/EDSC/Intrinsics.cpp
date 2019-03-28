@@ -23,15 +23,15 @@
 using namespace mlir;
 using namespace mlir::edsc;
 
-InstructionHandle mlir::edsc::intrinsics::br(BlockHandle bh,
-                                             ArrayRef<ValueHandle> operands) {
+OperationHandle mlir::edsc::intrinsics::br(BlockHandle bh,
+                                           ArrayRef<ValueHandle> operands) {
   assert(bh && "Expected already captured BlockHandle");
   for (auto &o : operands) {
     (void)o;
     assert(o && "Expected already captured ValueHandle");
   }
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
-  return InstructionHandle::create<BranchOp>(bh.getBlock(), ops);
+  return OperationHandle::create<BranchOp>(bh.getBlock(), ops);
 }
 static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
                                               ArrayRef<ValueHandle> operands) {
@@ -47,28 +47,28 @@ static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
   }
 }
 
-InstructionHandle mlir::edsc::intrinsics::br(BlockHandle *bh,
-                                             ArrayRef<ValueHandle *> captures,
-                                             ArrayRef<ValueHandle> operands) {
+OperationHandle mlir::edsc::intrinsics::br(BlockHandle *bh,
+                                           ArrayRef<ValueHandle *> captures,
+                                           ArrayRef<ValueHandle> operands) {
   assert(!*bh && "Unexpected already captured BlockHandle");
   enforceEmptyCapturesMatchOperands(captures, operands);
   BlockBuilder(bh, captures)({/* no body */});
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
-  return InstructionHandle::create<BranchOp>(bh->getBlock(), ops);
+  return OperationHandle::create<BranchOp>(bh->getBlock(), ops);
 }
 
-InstructionHandle
+OperationHandle
 mlir::edsc::intrinsics::cond_br(ValueHandle cond, BlockHandle trueBranch,
                                 ArrayRef<ValueHandle> trueOperands,
                                 BlockHandle falseBranch,
                                 ArrayRef<ValueHandle> falseOperands) {
   SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
-  return InstructionHandle::create<CondBranchOp>(
+  return OperationHandle::create<CondBranchOp>(
       cond, trueBranch.getBlock(), trueOps, falseBranch.getBlock(), falseOps);
 }
 
-InstructionHandle mlir::edsc::intrinsics::cond_br(
+OperationHandle mlir::edsc::intrinsics::cond_br(
     ValueHandle cond, BlockHandle *trueBranch,
     ArrayRef<ValueHandle *> trueCaptures, ArrayRef<ValueHandle> trueOperands,
     BlockHandle *falseBranch, ArrayRef<ValueHandle *> falseCaptures,
@@ -81,6 +81,6 @@ InstructionHandle mlir::edsc::intrinsics::cond_br(
   BlockBuilder(falseBranch, falseCaptures)({/* no body */});
   SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
   SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
-  return InstructionHandle::create<CondBranchOp>(
+  return OperationHandle::create<CondBranchOp>(
       cond, trueBranch->getBlock(), trueOps, falseBranch->getBlock(), falseOps);
 }
