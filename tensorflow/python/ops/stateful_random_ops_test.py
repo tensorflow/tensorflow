@@ -177,12 +177,12 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       gen1 = random.Generator(seed=seed)
       gen2 = random.Generator()
       sess.run((gen1._state_var.initializer, gen2._state_var.initializer))
-      r1 = gen1.normal(shape)
-      r2 = gen2.normal(shape)
+      r1 = gen1.normal(shape, dtype=dtypes.float32)
+      r2 = gen2.normal(shape, dtype=dtypes.float32)
       def f():
         return sess.run((r1, r2))
       def check_results(expected_normal, v1, v2):
-        self.assertAllEqual(expected_normal, v1)
+        self.assertAllClose(expected_normal, v1, rtol=1e-5, atol=1e-5)
         self.assertAllEqual(shape, v2.shape)
       check_results(expected_normal1, *f())
       check_results(expected_normal2, *f())
