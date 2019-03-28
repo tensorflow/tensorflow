@@ -19,10 +19,8 @@ py_library(
     srcs = [
         "activity.py",
         "annos.py",
-        "live_values.py",
         "liveness.py",
         "reaching_definitions.py",
-        "type_info.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -47,17 +45,6 @@ py_test(
 )
 
 py_test(
-    name = "live_values_test",
-    srcs = ["live_values_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":static_analysis",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
-    ],
-)
-
-py_test(
     name = "liveness_test",
     srcs = ["liveness_test.py"],
     srcs_version = "PY2AND3",
@@ -76,17 +63,5 @@ py_test(
         ":static_analysis",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/autograph/pyct",
-    ],
-)
-
-py_test(
-    name = "type_info_test",
-    srcs = ["type_info_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":static_analysis",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/autograph/pyct",
-        "//tensorflow/python/autograph/utils",
     ],
 )
