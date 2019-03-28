@@ -8,9 +8,10 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//visibility:public"])
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 load(
     "//tensorflow:tensorflow.bzl",
-    "py_test",
     "tf_custom_op_library",
     "tf_cc_tests",
     "tf_gen_op_libs",
