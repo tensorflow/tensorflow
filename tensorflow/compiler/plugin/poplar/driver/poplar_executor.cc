@@ -1242,6 +1242,7 @@ Status PoplarExecutor::MoveDeviceToHost() {
 
     // perform device -> host read
     if (total_count > 0) {
+      current_engine_->disableExecutionProfiling();
       current_engine_->run(PoplarProgramType::DEVICE_TO_HOST);
     }
 
@@ -1300,6 +1301,7 @@ Status PoplarExecutor::MoveHostToDevice() {
     Json::StreamWriterBuilder json_builder;
     std::string json_msg = Json::writeString(json_builder, root);
 
+    current_engine_->disableExecutionProfiling();
     current_engine_->run(PoplarProgramType::HOST_TO_DEVICE);
 
     if (current_config_.profiling().enable_ipu_trace_events() &&
@@ -1512,6 +1514,7 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       }
 
       // Run the main engine
+      current_engine_->enableExecutionProfiling();
       current_engine_->run(PoplarProgramType::MAIN_SEQUENCE);
 
       // We need to call post process to make sure all the data is in the
