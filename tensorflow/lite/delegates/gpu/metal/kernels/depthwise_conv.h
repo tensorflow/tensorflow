@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_DEPTH_WISE_CONV3X3_STRIDE1X1_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_DEPTH_WISE_CONV3X3_STRIDE1X1_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_DEPTHWISE_CONV_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_DEPTHWISE_CONV_H_
 
 #include <vector>
 
@@ -27,6 +27,11 @@ namespace tflite {
 namespace gpu {
 namespace metal {
 
+std::vector<ComputeTaskDescriptorPtr> DepthWiseConvolution(
+    int id, ValueId input_id, ValueId output_id,
+    const DepthwiseConvolution2DAttributes& attr,
+    const RuntimeOptions& options);
+
 // Depth Wise Convolution for kernel 3x3
 // require:
 //   channels_multiplier = 1;
@@ -38,6 +43,7 @@ std::vector<ComputeTaskDescriptorPtr> DepthWiseConv3x3Stride1x1(
     const DepthwiseConvolution2DAttributes& attr,
     const RuntimeOptions& options);
 
+// TODO(impjdi): Move it inside module.
 bool CheckDepthWiseConv3x3Stride1x1Support(
     const DepthwiseConvolution2DAttributes& attr);
 
@@ -45,4 +51,4 @@ bool CheckDepthWiseConv3x3Stride1x1Support(
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_DEPTH_WISE_CONV3X3_STRIDE1X1_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_DEPTHWISE_CONV_H_

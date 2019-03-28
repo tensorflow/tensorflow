@@ -11,8 +11,7 @@ cc_library(
         ":convolution",
         ":convolution1x1",
         ":convolution_generic",
-        ":depth_wise_conv3x3_stride1x1",
-        ":depth_wise_convolution",
+        ":depthwise_conv",
         ":fully_connected",
         ":max_unpooling",
         ":mul",
@@ -119,25 +118,9 @@ cc_library(
 )
 
 cc_library(
-    name = "depth_wise_conv3x3_stride1x1",
-    srcs = ["depth_wise_conv3x3_stride1x1.cc"],
-    hdrs = ["depth_wise_conv3x3_stride1x1.h"],
-    deps = [
-        "//tensorflow/lite/delegates/gpu/common:model",
-        "//tensorflow/lite/delegates/gpu/common:operations",
-        "//tensorflow/lite/delegates/gpu/common:shape",
-        "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/common:util",
-        "//tensorflow/lite/delegates/gpu/metal:compute_task_descriptor",
-        "//tensorflow/lite/delegates/gpu/metal:runtime_options",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
-    name = "depth_wise_convolution",
-    srcs = ["depth_wise_convolution.cc"],
-    hdrs = ["depth_wise_convolution.h"],
+    name = "depthwise_conv",
+    srcs = ["depthwise_conv.cc"],
+    hdrs = ["depthwise_conv.h"],
     deps = [
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
