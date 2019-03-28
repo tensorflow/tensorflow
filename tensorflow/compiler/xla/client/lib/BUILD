@@ -47,6 +47,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
+    tags = ["no_rocm"],
 )
 
 cc_library(
@@ -165,6 +166,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
     ],
+    tags = ["no_rocm"],
 )
 
 cc_library(
@@ -207,6 +209,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/strings",
     ],
+    tags = ["no_rocm"],
 )
 
 cc_library(
@@ -272,7 +275,7 @@ cc_library(
 xla_test(
     name = "qr_test",
     srcs = ["qr_test.cc"],
-    tags = ["optonly"],
+    tags = ["optonly", "no_rocm"],
     deps = [
         ":matrix",
         ":qr",

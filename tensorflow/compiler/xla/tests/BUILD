@@ -311,6 +311,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "@com_google_absl//absl/types:optional",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -422,6 +423,7 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -530,6 +532,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -583,6 +586,7 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -608,6 +612,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -672,6 +677,7 @@ xla_test(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:span",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -726,6 +732,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "no_rocm",	
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -785,7 +792,7 @@ xla_test(
         ],
     },
     shard_count = 20,
-    tags = ["optonly"],
+    tags = ["optonly", "no_rocm"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
@@ -874,7 +881,7 @@ xla_test(
     timeout = "long",
     srcs = ["convolution_test.cc"],
     shard_count = 40,
-    tags = ["optonly"],
+    tags = ["optonly", "no_rocm"],
     deps = CONVOLUTION_TEST_DEPS + [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
@@ -892,6 +899,7 @@ xla_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -919,6 +927,7 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -983,6 +992,7 @@ xla_test(
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -1143,6 +1153,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -1151,6 +1162,7 @@ xla_test(
     shard_count = 31,
     tags = [
         "optonly",
+        "no_rocm",
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -1217,6 +1229,7 @@ xla_test(
     shard_count = 20,
     tags = [
         "optonly",
+        "no_rocm",	
     ],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [],
@@ -1876,6 +1889,7 @@ xla_test(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(
@@ -1900,6 +1914,7 @@ xla_test(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_cc_test(
@@ -2153,6 +2168,7 @@ xla_test(
     tags = [
         # Require optimized builds, iota_test_cpu is very slow in fastbuild.
         "optonly",
+        "no_rocm",  # timeout occurs when running on ROCm CI
     ],
     deps = [
         ":client_library_test_base",
@@ -2200,6 +2216,7 @@ xla_test(
     tags = [
         "enable_for_xla_interpreter",
         "noasan",  # sometimes times out, http://b/78650012
+        "no_rocm",	
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -2220,7 +2237,7 @@ xla_test(
 xla_test(
     name = "cholesky_test",
     srcs = ["cholesky_test.cc"],
-    tags = ["optonly"],
+    tags = ["optonly", "no_rocm"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
