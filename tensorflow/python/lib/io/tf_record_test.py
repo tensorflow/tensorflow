@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import gzip
+import multiprocessing
 import os
 import random
 import string
@@ -444,6 +445,18 @@ class TFRecordWriterCloseAndFlushTests(test.TestCase):
       self._writer.write(record)
     self._writer.close()
 
+    actual = list(tf_record.tf_record_iterator(self._fn, self._options))
+    self.assertListEqual(actual, records)
+
+  def testFlush(self):
+    records = list(map(self._Record, range(self._num_records)))
+    def childProcess(writer, rec):
+      writer.write(rec)
+      writer.flush()
+    for record in records:
+      write_process = multiprocessing.Process(target=childProcess, args=(self._writer,record))
+      write_process.start()
+      write_process.join()
     actual = list(tf_record.tf_record_iterator(self._fn, self._options))
     self.assertListEqual(actual, records)
 
