@@ -18,15 +18,15 @@ limitations under the License.
 
 #include "include/json/json.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
-#include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executable.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hlo_hash.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"

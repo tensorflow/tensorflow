@@ -16,8 +16,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXECUTABLE_H_
-#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_EXECUTABLE_H_
+#ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_EXECUTABLE_H_
+#define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_POPLAR_EXECUTABLE_H_
 
 #include <cstddef>
 #include <memory>
@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 
 #include <poplar/Engine.hpp>

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
-#define TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_TRANSFER_MANAGER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
+#define TENSORFLOW_COMPILER_XLA_PLUGIN_POPLAR_DRIVER_POPLAR_TRANSFER_MANAGER_H_
 
 #include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 #include "tensorflow/compiler/xla/service/generic_transfer_manager.h"

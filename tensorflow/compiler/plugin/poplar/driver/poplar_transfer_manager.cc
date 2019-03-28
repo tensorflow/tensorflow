@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_transfer_manager.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_platform_id.h"
 
 #include "tensorflow/core/lib/gtl/cleanup.h"
 

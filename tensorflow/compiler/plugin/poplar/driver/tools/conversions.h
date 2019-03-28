@@ -3,7 +3,7 @@
 
 #include <vector>
 
-#include "tensorflow/compiler/plugin/poplar/driver/executor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/poplar_executor.h"
 
 namespace xla {
 namespace poplarplugin {
