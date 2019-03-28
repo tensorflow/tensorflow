@@ -62,9 +62,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
             "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
+    CapturedFunction::Params params;
+    params.use_inter_op_parallelism = use_inter_op_parallelism_;
     OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 use_inter_op_parallelism_,
-                                                 &captured_func));
+                                                 params, &captured_func));
 
     if (num_parallel_calls == model::kAutoTune) {
       metrics::RecordTFDataAutotune(kDatasetName);
@@ -142,22 +143,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
 
       // Input: num_parallel_calls
       Node* num_parallel_calls = nullptr;
@@ -165,7 +154,6 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           b->AddScalar(num_parallel_calls_, &num_parallel_calls));
 
       // Attr: f
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       AttrValue f_attr;
       b->BuildAttrValue(func_, &f_attr);
 

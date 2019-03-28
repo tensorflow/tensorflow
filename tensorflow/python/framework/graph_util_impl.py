@@ -242,13 +242,42 @@ def convert_variables_to_constants(sess,
   Returns:
     GraphDef containing a simplified version of the original.
   """
+
+  def get_input_name(node):
+    """Gets the name of the first input. Errors if suffix is not :0."""
+    details = node.input[0].split(":")
+    if len(details) == 1 or int(details[1]) == 0:
+      return details[0]
+    # While it is valid for input tensors to have a suffix that is not :0, this
+    # method is used to find the associated ops, not tensors, and therefore it
+    # is not valid.
+    raise ValueError("Tensor name '{0}' is invalid.".format(node.input[0]))
+
+  def create_const_op(node_name, dtype, data, data_shape=None):
+    """Creates a Const op."""
+    output_node = node_def_pb2.NodeDef()
+    output_node.op = "Const"
+    output_node.name = node_name
+    output_node.attr["dtype"].CopyFrom(dtype)
+    output_node.attr["value"].CopyFrom(
+        attr_value_pb2.AttrValue(
+            tensor=tensor_util.make_tensor_proto(
+                data, dtype=dtype.type, shape=data_shape)))
+    return output_node
+
   # This graph only includes the nodes needed to evaluate the output nodes, and
   # removes unneeded nodes like those involved in saving and assignment.
   inference_graph = extract_sub_graph(input_graph_def, output_node_names)
 
-  found_variables = {}
+  # Identify the ops in the graph.
+  map_name_to_node = {
+      node.name: node for node in inference_graph.node
+  }
+
+  # Get list of variables.
   variable_names = []
   variable_dict_names = []
+  resource_identity_types = {}
   for node in inference_graph.node:
     if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
@@ -262,37 +291,69 @@ def convert_variables_to_constants(sess,
         variable_names.append(variable_name + "/Read/ReadVariableOp:0")
       else:
         variable_names.append(variable_name + ":0")
+    elif node.op in ["ReadVariableOp", "ResourceGather"]:
+      # There can be one or more Identity ops in between the ReadVariableOp and
+      # VarHandleOp.  Store the Identity ops with the associated dtypes.
+      source_op_name = get_input_name(node)
+      while map_name_to_node[source_op_name].op == "Identity":
+        resource_identity_types[source_op_name] = node.attr["dtype"]
+        source_op_name = get_input_name(map_name_to_node[source_op_name])
+      if map_name_to_node[source_op_name].op != "VarHandleOp":
+        raise ValueError("Cannot find the variable that is an input "
+                         "to the ReadVariableOp.")
+
+  # Gets map of variables and the associated data.
   if variable_names:
     returned_variables = sess.run(variable_names)
   else:
     returned_variables = []
-  found_variables = dict(zip(variable_dict_names, returned_variables))
+  variables_data_map = dict(zip(variable_dict_names, returned_variables))
   logging.info("Froze %d variables.", len(returned_variables))
 
+  # Reconstruct the graph with constants in place of variables.
   output_graph_def = graph_pb2.GraphDef()
   how_many_converted = 0
   for input_node in inference_graph.node:
     output_node = node_def_pb2.NodeDef()
-    if input_node.name in found_variables:
-      output_node.op = "Const"
-      output_node.name = input_node.name
-      dtype = input_node.attr["dtype"]
-      data = found_variables[input_node.name]
-      output_node.attr["dtype"].CopyFrom(dtype)
-      output_node.attr["value"].CopyFrom(
-          attr_value_pb2.AttrValue(
-              tensor=tensor_util.make_tensor_proto(
-                  data, dtype=dtype.type, shape=data.shape)))
+    if input_node.name in variables_data_map:
+      data = variables_data_map[input_node.name]
+      output_node = create_const_op(input_node.name, input_node.attr["dtype"],
+                                    data, data.shape)
       how_many_converted += 1
-    elif input_node.op == "ReadVariableOp" and (
-        input_node.input[0] in found_variables):
-      # The preceding branch converts all VarHandleOps of ResourceVariables to
+    elif input_node.name in resource_identity_types:
+      # Converts the Identities of type RESOURCE_DT to the appropriate type
+      # based on the input they are referencing.
+      output_node.CopyFrom(input_node)
+      output_node.attr["T"].CopyFrom(resource_identity_types[input_node.name])
+    elif input_node.op == "ReadVariableOp":
+      # The first branch converts all VarHandleOps of ResourceVariables to
       # constants, so we need to convert the associated ReadVariableOps to
       # Identity ops.
       output_node.op = "Identity"
       output_node.name = input_node.name
       output_node.input.extend([input_node.input[0]])
       output_node.attr["T"].CopyFrom(input_node.attr["dtype"])
+      if "_class" in input_node.attr:
+        output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
+    elif input_node.op == "ResourceGather":
+      # The first branch converts all VarHandleOps of ResourceGather to
+      # constants, so we need to convert the associated ResourceGather to Gather
+      # ops with a Const axis feeding into it.
+      if input_node.attr["batch_dims"].i != 0:
+        raise ValueError("batch_dims != 0 is not supported by freeze_graph.")
+      axis_data = input_node.attr["batch_dims"].i
+      axis_node_name = input_node.name + "/axis"
+      axis_dtype = input_node.attr["Tindices"]
+      output_axis_node = create_const_op(axis_node_name, axis_dtype, axis_data)
+      output_graph_def.node.extend([output_axis_node])
+
+      output_node.op = "GatherV2"
+      output_node.name = input_node.name
+      output_node.input.extend(
+          [input_node.input[0], input_node.input[1], axis_node_name])
+      output_node.attr["Tparams"].CopyFrom(input_node.attr["dtype"])
+      output_node.attr["Tindices"].CopyFrom(input_node.attr["Tindices"])
+      output_node.attr["Taxis"].CopyFrom(axis_dtype)
       if "_class" in input_node.attr:
         output_node.attr["_class"].CopyFrom(input_node.attr["_class"])
     else:

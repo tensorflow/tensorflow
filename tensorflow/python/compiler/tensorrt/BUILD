@@ -15,7 +15,6 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
@@ -40,8 +39,8 @@ py_library(
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":wrap_conversion",
         "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
+        "//tensorflow/compiler/tf2tensorrt:wrap_py_utils",
         "//tensorflow/python:convert_to_constants",
         "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
@@ -55,16 +54,6 @@ py_library(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
-    ],
-)
-
-tf_py_wrap_cc(
-    name = "wrap_conversion",
-    srcs = ["trt_conversion.i"],
-    copts = tf_copts(),
-    deps = [
-        "//tensorflow/compiler/tf2tensorrt:py_utils",
-        "//third_party/python_runtime:headers",
     ],
 )
 

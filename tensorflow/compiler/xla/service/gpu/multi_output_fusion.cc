@@ -47,12 +47,8 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // We can fuse reduces and loop fusions. Elementwise instructions can be fused
   // with any other instruction.
-  // TODO(b/112957171): This should use the same isFusible logic as
-  // instruction_fusion.
   return instr->IsFusible() &&
-         (IsInputFusibleReduction(*instr) ||
-          (instr->opcode() == HloOpcode::kFusion &&
-           instr->fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+         (IsInputFusibleReduction(*instr) || instr->IsLoopFusion() ||
           instr->IsElementwise());
 }
 
@@ -92,8 +88,7 @@ bool GpuMultiOutputFusion::LegalToFuse(HloInstruction* instr1,
   CHECK(instr1->opcode() == HloOpcode::kFusion);
   if ((instr2->opcode() == HloOpcode::kFusion &&
        instr1->fusion_kind() != instr2->fusion_kind()) ||
-      (IsReductionToVector(*instr2) &&
-       instr1->fusion_kind() == HloInstruction::FusionKind::kLoop)) {
+      (IsReductionToVector(*instr2) && instr1->IsLoopFusion())) {
     return false;
   }
 
@@ -155,10 +150,7 @@ bool GpuMultiOutputFusion::DoProducerConsumerMultiOutputFusion() {
         VLOG(3) << producer->name() << " is a constant.";
         continue;
       }
-      const bool is_loop_fusion =
-          producer->opcode() == HloOpcode::kFusion &&
-          producer->fusion_kind() == HloInstruction::FusionKind::kLoop;
-      if (!producer->IsElementwise() && !is_loop_fusion) {
+      if (!producer->IsElementwise() && !producer->IsLoopFusion()) {
         VLOG(3) << producer->name() << " is not a loop fusion.";
         continue;
       }

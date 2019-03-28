@@ -106,6 +106,8 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   for (const Device* device : input_devices_) {
     options.input_devices.push_back(device->name());
   }
+  options.input_tensor_shapes = input_tensor_shapes_;
+  options.input_resource_dtypes_and_shapes = input_resource_dtypes_and_shapes_;
 
   const auto& it = ndef.attr().find("executor_type");
   if (it != ndef.attr().end()) {
@@ -142,10 +144,18 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 #endif
   options.graph_collector = graph_collector;
 
+  // In Eager mode we always inline all functions into the top-level
+  // function body graph, to get a single executable graph, that could be
+  // optimized across function boundaries (e.g. prune unused inputs and outputs
+  // in a function call chain). This is required to mimic graph mode execution,
+  // with aggressive pruning of nodes not in the transitive fanin of fetches.
+  options.config_proto.mutable_graph_options()
+      ->mutable_optimizer_options()
+      ->set_do_function_inlining(true);
+
   TF_RETURN_IF_ERROR(
       pflr_->Instantiate(ndef.op(), AttrSlice(ndef), options, &handle_));
   return pflr_->GetOutputDevices(handle_, &output_devices_);
-  return Status::OK();
 }
 
 Status KernelAndDeviceOp::Run(const gtl::InlinedVector<TensorValue, 4>& inputs,

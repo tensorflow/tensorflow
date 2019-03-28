@@ -18,9 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import functools
 import imp
+import sys
+import types
 import unittest
+import weakref
 
 import gast
 
@@ -29,7 +33,6 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.converters import arg_defaults
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import break_statements
-from tensorflow.python.autograph.converters import builtin_functions
 from tensorflow.python.autograph.converters import call_trees
 from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
@@ -63,17 +66,260 @@ from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
-# TODO(mdan): Might we not need any renaming at all?
+class _ConvertedEntityFactoryInfo(
+    collections.namedtuple(
+        '_ConvertedEntityFactoryInfo',
+        ('module_name', 'converted_name', 'factory_factory_name', 'source_map'))
+):
+  """Holds metadata about a converted entity stored as a dynamic factory.
+
+  The dynamic factory is assumed to be created by _wrap_into_dynamic_factory,
+  be named `factory_factory_name` and located inside the module named as
+  `module_name`.
+
+  Attributes:
+    module_name: Text, the name of the module containing the entity.
+    converted_name: Text, the name of the converted entity.
+    factory_factory_name: Text, the name of the dynamic factory.
+    source_map: Dict.
+  """
+
+  def get_module(self):
+    return sys.modules[self.module_name]
+
+  def get_factory(self):
+    assert self.module_name in sys.modules
+    factory_factory = getattr(sys.modules[self.module_name],
+                              self.factory_factory_name)
+    return factory_factory()
+
+
+# TODO(mdan): Add a garbage collection hook for cleaning up modules.
+class _ConversionCache(object):
+  """A hierarchical cache that uses the converted entity as weak key.
+
+  The keys soft references (i.e. they are discarded when the key is
+  destroyed). The subkeys are normal hashable values.
+
+  This class is generic - see the call site for how the keys and values are
+  defined.
+  """
+
+  def __init__(self):
+    self._cache = weakref.WeakKeyDictionary()
+
+  def has(self, key, subkey):
+    if key not in self._cache:
+      return False
+    return subkey in self._cache[key]
+
+  def __getitem__(self, key):
+    if key not in self._cache:
+      # The bucket needs to be initialized to support this usage:
+      #   cache[key][subkey] = value
+      self._cache[key] = {}
+    return self._cache[key]
+
+
+_CACHE = _ConversionCache()
+
+
+# Note: strictly speaking, a simple factory might have been sufficient for
+# functions. But the double factory approach allows us to control the closure
+# and globals of the converted code in a cleaner fashion.
+# TODO(mdan): A simple factory may be sufficient.
+def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
+                               factory_name, closure_vars, future_features):
+  """Wraps an AST into the body of a dynamic factory.
+
+  This uses the dynamic factory (factory of factory) pattern to achieve the
+  following:
+
+   1. The inner factory, dynamically creates the entity represented by nodes.
+   2. The entity is parametrized by `ag__`, the internal AutoGraph module.
+   3. The outer factory creates the inner factory with a lexical scope
+      in which `closure_vars` are bound local variables. This in turn allows the
+      caller to control the exact closure (i.e. non-global free variables) for
+      the inner factory.
+
+  The AST is expected to define some symbol named by `entity_name`.
+
+  Args:
+    nodes: ast.AST
+    entity_name: Union[Text, ast.AST]
+    factory_factory_name: Text
+    factory_name: Text
+    closure_vars: Iterable[Text]
+    future_features: Iterable[Text], see EntityInfo.future_features.
+
+  Returns:
+    ast.AST
+  """
+  if not isinstance(nodes, (list, tuple)):
+    nodes = (nodes,)
+
+  dummy_closure_defs = []
+  for var_name in closure_vars:
+    template = """
+      var_name = None
+    """
+    dummy_closure_defs.extend(templates.replace(template, var_name=var_name))
+
+  if future_features:
+    future_imports = gast.ImportFrom(
+        module='__future__',
+        names=[gast.alias(name=name, asname=None) for name in future_features],
+        level=0)
+  else:
+    future_imports = []
+
+  # These dummy symbol declarations create local fariables in a function scope,
+  # so that the Python parser correctly marks them as free non-global variables
+  # upon load (that is, it creates cell slots for each symbol). Their values are
+  # not used, as the cells are swapped with the original entity's cells after
+  # the code has been loaded.
+  template = """
+    future_imports
+    def factory_factory_name():
+      dummy_closure_defs
+      def factory_name(ag__, ag_source_map__, ag_module__):
+        entity_defs
+        entity_name.ag_source_map = ag_source_map__
+        entity_name.ag_module = ag_module__
+        entity_name.autograph_info__ = {}
+        return entity_name
+      return factory_name
+  """
+  return templates.replace(
+      template,
+      future_imports=future_imports,
+      factory_factory_name=factory_factory_name,
+      factory_name=factory_name,
+      dummy_closure_defs=dummy_closure_defs,
+      entity_defs=nodes,
+      entity_name=entity_name)
+
+
+def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
+  """Returns a (possibly cached) factory for the converted result of entity."""
+  # The cache key is the entity's code object if it defined one, otherwise it's
+  # the entity itself. Keying by the code object allows caching of functions
+  # that are dynamically created e.g. in a loop.
+  if hasattr(entity, '__code__'):
+    key = entity.__code__
+  else:
+    key = entity
+
+  # The cache subkey encompases any conversion options on which the generated
+  # code may depend.
+  # The cached factory includes the necessary definitions to distinguish
+  # between the global and non-global free variables. For this reason, the
+  # cache subkey includes the names of the free non-globals.
+  subkey = (program_ctx.options, frozenset(free_nonglobal_var_names))
+
+  # The cache values are _ConvertedEntityFactoryInfo objects.
+  if _CACHE.has(key, subkey):
+    # TODO(mdan): Check whether the module is still loaded.
+    converted_entity_info = _CACHE[key][subkey]
+    logging.log(3, 'Cache hit for entity %s key %s subkey %s: %s', entity, key,
+                subkey, converted_entity_info)
+    return converted_entity_info
+
+  logging.log(1, 'Entity %s is not cached for key %s subkey %s', entity, key,
+              subkey)
+
+  nodes, converted_name, entity_info = convert_entity_to_ast(
+      entity, program_ctx)
+
+  namer = naming.Namer(entity_info.namespace)
+  factory_factory_name = namer.new_symbol('create_converted_entity_factory', ())
+  factory_name = namer.new_symbol('create_converted_entity', ())
+  nodes = _wrap_into_dynamic_factory(
+      nodes, converted_name, factory_factory_name, factory_name,
+      free_nonglobal_var_names, entity_info.future_features)
+
+  module, _, source_map = compiler.ast_to_object(nodes, include_source_map=True)
+  module_name = module.__name__
+
+  converted_entity_info = _ConvertedEntityFactoryInfo(
+      module_name=module_name,
+      converted_name=converted_name,
+      factory_factory_name=factory_factory_name,
+      source_map=source_map)
+  _CACHE[key][subkey] = converted_entity_info
+  return converted_entity_info
+
+
+def _instantiate(entity, converted_entity_info, free_nonglobal_var_names):
+  """Creates a converted instance and binds it to match original entity."""
+  factory = converted_entity_info.get_factory()
+
+  # `factory` is currently bound to the empty module it was loaded from.
+  # It must instead be bound to the globals and closure from the original
+  # entity.
+  if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
+    entity_globals = entity.__globals__
+    entity_closure = entity.__closure__ or ()
+  elif hasattr(entity, '__module__'):
+    entity_globals = sys.modules[entity.__module__].__dict__
+    entity_closure = ()
+  assert len(entity_closure) == len(free_nonglobal_var_names)
+
+  # Fit the original entity's cells to match the order of factory's cells.
+  original_names_and_cells = dict(zip(free_nonglobal_var_names, entity_closure))
+  new_factory_cells = tuple(
+      original_names_and_cells[name] for name in factory.__code__.co_freevars)
+
+  bound_factory = types.FunctionType(
+      code=factory.__code__,
+      globals=entity_globals,
+      name=factory.__name__,
+      argdefs=(),
+      closure=new_factory_cells)
+
+  # Two other free vars: the internal "ag__" module and the source
+  # map. These are wired via the parameters of the factory.
+  converted_entity = bound_factory(  # pylint:disable=not-callable
+      ag_internal, converted_entity_info.source_map,
+      converted_entity_info.get_module())
+
+  if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
+    # Attach the default argument to the converted function.
+    converted_entity.__defaults__ = entity.__defaults__
+
+  return converted_entity
+
+
+def convert(entity, program_ctx):
+  """Converts an entity into an equivalent entity."""
+
+  if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
+    free_nonglobal_var_names = entity.__code__.co_freevars
+  else:
+    free_nonglobal_var_names = ()
+
+  for i, name in enumerate(free_nonglobal_var_names):
+    if (name == 'ag__' and
+        entity.__closure__[i].cell_contents is not ag_internal):
+      raise ValueError('entity {} uses the reserved symbol "{}"'.format(
+          entity, name))
+    # TODO(mdan): In extreme cases, other ag__ symbols may also be clobbered.
+
+  converted_entity_info = _convert_with_cache(
+      entity, program_ctx, free_nonglobal_var_names)
+
+  return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
 
 def is_whitelisted_for_graph(o):
-  """Check whether an entity is whitelisted for use in graph mode.
+  """Checks whether an entity is whitelisted for use in graph mode.
 
   Examples of whitelisted entities include all members of the tensorflow
   package.
 
   Args:
     o: A Python entity.
+
   Returns:
     Boolean
   """
@@ -155,22 +401,13 @@ def is_whitelisted_for_graph(o):
   return False
 
 
-def entity_to_graph(o, program_ctx, arg_values, arg_types):
+# TODO(mdan): Rename to convert_*_node to avoid confusion with convert.
+def convert_entity_to_ast(o, program_ctx):
   """Compile a Python entity into equivalent TensorFlow.
-
-  The function will also recursively compile all the entities that `o`
-  references, updating `dependency_cache`.
-
-  This function is reentrant, and relies on dependency_cache to avoid
-  generating duplicate code.
 
   Args:
     o: A Python entity.
     program_ctx: A ProgramContext object.
-    arg_values: A dict containing value hints for symbols like function
-        parameters.
-    arg_types: A dict containing type hints for symbols like function
-        parameters.
 
   Returns:
     A tuple (ast, new_name, namespace):
@@ -186,11 +423,11 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   logging.log(1, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
-    nodes, name, ns = class_to_graph(o, program_ctx)
+    nodes, name, entity_info = convert_class_to_ast(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    nodes, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
   elif tf_inspect.ismethod(o):
-    nodes, name, ns = function_to_graph(o, program_ctx, arg_values, arg_types)
+    nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
   elif hasattr(o, '__class__'):
     raise NotImplementedError(
@@ -207,14 +444,6 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
         'supported for now.' % (o, type(o)))
 
-  # TODO(mdan): This is temporary. it should be created using a converter.
-  # TODO(mdan): The attribute should be added with a helper, not directly.
-  # The helper can ensure there are no collisions.
-  template = '''
-      entity.autograph_info__ = {}
-  '''
-  nodes.extend(templates.replace(template, entity=name))
-
   if logging.has_verbosity(2):
     logging.log(2, 'Compiled output of %s:\n\n%s\n', o,
                 compiler.ast_to_source(nodes))
@@ -223,34 +452,55 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
       logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,
                   pretty_printer.fmt(n, color=False))
 
-  return nodes, name, ns
+  return nodes, name, entity_info
 
 
-def class_to_graph(c, program_ctx):
-  """Specialization of `entity_to_graph` for classes."""
+def convert_class_to_ast(c, program_ctx):
+  """Specialization of `convert_entity_to_ast` for classes."""
   # TODO(mdan): Revisit this altogether. Not sure we still need it.
   converted_members = {}
   method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
   members = tf_inspect.getmembers(c, predicate=method_filter)
   if not members:
-    raise ValueError('Cannot convert %s: it has no member methods.' % c)
+    raise ValueError('cannot convert %s: no member methods' % c)
+
+  # TODO(mdan): Don't clobber namespaces for each method in one class namespace.
+  # The assumption that one namespace suffices for all methods only holds if
+  # all methods were defined in the same module.
+  # If, instead, functions are imported from multiple modules and then spliced
+  # into the class, then each function has its own globals and __future__
+  # imports that need to stay separate.
+
+  # For example, C's methods could both have `global x` statements referring to
+  # mod1.x and mod2.x, but using one namespace for C would cause a conflict.
+  # from mod1 import f1
+  # from mod2 import f2
+  # class C(object):
+  #   method1 = f1
+  #   method2 = f2
 
   class_namespace = {}
+  future_features = None
   for _, m in members:
     # Only convert the members that are directly defined by the class.
     if inspect_utils.getdefiningclass(m, c) is not c:
       continue
-    nodes, _, namespace = function_to_graph(
+    (node,), _, entity_info = convert_func_to_ast(
         m,
         program_ctx=program_ctx,
-        arg_values={},
-        arg_types={'self': (c.__name__, c)},
         do_rename=False)
-    if class_namespace is None:
-      class_namespace = namespace
-    else:
-      class_namespace.update(namespace)
-    converted_members[m] = nodes[0]
+    class_namespace.update(entity_info.namespace)
+    converted_members[m] = node
+
+    # TODO(mdan): Similarly check the globals.
+    if future_features is None:
+      future_features = entity_info.future_features
+    elif frozenset(future_features) ^ frozenset(entity_info.future_features):
+      # Note: we can support this case if ever needed.
+      raise ValueError(
+          'cannot convert {}: if has methods built with mismatched future'
+          ' features: {} and {}'.format(c, future_features,
+                                        entity_info.future_features))
   namer = naming.Namer(class_namespace)
   class_name = namer.class_name(c.__name__)
 
@@ -295,7 +545,14 @@ def class_to_graph(c, program_ctx):
 
   output_nodes.append(class_def)
 
-  return output_nodes, class_name, class_namespace
+  # TODO(mdan): Find a way better than forging this object.
+  entity_info = transformer.EntityInfo(
+      source_code=None,
+      source_file=None,
+      future_features=future_features,
+      namespace=class_namespace)
+
+  return output_nodes, class_name, entity_info
 
 
 def _add_reserved_symbol(namespace, name, entity):
@@ -332,11 +589,13 @@ def _add_self_references(namespace, autograph_module):
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
-  """Specialization of `entity_to_graph` for callable functions."""
+def convert_func_to_ast(f, program_ctx, do_rename=True):
+  """Specialization of `convert_entity_to_ast` for callable functions."""
 
-  node, source, _ = parser.parse_entity(f)
+  future_features = inspect_utils.getfutureimports(f)
+  node, source = parser.parse_entity(f, future_features=future_features)
   logging.log(3, 'Source code of %s:\n\n%s\n', f, source)
+  # Parsed AST should contain future imports and one function def node.
 
   # In general, the output of inspect.getsource is inexact for lambdas because
   # it uses regex matching to adjust the exact location around the line number
@@ -362,9 +621,8 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
   entity_info = transformer.EntityInfo(
       source_code=source,
       source_file='<fragment>',
-      namespace=namespace,
-      arg_values=arg_values,
-      arg_types=arg_types)
+      future_features=future_features,
+      namespace=namespace)
   context = converter.EntityContext(namer, entity_info, program_ctx)
   try:
     node = node_to_graph(node, context)
@@ -379,14 +637,13 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
         targets=[gast.Name(new_name, gast.Store(), None)], value=node)
 
   elif do_rename:
-    # TODO(mdan): This somewhat duplicates the renaming logic in call_trees.py
     new_name = namer.function_name(f.__name__)
     node.name = new_name
   else:
     new_name = f.__name__
     assert node.name == new_name
 
-  return [node], new_name, namespace
+  return (node,), new_name, entity_info
 
 
 def node_to_graph(node, context):
@@ -406,10 +663,6 @@ def node_to_graph(node, context):
   unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
-  # Past this point, line numbers are no longer accurate so we ignore the
-  # source.
-  # TODO(mdan): Is it feasible to reconstruct intermediate source code?
-  context.info.source_code = None
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
@@ -423,8 +676,6 @@ def node_to_graph(node, context):
   if context.program.options.uses(converter.Feature.LISTS):
     node = converter.apply_(node, context, lists)
     node = converter.apply_(node, context, slices)
-  if context.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS):
-    node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)

@@ -391,7 +391,8 @@ void BFCAllocator::SplitChunk(BFCAllocator::ChunkHandle h, size_t num_bytes) {
 }
 
 void BFCAllocator::DeallocateRaw(void* ptr) {
-  VLOG(1) << "DeallocateRaw " << Name() << " " << RequestedSize(ptr);
+  VLOG(1) << "DeallocateRaw " << Name() << " "
+          << (ptr ? RequestedSize(ptr) : 0);
   DeallocateRawInternal(ptr);
   retry_helper_.NotifyDealloc();
 }
@@ -525,6 +526,7 @@ void BFCAllocator::FreeAndMaybeCoalesce(BFCAllocator::ChunkHandle h) {
 bool BFCAllocator::TracksAllocationSizes() { return true; }
 
 size_t BFCAllocator::RequestedSize(const void* ptr) {
+  CHECK(ptr);
   mutex_lock l(lock_);
   BFCAllocator::ChunkHandle h = region_manager_.get_handle(ptr);
   CHECK(h != kInvalidChunkHandle)

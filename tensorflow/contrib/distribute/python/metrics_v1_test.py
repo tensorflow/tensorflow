@@ -18,10 +18,10 @@ from __future__ import division
 from __future__ import print_function
 
 from absl.testing import parameterized
-
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import tpu_strategy
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
@@ -74,19 +74,22 @@ def _regression_dataset_fn():
 
 def all_combinations():
   return combinations.combine(
-      distribution=[combinations.default_strategy,
-                    combinations.one_device_strategy,
-                    combinations.mirrored_strategy_with_gpu_and_cpu,
-                    combinations.mirrored_strategy_with_two_gpus,
-                    combinations.core_mirrored_strategy_with_gpu_and_cpu,
-                    combinations.core_mirrored_strategy_with_two_gpus],
+      distribution=[
+          strategy_combinations.default_strategy,
+          strategy_combinations.one_device_strategy,
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.mirrored_strategy_with_two_gpus,
+      ],
       mode=["graph"])
 
 
 def tpu_combinations():
-  return combinations.combine(distribution=[combinations.tpu_strategy_one_step,
-                                            combinations.tpu_strategy],
-                              mode=["graph"])
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.tpu_strategy_one_step,
+          strategy_combinations.tpu_strategy
+      ],
+      mode=["graph"])
 
 
 # TODO(josh11b): Test metrics.recall_at_top_k, metrics.average_precision_at_k,

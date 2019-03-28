@@ -50,8 +50,9 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(func_, ctx, "other_arguments",
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx,
+                   CapturedFunction::Create(func_, ctx, "other_arguments",
+                                            /*params=*/{}, &captured_func));
 
     FilterIteratorPredicate filter_pred;
     if (short_circuit_indices_.empty()) {
@@ -127,26 +128,12 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
       Node* input_graph_node;
       TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input_, &input_graph_node));
-
-      DataTypeVector other_arguments_types;
-      other_arguments_types.reserve(captured_func_->captured_inputs().size());
       std::vector<Node*> other_arguments;
-      other_arguments.reserve(captured_func_->captured_inputs().size());
-      for (const Tensor& t : captured_func_->captured_inputs()) {
-        Node* node;
-        DatasetBase* input;
-        Status s = GetDatasetFromVariantTensor(t, &input);
-        if (s.ok()) {
-          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-        } else {
-          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-        }
-        other_arguments.emplace_back(node);
-        other_arguments_types.emplace_back(t.dtype());
-      }
+      DataTypeVector other_arguments_types;
+      TF_RETURN_IF_ERROR(captured_func_->AddToGraph(ctx, b, &other_arguments,
+                                                    &other_arguments_types));
       AttrValue f;
       b->BuildAttrValue(func_, &f);
       AttrValue other_arguments_types_attr;
@@ -213,10 +200,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
               stats_aggregator->AddScalar(
                   stats_utils::DroppedElementsScalarName(
                       dataset()->node_name()),
-                  static_cast<float>((dropped_elements_)));
-              // TODO(shivaniagrawal): multiple pipelines would collect
-              // aggregated number of dropped elements for all the pipelines,
-              // exploit tagged_context here.
+                  static_cast<float>(dropped_elements_), num_elements());
+
               stats_aggregator->IncrementCounter(dataset()->node_name(),
                                                  stats_utils::kDroppedElements,
                                                  static_cast<float>(1));
@@ -230,10 +215,8 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           filtered_elements_++;
           stats_aggregator->AddScalar(
               stats_utils::FilterdElementsScalarName(dataset()->node_name()),
-              static_cast<float>((filtered_elements_)));
-          // TODO(shivaniagrawal): multiple pipelines would collect aggregated
-          // number of filtered elements for all the pipelines, exploit
-          // tagged_context here.
+              static_cast<float>(filtered_elements_), num_elements());
+
           stats_aggregator->IncrementCounter(dataset()->node_name(),
                                              stats_utils::kFilteredElements,
                                              static_cast<float>(1));

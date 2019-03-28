@@ -973,6 +973,10 @@ tf_module {
     argspec: "args=[\'image\', \'format\', \'quality\', \'progressive\', \'optimize_size\', \'chroma_downsampling\', \'density_unit\', \'x_density\', \'y_density\', \'xmp_metadata\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'95\', \'False\', \'False\', \'True\', \'in\', \'300\', \'300\', \'\', \'None\'], "
   }
   member_method {
+    name: "EncodeJpegVariableQuality"
+    argspec: "args=[\'images\', \'quality\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "EncodePng"
     argspec: "args=[\'image\', \'compression\', \'name\'], varargs=None, keywords=None, defaults=[\'-1\', \'None\'], "
   }
@@ -2182,7 +2186,7 @@ tf_module {
   }
   member_method {
     name: "OptimizeDataset"
-    argspec: "args=[\'input_dataset\', \'optimizations\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'optimizations\', \'output_types\', \'output_shapes\', \'optimization_configs\', \'name\'], varargs=None, keywords=None, defaults=[\'[]\', \'None\'], "
   }
   member_method {
     name: "OptionalFromValue"
@@ -2443,6 +2447,10 @@ tf_module {
   member_method {
     name: "QuantizedConv2DAndRequantize"
     argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+  }
+  member_method {
+    name: "QuantizedConv2DPerChannel"
+    argspec: "args=[\'input\', \'filter\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
   }
   member_method {
     name: "QuantizedConv2DWithBias"
@@ -3689,6 +3697,14 @@ tf_module {
     argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "StatefulTruncatedNormal"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StatefulUniform"
+    argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "StatefulUniformFullInt"
     argspec: "args=[\'resource\', \'algorithm\', \'shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'uint64\'>\", \'None\'], "
   }
@@ -3731,6 +3747,14 @@ tf_module {
   member_method {
     name: "StaticRegexReplace"
     argspec: "args=[\'input\', \'pattern\', \'rewrite\', \'replace_global\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+  }
+  member_method {
+    name: "StatsAggregatorHandleV2"
+    argspec: "args=[\'container\', \'shared_name\', \'name\'], varargs=None, keywords=None, defaults=[\'\', \'\', \'None\'], "
+  }
+  member_method {
+    name: "StatsAggregatorSetSummaryWriter"
+    argspec: "args=[\'stats_aggregator\', \'summary\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "StopGradient"

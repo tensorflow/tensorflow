@@ -156,12 +156,13 @@ cc_library(
     ],
 )
 
+# TODO(b/122597976) Restore portability by avoiding tf_cc_test
 tf_cc_test(
     name = "file_reader_stage_test",
     srcs = ["file_reader_stage_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = ["tflite_not_portable_ios"],
+    tags = ["tflite_not_portable"],
     deps = [
         ":file_reader_stage",
         "@com_google_googletest//:gtest",
@@ -231,12 +232,13 @@ cc_library(
     ),
 )
 
+# TODO(b/122597976) Restore portability by avoiding tf_cc_test
 tf_cc_test(
     name = "eval_pipeline_test",
     srcs = ["eval_pipeline_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = ["tflite_not_portable_ios"],
+    tags = ["tflite_not_portable"],
     deps = [
         ":eval_pipeline",
         "//tensorflow/cc:cc_ops",
@@ -283,12 +285,13 @@ cc_library(
     ),
 )
 
+# TODO(b/122597976) Restore portability by avoiding tf_cc_test
 tf_cc_test(
     name = "eval_pipeline_builder_test",
     srcs = ["eval_pipeline_builder_test.cc"],
     linkopts = common_linkopts,
     linkstatic = 1,
-    tags = ["tflite_not_portable_ios"],
+    tags = ["tflite_not_portable"],
     deps = [
         ":eval_pipeline_builder",
         "//tensorflow/cc:cc_ops",

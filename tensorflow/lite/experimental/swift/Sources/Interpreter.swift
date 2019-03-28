@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import Foundation
-import TensorFlowLiteCAPI
+import TensorFlowLiteC
 
 /// A TensorFlow Lite interpreter that performs inference from a given model.
 public final class Interpreter {
@@ -54,8 +54,11 @@ public final class Interpreter {
       if options.isErrorLoggingEnabled {
         TFL_InterpreterOptionsSetErrorReporter(
           cOptions,
-          { (_, format, arguments) in
+          { (_, format, args) -> Void in
+            // Workaround for Swift optionality bug: https://bugs.swift.org/browse/SR-3429.
+            let optionalArgs: CVaListPointer? = args
             guard let cFormat = format,
+                  let arguments = optionalArgs,
                   let message = String(cFormat: cFormat, arguments: arguments)
             else {
               return

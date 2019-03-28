@@ -139,7 +139,7 @@ class FileIoTest(test.TestCase):
   def testGetMatchingFiles(self):
     dir_path = os.path.join(self._base_dir, "temp_dir")
     file_io.create_dir(dir_path)
-    files = ["file1.txt", "file2.txt", "file3.txt"]
+    files = ["file1.txt", "file2.txt", "file3.txt", "file*.txt"]
     for name in files:
       file_path = os.path.join(dir_path, name)
       file_io.FileIO(file_path, mode="w").write("testing")

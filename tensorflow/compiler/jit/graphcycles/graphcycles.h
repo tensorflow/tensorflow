@@ -117,8 +117,8 @@ class GraphCycles {
   // Expensive: should only be called from graphcycles_test.cc.
   bool CheckInvariants() const;
 
-  std::unordered_set<int32> Successors(int32 node);
-  std::unordered_set<int32> Predecessors(int32 node);
+  std::unordered_set<int32> Successors(int32 node) const;
+  std::unordered_set<int32> Predecessors(int32 node) const;
 
   // ----------------------------------------------------
   struct Rep;

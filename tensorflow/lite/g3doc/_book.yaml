@@ -39,6 +39,14 @@ upper_tabs:
       - title: "Python API"
         path: /lite/convert/python_api
 
+      - heading: "Convert a TensorFlow 2.0 model"
+      - title: "TensorFlow Lite converter and 2.0"
+        path: /lite/r2/convert/
+      - title: "Generate a concrete function"
+        path: /lite/r2/convert/concrete_function
+      - title: "Python API"
+        path: /lite/r2/convert/python_api
+
       - heading: "Inference"
       - title: "Overview"
         path: /lite/guide/inference

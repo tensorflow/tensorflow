@@ -172,10 +172,9 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       for (; index < end_index; ++index) {
         captured_args.push_back(inputs[index]);
       }
-      OP_REQUIRES_OK(
-          ctx, CapturedFunction::Create(
-                   funcs_[i], ctx, std::move(captured_args),
-                   /*use_inter_op_parallelism=*/true, &captured_funcs[i]));
+      OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                              funcs_[i], ctx, std::move(captured_args),
+                              /*params=*/{}, &captured_funcs[i]));
     }
     *output =
         new Dataset(ctx, input, funcs_, std::move(captured_funcs),
@@ -256,23 +255,13 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         num_captured_inputs += func->captured_inputs().size();
         other_arguments_lengths.push_back(func->captured_inputs().size());
       }
-      DataTypeVector other_arguments_types;
       std::vector<Node*> other_arguments;
+      DataTypeVector other_arguments_types;
       other_arguments_types.reserve(num_captured_inputs);
       other_arguments.reserve(num_captured_inputs);
-      for (const auto& func : captured_funcs_) {
-        for (const Tensor& t : func->captured_inputs()) {
-          Node* node;
-          DatasetBase* input;
-          Status s = GetDatasetFromVariantTensor(t, &input);
-          if (s.ok()) {
-            TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
-          } else {
-            TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
-          }
-          other_arguments.emplace_back(node);
-          other_arguments_types.emplace_back(t.dtype());
-        }
+      for (const auto& captured_func : captured_funcs_) {
+        TF_RETURN_IF_ERROR(captured_func->AddToGraph(ctx, b, &other_arguments,
+                                                     &other_arguments_types));
       }
 
       // Targuments
@@ -287,9 +276,6 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       // branches
       AttrValue branches_attr;
       b->BuildAttrValue(funcs_, &branches_attr);
-      for (const auto& func : funcs_) {
-        TF_RETURN_IF_ERROR(b->AddFunction(ctx, func.name()));
-      }
 
       // other_arguments_lengths
       AttrValue other_arguments_lengths_attr;

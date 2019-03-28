@@ -450,6 +450,13 @@ REGISTER_OP("EncodeJpeg")
     .SetShapeFn(EncodeImageShapeFn);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("EncodeJpegVariableQuality")
+    .Input("images: uint8")
+    .Input("quality: int32")
+    .Output("contents: string")
+    .SetShapeFn(EncodeImageShapeFn);
+
+// --------------------------------------------------------------------------
 REGISTER_OP("ExtractJpegShape")
     .Input("contents: string")
     .Output("image_shape: output_type")

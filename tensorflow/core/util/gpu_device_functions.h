@@ -30,6 +30,7 @@ limitations under the License.
 #include <complex>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #if GOOGLE_CUDA
+#include "cuda/include/cuComplex.h"
 #include "cuda/include/cuda.h"
 #endif
 #include "tensorflow/core/platform/types.h"
@@ -780,6 +781,66 @@ __device__ detail::ToTypeIfConvertible<U, T> GpuAtomicDiv(T* ptr, U value) {
   return detail::GpuAtomicCasHelper(ptr, [value](T a) { return a / value; });
 }
 
+#if GOOGLE_CUDA  
+// Operator overloads for complex numbers.
+
+__device__ inline std::complex<float> operator+(const std::complex<float>& a,
+                                                const std::complex<float>& b) {
+  auto result = cuCaddf(make_cuComplex(a.real(), a.imag()),
+                        make_cuComplex(b.real(), b.imag()));
+  return std::complex<float>(result.x, result.y);
+}
+
+__device__ inline std::complex<float> operator-(const std::complex<float>& a,
+                                                const std::complex<float>& b) {
+  auto result = cuCsubf(make_cuComplex(a.real(), a.imag()),
+                        make_cuComplex(b.real(), b.imag()));
+  return std::complex<float>(result.x, result.y);
+}
+
+__device__ inline std::complex<float> operator*(const std::complex<float>& a,
+                                                const std::complex<float>& b) {
+  auto result = cuCmulf(make_cuComplex(a.real(), a.imag()),
+                        make_cuComplex(b.real(), b.imag()));
+  return std::complex<float>(result.x, result.y);
+}
+
+__device__ inline std::complex<float> operator/(const std::complex<float>& a,
+                                                const std::complex<float>& b) {
+  auto result = cuCdivf(make_cuComplex(a.real(), a.imag()),
+                        make_cuComplex(b.real(), b.imag()));
+  return std::complex<float>(result.x, result.y);
+}
+
+__device__ inline std::complex<double> operator+(
+    const std::complex<double>& a, const std::complex<double>& b) {
+  auto result = cuCadd(make_cuDoubleComplex(a.real(), a.imag()),
+                       make_cuDoubleComplex(b.real(), b.imag()));
+  return std::complex<double>(result.x, result.y);
+}
+
+__device__ inline std::complex<double> operator-(
+    const std::complex<double>& a, const std::complex<double>& b) {
+  auto result = cuCsub(make_cuDoubleComplex(a.real(), a.imag()),
+                       make_cuDoubleComplex(b.real(), b.imag()));
+  return std::complex<double>(result.x, result.y);
+}
+
+__device__ inline std::complex<double> operator*(
+    const std::complex<double>& a, const std::complex<double>& b) {
+  auto result = cuCmul(make_cuDoubleComplex(a.real(), a.imag()),
+                       make_cuDoubleComplex(b.real(), b.imag()));
+  return std::complex<double>(result.x, result.y);
+}
+
+__device__ inline std::complex<double> operator/(
+    const std::complex<double>& a, const std::complex<double>& b) {
+  auto result = cuCdiv(make_cuDoubleComplex(a.real(), a.imag()),
+                       make_cuDoubleComplex(b.real(), b.imag()));
+  return std::complex<double>(result.x, result.y);
+}
+#endif // GOOGLE_CUDA
+  
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -30,9 +30,9 @@ Status HloInputOutputAliasConfig::SetUpAlias(const ShapeIndex& output_index,
   TF_RET_CHECK(kind == AliasKind::kUserAlias || kind == AliasKind::kSystemAlias)
       << kind;
   TF_RET_CHECK(ShapeUtil::IndexIsValid(alias_.shape(), output_index))
-      << absl::StrCat("Tring to set up alias at ", output_index.ToString(),
-                      " which is an invalid index for shape ",
-                      ShapeUtil::HumanString(alias_.shape()));
+      << "Trying to set up alias at " << output_index.ToString()
+      << " which is an invalid index for shape "
+      << ShapeUtil::HumanString(alias_.shape());
   TF_RET_CHECK(param_number >= 0) << param_number;
   TF_RET_CHECK(!OutputHasAlias(output_index))
       << "Output index " << output_index << " already has an alias setup";

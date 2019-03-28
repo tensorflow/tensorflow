@@ -447,12 +447,22 @@ void Graph::RemoveNode(Node* node) {
   DCHECK(!node->IsSink());
 
   // Remove any edges involving this node.
-  while (!node->in_edges_.empty()) {
-    RemoveEdge(*node->in_edges_.begin());
+  free_edges_.reserve(free_edges_.size() + node->in_edges_.size() +
+                      node->out_edges_.size());
+  for (const Edge* e : node->in_edges_) {
+    CHECK_EQ(e->src_->out_edges_.erase(e), size_t{1});
+    edges_[e->id_] = nullptr;
+    RecycleEdge(e);
+    --num_edges_;
   }
-  while (!node->out_edges_.empty()) {
-    RemoveEdge(*node->out_edges_.begin());
+  node->in_edges_.clear();
+  for (const Edge* e : node->out_edges_) {
+    CHECK_EQ(e->dst_->in_edges_.erase(e), size_t{1});
+    edges_[e->id_] = nullptr;
+    RecycleEdge(e);
+    --num_edges_;
   }
+  node->out_edges_.clear();
   ReleaseNode(node);
 }
 
@@ -496,7 +506,11 @@ void Graph::RemoveEdge(const Edge* e) {
   CHECK_GT(num_edges_, 0);
 
   edges_[e->id_] = nullptr;
+  RecycleEdge(e);
+  --num_edges_;
+}
 
+void Graph::RecycleEdge(const Edge* e) {
   Edge* del = const_cast<Edge*>(e);
   del->src_ = nullptr;
   del->dst_ = nullptr;
@@ -504,7 +518,6 @@ void Graph::RemoveEdge(const Edge* e) {
   del->src_output_ = kControlSlot - 1;
   del->dst_input_ = kControlSlot - 1;
   free_edges_.push_back(del);
-  --num_edges_;
 }
 
 const Edge* Graph::AddControlEdge(Node* source, Node* dest,
