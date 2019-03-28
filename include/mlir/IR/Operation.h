@@ -162,9 +162,9 @@ public:
 
   unsigned getNumOperands() { return getOperandStorage().size(); }
 
-  Value *getOperand(unsigned idx) { return getInstOperand(idx).get(); }
+  Value *getOperand(unsigned idx) { return getOpOperand(idx).get(); }
   void setOperand(unsigned idx, Value *value) {
-    return getInstOperand(idx).set(value);
+    return getOpOperand(idx).set(value);
   }
 
   // Support operand iteration.
@@ -177,11 +177,11 @@ public:
   /// Returns an iterator on the underlying Value's (Value *).
   operand_range getOperands();
 
-  MutableArrayRef<InstOperand> getInstOperands() {
-    return getOperandStorage().getInstOperands();
+  MutableArrayRef<OpOperand> getOpOperands() {
+    return getOperandStorage().getOperands();
   }
 
-  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
+  OpOperand &getOpOperand(unsigned idx) { return getOpOperands()[idx]; }
 
   //===--------------------------------------------------------------------===//
   // Results

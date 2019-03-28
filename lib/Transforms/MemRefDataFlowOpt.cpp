@@ -102,7 +102,7 @@ void MemRefDataFlowOpt::forwardStoreToLoad(LoadOp loadOp) {
   // all store ops.
   SmallVector<Operation *, 8> storeOps;
   unsigned minSurroundingLoops = getNestingDepth(*loadOpInst);
-  for (InstOperand &use : loadOp.getMemRef()->getUses()) {
+  for (auto &use : loadOp.getMemRef()->getUses()) {
     auto storeOp = use.getOwner()->dyn_cast<StoreOp>();
     if (!storeOp)
       continue;
@@ -242,7 +242,7 @@ void MemRefDataFlowOpt::runOnFunction() {
       // could still erase it if the call had no side-effects.
       continue;
     if (std::any_of(memref->use_begin(), memref->use_end(),
-                    [&](InstOperand &use) {
+                    [&](OpOperand &use) {
                       auto *ownerInst = use.getOwner();
                       return (!ownerInst->isa<StoreOp>() &&
                               !ownerInst->isa<DeallocOp>());

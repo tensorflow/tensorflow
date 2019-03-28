@@ -209,7 +209,7 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
     // side move it to the right side.
     if (operandConstants.size() == 2 && operandConstants[0] &&
         !operandConstants[1] && op->isCommutative()) {
-      std::swap(op->getInstOperand(0), op->getInstOperand(1));
+      std::swap(op->getOpOperand(0), op->getOpOperand(1));
       std::swap(operandConstants[0], operandConstants[1]);
     }
 

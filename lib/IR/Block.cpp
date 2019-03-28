@@ -336,9 +336,9 @@ void Region::cloneInto(Region *dest, BlockAndValueMapping &mapper,
   // Now that each of the blocks have been cloned, go through and remap the
   // operands of each of the operations.
   auto remapOperands = [&](Operation *op) {
-    for (auto &instOp : op->getInstOperands())
-      if (auto *mappedOp = mapper.lookupOrNull(instOp.get()))
-        instOp.set(mappedOp);
+    for (auto &operand : op->getOpOperands())
+      if (auto *mappedOp = mapper.lookupOrNull(operand.get()))
+        operand.set(mappedOp);
     for (auto &succOp : op->getBlockOperands())
       if (auto *mappedOp = mapper.lookupOrNull(succOp.get()))
         succOp.set(mappedOp);

@@ -33,7 +33,7 @@ class Operation;
 class Value;
 
 /// Operands contain a Value.
-using InstOperand = IROperandImpl<Value>;
+using OpOperand = IROperandImpl<Value>;
 
 /// This is the common base class for all SSA values in the MLIR system,
 /// representing a computable value that has a type and a set of users.
@@ -74,7 +74,7 @@ public:
   /// defines it.
   Operation *getDefiningOp();
 
-  using use_iterator = ValueUseIterator<InstOperand>;
+  using use_iterator = ValueUseIterator<OpOperand>;
   using use_range = llvm::iterator_range<use_iterator>;
 
   inline use_iterator use_begin();
@@ -100,7 +100,7 @@ inline raw_ostream &operator<<(raw_ostream &os, Value &value) {
 
 // Utility functions for iterating through Value uses.
 inline auto Value::use_begin() -> use_iterator {
-  return use_iterator((InstOperand *)getFirstUse());
+  return use_iterator((OpOperand *)getFirstUse());
 }
 
 inline auto Value::use_end() -> use_iterator { return use_iterator(nullptr); }

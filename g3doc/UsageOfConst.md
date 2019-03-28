@@ -144,16 +144,16 @@ const.
   /// Returns a const iterator on the underlying Value's (Value *).
   llvm::iterator_range<const_operand_iterator> getOperands() const;
 
-  ArrayRef<InstOperand> getInstOperands() const {
-    return getOperandStorage().getInstOperands();
+  ArrayRef<OpOperand> getOpOperands() const {
+    return getOperandStorage().getOperands();
   }
-  MutableArrayRef<InstOperand> getInstOperands() {
-    return getOperandStorage().getInstOperands();
+  MutableArrayRef<OpOperand> getOpOperands() {
+    return getOperandStorage().getOperands();
   }
 
-  InstOperand &getInstOperand(unsigned idx) { return getInstOperands()[idx]; }
-  const InstOperand &getInstOperand(unsigned idx) const {
-    return getInstOperands()[idx];
+  OpOperand &getOpOperand(unsigned idx) { return getOpOperands()[idx]; }
+  const OpOperand &getOpOperand(unsigned idx) const {
+    return getOpOperands()[idx];
   }
 
 ```

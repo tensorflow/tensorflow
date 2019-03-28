@@ -65,12 +65,12 @@ unsigned OpResult::getResultNumber() {
 }
 
 //===----------------------------------------------------------------------===//
-// InstOperand
+// OpOperand
 //===----------------------------------------------------------------------===//
 
 /// Return which operand this is in the operand list.
-template <> unsigned InstOperand::getOperandNumber() {
-  return this - &getOwner()->getInstOperands()[0];
+template <> unsigned OpOperand::getOperandNumber() {
+  return this - &getOwner()->getOpOperands()[0];
 }
 
 //===----------------------------------------------------------------------===//
@@ -154,7 +154,7 @@ Operation *Operation::create(Location location, OperationName name,
   for (unsigned i = 0, e = resultTypes.size(); i != e; ++i)
     new (&instResults[i]) OpResult(resultTypes[i], op);
 
-  auto InstOperands = op->getInstOperands();
+  auto opOperands = op->getOpOperands();
 
   // Initialize normal operands.
   unsigned operandIt = 0, operandE = operands.size();
@@ -165,7 +165,7 @@ Operation *Operation::create(Location location, OperationName name,
     // separately below.
     if (!operands[operandIt])
       break;
-    new (&InstOperands[nextOperand++]) InstOperand(op, operands[operandIt]);
+    new (&opOperands[nextOperand++]) OpOperand(op, operands[operandIt]);
   }
 
   unsigned currentSuccNum = 0;
@@ -203,7 +203,7 @@ Operation *Operation::create(Location location, OperationName name,
       ++currentSuccNum;
       continue;
     }
-    new (&InstOperands[nextOperand++]) InstOperand(op, operands[operandIt]);
+    new (&opOperands[nextOperand++]) OpOperand(op, operands[operandIt]);
     ++(*succOperandCountIt);
   }
 
@@ -449,7 +449,7 @@ void Operation::moveBefore(Block *block,
 /// step in breaking cyclic dependences between references when they are to
 /// be deleted.
 void Operation::dropAllReferences() {
-  for (auto &op : getInstOperands())
+  for (auto &op : getOpOperands())
     op.drop();
 
   for (auto &region : getRegions())
@@ -578,11 +578,11 @@ Operation *Operation::clone(BlockAndValueMapping &mapper,
     // We add the operands separated by nullptr's for each successor.
     unsigned firstSuccOperand =
         getNumSuccessors() ? getSuccessorOperandIndex(0) : getNumOperands();
-    auto InstOperands = getInstOperands();
+    auto opOperands = getOpOperands();
 
     unsigned i = 0;
     for (; i != firstSuccOperand; ++i)
-      operands.push_back(mapper.lookupOrDefault(InstOperands[i].get()));
+      operands.push_back(mapper.lookupOrDefault(opOperands[i].get()));
 
     successors.reserve(getNumSuccessors());
     for (unsigned succ = 0, e = getNumSuccessors(); succ != e; ++succ) {

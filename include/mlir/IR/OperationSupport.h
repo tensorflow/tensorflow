@@ -296,7 +296,7 @@ namespace detail {
 /// A utility class holding the information necessary to dynamically resize
 /// operands.
 struct ResizableStorage {
-  ResizableStorage(InstOperand *opBegin, unsigned numOperands)
+  ResizableStorage(OpOperand *opBegin, unsigned numOperands)
       : firstOpAndIsDynamic(opBegin, false), capacity(numOperands) {}
 
   ~ResizableStorage() { cleanupStorage(); }
@@ -309,17 +309,14 @@ struct ResizableStorage {
   }
 
   /// Sets the storage pointer to a new dynamically allocated block.
-  void setDynamicStorage(InstOperand *opBegin) {
+  void setDynamicStorage(OpOperand *opBegin) {
     /// Cleanup the old storage if necessary.
     cleanupStorage();
     firstOpAndIsDynamic.setPointerAndInt(opBegin, true);
   }
 
   /// Returns the current storage pointer.
-  InstOperand *getPointer() { return firstOpAndIsDynamic.getPointer(); }
-  const InstOperand *getPointer() const {
-    return firstOpAndIsDynamic.getPointer();
-  }
+  OpOperand *getPointer() { return firstOpAndIsDynamic.getPointer(); }
 
   /// Returns if the current storage of operands is in the trailing objects is
   /// in a dynamically allocated memory block.
@@ -327,7 +324,7 @@ struct ResizableStorage {
 
   /// A pointer to the first operand element. This is either to the trailing
   /// objects storage, or a dynamically allocated block of memory.
-  llvm::PointerIntPair<InstOperand *, 1, bool> firstOpAndIsDynamic;
+  llvm::PointerIntPair<OpOperand *, 1, bool> firstOpAndIsDynamic;
 
   // The maximum number of operands that can be currently held by the storage.
   unsigned capacity;
@@ -340,21 +337,21 @@ struct ResizableStorage {
 /// is optional.
 class OperandStorage final
     : private llvm::TrailingObjects<OperandStorage, ResizableStorage,
-                                    InstOperand> {
+                                    OpOperand> {
 public:
   OperandStorage(unsigned numOperands, bool resizable)
       : numOperands(numOperands), resizable(resizable) {
     // Initialize the resizable storage.
     if (resizable) {
       new (&getResizableStorage())
-          ResizableStorage(getTrailingObjects<InstOperand>(), numOperands);
+          ResizableStorage(getTrailingObjects<OpOperand>(), numOperands);
     }
   }
 
   ~OperandStorage() {
     // Manually destruct the operands.
-    for (auto &operand : getInstOperands())
-      operand.~InstOperand();
+    for (auto &operand : getOperands())
+      operand.~OpOperand();
 
     // If the storage is resizable then destruct the utility.
     if (resizable)
@@ -369,10 +366,7 @@ public:
   void eraseOperand(unsigned index);
 
   /// Get the operation operands held by the storage.
-  ArrayRef<InstOperand> getInstOperands() const {
-    return {getRawOperands(), size()};
-  }
-  MutableArrayRef<InstOperand> getInstOperands() {
+  MutableArrayRef<OpOperand> getOperands() {
     return {getRawOperands(), size()};
   }
 
@@ -381,8 +375,8 @@ public:
 
   /// Returns the additional size necessary for allocating this object.
   static size_t additionalAllocSize(unsigned numOperands, bool resizable) {
-    return additionalSizeToAlloc<ResizableStorage, InstOperand>(
-        resizable ? 1 : 0, numOperands);
+    return additionalSizeToAlloc<ResizableStorage, OpOperand>(resizable ? 1 : 0,
+                                                              numOperands);
   }
 
   /// Returns if this storage is resizable.
@@ -393,21 +387,13 @@ private:
   void clear() { numOperands = 0; }
 
   /// Returns the current pointer for the raw operands array.
-  InstOperand *getRawOperands() {
+  OpOperand *getRawOperands() {
     return resizable ? getResizableStorage().getPointer()
-                     : getTrailingObjects<InstOperand>();
-  }
-  const InstOperand *getRawOperands() const {
-    return resizable ? getResizableStorage().getPointer()
-                     : getTrailingObjects<InstOperand>();
+                     : getTrailingObjects<OpOperand>();
   }
 
   /// Returns the resizable operand utility class.
   ResizableStorage &getResizableStorage() {
-    assert(resizable);
-    return *getTrailingObjects<ResizableStorage>();
-  }
-  const ResizableStorage &getResizableStorage() const {
     assert(resizable);
     return *getTrailingObjects<ResizableStorage>();
   }
@@ -422,7 +408,7 @@ private:
   bool resizable : 1;
 
   // This stuff is used by the TrailingObjects template.
-  friend llvm::TrailingObjects<OperandStorage, ResizableStorage, InstOperand>;
+  friend llvm::TrailingObjects<OperandStorage, ResizableStorage, OpOperand>;
   size_t numTrailingObjects(OverloadToken<ResizableStorage>) const {
     return resizable ? 1 : 0;
   }

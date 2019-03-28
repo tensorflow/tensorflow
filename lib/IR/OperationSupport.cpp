@@ -74,17 +74,17 @@ void detail::OperandStorage::setOperands(Operation *owner,
   // If the number of operands is less than or equal to the current amount, we
   // can just update in place.
   if (operands.size() <= numOperands) {
-    auto instOperands = getInstOperands();
+    auto opOperands = getOperands();
 
     // If the number of new operands is less than the current count, then remove
     // any extra operands.
     for (unsigned i = operands.size(); i != numOperands; ++i)
-      instOperands[i].~InstOperand();
+      opOperands[i].~OpOperand();
 
     // Set the operands in place.
     numOperands = operands.size();
     for (unsigned i = 0; i != numOperands; ++i)
-      instOperands[i].set(operands[i]);
+      opOperands[i].set(operands[i]);
     return;
   }
 
@@ -97,23 +97,23 @@ void detail::OperandStorage::setOperands(Operation *owner,
     grow(resizeUtil, operands.size());
 
   // Set the operands.
-  InstOperand *opBegin = getRawOperands();
+  OpOperand *opBegin = getRawOperands();
   for (unsigned i = 0; i != numOperands; ++i)
     opBegin[i].set(operands[i]);
   for (unsigned e = operands.size(); numOperands != e; ++numOperands)
-    new (&opBegin[numOperands]) InstOperand(owner, operands[numOperands]);
+    new (&opBegin[numOperands]) OpOperand(owner, operands[numOperands]);
 }
 
 /// Erase an operand held by the storage.
 void detail::OperandStorage::eraseOperand(unsigned index) {
   assert(index < size());
-  auto Operands = getInstOperands();
+  auto operands = getOperands();
   --numOperands;
 
   // Shift all operands down by 1 if the operand to remove is not at the end.
   if (index != numOperands)
-    std::rotate(&Operands[index], &Operands[index + 1], &Operands[numOperands]);
-  Operands[numOperands].~InstOperand();
+    std::rotate(&operands[index], &operands[index + 1], &operands[numOperands]);
+  operands[numOperands].~OpOperand();
 }
 
 /// Grow the internal operand storage.
@@ -122,16 +122,16 @@ void detail::OperandStorage::grow(ResizableStorage &resizeUtil,
   // Allocate a new storage array.
   resizeUtil.capacity =
       std::max(size_t(llvm::NextPowerOf2(resizeUtil.capacity + 2)), minSize);
-  InstOperand *newStorage = static_cast<InstOperand *>(
-      llvm::safe_malloc(resizeUtil.capacity * sizeof(InstOperand)));
+  OpOperand *newStorage = static_cast<OpOperand *>(
+      llvm::safe_malloc(resizeUtil.capacity * sizeof(OpOperand)));
 
   // Move the current operands to the new storage.
-  auto operands = getInstOperands();
+  auto operands = getOperands();
   std::uninitialized_copy(std::make_move_iterator(operands.begin()),
                           std::make_move_iterator(operands.end()), newStorage);
 
   // Destroy the original operands and update the resizable storage pointer.
   for (auto &operand : operands)
-    operand.~InstOperand();
+    operand.~OpOperand();
   resizeUtil.setDynamicStorage(newStorage);
 }
