@@ -97,6 +97,8 @@ _FLAG_NAME_ENABLE = 'enable'
 _FLAG_NAME_TRACE_MODE = 'trace_mode'
 _FLAG_NAME_USE_COMPACT_TRACE = 'compact_trace'
 _FLAG_NAME_TRACE_SCALAR_OPS = 'trace_scalar'
+_FLAG_NAME_TRACE_BEFORE_OPS = 'trace_before_included_ops'
+_FLAG_NAME_TRACE_AFTER_OPS = 'trace_after_included_ops'
 _FLAG_NAME_SUBMODE = 'submode'
 _FLAG_NAME_INCLUDE_LESS_INTERESTING_OPS = 'include_less_interesting_ops'
 _FLAG_NAME_EXCLUDED_OPNAMES = 'excluded_opnames'
@@ -278,6 +280,8 @@ class TensorTracer(object):
     valid_flag_names = [_FLAG_NAME_ENABLE, _FLAG_NAME_TRACE_MODE,
                         _FLAG_NAME_USE_COMPACT_TRACE,
                         _FLAG_NAME_TRACE_SCALAR_OPS,
+                        _FLAG_NAME_TRACE_BEFORE_OPS,
+                        _FLAG_NAME_TRACE_AFTER_OPS,
                         _FLAG_NAME_SUBMODE,
                         _FLAG_NAME_EXCLUDED_OPNAMES,
                         _FLAG_NAME_EXCLUDED_OPTYPES,
@@ -332,11 +336,34 @@ class TensorTracer(object):
     return result
 
   @staticmethod
+  def flag_value_as_int(wanted_flag_name, default_value):
+    """Returns the int value of a TensorTracer flag.
+
+    Args:
+      wanted_flag_name: the name of the flag we are looking for.
+      default_value: the default value for the flag, if not provided.
+    Returns:
+      the value of the flag.
+    Raises:
+      RuntimeError: If supposedly deadcode is reached.
+    """
+    flag_int_value = default_value
+    found, flag_value = TensorTracer.get_flag_value(wanted_flag_name)
+
+    if found:
+      try:
+        flag_int_value = int(flag_value)
+      except ValueError:
+        logging.warning('Cannot convert %s to int for flag %s' % (
+            flag_int_value, wanted_flag_name))
+    return flag_int_value
+
+  @staticmethod
   def get_flag_value(wanted_flag_name):
     """Returns the value of a TensorTracer flags.
 
     Args:
-      wanted_flag_name: the name the the flag we are looking for.
+      wanted_flag_name: the name of the flag we are looking for.
 
     Returns:
       A pair where the first element indicates if the flag is
@@ -652,8 +679,25 @@ class TensorTracer(object):
     self._num_replicas_per_host = None
     self._num_hosts = None
     self._replica_id = None
+    self._included_op_full_names = set()
     self._trace_scalar_ops = TensorTracer._is_flag_on(
         _FLAG_NAME_TRACE_SCALAR_OPS)
+
+    # _trace_ops_before_included and _trace_ops_after_included denotes to depth
+    # of tracing relative to the ops given in --included_opnames or
+    # --included_optypes
+    # For example, in the below graph
+    #                op1 --> op2 --> op3 --> op4 --> op5
+    # If --included_opnames=op3 then only op3 will be traced.
+    # If also --trace_before_included_ops=2 (_trace_ops_before_included), then
+    # op1 and op2 will be traced as they are at most 2 hops apart from an
+    # included op. Similarly, if --trace_after_included_ops=2, then op4 and op5
+    # will also be traced.
+    self._trace_ops_before_included = TensorTracer.flag_value_as_int(
+        _FLAG_NAME_TRACE_BEFORE_OPS, 0)
+    self._trace_ops_after_included = TensorTracer.flag_value_as_int(
+        _FLAG_NAME_TRACE_AFTER_OPS, 0)
+
     _, self._graph_dump_path = TensorTracer.get_flag_value(
         _FLAG_DUMP_BEFORE_AFTER_GRAPHS)
 
@@ -742,13 +786,47 @@ class TensorTracer(object):
         _FLAG_NAME_INCLUDED_OPTYPES)
 
   def _is_user_included_op(self, op):
-    for opname_re in self._included_opname_re_list:
-      if opname_re.match(op.name):
+    """Checks whether the op is included in the tensor tracer flags.
+
+    Args:
+      op: tf Operation
+    Returns:
+      True, if the op is included.
+      An op is included if:
+      - Its op name is given in included_opnames
+      - Its op type is given in included_optypes
+      - The op is at most _trace_ops_before_included hops before an included op
+      - The op is at most _trace_ops_after_included hops after an included op
+    """
+
+    def _is_op_or_any_neighbor_included(op, check_before=0, check_after=0):
+      """Helper function to check if op is included or not."""
+      if op.name in self._included_op_full_names:
         return True
-    for optype_re in self._included_optype_re_list:
-      if optype_re.match(op.type):
-        return True
-    return False
+      for opname_re in self._included_opname_re_list:
+        if opname_re.match(op.name):
+          self._included_op_full_names.add(op.name)
+          return True
+
+      if check_after > 0:
+        for out_tensor in op.outputs:
+          for consumer in out_tensor.consumers():
+            if _is_op_or_any_neighbor_included(consumer, check_after - 1, 0):
+              self._included_op_full_names.add(op.name)
+              return True
+      if check_before > 0:
+        for input_tensor in op.inputs:
+          if _is_op_or_any_neighbor_included(input_tensor.op,
+                                             0,
+                                             check_before - 1):
+            self._included_op_full_names.add(op.name)
+            return True
+      return False
+    # check_after and check_before are swapped below, as below operation
+    # checks the distance from an arbitrary op to included ops.
+    return _is_op_or_any_neighbor_included(op,
+                                           self._trace_ops_after_included,
+                                           self._trace_ops_before_included)
 
   def _is_user_excluded_op(self, op):
     for opname_re in self._excluded_opname_re_list:
