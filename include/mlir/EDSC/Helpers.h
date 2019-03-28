@@ -121,7 +121,7 @@ template <typename Load, typename Store> struct TemplatedIndexedValue {
 
   TemplatedIndexedValue(const TemplatedIndexedValue &rhs) = default;
 
-  ValueHandle operator()() { return ValueHandle(*this); }
+  TemplatedIndexedValue operator()() { return *this; }
   /// Returns a new `TemplatedIndexedValue`.
   TemplatedIndexedValue operator()(ValueHandle index) {
     TemplatedIndexedValue res(base);
