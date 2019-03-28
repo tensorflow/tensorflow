@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -139,6 +140,36 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
   return Status::OK();
 }
 
+Status AddShuffleNode(MutableGraphView* graph, const NodeDef& add_before,
+                      const string& buffer_node) {
+  NodeDef* add_after = graph->GetNode(add_before.input(0));
+
+  NodeDef new_node;
+  new_node.set_op(kShuffleDatasetOpName);
+  graph_utils::SetUniqueGraphNodeName(kShuffleDatasetOpName, graph->graph(),
+                                      &new_node);
+
+  NodeDef* seed = graph_utils::AddScalarConstNode<int64>(1, graph);
+  NodeDef* seed2 = graph_utils::AddScalarConstNode<int64>(2, graph);
+  AttrValue reshuffle;
+  reshuffle.set_b(false);
+
+  new_node.add_input(add_before.input(0));
+  new_node.add_input(buffer_node);
+  new_node.add_input(seed->name());
+  new_node.add_input(seed2->name());
+
+  graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
+  graph_utils::CopyAttribute("output_types", *add_after, &new_node);
+  (*new_node.mutable_attr())["reshuffle_each_iteration"] = reshuffle;
+
+  NodeDef* new_node_graph = graph->AddNode(std::move(new_node));
+
+  TF_RETURN_IF_ERROR(
+      graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
+  return Status::OK();
+}
+
 bool ReaderOpInFunction(const NodeDef& node,
                         const FunctionLibraryDefinition& flib) {
   const FunctionDef* func = flib.Find(node.attr().at("f").func().name());
@@ -158,18 +189,40 @@ bool ReaderOpInFunction(const NodeDef& node,
 }
 
 Status RemoveShuffleDataset(MutableGraphView* graph, const NodeDef& node,
-                            absl::flat_hash_set<string>* nodes_to_delete) {
+                            absl::flat_hash_set<string>* nodes_to_delete,
+                            bool* shuffle_removed,
+                            string* buffer_size_node_name) {
   if (node.op() == kShuffleDatasetOpName) {
+    *shuffle_removed = true;
+    *buffer_size_node_name = node.input(1);
     TF_RETURN_IF_ERROR(graph->UpdateFanouts(node.name(), node.input(0)));
     nodes_to_delete->insert(node.name());
   }
 
   for (const auto& fanin : graph->GetFanins(node, true)) {
-    TF_RETURN_IF_ERROR(
-        RemoveShuffleDataset(graph, *fanin.node, nodes_to_delete));
+    TF_RETURN_IF_ERROR(RemoveShuffleDataset(graph, *fanin.node, nodes_to_delete,
+                                            shuffle_removed,
+                                            buffer_size_node_name));
   }
 
   // TODO(frankchn): Traverse functions too.
+  return Status::OK();
+}
+
+Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
+                                absl::flat_hash_set<string>* nodes_to_delete,
+                                int64 num_workers, int64 index) {
+  bool shuffle_removed = false;
+  string buffer_size_node_name = "";
+
+  TF_RETURN_IF_ERROR(AddShardNode(graph, node, num_workers, index));
+  TF_RETURN_IF_ERROR(RemoveShuffleDataset(
+      graph, node, nodes_to_delete, &shuffle_removed, &buffer_size_node_name));
+
+  if (shuffle_removed) {
+    TF_RETURN_IF_ERROR(AddShuffleNode(graph, node, buffer_size_node_name));
+  }
+
   return Status::OK();
 }
 
@@ -201,15 +254,15 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
   // function in flat_map.
   if (IsDatasetNodeOfType(node, kFuncDatasetOps) &&
       ReaderOpInFunction(node, *flib)) {
-    TF_RETURN_IF_ERROR(AddShardNode(graph, node, num_workers, index));
-    TF_RETURN_IF_ERROR(RemoveShuffleDataset(graph, node, nodes_to_delete));
+    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
+                                                num_workers, index));
     return Status::OK();
   }
 
   if (IsDatasetNodeOfType(node, kReaderDatasetOps)) {
     // We reached a reader dataset directly and we try to shard input 0.
-    TF_RETURN_IF_ERROR(AddShardNode(graph, node, num_workers, index));
-    TF_RETURN_IF_ERROR(RemoveShuffleDataset(graph, node, nodes_to_delete));
+    TF_RETURN_IF_ERROR(ProcessDatasetSourceNode(graph, node, nodes_to_delete,
+                                                num_workers, index));
     return Status::OK();
   }
 

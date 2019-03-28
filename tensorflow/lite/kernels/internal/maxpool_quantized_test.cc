@@ -57,7 +57,7 @@ void RunOneMaxPoolTest(const PoolParams& params,
 // test function.
 void CreateDataAndRunMaxPool(bool padding_same) {
   const int batch = UniformRandomInt(1, 20);
-  const int input_depth = UniformRandomInt(32, 128);
+  const int input_depth = UniformRandomInt(32, 700);
   const int output_depth = input_depth;
   const int input_width = UniformRandomInt(64, 128);
   const int input_height = UniformRandomInt(64, 128);

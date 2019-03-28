@@ -624,7 +624,7 @@ class ShapeUtil {
   // continue, or false otherwise.
   //
   // visitor_function must be a callable of type
-  // StatusOr<bool>(Span<int64>) or compatible.
+  // StatusOr<bool>(ShapeIndex) or compatible.
   template <typename FnType>
   static Status ForEachIndexWithStatus(const Shape& shape,
                                        absl::Span<const int64> base,

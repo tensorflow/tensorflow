@@ -846,16 +846,16 @@ TEST(RawApiTest, CompileWithXlaReturnShapes) {
 
   xla::ProgramShape xla_program_shape =
       XlaCompiledProgramShape(xla_computation, xla::ProgramShape(*shapes));
-  EXPECT_TRUE(xla::LayoutUtil::Equal(
+  EXPECT_TRUE(xla::Layout::Equal().MinorToMajorOnly()(
       xla::ShapeUtil::GetSubshape(program_shape.parameters(0), {0}).layout(),
       xla::ShapeUtil::GetSubshape(xla_program_shape.parameters(0), {0})
           .layout()));
-  EXPECT_TRUE(xla::LayoutUtil::Equal(
+  EXPECT_TRUE(xla::Layout::Equal().MinorToMajorOnly()(
       xla::ShapeUtil::GetSubshape(program_shape.parameters(0), {1}).layout(),
       xla::ShapeUtil::GetSubshape(xla_program_shape.parameters(0), {1})
           .layout()));
-  EXPECT_TRUE(xla::LayoutUtil::Equal(program_shape.result().layout(),
-                                     xla_program_shape.result().layout()));
+  EXPECT_TRUE(xla::Layout::Equal().MinorToMajorOnly()(
+      program_shape.result().layout(), xla_program_shape.result().layout()));
 }
 
 TEST(RawApiTest, DotGeneralWithLayoutTest) {

@@ -202,9 +202,22 @@ TEST(QuantizeOpTest, Int8Uint8LargerScale) {
       ElementsAreArray({128, 128, 129, 129, 130, 130, 131, 131, 132, 132}));
 }
 
+// input scale 0.500000, output scale 0.500000, input zeropoint 127, output
+// zeropoint -1
+TEST(QuantizeOpTest, UInt8Int8SameScale128Diff) {
+  QuantizeOpModel m({TensorType_UINT8, {1, 1, 2, 5}, -127, 128},
+                    {TensorType_INT8, {1, 1, 2, 5}, -127, 128});
+
+  // Input will quantized to {128, 129, 130, 131, 132, 133, 134, 135, 136, 137}.
+  m.SetInputAndQuantize<uint8_t>({1, 2, 3, 4, 5, 6, 7, 8, 9, 10});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, 1, 2, 3, 4, 5, 6, 7, 8, 9}));
+}
+
 // input scale 0.500000, output scale 0.500000, input zeropoint 0, output
 // zeropoint -1
-TEST(QuantizeOpTest, Uint8Int8SameScale) {
+TEST(QuantizeOpTest, Uint8Int8SameScaleArbitraryDiff) {
   QuantizeOpModel m({TensorType_UINT8, {1, 1, 2, 5}, 0, 127.5},
                     {TensorType_INT8, {1, 1, 2, 5}, -63.5, 64});
 

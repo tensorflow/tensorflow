@@ -575,7 +575,7 @@ Status IrEmitterUnnested::HandleTriangularSolve(HloInstruction* hlo) {
 
 Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   HloInstruction* root = fusion->fused_expression_root();
-  if (HloInstruction::FusionKind::kInput == fusion->fusion_kind()) {
+  if (fusion->IsInputFusion()) {
     switch (root->opcode()) {
       case HloOpcode::kScatter: {
         std::vector<std::unique_ptr<Thunk>> thunks;
@@ -3412,10 +3412,8 @@ std::vector<int64> FilterInputsForShmemTranspose(const HloInstruction* fusion,
 
 bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
-  CHECK(opcode == HloOpcode::kFusion || opcode == HloOpcode::kCopy);
-  CHECK(opcode != HloOpcode::kFusion ||
-        hlo->fusion_kind() == HloInstruction::FusionKind::kLoop)
-      << "Only loop fusions are supported.";
+
+  CHECK(hlo->IsLoopFusion() || opcode == HloOpcode::kCopy);
 
   const Shape& output_shape = hlo->IsMultiOutputFusion()
                                   ? ShapeUtil::GetSubshape(hlo->shape(), {0})

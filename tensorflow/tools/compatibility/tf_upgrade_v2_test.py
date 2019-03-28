@@ -1549,12 +1549,12 @@ def _log_prob(self, x):
 
   def testXlaExperimental(self):
     text = "tf.xla.experimental.jit_scope(0)"
-    expected_text = "tf.compat.v1.xla.experimental.jit_scope(0)"
+    expected_text = "tf.xla.experimental.jit_scope(0)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 
     text = "tf.xla.experimental.compile(0)"
-    expected_text = "tf.compat.v1.xla.experimental.compile(0)"
+    expected_text = "tf.xla.experimental.compile(0)"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
 

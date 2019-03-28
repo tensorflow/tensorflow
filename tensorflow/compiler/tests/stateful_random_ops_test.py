@@ -53,6 +53,9 @@ def xla_device_name():
 class StatefulRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateful random-number generator operators."""
 
+  _ints = [dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64]
+  _floats = [dtypes.bfloat16, dtypes.float32]
+
   @test_util.run_v2_only
   def testSimple(self):
     """A simple test.
@@ -147,7 +150,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
           maxval = 10000000
         return gen.uniform(shape=[2], dtype=dtype, maxval=maxval)
 
-      for dtype in {dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64}:
+      for dtype in self._ints + self._floats:
         self._testRngIsNotConstant(rng, dtype)
 
   @test_util.run_v2_only
@@ -157,27 +160,27 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
       def rng(dtype):
         return gen.normal(shape=[2], dtype=dtype)
 
-      for dtype in {dtypes.float32}:
+      for dtype in self._floats:
         self._testRngIsNotConstant(rng, dtype)
 
   @test_util.run_v2_only
-  def testUniformIntIsInRange(self):
+  def testUniformIsInRange(self):
     minval = 2
     maxval = 33
     size = 1000
     with ops.device(xla_device_name()):
-      gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
-      for dtype in {dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64}:
+      for dtype in self._ints + self._floats:
+        gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
         x = gen.uniform(
             shape=[size], dtype=dtype, minval=minval, maxval=maxval).numpy()
         self.assertTrue(np.all(x >= minval))
-        self.assertTrue(np.all(x < maxval))
+        self.assertTrue(np.all(x <= maxval))
 
   @test_util.run_v2_only
   def testNormalIsFinite(self):
     with ops.device(xla_device_name()):
       gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
-      for dtype in {dtypes.float32}:
+      for dtype in self._floats:
         x = gen.normal(shape=[10000], dtype=dtype).numpy()
         self.assertTrue(np.all(np.isfinite(x)))
 
@@ -187,7 +190,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
     with ops.device(xla_device_name()):
       n = 1000
       seed = 12
-      for dtype in {dtypes.int32, dtypes.uint32, dtypes.int64, dtypes.uint64}:
+      for dtype in self._ints + self._floats:
         gen = random.Generator(seed=seed, algorithm=random.RNG_ALG_THREEFRY)
         maxval = 1
         if dtype.is_integer:
@@ -208,7 +211,7 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
     """Use Anderson-Darling test to test distribution appears normal."""
     with ops.device(xla_device_name()):
       n = 1000
-      for dtype in {dtypes.float32}:
+      for dtype in self._floats:
         gen = random.Generator(seed=1234, algorithm=random.RNG_ALG_THREEFRY)
         x = gen.normal(shape=[n], dtype=dtype).numpy()
         # The constant 2.492 is the 5% critical value for the Anderson-Darling
@@ -216,6 +219,15 @@ class StatefulRandomOpsTest(xla_test.XLATestCase):
         # so to avoid flakiness the seed is fixed.
         self.assertLess(
             random_test_util.anderson_darling(x.astype(float)), 2.492)
+
+  @test_util.run_v2_only
+  def testTruncatedNormal(self):
+    for dtype in self._floats:
+      gen = random.Generator(seed=123)
+      n = 10000000
+      y = gen.truncated_normal(shape=[n], dtype=dtype).numpy()
+      random_test_util.test_truncated_normal(
+          self.assertEqual, self.assertAllClose, dtype, n, y)
 
   @test_util.run_v2_only
   def testErrors(self):

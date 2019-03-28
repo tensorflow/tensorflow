@@ -2427,7 +2427,7 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
                 ElementsAre(0, 0, 0.3, 0.4, 0, 0, 0.3, 0.4));
     EXPECT_THAT(GetSpanForData<float>(output_data[1]), ElementsAre(0.7, 0.4));
     EXPECT_THAT(GetSpanForData<float>(output_data[2]), ElementsAre(1, 0));
-    EXPECT_THAT(GetSpanForData<float>(output_data[3]), ElementsAre(2));
+    EXPECT_THAT(GetSpanForData<int32>(output_data[3]), ElementsAre(2));
   }
 }
 

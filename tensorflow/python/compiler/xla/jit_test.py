@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import function
@@ -45,8 +47,7 @@ def enable_jit_nonstateful(node_def):
     raise ValueError("Unregistered op being created: %s" % node_def)
 
 
-@test_util.run_v1_only("b/128927195")
-class JITTest(test.TestCase):
+class JITTest(test.TestCase, parameterized.TestCase):
 
   def compute(self, use_jit, compute_fn):
     random_seed.set_random_seed(1234)
@@ -56,6 +57,16 @@ class JITTest(test.TestCase):
       sess.run(variables.global_variables_initializer())
       return (r, sess.run(r))
 
+  @test_util.run_v2_only
+  def testJITInEager(self):
+
+    with self.assertRaisesRegexp(
+        RuntimeError, "xla.experimental.jit_scope is not supported when eager "
+        "execution is enabled. Try use it inside tf.function."):
+      with jit.experimental_jit_scope(True):
+        constant_op.constant(1)
+
+  @test_util.build_as_function_and_v1_graph
   def testJITCreateOpsLambda(self):
     """Test several ways of customizing the compilation attribute."""
     def create_ops():
@@ -89,6 +100,7 @@ class JITTest(test.TestCase):
     self.assertAllClose(v_true_1, v_true_2)
     self.assertAllClose(v_false_1, v_true_1)
 
+  @test_util.build_as_function_and_v1_graph
   def testJITXlaScope(self):
     with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True):
@@ -116,6 +128,7 @@ class JITTest(test.TestCase):
     self.assertEqual(b"jit_scope_1", a5.op.get_attr("_XlaScope"))
     self.assertEqual(b"jit_scope_2", a6.op.get_attr("_XlaScope"))
 
+  @test_util.build_as_function_and_v1_graph
   def testJITVariableSeed(self):
     """Test that the stateful initializer is not marked for compilation.
 
@@ -139,6 +152,7 @@ class JITTest(test.TestCase):
     self.assertAllClose(v_true_1, v_true_2)
     self.assertAllClose(v_false_1, v_true_1)
 
+  @test_util.build_as_function_and_v1_graph
   def testDefunNoJitScope(self):
     with self.session(graph=ops.Graph()):
 
@@ -155,6 +169,7 @@ class JITTest(test.TestCase):
       # No enclosing jit scope so function sets its own value for _XlaScope.
       self.assertEqual(b"function_mulop", func_attrs["_XlaScope"].s)
 
+  @test_util.build_as_function_and_v1_graph
   def testDefunInheritsJitScope(self):
     with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True):
@@ -172,9 +187,9 @@ class JITTest(test.TestCase):
       self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
 
-@test_util.run_v1_only("b/128927195")
-class CompilationEnabledInGradientTest(test.TestCase):
+class CompilationEnabledInGradientTest(test.TestCase, parameterized.TestCase):
 
+  @test_util.build_as_function_and_v1_graph
   def testCompilationInGradient(self):
     with self.cached_session():
       x = constant_op.constant([[3.]])
@@ -198,6 +213,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       # d/dx (x ** 4) = 4 * (x ** 3)
       self.assertAllClose([[108]], x_grads.eval())
 
+  @test_util.build_as_function_and_v1_graph
   def testCompilationGradientScopeNames(self):
     with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope():
@@ -220,6 +236,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       self.assertEqual(b"jit_scope_0", grad_a1.op.get_attr("_XlaScope"))
       self.assertEqual(b"jit_scope_1", grad_a2.op.get_attr("_XlaScope"))
 
+  @test_util.build_as_function_and_v1_graph
   def testCompilationSeparateGradientScopeNames(self):
     with self.session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True, separate_compiled_gradients=True):
@@ -244,6 +261,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       self.assertEqual(b"jit_scope_1_grad_GB",
                        grad_a2.op.get_attr("_XlaScope"))
 
+  @test_util.build_as_function_and_v1_graph
   def testPlaysNicelyWithDefun(self):
     with self.session(graph=ops.Graph()) as sess:
       with jit.experimental_jit_scope(True):
@@ -269,6 +287,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       # Ensure the ops run: grad(x1*x1) = 2*x1
       self.assertAllClose([1.0, 1.0, 2.0], sess.run([x, r, g_r]))
 
+  @test_util.build_as_function_and_v1_graph
   def testPlaysNicelyWithDefunSeparateGradientScope(self):
     with self.session(graph=ops.Graph()) as sess:
       with jit.experimental_jit_scope(True):

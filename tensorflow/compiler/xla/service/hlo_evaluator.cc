@@ -1804,8 +1804,9 @@ Status HloEvaluator::Postprocess(HloInstruction* hlo) {
           << "; evaluated value is: " << GetEvaluatedLiteralFor(hlo).ToString();
   // Out of convenience the literal may have been produced with a different
   // layout. Relayout as indicated by the HLO instruction.
-  if (!LayoutUtil::LayoutsInShapesEqual(GetEvaluatedLiteralFor(hlo).shape(),
-                                        hlo->shape())) {
+  if (!Layout::Equal().MinorToMajorOnly()(
+          GetEvaluatedLiteralFor(hlo).shape().layout(),
+          hlo->shape().layout())) {
     evaluated_.at(hlo) = evaluated_.at(hlo).Relayout(hlo->shape());
   }
   return Status::OK();

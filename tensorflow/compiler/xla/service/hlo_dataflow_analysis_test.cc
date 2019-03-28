@@ -2577,7 +2577,7 @@ TEST_F(CanShareOperandBufferWithUserTest, FusionCanShareBufferCustomized) {
       {add, two, mul}, HloInstruction::FusionKind::kInput);
   RunAnalysis(/*fusion_can_share_buffer=*/[](const HloInstruction* fusion,
                                              const HloInstruction*) {
-    return fusion->fusion_kind() == HloInstruction::FusionKind::kLoop;
+    return fusion->IsLoopFusion();
   });
 
   EXPECT_FALSE(dataflow_analysis_->CanShareOperandBufferWithUser(operand, {},
