@@ -3563,46 +3563,50 @@ def combined_non_max_suppression(boxes,
         boxes, scores, max_output_size_per_class, max_total_size, iou_threshold,
         score_threshold, pad_per_class)
 
-  
+
+
 @tf_export('image.median_filter_2D')
-def median_filter_2D(input,filter_shape=(3,3)):
+def median_filter_2D(input, filter_shape=(3, 3)):
     """This method performs Median Filtering on image.Filter shape can be user given.
        This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
        Args:
            input: A 3D `Tensor` of type `float32` or 'int32' or 'float64' or 'int64 and of shape`[rows, columns, channels]`
 
-           filter_shape: Optional Argument. A tuple of 2 integers .(R,C).R is the first value is the number of rows in the filter
-           and C is the second value in the filter is the number of columns in the filter. This creates a filter of shape (R,C) or
-           RxC filter. Default value = (3,3)
+           filter_shape: Optional Argument. A tuple of 2 integers .(R,C).R is the first value is the number of rows in the
+           filter and C is the second value in the filter is the number of columns in the filter. This creates a filter of
+           shape (R,C) or RxC filter. Default value = (3,3)
 
         Returns:
-            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int32'. Pixel value of returned tensor
-            ranges between 0 to 255
+            A 3D median filtered image tensor of shape [rows,columns,channels] and type 'int32'. Pixel value of returned
+            tensor ranges between 0 to 255
     """
-    if not isinstance(filter_shape,tuple):
-        raise TypeError("Filter shape must be a tuple")
+
+    if not isinstance(filter_shape, tuple):
+        raise TypeError('Filter shape must be a tuple')
     if len(filter_shape) != 2:
-        raise ValueError("Filter shape must be a tuple of 2 integers .Got %s values in tuple"% len(filter_shape))
+        raise ValueError('Filter shape must be a tuple of 2 integers .Got %s values in tuple' % len(filter_shape))
     filter_shapex = filter_shape[0]
     filter_shapey = filter_shape[1]
-    if isinstance(filter_shapex,int) and isinstance(filter_shapey,int):
+    if isinstance(filter_shapex, int) and isinstance(filter_shapey,
+            int):
         pass
-    else :
-        raise TypeError("Size of the filter must be Integers")
+    else:
+        raise TypeError('Size of the filter must be Integers')
     input = _Assert3DImage(input)
-    m,no,ch = input.shape[0],input.shape[1],input.shape[2]
-    if not m.__eq__(tensor_shape.Dimension(None)) and not no.__eq__(tensor_shape.Dimension(None)) \
-            and not ch.__eq__(tensor_shape.Dimension(None)):
-        m,no,ch = int(m),int(no),int(ch)
-    else :
-        raise TypeError("All the Dimensions of the input image tensor must be Integers")
+    (m, no, ch) = (input.shape[0].value, input.shape[1].value, input.shape[2].value)
+    if  m != None and  no != None and ch != None:
+        (m, no, ch) = (int(m), int(no), int(ch))
+    else:
+        raise TypeError('All the Dimensions of the input image tensor must be Integers. Got shape as %s'% input.shape)
     if m < filter_shapex or no < filter_shapey:
-        raise ValueError("No of Pixels in each dimension of the image should be more than the filter size. Got filter_shape "
-                         "(%sx" % filter_shape[0]+"%s)."%filter_shape[1] +" Image Shape (%s)"% input.shape)
+        raise ValueError('No of Pixels in each dimension of the image should be more than the filter size. Got filter_shape (%sx'
+                          % filter_shape[0] + '%s).' % filter_shape[1]
+                         + ' Image Shape (%s)' % input.shape)
     if filter_shapex % 2 == 0 or filter_shapey % 2 == 0:
-        raise ValueError("Filter size should be odd. Got filter_shape (%sx" % filter_shape[0]+"%s)"%filter_shape[1] )
-    input = math_ops.cast(input,dtypes.float32)
-    tf_i = array_ops.reshape(input,[m*no*ch])
+        raise ValueError('Filter size should be odd. Got filter_shape (%sx'
+                          % filter_shape[0] + '%s)' % filter_shape[1])
+    input = math_ops.cast(input, dtypes.float32)
+    tf_i = array_ops.reshape(input, [m * no * ch])
     ma = math_ops.reduce_max(tf_i)
 
     def normalize(li):
@@ -3615,15 +3619,20 @@ def median_filter_2D(input,filter_shape=(3,3)):
         def func2():
             return math_ops.truediv(li, two)
 
-        return control_flow_ops.cond(gen_math_ops.greater(ma, one), func2, func1)
+        return control_flow_ops.cond(gen_math_ops.greater(ma, one),
+                func2, func1)
 
     input = normalize(input)
+
+    # k and l is the Zero-padding size
+
     listi = []
     for a in range(ch):
-        img = input[:,:,a:a+1]
-        img = array_ops.reshape(img,[1,m,no,1])
-        slic = gen_array_ops.extract_image_patches(img,[1, filter_shapex, filter_shapey, 1],
-                                                   [1, 1, 1, 1],[1, 1, 1, 1],padding='SAME')
+        img = input[:, :, a:a + 1]
+        img = array_ops.reshape(img, [1, m, no, 1])
+        slic = gen_array_ops.extract_image_patches(img, [1,
+                filter_shapex, filter_shapey, 1], [1, 1, 1, 1], [1, 1,
+                1, 1], padding='SAME')
         li = sample_stats.percentile(slic, 50, axis=3)
         li = array_ops.reshape(li, [m, no, 1])
         listi.append(li)
