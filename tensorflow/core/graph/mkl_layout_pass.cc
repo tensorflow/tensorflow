@@ -1222,7 +1222,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                  "Eigen op for Dequantize op.";
       return false;
     }
-    return true;
+    // TODO(sriniva2/mabuzain) Enable the op after verifying support for
+    // object detection models
+    return false;
   }
 
   // Check if we are performing pooling on depth or batch. If it is, then we
