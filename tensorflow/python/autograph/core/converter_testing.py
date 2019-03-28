@@ -122,7 +122,7 @@ class TestCase(test.TestCase):
     for k, v in ns.items():
       setattr(module, k, v)
 
-  def prepare(self, test_fn, namespace, arg_types=None, recursive=True):
+  def prepare(self, test_fn, namespace, recursive=True):
     namespace['ConversionOptions'] = converter.ConversionOptions
 
     future_features = ('print_function', 'division')
@@ -135,9 +135,7 @@ class TestCase(test.TestCase):
         source_code=source,
         source_file='<fragment>',
         future_features=future_features,
-        namespace=namespace,
-        arg_values=None,
-        arg_types=arg_types)
+        namespace=namespace)
     ctx = converter.EntityContext(namer, entity_info, program_ctx)
     origin_info.resolve(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)

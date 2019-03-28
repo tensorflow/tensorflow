@@ -30,12 +30,7 @@ class TransformerTest(test.TestCase):
 
   def _simple_context(self):
     entity_info = transformer.EntityInfo(
-        source_code=None,
-        source_file=None,
-        future_features=(),
-        namespace=None,
-        arg_values=None,
-        arg_types=None)
+        source_code=None, source_file=None, future_features=(), namespace=None)
     return transformer.Context(entity_info)
 
   def test_entity_scope_tracking(self):
