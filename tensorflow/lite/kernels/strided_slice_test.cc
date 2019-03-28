@@ -399,6 +399,47 @@ TYPED_TEST(StridedSliceOpTest, In3D_Strided2) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 5}));
 }
 
+TYPED_TEST(StridedSliceOpTest, In4D_Identity) {
+  StridedSliceOpModel<> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
+  m.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  m.SetBegin({0, 0, 0, 0});
+  m.SetEnd({2, 3, 2, 2});
+  m.SetStrides({1, 1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2, 2}));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                        13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24}));
+}
+
+TYPED_TEST(StridedSliceOpTest, In4D_NegStride) {
+  StridedSliceOpModel<> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
+  m.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  m.SetBegin({-1, -1, -1, -1});
+  m.SetEnd({-3, -4, -3, -3});
+  m.SetStrides({-1, -1, -1, -1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 3, 2, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({24, 23, 22, 21, 20, 19, 18, 17,
+                                               16, 15, 14, 13, 12, 11, 10, 9,
+                                               8,  7,  6,  5,  4,  3,  2,  1}));
+}
+
+TYPED_TEST(StridedSliceOpTest, In4D_Strided2) {
+  StridedSliceOpModel<> m({2, 3, 2, 2}, {4}, {4}, {4}, 0, 0, 0, 0, 0);
+  m.SetInput({1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+              13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  m.SetBegin({0, 0, 0, 0});
+  m.SetEnd({2, 3, 2, 2});
+  m.SetStrides({2, 2, 2, 2});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 9}));
+}
+
 TYPED_TEST(StridedSliceOpTest, In1D_ShrinkAxisMask1) {
   StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4});
