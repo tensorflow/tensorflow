@@ -30,7 +30,7 @@
 
 // MT_LIST: Pass execution timing report
 // MT_LIST: Total Execution Time:
-// MT_LIST:    ---User Time---   ---Wall Time---  --- Name ---
+// MT_LIST: Name
 // MT_LIST-DAG: Canonicalizer
 // MT_LIST-DAG: FunctionVerifier
 // MT_LIST-DAG: CSE
@@ -40,7 +40,7 @@
 
 // MT_PIPELINE: Pass execution timing report
 // MT_PIPELINE: Total Execution Time:
-// MT_PIPELINE:    ---User Time---   ---Wall Time---  --- Name ---
+// MT_PIPELINE: Name
 // MT_PIPELINE-NEXT: Function Pipeline
 // MT_PIPELINE-NEXT:   CSE
 // MT_PIPELINE-NEXT:     (A) DominanceInfo
