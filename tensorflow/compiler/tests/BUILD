@@ -953,6 +953,7 @@ tf_xla_py_test(
         "//tensorflow/python:nn_ops_gen",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_xla_py_test(
@@ -1117,6 +1118,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_rocm"],
     shard_count = 5,
 )
 

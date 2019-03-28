@@ -1159,6 +1159,7 @@ xla_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+    tags = ["no_rocm"],
 )
 
 cc_library(
@@ -1204,7 +1205,7 @@ cc_library(
 tf_cc_test(
     name = "cudnn_fused_conv_rewriter_test",
     srcs = ["cudnn_fused_conv_rewriter_test.cc"],
-    tags = if_cuda_is_configured(tf_cuda_tests_tags()),
+    tags = if_cuda_is_configured(tf_cuda_tests_tags()) + ["no_rocm"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla/service:hlo_parser",
