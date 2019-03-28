@@ -2838,14 +2838,8 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=_SSIM_K1, k2=_SSIM
     A pair containing the luminance measure, and the contrast-structure measure.
   """
 
-  if k1 is None:
-      c1 = (_SSIM_K1 * max_val) ** 2
-  else:
-      c1 = (k1 * max_val) ** 2
-  if k2 is None:
-      c2 = (_SSIM_K2 * max_val) ** 2
-  else:
-      c2 = (k2 * max_val) ** 2
+  c1 = (k1 * max_val) ** 2
+  c2 = (k2 * max_val) ** 2
 
   # SSIM luminance measure is
   # (2 * mu_x * mu_y + c1) / (mu_x ** 2 + mu_y ** 2 + c1).
