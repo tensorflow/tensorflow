@@ -3365,8 +3365,8 @@ def sparse_softmax_cross_entropy_with_logits(
 
 @tf_export("nn.sparse_softmax_cross_entropy_with_logits", v1=[])
 def sparse_softmax_cross_entropy_with_logits_v2(
-    labels=None,
-    logits=None,
+    labels,
+    logits,
     name=None):
   """Computes sparse softmax cross entropy between `logits` and `labels`.
 
