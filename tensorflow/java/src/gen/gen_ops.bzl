@@ -58,6 +58,6 @@ def tf_java_op_gen_srcjar(
         tools = [
             gen_tool,
         ] + tf_binary_additional_srcs(),
-        toolchains = ["@bazel_tools//tools/jdk:current_java_runtime"],
+        toolchains = ["@bazel_tools//tools/jdk:current_host_java_runtime"],
         cmd = " && ".join(gen_cmds),
     )
