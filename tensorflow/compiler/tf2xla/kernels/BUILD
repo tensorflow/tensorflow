@@ -72,6 +72,7 @@ tf_kernel_library(
         "reduction_ops.h",
         "reduction_ops_common.cc",
         "relu_op.cc",
+        "replica_id_op.cc",
         "reshape_op.cc",
         "retval_op.cc",
         "reverse_op.cc",
