@@ -274,20 +274,17 @@ static bool isVectorTransferReadOrWrite(Operation &op) {
   return op.isa<VectorTransferReadOp>() || op.isa<VectorTransferWriteOp>();
 }
 
-using VectorizableInstFun = std::function<bool(AffineForOp, Operation &)>;
+using VectorizableOpFun = std::function<bool(AffineForOp, Operation &)>;
 
-static bool isVectorizableLoopWithCond(AffineForOp loop,
-                                       VectorizableInstFun isVectorizableInst) {
-  auto *forInst = loop.getOperation();
-  if (!matcher::isParallelLoop(*forInst) &&
-      !matcher::isReductionLoop(*forInst)) {
-    return false;
-  }
+static bool
+isVectorizableLoopBodyWithOpCond(AffineForOp loop,
+                                 VectorizableOpFun isVectorizableOp) {
+  auto *forOp = loop.getOperation();
 
   // No vectorization across conditionals for now.
   auto conditionals = matcher::If();
   SmallVector<NestedMatch, 8> conditionalsMatched;
-  conditionals.match(forInst, &conditionalsMatched);
+  conditionals.match(forOp, &conditionalsMatched);
   if (!conditionalsMatched.empty()) {
     return false;
   }
@@ -298,21 +295,21 @@ static bool isVectorizableLoopWithCond(AffineForOp loop,
            !(op.isa<AffineIfOp>() || op.isa<AffineForOp>());
   });
   SmallVector<NestedMatch, 8> regionsMatched;
-  regions.match(forInst, &regionsMatched);
+  regions.match(forOp, &regionsMatched);
   if (!regionsMatched.empty()) {
     return false;
   }
 
   auto vectorTransfers = matcher::Op(isVectorTransferReadOrWrite);
   SmallVector<NestedMatch, 8> vectorTransfersMatched;
-  vectorTransfers.match(forInst, &vectorTransfersMatched);
+  vectorTransfers.match(forOp, &vectorTransfersMatched);
   if (!vectorTransfersMatched.empty()) {
     return false;
   }
 
   auto loadAndStores = matcher::Op(matcher::isLoadOrStore);
   SmallVector<NestedMatch, 8> loadAndStoresMatched;
-  loadAndStores.match(forInst, &loadAndStoresMatched);
+  loadAndStores.match(forOp, &loadAndStoresMatched);
   for (auto ls : loadAndStoresMatched) {
     auto *op = ls.getMatchedOperation();
     auto load = op->dyn_cast<LoadOp>();
@@ -324,16 +321,16 @@ static bool isVectorizableLoopWithCond(AffineForOp loop,
     if (vector) {
       return false;
     }
-    if (!isVectorizableInst(loop, *op)) {
+    if (isVectorizableOp && !isVectorizableOp(loop, *op)) {
       return false;
     }
   }
   return true;
 }
 
-bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
+bool mlir::isVectorizableLoopBodyAlongFastestVaryingMemRefDim(
     AffineForOp loop, unsigned fastestVaryingDim) {
-  VectorizableInstFun fun([fastestVaryingDim](AffineForOp loop, Operation &op) {
+  VectorizableOpFun fun([fastestVaryingDim](AffineForOp loop, Operation &op) {
     auto load = op.dyn_cast<LoadOp>();
     auto store = op.dyn_cast<StoreOp>();
     return load ? isContiguousAccess(*loop.getInductionVar(), load,
@@ -341,14 +338,11 @@ bool mlir::isVectorizableLoopAlongFastestVaryingMemRefDim(
                 : isContiguousAccess(*loop.getInductionVar(), store,
                                      fastestVaryingDim);
   });
-  return isVectorizableLoopWithCond(loop, fun);
+  return isVectorizableLoopBodyWithOpCond(loop, fun);
 }
 
-bool mlir::isVectorizableLoop(AffineForOp loop) {
-  VectorizableInstFun fun(
-      // TODO: implement me
-      [](AffineForOp loop, Operation &op) { return true; });
-  return isVectorizableLoopWithCond(loop, fun);
+bool mlir::isVectorizableLoopBody(AffineForOp loop) {
+  return isVectorizableLoopBodyWithOpCond(loop, nullptr);
 }
 
 /// Checks whether SSA dominance would be violated if a for op's body

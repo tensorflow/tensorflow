@@ -85,20 +85,20 @@ bool isAccessInvariant(Value &iv, Value &index);
 llvm::DenseSet<Value *, llvm::DenseMapInfo<Value *>>
 getInvariantAccesses(Value &iv, llvm::ArrayRef<Value *> indices);
 
+using VectorizableLoopFun = std::function<bool(AffineForOp)>;
+
 /// Checks whether the loop is structurally vectorizable; i.e.:
-/// 1. the loop has proper dependence semantics (parallel, reduction, etc);
-/// 2. no conditionals are nested under the loop;
-/// 3. all nested load/stores are to scalar MemRefs.
-/// TODO(ntv): implement dependence semantics
+/// 1. no conditionals are nested under the loop;
+/// 2. all nested load/stores are to scalar MemRefs.
 /// TODO(ntv): relax the no-conditionals restriction
-bool isVectorizableLoop(AffineForOp loop);
+bool isVectorizableLoopBody(AffineForOp loop);
 
 /// Checks whether the loop is structurally vectorizable and that all the LoadOp
 /// and StoreOp matched have access indexing functions that are are either:
 ///   1. invariant along the loop induction variable created by 'loop';
 ///   2. varying along the 'fastestVaryingDim' memory dimension.
-bool isVectorizableLoopAlongFastestVaryingMemRefDim(AffineForOp loop,
-                                                    unsigned fastestVaryingDim);
+bool isVectorizableLoopBodyAlongFastestVaryingMemRefDim(
+    AffineForOp loop, unsigned fastestVaryingDim);
 
 /// Checks where SSA dominance would be violated if a for inst's body
 /// operations are shifted by the specified shifts. This method checks if a

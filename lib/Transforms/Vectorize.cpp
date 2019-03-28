@@ -24,6 +24,7 @@
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Analysis/SliceAnalysis.h"
+#include "mlir/Analysis/Utils.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/Builders.h"
@@ -565,7 +566,8 @@ static llvm::cl::list<int> clFastestVaryingPattern(
 
 /// Forward declaration.
 static FilterFunctionType
-isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension);
+isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
+                             unsigned fastestVaryingMemRefDimension);
 
 // Build a bunch of predetermined patterns that will be traversed in order.
 // Due to the recursive nature of NestedPatterns, this captures
@@ -573,77 +575,84 @@ isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension);
 /// Note that this currently only matches 2 nested loops and will be extended.
 // TODO(ntv): support 3-D loop patterns with a common reduction loop that can
 // be matched to GEMMs.
-static std::vector<NestedPattern> defaultPatterns() {
+static std::vector<NestedPattern>
+defaultPatterns(const llvm::DenseSet<Operation *> &parallelLoops) {
   using matcher::For;
   return std::vector<NestedPattern>{
       // 3-D patterns
-      For(isVectorizableLoopPtrFactory(2),
-          For(isVectorizableLoopPtrFactory(1),
-              For(isVectorizableLoopPtrFactory(0)))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 2),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 1),
+              For(isVectorizableLoopPtrFactory(parallelLoops, 0)))),
       // for i { for j { A[??f(not i, not j), f(i, not j), f(not i, j)];}}
       // test independently with:
       //   --test-fastest-varying=1 --test-fastest-varying=0
-      For(isVectorizableLoopPtrFactory(1),
-          For(isVectorizableLoopPtrFactory(0))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 1),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 0))),
       // for i { for j { A[??f(not i, not j), f(i, not j), ?, f(not i, j)];}}
       // test independently with:
       //   --test-fastest-varying=2 --test-fastest-varying=0
-      For(isVectorizableLoopPtrFactory(2),
-          For(isVectorizableLoopPtrFactory(0))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 2),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 0))),
       // for i { for j { A[??f(not i, not j), f(i, not j), ?, ?, f(not i, j)];}}
       // test independently with:
       //   --test-fastest-varying=3 --test-fastest-varying=0
-      For(isVectorizableLoopPtrFactory(3),
-          For(isVectorizableLoopPtrFactory(0))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 3),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 0))),
       // for i { for j { A[??f(not i, not j), f(not i, j), f(i, not j)];}}
       // test independently with:
       //   --test-fastest-varying=0 --test-fastest-varying=1
-      For(isVectorizableLoopPtrFactory(0),
-          For(isVectorizableLoopPtrFactory(1))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 0),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 1))),
       // for i { for j { A[??f(not i, not j), f(not i, j), ?, f(i, not j)];}}
       // test independently with:
       //   --test-fastest-varying=0 --test-fastest-varying=2
-      For(isVectorizableLoopPtrFactory(0),
-          For(isVectorizableLoopPtrFactory(2))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 0),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 2))),
       // for i { for j { A[??f(not i, not j), f(not i, j), ?, ?, f(i, not j)];}}
       // test independently with:
       //   --test-fastest-varying=0 --test-fastest-varying=3
-      For(isVectorizableLoopPtrFactory(0),
-          For(isVectorizableLoopPtrFactory(3))),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 0),
+          For(isVectorizableLoopPtrFactory(parallelLoops, 3))),
       // for i { A[??f(not i) , f(i)];}
       // test independently with:  --test-fastest-varying=0
-      For(isVectorizableLoopPtrFactory(0)),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 0)),
       // for i { A[??f(not i) , f(i), ?];}
       // test independently with:  --test-fastest-varying=1
-      For(isVectorizableLoopPtrFactory(1)),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 1)),
       // for i { A[??f(not i) , f(i), ?, ?];}
       // test independently with:  --test-fastest-varying=2
-      For(isVectorizableLoopPtrFactory(2)),
+      For(isVectorizableLoopPtrFactory(parallelLoops, 2)),
       // for i { A[??f(not i) , f(i), ?, ?, ?];}
       // test independently with:  --test-fastest-varying=3
-      For(isVectorizableLoopPtrFactory(3))};
+      For(isVectorizableLoopPtrFactory(parallelLoops, 3))};
 }
 
 /// Creates a vectorization pattern from the command line arguments.
 /// Up to 3-D patterns are supported.
 /// If the command line argument requests a pattern of higher order, returns an
 /// empty pattern list which will conservatively result in no vectorization.
-static std::vector<NestedPattern> makePatterns() {
+static std::vector<NestedPattern>
+makePatterns(const llvm::DenseSet<Operation *> &parallelLoops) {
   using matcher::For;
   if (clFastestVaryingPattern.empty()) {
-    return defaultPatterns();
+    return defaultPatterns(parallelLoops);
   }
   switch (clFastestVaryingPattern.size()) {
   case 1:
-    return {For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[0]))};
+    return {For(isVectorizableLoopPtrFactory(parallelLoops,
+                                             clFastestVaryingPattern[0]))};
   case 2:
-    return {For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[0]),
-                For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[1])))};
+    return {For(
+        isVectorizableLoopPtrFactory(parallelLoops, clFastestVaryingPattern[0]),
+        For(isVectorizableLoopPtrFactory(parallelLoops,
+                                         clFastestVaryingPattern[1])))};
   case 3:
     return {For(
-        isVectorizableLoopPtrFactory(clFastestVaryingPattern[0]),
-        For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[1]),
-            For(isVectorizableLoopPtrFactory(clFastestVaryingPattern[2]))))};
+        isVectorizableLoopPtrFactory(parallelLoops, clFastestVaryingPattern[0]),
+        For(isVectorizableLoopPtrFactory(parallelLoops,
+                                         clFastestVaryingPattern[1]),
+            For(isVectorizableLoopPtrFactory(parallelLoops,
+                                             clFastestVaryingPattern[2]))))};
   default:
     return std::vector<NestedPattern>();
   }
@@ -905,10 +914,14 @@ static LogicalResult vectorizeAffineForOp(AffineForOp loop, int64_t step,
 /// once we understand better the performance implications and we are confident
 /// we can build a cost model and a search procedure.
 static FilterFunctionType
-isVectorizableLoopPtrFactory(unsigned fastestVaryingMemRefDimension) {
-  return [fastestVaryingMemRefDimension](Operation &forOp) {
+isVectorizableLoopPtrFactory(const llvm::DenseSet<Operation *> &parallelLoops,
+                             unsigned fastestVaryingMemRefDimension) {
+  return [&parallelLoops, fastestVaryingMemRefDimension](Operation &forOp) {
     auto loop = forOp.cast<AffineForOp>();
-    return isVectorizableLoopAlongFastestVaryingMemRefDim(
+    auto parallelIt = parallelLoops.find(loop);
+    if (parallelIt == parallelLoops.end())
+      return false;
+    return isVectorizableLoopBodyAlongFastestVaryingMemRefDim(
         loop, fastestVaryingMemRefDimension);
   };
 }
@@ -1168,7 +1181,7 @@ static LogicalResult vectorizeRootMatch(NestedMatch m,
   // vectorizable. If a pattern is not vectorizable anymore, we just skip it.
   // TODO(ntv): implement a non-greedy profitability analysis that keeps only
   // non-intersecting patterns.
-  if (!isVectorizableLoop(loop)) {
+  if (!isVectorizableLoopBody(loop)) {
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ loop is not vectorizable");
     return failure();
   }
@@ -1240,7 +1253,16 @@ void Vectorize::runOnFunction() {
   NestedPatternContext mlContext;
 
   Function &f = getFunction();
-  for (auto &pat : makePatterns()) {
+  llvm::DenseSet<Operation *> parallelLoops;
+  f.walkPostOrder([&parallelLoops](Operation *op) {
+    if (auto loop = op->dyn_cast<AffineForOp>()) {
+      if (isLoopParallel(loop)) {
+        parallelLoops.insert(op);
+      }
+    }
+  });
+
+  for (auto &pat : makePatterns(parallelLoops)) {
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n[early-vect] new pattern on Function\n");

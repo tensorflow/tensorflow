@@ -11,6 +11,7 @@
 #set0 = (i) : (i >= 0)
 
 // Maps introduced to vectorize fastest varying memory index.
+// CHECK-LABEL: vec1d
 func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
 // CHECK-DAG: [[C0:%[a-z0-9_]+]] = constant 0 : index
 // CHECK-DAG: [[ARG_M:%[0-9]+]] = dim %arg0, 0 : memref<?x?xf32>
@@ -133,6 +134,7 @@ func @vec1d(%A : memref<?x?xf32>, %B : memref<?x?x?xf32>) {
    return
 }
 
+// CHECK-LABEL: vector_add_2d
 func @vector_add_2d(%M : index, %N : index) -> f32 {
   %A = alloc (%M, %N) : memref<?x?xf32, 0>
   %B = alloc (%M, %N) : memref<?x?xf32, 0>
@@ -198,6 +200,20 @@ func @vec_rejected(%A : memref<?x?xf32>, %C : memref<?x?xf32>) {
 // CHECK-NOT: vector
       store %c, %C[%i, %j] : memref<?x?xf32> // not vectorized because %c wasn't
     }
+  }
+  return
+}
+
+// This should not vectorize due to the sequential dependence in the loop.
+// CHECK-LABEL: @vec_rejected_sequential
+func @vec_rejected_sequential(%A : memref<?xf32>) {
+  %N = dim %A, 0 : memref<?xf32>
+  affine.for %i = 0 to %N {
+    // CHECK-NOT: vector
+    %a = load %A[%i] : memref<?xf32>
+    // CHECK-NOT: vector
+    %ip1 = affine.apply (d0)->(d0 + 1) (%i)
+    store %a, %A[%ip1] : memref<?xf32>
   }
   return
 }

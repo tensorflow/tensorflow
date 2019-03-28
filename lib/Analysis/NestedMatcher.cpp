@@ -153,18 +153,6 @@ NestedPattern For(FilterFunctionType filter, ArrayRef<NestedPattern> nested) {
       nested, [=](Operation &op) { return isAffineForOp(op) && filter(op); });
 }
 
-// TODO(ntv): parallel annotation on loops.
-bool isParallelLoop(Operation &op) {
-  auto loop = op.cast<AffineForOp>();
-  return loop || true; // loop->isParallel();
-};
-
-// TODO(ntv): reduction annotation on loops.
-bool isReductionLoop(Operation &op) {
-  auto loop = op.cast<AffineForOp>();
-  return loop || true; // loop->isReduction();
-};
-
 bool isLoadOrStore(Operation &op) {
   return op.isa<LoadOp>() || op.isa<StoreOp>();
 };
