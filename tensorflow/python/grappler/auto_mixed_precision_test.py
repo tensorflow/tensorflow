@@ -254,7 +254,6 @@ def _build_node_map(nodes):
 
 class AutoMixedPrecisionTest(test.TestCase):
   """Tests the Grappler auto mixed precision optimizer."""
-  MIN_GPU_ARCH = None
   IGNORE_PERF_VAR = 'TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_IGNORE_PERFORMANCE'
 
   # TODO(benbarsdell): Add tests for eager mode with a tf.function.
@@ -300,8 +299,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
     inp -> loop [ body ] -> out
     """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       expected_types = []
       for section in [inp, body, out]:
@@ -334,8 +332,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_conv_bn(self):
     """ Test graph with convolution followed by batch norm """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])
       x = _conv_bn(x)
@@ -354,8 +351,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_conv_bn_dropout(self):
     """ Test dropout precision of convolution batch norm graph """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])
       y = _conv_bn(x)
@@ -378,8 +374,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_conv_pool(self):
     """ Test graph with convolution followed by pooling """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 1])
       output = _conv_pool(x)
@@ -398,8 +393,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_simple_loop(self):
     """ Test graph with while loop """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([8, 8])
       y = _simple_loop(x, _matmul_act)[1]
@@ -416,8 +410,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_loop_with_vars_intertwined(self):
     """ Test graph with intertwined while loops """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([8, 8])
       _, _, k, l = _loop_vars_intertwined(array_ops.ones(array_ops.shape(x)),
@@ -437,8 +430,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_multi_paths(self):
     """ Test graph with multiple paths """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([2, 8, 8, 3])
       x1, x2, x3 = array_ops.split(x, num_or_size_splits=3, axis=3)
@@ -464,8 +456,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_multi_paths_2(self):
     """ Test graph with multiple paths """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       x = _input([8, 8])
       y1 = _matmul_act(x)
@@ -486,8 +477,7 @@ class AutoMixedPrecisionTest(test.TestCase):
 
   def test_recurrent_lstm(self):
     """ Test graph with recurrent lstm """
-    if test.is_gpu_available(cuda_only=True,
-                             min_cuda_compute_capability=self.MIN_GPU_ARCH):
+    if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
       init_c = _input([8, 4])
       init_h = _input([8, 4])
