@@ -168,9 +168,13 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   //    block_size_limit);
   //CHECK_EQ(err, hipSuccess);
 
+  // Apply the heuristic in GetGpuLaunchConfig(int, const Eigen::GpuDevice&)
+  // that the kernel is quite simple and will largely be memory-limited.
   const int physical_thread_count = std::min(
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       work_element_count);
+  // Assume the kernel be simple enough that it is okay to use 1024 threads
+  // per workgroup.
   thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
@@ -212,9 +216,13 @@ inline CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
   //    block_size_limit);
   //CHECK_EQ(err, hipSuccess);
 
+  // Apply the heuristic in GetGpuLaunchConfig(int, const Eigen::GpuDevice&)
+  // that the kernel is quite simple and will largely be memory-limited.
   const int physical_thread_count = std::min(
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       work_element_count);
+  // Assume the kernel be simple enough that it is okay to use 1024 threads
+  // per workgroup.
   int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
@@ -304,10 +312,10 @@ inline Cuda3DLaunchConfig GetCuda3DLaunchConfig(
 #elif TENSORFLOW_USE_ROCM
   // ROCM TODO re-enable this after hipOccupancyMaxPotentialBlockSize is
   // implemented
-  //hipError_t err = hipOccupancyMaxPotentialBlockSize(
+  // hipError_t err = hipOccupancyMaxPotentialBlockSize(
   //    &block_count, &thread_per_block, func, dynamic_shared_memory_size,
   //    block_size_limit);
-  //CHECK_EQ(err, hipSuccess);
+  // CHECK_EQ(err, hipSuccess);
 
   const int physical_thread_count =
       d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
