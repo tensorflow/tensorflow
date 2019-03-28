@@ -154,9 +154,7 @@ def _lstm_cell(prev_c, prev_h, x):
 def _recurrent_lstm(c, h):
   """ Dynamic single-layer LSTM with TensorArray """
   def cond(i, c, h, ta_x):
-    del c
-    del h
-    del ta_x
+    del c, h, ta_x
     return i < 4
 
   def body(i, c, h, ta_x):
