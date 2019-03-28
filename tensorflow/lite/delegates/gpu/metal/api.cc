@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/convolution.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/convolution1x1.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/convolution_generic.h"
-#include "tensorflow/lite/delegates/gpu/metal/kernels/convolution_transposed.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depth_wise_conv3x3_stride1x1.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/depth_wise_convolution.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/fully_connected.h"
@@ -45,6 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/slice.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/sub.h"
+#include "tensorflow/lite/delegates/gpu/metal/kernels/transpose_conv.h"
 #include "tensorflow/lite/delegates/gpu/metal/kernels/upsample.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 

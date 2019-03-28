@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONVOLUTION_TRANSPOSED_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONVOLUTION_TRANSPOSED_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TRANSPOSE_CONV_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TRANSPOSE_CONV_H_
 
 #include <vector>
 
@@ -32,8 +32,13 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     const ConvolutionTransposedAttributes& params,
     const RuntimeOptions& options);
 
+std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
+    int id, ValueId input_id, ValueId output_id,
+    const ConvolutionTransposedAttributes& params,
+    const RuntimeOptions& options);
+
 }  // namespace metal
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_CONVOLUTION_TRANSPOSED_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_METAL_KERNELS_TRANSPOSE_CONV_H_
