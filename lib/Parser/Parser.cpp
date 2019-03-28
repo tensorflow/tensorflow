@@ -2854,19 +2854,19 @@ ParseResult FunctionParser::parseOperation() {
     if (op->getNumResults() == 0)
       return emitError(loc, "cannot name an operation with no results");
     if (numExpectedResults != op->getNumResults())
-      return emitError(loc, "operation defines more results than expected : " +
-                                Twine(op->getNumResults()) + " vs " +
-                                Twine(numExpectedResults));
+      return emitError(loc, "operation defines " + Twine(op->getNumResults()) +
+                                " results but was provided " +
+                                Twine(numExpectedResults) + " to bind");
 
     // If the number of result names matches the number of operation results, we
-    // can use the names directly.
+    // can directly use the provided names.
     if (resultIDs.size() == op->getNumResults()) {
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
         if (addDefinition({resultIDs[i].first, 0, resultIDs[i].second},
                           op->getResult(i)))
           return ParseFailure;
     } else {
-      // Otherwise, we use the first name for each result.
+      // Otherwise, we use the same name for all results.
       StringRef name = resultIDs.front().first;
       for (unsigned i = 0, e = op->getNumResults(); i != e; ++i)
         if (addDefinition({name, i, loc}, op->getResult(i)))

@@ -1020,7 +1020,7 @@ func @multi_result_invalid_identifier() {
 // -----
 
 func @multi_result_mismatch_count() {
-  // expected-error@+1 {{operation defines more results than expected : 2 vs 1}}
+  // expected-error@+1 {{operation defines 2 results but was provided 1 to bind}}
   %0:1 = "foo" () : () -> (i32, i32)
   return
 }
@@ -1028,7 +1028,7 @@ func @multi_result_mismatch_count() {
 // -----
 
 func @multi_result_mismatch_count() {
-  // expected-error@+1 {{operation defines more results than expected : 2 vs 3}}
+  // expected-error@+1 {{operation defines 2 results but was provided 3 to bind}}
   %0, %1, %3 = "foo" () : () -> (i32, i32)
   return
 }
