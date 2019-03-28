@@ -3624,9 +3624,7 @@ def median_filter_2D(input,filter_shape=(3,3)):
         img = array_ops.reshape(img,[1,m,no,1])
         slic = gen_array_ops.extract_image_patches(img,[1, filter_shapex, filter_shapey, 1],
                                                    [1, 1, 1, 1],[1, 1, 1, 1],padding='SAME')
-        mid = (filter_shapex * filter_shapey) / 2 + 1
-        li = nn_ops.top_k(slic, mid, sorted=True)
-        li = sample_stats.percentile(li[0], 50, axis=3)
+        li = sample_stats.percentile(slic, 50, axis=3)
         li = array_ops.reshape(li, [m, no, 1])
         listi.append(li)
     y = array_ops.concat(listi[0], 2)
