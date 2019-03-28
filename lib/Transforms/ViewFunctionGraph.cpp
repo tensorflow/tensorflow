@@ -24,15 +24,13 @@ using namespace mlir;
 namespace llvm {
 
 // Specialize DOTGraphTraits to produce more readable output.
-template <>
-struct llvm::DOTGraphTraits<Function *> : public DefaultDOTGraphTraits {
+template <> struct DOTGraphTraits<Function *> : public DefaultDOTGraphTraits {
   using DefaultDOTGraphTraits::DefaultDOTGraphTraits;
 
   static std::string getNodeLabel(Block *Block, Function *);
 };
 
-std::string llvm::DOTGraphTraits<Function *>::getNodeLabel(Block *Block,
-                                                           Function *) {
+std::string DOTGraphTraits<Function *>::getNodeLabel(Block *Block, Function *) {
   // Reuse the print output for the node labels.
   std::string outStreamStr;
   raw_string_ostream os(outStreamStr);
