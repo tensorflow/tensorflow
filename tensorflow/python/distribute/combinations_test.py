@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import OrderedDict
+
 from absl.testing import parameterized
 
-from tensorflow.contrib.distribute.python import combinations
+from tensorflow.python.distribute import combinations
 from tensorflow.python.eager import test
 
 
@@ -70,8 +71,7 @@ class TestingCombinationsTest(test.TestCase):
         }, {
             "b": 3
         }],
-        combinations.combine(a=[1, 2]) +
-        combinations.combine(b=[2, 3]))
+        combinations.combine(a=[1, 2]) + combinations.combine(b=[2, 3]))
 
   def test_times(self):
     c1 = combinations.combine(mode=["graph"], loss=["callable", "tensor"])

@@ -592,7 +592,7 @@ class BatchNormalizationBase(Layer):
       return outputs
 
     # Compute the axes along which to reduce the mean / variance
-    input_shape = inputs.get_shape()
+    input_shape = inputs.shape
     ndims = len(input_shape)
     reduction_axes = [i for i in range(ndims) if i not in self.axis]
     if self.virtual_batch_size is not None:
@@ -603,8 +603,7 @@ class BatchNormalizationBase(Layer):
     broadcast_shape = [1] * ndims
     broadcast_shape[self.axis[0]] = input_shape.dims[self.axis[0]].value
     def _broadcast(v):
-      if (v is not None and
-          len(v.get_shape()) != ndims and
+      if (v is not None and len(v.shape) != ndims and
           reduction_axes != list(range(ndims - 1))):
         return array_ops.reshape(v, broadcast_shape)
       return v
@@ -968,7 +967,7 @@ class LayerNormalization(Layer):
 
   def call(self, inputs):
     # Compute the axes along which to reduce the mean / variance
-    input_shape = inputs.get_shape()
+    input_shape = inputs.shape
     ndims = len(input_shape)
 
     # Calculate the moments on the last axis (layer activations).
@@ -980,8 +979,7 @@ class LayerNormalization(Layer):
     for dim in self.params_axis:
       broadcast_shape[dim] = input_shape.dims[dim].value
     def _broadcast(v):
-      if (v is not None and
-          len(v.get_shape()) != ndims and
+      if (v is not None and len(v.shape) != ndims and
           self.params_axis != [ndims - 1]):
         return array_ops.reshape(v, broadcast_shape)
       return v

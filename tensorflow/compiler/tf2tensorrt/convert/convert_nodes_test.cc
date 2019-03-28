@@ -2414,7 +2414,7 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestWeights<int32>("weights", {1}, {0});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Modifying batch dimension is not supported for ExpandDims, at "
+        "TensorRT does not allow manipulation of the batch dimension, at "
         "my_expanddims");
   }
   {
@@ -2425,7 +2425,7 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestWeights<int32>("weights", {1}, {-5});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "Modifying batch dimension is not supported for ExpandDims, at "
+        "TensorRT does not allow manipulation of the batch dimension, at "
         "my_expanddims");
   }
   {
@@ -2436,8 +2436,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestWeights<int32>("weights", {1}, {5});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Axis for ExpandDims is invalid, must be in the range "
-        "[-rank(input) - 1, rank(input)], at my_expanddims");
+        "Axis value of 5 is out of bounds, must be in range [-5, 5), at "
+        "my_expanddims");
   }
   {
     // Axis < -rank(input)-1, should fail.
@@ -2447,8 +2447,8 @@ TEST_F(OpConverterTest, ConvertExpandDims) {
     AddTestWeights<int32>("weights", {1}, {-6});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Axis for ExpandDims is invalid, must be in the range "
-        "[-rank(input) - 1, rank(input)], at my_expanddims");
+        "Axis value of -6 is out of bounds, must be in range [-5, 5), at "
+        "my_expanddims");
   }
 
   struct TestParams {
@@ -2532,7 +2532,8 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     NodeDef node_def = get_squeeze_nodedef({0});
     AddTestTensor("input", {1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Cannot squeeze batch dimension, at my_squeeze");
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_squeeze");
   }
   {
     // Squeeze batch dim via negative axis, should fail.
@@ -2540,7 +2541,8 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     NodeDef node_def = get_squeeze_nodedef({-4});
     AddTestTensor("input", {1, 2, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "Cannot squeeze batch dimension, at my_squeeze");
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_squeeze");
   }
   {
     // Squeeze >= rank(input), should fail.
@@ -2549,8 +2551,8 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     AddTestTensor("input", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Axis for Squeeze is invalid, must be in the range "
-        "[-rank(input), rank(input)), at my_squeeze");
+        "Axis value of 4 is out of bounds, must be in range [-4, 4), at "
+        "my_squeeze");
   }
   {
     // Squeeze < -rank(input), should fail.
@@ -2559,8 +2561,18 @@ TEST_F(OpConverterTest, ConvertSqueeze) {
     AddTestTensor("input", {1, 2, 3});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Axis for Squeeze is invalid, must be in the range "
-        "[-rank(input), rank(input)), at my_squeeze");
+        "Axis value of -5 is out of bounds, must be in range [-4, 4), at "
+        "my_squeeze");
+  }
+  {
+    // Squeeze an axis with size != 1, should fail.
+    Reset();
+    NodeDef node_def = get_squeeze_nodedef({2});
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Dimension 2 with size 2 cannot be squeezed because it must be size 1, "
+        "at my_squeeze");
   }
 
   struct TestParams {

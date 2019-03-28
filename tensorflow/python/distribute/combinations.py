@@ -43,29 +43,12 @@ from collections import OrderedDict
 import sys
 import types
 import unittest
+
 from absl.testing import parameterized
 import six
-from tensorflow.contrib.distribute.python import mirrored_strategy as mirrored_lib
-from tensorflow.contrib.distribute.python import parameter_server_strategy
-from tensorflow.contrib.optimizer_v2 import adagrad as adagrad_v2
-from tensorflow.contrib.optimizer_v2 import adam as adam_v2
-from tensorflow.contrib.optimizer_v2 import gradient_descent as gradient_descent_v2
-from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import one_device_strategy as one_device_lib
-from tensorflow.python.distribute import tpu_strategy as tpu_lib
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
+
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
-from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_keras_v2
-from tensorflow.python.keras.optimizer_v2 import adam as adam_keras_v2
-from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras_v2
-from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_keras_v2
-from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import tpu_strategy_util
-from tensorflow.python.training import adagrad
-from tensorflow.python.training import adam
-from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import rmsprop
 from tensorflow.python.util import tf_inspect
 
 
@@ -73,6 +56,8 @@ GPU_TEST = "test_gpu" in sys.argv[0]
 TPU_TEST = "test_tpu" in sys.argv[0]
 
 
+# TODO(rchao): Rename `distribution` parameter to `strategy` or
+# `distribute_strategy`
 def generate(combinations):
   """A decorator for generating test cases of a test method or a test class.
 
@@ -325,143 +310,3 @@ class NamedDistribution(object):
   @property
   def required_tpu(self):
     return self._required_tpu
-
-
-def _get_tpu_strategy_creator(steps_per_run, use_single_core=False, **kwargs):
-  def _create_tpu_strategy():
-    resolver = tpu_cluster_resolver.TPUClusterResolver("")
-    topology = tpu_strategy_util.initialize_tpu_system(resolver)
-    device_assignment = None
-    if use_single_core:
-      device_assignment = device_assignment_lib.DeviceAssignment(
-          topology, core_assignment=device_assignment_lib.
-          SINGLE_CORE_ASSIGNMENT)
-
-    strategy = tpu_lib.TPUStrategy(resolver, steps_per_run=steps_per_run,
-                                   device_assignment=device_assignment,
-                                   **kwargs)
-    return strategy
-  return _create_tpu_strategy
-
-
-# pylint: disable=g-long-lambda
-default_strategy = NamedDistribution(
-    "Default",
-    distribution_strategy_context._get_default_strategy,  # pylint: disable=protected-access
-    required_gpus=None)
-one_device_strategy = NamedDistribution(
-    "OneDeviceCPU", lambda: one_device_lib.OneDeviceStrategy("/cpu:0"),
-    required_gpus=None)
-one_device_strategy_gpu = NamedDistribution(
-    "OneDeviceGPU", lambda: one_device_lib.OneDeviceStrategy("/gpu:0"),
-    required_gpus=1)
-tpu_strategy = NamedDistribution(
-    "TPU", _get_tpu_strategy_creator(steps_per_run=2),
-    required_tpu=True)
-tpu_strategy_one_step = NamedDistribution(
-    "TPUOneStep", _get_tpu_strategy_creator(steps_per_run=1),
-    required_tpu=True)
-tpu_strategy_one_core = NamedDistribution(
-    "TPUOneCore", _get_tpu_strategy_creator(
-        steps_per_run=2, use_single_core=True),
-    required_tpu=True)
-tpu_strategy_one_step_one_core = NamedDistribution(
-    "TPUOneStepOneCore", _get_tpu_strategy_creator(
-        steps_per_run=1, use_single_core=True),
-    required_tpu=True)
-
-mirrored_strategy_with_one_cpu = NamedDistribution(
-    "Mirrored1CPU",
-    lambda: mirrored_lib.MirroredStrategy(["/cpu:0"]))
-mirrored_strategy_with_one_gpu = NamedDistribution(
-    "Mirrored1GPU",
-    lambda: mirrored_lib.MirroredStrategy(["/gpu:0"]),
-    required_gpus=1)
-mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
-    "MirroredCPUAndGPU",
-    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/cpu:0"]),
-    required_gpus=1)
-mirrored_strategy_with_two_gpus = NamedDistribution(
-    "Mirrored2GPUs",
-    lambda: mirrored_lib.MirroredStrategy(["/gpu:0", "/gpu:1"]),
-    required_gpus=2)
-core_mirrored_strategy_with_one_cpu = NamedDistribution(
-    "CoreMirrored1CPU",
-    lambda: mirrored_lib.CoreMirroredStrategy(["/cpu:0"]))
-core_mirrored_strategy_with_one_gpu = NamedDistribution(
-    "CoreMirrored1GPU",
-    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0"]),
-    required_gpus=1)
-core_mirrored_strategy_with_gpu_and_cpu = NamedDistribution(
-    "CoreMirroredCPUAndGPU",
-    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/cpu:0"]),
-    required_gpus=1)
-core_mirrored_strategy_with_two_gpus = NamedDistribution(
-    "CoreMirrored2GPUs",
-    lambda: mirrored_lib.CoreMirroredStrategy(["/gpu:0", "/gpu:1"]),
-    required_gpus=2)
-parameter_server_strategy_with_two_gpus = NamedDistribution(
-    "ParameterServer2GPUs",
-    lambda: parameter_server_strategy.ParameterServerStrategy(
-        num_gpus_per_worker=2),
-    required_gpus=2)
-
-
-gradient_descent_optimizer_v1_fn = NamedObject(
-    "GradientDescentV1", lambda: gradient_descent.GradientDescentOptimizer(0.2))
-adagrad_optimizer_v1_fn = NamedObject(
-    "AdagradV1", lambda: adagrad.AdagradOptimizer(0.001))
-adam_optimizer_v1_fn = NamedObject("AdamV1",
-                                   lambda: adam.AdamOptimizer(0.001, epsilon=1))
-rmsprop_optimizer_v1_fn = NamedObject(
-    "RmsPropV1", lambda: rmsprop.RMSPropOptimizer(0.001))
-
-optimizers_v1 = [gradient_descent_optimizer_v1_fn, adagrad_optimizer_v1_fn]
-
-gradient_descent_optimizer_v2_fn = NamedObject(
-    "GradientDescentV2",
-    lambda: gradient_descent_v2.GradientDescentOptimizer(0.2))
-adagrad_optimizer_v2_fn = NamedObject(
-    "AdagradV2", lambda: adagrad_v2.AdagradOptimizer(0.001))
-adam_optimizer_v2_fn = NamedObject(
-    "AdamV2", lambda: adam_v2.AdamOptimizer(0.001, epsilon=1.0))
-
-optimizers_v2 = [gradient_descent_optimizer_v2_fn, adagrad_optimizer_v2_fn]
-
-gradient_descent_optimizer_keras_v2_fn = NamedObject(
-    "GradientDescentKerasV2",
-    lambda: gradient_descent_keras_v2.SGD(0.2))
-adagrad_optimizer_keras_v2_fn = NamedObject(
-    "AdagradKerasV2", lambda: adagrad_keras_v2.Adagrad(0.001))
-adam_optimizer_keras_v2_fn = NamedObject(
-    "AdamKerasV2", lambda: adam_keras_v2.Adam(0.001, epsilon=1.0))
-rmsprop_optimizer_keras_v2_fn = NamedObject(
-    "RmsPropKerasV2", lambda: rmsprop_keras_v2.RMSprop(0.001))
-
-graph_and_eager_modes = ["graph", "eager"]
-
-
-def distributions_and_v1_optimizers():
-  """A common set of combination with DistributionStrategies and Optimizers."""
-  return combine(
-      distribution=[
-          one_device_strategy,
-          mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus,
-          core_mirrored_strategy_with_gpu_and_cpu,
-          core_mirrored_strategy_with_two_gpus,
-      ],
-      optimizer_fn=optimizers_v1)
-
-
-def distributions_and_v2_optimizers():
-  """DistributionStrategies and V2 Optimizers."""
-  return combine(
-      distribution=[
-          one_device_strategy,
-          mirrored_strategy_with_gpu_and_cpu,
-          mirrored_strategy_with_two_gpus,
-          core_mirrored_strategy_with_gpu_and_cpu,
-          core_mirrored_strategy_with_two_gpus,
-      ],
-      optimizer_fn=optimizers_v2)

@@ -45,6 +45,15 @@ if tf2.enabled():
   from tensorflow.python.keras.layers.normalization_v2 import *  # pylint: disable=g-import-not-at-top
   from tensorflow.python.keras.layers.recurrent_v2 import *     # pylint: disable=g-import-not-at-top
 
+# This deserialization table is added for backward compatibility, as in TF 1.13,
+# BatchNormalizationV1 and BatchNormalizationV2 are used as class name for v1
+# and v2 version of BatchNormalization, respectively. Here we explictly convert
+# them to the canonical name in the config of deserialization.
+_DESERIALIZATION_TABLE = {
+    'BatchNormalizationV1': 'BatchNormalization',
+    'BatchNormalizationV2': 'BatchNormalization',
+}
+
 
 @keras_export('keras.layers.serialize')
 def serialize(layer):
@@ -68,6 +77,9 @@ def deserialize(config, custom_objects=None):
   globs['Network'] = models.Network
   globs['Model'] = models.Model
   globs['Sequential'] = models.Sequential
+  layer_class_name = config['class_name']
+  if layer_class_name in _DESERIALIZATION_TABLE:
+    config['class_name'] = _DESERIALIZATION_TABLE[layer_class_name]
 
   return deserialize_keras_object(
       config,

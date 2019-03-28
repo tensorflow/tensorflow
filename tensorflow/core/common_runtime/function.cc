@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/algorithm/container.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
@@ -412,12 +413,12 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
                       OpKernel** kernel);
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
                            const FunctionLibraryDefinition* lib_def,
-                           FunctionBody** fbody);
+                           std::unique_ptr<FunctionBody>* fbody);
   Status CreateItem(Item** item);
   Status GetOrCreateItem(LocalHandle local_handle, Item** item);
   Status InstantiateSymbolicGradient(const NameAttrList& func,
                                      const FunctionLibraryDefinition* lib_def,
-                                     FunctionBody** g_body);
+                                     std::unique_ptr<FunctionBody>* g_body);
   bool IsLocalTarget(const InstantiateOptions& options);
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
@@ -622,7 +623,8 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(
 
 Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
     const FunctionDef& fdef, AttrSlice attrs,
-    const FunctionLibraryDefinition* lib_def, FunctionBody** fbody) {
+    const FunctionLibraryDefinition* lib_def,
+    std::unique_ptr<FunctionBody>* fbody) {
   if (lib_def == base_lib_def_) {
     return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig_, fbody);
   } else {
@@ -635,7 +637,7 @@ Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
 
 Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     const NameAttrList& func, const FunctionLibraryDefinition* lib_def,
-    FunctionBody** g_body) {
+    std::unique_ptr<FunctionBody>* g_body) {
   const FunctionDef* fdef = lib_def->Find(func.name());
   if (fdef == nullptr) {
     // f is a primitive op.
@@ -723,7 +725,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
 
   const FunctionLibraryDefinition* lib_def =
       options.overlay_lib ? options.overlay_lib : base_lib_def_;
-  FunctionBody* fbody = nullptr;
+  std::unique_ptr<FunctionBody> fbody;
   if (function_name == kGradientOp) {
     const AttrValue* f = attrs.Find(kFuncAttr);
     if (f == nullptr) {
@@ -751,13 +753,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     mutex_lock l(mu_);
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
-      delete fbody;
       local_handle = parent_->GetHandleOnDevice(device_name_, *handle);
       ++items_[local_handle]->instantiation_counter;
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
-      item->func_graph = fbody;
+      item->func_graph = fbody.release();
       item->overlay_lib = options.overlay_lib;
       item->instantiation_counter = 1;
       item->executor_type = ExecutorType(options, attrs);
@@ -1434,24 +1435,24 @@ bool RemoveListArrayConverter(Graph* g) {
   return removed_any;
 }
 
+Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                    NameAttrList* function) {
+  if (call_def.op() == "PartitionedCall" ||
+      call_def.op() == "StatefulPartitionedCall") {
+    TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", function));
+  } else {
+    function->set_name(call_def.op());
+    *function->mutable_attr() = call_def.attr();
+  }
+  return Status::OK();
+}
+
 Status InstantiateFunctionCall(const NodeDef& call_def,
                                FunctionLibraryRuntime& flr,
                                FunctionLibraryRuntime::Handle* handle) {
-  const string* func_name;
-  AttrSlice attrs;
-
-  NameAttrList func;
-  if (call_def.op() == "PartitionedCall" ||
-      call_def.op() == "StatefulPartitionedCall") {
-    TF_RETURN_IF_ERROR(GetNodeAttr(call_def, "f", &func));
-    func_name = &func.name();
-    attrs = AttrSlice(&func.attr());
-  } else {
-    func_name = &call_def.op();
-    attrs = AttrSlice(call_def);
-  }
-
-  return flr.Instantiate(*func_name, attrs, handle);
+  NameAttrList function;
+  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(call_def, &function));
+  return flr.Instantiate(function.name(), AttrSlice(&function.attr()), handle);
 }
 
 namespace {
@@ -2032,25 +2033,23 @@ FunctionBody::~FunctionBody() { delete this->graph; }
 class SymbolicGradientHelper {
  public:
   explicit SymbolicGradientHelper(const FunctionBody& f) : fbody_(&f) {}
+  ~SymbolicGradientHelper() = default;
 
-  ~SymbolicGradientHelper() { delete gbody_; }
-
-  FunctionBody* Compute();
+  std::unique_ptr<FunctionBody> Compute();
 
  private:
   const FunctionBody* fbody_;
-  FunctionBody* gbody_ = nullptr;
 
-  // Makes a copy of fbody_ in gbody_.
-  void Copy();
+  // Makes a copy of fbody_ in gbody.
+  void Copy(FunctionBody* gbody);
 
   TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientHelper);
 };
 
-void SymbolicGradientHelper::Copy() {
+void SymbolicGradientHelper::Copy(FunctionBody* gbody) {
   const Graph& src = *(fbody_->graph);
-  gbody_->graph = new Graph(src.op_registry());
-  Graph* dst = gbody_->graph;
+  gbody->graph = new Graph(src.op_registry());
+  Graph* dst = gbody->graph;
 
   std::vector<Node*> node_map(src.num_node_ids());
 
@@ -2070,29 +2069,26 @@ void SymbolicGradientHelper::Copy() {
 
   // Save inputs in copied graph.
   CHECK_EQ(fbody_->arg_types.size(), fbody_->arg_nodes.size());
-  gbody_->arg_types = fbody_->arg_types;
+  gbody->arg_types = fbody_->arg_types;
   for (std::size_t i = 0; i < fbody_->arg_nodes.size(); ++i) {
-    gbody_->arg_nodes.push_back(node_map[fbody_->arg_nodes[i]->id()]);
+    gbody->arg_nodes.push_back(node_map[fbody_->arg_nodes[i]->id()]);
   }
 
   // Save outputs in copied graph.
   CHECK_EQ(fbody_->ret_types.size(), fbody_->ret_nodes.size());
-  gbody_->ret_types = fbody_->ret_types;
+  gbody->ret_types = fbody_->ret_types;
   for (std::size_t i = 0; i < fbody_->ret_nodes.size(); ++i) {
-    gbody_->ret_nodes.push_back(node_map[fbody_->ret_nodes[i]->id()]);
+    gbody->ret_nodes.push_back(node_map[fbody_->ret_nodes[i]->id()]);
   }
 }
 
-FunctionBody* SymbolicGradientHelper::Compute() {
-  CHECK(gbody_ == nullptr);
-  gbody_ = new FunctionBody;
+std::unique_ptr<FunctionBody> SymbolicGradientHelper::Compute() {
+  FunctionBody* gbody = new FunctionBody;
+  Copy(gbody);  // copy fbody_ into gbody.
 
-  // Copy fbody_ into gbody_.
-  Copy();
+  Graph* g = gbody->graph;
 
-  Graph* g = gbody_->graph;
-
-  const int num_y = static_cast<int>(gbody_->ret_nodes.size());
+  const int num_y = static_cast<int>(gbody->ret_nodes.size());
 
   // Populate 'y_node_outputs_' with node function body outputs.
   // Populate 'y_grad_nodes' with initial gradient nodes for each return node
@@ -2103,14 +2099,14 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   std::vector<NodeOut> y_grad_node_outputs;
   y_grad_node_outputs.reserve(num_y);
   for (int i = 0; i < num_y; ++i) {
-    Node* y = gbody_->ret_nodes[i];
+    Node* y = gbody->ret_nodes[i];
     y_node_outputs.push_back({y, 0});
     DCHECK_EQ(y->type_string(), kRetOp);
     const DataType dtype = y->input_type(0);
-    const int index = static_cast<int>(gbody_->arg_nodes.size());
+    const int index = static_cast<int>(gbody->arg_nodes.size());
     Node* dy = AddArg(g, dtype, index);
-    gbody_->arg_types.push_back(dtype);
-    gbody_->arg_nodes.push_back(dy);
+    gbody->arg_types.push_back(dtype);
+    gbody->arg_nodes.push_back(dy);
     y_grad_node_outputs.push_back({dy, 0});
   }
 
@@ -2119,7 +2115,7 @@ FunctionBody* SymbolicGradientHelper::Compute() {
   std::vector<NodeOut> x_node_outputs;
   x_node_outputs.reserve(num_x);
   for (size_t i = 0; i < fbody_->arg_nodes.size(); ++i) {
-    x_node_outputs.push_back({gbody_->arg_nodes[i], 0});
+    x_node_outputs.push_back({gbody->arg_nodes[i], 0});
   }
 
   // Call AddSymbolicGradients which will add nodes to graph 'g' that
@@ -2131,32 +2127,30 @@ FunctionBody* SymbolicGradientHelper::Compute() {
                                    g));
 
   // Remove the old return nodes from the function body.
-  for (Node* n : gbody_->ret_nodes) {
+  for (Node* n : gbody->ret_nodes) {
     g->RemoveNode(n);
   }
-  gbody_->ret_types = fbody_->arg_types;
+  gbody->ret_types = fbody_->arg_types;
   // TODO(apassos): use the right dtype for gradients of  resource variables
-  for (int i = 0; i < gbody_->ret_types.size(); ++i) {
-    if (gbody_->ret_types[i] == DT_RESOURCE) {
-      gbody_->ret_types[i] = DT_FLOAT;
+  for (int i = 0; i < gbody->ret_types.size(); ++i) {
+    if (gbody->ret_types[i] == DT_RESOURCE) {
+      gbody->ret_types[i] = DT_FLOAT;
     }
   }
-  gbody_->ret_nodes.clear();
+  gbody->ret_nodes.clear();
   // Add new return nodes to the function gradient body for each node
   // in 'x_grad_nodes'.
   const int arg_types_size = static_cast<int>(fbody_->arg_types.size());
   for (int i = 0; i < arg_types_size; ++i) {
     Endpoint grad = {x_grad_node_outputs[i].node, x_grad_node_outputs[i].index};
     Node* ret = AddRet(g, grad, i);
-    gbody_->ret_nodes.push_back(ret);
+    gbody->ret_nodes.push_back(ret);
   }
 
-  auto ret = gbody_;
-  gbody_ = nullptr;
-  return ret;
+  return std::unique_ptr<FunctionBody>(gbody);
 }
 
-FunctionBody* SymbolicGradient(const FunctionBody& f) {
+std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f) {
   return SymbolicGradientHelper(f).Compute();
 }
 
@@ -2164,7 +2158,7 @@ Status FunctionDefToBodyHelper(
     const FunctionDef& fdef, const AttrSlice& attrs,
     const FunctionLibraryDefinition* const lib_def,
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,
-    FunctionBody** fbody) {
+    std::unique_ptr<FunctionBody>* fbody) {
   // Instantiates the function template into a graph def.
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
@@ -2180,9 +2174,18 @@ Status FunctionDefToBodyHelper(
   std::vector<ControlFlowInfo> dummy;
   TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
 
-  *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types,
-                            graph.release());
+  *fbody = absl::make_unique<FunctionBody>(fdef, result.arg_types,
+                                           result.ret_types, graph.release());
   return Status::OK();
+}
+
+Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
+                               const FunctionLibraryDefinition* lib_def,
+                               std::unique_ptr<FunctionBody>* fbody) {
+  const auto get_func_sig = [&lib_def](const string& op, const OpDef** sig) {
+    return lib_def->LookUpOpDef(op, sig);
+  };
+  return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig, fbody);
 }
 
 }  // end namespace tensorflow

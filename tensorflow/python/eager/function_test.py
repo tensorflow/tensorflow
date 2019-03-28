@@ -656,7 +656,6 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(var_t.shape, tensor_shape.TensorShape([2, 2]))
 
   def testShapeInferenceForMoreSpecificInput(self):
-    self.skipTest('b/124219898')
 
     def f(a):
       return array_ops.reshape(a, [-1, 3])
@@ -664,9 +663,12 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     signature = [tensor_spec.TensorSpec(None, dtypes.float32)]
     compiled = def_function.function(f, input_signature=signature)
 
-    with ops.Graph().as_default():
+    @def_function.function
+    def use_f():
       inputs = array_ops.zeros([10, 10, 3])
       self.assertAllEqual(f(inputs).shape, compiled(inputs).shape)
+
+    use_f()
 
   def testFuncListAttr(self):
 
@@ -678,19 +680,22 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       fn2 = lambda: array_ops.ones([10]) * 2
 
-      def fn3(x=2):
+      def fn3(x=3):
         return array_ops.ones([10]) * x
-      fn3 = functools.partial(fn3, x=3)
+      fn4 = functools.partial(fn3, x=4)
+      fn5 = functools.partial(fn3, 5)
 
       return gen_functional_ops.case(val, [], [dtypes.float32],
                                      [function.defun(f).get_concrete_function()
-                                      for f in (fn1, fn2, fn3)])
+                                      for f in (fn1, fn2, fn3, fn4, fn5)])
 
     ones = array_ops.ones([10])
     self.assertAllEqual([ones], test_function(0))
     self.assertAllEqual([ones * 2], test_function(1))
     self.assertAllEqual([ones * 3], test_function(2))
-    self.assertAllEqual([ones * 3], test_function(22))  # default branch
+    self.assertAllEqual([ones * 4], test_function(3))
+    self.assertAllEqual([ones * 5], test_function(4))
+    self.assertAllEqual([ones * 5], test_function(22))  # default branch
 
   @test_util.enable_control_flow_v2
   def testVariableInLoopInFunction(self):
@@ -2560,6 +2565,63 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       func(constant_op.constant([[3., 4.], [5., 6.], [7., 8.]]))
     # Tracing more than twice per input doesn't make sense.
     self.assertLess(trace_count[0], 13)
+
+  def test_concrete_function_shape_mismatch(self):
+
+    @def_function.function
+    def f(argument_name):
+      return argument_name + 1.
+
+    f_concrete = f.get_concrete_function(constant_op.constant([1.]))
+
+    # Calling a function from eager doesn't do any shape checking above what
+    # kernels do while executing.
+    self.assertAllEqual(
+        [2., 3.],
+        f_concrete(constant_op.constant([1., 2.])).numpy())
+
+    @def_function.function
+    def g():
+      f_concrete(constant_op.constant([1., 2.]))
+
+    with self.assertRaisesRegexp(ValueError, 'argument_name'):
+      g()
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_shape_inference_with_symbolic_shapes(self):
+
+    @def_function.function
+    def _uses_symbolic_shapes(w, x, y):
+      x = array_ops.identity(x, name='name_collision')
+      x = array_ops.transpose(x, [1, 0, 2])
+      x_batch = array_ops.shape(x)[0]
+      y_batch = array_ops.shape(y)[0]
+      y *= w
+      n = y_batch // x_batch
+      return array_ops.reshape(y, [n, x_batch, -1])
+
+    conc = _uses_symbolic_shapes.get_concrete_function(
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32),
+        tensor_spec.TensorSpec(None, dtypes.float32))
+
+    @def_function.function
+    def _call_concrete():
+      c = constant_op.constant(1.)
+      array_ops.identity(c, name='name_collision')
+      output1 = conc(array_ops.ones([2]),
+                     array_ops.ones([5, 4, 2]),
+                     array_ops.ones([20, 2]))
+      self.assertEqual([5, 4, 2], output1.shape)
+      output2 = conc(array_ops.ones([3]),
+                     array_ops.ones([5, 4, 3]),
+                     array_ops.ones([40, 3]))
+      self.assertEqual([10, 4, 3], output2.shape)
+      return output1, output2
+
+    output1, output2 = _call_concrete()
+    self.assertEqual((5, 4, 2), self.evaluate(output1).shape)
+    self.assertEqual((10, 4, 3), self.evaluate(output2).shape)
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

@@ -48,6 +48,12 @@ std::unique_ptr<FlatBufferModel> ReadSharedWeightsTestModel() {
   return FlatBufferModel::BuildFromFile(model_path.c_str());
 }
 
+std::unique_ptr<FlatBufferModel> ReadGatherTestModel() {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir,
+                                             internal::kQuantizedWithGather);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
+}
+
 template <typename T>
 std::vector<T> GetAsVector(const flatbuffers::Vector<T>* vec) {
   return std::vector<T>(vec->begin(), vec->end());
@@ -64,6 +70,11 @@ class QuantizeWeightsTest : public testing::Test {
 
   void LoadSharedWeightsModel() {
     input_model_ = ReadSharedWeightsTestModel();
+    model_ = input_model_->GetModel();
+  }
+
+  void LoadGatherTestModel() {
+    input_model_ = ReadGatherTestModel();
     model_ = input_model_->GetModel();
   }
 
@@ -334,6 +345,34 @@ TEST_F(QuantizeWeightsTest, SharedWeights_Dequantize) {
   EXPECT_EQ(num_conv_ops, 2);
 }
 
+TEST_F(QuantizeWeightsTest, VerifyGatherQuantization) {
+  LoadGatherTestModel();
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = QuantizeWeights(&builder, model_, 0);
+  EXPECT_EQ(status, kTfLiteOk);
+
+  const uint8_t* buffer = builder.GetBufferPointer();
+  const Model* output_model = GetModel(buffer);
+  ASSERT_TRUE(output_model);
+
+  ASSERT_EQ(output_model->subgraphs()->size(), model_->subgraphs()->size());
+  for (size_t subgraph_idx = 0; subgraph_idx < model_->subgraphs()->size();
+       ++subgraph_idx) {
+    const auto quantized_graph = output_model->subgraphs()->Get(subgraph_idx);
+    for (size_t i = 0; i < quantized_graph->operators()->size(); ++i) {
+      const auto op = quantized_graph->operators()->Get(i);
+      const uint32_t op_code_idx = op->opcode_index();
+      const auto op_code =
+          output_model->operator_codes()->Get(op_code_idx)->builtin_code();
+      if (op_code == BuiltinOperator_GATHER) {
+        uint32_t input_tensor_index = op->inputs()->Get(0);
+        const auto weights_tensor =
+            quantized_graph->tensors()->Get(input_tensor_index);
+        EXPECT_EQ(weights_tensor->type(), TensorType_INT8);
+      }
+    }
+  }
+}
 }  // namespace
 }  // namespace optimize
 }  // namespace tflite

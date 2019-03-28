@@ -2319,20 +2319,15 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
       return errors::Internal("Failed to find function ", node->type_string(),
                               " in function library.");
     }
-    FunctionBody* fbody = nullptr;
-    TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(
-        *fdef, node->attrs(), library,
-        [library](const string& op, const OpDef** sig) {
-          return library->LookUpOpDef(op, sig);
-        },
-        &fbody));
+    std::unique_ptr<FunctionBody> fbody;
+    TF_RETURN_IF_ERROR(
+        FunctionDefToBodyHelper(*fdef, node->attrs(), library, &fbody));
 
     InlineFunctionBodyOptions inline_opts;
     inline_opts.override_device = false;
 
     TF_RETURN_IF_ERROR(InlineFunctionBody(*library, pruned_graph->get(), node,
-                                          fbody, inline_opts));
-    delete fbody;
+                                          fbody.get(), inline_opts));
   }
 
   return Status::OK();

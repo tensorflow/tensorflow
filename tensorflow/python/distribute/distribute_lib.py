@@ -425,9 +425,12 @@ class DistributionStrategy(object):
       return self.extended._make_input_fn_iterator(  # pylint: disable=protected-access
           input_fn, replication_mode=replication_mode)
 
+  @doc_controls.do_not_generate_docs  # DEPRECATED
   def experimental_make_numpy_iterator(
       self, numpy_input, batch_size, num_epochs=1, shuffle=1024, session=None):
     """Makes an iterator for input provided via a nest of numpy arrays.
+
+    DEPRECATED: Use `extended.experimental_make_numpy_dataset` instead.
 
     Args:
       numpy_input: A nest of NumPy input arrays that will be distributed evenly

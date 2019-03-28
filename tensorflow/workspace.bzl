@@ -133,11 +133,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "com_google_absl",
         build_file = clean_dep("//third_party:com_google_absl.BUILD"),
-        sha256 = "4ca486dfff63a9b7c3ece54895f7b92c5c2444df6a61942bb66d888dd310f358",
-        strip_prefix = "abseil-cpp-7c7754fb3ed9ffb57d35fe8658f3ba4d73a31e72",
+        sha256 = "e379f50099490d6091cea5a6073f8db533b0a7c6250e0844a8ec54d55fd763e5",
+        strip_prefix = "abseil-cpp-e75672f6afc7e8f23ee7b532e86d1b3b9be3984e",
         urls = [
-            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/7c7754fb3ed9ffb57d35fe8658f3ba4d73a31e72.tar.gz",
-            "https://github.com/abseil/abseil-cpp/archive/7c7754fb3ed9ffb57d35fe8658f3ba4d73a31e72.tar.gz",
+            "https://mirror.bazel.build/github.com/abseil/abseil-cpp/archive/e75672f6afc7e8f23ee7b532e86d1b3b9be3984e.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/e75672f6afc7e8f23ee7b532e86d1b3b9be3984e.tar.gz",
         ],
     )
 
@@ -216,11 +216,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "gemmlowp",
-        sha256 = "b87faa7294dfcc5d678f22a59d2c01ca94ea1e2a3b488c38a95a67889ed0a658",
-        strip_prefix = "gemmlowp-38ebac7b059e84692f53e5938f97a9943c120d98",
+        sha256 = "4da5404de25eeda40e7ceb18cf4ac1ce935db91c61ca2b4b84ef9d03e0ad1d4c",
+        strip_prefix = "gemmlowp-1bf3b9c582c70bddb07b8004fc031d9765684f79",
         urls = [
-            "https://mirror.bazel.build/github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
-            "https://github.com/google/gemmlowp/archive/38ebac7b059e84692f53e5938f97a9943c120d98.zip",
+            "https://mirror.bazel.build/github.com/google/gemmlowp/archive/1bf3b9c582c70bddb07b8004fc031d9765684f79.zip",
+            "https://github.com/google/gemmlowp/archive/1bf3b9c582c70bddb07b8004fc031d9765684f79.zip",
         ],
     )
 

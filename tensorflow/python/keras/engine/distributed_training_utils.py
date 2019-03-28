@@ -310,9 +310,9 @@ def validate_all_tensor_types(x, x_values):
 
 def validate_all_tensor_shapes(x, x_values):
   # Validate that the shape of all the elements in x have the same shape
-  x_shape = x_values[0].get_shape().as_list()
+  x_shape = x_values[0].shape.as_list()
   for i in range(1, len(x_values)):
-    if x_shape != x_values[i].get_shape().as_list():
+    if x_shape != x_values[i].shape.as_list():
       raise ValueError('Input tensor shapes do not match for distributed tensor'
                        ' inputs {}'.format(x))
 

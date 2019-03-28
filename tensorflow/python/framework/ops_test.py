@@ -621,6 +621,8 @@ class OperationTest(test_util.TensorFlowTestCase):
       new_input1 = constant_op.constant(1.0)
       new_input2 = constant_op.constant(True)
 
+      # Clear output shapes to bypass shape checking.
+      while_op._set_shape_list_attr("output_shapes", [])
       while_op._set_type_list_attr("T",
                                    [t.dtype for t in while_op.inputs] +
                                    [new_input1.dtype, new_input2.dtype])

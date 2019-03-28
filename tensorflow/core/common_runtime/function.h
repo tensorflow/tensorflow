@@ -157,7 +157,7 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // where L is a scalar-value function of (...x_i...).
 //
 // TODO(zhifengc): Asks math expert to say the comment again.
-FunctionBody* SymbolicGradient(const FunctionBody& f);
+std::unique_ptr<FunctionBody> SymbolicGradient(const FunctionBody& f);
 
 struct InlineFunctionBodyOptions {
   // All nodes that have incoming control edge *from* the function call node,
@@ -277,6 +277,12 @@ inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
   return ExpandInlineFunctions(lib, graph, ExpandInlineFunctionsOptions());
 }
 
+// Extracts function name and attributes from `call_def`
+// `call_def` can be a native function call (where the op type is the function
+// name) or a call through PartitionedCall/StatefulPartitionedCall.
+Status NameAndAttrsFromFunctionCall(const NodeDef& call_def,
+                                    NameAttrList* function);
+
 // Extracts function name and attributes from `call_def` and invokes
 // flr->Instantiate(name, attrs, handle).
 // `call_def` can be a native function call (where the op type is the function
@@ -293,11 +299,18 @@ bool IsFunctionCall(const FunctionLibraryDefinition& lib_def, const Node& n);
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.
+Status FunctionDefToBodyHelper(const FunctionDef& fdef, const AttrSlice& attrs,
+                               const FunctionLibraryDefinition* lib_def,
+                               std::unique_ptr<FunctionBody>* fbody);
+
+// Instantiates FunctionDef into a graph. Set *fbody to point to the
+// FunctionBody that holds the instantiated FunctionDef. Use custom function
+// signature lookup, in case instantiated function is not in the 'lib_def'.
 Status FunctionDefToBodyHelper(
     const FunctionDef& fdef, const AttrSlice& attrs,
-    const FunctionLibraryDefinition* const lib_def,
+    const FunctionLibraryDefinition* lib_def,
     const std::function<Status(const string&, const OpDef**)>& get_func_sig,
-    FunctionBody** fbody);
+    std::unique_ptr<FunctionBody>* fbody);
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_FUNCTION_H_

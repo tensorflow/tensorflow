@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <memory>
 #include <unordered_map>
-#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_response_cache.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_worker_service_impl.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
@@ -54,7 +53,6 @@ class GrpcWorker : public Worker {
   WorkerEnv* env();
 
  private:
-  RecentRequestIds recent_request_ids_;
   const int32 recv_buf_max_chunk_;
 };
 

@@ -263,11 +263,6 @@ class Context(object):
     Raises:
      ValueError: If execution_mode is not valid.
     """
-    if config is None:
-      config = config_pb2.ConfigProto(
-          allow_soft_placement=True,
-          log_device_placement=False,
-      )
     self._config = config
     self._thread_local_data = _ThreadLocalData()
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
@@ -287,6 +282,16 @@ class Context(object):
     self._execution_mode = execution_mode
     self._server_def = server_def
     self._collective_ops_server_def = None
+
+    # Values set after construction
+    self._gpu_per_process_memory_fraction = None
+    self._gpu_per_process_memory_growth = None
+    self._optimizer_jit = None
+    self._intra_op_parallelism_threads = None
+    self._inter_op_parallelism_threads = None
+    self._soft_device_placement = None
+    self._log_device_placement = None
+    self._optimizer_experimental_options = {}
 
   # pylint: enable=redefined-outer-name
 
@@ -336,9 +341,8 @@ class Context(object):
       assert self._context_devices is None
       opts = pywrap_tensorflow.TFE_NewContextOptions()
       try:
-        if self._config is not None:
-          config_str = self._config.SerializeToString()
-          pywrap_tensorflow.TFE_ContextOptionsSetConfig(opts, config_str)
+        config_str = self.config.SerializeToString()
+        pywrap_tensorflow.TFE_ContextOptionsSetConfig(opts, config_str)
         if self._device_policy is not None:
           pywrap_tensorflow.TFE_ContextOptionsSetDevicePlacementPolicy(
               opts, self._device_policy)
@@ -638,6 +642,74 @@ class Context(object):
         self._execution_mode = mode
 
   @property
+  def config(self):
+    """Return the ConfigProto with all runtime deltas applied."""
+    config = config_pb2.ConfigProto()
+    if self._config is not None:
+      config.CopyFrom(self._config)
+
+    if self._gpu_per_process_memory_fraction is not None:
+      config.gpu_options.per_process_gpu_memory_fraction = (
+          self._gpu_per_process_memory_fraction)
+    if self._gpu_per_process_memory_growth is not None:
+      config.gpu_options.allow_growth = self._gpu_per_process_memory_growth
+    if self._optimizer_jit is not None:
+      config.graph_options.optimizer_options.global_jit_level = (
+          config_pb2.OptimizerOptions.ON_1
+          if self._optimizer_jit else config_pb2.OptimizerOptions.OFF)
+    if self._intra_op_parallelism_threads is not None:
+      config.intra_op_parallelism_threads = self._intra_op_parallelism_threads
+    if self._inter_op_parallelism_threads is not None:
+      config.inter_op_parallelism_threads = self._inter_op_parallelism_threads
+
+    if self._soft_device_placement is not None:
+      config.allow_soft_placement = self._soft_device_placement
+    else:
+      config.allow_soft_placement = self.executing_eagerly()
+
+    if self._log_device_placement is not None:
+      config.log_device_placement = self._log_device_placement
+
+    def rewriter_toggle(option):
+      toggle = self._optimizer_experimental_options.get(option, None)
+      if toggle is None:
+        return
+
+      setattr(config.graph_options.rewrite_options,
+              option,
+              (rewriter_config_pb2.RewriterConfig.ON
+               if toggle else rewriter_config_pb2.RewriterConfig.OFF))
+
+    def rewriter_bool(option):
+      toggle = self._optimizer_experimental_options.get(option, None)
+      if toggle is None:
+        return
+
+      setattr(config.graph_options.rewrite_options,
+              option,
+              toggle)
+
+    rewriter_toggle("layout_optimizer")
+    rewriter_toggle("constant_folding")
+    rewriter_toggle("shape_optimization")
+    rewriter_toggle("remapping")
+    rewriter_toggle("arithmetic_optimization")
+    rewriter_toggle("dependency_optimization")
+    rewriter_toggle("loop_optimization")
+    rewriter_toggle("function_optimization")
+    rewriter_toggle("debug_stripper")
+    rewriter_bool("disable_model_pruning")
+    rewriter_toggle("scoped_allocator_optimization")
+    rewriter_toggle("pin_to_host_optimization")
+    rewriter_toggle("implementation_selector")
+    rewriter_bool("disable_meta_optimizer")
+    nodes = self._optimizer_experimental_options.get("min_graph_nodes", None)
+    if nodes is not None:
+      config.graph_options.rewrite_options.min_graph_nodes = nodes
+
+    return config
+
+  @property
   def function_call_options(self):
     """Returns function call options for current thread.
 
@@ -646,10 +718,13 @@ class Context(object):
     Returns: the FunctionCallOptions for current thread.
     """
     if self._thread_local_data.function_call_options is None:
-      base_config = config_pb2.ConfigProto()
-      base_config.CopyFrom(self._config)
+      config = self.config
+
+      # Default to soft placement for functions unless specified
+      if self._soft_device_placement is None:
+        config.allow_soft_placement = True
       self._thread_local_data.function_call_options = FunctionCallOptions(
-          config_proto=base_config)
+          config_proto=config)
 
     return self._thread_local_data.function_call_options
 
@@ -736,7 +811,7 @@ class Context(object):
 
   @property
   def gpu_per_process_memory_fraction(self):
-    return self._config.gpu_options.per_process_gpu_memory_fraction
+    return self.config.gpu_options.per_process_gpu_memory_fraction
 
   @gpu_per_process_memory_fraction.setter
   def gpu_per_process_memory_fraction(self, fraction):
@@ -744,11 +819,11 @@ class Context(object):
       raise RuntimeError(
           "GPU options must be set at program startup")
 
-    self._config.gpu_options.per_process_gpu_memory_fraction = fraction
+    self._gpu_per_process_memory_fraction = fraction
 
   @property
   def gpu_per_process_memory_growth(self):
-    return self._config.gpu_options.allow_growth
+    return self.config.gpu_options.allow_growth
 
   @gpu_per_process_memory_growth.setter
   def gpu_per_process_memory_growth(self, enabled):
@@ -756,19 +831,17 @@ class Context(object):
       raise RuntimeError(
           "GPU options must be set at program startup")
 
-    self._config.gpu_options.allow_growth = enabled
+    self._gpu_per_process_memory_growth = enabled
 
   @property
   def optimizer_jit(self):
-    level = self._config.graph_options.optimizer_options.global_jit_level
+    level = self.config.graph_options.optimizer_options.global_jit_level
     return (level == config_pb2.OptimizerOptions.ON_1 or
             level == config_pb2.OptimizerOptions.ON_2)
 
   @optimizer_jit.setter
   def optimizer_jit(self, enabled):
-    self._config.graph_options.optimizer_options.global_jit_level = (
-        config_pb2.OptimizerOptions.ON_1
-        if enabled else config_pb2.OptimizerOptions.OFF)
+    self._optimizer_jit = enabled
 
     self._thread_local_data.function_call_options = None
 
@@ -778,7 +851,7 @@ class Context(object):
     Returns:
       Dictionary of current option values
     """
-    rewrite_options = self._config.graph_options.rewrite_options
+    rewrite_options = self.config.graph_options.rewrite_options
     options = {}
 
     def rewriter_toggle(option):
@@ -815,48 +888,13 @@ class Context(object):
     Args:
       options: Dictionary of options to modify
     """
-    def rewriter_toggle(option):
-      toggle = options.get(option, None)
-      if toggle is None:
-        return
-
-      setattr(self._config.graph_options.rewrite_options,
-              option,
-              (rewriter_config_pb2.RewriterConfig.ON
-               if toggle else rewriter_config_pb2.RewriterConfig.OFF))
-
-    def rewriter_bool(option):
-      toggle = options.get(option, None)
-      if toggle is None:
-        return
-
-      setattr(self._config.graph_options.rewrite_options,
-              option,
-              toggle)
-
-    rewriter_toggle("layout_optimizer")
-    rewriter_toggle("constant_folding")
-    rewriter_toggle("shape_optimization")
-    rewriter_toggle("remapping")
-    rewriter_toggle("arithmetic_optimization")
-    rewriter_toggle("dependency_optimization")
-    rewriter_toggle("loop_optimization")
-    rewriter_toggle("function_optimization")
-    rewriter_toggle("debug_stripper")
-    rewriter_bool("disable_model_pruning")
-    rewriter_toggle("scoped_allocator_optimization")
-    rewriter_toggle("pin_to_host_optimization")
-    rewriter_toggle("implementation_selector")
-    rewriter_bool("disable_meta_optimizer")
-    nodes = options.get("min_graph_nodes", None)
-    if nodes is not None:
-      self._config.graph_options.rewrite_options.min_graph_nodes = nodes
+    self._optimizer_experimental_options.update(options)
 
     self._thread_local_data.function_call_options = None
 
   @property
   def intra_op_parallelism_threads(self):
-    return self._config.intra_op_parallelism_threads
+    return self.config.intra_op_parallelism_threads
 
   @intra_op_parallelism_threads.setter
   def intra_op_parallelism_threads(self, num_threads):
@@ -864,11 +902,11 @@ class Context(object):
       raise RuntimeError(
           "Intra op parallelism must be set at program startup")
 
-    self._config.intra_op_parallelism_threads = num_threads
+    self._intra_op_parallelism_threads = num_threads
 
   @property
   def inter_op_parallelism_threads(self):
-    return self._config.inter_op_parallelism_threads
+    return self.config.inter_op_parallelism_threads
 
   @inter_op_parallelism_threads.setter
   def inter_op_parallelism_threads(self, num_threads):
@@ -876,21 +914,21 @@ class Context(object):
       raise RuntimeError(
           "Inter op parallelism must be set at program startup")
 
-    self._config.inter_op_parallelism_threads = num_threads
+    self._inter_op_parallelism_threads = num_threads
 
   @property
   def soft_device_placement(self):
-    return self._config.allow_soft_placement
+    return self.config.allow_soft_placement
 
   @soft_device_placement.setter
   def soft_device_placement(self, enabled):
-    self._config.allow_soft_placement = enabled
+    self._soft_device_placement = enabled
 
     self._thread_local_data.function_call_options = None
 
   @property
   def log_device_placement(self):
-    return self._config.log_device_placement
+    return self.config.log_device_placement
 
   @log_device_placement.setter
   def log_device_placement(self, enabled):
@@ -898,7 +936,8 @@ class Context(object):
       raise RuntimeError(
           "Device placement logging must be set at program startup")
 
-    self._config.log_device_placement = enabled
+    self._log_device_placement = enabled
+    self._thread_local_data.function_call_options = None
 
   @property
   def device_policy(self):
@@ -1025,6 +1064,9 @@ def executing_eagerly():
   but may also be enabled within the context of a Python function via
   tf.contrib.eager.py_func.
   """
+  if context_safe() is None:
+    return default_execution_mode == EAGER_MODE
+
   return context().executing_eagerly()
 
 
