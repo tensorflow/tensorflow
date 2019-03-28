@@ -23,7 +23,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops as nn
 from tensorflow.python.platform import googletest
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent as gd
+
+logging.set_verbosity(logging.DEBUG)
 
 allowed_op_types = [
     'NoOp', 'Identity', 'XlaClusterOutput', 'Enter', 'Exit', 'Switch', 'Merge',
@@ -77,7 +80,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
       train = optim.minimize(cross_entropy)
 
-      autoshard.automatic_sharding(2, inp, loss, [train])
+      autoshard.automatic_sharding(2, inp, loss)
 
       return [loss, train]
 
@@ -117,7 +120,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
     with ops.device("/device:IPU:0"):
       l, t = my_model(inp, lab)
 
-    autoshard.automatic_sharding(2, inp, l, [t])
+    autoshard.automatic_sharding(2, inp, l)
 
     op_set = sharding.dependencies([l, t])
 
@@ -150,7 +153,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
     filt = lambda e: not (e[0] != 'conv2/Conv2D' and e[1] != 'conv3/Conv2D')
 
-    autoshard.automatic_sharding(2, inp, l, [t], edge_filter=filt)
+    autoshard.automatic_sharding(2, inp, l, edge_filter=filt)
 
     op_set = sharding.dependencies([l, t])
 
@@ -183,7 +186,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
           train = optim.minimize(cross_entropy)
 
-          autoshard.automatic_sharding(2, inp, loss, [])
+          autoshard.automatic_sharding(2, inp, loss)
 
           return [loss, train]
 
@@ -228,7 +231,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
           train = optim.minimize(cross_entropy)
 
-          autoshard.automatic_sharding(2, inp, loss, [])
+          autoshard.automatic_sharding(2, inp, loss)
 
           return [loss, train]
 
@@ -279,7 +282,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
           train = optim.minimize(cross_entropy)
 
-          autoshard.automatic_sharding(2, inp, loss, [])
+          autoshard.automatic_sharding(2, inp, loss)
 
           return [loss, train]
 
@@ -353,6 +356,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
     #   self.assertTrue('ResourceApplyGradientDescent' in op_types)
 
     def testSimpleXlaCompileTrainingInLoopV1WithEarlySharding(self):
+
       dataset = tu.create_dual_increasing_dataset(3)
 
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
@@ -374,7 +378,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
                 logits=x, labels=y)
             loss = math_ops.reduce_mean(cross_entropy)
 
-            autoshard.automatic_sharding(2, inp, loss, [])
+            autoshard.automatic_sharding(2, inp, loss)
 
             optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
             train = optim.minimize(cross_entropy)
@@ -389,7 +393,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
       op_set = ops.get_default_graph().get_operations()
       op_types = set()
-      op_shards = {}
+
       for o in op_set:
         if o.device == '/device:IPU:0' and o.type not in allowed_op_types:
           op_types.add(o.type)

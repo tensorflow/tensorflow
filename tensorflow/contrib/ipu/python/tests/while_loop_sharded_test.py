@@ -57,7 +57,7 @@ class WhileLoopShardedTest(test_util.TensorFlowTestCase):
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
           train = optim.minimize(cross_entropy)
 
-          autoshard.automatic_sharding(2, inp, loss, [])
+          autoshard.automatic_sharding(2, inp, loss)
 
           return [lr, loss, train]
 
