@@ -33,7 +33,8 @@ class Median_2d_test(test.TestCase):
       median_filter_2D(tf_img, None)
 
     filter_shape = (3, 3, 3)
-    with self.assertRaisesRegexp(ValueError, 'Filter shape must be a tuple of 2 integers .Got %s values in tuple' % len(filter_shape)):
+    with self.assertRaisesRegexp(ValueError, 'Filter shape must be a tuple of 2 integers .'
+                                             'Got %s values in tuple' % len(filter_shape)):
       median_filter_2D(tf_img, filter_shape)
 
     with self.assertRaisesRegexp(TypeError, 'Size of the filter must be Integers'):
@@ -53,10 +54,11 @@ class Median_2d_test(test.TestCase):
     tf_img1 = array_ops.placeholder(dtypes.int32,shape=[3, None, 4])
     tf_img2 = array_ops.placeholder(dtypes.int32,shape=[None, 3, 4])
 
-    with self.assertRaisesRegexp (TypeError, 'All the Dimensions of the input image tensor must be Integers.' ) :
+    with self.assertRaises (TypeError) :
       median_filter_2D(tf_img)
       median_filter_2D(tf_img1)
       median_filter_2D(tf_img2)
+
 
 
   def test_imagevsfilter(self):
