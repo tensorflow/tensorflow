@@ -80,9 +80,9 @@ class GraphRewriteDataset : public DatasetBase {
                             string* output_node);
 
   DatasetBase* optimized_input_;
-  FunctionLibraryRuntime* lib_ = nullptr;
+  FunctionLibraryRuntime* flr_ = nullptr;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_ = nullptr;
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_ = nullptr;
+  std::unique_ptr<FunctionLibraryDefinition> lib_def_ = nullptr;
   std::unique_ptr<FunctionHandleCache> function_handle_cache_ = nullptr;
   const DatasetBase* input_;
   const DataTypeVector output_types_;

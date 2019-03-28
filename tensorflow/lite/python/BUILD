@@ -136,6 +136,7 @@ py_library(
     ],
     deps = [
         ":lite_constants",
+        ":op_hint",
         "//tensorflow/python:tf_optimizer",
     ],
 )
@@ -188,7 +189,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:framework",
+        "//tensorflow/python:graph_util",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
     ],

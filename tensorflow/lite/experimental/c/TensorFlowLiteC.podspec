@@ -19,6 +19,5 @@ Pod::Spec.new do |s|
 
   s.module_name = 'TensorFlowLiteC'
   s.library = 'c++'
-  s.static_framework = true
   s.vendored_frameworks = 'Frameworks/TensorFlowLiteC.framework'
 end

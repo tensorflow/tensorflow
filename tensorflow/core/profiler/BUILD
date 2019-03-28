@@ -44,7 +44,6 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = tf_profiler_all_protos() + tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -54,7 +53,6 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [":profiler_service_proto"] + tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -68,5 +66,4 @@ tf_proto_library(
     ),
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
 )

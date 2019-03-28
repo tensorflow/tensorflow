@@ -66,7 +66,10 @@ struct FillPhiloxRandom {
                   T* data, int64 size, Distribution dist) {
     OP_REQUIRES(
         ctx, false,
-        errors::Internal("Default FillPhiloxRandom should not be executed."));
+        errors::Internal(
+            "Default `FillPhiloxRandom` implementation should not be executed. "
+            "The cause of this error is probabily that `FillPhiloxRandom` does "
+            "not support this device or random distribution yet."));
   }
 };
 

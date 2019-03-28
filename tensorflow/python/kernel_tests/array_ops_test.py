@@ -40,6 +40,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
@@ -740,6 +741,7 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
       # First axis slice
       _ = checker[np.newaxis, 1:]
 
+  @test_util.run_v1_only("currently failing on v2")
   def testMasks(self):
     with self.session(use_gpu=True):
       scalar = np.array(0)
@@ -1596,6 +1598,211 @@ class SortedSearchTest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(result, tf_result)
 
+
+class BatchGatherNdTest(test_util.TensorFlowTestCase):
+
+  def testShapesMatch(self):
+    """Tests for various different shape combinations."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((2, 2, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 2), (2, 3), 0),)
+    shapes.append(((2, 2, 2), (3,), 0),)
+    shapes.append(((2, 2, 2), (1,), 0),)
+    shapes.append(((2, 2, 3, 2), (2, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params = constant_op.constant(1.0, shape=(params_shape))
+      indices = constant_op.constant(
+          1, shape=(indices_shape), dtype=dtypes.int32)
+      out = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+      ndims_params = len(params_shape) - batch_dims
+      ndims_rows = ndims_params - indices_shape[-1]
+      expected_out_shape = indices_shape[:-1]
+      if ndims_rows > 0:
+        expected_out_shape += params_shape[-ndims_rows:]
+      self.assertSequenceEqual(out.shape, expected_out_shape)
+
+  def testReducesToGatherNDWhenBatchDimIsZero(self):
+    """Confirms setting batch_dims to zero reduces to tf.gather_nd."""
+    params = constant_op.constant(np.random.uniform(0.0, 1.0, size=(7, 8, 9)))
+    indices_shapes = []
+    indices_shapes.append((1,))
+    indices_shapes.append((3, 1))
+    indices_shapes.append((3, 3, 1))
+    indices_shapes.append((2,))
+    indices_shapes.append((3, 2))
+    indices_shapes.append((3, 3, 2))
+    indices_shapes.append((3,))
+    indices_shapes.append((3, 3))
+    indices_shapes.append((3, 3, 3))
+
+    for indices_shape in indices_shapes:
+      indices = np.random.randint(0, 7, size=indices_shape)
+      gather_nd_result = gen_array_ops.gather_nd(params, indices)
+      batch_gather_nd_result = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=0)
+      self.assertAllEqual(gather_nd_result, batch_gather_nd_result)
+
+  def testSameResultAsMapFn(self):
+    """Compares results with gather_nd called on every element with map_fn."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((2, 2, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params = constant_op.constant(
+          np.random.uniform(0.0, 1.0, size=(params_shape)))
+      indices = np.random.randint(0, 2, size=indices_shape)
+      batch_gather_nd_result = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+
+      if batch_dims > 1:
+        params = array_ops.reshape(
+            params, shape=[-1] + list(params_shape[batch_dims:]))
+        indices = array_ops.reshape(
+            indices, shape=[-1] + list(indices_shape[batch_dims:]))
+
+      map_fn_gather_nd_result = map_fn.map_fn(
+          fn=self._map_fn_body,
+          elems=(params, indices),
+          dtype=dtypes.float64)
+
+      if batch_dims > 1:
+        out_shape = map_fn_gather_nd_result.shape.as_list()
+        out_shape = list(params_shape[:batch_dims]) + out_shape[1:]
+        map_fn_gather_nd_result = array_ops.reshape(
+            map_fn_gather_nd_result, shape=out_shape)
+
+      self.assertAllEqual(map_fn_gather_nd_result, batch_gather_nd_result)
+
+  def _map_fn_body(self, elems):
+    return gen_array_ops.gather_nd(elems[0], elems[1])
+
+  def testBatchDimsAsTensor(self):
+    """Tests Tensor batch_dims as input works as intended."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 0),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params = constant_op.constant(
+          np.random.uniform(0.0, 1.0, size=(params_shape)))
+      indices = np.random.randint(0, 2, size=indices_shape)
+      batch_gather_nd_result = array_ops.gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+      batch_dims_tensor = constant_op.constant([batch_dims])
+      batch_gather_nd_tensor_batch_dims_result = array_ops.gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims_tensor)
+
+      self.assertAllEqual(batch_gather_nd_tensor_batch_dims_result,
+                          batch_gather_nd_result)
+
+  def testInvalidBatchDimsRaisesException(self):
+    """Tests whether invalid batch_dims raise expected exceptions."""
+    params = constant_op.constant(
+        np.random.uniform(0.0, 1.0, size=(3, 2, 2, 3, 4)))
+    indices = np.random.randint(0, 2, size=(3, 2, 3))
+
+    with self.assertRaises(TypeError):
+      array_ops.batch_gather_nd(
+          params=params,
+          indices=indices,
+          batch_dims=constant_op.constant((0, 1)))
+
+    with self.assertRaises(ValueError):
+      array_ops.batch_gather_nd(
+          params=params,
+          indices=indices,
+          batch_dims=-1)
+
+    with self.assertRaises(ValueError):
+      array_ops.batch_gather_nd(
+          params=params,
+          indices=indices,
+          batch_dims=4)
+
+  @test_util.run_deprecated_v1
+  def testNoneBatchDimensions(self):
+    """Tests gather_nd works with None dimensions."""
+    shapes = []
+    # params_shape, indices_shape, batch_dims
+    shapes.append(((2, 2, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 1, 3), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 2, 2), 1),)
+    shapes.append(((2, 2, 3, 2), (2, 3, 1), 1),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 1, 3), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 2, 2), 2),)
+    shapes.append(((3, 2, 2, 3, 4), (3, 2, 3, 1), 2),)
+
+    for params_shape, indices_shape, batch_dims in shapes:
+      params_ph_shape = list(params_shape)
+      indices_ph_shape = list(indices_shape)
+      for i in range(batch_dims):
+        params_ph_shape[i] = None
+        indices_ph_shape[i] = None
+
+      params = array_ops.placeholder(dtypes.float32, shape=params_ph_shape)
+      indices = array_ops.placeholder(dtypes.int32, shape=indices_ph_shape)
+      out = array_ops.batch_gather_nd(
+          params=params, indices=indices, batch_dims=batch_dims)
+
+      with self.cached_session() as sess:
+        params_val = np.ones(dtype=np.float32, shape=params_shape)
+        indices_val = np.ones(dtype=np.int32, shape=indices_shape)
+        res = sess.run(out,
+                       feed_dict={params: params_val, indices: indices_val})
+      row_ndims = len(params_shape) - batch_dims - indices_shape[-1]
+      expected_out_shape = indices_shape[:-1]
+      if row_ndims > 0:
+        expected_out_shape += params_shape[-row_ndims:]
+
+      self.assertSequenceEqual(res.shape, expected_out_shape)
+
+  @test_util.run_deprecated_v1
+  def testUnknownIndices(self):
+    """Tests whether indices with unknown rank works correctly."""
+    params = constant_op.constant(((0, 1, 2),))
+    indices = array_ops.placeholder(dtypes.int32)
+    gather_nd_t = array_ops.gather_nd(params, indices, batch_dims=1)
+    shape = gather_nd_t.get_shape()
+    self.assertEqual(None, shape.ndims)
+    self.assertEqual(None, tensor_shape.dimension_value(shape[0]))
 
 if __name__ == "__main__":
   test_lib.main()

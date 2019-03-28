@@ -46,8 +46,13 @@ void ShapeLayout::SetToDefaultLayout() {
   LayoutUtil::SetToDefaultLayout(&shape_);
 }
 
-bool ShapeLayout::MatchesLayoutInShape(const Shape& shape) const {
-  return ShapeUtil::Equal(shape, shape_);
+bool ShapeLayout::MatchesLayoutInShape(const Shape& shape,
+                                       bool minor_to_major_only) const {
+  auto equal = Shape::Equal();
+  if (minor_to_major_only) {
+    equal.MinorToMajorOnlyInLayout();
+  }
+  return equal(shape, shape_);
 }
 
 const Layout& ShapeLayout::layout() const {

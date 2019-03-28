@@ -103,17 +103,7 @@ class IteratorResource : public ResourceBase {
       captured_state = iterator_state_;
     }
     if (captured_state) {
-      SerializationContext::Params params;
-      // The iterator state may contain functions that are not present
-      // in ctx's function library. Namely, an iterator may be restored from
-      // a serialized iterator with a modified function library (for example, as
-      // a result of OptimizeDataset). These modified functions are needed
-      // to serialize the iterator again.
-      params.flib_def = captured_state->flib_def.get();
-      params.input_list = ctx->input_list();
-      params.optimization_only = ctx->optimization_only();
-      SerializationContext ctx_with_functions(params);
-      return captured_state->iterator->Save(&ctx_with_functions, writer);
+      return captured_state->iterator->Save(ctx, writer);
     } else {
       return errors::FailedPrecondition(
           "Save() failed because the iterator has not been initialized. "
@@ -337,9 +327,7 @@ class IteratorStateVariant {
   // that it can be written on the next call to Encode().
   Status InitializeFromIterator(OpKernelContext* ctx,
                                 IteratorResource* iterator_resource) {
-    SerializationContext::Params params;
-    params.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
-    SerializationContext serialization_ctx(params);
+    SerializationContext serialization_ctx({});
     data_ = absl::make_unique<VariantTensorData>();
     data_->set_type_name(TypeName());
     VariantTensorDataWriter writer(data_.get());

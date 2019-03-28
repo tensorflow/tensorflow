@@ -1130,6 +1130,11 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  bool IsLoopFusion() const;
+  bool IsInputFusion() const;
+  bool IsOutputFusion() const;
+  bool IsCustomFusion() const;
+
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusible() const;
@@ -1817,6 +1822,7 @@ string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);

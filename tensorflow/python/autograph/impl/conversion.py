@@ -33,7 +33,6 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.converters import arg_defaults
 from tensorflow.python.autograph.converters import asserts
 from tensorflow.python.autograph.converters import break_statements
-from tensorflow.python.autograph.converters import builtin_functions
 from tensorflow.python.autograph.converters import call_trees
 from tensorflow.python.autograph.converters import conditional_expressions
 from tensorflow.python.autograph.converters import continue_statements
@@ -201,8 +200,7 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
       entity_name=entity_name)
 
 
-def _convert_with_cache(entity, program_ctx, arg_values, arg_types,
-                        free_nonglobal_var_names):
+def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
   """Returns a (possibly cached) factory for the converted result of entity."""
   # The cache key is the entity's code object if it defined one, otherwise it's
   # the entity itself. Keying by the code object allows caching of functions
@@ -230,8 +228,8 @@ def _convert_with_cache(entity, program_ctx, arg_values, arg_types,
   logging.log(1, 'Entity %s is not cached for key %s subkey %s', entity, key,
               subkey)
 
-  nodes, converted_name, entity_info = entity_to_graph(entity, program_ctx,
-                                                       arg_values, arg_types)
+  nodes, converted_name, entity_info = convert_entity_to_ast(
+      entity, program_ctx)
 
   namer = naming.Namer(entity_info.namespace)
   factory_factory_name = namer.new_symbol('create_converted_entity_factory', ())
@@ -292,7 +290,7 @@ def _instantiate(entity, converted_entity_info, free_nonglobal_var_names):
   return converted_entity
 
 
-def convert(entity, program_ctx, arg_values, arg_types):
+def convert(entity, program_ctx):
   """Converts an entity into an equivalent entity."""
 
   if tf_inspect.isfunction(entity) or tf_inspect.ismethod(entity):
@@ -308,7 +306,7 @@ def convert(entity, program_ctx, arg_values, arg_types):
     # TODO(mdan): In extreme cases, other ag__ symbols may also be clobbered.
 
   converted_entity_info = _convert_with_cache(
-      entity, program_ctx, arg_values, arg_types, free_nonglobal_var_names)
+      entity, program_ctx, free_nonglobal_var_names)
 
   return _instantiate(entity, converted_entity_info, free_nonglobal_var_names)
 
@@ -404,16 +402,12 @@ def is_whitelisted_for_graph(o):
 
 
 # TODO(mdan): Rename to convert_*_node to avoid confusion with convert.
-def entity_to_graph(o, program_ctx, arg_values, arg_types):
+def convert_entity_to_ast(o, program_ctx):
   """Compile a Python entity into equivalent TensorFlow.
 
   Args:
     o: A Python entity.
     program_ctx: A ProgramContext object.
-    arg_values: A dict containing value hints for symbols like function
-      parameters.
-    arg_types: A dict containing type hints for symbols like function
-      parameters.
 
   Returns:
     A tuple (ast, new_name, namespace):
@@ -429,13 +423,11 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   logging.log(1, 'Converting %s', o)
 
   if tf_inspect.isclass(o):
-    nodes, name, entity_info = class_to_graph(o, program_ctx)
+    nodes, name, entity_info = convert_class_to_ast(o, program_ctx)
   elif tf_inspect.isfunction(o):
-    nodes, name, entity_info = function_to_graph(o, program_ctx, arg_values,
-                                                 arg_types)
+    nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
   elif tf_inspect.ismethod(o):
-    nodes, name, entity_info = function_to_graph(o, program_ctx, arg_values,
-                                                 arg_types)
+    nodes, name, entity_info = convert_func_to_ast(o, program_ctx)
   # TODO(mdan,yashkatariya): Remove when object conversion is implemented.
   elif hasattr(o, '__class__'):
     raise NotImplementedError(
@@ -463,8 +455,8 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
   return nodes, name, entity_info
 
 
-def class_to_graph(c, program_ctx):
-  """Specialization of `entity_to_graph` for classes."""
+def convert_class_to_ast(c, program_ctx):
+  """Specialization of `convert_entity_to_ast` for classes."""
   # TODO(mdan): Revisit this altogether. Not sure we still need it.
   converted_members = {}
   method_filter = lambda m: tf_inspect.isfunction(m) or tf_inspect.ismethod(m)
@@ -493,11 +485,9 @@ def class_to_graph(c, program_ctx):
     # Only convert the members that are directly defined by the class.
     if inspect_utils.getdefiningclass(m, c) is not c:
       continue
-    (node,), _, entity_info = function_to_graph(
+    (node,), _, entity_info = convert_func_to_ast(
         m,
         program_ctx=program_ctx,
-        arg_values={},
-        arg_types={'self': (c.__name__, c)},
         do_rename=False)
     class_namespace.update(entity_info.namespace)
     converted_members[m] = node
@@ -560,9 +550,7 @@ def class_to_graph(c, program_ctx):
       source_code=None,
       source_file=None,
       future_features=future_features,
-      namespace=class_namespace,
-      arg_values=None,
-      arg_types=None)
+      namespace=class_namespace)
 
   return output_nodes, class_name, entity_info
 
@@ -601,8 +589,8 @@ def _add_self_references(namespace, autograph_module):
   _add_reserved_symbol(namespace, 'ag__', ag_internal)
 
 
-def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
-  """Specialization of `entity_to_graph` for callable functions."""
+def convert_func_to_ast(f, program_ctx, do_rename=True):
+  """Specialization of `convert_entity_to_ast` for callable functions."""
 
   future_features = inspect_utils.getfutureimports(f)
   node, source = parser.parse_entity(f, future_features=future_features)
@@ -634,9 +622,7 @@ def function_to_graph(f, program_ctx, arg_values, arg_types, do_rename=True):
       source_code=source,
       source_file='<fragment>',
       future_features=future_features,
-      namespace=namespace,
-      arg_values=arg_values,
-      arg_types=arg_types)
+      namespace=namespace)
   context = converter.EntityContext(namer, entity_info, program_ctx)
   try:
     node = node_to_graph(node, context)
@@ -677,10 +663,6 @@ def node_to_graph(node, context):
   unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
-  # Past this point, line numbers are no longer accurate so we ignore the
-  # source.
-  # TODO(mdan): Is it feasible to reconstruct intermediate source code?
-  context.info.source_code = None
   node = converter.apply_(node, context, arg_defaults)
   node = converter.apply_(node, context, directives)
   node = converter.apply_(node, context, break_statements)
@@ -694,8 +676,6 @@ def node_to_graph(node, context):
   if context.program.options.uses(converter.Feature.LISTS):
     node = converter.apply_(node, context, lists)
     node = converter.apply_(node, context, slices)
-  if context.program.options.uses(converter.Feature.BUILTIN_FUNCTIONS):
-    node = converter.apply_(node, context, builtin_functions)
   node = converter.apply_(node, context, call_trees)
   node = converter.apply_(node, context, control_flow)
   node = converter.apply_(node, context, conditional_expressions)

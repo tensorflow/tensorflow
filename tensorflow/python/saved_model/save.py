@@ -521,7 +521,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
   # gathering from the eager context so Optimizers save the right set of
   # variables, but want any operations associated with the save/restore to be in
   # the exported graph (thus the `to_graph` argument).
-  saver = functional_saver.Saver(
+  saver = functional_saver.MultiDeviceSaver(
       saveable_view.checkpoint_view.frozen_saveable_objects(
           object_map=object_map, to_graph=exported_graph))
 

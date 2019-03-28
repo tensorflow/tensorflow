@@ -55,7 +55,7 @@ xla::XlaOp Uniform2NormalUsingSqrtErfinv(xla::XlaOp uniform) {
 // values with uniform distribution in the range [minval, maxval) for the given
 // shape and given two 32-bit seeds. Currently only shapes of type F32, S32 and
 // S64 are implemented.
-xla::XlaOp StatelessRandomUniformImpl(const xla::Shape& shape, DataType dtype,
+xla::XlaOp StatelessRandomUniformImpl(const xla::Shape& shape, DataType unused,
                                       xla::XlaOp seed, xla::XlaOp minval,
                                       xla::XlaOp maxval) {
   xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});

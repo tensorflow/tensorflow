@@ -1217,7 +1217,8 @@ class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
         tensor=tensor,
         slice_spec="",
         name=name,
-        dtype=sync_on_read_variable.dtype)
+        dtype=sync_on_read_variable.dtype,
+        device=sync_on_read_variable.primary.device)
     super(_SyncOnReadSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):

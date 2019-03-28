@@ -68,6 +68,12 @@ StatusOr<PaddingConfig> ParsePaddingConfig(absl::string_view str);
 // Parses and returns a Shape::ToString-format string.
 StatusOr<Shape> ParseShape(absl::string_view str);
 
+// Parses and returns a std::vector<ReplicaGroup> from str. str is supposed to
+// contain a list of the replica groups, i.e. just the rhs of the
+// "replica_groups={...}" attribute string, e.g., "{{0,1}, {2,3}}".
+StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
+    absl::string_view str);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PARSER_H_
