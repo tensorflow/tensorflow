@@ -17,27 +17,21 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import test_util as tu
 
-from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
-
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops.dataset_ops import Dataset
-from tensorflow.core.protobuf import config_pb2
 
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib.ipu import ipu_infeed_queue
@@ -45,18 +39,9 @@ from tensorflow.contrib.ipu import ipu_outfeed_queue
 from tensorflow.contrib.ipu import loops
 
 
-def create_increasing_dataset(value, shape=[4, 4], dtype=np.float32):
-  def _get_one_input(data):
-    return math_ops.cast(
-        gen_array_ops.broadcast_to(data, shape=shape), dtype=dtype)
-
-  dataset = Dataset.range(value).repeat().map(_get_one_input)
-  return dataset
-
-
 class InfeedOutfeedTest(test_util.TensorFlowTestCase):
   def testSingleInfeedRepeatNonTuple(self):
-    dataset = create_increasing_dataset(10)
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
@@ -84,7 +69,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
 
   def testSingleInfeedRepeatTuple(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
 
     def dataset_parser(value):
       image_1 = value
@@ -117,7 +102,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(31, [4, 4]))
 
   def testSingleInfeedRepeatNamed(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
 
     def dataset_parser(value):
       image_1 = value
@@ -154,7 +139,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[1], np.broadcast_to(27, [4, 4]))
 
   def testSingleInfeedMultipleRepeats(self):
-    dataset = create_increasing_dataset(2)
+    dataset = tu.create_single_increasing_dataset(2, shape=[4, 4])
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
@@ -181,7 +166,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
 
   def testSingleInfeedWhileLoopNonTuple(self):
-    dataset = create_increasing_dataset(10)
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
@@ -213,7 +198,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(91, [4, 4]))
 
   def testSingleInfeedWhileLoopTuple(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
 
     def dataset_parser(value):
       image_1 = value
@@ -252,7 +237,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(129.5, [4, 4]))
 
   def testSingleInfeedMultipleRuns(self):
-    dataset = create_increasing_dataset(10)
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
@@ -288,8 +273,8 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(9, [4, 4]))
 
   def testTwoInfeedsDifferentPrograms(self):
-    dataset1 = create_increasing_dataset(20)
-    dataset2 = create_increasing_dataset(3)
+    dataset1 = tu.create_single_increasing_dataset(20, shape=[4, 4])
+    dataset2 = tu.create_single_increasing_dataset(3, shape=[4, 4])
 
     infeed_queue1 = ipu_infeed_queue.IPUInfeedQueue(dataset1)
     infeed_queue2 = ipu_infeed_queue.IPUInfeedQueue(dataset2)
@@ -324,13 +309,13 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(result[0], np.broadcast_to(5, [4, 4]))
 
   def testUndefinedShape(self):
-    dataset = create_increasing_dataset(10)
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
     dataset = dataset.batch(10, drop_remainder=False)
     with self.assertRaisesRegexp(ValueError, 'Output shape \(\?,'):
       infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
 
   def testTrainingLoopWithInfeed(self):
-    dataset = create_increasing_dataset(10, shape=[4, 4, 2])
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
@@ -400,7 +385,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
         self.assertAllClose(outfed[i], np.broadcast_to(i + 1, [4, 4]))
 
   def testSingleInfeedOutfeedRepeatNonTuple(self):
-    dataset = create_increasing_dataset(10)
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4])
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
     outfeed_queue = ipu_outfeed_queue.IPUOutfeedQueue()
@@ -435,7 +420,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(outfed[5], np.broadcast_to(16, [4, 4]))
 
   def testSingleInfeedOutfeedRepeatTuple(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
     shape = [4, 4]
 
     def dataset_parser(value):
@@ -491,7 +476,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(outfed_result[2][4], np.broadcast_to(5.5, shape))
 
   def testSingleInfeedOutfeedRepeatTupleLast(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
     shape = [4, 4]
 
     def dataset_parser(value):
@@ -533,7 +518,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertAllClose(outfed_result[2], np.broadcast_to(5.5, shape))
 
   def testSingleInfeedOutfeedRepeatNamed(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
     shape = [4, 4]
 
     def dataset_parser(value):
@@ -599,7 +584,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
                           np.broadcast_to(5.5, shape))
 
   def testSingleInfeedOutfeedRepeatNamedLast(self):
-    dataset = create_increasing_dataset(3)
+    dataset = tu.create_single_increasing_dataset(3, shape=[4, 4])
     shape = [4, 4]
 
     def dataset_parser(value):
@@ -642,7 +627,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
 
   def testTrainingLoopWithInfeedAndOutfeedGetAll(self):
 
-    dataset = create_increasing_dataset(10, shape=[4, 4, 2])
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
@@ -687,7 +672,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       self.assertTrue(type(outfed) == np.ndarray)
 
   def testTrainingLoopWithInfeedAndOutfeedGetLast(self):
-    dataset = create_increasing_dataset(10, shape=[4, 4, 2])
+    dataset = tu.create_single_increasing_dataset(10, shape=[4, 4, 2])
     dataset = dataset.batch(batch_size=2, drop_remainder=True)
 
     infeed_queue = ipu_infeed_queue.IPUInfeedQueue(dataset)
