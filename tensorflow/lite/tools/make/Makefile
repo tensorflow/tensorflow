@@ -21,7 +21,7 @@ else
 	endif
 endif
 
-HOST_ARCH := $(shell if [[ $(shell uname -m) =~ i[345678]86 ]]; then echo x86_32; else echo $(shell uname -m); fi)
+HOST_ARCH := $(shell if uname -m | grep -q i[345678]86; then echo x86_32; else uname -m; fi)
 
 # Override these on the make command line to target a specific architecture. For example:
 # make -f tensorflow/lite/Makefile TARGET=rpi TARGET_ARCH=armv7l
