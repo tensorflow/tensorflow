@@ -20,6 +20,7 @@ load(
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "if_static",
+    "if_static_and_not_mobile",
 )
 
 cc_library(
@@ -82,7 +83,7 @@ cc_library(
     hdrs = ["loader.h"],
     deps = [
         ":loader_lite",
-    ] + if_static([
+    ] + if_static_and_not_mobile([
         "//tensorflow/core:tensorflow",
     ]) + if_not_mobile([
         "//tensorflow/core:core_cpu",
