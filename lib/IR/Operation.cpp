@@ -558,13 +558,11 @@ bool Operation::emitOpError(const Twine &message) {
 // Operation Cloning
 //===----------------------------------------------------------------------===//
 
-/// Create a deep copy of this operation, remapping any operands that use
-/// values outside of the operation using the map that is provided (leaving
-/// them alone if no entry is present).  Replaces references to cloned
-/// sub-operations to the corresponding operation that is copied, and adds
-/// those mappings to the map.
-Operation *Operation::clone(BlockAndValueMapping &mapper,
-                            MLIRContext *context) {
+/// Create a deep copy of this operation but keep the operation regions empty.
+/// Operands are remapped using `mapper` (if present), and `mapper` is updated
+/// to contain the results.
+Operation *Operation::cloneWithoutRegions(BlockAndValueMapping &mapper,
+                                          MLIRContext *context) {
   SmallVector<Value *, 8> operands;
   SmallVector<Block *, 2> successors;
 
@@ -607,13 +605,31 @@ Operation *Operation::clone(BlockAndValueMapping &mapper,
                                   attrs, successors, numRegions,
                                   hasResizableOperandsList(), context);
 
+  // Remember the mapping of any results.
+  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
+    mapper.map(getResult(i), newOp->getResult(i));
+
+  return newOp;
+}
+
+Operation *Operation::cloneWithoutRegions(MLIRContext *context) {
+  BlockAndValueMapping mapper;
+  return cloneWithoutRegions(mapper, context);
+}
+
+/// Create a deep copy of this operation, remapping any operands that use
+/// values outside of the operation using the map that is provided (leaving
+/// them alone if no entry is present).  Replaces references to cloned
+/// sub-operations to the corresponding operation that is copied, and adds
+/// those mappings to the map.
+Operation *Operation::clone(BlockAndValueMapping &mapper,
+                            MLIRContext *context) {
+  auto *newOp = cloneWithoutRegions(mapper, context);
+
   // Clone the regions.
   for (unsigned i = 0; i != numRegions; ++i)
     getRegion(i).cloneInto(&newOp->getRegion(i), mapper, context);
 
-  // Remember the mapping of any results.
-  for (unsigned i = 0, e = getNumResults(); i != e; ++i)
-    mapper.map(getResult(i), newOp->getResult(i));
   return newOp;
 }
 

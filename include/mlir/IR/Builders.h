@@ -282,6 +282,20 @@ public:
     return cloneOp;
   }
 
+  /// Creates a deep copy of this operation but keep the operation regions
+  /// empty. Operands are remapped using `mapper` (if present), and `mapper` is
+  /// updated to contain the results.
+  Operation *cloneWithoutRegions(Operation &op, BlockAndValueMapping &mapper) {
+    Operation *cloneOp = op.cloneWithoutRegions(mapper, getContext());
+    block->getOperations().insert(insertPoint, cloneOp);
+    return cloneOp;
+  }
+  Operation *cloneWithoutRegions(Operation &op) {
+    Operation *cloneOp = op.cloneWithoutRegions(getContext());
+    block->getOperations().insert(insertPoint, cloneOp);
+    return cloneOp;
+  }
+
 private:
   Function *function;
   Block *block = nullptr;

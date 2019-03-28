@@ -56,6 +56,12 @@ private:
   // `dialectConversion`.  Returns the converted function or `nullptr` on error.
   Function *convertFunction(Function *f);
 
+  // Converts the given region starting from the entry block and following the
+  // block successors.  Returns the converted region or `nullptr` on error.
+  template <typename RegionParent>
+  std::unique_ptr<Region> convertRegion(MLIRContext *context, Region *region,
+                                        RegionParent *parent);
+
   // Converts an operation with successors.  Extracts the converted operands
   // from `valueRemapping` and the converted blocks from `blockRemapping`, and
   // passes them to `converter->rewriteTerminator` function defined in the
@@ -171,11 +177,6 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
 
   // Iterate over ops and convert them.
   for (Operation &op : *block) {
-    if (op.getNumRegions() != 0) {
-      op.emitError("unsupported region operation");
-      return failure();
-    }
-
     // Find the first matching conversion and apply it.
     bool converted = false;
     for (auto *conversion : conversions) {
@@ -191,9 +192,15 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
       converted = true;
       break;
     }
-    // If there is no conversion provided for the op, clone the op as is.
-    if (!converted)
-      builder.clone(op, mapping);
+    // If there is no conversion provided for the op, clone the op and convert
+    // its regions, if any.
+    if (!converted) {
+      auto *newOp = builder.cloneWithoutRegions(op, mapping);
+      for (int i = 0, e = op.getNumRegions(); i < e; ++i) {
+        auto newRegion = convertRegion(op.getContext(), &op.getRegion(i), &op);
+        newOp->getRegion(i).takeBody(*newRegion);
+      }
+    }
   }
 
   // Recurse to children unless they have been already visited.
@@ -204,6 +211,49 @@ impl::FunctionConversion::convertBlock(Block *block, FuncBuilder &builder,
       return failure();
   }
   return success();
+}
+
+template <typename RegionParent>
+std::unique_ptr<Region>
+impl::FunctionConversion::convertRegion(MLIRContext *context, Region *region,
+                                        RegionParent *parent) {
+  assert(region && "expected a region");
+  auto newRegion = llvm::make_unique<Region>(parent);
+  if (region->empty())
+    return newRegion;
+
+  auto emitError = [context](llvm::Twine f) -> std::unique_ptr<Region> {
+    context->emitError(UnknownLoc::get(context), f.str());
+    return nullptr;
+  };
+
+  // Create new blocks and convert their arguments.
+  for (Block &block : *region) {
+    auto *newBlock = new Block;
+    newRegion->push_back(newBlock);
+    mapping.map(&block, newBlock);
+    for (auto *arg : block.getArguments()) {
+      auto convertedType = dialectConversion->convertType(arg->getType());
+      if (!convertedType)
+        return emitError("could not convert block argument type");
+      newBlock->addArgument(convertedType);
+      mapping.map(arg, *newBlock->args_rbegin());
+    }
+  }
+
+  // Start a DFS-order traversal of the CFG to make sure defs are converted
+  // before uses in dominated blocks.
+  llvm::DenseSet<Block *> visitedBlocks;
+  FuncBuilder builder(&newRegion->front());
+  if (failed(convertBlock(&region->front(), builder, visitedBlocks)))
+    return nullptr;
+
+  // If some blocks are not reachable through successor chains, they should have
+  // been removed by the DCE before this.
+
+  if (visitedBlocks.size() != std::distance(region->begin(), region->end()))
+    return emitError("unreachable blocks were not converted");
+  return newRegion;
 }
 
 Function *impl::FunctionConversion::convertFunction(Function *f) {
@@ -229,30 +279,10 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
   if (f->getBlocks().empty())
     return newFunction.release();
 
-  // Create blocks in the new function and convert types of their arguments.
-  FuncBuilder builder(newFunction.get());
-  for (Block &block : *f) {
-    auto *newBlock = builder.createBlock();
-    mapping.map(&block, newBlock);
-    for (auto *arg : block.getArguments()) {
-      auto convertedType = dialectConversion->convertType(arg->getType());
-      if (!convertedType)
-        return emitError("could not convert block argument type");
-      newBlock->addArgument(convertedType);
-      mapping.map(arg, *newBlock->args_rbegin());
-    }
-  }
-
-  // Start a DFS-order traversal of the CFG to make sure defs are converted
-  // before uses in dominated blocks.
-  llvm::DenseSet<Block *> visitedBlocks;
-  if (failed(convertBlock(&f->front(), builder, visitedBlocks)))
-    return nullptr;
-
-  // If some blocks are not reachable through successor chains, they should have
-  // been removed by the DCE before this.
-  if (visitedBlocks.size() != f->getBlocks().size())
-    return emitError("unreachable blocks were not converted");
+  auto newBody = convertRegion(context, &f->getBody(), f);
+  if (!newBody)
+    return emitError("could not convert function body");
+  newFunction->getBody().takeBody(*newBody);
 
   return newFunction.release();
 }

@@ -90,6 +90,13 @@ public:
   Operation *clone(BlockAndValueMapping &mapper, MLIRContext *context);
   Operation *clone(MLIRContext *context);
 
+  /// Create a deep copy of this operation but keep the operation regions empty.
+  /// Operands are remapped using `mapper` (if present), and `mapper` is updated
+  /// to contain the results.
+  Operation *cloneWithoutRegions(BlockAndValueMapping &mapper,
+                                 MLIRContext *context);
+  Operation *cloneWithoutRegions(MLIRContext *context);
+
   /// Returns the operation block that contains this operation.
   Block *getBlock() { return block; }
 
