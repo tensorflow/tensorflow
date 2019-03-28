@@ -2,12 +2,6 @@
 #   Contains ops to build an input pipeline for tensorflow.
 #   APIs here are meant to evolve over time.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-package(default_visibility = ["//visibility:public"])
-
 load(
     "//tensorflow:tensorflow.bzl",
     "py_test",
@@ -22,6 +16,12 @@ load(
     "tf_kernel_tests_linkstatic",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+
+package(default_visibility = ["//visibility:public"])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
 
 tf_custom_op_library(
     # TODO(sibyl-Mooth6ku,ptucker): Understand why 'python/ops/_' is needed and fix it.
