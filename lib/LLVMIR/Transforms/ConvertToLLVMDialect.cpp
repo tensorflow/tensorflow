@@ -1072,25 +1072,16 @@ static void ensureDistinctSuccessors(Block &bb) {
   }
 }
 
-static void ensureDistinctSuccessors(Module *m) {
+void mlir::LLVM::ensureDistinctSuccessors(Module *m) {
   for (auto &f : *m) {
     for (auto &bb : f.getBlocks()) {
-      ensureDistinctSuccessors(bb);
+      ::ensureDistinctSuccessors(bb);
     }
   }
 };
 
-/// A pass converting MLIR Standard and Builtin operations into the LLVM IR
-/// dialect.
-class LLVMLowering : public ModulePass<LLVMLowering>, public DialectConversion {
-public:
-  void runOnModule() override {
-    Module *m = &getModule();
-    uniqueSuccessorsWithArguments(m);
-    if (failed(DialectConversion::convert(m)))
-      signalPassFailure();
-  }
-
+/// A dialect converter from the Standard dialect to the LLVM IR dialect.
+class LLVMLowering : public DialectConversion {
 protected:
   // Create a set of converters that live in the pass object by passing them a
   // reference to the LLVM IR dialect.  Store the module associated with the
@@ -1136,15 +1127,6 @@ protected:
     return TypeConverter::convertFunctionSignature(t, *module);
   }
 
-  // Make argument-taking successors of each block distinct.  PHI nodes in LLVM
-  // IR use the predecessor ID to identify which value to take.  They do not
-  // support different values coming from the same predecessor.  If a block has
-  // another block as a successor more than once with different values, insert
-  // a new dummy block for LLVM PHI nodes to tell the sources apart.
-  void uniqueSuccessorsWithArguments(Module *m) {
-    return ensureDistinctSuccessors(m);
-  }
-
 private:
   // Storage for the conversion patterns.
   llvm::BumpPtrAllocator converterStorage;
@@ -1152,7 +1134,28 @@ private:
   llvm::Module *module;
 };
 
-ModulePassBase *mlir::createConvertToLLVMIRPass() { return new LLVMLowering(); }
+/// A pass converting MLIR Standard operations into the LLVM IR dialect.
+class LLVMLoweringPass : public ModulePass<LLVMLoweringPass> {
+public:
+  // Run the dialect converter on the module.
+  void runOnModule() override {
+    Module *m = &getModule();
+    LLVM::ensureDistinctSuccessors(m);
+    if (failed(impl.convert(m)))
+      signalPassFailure();
+  }
 
-static PassRegistration<LLVMLowering>
+private:
+  LLVMLowering impl;
+};
+
+ModulePassBase *mlir::createConvertToLLVMIRPass() {
+  return new LLVMLoweringPass();
+}
+
+std::unique_ptr<DialectConversion> mlir::createStdToLLVMConverter() {
+  return llvm::make_unique<LLVMLowering>();
+}
+
+static PassRegistration<LLVMLoweringPass>
     pass("convert-to-llvmir", "Convert all functions to the LLVM IR dialect");
