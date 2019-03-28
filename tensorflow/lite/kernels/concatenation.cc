@@ -160,8 +160,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   return kTfLiteOk;
 }
 
-#undef TF_LITE_MACRO_DISPATCH
-
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION_REF() {
