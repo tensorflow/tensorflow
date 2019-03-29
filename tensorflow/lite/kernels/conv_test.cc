@@ -170,11 +170,11 @@ TEST_P(ConvolutionOpTest, SimpleTestFloat32) {
                              }));
 }
 
-TEST_P(ConvolutionOpTest, SimpleTestFloat32NumThread1) {
+TEST_P(ConvolutionOpTest, SimpleTestFloat32SingleThreaded) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
                        {TensorType_FLOAT32, {3, 2, 2, 1}},
                        {TensorType_FLOAT32, {}}, 2, 2, Padding_VALID,
-                       ActivationFunctionType_NONE, 1, 1, 1);
+                       ActivationFunctionType_NONE, 1, 1, /*num_threads=*/1);
 
   m.SetInput({
       // First batch
