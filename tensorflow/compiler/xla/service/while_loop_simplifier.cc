@@ -453,19 +453,22 @@ static StatusOr<bool> TryRemoveConstantParams(HloInstruction* while_op) {
 //
 // Returns true if it made a change to the graph.
 static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
-  // Cowardly refuse to remove loops that are not removable.  In practice,
-  // this means that we can't remove loops that contain side-effecting
-  // instructions or have control predecessors/successors.
+  // Cowardly refuse to remove loops that are not removable.  In practice, this
+  // means that we can't remove loops that have control predecessors/successors.
+  if (!while_op->parent()->IsRemovable(while_op)) {
+    VLOG(2) << "Not attempting to remove while loop that is not removable: "
+            << while_op->ToShortString();
+    return false;
+  }
+
+  // Refuse to remove while loops with a condition that contain side-effects,
+  // because removing a while loop is tantamount to removing its condition.
   //
-  // This is not a fundamental limitation.  The control operands can be moved
-  // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.  But
-  // moving an op out of the loop also removes implicit control dependencies
-  // between the op and the ops outside the loop, so we'd have to add those back
-  // for things like infeed/outfeed.  It gets complicated.  So for now we just
-  // avoid it.
-  if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
-    VLOG(2) << "Not attempting to remove while loop it is not removable: "
+  // TODO(jlebar): This is conservative: We could instead just run the while
+  // condition once (trip-count == 0) or twice (trip-count == 1).
+  if (while_op->while_condition()->HasSideEffect()) {
+    VLOG(2) << "Not attempting to remove while loop whose condition contains "
+               "side-effecting instructions: "
             << while_op->ToShortString();
     return false;
   }
