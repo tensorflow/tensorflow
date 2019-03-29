@@ -10,10 +10,10 @@ from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.keras import layers
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn
@@ -27,9 +27,8 @@ from tensorflow.python.training import gradient_descent
 
 
 def count_compile_end_events(events):
-  fn = (
-      lambda x: 1 if x.type == IpuTraceEvent.COMPILE_END and len(x.compile_end.compilation_report) > 10 else 0
-  )
+  fn = (lambda x: 1 if x.type == IpuTraceEvent.COMPILE_END and len(
+      x.compile_end.compilation_report) > 10 else 0)
   return sum(map(fn, events))
 
 
@@ -244,7 +243,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     inp = array_ops.placeholder(np.float32, [1, 8, 8, 4])
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      out = convolutional.conv2d(inp, 8, 1)
+      out = layers.Conv2D(8, 1)(inp)
 
     events = gen_ipu_ops.ipu_event_trace()
 

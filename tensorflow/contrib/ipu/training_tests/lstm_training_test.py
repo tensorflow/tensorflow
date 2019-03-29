@@ -53,7 +53,8 @@ def _PopnnLSTM(x, h, c, y):
       weights_initializer=init_ops.zeros_initializer(dtype=dataType),
       bias_initializer=init_ops.zeros_initializer(dtype=dataType))
   outputs, _ = lstm_cell(x, initial_state=(h, c), training=True)
-  softmax = nn.softmax_cross_entropy_with_logits(logits=outputs[-1], labels=y)
+  softmax = nn.softmax_cross_entropy_with_logits_v2(
+      logits=outputs[-1], labels=array_ops.stop_gradient(y))
   loss = math_ops.reduce_mean(softmax)
   train = gradient_descent.GradientDescentOptimizer(lr).minimize(loss)
   return [loss, train]
@@ -68,7 +69,8 @@ def _tfLSTM(x, h, c, y):
   state = rnn_cell.LSTMStateTuple(c, h)
   outputs, states = rnn.dynamic_rnn(
       lstm_cell, x, dtype=dataType, initial_state=state, time_major=True)
-  softmax = nn.softmax_cross_entropy_with_logits(logits=outputs[-1], labels=y)
+  softmax = nn.softmax_cross_entropy_with_logits_v2(
+      logits=outputs[-1], labels=array_ops.stop_gradient(y))
   loss = math_ops.reduce_mean(softmax)
   train = gradient_descent.GradientDescentOptimizer(lr).minimize(loss)
   return [loss, train]

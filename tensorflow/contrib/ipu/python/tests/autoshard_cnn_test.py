@@ -15,10 +15,10 @@ from tensorflow.contrib.ipu.python import loops
 from tensorflow.contrib.ipu.python import popnn_rnn
 from tensorflow.contrib.ipu.python import sharded_optimizer as so
 from tensorflow.contrib.ipu.python import sharding
+from tensorflow.keras import layers
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops as nn
@@ -67,15 +67,13 @@ class AutoshardTest(test_util.TensorFlowTestCase):
       x = inp
       y = lab
 
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv1", use_bias=False)
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv2", use_bias=False)
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv3", use_bias=False)
+      x = layers.Conv2D(8, 3, padding='same', name="conv1", use_bias=False)(x)
+      x = layers.Conv2D(8, 3, padding='same', name="conv2", use_bias=False)(x)
+      x = layers.Conv2D(8, 3, padding='same', name="conv3", use_bias=False)(x)
       x = math_ops.reduce_max(x, axis=[1, 2])
 
-      cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+      cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+          logits=x, labels=array_ops.stop_gradient(y))
       loss = math_ops.reduce_mean(cross_entropy)
       optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
       train = optim.minimize(cross_entropy)
@@ -99,15 +97,13 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
   def testSimpleTraining(self):
     def my_model(x, y):
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv1", use_bias=False)
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv2", use_bias=False)
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv3", use_bias=False)
+      x = layers.Conv2D(8, 3, padding='same', name="conv1", use_bias=False)(x)
+      x = layers.Conv2D(8, 3, padding='same', name="conv2", use_bias=False)(x)
+      x = layers.Conv2D(8, 3, padding='same', name="conv3", use_bias=False)(x)
       x = math_ops.reduce_max(x, axis=[1, 2])
 
-      cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+      cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+          logits=x, labels=array_ops.stop_gradient(y))
       loss = math_ops.reduce_mean(cross_entropy)
       optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
       train = optim.minimize(cross_entropy)
@@ -130,15 +126,13 @@ class AutoshardTest(test_util.TensorFlowTestCase):
 
   def testSimpleTrainingWithEdgeFilter(self):
     def my_model(x, y):
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv1", use_bias=False)
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv2", use_bias=False)
-      x = convolutional.conv2d(
-          x, 8, 3, padding='same', name="conv3", use_bias=False)
+      x = layers.Conv2D(8, 3, padding='same', name="conv1", use_bias=False)(x)
+      x = layers.Conv2D(8, 3, padding='same', name="conv2", use_bias=False)(x)
+      x = layers.Conv2D(8, 3, padding='same', name="conv3", use_bias=False)(x)
       x = math_ops.reduce_max(x, axis=[1, 2])
 
-      cross_entropy = nn.softmax_cross_entropy_with_logits(logits=x, labels=y)
+      cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+          logits=x, labels=array_ops.stop_gradient(y))
       loss = math_ops.reduce_mean(cross_entropy)
       optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
       train = optim.minimize(cross_entropy)
@@ -171,16 +165,16 @@ class AutoshardTest(test_util.TensorFlowTestCase):
         with ops.device("/device:IPU:0"):
           inp = x
 
-          x = convolutional.conv2d(
-              x, 8, 3, padding='same', name="conv1", use_bias=False)
-          x = convolutional.conv2d(
-              x, 8, 3, padding='same', name="conv2", use_bias=False)
-          x = convolutional.conv2d(
-              x, 8, 3, padding='same', name="conv3", use_bias=False)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv1", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv2", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv3", use_bias=False)(x)
           x = math_ops.reduce_max(x, axis=[1, 2])
 
-          cross_entropy = nn.softmax_cross_entropy_with_logits(
-              logits=x, labels=y)
+          cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+              logits=x, labels=array_ops.stop_gradient(y))
           loss = math_ops.reduce_mean(cross_entropy)
 
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
@@ -224,8 +218,8 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           lstm_cell = popnn_rnn.PopnnLSTM(256, dtype=dtypes.float32)
           x, _ = lstm_cell(x, training=True)
 
-          cross_entropy = nn.softmax_cross_entropy_with_logits(
-              logits=x, labels=y)
+          cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+              logits=x, labels=array_ops.stop_gradient(y))
           loss = math_ops.reduce_mean(cross_entropy)
 
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(0.01))
@@ -267,16 +261,16 @@ class AutoshardTest(test_util.TensorFlowTestCase):
         with ops.device("/device:IPU:0"):
           inp = x
 
-          x = convolutional.conv2d(
-              x, 8, 3, padding='same', name="conv1", use_bias=False)
-          x = convolutional.conv2d(
-              x, 8, 3, padding='same', name="conv2", use_bias=False)
-          x = convolutional.conv2d(
-              x, 8, 3, padding='same', name="conv3", use_bias=False)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv1", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv2", use_bias=False)(x)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv3", use_bias=False)(x)
           x = math_ops.reduce_max(x, axis=[1, 2])
 
-          cross_entropy = nn.softmax_cross_entropy_with_logits(
-              logits=x, labels=y)
+          cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+              logits=x, labels=array_ops.stop_gradient(y))
           loss = math_ops.reduce_mean(cross_entropy)
 
           optim = so.ShardedOptimizer(gd.GradientDescentOptimizer(lr))
@@ -366,16 +360,16 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           with ops.device("/device:IPU:0"):
             inp = x
 
-            x = convolutional.conv2d(
-                x, 8, 3, padding='same', name="conv1", use_bias=False)
-            x = convolutional.conv2d(
-                x, 8, 3, padding='same', name="conv2", use_bias=False)
-            x = convolutional.conv2d(
-                x, 8, 3, padding='same', name="conv3", use_bias=False)
+            x = layers.Conv2D(
+                8, 3, padding='same', name="conv1", use_bias=False)(x)
+            x = layers.Conv2D(
+                8, 3, padding='same', name="conv2", use_bias=False)(x)
+            x = layers.Conv2D(
+                8, 3, padding='same', name="conv3", use_bias=False)(x)
             x = math_ops.reduce_max(x, axis=[1, 2])
 
-            cross_entropy = nn.softmax_cross_entropy_with_logits(
-                logits=x, labels=y)
+            cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+                logits=x, labels=array_ops.stop_gradient(y))
             loss = math_ops.reduce_mean(cross_entropy)
 
             autoshard.automatic_sharding(2, inp, loss)

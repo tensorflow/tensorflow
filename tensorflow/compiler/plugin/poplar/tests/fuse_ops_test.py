@@ -1,4 +1,4 @@
-# Copyright 2017 Graphcore Ltd
+# Copyright 2017, 2018, 2019 Graphcore Ltd
 #
 
 from __future__ import absolute_import
@@ -8,10 +8,10 @@ from __future__ import print_function
 import numpy as np
 import test_utils as tu
 
+from tensorflow.keras import layers
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import normalization as layers_norm
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
@@ -393,18 +393,16 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
-        y = convolutional.conv2d(
-            y,
+            kernel_initializer=init_ops.ones_initializer())(x)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(y)
 
       loss = math_ops.reduce_sum(y)
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
@@ -441,18 +439,16 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       lr = array_ops.placeholder(np.float32, shape=[])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
-        y = convolutional.conv2d(
-            y,
+            kernel_initializer=init_ops.ones_initializer())(x)
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(y)
 
       loss = math_ops.reduce_sum(y)
       optimizer = gradient_descent.GradientDescentOptimizer(lr)
@@ -662,12 +658,11 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
     with ops.device("/device:IPU:0"):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(x)
         y = layers_norm.batch_normalization(y, fused=True)
         y = nn_ops.relu(y)
 
@@ -706,14 +701,13 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
             kernel_initializer=init_ops.ones_initializer(),
             bias_initializer=init_ops.ones_initializer(),
-            name="a")
+            name="a")(x)
         y = nn.relu(y)
 
       loss = math_ops.reduce_sum(y)
@@ -750,14 +744,13 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
       lr = array_ops.placeholder(np.float32, shape=[])
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
             kernel_initializer=init_ops.ones_initializer(),
             bias_initializer=init_ops.ones_initializer(),
-            name="a")
+            name="a")(x)
         y = nn.relu(y)
 
       loss = math_ops.reduce_sum(y)

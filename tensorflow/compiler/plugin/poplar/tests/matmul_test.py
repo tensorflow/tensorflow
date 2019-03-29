@@ -160,16 +160,16 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
       y = math_ops.matmul(y, w2) + b2
 
       expected = array_ops.placeholder(np.float32, shape=[3, 2])
-      xent = nn.softmax_cross_entropy_with_logits(logits=y, labels=expected)
+      xent = nn.softmax_cross_entropy_with_logits_v2(
+          logits=y, labels=array_ops.stop_gradient(expected))
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(xent)
 
     with session_lib.Session() as sess:
       fd = {
-          x:
-          np.array([[7, 3, 5, 9], [1, 2, 3, 4], [5, 6, 7, 8]],
-                   dtype=np.float32),
+          x: np.array([[7, 3, 5, 9], [1, 2, 3, 4], [5, 6, 7, 8]],
+                      dtype=np.float32),
           expected: [[1, 2], [3, 4], [5, 6]]
       }
 
@@ -210,7 +210,8 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
       y = math_ops.matmul(w2, y) + b2
 
       expected = array_ops.placeholder(np.float32, shape=[2, 3])
-      xent = nn.softmax_cross_entropy_with_logits(logits=y, labels=expected)
+      xent = nn.softmax_cross_entropy_with_logits_v2(
+          logits=y, labels=array_ops.stop_gradient(expected))
 
       optimizer = gradient_descent.GradientDescentOptimizer(0.1)
       train = optimizer.minimize(xent)

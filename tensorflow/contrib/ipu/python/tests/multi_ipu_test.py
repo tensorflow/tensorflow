@@ -11,10 +11,10 @@ from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib import ipu
+from tensorflow.keras import layers
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import ops
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -202,13 +202,14 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
     def my_graph(inp, lab):
       with ops.device("/device:IPU:0"):
         with ipu.ops.ipu_shard(0):
-          x = convolutional.conv2d(inp, 8, 3, padding='same', name="convA")
+          x = layers.Conv2D(8, 3, padding='same', name="convA")(inp)
 
         with ipu.ops.ipu_shard(1):
-          x = convolutional.conv2d(x, 8, 1, padding='same', name="convB")
+          x = layers.Conv2D(8, 1, padding='same', name="convB")(x)
           x = math_ops.reduce_mean(x, axis=[1, 2])
 
-          loss = nn.softmax_cross_entropy_with_logits(logits=x, labels=lab)
+          loss = nn.softmax_cross_entropy_with_logits_v2(
+              logits=x, labels=array_ops.stop_gradient(lab))
           loss = math_ops.reduce_mean(loss)
 
         opt = ipu.sharded_optimizer.ShardedOptimizer(
@@ -267,8 +268,8 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
     def my_graph(inp, bias):
       with ops.device("/device:IPU:0"):
         with ipu.ops.ipu_shard(0):
-          x = convolutional.conv2d(
-              inp, 8, 3, padding='same', name="conv", use_bias=False)
+          x = layers.Conv2D(
+              8, 3, padding='same', name="conv", use_bias=False)(inp)
 
         with ipu.ops.ipu_shard(1):
           x = nn_ops.bias_add(x, bias, name='biasAdd')

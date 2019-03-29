@@ -19,10 +19,10 @@ from __future__ import print_function
 import numpy as np
 import test_utils as tu
 
+from tensorflow.keras import layers
 from tensorflow.python.platform import googletest
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.layers import normalization as layers_norm
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -45,12 +45,11 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
       z = array_ops.placeholder(np.float32, shape=[32])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(x)
       res = gen_array_ops.reshape(y, [32]) + z
 
     tu.configure_ipu_system(True, True, True)
@@ -75,12 +74,11 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
       z = array_ops.placeholder(np.float32, shape=[4, 4, 2, 1])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(x)
       res = array_ops.transpose(y, [1, 2, 3, 0]) + z
 
     tu.configure_ipu_system(True, True, True)
@@ -106,12 +104,11 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
       s = array_ops.placeholder(np.float32, shape=[])
 
       with variable_scope.variable_scope("vs", use_resource=True):
-        y = convolutional.conv2d(
-            x,
+        y = layers.Conv2D(
             2,
             1,
             use_bias=True,
-            kernel_initializer=init_ops.ones_initializer())
+            kernel_initializer=init_ops.ones_initializer())(x)
       res = y + z * s
 
     tu.configure_ipu_system(True, True, True)

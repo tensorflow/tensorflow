@@ -224,8 +224,8 @@ class LSTMTest(test.TestCase):
           forget_bias=forget_bias,
           training=True,
           name=name)
-      softmax = nn.softmax_cross_entropy_with_logits(
-          logits=logits, labels=plabels)
+      softmax = nn.softmax_cross_entropy_with_logits_v2(
+          logits=logits, labels=array_ops.stop_gradient(plabels))
       loss = math_ops.reduce_mean(softmax)
       train = gradient_descent.GradientDescentOptimizer(0.01).minimize(loss)
 

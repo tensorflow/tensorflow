@@ -12,12 +12,12 @@ from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import ipu_infeed_queue
 from tensorflow.contrib.ipu.python import loops
+from tensorflow.keras import layers
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
-from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
@@ -52,7 +52,8 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       logits = RNN(X)
       # Loss
       cross_entropy = math_ops.reduce_mean(
-          nn.softmax_cross_entropy_with_logits(logits=logits, labels=Y))
+          nn.softmax_cross_entropy_with_logits_v2(
+              logits=logits, labels=array_ops.stop_gradient(Y)))
       # Training
       train = gradient_descent.GradientDescentOptimizer(0.01).minimize(
           cross_entropy)
@@ -183,27 +184,24 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
         x = variable_scope.get_variable(
             "v2", dtype=np.float32, shape=[1, 4, 4, 2], initializer=init)
         with variable_scope.variable_scope("vs", use_resource=True):
-          y = convolutional.conv2d(
-              x,
+          y = layers.Conv2D(
               2,
               1,
               use_bias=True,
               kernel_initializer=init_ops.ones_initializer(),
-              name='conv1')
-          y = convolutional.conv2d(
-              y,
+              name='conv1')(x)
+          y = layers.Conv2D(
               2,
               1,
               use_bias=True,
               kernel_initializer=init_ops.ones_initializer(),
-              name='conv2')
-          y = convolutional.conv2d(
-              y,
+              name='conv2')(y)
+          y = layers.Conv2D(
               2,
               1,
               use_bias=True,
               kernel_initializer=init_ops.ones_initializer(),
-              name='conv3')
+              name='conv3')(y)
         loss = math_ops.reduce_sum(y)
         optimizer = gradient_descent.GradientDescentOptimizer(0.1)
         train = optimizer.minimize(loss)
@@ -238,8 +236,8 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
           x, _ = rnn.dynamic_rnn(
               cell=lstm_cell, inputs=x, dtype=dtypes.float32, time_major=True)
 
-          cross_entropy = nn.softmax_cross_entropy_with_logits(
-              logits=x, labels=y)
+          cross_entropy = nn.softmax_cross_entropy_with_logits_v2(
+              logits=x, labels=array_ops.stop_gradient(y))
           loss = math_ops.reduce_mean(cross_entropy)
 
           optim = gradient_descent.GradientDescentOptimizer(0.01)
