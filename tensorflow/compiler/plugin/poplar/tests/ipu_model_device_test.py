@@ -275,8 +275,10 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       evts = tu.extract_all_events(rep)
       self.assertEqual(len(evts), 3)  # begin, end, execute
 
-      self.assertEqual(evts[1].compile_end.compilation_report[0], 217)
-      self.assertEqual(evts[2].execute.execution_report[0], 217)
+      self.assertEqual(evts[1].compile_end.compilation_report[0],
+                       bytes(bytearray([217])))
+      self.assertEqual(evts[2].execute.execution_report[0],
+                       bytes(bytearray([217])))
 
   def testIpuEventsWithoutPoplarReporting(self):
     with ops.device("/device:IPU:0"):
