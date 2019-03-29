@@ -115,6 +115,10 @@ class Graph(
   """
 
   def __repr__(self):
+    return self.as_dot()
+
+  def as_dot(self):
+    """Print CFG in DOT format."""
     result = 'digraph CFG {\n'
     for node in self.index.values():
       result += '  %s [label="%s"];\n' % (id(node), node)
