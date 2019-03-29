@@ -35,10 +35,10 @@ class BaseDenseAttentionTest(test.TestCase):
     scores = np.array([[[1.1]]], dtype=np.float32)
     # Value tensor of shape [1, 1, 1]
     v = np.array([[[1.6]]], dtype=np.float32)
-    # Value mask tensor of shape [1, 1]
-    v_mask = np.array([[True]], dtype=np.bool_)
+    # Scores mask tensor of shape [1, 1, 1]
+    scores_mask = np.array([[[True]]], dtype=np.bool_)
     actual = dense_attention.BaseDenseAttention()._apply_scores(
-        scores=scores, value=v, value_mask=v_mask)
+        scores=scores, value=v, scores_mask=scores_mask)
 
     # Expected tensor of shape [1, 1, 1].
     # expected000 = softmax(scores)[0, 0] * 1.6 = 1.6
@@ -63,10 +63,10 @@ class BaseDenseAttentionTest(test.TestCase):
     scores = np.array([[[1., 0., 1.]]], dtype=np.float32)
     # Value tensor of shape [1, 3, 1]
     v = np.array([[[1.6], [0.7], [-0.8]]], dtype=np.float32)
-    # Value mask tensor of shape [1, 3]
-    v_mask = np.array([[True, True, False]], dtype=np.bool_)
+    # Scores mask tensor of shape [1, 1, 3]
+    scores_mask = np.array([[[True, True, False]]], dtype=np.bool_)
     actual = dense_attention.BaseDenseAttention()._apply_scores(
-        scores=scores, value=v, value_mask=v_mask)
+        scores=scores, value=v, scores_mask=scores_mask)
 
     # Expected attention distribution = softmax(scores) with zeros in
     # positions where v_mask == False.
@@ -108,10 +108,10 @@ class BaseDenseAttentionTest(test.TestCase):
     scores = np.array([[[1.1]], [[2.1]]], dtype=np.float32)
     # Value tensor of shape [2, 1, 1]
     v = np.array([[[1.6]], [[2.6]]], dtype=np.float32)
-    # Value mask tensor of shape [2, 1]
-    v_mask = np.array([[True], [True]], dtype=np.bool_)
+    # Scpres mask tensor of shape [2, 1, 1]
+    scores_mask = np.array([[[True]], [[True]]], dtype=np.bool_)
     actual = dense_attention.BaseDenseAttention()._apply_scores(
-        scores=scores, value=v, value_mask=v_mask)
+        scores=scores, value=v, scores_mask=scores_mask)
 
     # Expected tensor of shape [2, 1, 1].
     # expected000 = softmax(scores)[0, 0] * 1.6 = 1.6
@@ -303,6 +303,34 @@ class AttentionTest(test.TestCase):
       sess.run(attention_layer.scale.initializer)
       self.assertAllClose(1., attention_layer.scale.value())
 
+  def test_self_attention_causal(self):
+    # Query-value tensor of shape [1, 3, 1]
+    q = np.array([[[0.5], [0.8], [-0.3]]], dtype=np.float32)
+    attention_layer = dense_attention.Attention(causal=True)
+    actual = attention_layer([q, q])
+
+    # Expected scores of shape [1, 3, 3]
+    # scores = [[0.25, 0.4, -0.15], [0.4, 0.64, -0.24], [-0.15, -0.24, 0.09]]
+    # Expected attention distribution = softmax(scores) lower triangular
+    # => attention_distribution00 = [1., 0., 0.]
+    #    attention_distribution01
+    #      = [exp(0.4), exp(0.64), 0.] / (exp(0.4) + exp(0.64))
+    #      = [0.44028635073, 0.55971364926, 0.]
+    #    attention_distribution02
+    #      = [exp(-0.15), exp(-0.24), exp(0.09)]
+    #        / (exp(-0.15) + exp(-0.24) + exp(0.09))
+    #      = [0.31395396638, 0.28693232061, 0.399113713]
+    #
+    # Expected tensor of shape [1, 3, 1].
+    # expected000 = 0.5
+    # expected010 = 0.44028635073 * 0.5 + 0.55971364926 * 0.8
+    #             = 0.66791409477
+    # expected020 = 0.31395396638 * 0.5 +0.28693232061 * 0.8 -0.399113713 * 0.3
+    #             = 0.26678872577
+    expected = np.array(
+        [[[0.5], [0.66791409477], [0.26678872577]]], dtype=np.float32)
+    self.assertAllClose(expected, actual)
+
   def test_query_mask_not_implemented(self):
     attention_layer = dense_attention.Attention()
     q = np.array([[[1.1]]], dtype=np.float32)
@@ -357,6 +385,30 @@ class AttentionTest(test.TestCase):
     with self.assertRaisesRegexp(
         ValueError, 'Attention layer mask must be a list of length 2'):
       attention_layer([q, q], mask=[mask, mask, mask])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class LowerTriangularMaskTest(test.TestCase):
+
+  def test_square_shape(self):
+    actual = dense_attention._lower_triangular_mask([3, 3])
+    expected = np.array(
+        [[True, False, False], [True, True, False], [True, True, True]],
+        dtype=np.bool_)
+    self.assertAllEqual(expected, actual)
+
+  def test_orthogonal_shape(self):
+    actual = dense_attention._lower_triangular_mask([3, 2])
+    expected = np.array(
+        [[True, False], [True, True], [True, True]], dtype=np.bool_)
+    self.assertAllEqual(expected, actual)
+
+  def test_three_dim(self):
+    actual = dense_attention._lower_triangular_mask([1, 3, 3])
+    expected = np.array(
+        [[[True, False, False], [True, True, False], [True, True, True]]],
+        dtype=np.bool_)
+    self.assertAllEqual(expected, actual)
 
 
 if __name__ == '__main__':
