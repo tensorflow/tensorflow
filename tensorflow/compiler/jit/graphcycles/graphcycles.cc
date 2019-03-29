@@ -394,11 +394,11 @@ bool GraphCycles::ContractEdge(int32 a, int32 b) {
   return true;
 }
 
-std::unordered_set<int32> GraphCycles::Successors(int32 node) {
+std::unordered_set<int32> GraphCycles::Successors(int32 node) const {
   return rep_->nodes_[node]->out;
 }
 
-std::unordered_set<int32> GraphCycles::Predecessors(int32 node) {
+std::unordered_set<int32> GraphCycles::Predecessors(int32 node) const {
   return rep_->nodes_[node]->in;
 }
 

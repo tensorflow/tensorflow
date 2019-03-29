@@ -67,10 +67,10 @@ class LocalExecutable {
       const ExecutableRunOptions& run_options, const Backend& backend);
 
   // Records the computation in a SessionModule proto with the arguments used to
-  // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
+  // invoke it, and the result. Enabled by flag: --xla_dump_hlo_snapshots.
   //
-  // The given ServiceExecutableRunOptions override any values from TF_XLA_FLAGS
-  // environment variable.
+  // The given ServiceExecutableRunOptions override any values from the
+  // XLA_FLAGS environment variable.
   StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const absl::Span<const ShapedBuffer* const> arguments);
@@ -126,7 +126,7 @@ class LocalClient : public Client {
   // device memory allocation. If null, the default memory allocator for the
   // device is used.
   StatusOr<ScopedShapedBuffer> LiteralToShapedBuffer(
-      const Literal& literal, int device_ordinal,
+      const LiteralSlice& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
   // Transfer the BorrowingLiteral to the device with the given ordinal.
@@ -146,7 +146,7 @@ class LocalClient : public Client {
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with
   // Client::TransferToInfeed.
-  Status TransferToInfeedLocal(const Literal& literal, int device_ordinal);
+  Status TransferToInfeedLocal(const LiteralSlice& literal, int device_ordinal);
 
   // Transfer and return a value of the given shape from the outfeed of the
   // given device.

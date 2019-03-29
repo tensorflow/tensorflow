@@ -779,10 +779,6 @@ class TensorShape(object):
     """Returns a list of Dimensions, or None if the shape is unspecified."""
     return self._dims
 
-  @dims.setter
-  def dims(self, dims):
-    self._dims = dims
-
   @property
   def ndims(self):
     """Deprecated accessor for `rank`."""

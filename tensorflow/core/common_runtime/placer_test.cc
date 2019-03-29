@@ -49,11 +49,11 @@ using ::tensorflow::test::function::GDef;
 using ::tensorflow::test::function::NDef;
 using FDH = ::tensorflow::FunctionDefHelper;
 
-constexpr char kCPU[] = "/device:fakecpu:0";
-constexpr char kGPU[] = "/device:fakegpu:0";
+constexpr char kCPU[] = "/device:FakeCPU:0";
+constexpr char kGPU[] = "/device:FakeGPU:0";
 
-constexpr char kFullCPU[] = "/job:a/replica:0/task:0/device:fakecpu:0";
-constexpr char kFullGPU[] = "/job:a/replica:0/task:0/device:fakegpu:0";
+constexpr char kFullCPU[] = "/job:a/replica:0/task:0/device:FakeCPU:0";
+constexpr char kFullGPU[] = "/job:a/replica:0/task:0/device:FakeGPU:0";
 
 namespace {
 
@@ -205,11 +205,11 @@ class PlacerTest : public ::testing::Test {
     // objects.
     for (int i = 0; i < 10; ++i) {
       local_devices_.emplace_back(FakeDevice::MakeCPU(
-          strings::StrCat("/job:a/replica:0/task:0/device:fakecpu:", i)));
+          strings::StrCat("/job:a/replica:0/task:0/device:FakeCPU:", i)));
       devices_.AddDevice(local_devices_.back().get());
       // Insert the GPUs in reverse order.
       local_devices_.emplace_back(FakeDevice::MakeGPU(
-          strings::StrCat("/job:a/replica:0/task:0/device:fakegpu:", 9 - i)));
+          strings::StrCat("/job:a/replica:0/task:0/device:FakeGPU:", 9 - i)));
       devices_.AddDevice(local_devices_.back().get());
     }
   }
@@ -239,20 +239,23 @@ class PlacerTest : public ::testing::Test {
   // placement will use the default DeviceSet (of 10 CPU and 10 GPU devices).
   //
   // REQUIRES: "*graph" was produced by the most recent call to BuildGraph.
-  Status Place(Graph* graph, DeviceSet* devices, SessionOptions* options) {
-    Placer placer(graph, devices, options, nullptr);
+  Status Place(Graph* graph, DeviceSet* devices, bool allow_soft_placement,
+               bool log_device_placement) {
+    Placer placer(graph, devices, nullptr, allow_soft_placement,
+                  log_device_placement);
     return placer.Run();
   }
 
   Status Place(Graph* graph, DeviceSet* devices) {
-    return Place(graph, devices, nullptr);
+    return Place(graph, devices, true, false);
   }
 
-  Status Place(Graph* graph, SessionOptions* options) {
-    return Place(graph, &devices_, options);
+  Status Place(Graph* graph, bool allow_soft_placement,
+               bool log_device_placement) {
+    return Place(graph, &devices_, allow_soft_placement, log_device_placement);
   }
 
-  Status Place(Graph* graph) { return Place(graph, &devices_, nullptr); }
+  Status Place(Graph* graph) { return Place(graph, &devices_, true, false); }
 
   // Returns the node in "graph" with the given name.
   //
@@ -687,7 +690,7 @@ TEST_F(PlacerTest, TestIgnoreGeneratorHeuristicIfWrongPartialDevice) {
     // of valid devices for the generator.
     Node* input =
         ops::SourceOp("TestCPUGPUOutput",
-                      b.opts().WithName("in").WithDevice("/device:fakecpu:1"));
+                      b.opts().WithName("in").WithDevice("/device:FakeCPU:1"));
 
     // The assign is bound to CPU by the reference edge.
     ops::BinaryOp("TestAssign", var_cpu, input, b.opts().WithName("assign"));
@@ -697,10 +700,10 @@ TEST_F(PlacerTest, TestIgnoreGeneratorHeuristicIfWrongPartialDevice) {
 
   TF_EXPECT_OK(Place(&g));
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
-  EXPECT_DEVICE_CONTAINS(g, "in", "/device:fakecpu:1");
+  EXPECT_DEVICE_CONTAINS(g, "in", "/device:FakeCPU:1");
   EXPECT_DEVICE_TYPE(g, "var_cpu", "FakeCPU");
   EXPECT_COLOCATED(g, "var_cpu", "assign");
-  EXPECT_DEVICE_CONTAINS(g, "var_cpu", "/device:fakecpu:0");
+  EXPECT_DEVICE_CONTAINS(g, "var_cpu", "/device:FakeCPU:0");
 }
 
 // Test that a graph with partial device specifications on the ops
@@ -732,10 +735,10 @@ TEST_F(PlacerTest, TestAssignedDevicePreserved) {
   }
 
   GetNodeByName(g, "in")->set_assigned_device_name(
-      "/job:a/replica:0/task:0/device:fakecpu:7");
+      "/job:a/replica:0/task:0/device:FakeCPU:7");
 
   TF_EXPECT_OK(Place(&g));
-  EXPECT_EQ("/job:a/replica:0/task:0/device:fakecpu:7",
+  EXPECT_EQ("/job:a/replica:0/task:0/device:FakeCPU:7",
             GetNodeByName(g, "in")->assigned_device_name());
 }
 
@@ -746,19 +749,17 @@ TEST_F(PlacerTest, TestPartialSpecGpuToCpu) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestInput",
-                  b.opts().WithName("in").WithDevice("/device:fakegpu:0"));
+                  b.opts().WithName("in").WithDevice("/device:FakeGPU:0"));
     ops::SourceOp("TestVariable",
-                  b.opts().WithName("var").WithDevice("/device:fakegpu:0"));
+                  b.opts().WithName("var").WithDevice("/device:FakeGPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
   EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
-  EXPECT_DEVICE_CONTAINS(g, "in", "/device:fakecpu");
+  EXPECT_DEVICE_CONTAINS(g, "in", "/device:FakeCPU");
   EXPECT_DEVICE_TYPE(g, "var", "FakeGPU");
-  EXPECT_DEVICE_CONTAINS(g, "var", "/device:fakegpu:0");
+  EXPECT_DEVICE_CONTAINS(g, "var", "/device:FakeGPU:0");
 }
 
 // Test that a node with an assigned GPU device but has not registered
@@ -772,14 +773,15 @@ TEST_F(PlacerTest, TestAssignedGpuDeviceToCpuDevice) {
   }
 
   GetNodeByName(g, "in")->set_assigned_device_name(
-      "/job:a/replica:0/task:0/device:fakegpu:0");
+      "/job:a/replica:0/task:0/device:FakeGPU:0");
 
   Status s = Place(&g);
-  EXPECT_EQ(error::INTERNAL, s.code());
+  EXPECT_EQ(error::INTERNAL, s.code()) << s.ToString();
   EXPECT_TRUE(str_util::StrContains(
       s.error_message(),
-      "Assigned device '/job:a/replica:0/task:0/device:fakegpu:0' "
-      "does not have registered OpKernel support for TestInput"));
+      "Assigned device '/job:a/replica:0/task:0/device:FakeGPU:0' "
+      "does not have registered OpKernel support for TestInput"))
+      << s.ToString();
 }
 
 // Test that graphs with reference connections are correctly placed.
@@ -916,30 +918,27 @@ TEST_F(PlacerTest, TestResourceHandlesOnDifferentDevicesFails) {
       if (set_assigned) {
         GetNodeByName(g, "var_cpu")
             ->set_assigned_device_name(
-                "/job:a/replica:0/task:0/device:fakecpu:0");
+                "/job:a/replica:0/task:0/device:FakeCPU:0");
         GetNodeByName(g, "var_gpu")
             ->set_assigned_device_name(
-                "/job:a/replica:0/task:0/device:fakegpu:0");
+                "/job:a/replica:0/task:0/device:FakeGPU:0");
       } else {
         GetNodeByName(g, "var_cpu")
-            ->set_requested_device("/job:a/replica:0/task:0/device:fakecpu:0");
+            ->set_requested_device("/job:a/replica:0/task:0/device:FakeCPU:0");
         GetNodeByName(g, "var_gpu")
-            ->set_requested_device("/job:a/replica:0/task:0/device:fakegpu:0");
+            ->set_requested_device("/job:a/replica:0/task:0/device:FakeGPU:0");
       }
     }
 
-    SessionOptions options;
-    options.config.set_allow_soft_placement(allow_soft_placement);
-    options.config.set_log_device_placement(true);
-    Status s = Place(&g, &options);
+    Status s = Place(&g, allow_soft_placement, true);
     EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
     EXPECT_TRUE(str_util::StrContains(
         s.error_message(),
         "Cannot place the graph because a reference or resource edge "
         "connects "
         "colocation groups with incompatible assigned devices: "
-        "/job:a/replica:0/task:0/device:fakegpu:0 vs "
-        "/job:a/replica:0/task:0/device:fakecpu:0"));
+        "/job:a/replica:0/task:0/device:FakeGPU:0 vs "
+        "/job:a/replica:0/task:0/device:FakeCPU:0"));
 
     return Status::OK();
   };
@@ -960,21 +959,20 @@ TEST_F(PlacerTest, TestReferenceConnectionIgnoreInfeasible) {
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     Node* input = ops::SourceOp(
         "TestDevice",
-        b.opts().WithName("in").WithDevice("/job:a/task:0/device:fakegpu:0"));
+        b.opts().WithName("in").WithDevice("/job:a/task:0/device:FakeGPU:0"));
     Node* var =
         ops::SourceOp("TestVariable", b.opts().WithName("var_0").WithDevice(
-                                          "/job:a/task:0/device:fakegpu:0"));
+                                          "/job:a/task:0/device:FakeGPU:0"));
 
     // This op is specified on CPU, but in practice will be ignored,
     // because the reference edges forces it on GPU.
     ops::BinaryOp("TestAssign", var, input,
                   b.opts().WithName("assign").WithDevice(
-                      "/job:a/task:0/device:fakecpu:0"));
+                      "/job:a/task:0/device:FakeCPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  s = Place(&g, &options);
+  s = Place(&g, false, false);
   TF_EXPECT_OK(s);
   EXPECT_DEVICE_TYPE(g, "var_0", "FakeGPU");
   EXPECT_DEVICE_TYPE(g, "assign", "FakeGPU");
@@ -1001,12 +999,11 @@ TEST_F(PlacerTest, TestReferenceConnectionMoreSpecificDestinationSourceWins) {
     // assigned to CPU.
     ops::BinaryOp("TestAssign", var, input,
                   b.opts().WithName("assign").WithDevice(
-                      "/job:a/task:0/device:fakecpu:0"));
+                      "/job:a/task:0/device:FakeCPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  s = Place(&g, &options);
+  s = Place(&g, false, false);
   TF_EXPECT_OK(s);
   EXPECT_DEVICE_TYPE(g, "var_0", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
@@ -1023,16 +1020,15 @@ TEST_F(PlacerTest, TestReferenceConnectionNoSourceDevice) {
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     Node* input = ops::SourceOp(
         "TestDevice",
-        b.opts().WithName("in").WithDevice("/job:a/task:0/device:fakegpu:0"));
+        b.opts().WithName("in").WithDevice("/job:a/task:0/device:FakeGPU:0"));
     Node* var = ops::SourceOp("TestVariable", b.opts().WithName("var_0"));
     ops::BinaryOp("TestAssign", var, input,
                   b.opts().WithName("assign").WithDevice(
-                      "/job:a/task:0/device:fakecpu:0"));
+                      "/job:a/task:0/device:FakeCPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  s = Place(&g, &options);
+  s = Place(&g, false, false);
   TF_EXPECT_OK(s);
   EXPECT_DEVICE_TYPE(g, "var_0", "FakeCPU");
   EXPECT_DEVICE_TYPE(g, "assign", "FakeCPU");
@@ -1101,10 +1097,7 @@ TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   }
 
   bool allow_soft_placement = GetParam();
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  options.config.set_log_device_placement(true);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
     EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
@@ -1179,10 +1172,7 @@ TEST_P(SoftPlacementPlacerTest,
   }
 
   bool allow_soft_placement = GetParam();
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  options.config.set_log_device_placement(true);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
   } else {
@@ -1271,10 +1261,10 @@ TEST_F(PlacerTest, TestHeterogeneousDeviceSetFailure) {
 
   DeviceSet heterogeneous;
   std::unique_ptr<Device> gpu(
-      FakeDevice::MakeGPU("/job:b/replica:0/task:0/device:fakegpu:0"));
+      FakeDevice::MakeGPU("/job:b/replica:0/task:0/device:FakeGPU:0"));
   heterogeneous.AddDevice(gpu.get());
   std::unique_ptr<Device> cpu(
-      FakeDevice::MakeCPU("/job:b/replica:0/task:1/device:fakecpu:0"));
+      FakeDevice::MakeCPU("/job:b/replica:0/task:1/device:FakeCPU:0"));
   heterogeneous.AddDevice(cpu.get());
   Status s = Place(&g, &heterogeneous);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
@@ -1372,7 +1362,7 @@ TEST_F(PlacerTest, TestNoDevicesRegistered) {
 
   DeviceSet cpu_only;
   std::unique_ptr<Device> cpu(
-      FakeDevice::MakeCPU("/job:a/replica:0/task:0/device:fakecpu:0"));
+      FakeDevice::MakeCPU("/job:a/replica:0/task:0/device:FakeCPU:0"));
   cpu_only.AddDevice(cpu.get());
 
   Status s = Place(&g, &cpu_only);
@@ -1440,14 +1430,12 @@ TEST_F(PlacerTest, TestNonexistentGpuAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestDevice",
-                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
+                  b.opts().WithName("in").WithDevice("/device:FakeGPU:11"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
-  EXPECT_DEVICE_CONTAINS(g, "in", "/device:fakegpu:0");
+  TF_EXPECT_OK(Place(&g, true, false));
+  EXPECT_DEVICE_CONTAINS(g, "in", "/device:FakeGPU:0");
 }
 
 // Test that ops request to be placed on non-existent devices will fail if
@@ -1457,14 +1445,13 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestDevice",
-                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
+                  b.opts().WithName("in").WithDevice("/device:FakeGPU:11"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakegpu:11"));
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:FakeGPU:11"));
 }
 
 // Test that the "Cannot assign a device" error message contains a format tag
@@ -1474,12 +1461,11 @@ TEST_F(PlacerTest, TestNonexistentGpuNoAllowSoftPlacementFormatTag) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("TestDevice",
-                  b.opts().WithName("in").WithDevice("/device:fakegpu:11"));
+                  b.opts().WithName("in").WithDevice("/device:FakeGPU:11"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(s.error_message(),
@@ -1494,17 +1480,18 @@ TEST_F(PlacerTest, TestUnsupportedDeviceNoAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("VariableGPU",
-                  b.opts().WithName("var").WithDevice("/device:fakecpu:0"));
+                  b.opts().WithName("var").WithDevice("/device:FakeCPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:fakecpu:0"));
+  Status s = Place(&g, false, false);
+  EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+  EXPECT_TRUE(str_util::StrContains(s.error_message(), "/device:FakeCPU:0"))
+      << s.ToString();
   EXPECT_TRUE(str_util::StrContains(
       s.error_message(),
-      "no supported kernel for fakecpu devices is available"));
+      "no supported kernel for FakeCPU devices is available"))
+      << s.ToString();
 }
 
 // Test that placement fails when a node requests an explicit device that is not
@@ -1518,8 +1505,7 @@ TEST_F(PlacerTest, TestNonExistentDevice) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
@@ -1540,8 +1526,7 @@ TEST_F(PlacerTest, TestUseGpuWithNoCuda) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  Status s = Place(&g, &options);
+  Status s = Place(&g, false, false);
   EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
   LOG(WARNING) << s.error_message();
   EXPECT_TRUE(str_util::StrContains(
@@ -1555,13 +1540,11 @@ TEST_F(PlacerTest, TestUnsupportedDeviceAllowSoftPlacement) {
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
     ops::SourceOp("VariableGPU",
-                  b.opts().WithName("var").WithDevice("/device:fakecpu:0"));
+                  b.opts().WithName("var").WithDevice("/device:FakeCPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
 }
 
 // Test that a graph with device type and reference constraints on
@@ -1577,20 +1560,18 @@ TEST_F(PlacerTest, TestDeviceTypeConstraintsAllowSoftPlacement) {
     Node* var_gpu = ops::SourceOp("VariableGPU", b.opts().WithName("var_gpu"));
     ops::UnaryOp(
         "TestDeviceEnforce", var_gpu,
-        b.opts().WithName("force_gpu").WithDevice("/device:fakecpu:0"));
+        b.opts().WithName("force_gpu").WithDevice("/device:FakeCPU:0"));
     // var_cpu has ref output and runs on CPU.
     // force_cpu takes var_cpu and requested GPU.
     // Verify that both are placed on CPU.
     Node* var_cpu = ops::SourceOp("VariableCPU", b.opts().WithName("var_cpu"));
     ops::UnaryOp(
         "TestDeviceEnforce", var_cpu,
-        b.opts().WithName("force_cpu").WithDevice("/device:fakegpu:0"));
+        b.opts().WithName("force_cpu").WithDevice("/device:FakeGPU:0"));
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(true);
-  TF_EXPECT_OK(Place(&g, &options));
+  TF_EXPECT_OK(Place(&g, true, false));
   EXPECT_DEVICE_TYPE(g, "var_gpu", "FakeGPU");
   EXPECT_DEVICE_TYPE(g, "force_gpu", "FakeGPU");
   EXPECT_COLOCATED(g, "var_gpu", "force_gpu");
@@ -1677,10 +1658,10 @@ TEST_F(PlacerTest, TestGeneratorNodeDoesntFollowNonColocatedConsumers) {
     TF_EXPECT_OK(BuildGraph(b, &g));
 
     GetNodeByName(g, "var1_cpu")
-        ->set_assigned_device_name("/job:a/replica:0/task:0/device:fakecpu:1");
+        ->set_assigned_device_name("/job:a/replica:0/task:0/device:FakeCPU:1");
 
     GetNodeByName(g, "var2_cpu")
-        ->set_assigned_device_name("/job:a/replica:0/task:0/device:fakecpu:2");
+        ->set_assigned_device_name("/job:a/replica:0/task:0/device:FakeCPU:2");
   }
 
   TF_EXPECT_OK(Place(&g));
@@ -1729,10 +1710,7 @@ TEST_P(SoftPlacementPlacerTest,
   TF_ASSERT_OK(BuildGraph(graph, &g));
 
   bool allow_soft_placement = GetParam();
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  options.config.set_log_device_placement(true);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, true);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
     EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
@@ -1745,7 +1723,7 @@ TEST_P(SoftPlacementPlacerTest,
         s.error_message(),
         "Cannot colocate nodes {{colocation_node id2}} and {{colocation_node "
         "id1}}: Cannot merge devices with incompatible types: "
-        "'/device:fakecpu:0' and '/device:fakegpu:0'"))
+        "'/device:FakeCPU:0' and '/device:FakeGPU:0'"))
         << s.ToString();
   }
 }
@@ -1821,9 +1799,7 @@ TEST_P(SoftPlacementPlacerTest,
 
   bool allow_soft_placement = GetParam();
 
-  SessionOptions options;
-  options.config.set_allow_soft_placement(allow_soft_placement);
-  Status s = Place(&g, &options);
+  Status s = Place(&g, allow_soft_placement, false);
   if (allow_soft_placement) {
     EXPECT_EQ(error::OK, s.code()) << s.ToString();
     EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
@@ -1838,8 +1814,8 @@ TEST_P(SoftPlacementPlacerTest,
         s.error_message(),
         "Cannot colocate nodes {{colocation_node id2}} and {{colocation_node "
         "id1}}: Cannot merge devices with incompatible types: "
-        "'/job:a/replica:0/task:0/device:fakecpu:0' and "
-        "'/job:a/replica:0/task:0/device:fakegpu:0'"))
+        "'/job:a/replica:0/task:0/device:FakeCPU:0' and "
+        "'/job:a/replica:0/task:0/device:FakeGPU:0'"))
         << s.ToString();
   }
 }

@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/protobuf.h"
 
@@ -88,6 +89,7 @@ class HloParser {
   StatusOr<Window> ParseWindowOnly();
   StatusOr<ConvolutionDimensionNumbers> ParseConvolutionDimensionNumbersOnly();
   StatusOr<PaddingConfig> ParsePaddingConfigOnly();
+  StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly();
 
  private:
   using InstrNameTable =
@@ -183,6 +185,7 @@ class HloParser {
     kHloComputation,
     kBracedHloComputationList,
     kFftType,
+    kComparisonDirection,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -267,6 +270,7 @@ class HloParser {
   bool ParseSharding(OpSharding* sharding);
   bool ParseSingleSharding(OpSharding* sharding, bool lbrace_pre_lexed);
   bool ParseParameterReplication(ParameterReplication* parameter_replication);
+  bool ParseReplicaGroupsOnly(std::vector<ReplicaGroup>* replica_groups);
 
   // Parses the metadata behind a kDOmain instruction.
   bool ParseDomain(DomainData* domain);
@@ -283,6 +287,9 @@ class HloParser {
   bool ParseShapeList(std::vector<Shape>* result);
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim, std::vector<int64>* result);
+  bool ParseInt64ListList(const TokKind start, const TokKind end,
+                          const TokKind delim,
+                          std::vector<std::vector<int64>>* result);
   // 'parse_and_add_item' is an lambda to parse an element in the list and add
   // the parsed element to the result. It's supposed to capture the result.
   bool ParseList(const TokKind start, const TokKind end, const TokKind delim,
@@ -300,6 +307,7 @@ class HloParser {
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
+  bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
@@ -742,6 +750,7 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kLog1p:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
+    case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
@@ -763,12 +772,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
@@ -1131,6 +1134,18 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction =
           builder->AddInstruction(HloInstruction::CreateTriangularSolve(
               shape, operands[0], operands[1], options));
+      break;
+    }
+    case HloOpcode::kCompare: {
+      optional<ComparisonDirection> direction;
+      attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
+                            &direction};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateCompare(
+          shape, operands[0], operands[1], *direction));
       break;
     }
     case HloOpcode::kCholesky: {
@@ -1909,6 +1924,25 @@ bool HloParser::ParseParameterReplication(
 
   return ParseToken(TokKind::kRbrace,
                     "expected '}' to end parameter_replication attribute");
+}
+
+// replica_groups ::='{' int64list_elements '}'
+// int64list_elements
+//   ::= /*empty*/
+//   ::= int64list (',' int64list)*
+// int64list ::= '{' int64_elements '}'
+// int64_elements
+//   ::= /*empty*/
+//   ::= int64_val (',' int64_val)*
+bool HloParser::ParseReplicaGroupsOnly(
+    std::vector<ReplicaGroup>* replica_groups) {
+  std::vector<std::vector<int64>> result;
+  if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                          &result)) {
+    return false;
+  }
+  *replica_groups = CreateReplicaGroups(result);
+  return true;
 }
 
 // domain ::= '{' 'kind=' domain_kind ',' 'entry=' entry_sharding ','
@@ -2728,6 +2762,15 @@ bool HloParser::ParseAttributeHelper(
         static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kComparisonDirection: {
+        ComparisonDirection result;
+        if (!ParseComparisonDirection(&result)) {
+          return false;
+        }
+        static_cast<optional<ComparisonDirection>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kWindow: {
         Window result;
         if (!ParseWindow(&result, /*expect_outer_curlies=*/true)) {
@@ -2792,17 +2835,8 @@ bool HloParser::ParseAttributeHelper(
       }
       case AttrTy::kBracedInt64ListList: {
         std::vector<std::vector<int64>> result;
-        auto parse_and_add_item = [&]() {
-          std::vector<int64> item;
-          if (!ParseInt64List(TokKind::kLbrace, TokKind::kRbrace,
-                              TokKind::kComma, &item)) {
-            return false;
-          }
-          result.push_back(item);
-          return true;
-        };
-        if (!ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
-                       parse_and_add_item)) {
+        if (!ParseInt64ListList(TokKind::kLbrace, TokKind::kRbrace,
+                                TokKind::kComma, &result)) {
           return false;
         }
         static_cast<optional<std::vector<std::vector<int64>>>*>(attr_out_ptr)
@@ -3311,6 +3345,28 @@ bool HloParser::ParseInt64List(const TokKind start, const TokKind end,
   return ParseList(start, end, delim, parse_and_add_item);
 }
 
+// int64listlist ::= start int64list_elements end
+// int64list_elements
+//   ::= /*empty*/
+//   ::= int64list (delim int64list)*
+// int64list ::= start int64_elements end
+// int64_elements
+//   ::= /*empty*/
+//   ::= int64_val (delim int64_val)*
+bool HloParser::ParseInt64ListList(const TokKind start, const TokKind end,
+                                   const TokKind delim,
+                                   std::vector<std::vector<int64>>* result) {
+  auto parse_and_add_item = [&]() {
+    std::vector<int64> item;
+    if (!ParseInt64List(start, end, delim, &item)) {
+      return false;
+    }
+    result->push_back(item);
+    return true;
+  };
+  return ParseList(start, end, delim, parse_and_add_item);
+}
+
 bool HloParser::ParseList(const TokKind start, const TokKind end,
                           const TokKind delim,
                           const std::function<bool()>& parse_and_add_item) {
@@ -3756,6 +3812,22 @@ bool HloParser::ParseFftType(FftType* result) {
   return true;
 }
 
+bool HloParser::ParseComparisonDirection(ComparisonDirection* result) {
+  VLOG(1) << "ParseComparisonDirection";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison direction");
+  }
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToComparisonDirection(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
 bool HloParser::ParseFusionKind(HloInstruction::FusionKind* result) {
   VLOG(1) << "ParseFusionKind";
   if (lexer_.GetKind() != TokKind::kIdent) {
@@ -3974,6 +4046,18 @@ StatusOr<std::vector<bool>> HloParser::ParseParameterReplicationOnly() {
       parameter_replication.replicated_at_leaf_buffers().end());
 }
 
+StatusOr<std::vector<ReplicaGroup>> HloParser::ParseReplicaGroupsOnly() {
+  lexer_.Lex();
+  std::vector<ReplicaGroup> replica_groups;
+  if (!ParseReplicaGroupsOnly(&replica_groups)) {
+    return InvalidArgument("Syntax error:\n%s", GetError());
+  }
+  if (lexer_.GetKind() != TokKind::kEof) {
+    return InvalidArgument("Syntax error:\nExtra content after replica groups");
+  }
+  return replica_groups;
+}
+
 StatusOr<Window> HloParser::ParseWindowOnly() {
   lexer_.Lex();
   Window window;
@@ -4092,6 +4176,12 @@ StatusOr<HloSharding> ParseSharding(absl::string_view str) {
 StatusOr<std::vector<bool>> ParseParameterReplication(absl::string_view str) {
   HloParser parser(str);
   return parser.ParseParameterReplicationOnly();
+}
+
+StatusOr<std::vector<ReplicaGroup>> ParseReplicaGroupsOnly(
+    absl::string_view str) {
+  HloParser parser(str);
+  return parser.ParseReplicaGroupsOnly();
 }
 
 StatusOr<Window> ParseWindow(absl::string_view str) {

@@ -447,6 +447,10 @@ class ActivityAnalyzer(transformer.Base):
     node.iter = self.visit(node.iter)
     anno.setanno(node.iter, anno.Static.SCOPE, self.scope)
     self._exit_scope()
+    self._enter_scope(False)
+    self.visit(node.target)
+    anno.setanno(node, NodeAnno.ITERATE_SCOPE, self.scope)
+    self._exit_scope()
     node = self._process_parallel_blocks(node,
                                          ((node.body, NodeAnno.BODY_SCOPE),
                                           (node.orelse, NodeAnno.ORELSE_SCOPE)))

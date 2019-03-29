@@ -32,8 +32,10 @@ const char* kSingleAvgPoolModelMinMinus5MaxPlus5 =
     "single_avg_pool_min_minus_5_max_plus_5.bin";
 
 const char* kModelWithSharedWeights = "weight_shared_between_convs.bin";
-
 const char* kMultiInputAddWithReshape = "multi_input_add_reshape.bin";
+const char* kQuantizedWithGather = "quantized_with_gather.bin";
+
+const char* kConstInputAddModel = "add_with_const_input.bin";
 
 int FailOnErrorReporter::Report(const char* format, va_list args) {
   char buf[1024];

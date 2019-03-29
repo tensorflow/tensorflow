@@ -28,7 +28,7 @@ class Cluster;
 // The virtual placer emulates the behavior of the TF placer.
 class VirtualPlacer {
  public:
-  VirtualPlacer(const Cluster* cluster);
+  VirtualPlacer(const std::unordered_map<string, DeviceProperties>& devices);
 
   const DeviceProperties& get_device(const NodeDef& node) const;
 

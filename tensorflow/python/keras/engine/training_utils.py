@@ -40,12 +40,10 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
-from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils.losses_utils import squeeze_or_expand_dimensions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -326,7 +324,7 @@ def standardize_input_data(data,
     for i in range(len(names)):
       if shapes[i] is not None:
         if tensor_util.is_tensor(data[i]):
-          tensorshape = data[i].get_shape()
+          tensorshape = data[i].shape
           if not tensorshape:
             continue
           data_shape = tuple(tensorshape.as_list())
@@ -533,15 +531,12 @@ def collect_per_output_metric_info(metrics,
       For instance, if the model has 2 outputs, and for the first output
       we want to compute "binary_accuracy" and "binary_crossentropy",
       and just "binary_accuracy" for the second output,
-      the list would look like: `[
-        {
-          'acc': (binary_accuracy(), mean_obj_1),
-          'ce': (binary_crossentropy(), mean_obj_2)
-        },
-        {
-          'acc': (binary_accuracy(), mean_obj_3)
-        }
-      ]`
+      the list would look like: `[{
+          'acc': binary_accuracy(),
+          'ce': binary_crossentropy(),
+        }, {
+          'acc': binary_accuracy(),
+        }]`
 
   Raises:
       TypeError: if an incorrect type is passed for the `metrics` argument.
@@ -568,7 +563,8 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, dict):
+  elif isinstance(metrics, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
       output_metrics = generic_utils.to_list(metrics.get(name, []))
@@ -585,18 +581,11 @@ def collect_per_output_metric_info(metrics,
       metric_fn = get_metric_function(
           metric, output_shape=output_shapes[i], loss_fn=loss_fns[i])
 
-      # If the metric function is not stateful, we create a stateful version and
-      # return both the stateless and the stateful version together. For batch
-      # APIs like `train_on_batch` we will use the stateless version and for
-      # other APIs like `fit` we will use the stateful version.
-      is_stateful = isinstance(metric_fn,
-                               base_layer.Layer) and metric_fn.stateful
-      stateful_fn = metric_fn
-      if not is_stateful:
-        stateful_fn = metrics_module.MeanMetricWrapper(
+      # If the metric function is not stateful, we create a stateful version.
+      if not isinstance(metric_fn, metrics_module.Metric):
+        metric_fn = metrics_module.MeanMetricWrapper(
             metric_fn, name=metric_name)
-
-      metrics_dict[metric_name] = (metric_fn, stateful_fn)
+      metrics_dict[metric_name] = metric_fn
     per_output_metrics.append(metrics_dict)
 
   return per_output_metrics
@@ -624,70 +613,6 @@ def batch_shuffle(index_array, batch_size):
   np.random.shuffle(index_array)
   index_array = index_array.flatten()
   return np.append(index_array, last_batch)
-
-
-def weighted_masked_objective(fn):
-  """Adds support for masking and sample-weighting to an objective function.
-
-  It transforms an objective function `fn(y_true, y_pred)`
-  into a sample-weighted, cost-masked objective function
-  `fn(y_true, y_pred, weights, mask)`.
-
-  Arguments:
-      fn: The objective function to wrap, with signature `fn(y_true, y_pred)`.
-
-  Returns:
-      A function with signature `fn(y_true, y_pred, weights, mask)`.
-  """
-  if fn is None:
-    return None
-
-  def weighted(y_true, y_pred, weights, mask=None):
-    """Wrapper function.
-
-    Arguments:
-        y_true: `y_true` argument of `fn`.
-        y_pred: `y_pred` argument of `fn`.
-        weights: Weights tensor.
-        mask: Mask tensor.
-
-    Returns:
-        Scalar tensor.
-    """
-    # score_array has ndim >= 2
-    score_array = fn(y_true, y_pred)
-    if mask is not None:
-      mask = math_ops.cast(mask, y_pred.dtype)
-      # Update weights with mask.
-      if weights is None:
-        weights = mask
-      else:
-        # Update dimensions of weights to match with mask if possible.
-        mask, _, weights = squeeze_or_expand_dimensions(mask, None, weights)
-        weights *= mask
-
-    # Apply sample weighting.
-    if weights is not None:
-
-      # Update dimensions of weights to match with values if possible.
-      score_array, _, weights = squeeze_or_expand_dimensions(
-          score_array, None, weights)
-      try:
-        # Broadcast weights if possible.
-        weights = weights_broadcast_ops.broadcast_weights(weights, score_array)
-      except ValueError:
-        # Reduce values to same ndim as weight array.
-        ndim = K.ndim(score_array)
-        weight_ndim = K.ndim(weights)
-        score_array = K.mean(score_array, axis=list(range(weight_ndim, ndim)))
-
-      score_array = math_ops.multiply(score_array, weights)
-      score_array = math_ops.reduce_sum(score_array)
-      weights = math_ops.reduce_sum(weights)
-      score_array = math_ops.div_no_nan(score_array, weights)
-    return K.mean(score_array)
-
-  return weighted
 
 
 def standardize_weights(y,
@@ -1084,13 +1009,9 @@ def prepare_sample_weights(output_names, sample_weight_mode,
   """
   sample_weights = []
   sample_weight_modes = []
-  if isinstance(sample_weight_mode, dict):
-    unknown_output = set(sample_weight_mode.keys()) - set(output_names)
-    if unknown_output:
-      raise ValueError('Unknown entry in '
-                       'sample_weight_mode dictionary: "' + unknown_output +
-                       '". Only expected the following keys: ' +
-                       str(output_names))
+  if isinstance(sample_weight_mode, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('sample_weight_mode',
+                                            sample_weight_mode, output_names)
     for i, name in enumerate(output_names):
       if (i not in skip_target_weighing_indices and
           name not in sample_weight_mode):
@@ -1139,10 +1060,7 @@ def prepare_loss_functions(loss, output_names):
           or if loss is a list with len not equal to model outputs.
   """
   if isinstance(loss, collections.Mapping):
-    for name in loss:
-      if name not in output_names:
-        raise ValueError('Unknown entry in loss dictionary: {}. Only expected '
-                         'following keys: {}'.format(name, output_names))
+    generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
       if name not in loss:
@@ -1187,12 +1105,9 @@ def prepare_loss_weights(output_names, loss_weights=None):
   """
   if loss_weights is None:
     weights_list = [1.] * len(output_names)
-  elif isinstance(loss_weights, dict):
-    for name in loss_weights:
-      if name not in output_names:
-        raise ValueError('Unknown entry in loss_weights dictionary: {}. '
-                         'Only expected the following keys: {}'.format(
-                             name, output_names))
+  elif isinstance(loss_weights, collections.Mapping):
+    generic_utils.check_for_unexpected_keys('loss_weights', loss_weights,
+                                            output_names)
     weights_list = [loss_weights.get(name, 1.) for name in output_names]
   elif isinstance(loss_weights, list):
     if len(loss_weights) != len(output_names):
@@ -1595,28 +1510,6 @@ def get_static_batch_size(layer):
 
 def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
-
-
-def set_run_eagerly_for_dict_structure(model, x):
-  """Set model.run_eagerly to true if x is dict structure.
-
-  Set model.run_eagerly to true if x is dict or
-  Iterator/EagerIterator/Dataset of dict.
-
-  Args:
-    model: A Keras model.
-    x: Input data.
-  """
-  if not context.executing_eagerly():
-    return
-  if isinstance(x, dict):
-    model.run_eagerly = True
-  if (isinstance(x, (iterator_ops.Iterator, iterator_ops.EagerIterator,
-                     dataset_ops.DatasetV2))):
-    for item in dataset_ops.get_legacy_output_shapes(x):
-      if isinstance(item, dict):
-        model.run_eagerly = True
-        return
 
 
 def convert_eager_tensors_to_numpy(structure):

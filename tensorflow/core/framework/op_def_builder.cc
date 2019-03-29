@@ -621,8 +621,7 @@ OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::SetShapeFn(
-    Status (*fn)(shape_inference::InferenceContext*)) {
+OpDefBuilder& OpDefBuilder::SetShapeFn(OpShapeInferenceFn fn) {
   if (op_reg_data_.shape_inference_fn != nullptr) {
     errors_.push_back(
         strings::StrCat("SetShapeFn called twice for Op ", op_def()->name()));

@@ -1679,5 +1679,30 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual(v1, 100)
 
 
+class TensorArrayBenchmark(test.Benchmark):
+
+  def _benchmarkWriteInWhile(self):
+    ops.reset_default_graph()
+
+    def write():
+      size = 10000
+      ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=size)
+      ta = control_flow_ops.while_loop(
+          lambda i, _: i < size,
+          lambda i, ta: (i + 1, ta.write(i, 0.)), [0, ta],
+          parallel_iterations=1)[1]
+      return ta.stack()
+
+    op = write()
+    self.run_op_benchmark(session_lib.Session(), op)
+
+  def benchmarkWriteInWhile(self):
+    self._benchmarkWriteInWhile()
+
+  @test_util.enable_control_flow_v2
+  def benchmarkWriteInWhileWithControlFlowV2(self):
+    self._benchmarkWriteInWhile()
+
+
 if __name__ == "__main__":
   test.main()

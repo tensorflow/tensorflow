@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
 from tensorflow.python.eager import context
@@ -40,14 +41,19 @@ def function_def_to_graph(fdef, input_shapes=None):
   Args:
     fdef: FunctionDef.
     input_shapes: Optional. A list of TensorShape objects of the shapes of
-      function inputs. If specified, its length must match length of
-      `fdef.signature.input_arg`. If a shape is None, the corresponding input
-      placeholder will have unknown shape.
+      function inputs. Defaults to the function's "_input_shapes" attribute. If
+      specified, its length must match length of `fdef.signature.input_arg`. If
+      a shape is None, the corresponding input placeholder will have unknown
+      shape.
 
   Returns:
     A FuncGraph.
   """
   func_graph = FuncGraph(fdef.signature.name)
+  if input_shapes is None:
+    input_shapes_attr = fdef.attr.get("_input_shapes", None)
+    if input_shapes_attr is not None:
+      input_shapes = input_shapes_attr.list.shape
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 
@@ -73,7 +79,16 @@ def function_def_to_graph(fdef, input_shapes=None):
     func_graph.outputs = [
         func_graph.get_tensor_by_name(name) for name in output_tensor_names
     ]
-
+    func_graph.control_outputs = [
+        func_graph.get_operation_by_name(fdef.control_ret[ret_name])
+        for ret_name in fdef.signature.control_output
+    ]
+    for node in graph_def.node:
+      output_shapes = node.attr.get("_output_shapes", None)
+      if output_shapes is not None:
+        op = func_graph.get_operation_by_name(node.name)
+        for output_index, shape in enumerate(output_shapes.list.shape):
+          op.outputs[output_index].set_shape(shape)
   return func_graph
 
 
@@ -133,7 +148,10 @@ def function_def_to_graph_def(fdef, input_shapes=None):
     node_def.op = "Placeholder"
     node_def.attr["dtype"].type = arg_def.type
     if input_shapes and input_shapes[i] is not None:
-      node_def.attr["shape"].shape.CopyFrom(input_shapes[i].as_proto())
+      input_shape = input_shapes[i]
+      if not isinstance(input_shape, tensor_shape_pb2.TensorShapeProto):
+        input_shape = input_shape.as_proto()
+      node_def.attr["shape"].shape.CopyFrom(input_shape)
 
   # 2. Copy all body NodeDefs to the GraphDef.
   graph_def.node.extend(fdef.node_def)

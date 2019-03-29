@@ -4,8 +4,12 @@
 
 load("@local_config_remote_execution//:remote_execution.bzl", "gpu_test_tags")
 
-def tf_cuda_tests_tags():
+def tf_gpu_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
+
+# terminology changes: saving tf_cuda_* for compatibility
+def tf_cuda_tests_tags():
+    return tf_gpu_tests_tags()
 
 def tf_sycl_tests_tags():
     return ["requires-gpu", "gpu"] + gpu_test_tags()
@@ -64,6 +68,14 @@ def tf_additional_gdr_deps():
 def if_static(extra_deps, otherwise = []):
     return select({
         str(Label("//tensorflow:framework_shared_object")): otherwise,
+        "//conditions:default": extra_deps,
+    })
+
+def if_static_and_not_mobile(extra_deps, otherwise = []):
+    return select({
+        str(Label("//tensorflow:framework_shared_object")): otherwise,
+        str(Label("//tensorflow:android")): otherwise,
+        str(Label("//tensorflow:ios")): otherwise,
         "//conditions:default": extra_deps,
     })
 

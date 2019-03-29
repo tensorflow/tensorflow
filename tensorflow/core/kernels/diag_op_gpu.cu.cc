@@ -61,9 +61,10 @@ struct DiagFunctor<GPUDevice, T> {
     const GPUDevice& device = context->eigen_device<GPUDevice>();
     CudaLaunchConfig diag_config =
         GetCudaLaunchConfig(virtual_thread_count, device);
-    DiagCudaKernel<<<diag_config.block_count, diag_config.thread_per_block, 0,
-                     device.stream()>>>(diag_config.virtual_thread_count, size,
-                                        in, out);
+    TF_CHECK_OK(
+        CudaLaunchKernel(DiagCudaKernel<T>, diag_config.block_count,
+                         diag_config.thread_per_block, 0, device.stream(),
+                         diag_config.virtual_thread_count, size, in, out));
 
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {
@@ -101,9 +102,10 @@ struct DiagPartFunctor<GPUDevice, T> {
 
     // Extract the diagonal elements.
     CudaLaunchConfig diag_config = GetCudaLaunchConfig(size, device);
-    DiagPartCudaKernel<<<diag_config.block_count, diag_config.thread_per_block,
-                         0, device.stream()>>>(diag_config.virtual_thread_count,
-                                               size, in, out);
+    TF_CHECK_OK(
+        CudaLaunchKernel(DiagPartCudaKernel<T>, diag_config.block_count,
+                         diag_config.thread_per_block, 0, device.stream(),
+                         diag_config.virtual_thread_count, size, in, out));
 
     auto err = cudaGetLastError();
     if (err != cudaSuccess) {

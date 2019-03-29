@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_LIST_KERNELS_H_
 
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/platform/types.h"
 #define EIGEN_USE_THREADS
 #if GOOGLE_CUDA
 #define EIGEN_USE_GPU
@@ -75,6 +77,7 @@ Status GetInputList(OpKernelContext* c, int index, const TensorList** list);
 Status ForwardInputOrCreateNewList(OpKernelContext* c, int32 input_index,
                                    int32 output_index,
                                    const TensorList& input_list,
+                                   bool allocator_attr_on_host,
                                    TensorList** output_list);
 
 template <typename Device, typename T>
@@ -249,6 +252,7 @@ class TensorListPopBack : public OpKernel {
  public:
   explicit TensorListPopBack(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("element_dtype", &element_dtype_));
+    is_cpu_kernel_ = c->device_type().type() == DEVICE_CPU;
   }
 
   void Compute(OpKernelContext* c) override {
@@ -287,12 +291,14 @@ class TensorListPopBack : public OpKernel {
     }
 
     TensorList* output_list = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, !is_cpu_kernel_,
+                                                  &output_list));
     output_list->tensors.pop_back();
   }
 
  private:
   DataType element_dtype_;
+  bool is_cpu_kernel_;
 };
 
 template <typename Device, typename T>
@@ -740,7 +746,9 @@ Status Scatter(OpKernelContext* c, const Tensor& value, const Tensor& indices,
 template <typename Device, typename T>
 class TensorListScatterIntoExistingList : public OpKernel {
  public:
-  TensorListScatterIntoExistingList(OpKernelConstruction* c) : OpKernel(c) {}
+  TensorListScatterIntoExistingList(OpKernelConstruction* c) : OpKernel(c) {
+    is_cpu_kernel_ = c->device_type().type() == DEVICE_CPU;
+  }
 
   void Compute(OpKernelContext* c) override {
     const TensorList* l = nullptr;
@@ -770,7 +778,8 @@ class TensorListScatterIntoExistingList : public OpKernel {
 
     // Resize the list if needed to accommodate all indices.
     TensorList* output_list = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, &output_list));
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewList(c, 0, 0, *l, !is_cpu_kernel_,
+                                                  &output_list));
     const auto indices_vec = indices.vec<int32>();
     int32 max_index =
         (indices.NumElements() == 0)
@@ -785,6 +794,9 @@ class TensorListScatterIntoExistingList : public OpKernel {
     OP_REQUIRES_OK(c,
                    Scatter<Device, T>(c, input_tensor, indices, output_list));
   }
+
+ private:
+  bool is_cpu_kernel_;
 };
 
 template <typename Device, typename T>

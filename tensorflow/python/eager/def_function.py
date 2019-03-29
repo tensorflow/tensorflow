@@ -280,7 +280,6 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
-    self._input_signature = input_signature
     # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
     # same FunctionSpec. Consider removing it from both and passing in instead.
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
@@ -319,19 +318,13 @@ class Function(object):
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(self._python_function, wrapped_fn),
-        input_signature=self._input_signature,
+        tf_decorator.make_decorator(
+            self._python_function,
+            wrapped_fn,
+            decorator_argspec=self._function_spec.fullargspec),
+        input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)
-
-  def _canonicalize_function_inputs(self, args, kwds):
-    """Canonicalize the inputs to the Python function."""
-    if self._input_signature is None or args or kwds:
-      return self._function_spec.canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
-    # If an input signature is defined, we may need to fetch a concrete function
-    # without any inputs specified. In this case args and kwds should be ignored
-    # but running _canonicalize_function_inputs would raise an exception.
-    return (), {}
 
   def _initialize(self, args, kwds, add_initializers_to=None):
     """Initializes, on the first call.
@@ -402,12 +395,12 @@ class Function(object):
 
     self._python_function = decorator(self._python_function)
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
-        self._python_function, self._input_signature)
+        self._python_function, self.input_signature)
 
   def __call__(self, *args, **kwds):
+    """Calls the graph function."""
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
-    """Calls the graph function."""
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
@@ -437,7 +430,9 @@ class Function(object):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
+      canon_args, canon_kwds = \
+          self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+              *args, **kwds)
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
 
@@ -494,7 +489,9 @@ class Function(object):
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
+    canon_args, canon_kwds = \
+        self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
+            *args, **kwds)
     return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
   @property
@@ -504,7 +501,7 @@ class Function(object):
 
   @property
   def input_signature(self):
-    return self._input_signature
+    return self._function_spec.input_signature
 
   @property
   def function_spec(self):
@@ -574,7 +571,7 @@ class Function(object):
     Returns:
       A list of instances of `Function`.
     """
-    if self._input_signature is not None:
+    if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
     # pylint: disable=protected-access
@@ -585,8 +582,8 @@ class Function(object):
       concrete_functions.extend(
           self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
-    deduplicated_concrete_functions = list()
-    seen_signatures = list()
+    deduplicated_concrete_functions = []
+    seen_signatures = []
     # We are using a list so that:
     #  - the returned collection is deterministic, and
     #  - we can use a custom equality operator (is_same_structure).
@@ -765,7 +762,8 @@ def function(func=None,
   assert (h().numpy() == f(x, y).numpy()).all()
 
   # Data-dependent control flow is also captured in the graph. Supported
-  # control flow statements include `if`, `for`, `break`, `continue`, `return`.
+  # control flow statements include `if`, `for`, `while`, `break`, `continue`,
+  # `return`.
   @tf.function
   def g(x):
     if tf.reduce_sum(x) > 0:
@@ -787,7 +785,13 @@ def function(func=None,
   ```
 
   Note that unlike other TensorFlow operations, we don't convert python
-  numerical inputs to tensors.
+  numerical inputs to tensors. Moreover, a new graph is generated for each
+  distinct python numerical value, for example calling `g(2)` and `g(3)` will
+  generate two new graphs (while only one is generated if you call
+  `g(tf.constant(2))` and `g(tf.constant(3))`). Therefore, python numerical
+  inputs should be restricted to arguments that will have few distinct values,
+  such as hyperparameters like the number of layers in a neural network. This
+  allows TensorFlow to optimize each variant of the neural network.
 
   _Referencing `tf.Variable`s_
 

@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/padding.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
@@ -596,9 +597,11 @@ class XlaBuilder {
 
   // Internal helper method that does the building for an arbitrary binary op.
   // broadcast_dimensions specifies which dimensions to use for broadcasting
-  // when the operation is between tensors of different ranks.
+  // when the operation is between tensors of different ranks. The direction is
+  // only used if opcode is kCompare.
   XlaOp BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                 absl::Span<const int64> broadcast_dimensions);
+                 absl::Span<const int64> broadcast_dimensions,
+                 absl::optional<ComparisonDirection> direction = absl::nullopt);
 
   // Internal helper method that does the building for an arbitrary ternary op.
   XlaOp TernaryOp(HloOpcode triop, const XlaOp& lhs, const XlaOp& rhs,
@@ -767,6 +770,9 @@ class XlaBuilder {
                   absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
                   absl::Span<const int64> broadcast_dimensions);
+  friend XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+                       absl::Span<const int64> broadcast_dimensions,
+                       ComparisonDirection direction);
   friend XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(const XlaOp& lhs, const XlaOp& rhs,
@@ -846,6 +852,7 @@ class XlaBuilder {
   friend XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Not(const XlaOp& operand);
+  friend XlaOp PopulationCount(const XlaOp& operand);
   friend XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                          absl::Span<const int64> broadcast_dimensions);
   friend XlaOp ShiftRightArithmetic(
@@ -1279,6 +1286,11 @@ XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions = {});
 
+// Enqueues a comparison instruction onto the computation.
+XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction);
+
 // Enqueues a dot instruction onto the computation.
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,
           const PrecisionConfig* precision_config = nullptr);
@@ -1507,6 +1519,8 @@ XlaOp Xor(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
 
 XlaOp Not(const XlaOp& operand);
+
+XlaOp PopulationCount(const XlaOp& operand);
 
 XlaOp ShiftLeft(const XlaOp& lhs, const XlaOp& rhs,
                 absl::Span<const int64> broadcast_dimensions = {});

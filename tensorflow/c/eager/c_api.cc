@@ -63,6 +63,17 @@ using tensorflow::int64;
 using tensorflow::string;
 
 namespace {
+
+const tensorflow::OpDef* GetOpDef(TFE_Op* op, TF_Status* status) {
+  if (op->inference_ctx) {
+    return op->inference_ctx->op_def;
+  }
+  const tensorflow::OpDef* op_def;
+  status->status =
+      tensorflow::OpDefForOp(op->operation.Name().c_str(), &op_def);
+  return op_def;
+}
+
 bool IsCPU(const tensorflow::Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
@@ -226,12 +237,10 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
 
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
 
-  ctx->context.InitializeRemote(std::move(server),
-                                std::move(remote_eager_workers),
-                                std::move(remote_device_mgr), remote_contexts,
-                                r, device_mgr, keep_alive_secs);
-
-  return tensorflow::Status::OK();
+  return ctx->context.InitializeRemote(
+      std::move(server), std::move(remote_eager_workers),
+      std::move(remote_device_mgr), remote_contexts, r, device_mgr,
+      keep_alive_secs);
 #undef LOG_AND_RETURN_IF_ERROR
 }
 
@@ -375,7 +384,9 @@ TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx, TF_Status* status) {
   return list;
 }
 
-void TFE_ContextClearCaches(TFE_Context* ctx) { ctx->context.ClearCaches(); }
+void TFE_ContextClearCaches(TFE_Context* ctx, TF_Status* status) {
+  status->status = ctx->context.ClearCaches();
+}
 
 // Set server_def on the context, possibly updating it.
 TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
@@ -805,6 +816,54 @@ void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
   op->operation.MutableAttrs()->Set(
       attr_name, tensorflow::gtl::ArraySlice<const tensorflow::NameAttrList>(
                      funcs.get(), num_values));
+}
+
+TF_CAPI_EXPORT extern int TFE_OpGetInputLength(TFE_Op* op,
+                                               const char* input_name,
+                                               TF_Status* status) {
+  const tensorflow::OpDef* op_def = GetOpDef(op, status);
+  if (!status->status.ok()) {
+    return -1;
+  }
+  tensorflow::AttrValueMap attrs;
+  op->operation.Attrs().FillAttrValueMap(&attrs);
+  tensorflow::NameRangeMap name_ranges;
+  status->status = tensorflow::NameRangesForNode(
+      tensorflow::AttrSlice(&attrs), *op_def, &name_ranges, nullptr);
+  if (!status->status.ok()) {
+    return -1;
+  }
+  auto iter = name_ranges.find(input_name);
+  if (iter == name_ranges.end()) {
+    status->status = tensorflow::errors::InvalidArgument("Input '", input_name,
+                                                         "' not found");
+    return -1;
+  }
+  return iter->second.second - iter->second.first;
+}
+
+TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
+                                                const char* output_name,
+                                                TF_Status* status) {
+  const tensorflow::OpDef* op_def = GetOpDef(op, status);
+  if (!status->status.ok()) {
+    return -1;
+  }
+  tensorflow::AttrValueMap attrs;
+  op->operation.Attrs().FillAttrValueMap(&attrs);
+  tensorflow::NameRangeMap name_ranges;
+  status->status = tensorflow::NameRangesForNode(
+      tensorflow::AttrSlice(&attrs), *op_def, nullptr, &name_ranges);
+  if (!status->status.ok()) {
+    return -1;
+  }
+  auto iter = name_ranges.find(output_name);
+  if (iter == name_ranges.end()) {
+    status->status = tensorflow::errors::InvalidArgument(
+        "Output '", output_name, "' not found");
+    return -1;
+  }
+  return iter->second.second - iter->second.first;
 }
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,

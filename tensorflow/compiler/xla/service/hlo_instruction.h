@@ -37,6 +37,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "absl/types/span.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -443,6 +444,11 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateFft(
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
+
+  // Creates a compare op, performing the comparison specified in direction.
+  static std::unique_ptr<HloInstruction> CreateCompare(
+      const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+      ComparisonDirection direction);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,
@@ -1124,6 +1130,11 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  bool IsLoopFusion() const;
+  bool IsInputFusion() const;
+  bool IsOutputFusion() const;
+  bool IsCustomFusion() const;
+
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusible() const;
@@ -1220,10 +1231,8 @@ class HloInstruction {
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
-  // after performing necessary implicit broadcast
-  // (cs/IrArray::EmitArrayElementAddress), to compute the output at index
-  // {i_0,i_1,...,i_n}, the only element required from the operand (if any) is
-  // the element at {i_0,i_1,...,i_n}.
+  // to compute the output at index {i_0,i_1,...,i_n}, the only element required
+  // from the operand (if any) is the element at {i_0,i_1,...,i_n}.
   //
   // Note on performance: when this instruction is kFusion, this method, in the
   // worst case, scans all fused instructions. We could speed this up by
@@ -1238,12 +1247,6 @@ class HloInstruction {
 
   // Returns true if this is a cross-replica all-reduce instruction.
   bool IsCrossReplicaAllReduce() const;
-
-  // Returns true if this elementwise instruction implicitly broadcasts operand
-  // `operand_idx`.
-  //
-  // Precondition: this instruction should be an elementwise operation.
-  bool ImplicitlyBroadcastsOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is binary and elementwise.
   bool IsElementwiseBinary() const;
@@ -1502,6 +1505,9 @@ class HloInstruction {
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
+  // Delegates to HloGetTupleElementInstruction::set_tuple_index.
+  void set_tuple_index(int64 new_tuple_index);
+
   // Delegates to HloReducePrecisionInstruction::exponent_bits.
   int32 exponent_bits() const;
 
@@ -1607,6 +1613,9 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloCompareInstruction::direction().
+  ComparisonDirection comparison_direction() const;
 
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;
@@ -1813,6 +1822,7 @@ string RandomDistributionToString(const RandomDistribution& distribution);
 string PrecisionToString(const PrecisionConfig::Precision& precision);
 string ConvolutionDimensionNumbersToString(
     const ConvolutionDimensionNumbers& dnums);
+string ReplicaGroupsToString(const std::vector<ReplicaGroup>& replica_groups);
 
 StatusOr<RandomDistribution> StringToRandomDistribution(const string& name);
 StatusOr<PrecisionConfig::Precision> StringToPrecision(const string& name);

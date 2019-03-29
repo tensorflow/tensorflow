@@ -131,6 +131,11 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
+  // If this TensorHandle is 1) a local tensor, and 2) a resource variable,
+  // return data type and shape of the resource variable.
+  Status GetResourceVariableDtypeAndShape(
+      std::pair<DataType, TensorShape>* result);
+
  private:
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
@@ -158,6 +163,9 @@ class TensorHandle : public core::RefCounted {
 
   // Device in which the op producing this tensor was executed. Equals to
   // device_ for constant tensors.
+  // Can be nullptr if the op producing this tensor was a function executed
+  // with function library runtime or if this tensor represents a symbolic
+  // tensor.
   tensorflow::Device* const op_device_;
 
   // If the tensor dtype is DT_RESOURCE, resource_device_ holds the device
@@ -187,6 +195,18 @@ class TensorHandle : public core::RefCounted {
   // (corresponding to a graph node), whose concrete value is to be produced by
   // executing that graph node.
   std::unique_ptr<OutputGraphNode> symbolic_tensor;
+
+  // If this TensorHandle is 1) a local tensor, and 2) a resource variable, we
+  // will store data type and shape of the resource variable to
+  // `resource_dtype_and_shape_`.
+  std::pair<DataType, TensorShape> resource_dtype_and_shape_
+      GUARDED_BY(ctx_mutex_);
+  // `resource_dtype_and_shape_status_` stores whether we succeeded to get data
+  // type of shape of this TensorHandle.
+  Status resource_dtype_and_shape_status_ GUARDED_BY(ctx_mutex_);
+  // `resource_dtype_and_shape_initialized_` indicates whether we have tried to
+  // get `resource_dtype_and_shape_`.
+  bool resource_dtype_and_shape_initialized_ GUARDED_BY(ctx_mutex_);
 };
 
 // If tensor's dtype is DT_RESOURCE, returns the device backing the resource.

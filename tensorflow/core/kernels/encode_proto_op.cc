@@ -516,7 +516,7 @@ class EncodeProtoOp : public OpKernel {
 
     // Check the arguments for consistency.
     TensorShape common_prefix;
-    int message_count;
+    int message_count = 0;
     for (int i = 0; i < field_descs_.size(); i++) {
       const Tensor& v = values[i];
 
@@ -525,10 +525,15 @@ class EncodeProtoOp : public OpKernel {
           ctx,
           proto_utils::IsCompatibleType(field_descs_[i]->type(), v.dtype()),
           errors::InvalidArgument(
-              "Incompatible type for field " + field_names_[i] +
-                  ".  Saw dtype: ",
-              DataTypeString(v.dtype()),
+              "Incompatible type for field ", field_names_[i],
+              ".  Saw dtype: ", DataTypeString(v.dtype()),
               " but field type is: ", field_descs_[i]->type_name()));
+
+      OP_REQUIRES(
+          ctx, TensorShapeUtils::IsMatrixOrHigher(v.shape()),
+          errors::InvalidArgument("Invalid shape for field ", field_names_[i],
+                                  ".  Saw shape ", v.shape().DebugString(),
+                                  " but it should be at least a matrix."));
 
       // All value tensors must have the same shape prefix (i.e. batch size).
       TensorShape shape_prefix = v.shape();

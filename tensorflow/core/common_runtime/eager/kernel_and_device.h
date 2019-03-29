@@ -60,12 +60,14 @@ class KernelAndDevice {
 
   // Non-multi-device functions are run using regular CallOp and look like
   // primitive operations from KernelAndDevice perspective.
+  // `flr` can be nullptr if the operation is not run on any specific device
+  // (currently can happen only for multi-device functions).
   KernelAndDevice(
       FunctionLibraryRuntime* flr,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device)
-      : device_(flr->device()),
+      : device_(flr == nullptr ? nullptr : flr->device()),
         host_cpu_device_(host_cpu_device),
         flr_(flr),
         runner_(runner),
@@ -76,9 +78,10 @@ class KernelAndDevice {
   virtual ~KernelAndDevice() {}
 
   // TODO(ashankar): Handle list-valued inputs.
-  Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
-             std::vector<Tensor>* outputs, NodeExecStats* stats,
-             StepStats* step_stats, GraphCollector* graph_collector);
+  virtual Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+                     std::vector<Tensor>* outputs, NodeExecStats* stats,
+                     StepStats* step_stats,
+                     GraphCollector* graph_collector) = 0;
 
   virtual Status Run(ScopedStepContainer* step_container,
                      const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -92,7 +95,8 @@ class KernelAndDevice {
   // Else, returns nullptr.
   virtual Device* OutputResourceDevice(int idx) const = 0;
 
-  // Returns nullptr for functions.
+  // Returns the kernel that will be used to run this.
+  // Returns nullptr if this will be run using function library runtime.
   virtual const OpKernel* kernel() const = 0;
 
   // Returns the device on which this kernel will run. In the case of
@@ -114,9 +118,9 @@ class KernelAndDevice {
   // provided here only for the few kernels which can't handle one being
   // missing.
   CancellationManager cm_;
-  Device* const device_;           // non-null
-  Device* const host_cpu_device_;  // non-null
-  FunctionLibraryRuntime* const flr_;
+  Device* const device_;               // can be null
+  Device* const host_cpu_device_;      // non-null
+  FunctionLibraryRuntime* const flr_;  // can be null
   std::function<void(std::function<void()>)>* const runner_;
   std::function<void(std::function<void()>)> default_runner_;
   const std::unique_ptr<CollectiveExecutor::Handle> collective_executor_;
@@ -140,7 +144,9 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  using KernelAndDevice::Run;
+  Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+             std::vector<Tensor>* outputs, NodeExecStats* stats,
+             StepStats* step_stats, GraphCollector* graph_collector) override;
 
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
@@ -181,9 +187,15 @@ class KernelAndDeviceOp final : public KernelAndDevice {
 // In such cases, KernelAndDeviceOp is used.
 class KernelAndDeviceFunc final : public KernelAndDevice {
  public:
+  // `flr` can be nullptr.
+  // `pflr` must not be nullptr.
+  // `host_cpu_device` must not be nullptr.
   KernelAndDeviceFunc(
       FunctionLibraryRuntime* flr, ProcessFunctionLibraryRuntime* pflr,
       std::vector<Device*> input_devices,
+      std::unordered_map<int, TensorShape> input_tensor_shapes,
+      std::unordered_map<int, std::pair<DataType, TensorShape>>
+          input_resource_dtypes_and_shapes,
       std::function<void(std::function<void()>)>* runner,
       std::unique_ptr<CollectiveExecutor::Handle> collective_executor,
       Device* host_cpu_device)
@@ -191,14 +203,18 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
                         host_cpu_device),
         pflr_(pflr),
         handle_(kInvalidHandle),
-        input_devices_(std::move(input_devices)) {}
+        input_devices_(std::move(input_devices)),
+        input_tensor_shapes_(std::move(input_tensor_shapes)),
+        input_resource_dtypes_and_shapes_(
+            std::move(input_resource_dtypes_and_shapes)) {}
 
   virtual ~KernelAndDeviceFunc();
 
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
-  using KernelAndDevice::Run;
-
+  Status Run(const gtl::InlinedVector<TensorValue, 4>& inputs,
+             std::vector<Tensor>* outputs, NodeExecStats* stats,
+             StepStats* step_stats, GraphCollector* graph_collector) override;
   Status Run(ScopedStepContainer* step_container,
              const gtl::InlinedVector<TensorValue, 4>& inputs,
              std::vector<Tensor>* outputs, NodeExecStats* stats,
@@ -218,7 +234,7 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   int num_outputs() const override { return output_dtypes_.size(); }
 
  private:
-  ProcessFunctionLibraryRuntime* const pflr_;
+  ProcessFunctionLibraryRuntime* const pflr_;  // non-null
   FunctionLibraryRuntime::Handle handle_;
   // CPU devices are null. Resource handles' devices are actual backing
   // devices.
@@ -226,6 +242,9 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
   // CPU devices are not null. Resource handles' devices are actual backing
   // devices.
   std::vector<Device*> input_devices_;
+  std::unordered_map<int, TensorShape> input_tensor_shapes_;
+  std::unordered_map<int, std::pair<DataType, TensorShape>>
+      input_resource_dtypes_and_shapes_;
 
   DataTypeVector input_dtypes_;
   DataTypeVector output_dtypes_;

@@ -220,8 +220,9 @@ struct ResizeNearestNeighborGrad<GPUDevice, T, half_pixel_centers,
     const int output_size = batch_size * channels * out_height * out_width;
 
     CudaLaunchConfig output_config = GetCudaLaunchConfig(output_size, d);
-    SetZero<<<output_config.block_count, output_config.thread_per_block, 0,
-              d.stream()>>>(output_size, output.data());
+    TF_CHECK_OK(CudaLaunchKernel(SetZero<T>, output_config.block_count,
+                                 output_config.thread_per_block, 0, d.stream(),
+                                 output_size, output.data()));
     if (!d.ok()) return false;
 
     const int input_size = batch_size * channels * in_height * in_width;

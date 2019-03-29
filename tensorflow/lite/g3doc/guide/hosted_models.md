@@ -3,7 +3,7 @@
 The following is an incomplete list of pre-trained models optimized to work with
 TensorFlow Lite.
 
-To get started choosing a model, visit <a href="./">Models</a>.
+To get started choosing a model, visit <a href="../models">Models</a>.
 
 Note: The best model for a given application depends on your requirements. For
 example, some applications might benefit from higher accuracy, while others
@@ -13,7 +13,7 @@ models to find the optimal balance between size, performance, and accuracy.
 ## Image classification
 
 For more information about image classification, see
-<a href="image_classification/overview.md">Image classification</a>.
+<a href="../image_classification/overview.md">Image classification</a>.
 
 ### Quantized models
 
@@ -50,7 +50,7 @@ Graph.
 
 Note: Performance numbers were benchmarked on Pixel-2 using single thread large
 core. Accuracy numbers were computed using the
-[TFLite accuracy tool](../tools/accuracy/ilsvrc.md).
+[TFLite accuracy tool](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/accuracy/ilsvrc).
 
 ### Floating point models
 
@@ -108,7 +108,7 @@ BIG core.
 ## Object detection
 
 For more information about object detection, see
-<a href="object_detection/overview.md">Object detection</a>.
+<a href="../models/object_detection/overview.md">Object detection</a>.
 
 The object detection model we currently host is
 **coco_ssd_mobilenet_v1_1.0_quant_2018_06_29**.
@@ -119,7 +119,7 @@ model and labels</a>
 ## Pose estimation
 
 For more information about pose estimation, see
-<a href="pose_estimation/overview.md">Pose estimation</a>.
+<a href="../models/pose_estimation/overview.md">Pose estimation</a>.
 
 The pose estimation model we currently host is
 **multi_person_mobilenet_v1_075_float**.
@@ -130,7 +130,7 @@ model</a>
 ## Image segmentation
 
 For more information about image segmentation, see
-<a href="segmentation/overview.md">Segmentation</a>.
+<a href="../models/segmentation/overview.md">Segmentation</a>.
 
 The image segmentation model we currently host is **deeplabv3_257_mv_gpu**.
 
@@ -140,7 +140,7 @@ model</a>
 ## Smart reply
 
 For more information about smart reply, see
-<a href="smart_reply/overview.md">Smart reply</a>.
+<a href="../models/smart_reply/overview.md">Smart reply</a>.
 
 The smart reply model we currently host is **smartreply_1.0_2017_11_01**.
 

@@ -23,8 +23,8 @@ _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
 _TF_TENSORRT_CONFIG_REPO = "TF_TENSORRT_CONFIG_REPO"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
 
-_TF_TENSORRT_LIBS = ["nvinfer"]
-_TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h"]
+_TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin"]
+_TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h", "NvInferPlugin.h"]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"
@@ -127,7 +127,7 @@ def _find_trt_libs(repository_ctx, cpu_value, trt_install_path, trt_lib_version)
     """
     result = {}
     for lib in _TF_TENSORRT_LIBS:
-        file_name = lib_name("nvinfer", cpu_value, trt_lib_version)
+        file_name = lib_name(lib, cpu_value, trt_lib_version)
         path = find_lib(repository_ctx, ["%s/%s" % (trt_install_path, file_name)])
         result[file_name] = path
     return result

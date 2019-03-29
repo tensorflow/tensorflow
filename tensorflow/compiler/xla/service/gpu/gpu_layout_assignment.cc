@@ -214,6 +214,16 @@ Status GpuLayoutAssignment::AddBackendConstraints(
           constraints->SetOperandLayout(op1_shape, instruction, 1));
       TF_RETURN_IF_ERROR(
           constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kFft) {
+      // cuFFT requires a dim0 major layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     } else if (instruction->opcode() == HloOpcode::kSort &&
                instruction->operand(0)->shape().rank() > 1) {
       // Make sure that all the operands and the output(s) have the same layout.

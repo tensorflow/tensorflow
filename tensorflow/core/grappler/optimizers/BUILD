@@ -214,6 +214,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -227,6 +228,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
@@ -599,6 +601,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:colocation",
         "//tensorflow/core/grappler/utils:functions",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/utils:tpu",
         "//tensorflow/core/grappler/verifiers:graph_verifier",
         "//tensorflow/core/grappler/verifiers:structure_verifier",
         "@com_google_absl//absl/strings",
@@ -986,6 +989,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:frame",
         "//tensorflow/core/grappler/utils:symbolic_shapes",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/utils:tpu",
     ],
 )
 

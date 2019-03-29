@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
+#include "tensorflow/compiler/xla/service/gpu/target_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_support_library.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
@@ -149,8 +150,8 @@ Status EmitTiledCompareLoop(
     const EmitCallToNestedComputationCallback& emit_compare_callback,
     llvm::IRBuilder<>* b) {
   KernelSupportLibrary ksl(b);
-  llvm::Value* thread_id = llvm_ir::EmitCallToIntrinsic(
-      llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x, {}, {}, b);
+  llvm::Value* thread_id = gpu::EmitCallToTargetIntrinsic(
+      gpu::TargetIntrinsicID::kThreadIdx, {}, {}, b);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
                             llvm::cast<llvm::Instruction>(thread_id));
   thread_id = b->CreateIntCast(thread_id, tiled_keys_index.GetType(),
@@ -187,10 +188,12 @@ Status EmitTiledCompareLoop(
       };
 
   // Copy operand tiles from the operand buffers to shared memory.
-  IrArray::Index keys_index = tiled_keys_index;
+  std::vector<llvm::Value*> keys_multi_index = tiled_keys_index.multidim();
   for (int64 i = 0; i < params.size(); ++i) {
     copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
-      keys_index[dimension_to_sort] = index;
+      keys_multi_index[dimension_to_sort] = index;
+      IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
+                                tiled_keys_index.GetType());
       auto value = params[i].EmitReadArrayElement(keys_index, b);
       b->CreateStore(value,
                      b->CreateGEP(param_shmem_buffers[i],
@@ -199,7 +202,7 @@ Status EmitTiledCompareLoop(
     });
   }
   // Wait until all reads have happened.
-  llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, b);
+  gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBarrierId, {}, {}, b);
 
   // Now emit the bodies of the comparison loops.
   auto element_address = [&](int64 operand, llvm::Value* index) {
@@ -260,13 +263,16 @@ Status EmitTiledCompareLoop(
           /*needs_bounds_checks=*/false));
     }
     // Wait until all comparisons have happened.
-    llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::nvvm_barrier0, {}, {}, b);
+    gpu::EmitCallToTargetIntrinsic(gpu::TargetIntrinsicID::kBarrierId, {}, {},
+                                   b);
   }
 
   // Copy the operand tiles back from shared memory to the operand buffers.
   for (int64 i = 0; i < params.size(); ++i) {
     copy_loop_body([&](llvm::Value* cache_index, llvm::Value* index) {
-      keys_index[dimension_to_sort] = index;
+      keys_multi_index[dimension_to_sort] = index;
+      IrArray::Index keys_index(keys_multi_index, params[i].GetShape(),
+                                tiled_keys_index.GetType());
       auto value = b->CreateLoad(b->CreateGEP(
           param_shmem_buffers[i],
           {tiled_keys_index.GetConstantWithIndexType(0), cache_index}));
@@ -348,23 +354,31 @@ Status EmitSortInPlace(
     //
     // This follows the algorithm described on Wikipedia:
     // https://en.wikipedia.org/wiki/Bitonic_sorter
-    IrArray::Index keys_index(tiles_index.GetType(), rank);
+    std::vector<llvm::Value*> keys_multi_index(rank);
     for (int64 i = 0; i < rank; ++i) {
-      keys_index[iteration_order_to_logical_order[i]] = tiles_index[i];
+      keys_multi_index[iteration_order_to_logical_order[i]] = tiles_index[i];
     }
     if (xor_masks.size() > 1) {
+      IrArray::Index keys_index(keys_multi_index, values_arrays[0].GetShape(),
+                                tiles_index.GetType());
       TF_RETURN_IF_ERROR(EmitTiledCompareLoop(
           keys_index, dimension_to_sort, dimension_to_sort_bound, xor_masks,
           values_arrays, param_shmem_buffers, tile_size, emit_compare_callback,
           b));
     } else {
       auto element_address = [&](int64 operand, llvm::Value* index) {
-        keys_index[dimension_to_sort] = index;
+        keys_multi_index[dimension_to_sort] = index;
+        IrArray::Index keys_index(keys_multi_index,
+                                  values_arrays[operand].GetShape(),
+                                  tiles_index.GetType());
         return values_arrays[operand].EmitArrayElementAddress(keys_index, b);
       };
       auto write_element = [&](int64 operand, llvm::Value* index,
                                llvm::Value* value) {
-        keys_index[dimension_to_sort] = index;
+        keys_multi_index[dimension_to_sort] = index;
+        IrArray::Index keys_index(keys_multi_index,
+                                  values_arrays[operand].GetShape(),
+                                  tiles_index.GetType());
         values_arrays[operand].EmitWriteArrayElement(keys_index, value, b);
       };
       TF_RETURN_IF_ERROR(EmitCompareLoopBody(

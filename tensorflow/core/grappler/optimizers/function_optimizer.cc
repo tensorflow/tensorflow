@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/common_runtime/function.h"
-#include "tensorflow/core/common_runtime/lower_if_while.h"
+#include "tensorflow/core/common_runtime/lower_functional_ops.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/placer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
@@ -1159,8 +1159,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
   FunctionLibraryRuntime* flr = ctx->mutable_function_library_runtime();
 
   // 1. Inline symbolic gradient node.
-  const InlineFunctionBodyOptions default_inline_opts;
-  const bool expanded = ExpandInlineFunctions(flr, &graph, default_inline_opts);
+  const bool expanded = ExpandInlineFunctions(flr, &graph);
   if (!expanded) {
     return errors::Internal("Failed to expand SymbolicGradient op");
   }
@@ -1182,7 +1181,7 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
   // 2. Recursively inline nested function calls.
   int iteration = 0;
-  while (ExpandInlineFunctions(flr, &graph, default_inline_opts)) {
+  while (ExpandInlineFunctions(flr, &graph)) {
     if (++iteration >= 50) {
       VLOG(2) << "Break symbolic gradient inlining loop at iteration #"
               << iteration;
@@ -1495,7 +1494,7 @@ Status PlaceInlinedFunctionBody(
 
   // TODO(ezhulenev): Should we run full PRE_PLACEMENT pass here? And
   // POST_PLACEMENT after placer?
-  LowerIfWhilePass pass;
+  LowerFunctionalOpsPass pass;
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
 
   // ------------------------------------------------------------------------ //
@@ -1547,8 +1546,7 @@ Status PlaceInlinedFunctionBody(
     const Device* default_device =
         devices->FindDeviceByName(func_node.device());
 
-    Placer placer(func_body_graph.get(), devices,
-                  nullptr /* No session options */, default_device);
+    Placer placer(func_body_graph.get(), devices, default_device);
     TF_RETURN_IF_ERROR(placer.Run());
   }
 

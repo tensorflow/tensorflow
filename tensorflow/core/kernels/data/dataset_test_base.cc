@@ -88,11 +88,12 @@ Status DatasetOpsTestBase::CreateTensorSliceDataset(
 
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
-  Status status;
-  *op_kernel =
-      tensorflow::CreateOpKernel(device_type_, device_.get(), allocator_,
-                                 node_def, TF_GRAPH_DEF_VERSION, &status);
-  return status;
+  OpKernel* kernel;
+  TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(device_type_, device_.get(),
+                                                allocator_, flr_, node_def,
+                                                TF_GRAPH_DEF_VERSION, &kernel));
+  op_kernel->reset(kernel);
+  return Status::OK();
 }
 
 Status DatasetOpsTestBase::CreateDataset(OpKernel* kernel,
@@ -210,9 +211,8 @@ Status DatasetOpsTestBase::CreateOpKernelContext(
 
 Status DatasetOpsTestBase::CreateSerializationContext(
     std::unique_ptr<SerializationContext>* context) {
-  SerializationContext::Params params;
-  params.flib_def = lib_def_.get();
-  *context = absl::make_unique<SerializationContext>(params);
+  *context =
+      absl::make_unique<SerializationContext>(SerializationContext::Params{});
   return Status::OK();
 }
 

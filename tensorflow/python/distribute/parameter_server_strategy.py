@@ -60,7 +60,7 @@ class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   In local training mode, variables are assigned to local CPU or the only GPU.
   When each worker has more than one GPU, operations will be replicated on these
   GPUs. In both cases, operations are replicated but variables are not and these
-  workers share a common view for which paramater server a variable is assigned
+  workers share a common view for which parameter server a variable is assigned
   to.
 
   This class assumes between-graph replication will be used and works on a graph
@@ -426,7 +426,7 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
   # TODO(yuefengz): does it need to call _select_single_value?
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
@@ -436,9 +436,9 @@ class ParameterServerStrategyExtended(
       if group:
         return result
       else:
-        return nest.map_structure(self._unwrap, result)
+        return nest.map_structure(self._local_results, result)
 
-  def _unwrap(self, val):
+  def _local_results(self, val):
     if isinstance(val, values.DistributedValues):
       return val.values
     return (val,)

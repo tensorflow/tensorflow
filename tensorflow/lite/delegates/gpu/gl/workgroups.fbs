@@ -1,0 +1,29 @@
+include "common.fbs";
+
+namespace tflite.gpu.gl.data;
+
+file_identifier "AFWS";
+
+// Workgroup size that applies only to a specific shader that covers predefined
+// collection of nodes.
+table HardcodedWorkgroup {
+  // Defines the size of a workgroup.
+  size:Uint3;
+
+  // Shader has to cover exactly these nodes to have workgroup size applied.
+  node_indices:[uint32];
+}
+
+// A collection of matchers to override default workgroup sizes in shaders.
+table HardcodedWorkgroups {
+  // if set, workgroups are applied only if mobile gpu info matches.
+  gpu_info:string;
+
+  workgroups:[HardcodedWorkgroup];
+}
+
+table CustomWorkgroups {
+  hardcoded_workgroups:[HardcodedWorkgroups];
+}
+
+root_type CustomWorkgroups;

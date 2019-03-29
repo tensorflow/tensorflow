@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -200,6 +201,42 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 1);
   return absl::make_unique<HloFftInstruction>(shape, new_operands[0], fft_type_,
                                               fft_length_);
+}
+
+HloCompareInstruction::HloCompareInstruction(const Shape& shape,
+                                             HloInstruction* lhs,
+                                             HloInstruction* rhs,
+                                             ComparisonDirection direction)
+    : HloInstruction(HloOpcode::kCompare, shape), direction_(direction) {
+  AppendOperand(lhs);
+  AppendOperand(rhs);
+}
+
+HloInstructionProto HloCompareInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_comparison_direction(ComparisonDirectionToString(direction_));
+  return proto;
+}
+
+std::vector<string> HloCompareInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return {StrCat("direction=", ComparisonDirectionToString(direction()))};
+}
+
+bool HloCompareInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloCompareInstruction&>(other);
+  return direction() == casted_other.direction();
+}
+
+std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 2);
+  return absl::make_unique<HloCompareInstruction>(shape, new_operands[0],
+                                                  new_operands[1], direction());
 }
 
 namespace {
@@ -456,15 +493,7 @@ HloInstructionProto HloCollectiveInstruction::ToProto() const {
 
 std::vector<string> HloCollectiveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& /*options*/) const {
-  std::vector<string> result;
-  std::vector<string> replica_group_str;
-  for (const ReplicaGroup& group : replica_groups()) {
-    replica_group_str.push_back(
-        StrCat("{", StrJoin(group.replica_ids(), ","), "}"));
-  }
-  result.push_back(
-      StrCat("replica_groups={", StrJoin(replica_group_str, ","), "}"));
-  return result;
+  return {StrCat("replica_groups=", ReplicaGroupsToString(replica_groups()))};
 }
 
 bool HloCollectiveInstruction::IdenticalSlowPath(
@@ -989,6 +1018,11 @@ HloConstantInstruction::HloConstantInstruction(Literal literal)
     : HloInstruction(HloOpcode::kConstant, literal.shape()),
       literal_(std::move(literal)) {}
 
+HloConstantInstruction::HloConstantInstruction(Literal literal,
+                                               const Shape& shape)
+    : HloInstruction(HloOpcode::kConstant, shape),
+      literal_(std::move(literal)) {}
+
 HloConstantInstruction::HloConstantInstruction(const Shape& shape)
     : HloInstruction(HloOpcode::kConstant, shape) {}
 
@@ -1034,7 +1068,12 @@ HloConstantInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK(literal_.has_value());
-  return absl::make_unique<HloConstantInstruction>(literal_->Clone());
+  // Literal's shape may have no/different tiling info. Use this instruction's
+  // shape instead.
+  CHECK(Shape::Equal().MinorToMajorOnlyInLayout()(literal_->shape(),
+                                                  this->shape()));
+  return absl::make_unique<HloConstantInstruction>(literal_->Clone(),
+                                                   this->shape());
 }
 
 string HloConstantInstruction::OperandsToStringWithCanonicalNameMap(
@@ -2282,19 +2321,19 @@ HloGatherInstruction::HloGatherInstruction(
   absl::c_copy(slice_sizes, std::back_inserter(gather_slice_sizes_));
 }
 
-string HloGatherInstruction::GatherDimensionNumbersToString() const {
-  CHECK(gather_dimension_numbers_ != nullptr);
+/*static*/ string HloGatherInstruction::GatherDimensionNumbersToString(
+    const GatherDimensionNumbers& gather_dimension_numbers) {
   string offset_dims =
       StrCat("offset_dims={",
-             StrJoin(gather_dimension_numbers_->offset_dims(), ","), "}");
+             StrJoin(gather_dimension_numbers.offset_dims(), ","), "}");
   string collapsed_slice_dims = StrCat(
       "collapsed_slice_dims={",
-      StrJoin(gather_dimension_numbers_->collapsed_slice_dims(), ","), "}");
+      StrJoin(gather_dimension_numbers.collapsed_slice_dims(), ","), "}");
   string start_index_map =
       StrCat("start_index_map={",
-             StrJoin(gather_dimension_numbers_->start_index_map(), ","), "}");
-  string index_vector_dim = StrCat(
-      "index_vector_dim=", gather_dimension_numbers_->index_vector_dim());
+             StrJoin(gather_dimension_numbers.start_index_map(), ","), "}");
+  string index_vector_dim =
+      StrCat("index_vector_dim=", gather_dimension_numbers.index_vector_dim());
 
   return StrJoin<std::initializer_list<string>>(
       {offset_dims, collapsed_slice_dims, start_index_map, index_vector_dim},
@@ -2331,7 +2370,7 @@ HloInstructionProto HloGatherInstruction::ToProto() const {
 
 std::vector<string> HloGatherInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {GatherDimensionNumbersToString(),
+  return {GatherDimensionNumbersToString(gather_dimension_numbers()),
           StrCat("slice_sizes={", StrJoin(gather_slice_sizes(), ","), "}")};
 }
 
@@ -2369,19 +2408,20 @@ HloScatterInstruction::HloScatterInstruction(
       absl::make_unique<ScatterDimensionNumbers>(scatter_dim_numbers);
 }
 
-string HloScatterInstruction::ScatterDimensionNumbersToString() const {
-  string update_window_dims = StrCat(
-      "update_window_dims={",
-      StrJoin(scatter_dimension_numbers().update_window_dims(), ","), "}");
+/*static*/ string HloScatterInstruction::ScatterDimensionNumbersToString(
+    const ScatterDimensionNumbers& scatter_dimension_numbers) {
+  string update_window_dims =
+      StrCat("update_window_dims={",
+             StrJoin(scatter_dimension_numbers.update_window_dims(), ","), "}");
   string inserted_window_dims = StrCat(
       "inserted_window_dims={",
-      StrJoin(scatter_dimension_numbers().inserted_window_dims(), ","), "}");
+      StrJoin(scatter_dimension_numbers.inserted_window_dims(), ","), "}");
   string scatter_dims_to_operand_dims = StrCat(
       "scatter_dims_to_operand_dims={",
-      StrJoin(scatter_dimension_numbers().scatter_dims_to_operand_dims(), ","),
+      StrJoin(scatter_dimension_numbers.scatter_dims_to_operand_dims(), ","),
       "}");
-  string index_vector_dim = StrCat(
-      "index_vector_dim=", scatter_dimension_numbers().index_vector_dim());
+  string index_vector_dim =
+      StrCat("index_vector_dim=", scatter_dimension_numbers.index_vector_dim());
 
   return StrJoin<std::initializer_list<string>>(
       {update_window_dims, inserted_window_dims, scatter_dims_to_operand_dims,
@@ -2418,7 +2458,7 @@ HloInstructionProto HloScatterInstruction::ToProto() const {
 
 std::vector<string> HloScatterInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {ScatterDimensionNumbersToString()};
+  return {ScatterDimensionNumbersToString(scatter_dimension_numbers())};
 }
 
 bool HloScatterInstruction::IdenticalSlowPath(

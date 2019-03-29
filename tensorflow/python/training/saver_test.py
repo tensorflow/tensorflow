@@ -2900,7 +2900,8 @@ class TrackableCompatibilityTests(test.TestCase):
         super(_CountingSaveable, self).__init__(
             dummy_op,
             [saver_module.BaseSaverBuilder.SaveSpec(
-                _tensor, "", name, dtype=dummy_op.dtype)],
+                _tensor, "", name, dtype=dummy_op.dtype,
+                device=dummy_op.device)],
             name)
 
       def restore(self, restored_tensors, restored_shapes):

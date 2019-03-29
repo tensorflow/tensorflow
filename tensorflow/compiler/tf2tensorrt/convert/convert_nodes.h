@@ -43,6 +43,14 @@ extern const char* const kOutputPHName;
 
 namespace convert {
 
+#define IS_TRT_VERSION_GE(major, minor, patch, build)           \
+  ((NV_TENSORRT_MAJOR > major) ||                               \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR > minor) || \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
+    NV_TENSORRT_PATCH > patch) ||                               \
+   (NV_TENSORRT_MAJOR == major && NV_TENSORRT_MINOR == minor && \
+    NV_TENSORRT_PATCH == patch && NV_TENSORRT_BUILD >= build))
+
 struct EngineConnection {
   // Constructs a non-control edge.
   EngineConnection(const string& outside, int out_id, int out_port,
@@ -123,13 +131,14 @@ struct EngineInfo {
 //   topological order.
 // - segment_def: the output GraphDef, whose non-input/output nodedefs will be
 //   sorted in topological order.
+// - scope_name: the name of the scope where the TRTEngineOp will be placed.
 //
 // TODO(aaroey): add tests to validate these properties.
 Status ConvertSegmentToGraphDef(
     const Graph* graph, const grappler::GraphProperties& graph_properties,
     const std::vector<const Node*>& subgraph_nodes,
     std::vector<EngineConnection>* connections, GraphDef* segment_def,
-    string* common_scope);
+    string* scope_name);
 
 // Converts given subgraph to a TRT engine saved in 'engine'. Returns ok iff
 // 'builder' successfully build the engine. If the result is not ok, 'engine'
@@ -161,7 +170,8 @@ string DebugString(const nvinfer1::DataType trt_dtype);
 string DebugString(const nvinfer1::Dims& dims);
 string DebugString(const nvinfer1::Permutation& permutation, int len);
 string DebugString(const nvinfer1::ITensor& tensor);
-int64_t TrtDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtWeightDimsNumElements(const nvinfer1::Dims& dims);
+int64_t TrtTensorDimsNumElements(const nvinfer1::Dims& dims);
 
 // Class to convert TF compile-time constants (e.g. Const nodes) to TRT weight.
 class TRT_ShapedWeights {
@@ -175,6 +185,8 @@ class TRT_ShapedWeights {
   TRT_ShapedWeights(const TRT_ShapedWeights& rhs);
 
   nvinfer1::Weights GetTrtWeights() const;
+
+  const Tensor& GetTensor() const { return tensor_; }
 
   // Returns the raw pointer to the underlying buffer which holds the weights
   // value.
@@ -272,9 +284,7 @@ class TRT_TensorOrWeights {
   bool is_tensor() const { return initialized_ && is_tensor_; }
   bool is_weights() const { return initialized_ && !is_tensor_; }
 
-  nvinfer1::ITensor* tensor();
-
-  const nvinfer1::ITensor* tensor() const;
+  nvinfer1::ITensor* tensor() const;
 
   TRT_ShapedWeights& weights() {
     CHECK(is_weights());
@@ -483,9 +493,10 @@ class Converter {
   // dimension which should always be 0.
   Status TransposeTensor(nvinfer1::ITensor* input_tensor,
                          const std::vector<int>& order_with_batch_dim,
-                         const nvinfer1::ITensor** output_tensor);
+                         nvinfer1::ITensor** output_tensor);
 
-  // Converts 'input' into 'tensor' with shape specified by 'dims'.
+  // Converts 'input' into 'tensor' with shape specified by 'dims' (which
+  // doesn't contain the batch dimension).
   //
   // If validation_only is true, it doesn't do the conversion but only do some
   // minimum validation for the eligibility of the conversion, and *tensor will
@@ -493,7 +504,7 @@ class Converter {
   Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                const nvinfer1::Dims& dims,
                                const bool validation_only,
-                               const nvinfer1::ITensor** tensor);
+                               nvinfer1::ITensor** tensor);
 
   // Return OK if the broadcast scheme is supported and compute the shapes after
   // broadcasting.

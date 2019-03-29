@@ -28,15 +28,15 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
-from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
-from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import parameter_server_strategy
 from tensorflow.contrib.optimizer_v2 import adagrad
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import estimator_training as dc_training
+from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.eager import context
 from tensorflow.python.estimator import exporter as exporter_lib

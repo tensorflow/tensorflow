@@ -33,7 +33,6 @@ namespace ops {
 namespace builtin {
 
 TfLiteRegistration* Register_FULLY_CONNECTED_REF();
-TfLiteRegistration* Register_FULLY_CONNECTED_NEON_OPT();
 TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT();
 TfLiteRegistration* Register_FULLY_CONNECTED_PIE();
 
@@ -143,7 +142,7 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
           FullyConnectedOptionsWeightsFormat_DEFAULT)
       : batches_(batches), units_(units) {
     int total_input_size = 1;
-    for (int i = 0; i < input.shape.size(); ++i) {
+    for (size_t i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
     }
     input_size_ = total_input_size / batches_;
@@ -279,7 +278,7 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
                               const TensorData& output = {TensorType_FLOAT32})
       : batches_(batches), units_(units) {
     int total_input_size = 1;
-    for (int i = 0; i < input.shape.size(); ++i) {
+    for (size_t i = 0; i < input.shape.size(); ++i) {
       total_input_size *= input.shape[i];
     }
     input_size_ = total_input_size / batches_;
@@ -330,7 +329,6 @@ class HybridFullyConnectedOpModel : public SingleOpModel {
 
 const auto kKernelMap = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"NeonOptimized", ops::builtin::Register_FULLY_CONNECTED_NEON_OPT()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
     {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
 });
@@ -344,7 +342,6 @@ class FloatFullyConnectedOpTest : public SingleOpTest {
 
 const auto kKernelMapNoPie = new std::map<string, TfLiteRegistration*>({
     {"Reference", ops::builtin::Register_FULLY_CONNECTED_REF()},
-    {"NeonOptimized", ops::builtin::Register_FULLY_CONNECTED_NEON_OPT()},
     {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
@@ -355,15 +352,18 @@ class QuantizedFullyConnectedOpTest : public SingleOpTest {
   }
 };
 
-const auto kKernelMapPie = new std::map<string, TfLiteRegistration*>({
+const auto kKernelMapHybrid = new std::map<string, TfLiteRegistration*>({
     {"Pie", ops::builtin::Register_FULLY_CONNECTED_PIE()},
+    // Only Pie supports the hybrid path, so the optimized kernel should fall
+    // back to the Pie path in such cases.
+    {"GenericOptimized", ops::builtin::Register_FULLY_CONNECTED_GENERIC_OPT()},
 });
 
 // Hybrid mode is used by the Pie quantized kernel.
 class HybridFullyConnectedOpTest : public SingleOpTest {
  protected:
   const std::map<string, TfLiteRegistration*>& GetKernelMap() override {
-    return *kKernelMapPie;
+    return *kKernelMapHybrid;
   }
 };
 

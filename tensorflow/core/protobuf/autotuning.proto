@@ -1,0 +1,76 @@
+// This file defines protos that store the results of autotuning various
+// operations.
+//
+// They are in proto format because we want to log them structured. They offer
+// tremendous statistical, testing, and debugging value.
+syntax = "proto3";
+
+package tensorflow;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
+
+message CudnnVersion {
+  int32 major = 1;
+  int32 minor = 2;
+  int32 patch = 3;
+}
+
+message ComputeCapability {
+  int32 major = 1;
+  int32 minor = 2;
+}
+
+message AutotuneResult {
+  enum FailureKind {
+    UNKNOWN = 0;
+    REDZONE_MODIFIED = 1;
+    WRONG_RESULT = 2;
+  }
+
+  message FailureResult {
+    FailureKind kind = 1;
+    string msg = 2;
+
+    // For failure_kind == WRONG_RESULT, this field indicates the reference
+    // configuration that we compared against.
+    //
+    // Note that the reference algorithm isn't always correct.  However,
+    // empirically it's more correct, as it's "algo 0", less fancy than the
+    // compared one.
+    oneof key {
+      ConvKey reference_conv = 11;
+    }
+  }
+
+  message ConvKey {
+    int64 algorithm = 1;
+    bool tensor_ops_enabled = 2;
+  }
+
+  int64 scratch_bytes = 8;
+  google.protobuf.Duration run_time = 9;
+
+  FailureResult failure = 7;
+
+  oneof key {
+    ConvKey conv = 5;
+  }
+
+  // Next ID: 12
+}
+
+message AutotuningLog {
+  google.protobuf.Any instr = 1;
+
+  // Records all auto-tuning results per algorithm.
+  repeated AutotuneResult results = 2;
+
+  CudnnVersion cudnn_version = 3;
+  ComputeCapability compute_capability = 4;
+
+  // stream_executor::DeviceDescription::pci_bus_id.
+  string device_pci_bus_id = 5;
+
+  // Next ID: 6
+}

@@ -180,7 +180,7 @@ def wait_for_new_checkpoint(checkpoint_dir,
       a checkpoint for the first time.
     seconds_to_sleep: The number of seconds to sleep for before looking for a
       new checkpoint.
-    timeout: The maximum amount of time to wait. If left as `None`, then the
+    timeout: The maximum number of seconds to wait. If left as `None`, then the
       process will wait indefinitely.
 
   Returns:
@@ -232,8 +232,8 @@ def checkpoints_iterator(checkpoint_dir,
     checkpoint_dir: The directory in which checkpoints are saved.
     min_interval_secs: The minimum number of seconds between yielding
       checkpoints.
-    timeout: The maximum amount of time to wait between checkpoints. If left as
-      `None`, then the process will wait indefinitely.
+    timeout: The maximum number of seconds to wait between checkpoints. If left
+      as `None`, then the process will wait indefinitely.
     timeout_fn: Optional function to call after a timeout.  If the function
       returns True, then it means that no new checkpoints will be generated and
       the iterator will exit.  The function is called with no arguments.
@@ -398,8 +398,8 @@ def evaluate_repeatedly(checkpoint_dir,
       configure the `Session`. If left as `None`, the default will be used.
     max_number_of_evaluations: The maximum times to run the evaluation. If left
       as `None`, then evaluation runs indefinitely.
-    timeout: The maximum amount of time to wait between checkpoints. If left as
-      `None`, then the process will wait indefinitely.
+    timeout: The maximum number of seconds to wait between checkpoints. If left
+      as `None`, then the process will wait indefinitely.
     timeout_fn: Optional function to call after a timeout.  If the function
       returns True, then it means that no new checkpoints will be generated and
       the iterator will exit.  The function is called with no arguments.

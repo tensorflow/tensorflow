@@ -35,12 +35,12 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import distributed_training_utils
+from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.network import Network
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
@@ -54,7 +54,7 @@ from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.models.Model', 'keras.Model')
-class Model(Network):
+class Model(network.Network):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -140,6 +140,15 @@ class Model(Network):
       with self._distribution_strategy.scope():
         return super(Model, self).get_weights()
     return super(Model, self).get_weights()
+
+  def load_weights(self, filepath, by_name=False):
+    """Loads all layer weights, either from a TensorFlow or an HDF5 file."""
+    if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
+      if (self._distribution_strategy.extended.steps_per_run > 1 and
+          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+        raise ValueError('Load weights is not yet supported with TPUStrategy '
+                         'with steps_per_run greater than 1.')
+    return super(Model, self).load_weights(filepath, by_name)
 
   @trackable.no_automatic_dependency_tracking
   def compile(self,
@@ -434,9 +443,6 @@ class Model(Network):
       # This saves time when the user is not using all functions.
       self._function_kwargs = kwargs
 
-      self._fit_function = None
-      self._eval_function = None
-      self._predict_function = None
       self.train_function = None
       self.test_function = None
       self.predict_function = None
@@ -465,7 +471,7 @@ class Model(Network):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
     metrics = []
     if self._is_compiled:
-      metrics += self._compile_stateful_metric_functions
+      metrics += self._compile_metric_functions
     return metrics + super(Model, self).metrics
 
   @property
@@ -689,11 +695,6 @@ class Model(Network):
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
 
-    # When the model expects dictionary inputs (i.e. FeatureColumn-based
-    # models), set run_eagerly to True as there's no support for graph
-    # functions.
-    training_utils.set_run_eagerly_for_dict_structure(self, x)
-
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if K.in_multi_worker_mode():
@@ -828,11 +829,10 @@ class Model(Network):
       y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
       sample_weights, val_sample_weights = (slice_arrays(
           sample_weights, 0, split_at), slice_arrays(sample_weights, split_at))
-    elif validation_steps:
-      val_x = []
-      val_y = []
-      val_sample_weights = []
     else:
+      if validation_steps:
+        raise ValueError('`validation_steps` should not be specified if '
+                         '`validation_data` is None.')
       val_x = None
       val_y = None
       val_sample_weights = None
@@ -1173,8 +1173,7 @@ class Model(Network):
         m.reset_states()
 
     # Reset the state of loss metric wrappers.
-    if hasattr(
-        self, '_output_loss_metrics') and self._output_loss_metrics is not None:
+    if getattr(self, '_output_loss_metrics', None) is not None:
       for m in self._output_loss_metrics:
         m.reset_states()
 
@@ -1243,20 +1242,16 @@ class Model(Network):
           x,
           y,
           sample_weights=sample_weights,
-          reset_metrics=reset_metrics,
           output_loss_metrics=self._output_loss_metrics)
     else:
-      if not isinstance(K.symbolic_learning_phase(), int):
-        ins = x + y + sample_weights + [True]
-      else:
-        ins = x + y + sample_weights
+      x = training_utils.ModelInputs(x).as_list()
+      ins = x + (y or []) + (sample_weights or [])
 
-      if reset_metrics:
-        self._make_train_function()
-        outputs = self.train_function(ins)  # pylint: disable=not-callable
-      else:
-        self._make_fit_function()
-        outputs = self._fit_function(ins)  # pylint: disable=not-callable
+      if not isinstance(K.symbolic_learning_phase(), int):
+        ins += [True]  # Add learning phase value.
+
+      self._make_train_function()
+      outputs = self.train_function(ins)  # pylint: disable=not-callable
 
     if reset_metrics:
       self.reset_metrics()
@@ -1317,16 +1312,13 @@ class Model(Network):
           x,
           y,
           sample_weights=sample_weights,
-          reset_metrics=reset_metrics,
           output_loss_metrics=self._output_loss_metrics)
     else:
-      inputs = x + y + sample_weights
-      if reset_metrics:
-        self._make_test_function()
-        outputs = self.test_function(inputs)  # pylint: disable=not-callable
-      else:
-        self._make_eval_function()
-        outputs = self._eval_function(inputs)  # pylint: disable=not-callable
+      x = training_utils.ModelInputs(x).as_list()
+      inputs = x + (y or []) + (sample_weights or [])
+
+      self._make_test_function()
+      outputs = self.test_function(inputs)  # pylint: disable=not-callable
 
     if reset_metrics:
       self.reset_metrics()
@@ -1698,9 +1690,6 @@ class Model(Network):
             output_loss = loss_fn(y_true, y_pred, sample_weight=sample_weight)
 
         if len(self.outputs) > 1:
-          # Keep track of the un-aggregated loss result tensor.
-          self._compile_metrics_tensors[loss_name] = output_loss
-
           # Keep track of stateful result tensor and function for the loss.
           # Compute the stateful loss value.
           if weighted_losses is not None:
@@ -1711,10 +1700,7 @@ class Model(Network):
             # Custom loss class.
             aggregated_output_loss = self._call_metric_fn(
                 self._output_loss_metrics[i], y_true, y_pred, sample_weight)
-          self._compile_stateful_metrics_tensors[
-              loss_name] = aggregated_output_loss
-          self._compile_stateful_metric_functions.append(
-              self._output_loss_metrics[i])
+          self._compile_metrics_tensors[loss_name] = aggregated_output_loss
 
         if total_loss is None:
           total_loss = loss_weight * output_loss
@@ -1880,19 +1866,14 @@ class Model(Network):
 
   @property
   def _all_metrics_tensors(self):
-    """Returns the network's symbolic metric tensors."""
+    """Returns a dictionary that maps metric names to metric result tensors.
+
+    This maps metric names from `model.metric_names` to result tensors.
+    Just like model.metric_names, this includes loss names and tensors.
+    """
     metrics_tensors = {}
     if self._is_compiled:
       metrics_tensors.update(self._compile_metrics_tensors)
-    metrics_tensors.update(super(Model, self)._all_metrics_tensors)
-    return metrics_tensors
-
-  @property
-  def _all_stateful_metrics_tensors(self):
-    """Returns the network's symbolic metric tensors."""
-    metrics_tensors = {}
-    if self._is_compiled:
-      metrics_tensors.update(self._compile_stateful_metrics_tensors)
     metrics_tensors.update(super(Model, self)._all_metrics_tensors)
     return metrics_tensors
 
@@ -1902,12 +1883,9 @@ class Model(Network):
     self._compile_metrics_names = ['loss']
     # List of stateful metric functions. Used for resetting metric state during
     # training/eval. This includes loss metric functions.
-    self._compile_stateful_metric_functions = []
+    self._compile_metric_functions = []
     # Dict of all aggregated metric result tensors. This includes aggregated
     # loss result tensors.
-    self._compile_stateful_metrics_tensors = {}
-    # Dict of all metric result tensors (aggregated or not - based on the
-    # values given in compile.). This includes aggregated loss result tensors.
     self._compile_metrics_tensors = {}
     # List of metric wrappers on output losses.
     self._output_loss_metrics = None
@@ -1924,15 +1902,15 @@ class Model(Network):
       Metrics dict updated with unique metric names as keys.
     """
     updated_metrics_dict = collections.OrderedDict()
-    for metric_name, (metric_fn, stateful_metric_fn) in metrics_dict.items():
+    for metric_name, metric_fn in metrics_dict.items():
       metric_name = self._add_unique_metric_name(metric_name, output_index)
 
       # Update the name on the metric class to be the unique generated name.
-      stateful_metric_fn._name = metric_name  # pylint: disable=protected-access
-      updated_metrics_dict[metric_name] = (metric_fn, stateful_metric_fn)
-      # Keep track of metric name, function and stateful function.
+      metric_fn._name = metric_name  # pylint: disable=protected-access
+      updated_metrics_dict[metric_name] = metric_fn
+      # Keep track of metric name and function.
       self._compile_metrics_names.append(metric_name)
-      self._compile_stateful_metric_functions.append(stateful_metric_fn)
+      self._compile_metric_functions.append(metric_fn)
     return updated_metrics_dict
 
   def _set_metric_attributes(self, skip_target_indices=None):
@@ -2002,8 +1980,7 @@ class Model(Network):
                                  y_true,
                                  y_pred,
                                  mask,
-                                 weights=None,
-                                 return_stateful_result=True):
+                                 weights=None):
     """Calls metric functions for a single output.
 
     Arguments:
@@ -2012,49 +1989,18 @@ class Model(Network):
       y_pred: Predicted output.
       mask: Computed mask value for the current output.
       weights: Weights to be applied on the current output.
-      return_stateful_result: Boolean, indicates whether the stateful
-        (aggregated)/stateless metric result should be returned.
 
     Returns:
       A list of metric result tensors.
     """
     metric_results = []
-    for metric_name, (metric_fn, stateful_fn) in metrics_dict.items():
+    for metric_name, metric_fn in metrics_dict.items():
       with K.name_scope(metric_name):
-
-        def _call_stateful_fn(fn):
-          """Create stateful metrics correctly."""
-          return self._call_metric_fn(fn, y_true, y_pred, weights, mask)
-
-        def _call_stateless_fn(fn):
-          weighted_metric_fn = training_utils.weighted_masked_objective(fn)
-          return weighted_metric_fn(y_true, y_pred, weights=weights, mask=mask)
-
-        def _track_metric_tensors(name, stateless_result, stateful_result):
-          self._compile_metrics_tensors[name] = stateless_result
-          self._compile_stateful_metrics_tensors[name] = stateful_result
-
-        if isinstance(metric_fn, metrics_module.Metric):
-          # If the given metric fn is stateful, call the fn and return result.
-          metric_result = _call_stateful_fn(metric_fn)
-          metric_results.append(metric_result)
-          if not self.run_eagerly:
-            _track_metric_tensors(metric_name, metric_result, metric_result)
-        elif self.run_eagerly:
-          # In eager mode, if the given metric fn is not stateful, we invoke the
-          # given fn or its stateful version based on the given flag.
-          if return_stateful_result:
-            metric_result = _call_stateful_fn(stateful_fn)
-          else:
-            metric_result = _call_stateless_fn(metric_fn)
-          metric_results.append(metric_result)
-        else:
-          # In graph mode, we build the sub-graph for both the stateful and the
-          # stateless fns.
-          stateful_metric_result = _call_stateful_fn(stateful_fn)
-          metric_result = _call_stateless_fn(metric_fn)
-          _track_metric_tensors(metric_name, metric_result,
-                                stateful_metric_result)
+        metric_result = self._call_metric_fn(metric_fn, y_true, y_pred, weights,
+                                             mask)
+        metric_results.append(metric_result)
+        if not self.run_eagerly:
+          self._compile_metrics_tensors[metric_name] = metric_result
 
     return metric_results
 
@@ -2063,8 +2009,7 @@ class Model(Network):
                       skip_target_indices=None,
                       targets=None,
                       sample_weights=None,
-                      masks=None,
-                      return_stateful_result=True):
+                      masks=None):
     """Handles calling metric functions.
 
     Arguments:
@@ -2073,8 +2018,6 @@ class Model(Network):
       targets: List of targets.
       sample_weights: Optional list of sample weight arrays.
       masks: List of computed output mask values.
-      return_stateful_result: Boolean, indicates whether the stateful
-        (aggregated)/stateless metric result should be returned.
 
     Returns:
       A list of metric result tensors.
@@ -2090,25 +2033,20 @@ class Model(Network):
         target = targets[i] if targets else None
         output_mask = masks[i] if masks else None
         metric_results.extend(
-            self._handle_per_output_metrics(
-                self._per_output_metrics[i],
-                target,
-                output,
-                output_mask,
-                return_stateful_result=return_stateful_result))
+            self._handle_per_output_metrics(self._per_output_metrics[i], target,
+                                            output, output_mask))
         metric_results.extend(
             self._handle_per_output_metrics(
                 self._per_output_weighted_metrics[i],
                 target,
                 output,
                 output_mask,
-                weights=sample_weights[i],
-                return_stateful_result=return_stateful_result))
+                weights=sample_weights[i]))
 
     # Add metric results from the `add_metric` metrics in eager mode.
     if context.executing_eagerly():
       for m in self.metrics:
-        if m not in self._compile_stateful_metric_functions:
+        if m not in self._compile_metric_functions:
           metric_results.append(m.result())
     return metric_results
 
@@ -2130,11 +2068,14 @@ class Model(Network):
           ' trainable weights, did you set `model.trainable`'
           ' without calling `model.compile` after ?', 1)
 
-  def _make_train_function_helper(self, fn_name, outputs):
+  def _make_train_function(self):
+    metrics_tensors = [
+        self._all_metrics_tensors[m] for m in self.metrics_names[1:]
+    ]
     if not self._is_compiled:
       raise RuntimeError('You must compile your model before using it.')
     self._check_trainable_weights_consistency()
-    if getattr(self, fn_name) is None:
+    if getattr(self, 'train_function') is None:
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
@@ -2155,31 +2096,19 @@ class Model(Network):
       with K.name_scope('training'):
         # Gets loss and metrics. Updates weights at each call.
         fn = K.function(
-            inputs,
-            outputs,
+            inputs, [self.total_loss] + metrics_tensors,
             updates=updates,
             name='train_function',
             **self._function_kwargs)
-        setattr(self, fn_name, fn)
+        setattr(self, 'train_function', fn)
 
-  def _make_train_function(self):
+  def _make_test_function(self):
     metrics_tensors = [
         self._all_metrics_tensors[m] for m in self.metrics_names[1:]
     ]
-    self._make_train_function_helper('train_function',
-                                     [self.total_loss] + metrics_tensors)
-
-  def _make_fit_function(self):
-    metrics_tensors = [
-        self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
-    ]
-    self._make_train_function_helper(
-        '_fit_function', [self.total_loss] + metrics_tensors)
-
-  def _make_test_function_helper(self, fn_name, outputs):
     if not self._is_compiled:
       raise RuntimeError('You must compile your model before using it.')
-    if getattr(self, fn_name) is None:
+    if getattr(self, 'test_function') is None:
       inputs = (self._feed_inputs +
                 self._feed_targets +
                 self._feed_sample_weights)
@@ -2189,26 +2118,11 @@ class Model(Network):
         # Return loss and metrics, no gradient updates.
         # Does update the network states.
         fn = K.function(
-            inputs,
-            outputs,
+            inputs, [self.total_loss] + metrics_tensors,
             updates=updates,
             name='test_function',
             **self._function_kwargs)
-        setattr(self, fn_name, fn)
-
-  def _make_test_function(self):
-    metrics_tensors = [
-        self._all_metrics_tensors[m] for m in self.metrics_names[1:]
-    ]
-    self._make_test_function_helper('test_function',
-                                    [self.total_loss] + metrics_tensors)
-
-  def _make_eval_function(self):
-    metrics_tensors = [
-        self._all_stateful_metrics_tensors[m] for m in self.metrics_names[1:]
-    ]
-    self._make_test_function_helper(
-        '_eval_function', [self.total_loss] + metrics_tensors)
+        setattr(self, 'test_function', fn)
 
   def _make_predict_function(self):
     if not hasattr(self, 'predict_function'):
@@ -2228,11 +2142,11 @@ class Model(Network):
 
   def _make_execution_function(self, mode):
     if mode == ModeKeys.TRAIN:
-      self._make_fit_function()
-      return self._fit_function
+      self._make_train_function()
+      return self.train_function
     if mode == ModeKeys.TEST:
-      self._make_eval_function()
-      return self._eval_function
+      self._make_test_function()
+      return self.test_function
     if mode == ModeKeys.PREDICT:
       self._make_predict_function()
       return self.predict_function
@@ -2245,7 +2159,7 @@ class Model(Network):
                                           batch_size=None,
                                           validation_split=0,
                                           shuffle=False,
-                                          repeat=True,
+                                          repeat=False,
                                           allow_partial_batch=False):
     """Runs validation checks on input and target data passed by the user.
 
@@ -2697,7 +2611,7 @@ class Model(Network):
           'However we received `validation_data=%s`' % validation_data)
     return val_x, val_y, val_sample_weight
 
-  @trackable.no_automatic_dependency_tracking
+  # TODO(omalleyt): Consider changing to a more descriptive function name.
   def _set_inputs(self, inputs, outputs=None, training=None):
     """Set model's input and output specs based on the input data received.
 
@@ -2724,6 +2638,22 @@ class Model(Network):
       ValueError: If dict inputs are passed to a Sequential Model where the
         first layer isn't FeatureLayer.
     """
+    inputs = self._set_input_attrs(inputs)
+
+    if outputs is None:
+      kwargs = {'training': training} if self._expects_training_arg else {}
+      try:
+        outputs = self(inputs, **kwargs)
+      except NotImplementedError:
+        # This Model or a submodel is dynamic and hasn't overridden
+        # `compute_output_shape`.
+        outputs = None
+
+    self._set_output_attrs(outputs)
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_input_attrs(self, inputs):
+    """Sets attributes related to the inputs of the Model."""
     if self.inputs:
       raise ValueError('Model inputs are already set.')
 
@@ -2760,33 +2690,11 @@ class Model(Network):
         self._feed_inputs.append(v)
         self._feed_input_shapes.append(K.int_shape(v))
 
-    # TODO(fchollet): consider calling `_maybe_build` before calling the model.
-    if outputs is None:
-      if not self._dynamic:
-        # The network may include dynamic layers but its `call`
-        # itself isn't dynamic.
-        # Obtain symbolic outputs by calling the model.
-        with K.get_graph().as_default():
-          contains_symbolic_tensors = getattr(
-              self, '_contains_symbolic_tensors', False)
-          if self._expects_training_arg:
-            outputs = self.call(inputs, training=training)
-          else:
-            outputs = self.call(inputs)
-          # Reset to the previously saved value. If `call()` had `add_metric`
-          # or `add_loss`, then `_contains_symbolic_tensors` will have been set
-          # to True since we are not in `__call__` context. Hence we are
-          # resetting to the old value here.
-          self._contains_symbolic_tensors = contains_symbolic_tensors
-      else:
-        # Case: network's `call` is dynamic.
-        try:
-          outputs = self._symbolic_call(inputs)
-        except NotImplementedError:
-          # Static shape inference was not implemented for this dynamic net.
-          # Do not specify symbolic outputs.
-          outputs = None
+    return inputs
 
+  @trackable.no_automatic_dependency_tracking
+  def _set_output_attrs(self, outputs):
+    """Sets attributes related to the outputs of the Model."""
     outputs = nest.flatten(outputs)
     self.outputs = outputs
     self.output_names = training_utils.generic_output_names(outputs)

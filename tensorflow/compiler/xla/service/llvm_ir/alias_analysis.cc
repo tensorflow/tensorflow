@@ -63,7 +63,7 @@ void AliasAnalysis::AddAliasingInformationToIrArray(const HloInstruction& hlo,
   }
 
   if (module_.config().debug_options().xla_llvm_enable_noalias_metadata()) {
-    llvm::MDNode*& noalias_md = noalias_metadata_[buffer_slice];
+    llvm::MDNode*& noalias_md = noalias_metadata_[{buffer_slice, &hlo}];
     if (noalias_md == nullptr) {
       noalias_md = GetNoaliasMetadataForBuffer(buffer_slice, GetAliasDomain(),
                                                assignment_, hlo);
@@ -115,7 +115,7 @@ llvm::MDNode* AliasAnalysis::GetAliasScopeMetadataForBuffer(
 
   llvm::MDBuilder metadata_builder(domain->getContext());
   llvm::MDNode* scope = metadata_builder.createAliasScope(
-      AsStringRef("buffer: " + buffer_slice.ToString()), domain);
+      "buffer: " + buffer_slice.ToString(), domain);
   llvm::MDNode* scope_list = llvm::MDNode::get(domain->getContext(), scope);
   return scope_list;
 }
@@ -197,7 +197,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   std::vector<llvm::Metadata*> scopes;
   for (const BufferAllocation::Slice noalias_slice : buffers) {
     llvm::MDNode* scope = metadata_builder.createAliasScope(
-        AsStringRef("buffer: " + noalias_slice.ToString()), domain);
+        "buffer: " + noalias_slice.ToString(), domain);
     scopes.push_back(scope);
   }
   llvm::MDNode* noalias_list =

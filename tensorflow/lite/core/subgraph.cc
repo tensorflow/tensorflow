@@ -24,6 +24,16 @@ limitations under the License.
 namespace tflite {
 
 namespace {
+
+struct TfLiteQuantizationDeleter {
+  void operator()(TfLiteQuantization* q) {
+    if (q) TfLiteQuantizationFree(q);
+  }
+};
+
+using ScopedTfLiteQuantization =
+    std::unique_ptr<TfLiteQuantization, TfLiteQuantizationDeleter>;
+
 TfLiteStatus ReportOpError(TfLiteContext* context, const TfLiteNode& node,
                            const TfLiteRegistration& registration,
                            int node_index, const char* message) {
@@ -820,6 +830,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantization quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
+  // Ensure quantization cleanup on failure.
+  ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadOnly is disallowed when graph is immutable.");
@@ -847,7 +859,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
     tensor.data.raw = const_cast<char*>(buffer);
     if (!tensor.dims) tensor.dims = ConvertArrayToTfLiteIntArray(rank, dims);
     tensor.params = GetLegacyQuantization(quantization);
-    tensor.quantization = quantization;
+    tensor.quantization = *scoped_quantization.release();
     tensor.allocation_type = kTfLiteMmapRo;
     tensor.allocation = allocation;
   } else {
@@ -858,7 +870,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
                       allocation, false, &tensor);
     // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
     // if there are other required callers.
-    tensor.quantization = quantization;
+    tensor.quantization = *scoped_quantization.release();
   }
   return kTfLiteOk;
 }
@@ -870,6 +882,8 @@ TfLiteStatus Subgraph::SetTensorParametersReadOnly(
 TfLiteStatus Subgraph::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantization quantization, bool is_variable) {
+  // Ensure quantization cleanup on failure.
+  ScopedTfLiteQuantization scoped_quantization(&quantization);
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "SetTensorParametersReadWrite is disallowed when graph is immutable.");
@@ -906,7 +920,7 @@ TfLiteStatus Subgraph::SetTensorParametersReadWrite(
                     nullptr, is_variable, &tensor);
   // TODO(suharshs): Update TfLiteTensorReset to include the new quantization
   // if there are other required callers.
-  tensor.quantization = quantization;
+  tensor.quantization = *scoped_quantization.release();
   return kTfLiteOk;
 }
 

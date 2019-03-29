@@ -54,8 +54,3 @@ DEFAULT_UNCOMPILED_MODULES = set((
     ('tensorflow_probability',),
     (_internal_name('tensorflow_probability'),),
 ))
-
-
-COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function',
-)

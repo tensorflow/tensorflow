@@ -838,7 +838,8 @@ tensorflow::Status ConvertIdentityOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     Model* model) {
   CHECK(node.op() == "Identity" || node.op() == "CheckNumerics" ||
-        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient");
+        node.op() == "PlaceholderWithDefault" || node.op() == "StopGradient" ||
+        node.op() == "Snapshot");
   auto* op = new TensorFlowIdentityOperator;
   // Amazingly, some TensorFlow graphs (at least rajeev_lstm.pb) have
   // identity nodes with multiple inputs, but the other inputs seem
@@ -2471,11 +2472,14 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"LogicalNot", ConvertSimpleOperator<LogicalNotOperator, 1, 1>},
       {"LogSoftmax", ConvertSimpleOperator<LogSoftmaxOperator, 1, 1>},
       {"MatMul", ConvertMatMulOperator},
+      {"MatrixDiag", ConvertSimpleOperator<MatrixDiagOperator, 1, 1>},
+      {"MatrixSetDiag", ConvertSimpleOperator<MatrixSetDiagOperator, 2, 1>},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},
       {"Mean", ConvertReduceOperator<MeanOperator>},
-      {"Merge", ConvertSimpleOperator<TensorFlowMergeOperator, 2, 1>},
+      {"Merge",
+       ConvertSimpleOperator<TensorFlowMergeOperator, kAnyNumInputs, 1>},
       {"Min", ConvertReduceOperator<TensorFlowMinOperator>},
       {"Minimum", ConvertSimpleOperator<TensorFlowMinimumOperator, 2, 1>},
       {"Mul", ConvertSimpleOperator<MulOperator, 2, 1>},
@@ -2519,6 +2523,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Square", ConvertSimpleOperator<TensorFlowSquareOperator, 1, 1>},
       {"SquaredDifference",
        ConvertSimpleOperator<SquaredDifferenceOperator, 2, 1>},
+      {"Snapshot", ConvertIdentityOperator},
       {"Squeeze", ConvertSqueezeOperator},
       {"StopGradient", ConvertIdentityOperator},
       {"StridedSlice", ConvertStridedSliceOperator},

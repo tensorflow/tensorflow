@@ -41,6 +41,7 @@ class InputPipelineConfig(object):
   PER_HOST_V1 = 2
   PER_HOST_V2 = 3
   BROADCAST = 4
+  SLICED = 5
 
 
 class TPUConfig(
@@ -52,6 +53,7 @@ class TPUConfig(
         'tpu_job_name',
         'initial_infeed_sleep_secs',
         'input_partition_dims',
+        'eval_training_input_configuration',
     ])):
   r"""TPU related configuration required by `TPUEstimator`.
 
@@ -60,6 +62,8 @@ class TPUConfig(
       system before returning to CPU host for each `Session.run`. This means
       global step is increased `iterations_per_loop` times in one `Session.run`.
       It is recommended to be set as number of global steps for next checkpoint.
+      Note that in evaluation don't use this value, instead we run total eval
+      `steps` on TPU for a single `Session.run`.
     num_shards: (Deprecated, ignored by TPUEstimator).
       The number of model replicas in the system. For non-model-parallelism
       case, this number equals the total number of TPU cores. For
@@ -100,19 +104,26 @@ class TPUConfig(
       to all the TPU cores since the partition dims is `None`.
       Current limitations: This feature is only supported with the PER_HOST_V2
       input mode.
+    eval_training_input_configuration: If `SLICED`, `input_fn` is only
+      invoked once on host 0 and the tensors are broadcasted to all other
+      replicas. Unlike per_host_input_for_training=BROADCAST, each replica will
+      only get a slice of the data instead of a whole copy. If `PER_HOST_V1`,
+      the behaviour is determined by per_host_input_for_training.
 
     Raises:
       ValueError: If `num_cores_per_replica` is not 1, 2, 4, 8 or 16.
   """
 
-  def __new__(cls,
-              iterations_per_loop=2,
-              num_shards=None,
-              num_cores_per_replica=None,
-              per_host_input_for_training=True,
-              tpu_job_name=None,
-              initial_infeed_sleep_secs=None,
-              input_partition_dims=None):
+  def __new__(
+      cls,
+      iterations_per_loop=2,
+      num_shards=None,
+      num_cores_per_replica=None,
+      per_host_input_for_training=True,
+      tpu_job_name=None,
+      initial_infeed_sleep_secs=None,
+      input_partition_dims=None,
+      eval_training_input_configuration=InputPipelineConfig.PER_HOST_V1):
 
     # Check iterations_per_loop.
     util_lib.check_positive_integer(iterations_per_loop,
@@ -143,6 +154,13 @@ class TPUConfig(
             'num_cores_per_replica must be 1, 2, 4, 8, or 16; got {}'.format(
                 str(num_cores_per_replica)))
 
+    if eval_training_input_configuration not in [
+        InputPipelineConfig.PER_HOST_V1, InputPipelineConfig.SLICED
+    ]:
+      raise ValueError(
+          'eval_training_input_configuration must be PER_HOST_V1 or SLICED;'
+          ' got {}'.format(str(eval_training_input_configuration)))
+
     # per_host_input_for_training may be True, False, or integer in [1..3].
     # Map legacy values (True, False) to numeric values.
     if per_host_input_for_training is False:
@@ -165,7 +183,8 @@ class TPUConfig(
         per_host_input_for_training=per_host_input_for_training,
         tpu_job_name=tpu_job_name,
         initial_infeed_sleep_secs=initial_infeed_sleep_secs,
-        input_partition_dims=input_partition_dims)
+        input_partition_dims=input_partition_dims,
+        eval_training_input_configuration=eval_training_input_configuration)
 
 
 class RunConfig(run_config_lib.RunConfig):

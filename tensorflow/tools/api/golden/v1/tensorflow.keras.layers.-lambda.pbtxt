@@ -37,6 +37,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "name"
     mtype: "<type \'property\'>"
   }
@@ -118,7 +122,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'inputs\', \'mask\', \'training\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "compute_mask"

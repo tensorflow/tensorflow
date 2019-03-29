@@ -5,7 +5,6 @@ package(default_visibility = [
 licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 # ctc support classes imported directly from TensorFlow.
 cc_library(
@@ -61,7 +60,7 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "ctc_beam_search_decoder_test",
     size = "small",
     srcs = ["ctc_beam_search_decoder_test.cc"],

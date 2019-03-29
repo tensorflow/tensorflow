@@ -919,8 +919,10 @@ renames = {
         'tf.compat.v1.profiler.write_op_log',
     'tf.py_func':
         'tf.compat.v1.py_func',
+    'tf.io.TFRecordCompressionType':
+        'tf.compat.v1.python_io.TFRecordCompressionType',
     'tf.python_io.TFRecordCompressionType':
-        'tf.io.TFRecordCompressionType',
+        'tf.compat.v1.python_io.TFRecordCompressionType',
     'tf.python_io.TFRecordOptions':
         'tf.io.TFRecordOptions',
     'tf.python_io.TFRecordWriter':
@@ -973,6 +975,8 @@ renames = {
         'tf.compat.v1.resource_loader.load_resource',
     'tf.resource_loader.readahead_file_path':
         'tf.compat.v1.resource_loader.readahead_file_path',
+    'tf.resource_variables_enabled':
+        'tf.compat.v1.resource_variables_enabled',
     'tf.reverse_v2':
         'tf.reverse',
     'tf.rint':

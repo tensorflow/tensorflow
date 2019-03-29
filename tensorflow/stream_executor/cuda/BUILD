@@ -10,6 +10,7 @@ load(
     "tf_additional_cuda_driver_deps",
     "tf_additional_cuda_platform_deps",
     "tf_additional_cudnn_plugin_deps",
+    "tf_additional_cupti_stub_data",
 )
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
@@ -106,7 +107,7 @@ cc_library(
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": ["cudart_stub"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": ["cudart_stub"],
         "//conditions:default": ["//tensorflow/core:cuda"],
-    }),
+    }) + ["@com_google_absl//absl/strings:str_format"],
 )
 
 cc_library(
@@ -285,10 +286,8 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:logger",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
-        "//tensorflow/stream_executor:logging_proto_cc",
         "//tensorflow/stream_executor:plugin_registry",
         "//tensorflow/stream_executor:scratch_allocator",
         "//tensorflow/stream_executor:stream_executor_pimpl_header",
@@ -337,6 +336,18 @@ cc_library(
         [":curand_stub"],
     )),
     alwayslink = True,
+)
+
+cc_library(
+    name = "cupti_stub",
+    srcs = if_cuda_is_configured(["cupti_stub.cc"]),
+    data = if_cuda_is_configured(tf_additional_cupti_stub_data()),
+    textual_hdrs = ["cupti_10_0.inc"],
+    deps = if_cuda_is_configured([
+        "@local_config_cuda//cuda:cupti_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ]),
 )
 
 cc_library(

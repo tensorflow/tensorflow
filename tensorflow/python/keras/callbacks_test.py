@@ -35,6 +35,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import sequential
+from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -432,6 +435,135 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         monitor=monitor,
         save_best_only=save_best_only,
         mode='unknown')
+
+  def _run_load_weights_on_restart_test_common_iterations(self):
+
+    def get_input_datasets():
+      # Simple training input.
+      train_input = [[1]] * 16
+      train_label = [[0]] * 16
+      ds = dataset_ops.Dataset.from_tensor_slices((train_input, train_label))
+      return ds.batch(8, drop_remainder=True)
+
+    class Bias(base_layer.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+      def call(self, inputs):
+        return inputs + self.bias
+
+    # Very simple bias model to eliminate randomness.
+    optimizer = gradient_descent.SGD(0.1)
+    model = sequential.Sequential()
+    model.add(Bias(input_shape=(1,)))
+    model.compile(loss='mae', optimizer=optimizer, metrics=['mae'])
+    train_ds = get_input_datasets()
+
+    filepath = os.path.join(self.get_temp_dir(), 'checkpoint.h5')
+
+    # The filepath shouldn't exist at the beginning.
+    self.assertFalse(os.path.exists(filepath))
+    model.fit(
+        train_ds,
+        epochs=3,
+        callbacks=[
+            keras.callbacks.ModelCheckpoint(
+                filepath=filepath, save_weights_only=True)
+        ])
+
+    # The filepath should exist after fitting with callback.
+    self.assertTrue(os.path.exists(filepath))
+    model.fit(train_ds, epochs=1)
+    weights_after_one_more_epoch = model.get_weights()
+
+    # The filepath should continue to exist after fitting without callback.
+    self.assertTrue(os.path.exists(filepath))
+
+    return model, train_ds, filepath, weights_after_one_more_epoch
+
+  @staticmethod
+  def get_ModelCheckpoint_load_weights_on_restart_true_test(save_weights_only):
+
+    def func(self):
+      (model, train_ds, filepath, weights_after_one_more_epoch
+      ) = self._run_load_weights_on_restart_test_common_iterations()
+
+      model.fit(
+          train_ds,
+          epochs=1,
+          callbacks=[
+              keras.callbacks.ModelCheckpoint(
+                  filepath=filepath,
+                  save_weights_only=save_weights_only,
+                  load_weights_on_restart=True)
+          ])
+      weights_after_model_restoring_and_one_more_epoch = model.get_weights()
+
+      # Asserting the weights one epoch after initial fitting and another epoch
+      # after that are closed, if a ModelCheckpoint with
+      # load_weights_on_restart=True is given (so the model is restored at the
+      # beginning of training).
+      self.assertAllClose(weights_after_one_more_epoch,
+                          weights_after_model_restoring_and_one_more_epoch)
+
+    return func
+
+  @staticmethod
+  def get_ModelCheckpoint_load_weights_on_restart_false_test(save_weights_only):
+
+    def func(self):
+      (model, train_ds, filepath, weights_after_one_more_epoch
+      ) = self._run_load_weights_on_restart_test_common_iterations()
+
+      model.fit(
+          train_ds,
+          epochs=1,
+          callbacks=[
+              keras.callbacks.ModelCheckpoint(
+                  filepath=filepath, save_weights_only=save_weights_only)
+          ])
+      weights_after_model_restoring_and_one_more_epoch = model.get_weights()
+
+      # Asserting the weights one epoch after initial fitting and another epoch
+      # after that are different, if a ModelCheckpoint with
+      # load_weights_on_restart=False is given (so the model is not restored at
+      # the beginning of training).
+      self.assertNotAllClose(weights_after_one_more_epoch,
+                             weights_after_model_restoring_and_one_more_epoch)
+
+    return func
+
+  test_model_checkpoint_load_weights_on_restart_true_save_weights_only_true = \
+        get_ModelCheckpoint_load_weights_on_restart_true_test.__func__(True)
+
+  test_model_checkpoint_load_weights_on_restart_true_save_weights_only_false = \
+        get_ModelCheckpoint_load_weights_on_restart_true_test.__func__(False)
+
+  test_model_checkpoint_load_weights_on_restart_false_save_weights_only_true = \
+        get_ModelCheckpoint_load_weights_on_restart_false_test.__func__(True)
+
+  test_model_checkpoint_load_weights_on_restart_false_save_weights_only_false \
+        = get_ModelCheckpoint_load_weights_on_restart_false_test.__func__(False)
+
+  def test_ModelCheckpoint_override_if_file_exist(self):
+    (model, train_ds, filepath,
+     _) = self._run_load_weights_on_restart_test_common_iterations()
+
+    model.load_weights(filepath)
+    weights_before_additional_fit = model.get_weights()
+    model.fit(
+        train_ds,
+        epochs=1,
+        callbacks=[
+            keras.callbacks.ModelCheckpoint(
+                filepath=filepath, save_weights_only=True)
+        ])
+    model.load_weights(filepath)
+    weights_after_additional_fit = model.get_weights()
+
+    self.assertNotAllClose(weights_before_additional_fit,
+                           weights_after_additional_fit)
 
   def test_EarlyStopping(self):
     with self.cached_session():
@@ -1164,6 +1296,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
+    model_type = testing_utils.get_model_type()
 
     model.fit(
         x,
@@ -1182,7 +1315,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.histograms),
+        self._strip_layer_names(summary_file.histograms, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
@@ -1194,6 +1327,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(
         self.logdir, histogram_freq=1, write_images=True)
+    model_type = testing_utils.get_model_type()
 
     model.fit(
         x,
@@ -1212,14 +1346,14 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.histograms),
+        self._strip_layer_names(summary_file.histograms, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
         },
     )
     self.assertEqual(
-        self._strip_layer_names(summary_file.images),
+        self._strip_layer_names(summary_file.images, model_type),
         {
             _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
             _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
@@ -1228,7 +1362,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
         },
     )
 
-  def _strip_layer_names(self, summaries):
+  def _strip_layer_names(self, summaries, model_type):
     """Deduplicate summary names modulo layer prefix.
 
     This removes the first slash-component of each tag name: for
@@ -1236,6 +1370,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
     Args:
       summaries: A `set` of `_ObservedSummary` values.
+      model_type: The model type currently being tested.
 
     Returns:
       A new `set` of `_ObservedSummary` values with layer prefixes
@@ -1245,7 +1380,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     for summary in summaries:
       if '/' not in summary.tag:
         raise ValueError('tag has no layer name: %r' % summary.tag)
-      new_tag = summary.tag.split('/', 1)[1]
+      start_from = 2 if 'subclass' in model_type else 1
+      new_tag = '/'.join(summary.tag.split('/')[start_from:])
       result.add(summary._replace(tag=new_tag))
     return result
 
@@ -1255,6 +1391,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
 
 # Note that this test specifies model_type explicitly.
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
   def setUp(self):
@@ -1319,8 +1456,6 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=False)
     self.fitModelAndAssertKerasModelWritten(model)
 
-  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_TensorBoard_autoTrace(self):
     model = self._get_seq_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -1343,8 +1478,6 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         },
     )
 
-  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
     model = self._get_seq_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
@@ -1367,8 +1500,6 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         },
     )
 
-  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
   def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
     model = self._get_seq_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
