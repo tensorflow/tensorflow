@@ -176,6 +176,9 @@ message DebugOptions {
   // this is true we don't propagate NaNs through Min and Max.
   bool xla_gpu_enable_fast_min_max = 100;
 
+  // Allows xla to increase the output precision of floating point operations.
+  bool xla_allow_excess_precision = 122;
+
   // Crashes the program when any kind of verification fails, instead of just
   // logging the failures. One example is cross checking of convolution results
   // among different algorithms.
@@ -262,7 +265,7 @@ message DebugOptions {
   // END flags controlling dumping HLO modules.
   //
 
-  // Next id: 121
+  // Next id: 123
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.

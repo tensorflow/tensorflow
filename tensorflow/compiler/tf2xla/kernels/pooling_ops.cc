@@ -183,8 +183,7 @@ class MaxPoolOp : public PoolingOp {
 class MaxPool2DOp : public MaxPoolOp {
  public:
   explicit MaxPool2DOp(OpKernelConstruction* ctx)
-      : MaxPoolOp(ctx, /*num_spatial_dims=*/2) {
-  }
+      : MaxPoolOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(Name("MaxPool"), MaxPool2DOp);
 REGISTER_XLA_OP(Name("MaxPoolV2")
@@ -245,8 +244,7 @@ class AvgPoolOp : public PoolingOp {
 class AvgPool2DOp : public AvgPoolOp {
  public:
   explicit AvgPool2DOp(OpKernelConstruction* ctx)
-      : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {
-  }
+      : AvgPoolOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(Name("AvgPool"), AvgPool2DOp);
 
@@ -454,8 +452,7 @@ class AvgPoolGradOp : public XlaOpKernel {
 class AvgPool2DGradOp : public AvgPoolGradOp {
  public:
   explicit AvgPool2DGradOp(OpKernelConstruction* ctx)
-      : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {
-  }
+      : AvgPoolGradOp(ctx, /*num_spatial_dims=*/2) {}
 };
 REGISTER_XLA_OP(
     Name("AvgPoolGrad").CompileTimeConstantInput("orig_input_shape"),
@@ -558,10 +555,13 @@ class MaxPoolGradGradOp : public XlaOpKernel {
     auto b = ctx->builder();
 
     auto sixteen = xla::ConstantR0<uint32>(b, 16);
-    // in (f32) -> round to bf16 -> f32 for correct bitwidth -> 16-high-bit u32
+    // in (f32) -> round to 7 mantissa bits (bf16)-> 16-high-bit u32.
+    //
+    // NOTE: Use a ReducePrecision operation instead of a cast to BF16 and back
+    // to F32 since the XLA compiler may ignore narrowing casts to floating
+    // point types if the debug option xla_allow_excess_precision is set.
     auto in_hi = xla::BitcastConvertType(
-        xla::ConvertElementType(xla::ConvertElementType(input, xla::BF16),
-                                xla::F32),
+        xla::ReducePrecision(input, /*exponent_bits=*/8, /*mantissa_bits=*/7),
         xla::U32);
     auto bp_int = xla::BitcastConvertType(out_backprop, xla::U32);
     auto bp_hi = xla::ShiftRightLogical(bp_int, sixteen);

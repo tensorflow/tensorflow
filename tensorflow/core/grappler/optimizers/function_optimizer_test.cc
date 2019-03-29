@@ -123,7 +123,7 @@ TEST_F(FunctionOptimizerTest, InlineFunction_SkipErrorsIfGraphNotModified) {
   // Standard XTimesTwo() function.
   FunctionDef x_times_two = test::function::XTimesTwo();
 
-  // Function signature has non-type attribute (currently not supported).
+  // Function with sequence of tensors as an input (currently not supported).
   FunctionDef my_identity_n = FunctionDefHelper::Create(
       // Name
       "MyIdentityN",
