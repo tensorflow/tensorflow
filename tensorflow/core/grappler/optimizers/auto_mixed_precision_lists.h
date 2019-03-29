@@ -176,6 +176,9 @@ class AutoMixedPrecisionLists {
     if (IsPseudoFastMath()) {
       return std::set<string>{};
     }
+    // Note: if a stateful op (such as StackPopV2) is added to the clearlist,
+    // you must also modify the AutoMixedPrecisionImpl class to call
+    // AddDataStructureOpsToMap() with that op
     string to_add, to_remove;
     ReadStringFromEnvVar("TF_AUTO_MIXED_PRECISION_GRAPH_REWRITE_CLEARLIST_ADD",
                          "", &to_add);
